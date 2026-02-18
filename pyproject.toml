@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lintgate"
+version = "0.1.0"
+description = "Intelligent change-aware linting for LLM coding agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Rohan Vinaik"},
+]
+keywords = ["linting", "claude-code", "llm", "code-quality"]
+
+# Core dependencies — only PyYAML for config loading
+# All linters (ruff, mypy, radon, bandit) are optional
+dependencies = [
+    "pyyaml>=6.0",
+    "packaging>=23.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+# Install all linters
+full = [
+    "ruff>=0.4.0",
+    "mypy>=1.8",
+    "radon>=6.0",
+    "bandit>=1.7",
+    "vulture>=2.0",
+]
+# MCP server
+mcp = [
+    "mcp>=1.0",
+]
+# Development
+dev = [
+    "lintgate[full,mcp]",
+    "pytest>=8.0",
+]
+
+[project.scripts]
+lintgate = "lintgate.hook_posttooluse:main"
+lintgate-mcp = "mcp_server:mcp.run"
+controlplane = "lintgate.controlplane.cli:main"
+controlplane-mcp = "mcp_server:mcp.run"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TCH"]
+ignore = [
+    "E501",  # Line length handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lintgate"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Gradual typing
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

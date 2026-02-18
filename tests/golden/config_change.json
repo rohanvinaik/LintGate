@@ -1,0 +1,10 @@
+{
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/tmp/controlplane_test/pyproject.toml",
+    "old_string": "version = \"0.1.0\"",
+    "new_string": "version = \"0.2.0\""
+  },
+  "tool_output": "File edited successfully.",
+  "cwd": "/tmp/controlplane_test"
+}

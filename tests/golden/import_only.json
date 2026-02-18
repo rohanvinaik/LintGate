@@ -1,0 +1,10 @@
+{
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/tmp/controlplane_test/app.py",
+    "old_string": "import os",
+    "new_string": "import os\nimport sys"
+  },
+  "tool_output": "File edited successfully.",
+  "cwd": "/tmp/controlplane_test"
+}

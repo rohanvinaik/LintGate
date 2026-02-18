@@ -1,0 +1,199 @@
+"""Core data types for the ControlPlane supervision mesh.
+
+These types flow through the entire pipeline:
+  SupervisionEvent → Channel.execute() → ChannelResult → CoherenceEngine → MeshResult → Reporter
+
+Design notes:
+- Reuses LintIssue from lintgate.types for findings (backward compat)
+- ChangeClassification is attached to events to share classification across channels
+- RepairAction is opt-in only — channels propose, humans/agents approve
+"""
+
+from __future__ import annotations
+
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+from lintgate.types import ChangeClassification, LintIssue
+
+
+# ── Supervision Event ─────────────────────────────────────────────────
+
+
+@dataclass
+class SupervisionEvent:
+    """An event that triggers the supervision mesh.
+
+    Created from PostToolUse hook stdin, MCP tool call, or CI trigger.
+    Shared across all channels — each channel decides independently
+    whether to activate based on the event profile.
+    """
+
+    event_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    surface: Literal["hook", "mcp", "ci"] = "hook"
+    project_root: str = ""
+    tool_name: str = ""
+    files_changed: list[str] = field(default_factory=list)
+    change_classification: ChangeClassification | None = None
+    raw_input: dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
+
+
+# ── Repair Actions ────────────────────────────────────────────────────
+
+
+@dataclass
+class RepairAction:
+    """A proposed fix from a channel — opt-in apply only.
+
+    Channels propose repairs; the system never auto-applies them.
+    The human or agent must explicitly approve via controlplane_apply_repairs().
+    """
+
+    action_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    channel: str = ""
+    kind: Literal["command", "create_test_skeleton", "config_patch"] = "command"
+    summary: str = ""
+    payload: dict[str, Any] = field(default_factory=dict)
+    safe: bool = True  # Whether this action is considered safe to auto-approve
+
+
+# ── Channel Result ────────────────────────────────────────────────────
+
+
+@dataclass
+class ChannelResult:
+    """Result from a single channel execution.
+
+    Status semantics:
+    - pass: Channel ran, found no issues
+    - fail: Channel ran, found issues (severity determines weight)
+    - skip: Channel chose not to run (event not relevant)
+    - error: Channel crashed (internal error, not a code issue)
+    - timeout: Channel exceeded its time budget (partial results may exist)
+
+    Severity semantics:
+    - blocking: Agent must address before continuing (lint errors)
+    - warning: Agent should address but can continue (test failures in advisory mode)
+    - informational: FYI only (missing tests, git hygiene suggestions)
+    - none: No findings
+    """
+
+    channel: str = ""
+    status: Literal["pass", "fail", "skip", "error", "timeout"] = "pass"
+    severity: Literal["blocking", "warning", "informational", "none"] = "none"
+    findings: list[LintIssue] = field(default_factory=list)
+    repairs: list[RepairAction] = field(default_factory=list)
+    metrics: dict[str, Any] = field(default_factory=dict)
+    duration_ms: float = 0.0
+    error_message: str | None = None
+
+
+# ── Coherence Result ──────────────────────────────────────────────────
+
+
+@dataclass
+class CoherenceResult:
+    """Cross-channel coherence diagnosis.
+
+    States (from the ControlPlane plan):
+    - stable: All enabled channels pass or skip
+    - isolated: Exactly one channel fails. Highest confidence when >=2 others
+      pass (Monty Hall: silence in other channels concentrates attention on the
+      failing one)
+    - coupled: Two+ channels fail with overlapping files
+    - systemic: Three+ channels fail, or cross-domain failure pattern
+    - degraded: Any channel error/timeout beyond threshold
+    """
+
+    state: Literal["stable", "isolated", "coupled", "systemic", "degraded"] = "stable"
+    summary: str = ""
+    recommended_action: str = ""
+    silent_channels: list[str] = field(default_factory=list)
+    loud_channels: list[str] = field(default_factory=list)
+
+
+# ── Mesh Result ───────────────────────────────────────────────────────
+
+
+@dataclass
+class MeshResult:
+    """Complete result from the supervision mesh.
+
+    This is the final output of run_mesh() — consumed by the reporter
+    to produce systemMessage + hookSpecificOutput.
+    """
+
+    event: SupervisionEvent = field(default_factory=SupervisionEvent)
+    channel_results: list[ChannelResult] = field(default_factory=list)
+    coherence: CoherenceResult = field(default_factory=CoherenceResult)
+    duration_ms: float = 0.0
+    incomplete_channels: list[str] = field(default_factory=list)
+    partial: bool = False  # True if any channel was shed due to timeout
+
+
+# ── Config Types ──────────────────────────────────────────────────────
+
+
+@dataclass
+class ChannelConfig:
+    """Per-channel configuration."""
+
+    enabled: bool = True
+    blocking: bool = False  # Can this channel's findings block the agent?
+    timeout_ms: int = 8000
+    max_findings_shown: int = 5
+    settings: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class TokenPolicy:
+    """Token budget policy for the reporter."""
+
+    hook_max_tokens: int = 900
+    include_pass_details: bool = False  # OTP-inspired: silent channels omitted
+
+
+@dataclass
+class ControlPlaneConfig:
+    """Top-level ControlPlane configuration.
+
+    Parsed from the 'controlplane:' section of lintgate.yaml.
+    When enabled=False (default), the entire ControlPlane is bypassed
+    and LintGate behaves exactly as before.
+    """
+
+    enabled: bool = False
+    latency_budget_ms: int = 15000
+    advisory_default: bool = True
+    channels: dict[str, ChannelConfig] = field(default_factory=dict)
+    token_policy: TokenPolicy = field(default_factory=TokenPolicy)
+    session_memory: bool = False
+    session_max_age_hours: float = 4.0
+    constraint_proposal_threshold: int = 5
+    # Global behavior profile (cross-session learning)
+    global_memory_enabled: bool = False
+    global_memory_alpha: float = 0.6
+    global_memory_decay_horizon: int = 50
+    global_memory_ttl_days: int = 90
+
+    def channel_enabled(self, name: str) -> bool:
+        """Check if a specific channel is enabled."""
+        if name in self.channels:
+            return self.channels[name].enabled
+        return True  # Channels enabled by default
+
+    def channel_blocking(self, name: str) -> bool:
+        """Check if a channel can produce blocking findings."""
+        if name in self.channels:
+            return self.channels[name].blocking
+        # Default: only lint is blocking
+        return name == "lint"
+
+    def channel_timeout(self, name: str) -> int:
+        """Get per-channel timeout in ms."""
+        if name in self.channels:
+            return self.channels[name].timeout_ms
+        return 8000

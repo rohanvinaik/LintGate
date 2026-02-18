@@ -1,0 +1,43 @@
+pipeline_critical_paths:
+  - "lintgate/hook_posttooluse.py"
+  - "lintgate/controlplane/"
+
+exemptions:
+  structure:
+    "test_channel.py":
+      codes: ["cognitive-complexity"]
+      reason: "Impacted-test discovery is intentionally centralized for now."
+      ticket: "LINTGATE-DEBT-101"
+    "reporter.py":
+      codes: ["too-many-statements", "cognitive-complexity"]
+      reason: "Mesh reporter formatting logic is still monolithic."
+      ticket: "LINTGATE-DEBT-102"
+    "test_archetype_selector.py":
+      codes: ["too-many-attributes"]
+      reason: "SourceSignals carries broad extraction metadata pending split."
+      ticket: "LINTGATE-DEBT-103"
+    "hook_posttooluse.py":
+      codes: ["cognitive-complexity"]
+      reason: "ControlPlane path still in transitional orchestration function."
+      ticket: "LINTGATE-DEBT-104"
+    "lint_runner.py":
+      codes: ["cognitive-complexity"]
+      reason: "Parallel runner includes timeout/degrade policy in one function."
+      ticket: "LINTGATE-DEBT-105"
+    "theory_extractor.py":
+      codes: ["file-too-long", "cognitive-complexity"]
+      reason: "Extractor is intentionally consolidated pending module split."
+      ticket: "LINTGATE-DEBT-106"
+    "mcp_server.py":
+      codes: ["file-too-long"]
+      reason: "MCP surface still consolidated in single entrypoint module."
+      ticket: "LINTGATE-DEBT-107"
+  complexity:
+    "reporter.py":
+      codes: ["complexity"]
+      reason: "Mesh reporter cyclomatic complexity tracked as structured debt."
+      ticket: "LINTGATE-DEBT-108"
+    "theory_extractor.py":
+      codes: ["complexity"]
+      reason: "Theory claim scoring complexity tracked as structured debt."
+      ticket: "LINTGATE-DEBT-109"

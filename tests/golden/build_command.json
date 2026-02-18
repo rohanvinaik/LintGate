@@ -1,0 +1,8 @@
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "pip install requests"
+  },
+  "tool_output": "Successfully installed requests-2.31.0",
+  "cwd": "/tmp/controlplane_test"
+}

@@ -1,0 +1,172 @@
+"""Phase 2B: Telemetry aggregation for ROI tracking.
+
+Reads daily JSONL metric files from ~/.claude/lintgate/metrics/ and
+computes aggregate summaries: issues found, issues fixed, token estimates,
+trends, and fix rates.
+
+All read-only — never modifies metric files.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from .state import METRICS_DIR
+
+_PERIOD_MAP = {
+    "1d": 1,
+    "7d": 7,
+    "30d": 30,
+    "all": 3650,  # ~10 years
+}
+
+
+def compute_telemetry_summary(
+    project_root: str,
+    period: str = "7d",
+) -> dict[str, Any]:
+    """Aggregate metrics into an ROI summary.
+
+    Args:
+        project_root: Project path to filter metrics by.
+        period: Time window — "1d", "7d", "30d", or "all".
+
+    Returns:
+        Dict with total_runs, issues_found, fix_rate, trends, etc.
+    """
+    days = _PERIOD_MAP.get(period, 7)
+    entries = _load_entries(days, project_root)
+
+    if not entries:
+        return {
+            "period": period,
+            "total_runs": 0,
+            "total_files_linted": 0,
+            "total_issues_found": 0,
+            "total_blocking_found": 0,
+            "total_warnings_found": 0,
+            "clean_run_count": 0,
+            "avg_duration_ms": 0,
+            "tokens_per_run_estimate": 0,
+            "fix_rate": 0.0,
+            "tier_distribution": {},
+            "trend": "no_data",
+        }
+
+    total_runs = len(entries)
+    total_blocking = sum(e.get("blocking_count", 0) for e in entries)
+    total_warnings = sum(e.get("warning_count", 0) for e in entries)
+    total_info = sum(e.get("info_count", 0) for e in entries)
+    total_issues = total_blocking + total_warnings + total_info
+    total_files = sum(e.get("files_count", 0) for e in entries)
+    total_duration = sum(e.get("duration_ms", 0) for e in entries)
+    total_repeated = sum(e.get("repeated_issue_count", 0) for e in entries)
+
+    # Tier distribution
+    tier_dist: dict[str, int] = {}
+    for e in entries:
+        tier = e.get("tier", "unknown")
+        tier_dist[tier] = tier_dist.get(tier, 0) + 1
+
+    # Output mode distribution
+    mode_dist: dict[str, int] = {}
+    for e in entries:
+        mode = e.get("output_mode", "full")
+        mode_dist[mode] = mode_dist.get(mode, 0) + 1
+
+    # Trend: compare first half vs second half of period
+    trend = _compute_trend(entries)
+
+    # Token estimate: compact ~200, standard ~500, full ~1500
+    token_map = {"compact": 200, "standard": 500, "full": 1500}
+    total_tokens = sum(token_map.get(e.get("output_mode", "full"), 1500) for e in entries)
+
+    # Fix rate: ratio of runs with 0 blocking to total runs
+    clean_runs = sum(1 for e in entries if e.get("blocking_count", 0) == 0)
+    fix_rate = clean_runs / total_runs if total_runs > 0 else 0.0
+
+    return {
+        "period": period,
+        "total_runs": total_runs,
+        "total_files_linted": total_files,
+        "total_issues_found": total_issues,
+        "total_blocking_found": total_blocking,
+        "total_warnings_found": total_warnings,
+        "avg_duration_ms": round(total_duration / max(total_runs, 1), 1),
+        "tokens_per_run_estimate": round(total_tokens / max(total_runs, 1)),
+        "total_tokens_estimate": total_tokens,
+        "fix_rate": round(fix_rate, 3),
+        "clean_run_count": clean_runs,
+        "repeated_issue_count": total_repeated,
+        "tier_distribution": tier_dist,
+        "output_mode_distribution": mode_dist,
+        "trend": trend,
+    }
+
+
+def _load_entries(days: int, project_root: str | None) -> list[dict[str, Any]]:
+    """Load metric entries from daily JSONL files within the time window."""
+    if not METRICS_DIR.exists():
+        return []
+
+    cutoff = datetime.now() - timedelta(days=days)
+    entries: list[dict[str, Any]] = []
+
+    for metrics_file in sorted(METRICS_DIR.glob("lintgate_*.jsonl")):
+        # Parse date from filename: lintgate_YYYYMMDD.jsonl
+        stem = metrics_file.stem  # lintgate_20240115
+        date_part = stem.replace("lintgate_", "")
+        try:
+            file_date = datetime.strptime(date_part, "%Y%m%d")
+        except ValueError:
+            continue
+
+        if file_date < cutoff:
+            continue
+
+        try:
+            with open(metrics_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        # Filter by project if specified
+                        if project_root and entry.get("project") != project_root:
+                            continue
+                        # Only lint runs
+                        if entry.get("event") != "mcp_lint_run":
+                            continue
+                        entries.append(entry)
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            continue
+
+    return entries
+
+
+def _compute_trend(entries: list[dict[str, Any]]) -> str:
+    """Compare blocking counts: first half vs second half of entries.
+
+    Returns: "improving", "stable", "degrading", or "no_data".
+    """
+    if len(entries) < 4:
+        return "no_data"
+
+    mid = len(entries) // 2
+    first_half = entries[:mid]
+    second_half = entries[mid:]
+
+    avg_first = sum(e.get("blocking_count", 0) for e in first_half) / len(first_half)
+    avg_second = sum(e.get("blocking_count", 0) for e in second_half) / len(second_half)
+
+    if avg_second < avg_first * 0.8:
+        return "improving"
+    elif avg_second > avg_first * 1.2:
+        return "degrading"
+    return "stable"

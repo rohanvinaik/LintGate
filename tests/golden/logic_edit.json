@@ -1,0 +1,10 @@
+{
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/tmp/controlplane_test/app.py",
+    "old_string": "def process(data):\n    return data",
+    "new_string": "def process(data):\n    if not data:\n        raise ValueError('empty')\n    return data.strip()"
+  },
+  "tool_output": "File edited successfully.",
+  "cwd": "/tmp/controlplane_test"
+}

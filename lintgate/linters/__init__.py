@@ -1,0 +1,1 @@
+"""LintGate linter implementations."""

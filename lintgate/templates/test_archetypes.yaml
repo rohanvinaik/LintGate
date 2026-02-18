@@ -1,0 +1,205 @@
+# Test Archetype Catalog — v1
+#
+# Defines 7 generalizable test archetypes mined from 500+ tests across
+# 9 projects (ShortcutForge, ARC-AGI-3, LintGate, TailChasingFixer, etc.)
+#
+# Each archetype captures a test pattern that applies across domains.
+# The selector uses AST analysis + import signals to match source files
+# to applicable archetypes with confidence scores.
+
+archetypes:
+
+  input_validation:
+    description: >
+      Tests that validate function inputs/outputs against expected types
+      and values. The most universal archetype — nearly every function
+      benefits from boundary condition and type checking tests.
+    detection_heuristics:
+      - "Functions with type annotations (parameters or return type)"
+      - "Functions that raise ValueError, TypeError, or similar"
+      - "Functions with guard clauses (if not ..., raise ...)"
+      - "Functions with default parameters"
+    signals:
+      has_typed_functions: 0.6
+      has_guard_clauses: 0.8
+      has_value_errors: 0.7
+      fallback_confidence: 0.3  # Always applicable at low confidence
+    skeleton_template: |
+      def test_{{function_name}}_with_valid_input() -> None:
+          result = {{function_name}}({{sample_args}})
+          assert result is not None
+
+      def test_{{function_name}}_with_none_input() -> None:
+          with pytest.raises((TypeError, ValueError)):
+              {{function_name}}(None)
+
+      def test_{{function_name}}_with_empty_input() -> None:
+          with pytest.raises((TypeError, ValueError)):
+              {{function_name}}({{empty_value}})
+    required_imports:
+      - pytest
+    fixture_patterns: []
+
+  error_handling:
+    description: >
+      Tests that trigger error conditions and verify exception types,
+      messages, and recovery behavior. Essential for any code that
+      interacts with external systems or has failure modes.
+    detection_heuristics:
+      - "Code with try/except blocks"
+      - "Functions that call external systems (HTTP, subprocess, file I/O)"
+      - "Functions that raise custom exceptions"
+    signals:
+      has_try_except: 0.8
+      has_external_calls: 0.7
+      has_subprocess: 0.8
+      has_file_io: 0.6
+      raises_exceptions: 0.7
+    skeleton_template: |
+      def test_{{function_name}}_handles_expected_error() -> None:
+          with pytest.raises({{exception_type}}):
+              {{function_name}}({{error_trigger_args}})
+
+      def test_{{function_name}}_recovers_from_failure() -> None:
+          # TODO: Mock the failing dependency and verify recovery
+          pass
+    required_imports:
+      - pytest
+    fixture_patterns:
+      - "mock_external_service"
+
+  configuration:
+    description: >
+      Tests that verify initialization, config loading, defaults, and
+      override behavior. Common in applications with dataclasses,
+      settings objects, or YAML/JSON config files.
+    detection_heuristics:
+      - "Dataclass definitions"
+      - "Classes with __init__ that set defaults"
+      - "Config loading functions (YAML, JSON, TOML)"
+      - "Functions with many keyword arguments"
+    signals:
+      has_dataclasses: 0.8
+      has_init_with_defaults: 0.7
+      has_config_loading: 0.9
+      has_yaml_toml_json: 0.8
+    skeleton_template: |
+      def test_{{class_name}}_default_values() -> None:
+          obj = {{class_name}}()
+          assert obj.{{field_name}} == {{default_value}}
+
+      def test_{{class_name}}_override_values() -> None:
+          obj = {{class_name}}({{field_name}}={{override_value}})
+          assert obj.{{field_name}} == {{override_value}}
+    required_imports:
+      - pytest
+    fixture_patterns:
+      - "tmp_config_file"
+
+  state_invariant:
+    description: >
+      Tests that check object state before/after operations. Verifies
+      that state transitions are correct and that invariants are maintained.
+    detection_heuristics:
+      - "Classes with mutable state (instance variables modified in methods)"
+      - "State machine patterns (status/state fields)"
+      - "Collections being modified (append, pop, extend)"
+    signals:
+      has_stateful_classes: 0.8
+      has_state_transitions: 0.9
+      has_mutable_collections: 0.6
+    skeleton_template: |
+      def test_{{class_name}}_initial_state() -> None:
+          obj = {{class_name}}()
+          assert obj.{{state_field}} == {{initial_value}}
+
+      def test_{{class_name}}_state_after_{{method_name}}() -> None:
+          obj = {{class_name}}()
+          obj.{{method_name}}({{args}})
+          assert obj.{{state_field}} == {{expected_value}}
+    required_imports:
+      - pytest
+    fixture_patterns: []
+
+  mock_isolation:
+    description: >
+      Tests that mock external dependencies to test components in isolation.
+      Essential for code that calls APIs, databases, file systems, or
+      subprocess commands.
+    detection_heuristics:
+      - "Imports of requests, httpx, urllib"
+      - "Imports of subprocess"
+      - "Database connection patterns"
+      - "File I/O operations (open, Path.read_text, etc.)"
+    signals:
+      has_http_imports: 0.9
+      has_subprocess: 0.9
+      has_database_ops: 0.8
+      has_file_io: 0.7
+    skeleton_template: |
+      @pytest.fixture
+      def mock_{{dependency}}(monkeypatch):
+          mock = MagicMock()
+          monkeypatch.setattr("{{module_path}}.{{dependency}}", mock)
+          return mock
+
+      def test_{{function_name}}_calls_{{dependency}}(mock_{{dependency}}) -> None:
+          {{function_name}}({{args}})
+          mock_{{dependency}}.assert_called_once()
+    required_imports:
+      - pytest
+      - "from unittest.mock import MagicMock, patch"
+    fixture_patterns:
+      - "monkeypatch"
+      - "mock_api_client"
+
+  regression:
+    description: >
+      Tests named after specific bugs or edge cases, ensuring they don't
+      recur. Often arise from bug fixes and are tightly coupled to
+      specific input/output pairs.
+    detection_heuristics:
+      - "Functions handling edge cases (empty strings, zero values, None)"
+      - "Functions with complex conditional logic"
+      - "Bug-fix commit patterns (rarely auto-detected)"
+    signals:
+      has_edge_case_logic: 0.5
+      has_complex_conditionals: 0.4
+      fallback_confidence: 0.2  # Regression tests are hard to auto-detect
+    skeleton_template: |
+      def test_{{function_name}}_edge_case_{{case_name}}() -> None:
+          # Regression test: {{description}}
+          result = {{function_name}}({{edge_case_input}})
+          assert result == {{expected_output}}
+    required_imports:
+      - pytest
+    fixture_patterns: []
+
+  round_trip:
+    description: >
+      Tests that encode/decode, serialize/deserialize, or transform
+      and reverse-transform data, verifying equivalence. Common in
+      parsers, codecs, and data transformation pipelines.
+    detection_heuristics:
+      - "Functions with encode/decode, serialize/deserialize in name"
+      - "Functions with to_/from_ prefix pairs"
+      - "JSON/YAML/TOML dump/load patterns"
+      - "Functions returning the inverse of another function"
+    signals:
+      has_encode_decode: 0.9
+      has_to_from_pairs: 0.9
+      has_serialize_patterns: 0.8
+      has_json_dump_load: 0.7
+    skeleton_template: |
+      def test_{{function_name}}_round_trip() -> None:
+          original = {{sample_data}}
+          encoded = {{encode_function}}(original)
+          decoded = {{decode_function}}(encoded)
+          assert decoded == original
+
+      @pytest.mark.parametrize("data", [{{test_cases}}])
+      def test_{{function_name}}_round_trip_parametrized(data) -> None:
+          assert {{decode_function}}({{encode_function}}(data)) == data
+    required_imports:
+      - pytest
+    fixture_patterns: []
