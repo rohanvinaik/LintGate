@@ -13,9 +13,7 @@ Design: AST-based, no LLM calls, deterministic. Runs in <50ms per file.
 from __future__ import annotations
 
 import ast
-import os
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -111,20 +109,24 @@ def select_archetypes(
         with open(source_file) as f:
             source = f.read()
     except (OSError, UnicodeDecodeError):
-        return [ArchetypeMatch(
-            name="input_validation",
-            confidence=0.3,
-            reason="Could not read file; default archetype",
-        )]
+        return [
+            ArchetypeMatch(
+                name="input_validation",
+                confidence=0.3,
+                reason="Could not read file; default archetype",
+            )
+        ]
 
     try:
         tree = ast.parse(source, filename=source_file)
     except SyntaxError:
-        return [ArchetypeMatch(
-            name="input_validation",
-            confidence=0.3,
-            reason="Syntax error; default archetype",
-        )]
+        return [
+            ArchetypeMatch(
+                name="input_validation",
+                confidence=0.3,
+                reason="Syntax error; default archetype",
+            )
+        ]
 
     signals = _extract_signals(tree, source)
     matches = _match_archetypes(signals)
@@ -180,7 +182,7 @@ class _SignalVisitor(ast.NodeVisitor):
         if node.module:
             self.signals.imports.add(node.module)
             self.signals.import_modules.add(node.module.split(".")[0])
-            for alias in (node.names or []):
+            for alias in node.names or []:
                 self.signals.imports.add(f"{node.module}.{alias.name}")
         self.generic_visit(node)
 
@@ -213,9 +215,13 @@ class _SignalVisitor(ast.NodeVisitor):
 
         # Detect mutable fields (assignments in methods)
         for item in ast.walk(node):
-            if isinstance(item, ast.Attribute) and isinstance(item.ctx, ast.Store):
-                if isinstance(item.value, ast.Name) and item.value.id == "self":
-                    class_info.mutable_fields.append(item.attr)
+            if (
+                isinstance(item, ast.Attribute)
+                and isinstance(item.ctx, ast.Store)
+                and isinstance(item.value, ast.Name)
+                and item.value.id == "self"
+            ):
+                class_info.mutable_fields.append(item.attr)
 
         self.signals.classes.append(class_info)
 
@@ -245,8 +251,11 @@ class _SignalVisitor(ast.NodeVisitor):
             func_info.has_type_annotations = True
 
         # Docstring
-        if (node.body and isinstance(node.body[0], ast.Expr) and
-                isinstance(node.body[0].value, (ast.Constant, ast.Str))):
+        if (
+            node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, (ast.Constant, ast.Str))
+        ):
             func_info.has_docstring = True
 
         # Decorators
@@ -264,7 +273,8 @@ class _SignalVisitor(ast.NodeVisitor):
         self.signals.functions.append(func_info)
         self.generic_visit(node)
 
-    visit_AsyncFunctionDef = visit_FunctionDef
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.visit_FunctionDef(node)
 
     def visit_Try(self, node: ast.Try) -> None:
         self.signals.has_try_except = True
@@ -274,12 +284,22 @@ class _SignalVisitor(ast.NodeVisitor):
         func_name = _call_name(node)
         if func_name:
             # File I/O detection
-            if func_name in ("open", "Path.read_text", "Path.write_text",
-                             "Path.read_bytes", "Path.write_bytes"):
+            if func_name in (
+                "open",
+                "Path.read_text",
+                "Path.write_text",
+                "Path.read_bytes",
+                "Path.write_bytes",
+            ):
                 self.signals.has_file_io = True
 
             # Subprocess detection
-            if func_name.startswith("subprocess.") or func_name in ("Popen", "run", "call", "check_output"):
+            if func_name.startswith("subprocess.") or func_name in (
+                "Popen",
+                "run",
+                "call",
+                "check_output",
+            ):
                 self.signals.has_subprocess = True
 
             # JSON patterns
@@ -290,7 +310,7 @@ class _SignalVisitor(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If) -> None:
         # Guard clause detection: if not X: raise ...
-        if (isinstance(node.test, ast.UnaryOp) and isinstance(node.test.op, ast.Not)):
+        if isinstance(node.test, ast.UnaryOp) and isinstance(node.test.op, ast.Not):
             for child in node.body:
                 if isinstance(child, ast.Raise):
                     self.signals.has_guard_clauses = True
@@ -303,9 +323,8 @@ class _SignalVisitor(ast.NodeVisitor):
                     break
 
         # Complex conditional detection
-        if isinstance(node.test, ast.BoolOp):
-            if len(node.test.values) >= 3:
-                self.signals.has_complex_conditionals = True
+        if isinstance(node.test, ast.BoolOp) and len(node.test.values) >= 3:
+            self.signals.has_complex_conditionals = True
 
         self.generic_visit(node)
 
@@ -366,8 +385,18 @@ def _derive_composite_signals(signals: SourceSignals) -> None:
         signals.has_to_from_pairs = True
 
     # Serialize patterns
-    serialize_names = {"serialize", "deserialize", "marshal", "unmarshal", "to_dict", "from_dict",
-                       "to_json", "from_json", "dump", "load"}
+    serialize_names = {
+        "serialize",
+        "deserialize",
+        "marshal",
+        "unmarshal",
+        "to_dict",
+        "from_dict",
+        "to_json",
+        "from_json",
+        "dump",
+        "load",
+    }
     for f in signals.functions:
         if any(name in f.name.lower() for name in serialize_names):
             signals.has_serialize_patterns = True
@@ -384,71 +413,85 @@ def _match_archetypes(signals: SourceSignals) -> list[ArchetypeMatch]:
     # 1. Input Validation (always applicable at some confidence)
     iv_confidence, iv_reasons = _score_input_validation(signals)
     if iv_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="input_validation",
-            confidence=iv_confidence,
-            reason="; ".join(iv_reasons),
-            relevant_functions=[f.name for f in signals.functions
-                                if f.has_type_annotations or f.raises],
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="input_validation",
+                confidence=iv_confidence,
+                reason="; ".join(iv_reasons),
+                relevant_functions=[
+                    f.name for f in signals.functions if f.has_type_annotations or f.raises
+                ],
+            )
+        )
 
     # 2. Error Handling
     eh_confidence, eh_reasons = _score_error_handling(signals)
     if eh_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="error_handling",
-            confidence=eh_confidence,
-            reason="; ".join(eh_reasons),
-            relevant_functions=[f.name for f in signals.functions if f.raises],
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="error_handling",
+                confidence=eh_confidence,
+                reason="; ".join(eh_reasons),
+                relevant_functions=[f.name for f in signals.functions if f.raises],
+            )
+        )
 
     # 3. Configuration
     cfg_confidence, cfg_reasons = _score_configuration(signals)
     if cfg_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="configuration",
-            confidence=cfg_confidence,
-            reason="; ".join(cfg_reasons),
-            relevant_classes=[c.name for c in signals.classes
-                              if c.is_dataclass or c.has_init],
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="configuration",
+                confidence=cfg_confidence,
+                reason="; ".join(cfg_reasons),
+                relevant_classes=[c.name for c in signals.classes if c.is_dataclass or c.has_init],
+            )
+        )
 
     # 4. State Invariant
     si_confidence, si_reasons = _score_state_invariant(signals)
     if si_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="state_invariant",
-            confidence=si_confidence,
-            reason="; ".join(si_reasons),
-            relevant_classes=[c.name for c in signals.classes if c.mutable_fields],
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="state_invariant",
+                confidence=si_confidence,
+                reason="; ".join(si_reasons),
+                relevant_classes=[c.name for c in signals.classes if c.mutable_fields],
+            )
+        )
 
     # 5. Mock Isolation
     mi_confidence, mi_reasons = _score_mock_isolation(signals)
     if mi_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="mock_isolation",
-            confidence=mi_confidence,
-            reason="; ".join(mi_reasons),
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="mock_isolation",
+                confidence=mi_confidence,
+                reason="; ".join(mi_reasons),
+            )
+        )
 
     # 6. Regression (hard to auto-detect; low confidence)
     reg_confidence, reg_reasons = _score_regression(signals)
     if reg_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="regression",
-            confidence=reg_confidence,
-            reason="; ".join(reg_reasons),
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="regression",
+                confidence=reg_confidence,
+                reason="; ".join(reg_reasons),
+            )
+        )
 
     # 7. Round Trip
     rt_confidence, rt_reasons = _score_round_trip(signals)
     if rt_confidence > 0:
-        matches.append(ArchetypeMatch(
-            name="round_trip",
-            confidence=rt_confidence,
-            reason="; ".join(rt_reasons),
-        ))
+        matches.append(
+            ArchetypeMatch(
+                name="round_trip",
+                confidence=rt_confidence,
+                reason="; ".join(rt_reasons),
+            )
+        )
 
     return matches
 

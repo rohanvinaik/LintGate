@@ -51,17 +51,19 @@ def test_bootstrap_context_files_generates_theory_grounded_drafts(tmp_path) -> N
     payload = bootstrap_context_files(str(tmp_path), write=False, overwrite=False)
     file_map = {entry["relative_path"]: entry for entry in payload["files"]}
 
-    assert "CLAUDE.md" in file_map
+    assert ".claude/CLAUDE.md" in file_map
     assert "AGENTS.md" in file_map
     assert ".claude/rules/theory.md" in file_map
-    assert file_map["CLAUDE.md"]["status"] == "planned"
-    assert "LINTGATE_FORBID_REGEX:" in file_map["CLAUDE.md"]["content"]
-    assert "DO NOT:" in file_map["CLAUDE.md"]["content"]
+    assert file_map[".claude/CLAUDE.md"]["status"] == "planned"
+    assert "LINTGATE_FORBID_REGEX:" in file_map[".claude/CLAUDE.md"]["content"]
+    assert "DO NOT:" in file_map[".claude/CLAUDE.md"]["content"]
 
 
 def test_bootstrap_write_respects_overwrite_flag(tmp_path) -> None:
     (tmp_path / "README.md").write_text("# Repo\n\nExample.\n")
-    (tmp_path / "CLAUDE.md").write_text("custom-sentinel\n")
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    (claude_dir / "CLAUDE.md").write_text("custom-sentinel\n")
 
     first = bootstrap_context_files(
         str(tmp_path),
@@ -70,8 +72,8 @@ def test_bootstrap_write_respects_overwrite_flag(tmp_path) -> None:
         include_theory_rules_doc=False,
     )
     first_map = {entry["relative_path"]: entry for entry in first["files"]}
-    assert first_map["CLAUDE.md"]["status"] == "skipped_exists"
-    assert (tmp_path / "CLAUDE.md").read_text().strip() == "custom-sentinel"
+    assert first_map[".claude/CLAUDE.md"]["status"] == "skipped_exists"
+    assert (claude_dir / "CLAUDE.md").read_text().strip() == "custom-sentinel"
 
     second = bootstrap_context_files(
         str(tmp_path),
@@ -80,8 +82,8 @@ def test_bootstrap_write_respects_overwrite_flag(tmp_path) -> None:
         include_theory_rules_doc=False,
     )
     second_map = {entry["relative_path"]: entry for entry in second["files"]}
-    assert second_map["CLAUDE.md"]["status"] == "written"
-    assert (tmp_path / "CLAUDE.md").read_text().startswith("# CLAUDE.md")
+    assert second_map[".claude/CLAUDE.md"]["status"] == "written"
+    assert (claude_dir / "CLAUDE.md").read_text().startswith("# ")
 
 
 def test_select_actionable_anti_patterns_filters_non_negative_claims() -> None:
@@ -108,5 +110,5 @@ def test_mcp_bootstrap_context_files_returns_payload(tmp_path) -> None:
     payload = json.loads(output)
 
     rel_paths = {item["relative_path"] for item in payload["files"]}
-    assert rel_paths == {"CLAUDE.md", "AGENTS.md"}
+    assert rel_paths == {".claude/CLAUDE.md", "AGENTS.md", ".claude/rules/inquiry.md"}
     assert payload["source_signals"]["audit_summary"]["files"] >= 0

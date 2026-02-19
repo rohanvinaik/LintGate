@@ -16,9 +16,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
 
-from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.types import (
     ChannelResult,
     ControlPlaneConfig,
@@ -108,7 +106,9 @@ def _is_git_repo(project_root: str) -> bool:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
             cwd=project_root,
         )
         return result.returncode == 0
@@ -123,7 +123,9 @@ def _check_large_changes(project_root: str) -> list[LintIssue]:
     try:
         result = subprocess.run(
             ["git", "diff", "--stat", "--cached"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
             cwd=project_root,
         )
         if result.returncode != 0:
@@ -133,6 +135,7 @@ def _check_large_changes(project_root: str) -> list[LintIssue]:
         for line in result.stdout.splitlines():
             if "insertions" in line or "deletions" in line:
                 import re
+
                 insertions = 0
                 deletions = 0
                 ins_match = re.search(r"(\d+) insertion", line)
@@ -144,16 +147,18 @@ def _check_large_changes(project_root: str) -> list[LintIssue]:
 
                 total = insertions + deletions
                 if total > 500:
-                    findings.append(LintIssue(
-                        linter="git_channel",
-                        kind="large_staged_changes",
-                        message=(
-                            f"Large staged changes: {insertions} insertions, "
-                            f"{deletions} deletions ({total} total). "
-                            "Consider committing in smaller chunks."
-                        ),
-                        severity="informational",
-                    ))
+                    findings.append(
+                        LintIssue(
+                            linter="git_channel",
+                            kind="large_staged_changes",
+                            message=(
+                                f"Large staged changes: {insertions} insertions, "
+                                f"{deletions} deletions ({total} total). "
+                                "Consider committing in smaller chunks."
+                            ),
+                            severity="informational",
+                        )
+                    )
 
     except (subprocess.TimeoutExpired, OSError):
         pass
@@ -177,19 +182,23 @@ def _check_lockfile_freshness(project_root: str) -> tuple[list[LintIssue], list[
         # Check for other lockfile types
         alt_lockfiles = [root / "requirements.txt", root / "poetry.lock", root / "Pipfile.lock"]
         if not any(lf.exists() for lf in alt_lockfiles):
-            findings.append(LintIssue(
-                linter="git_channel",
-                kind="missing_lockfile",
-                message="No lockfile found (uv.lock, requirements.txt, poetry.lock). Dependencies are not reproducible.",
-                severity="informational",
-            ))
-            repairs.append(RepairAction(
-                channel="git",
-                kind="command",
-                summary="Create lockfile: uv lock",
-                payload={"command": "uv lock", "cwd": project_root},
-                safe=True,
-            ))
+            findings.append(
+                LintIssue(
+                    linter="git_channel",
+                    kind="missing_lockfile",
+                    message="No lockfile found (uv.lock, requirements.txt, poetry.lock). Dependencies are not reproducible.",
+                    severity="informational",
+                )
+            )
+            repairs.append(
+                RepairAction(
+                    channel="git",
+                    kind="command",
+                    summary="Create lockfile: uv lock",
+                    payload={"command": "uv lock", "cwd": project_root},
+                    safe=True,
+                )
+            )
         return findings, repairs
 
     # Check if manifest is newer than lockfile
@@ -197,19 +206,23 @@ def _check_lockfile_freshness(project_root: str) -> tuple[list[LintIssue], list[
         manifest_mtime = manifest.stat().st_mtime
         lockfile_mtime = lockfile.stat().st_mtime
         if manifest_mtime > lockfile_mtime:
-            findings.append(LintIssue(
-                linter="git_channel",
-                kind="stale_lockfile",
-                message="pyproject.toml is newer than uv.lock. Lockfile may be out of date.",
-                severity="informational",
-            ))
-            repairs.append(RepairAction(
-                channel="git",
-                kind="command",
-                summary="Refresh lockfile: uv lock",
-                payload={"command": "uv lock", "cwd": project_root},
-                safe=True,
-            ))
+            findings.append(
+                LintIssue(
+                    linter="git_channel",
+                    kind="stale_lockfile",
+                    message="pyproject.toml is newer than uv.lock. Lockfile may be out of date.",
+                    severity="informational",
+                )
+            )
+            repairs.append(
+                RepairAction(
+                    channel="git",
+                    kind="command",
+                    summary="Refresh lockfile: uv lock",
+                    payload={"command": "uv lock", "cwd": project_root},
+                    safe=True,
+                )
+            )
     except OSError:
         pass
 
@@ -220,13 +233,22 @@ def _check_sensitive_files(project_root: str) -> list[LintIssue]:
     """Check for untracked sensitive files that might be accidentally committed."""
     findings: list[LintIssue] = []
 
-    sensitive_patterns = {".env", ".env.local", "credentials.json", "secrets.yaml",
-                          ".aws/credentials", "id_rsa", "id_ed25519"}
+    sensitive_patterns = {
+        ".env",
+        ".env.local",
+        "credentials.json",
+        "secrets.yaml",
+        ".aws/credentials",
+        "id_rsa",
+        "id_ed25519",
+    }
 
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
             cwd=project_root,
         )
         if result.returncode != 0:
@@ -239,13 +261,15 @@ def _check_sensitive_files(project_root: str) -> list[LintIssue]:
             # Check if this is a sensitive file that's being tracked/staged
             basename = os.path.basename(filename)
             if basename in sensitive_patterns and status in ("A", "??", "M"):
-                findings.append(LintIssue(
-                    linter="git_channel",
-                    kind="sensitive_file",
-                    message=f"Sensitive file detected: {filename}. Ensure it's in .gitignore.",
-                    file=os.path.join(project_root, filename),
-                    severity="warning",
-                ))
+                findings.append(
+                    LintIssue(
+                        linter="git_channel",
+                        kind="sensitive_file",
+                        message=f"Sensitive file detected: {filename}. Ensure it's in .gitignore.",
+                        file=os.path.join(project_root, filename),
+                        severity="warning",
+                    )
+                )
 
     except (subprocess.TimeoutExpired, OSError):
         pass

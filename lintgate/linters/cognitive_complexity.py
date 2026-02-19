@@ -61,7 +61,9 @@ def count_statements(node: ast.AST) -> int:
 
 
 def _cogc_for_statement(
-    stmt: ast.stmt, nesting: int, func_name: str,
+    stmt: ast.stmt,
+    nesting: int,
+    func_name: str,
 ) -> int:
     """Compute the cognitive complexity increment for a single statement."""
     score = 0

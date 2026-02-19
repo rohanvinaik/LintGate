@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -80,25 +81,29 @@ def audit_context_health(
 
         # Skip exempt files
         if basename in exempt_files:
-            results.append({
-                "file": file_path,
-                "name": basename,
-                "status": "exempt",
-                "health_checks": [],
-                "suggestions": [],
-            })
+            results.append(
+                {
+                    "file": file_path,
+                    "name": basename,
+                    "status": "exempt",
+                    "health_checks": [],
+                    "suggestions": [],
+                }
+            )
             continue
 
         try:
             text = Path(file_path).read_text()
         except OSError:
-            results.append({
-                "file": file_path,
-                "name": basename,
-                "status": "unreadable",
-                "health_checks": [],
-                "suggestions": [],
-            })
+            results.append(
+                {
+                    "file": file_path,
+                    "name": basename,
+                    "status": "unreadable",
+                    "health_checks": [],
+                    "suggestions": [],
+                }
+            )
             continue
 
         lines = text.splitlines()
@@ -130,14 +135,16 @@ def audit_context_health(
         elif any(c["status"] == "warn" for c in checks):
             status = "warn"
 
-        results.append({
-            "file": file_path,
-            "name": basename,
-            "line_count": line_count,
-            "status": status,
-            "health_checks": checks,
-            "suggestions": suggestions,
-        })
+        results.append(
+            {
+                "file": file_path,
+                "name": basename,
+                "line_count": line_count,
+                "status": status,
+                "health_checks": checks,
+                "suggestions": suggestions,
+            }
+        )
 
     return {
         "audit": results,
@@ -159,32 +166,38 @@ def _check_length(
     error = thresholds["max_lines_error"]
 
     if line_count > error:
-        checks.append({
-            "check": "length",
-            "status": "error",
-            "detail": f"{line_count} lines (max recommended: {warn}, hard limit: {error})",
-        })
+        checks.append(
+            {
+                "check": "length",
+                "status": "error",
+                "detail": f"{line_count} lines (max recommended: {warn}, hard limit: {error})",
+            }
+        )
         suggestions.append(
             f"Context file is {line_count} lines — well beyond the {warn}-line recommendation. "
             f"Move detailed docs to .claude/rules/*.md with paths frontmatter, "
             f"keep the main file as a concise index."
         )
     elif line_count > warn:
-        checks.append({
-            "check": "length",
-            "status": "warn",
-            "detail": f"{line_count} lines (recommend <{warn})",
-        })
+        checks.append(
+            {
+                "check": "length",
+                "status": "warn",
+                "detail": f"{line_count} lines (recommend <{warn})",
+            }
+        )
         suggestions.append(
             f"Consider splitting into .claude/rules/ files — "
             f"current length ({line_count}) exceeds the {warn}-line guideline."
         )
     else:
-        checks.append({
-            "check": "length",
-            "status": "pass",
-            "detail": f"{line_count} lines (within {warn}-line guideline)",
-        })
+        checks.append(
+            {
+                "check": "length",
+                "status": "pass",
+                "detail": f"{line_count} lines (within {warn}-line guideline)",
+            }
+        )
 
 
 def _check_structure(
@@ -201,11 +214,13 @@ def _check_structure(
     has_tables = "|" in text and "---" in text
 
     if not has_sections:
-        checks.append({
-            "check": "structure",
-            "status": "warn",
-            "detail": f"Only {len(headers)} section header(s) found — file lacks structure",
-        })
+        checks.append(
+            {
+                "check": "structure",
+                "status": "warn",
+                "detail": f"Only {len(headers)} section header(s) found — file lacks structure",
+            }
+        )
         suggestions.append(
             "Add markdown headers (## Section) to organize content. "
             "LLM agents navigate context files by scanning headers first."
@@ -216,11 +231,13 @@ def _check_structure(
             detail += ", has code examples"
         if has_tables:
             detail += ", has tables"
-        checks.append({
-            "check": "structure",
-            "status": "pass",
-            "detail": detail,
-        })
+        checks.append(
+            {
+                "check": "structure",
+                "status": "pass",
+                "detail": detail,
+            }
+        )
 
 
 def _check_staleness(
@@ -235,29 +252,35 @@ def _check_staleness(
         mtime = Path(file_path).stat().st_mtime
         age_days = (time.time() - mtime) / 86400
     except OSError:
-        checks.append({
-            "check": "staleness",
-            "status": "warn",
-            "detail": "Could not determine file modification time",
-        })
+        checks.append(
+            {
+                "check": "staleness",
+                "status": "warn",
+                "detail": "Could not determine file modification time",
+            }
+        )
         return
 
     if age_days > staleness_days:
-        checks.append({
-            "check": "staleness",
-            "status": "warn",
-            "detail": f"Last modified {int(age_days)} days ago (threshold: {staleness_days} days)",
-        })
+        checks.append(
+            {
+                "check": "staleness",
+                "status": "warn",
+                "detail": f"Last modified {int(age_days)} days ago (threshold: {staleness_days} days)",
+            }
+        )
         suggestions.append(
             f"Context file hasn't been updated in {int(age_days)} days. "
             f"Review and update to ensure it reflects current project state."
         )
     else:
-        checks.append({
-            "check": "staleness",
-            "status": "pass",
-            "detail": f"Last modified {int(age_days)} days ago",
-        })
+        checks.append(
+            {
+                "check": "staleness",
+                "status": "pass",
+                "detail": f"Last modified {int(age_days)} days ago",
+            }
+        )
 
 
 def _check_contradictions(
@@ -275,27 +298,47 @@ def _check_contradictions(
 
     overlap = do_keywords & do_not_keywords
     # Filter out very common words that are likely false positives
-    noise_words = {"use", "create", "make", "add", "set", "get", "run", "check",
-                   "test", "write", "read", "file", "code", "the", "and", "for"}
+    noise_words = {
+        "use",
+        "create",
+        "make",
+        "add",
+        "set",
+        "get",
+        "run",
+        "check",
+        "test",
+        "write",
+        "read",
+        "file",
+        "code",
+        "the",
+        "and",
+        "for",
+    }
     meaningful_overlap = overlap - noise_words
 
     if meaningful_overlap:
         overlap_str = ", ".join(sorted(meaningful_overlap)[:5])
-        checks.append({
-            "check": "contradictions",
-            "status": "warn",
-            "detail": f"DO and DO NOT directives reference overlapping concepts: {overlap_str}",
-        })
+        checks.append(
+            {
+                "check": "contradictions",
+                "status": "warn",
+                "detail": f"DO and DO NOT directives reference overlapping concepts: {overlap_str}",
+            }
+        )
         suggestions.append(
             f"Review potentially contradictory directives involving: {overlap_str}. "
             f"Ensure DO and DO NOT sections don't give conflicting guidance."
         )
     else:
-        checks.append({
-            "check": "contradictions",
-            "status": "pass",
-            "detail": "No obvious contradictions detected between DO and DO NOT directives",
-        })
+        checks.append(
+            {
+                "check": "contradictions",
+                "status": "pass",
+                "detail": "No obvious contradictions detected between DO and DO NOT directives",
+            }
+        )
 
 
 def _check_rule_coverage(
@@ -310,11 +353,13 @@ def _check_rule_coverage(
     min_coverage_pct = thresholds["min_rule_coverage_pct"]
 
     if total_do_not == 0:
-        checks.append({
-            "check": "machine_rules",
-            "status": "pass",
-            "detail": "No DO NOT directives found (nothing to enforce)",
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "pass",
+                "detail": "No DO NOT directives found (nothing to enforce)",
+            }
+        )
         return
 
     # Count how many DO NOT directives have corresponding rules.
@@ -329,17 +374,36 @@ def _check_rule_coverage(
         directive_lower = directive.lower()
         # Extract significant words from the directive for fuzzy matching
         directive_words = _coverage_tokens(directive_lower)
-        directive_words -= {"that", "which", "with", "from", "this", "have",
-                           "does", "will", "should", "must", "into", "them",
-                           "than", "been", "each", "only", "also", "just"}
+        directive_words -= {
+            "that",
+            "which",
+            "with",
+            "from",
+            "this",
+            "have",
+            "does",
+            "will",
+            "should",
+            "must",
+            "into",
+            "them",
+            "than",
+            "been",
+            "each",
+            "only",
+            "also",
+            "just",
+        }
 
         has_rule = False
         for r in forbid_rules:
-            rule_text = " ".join([
-                str(r.get("message", "")),
-                str(r.get("source", "")),
-                str(r.get("pattern", "")),
-            ]).lower()
+            rule_text = " ".join(
+                [
+                    str(r.get("message", "")),
+                    str(r.get("source", "")),
+                    str(r.get("pattern", "")),
+                ]
+            ).lower()
 
             # Direct text match
             if directive_lower in rule_text:
@@ -363,28 +427,30 @@ def _check_rule_coverage(
     coverage_pct = (covered / total_do_not) * 100
 
     if coverage_pct < min_coverage_pct:
-        checks.append({
-            "check": "machine_rules",
-            "status": "warn",
-            "detail": (
-                f"{covered}/{total_do_not} DO NOT directives have enforcement rules "
-                f"({coverage_pct:.0f}%, threshold: {min_coverage_pct}%)"
-            ),
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "warn",
+                "detail": (
+                    f"{covered}/{total_do_not} DO NOT directives have enforcement rules "
+                    f"({coverage_pct:.0f}%, threshold: {min_coverage_pct}%)"
+                ),
+            }
+        )
         for directive in uncovered_directives[:3]:
             truncated = directive[:100] + "..." if len(directive) > 100 else directive
-            suggestions.append(
-                f"Add LINTGATE_FORBID_REGEX for: '{truncated}'"
-            )
+            suggestions.append(f"Add LINTGATE_FORBID_REGEX for: '{truncated}'")
     else:
-        checks.append({
-            "check": "machine_rules",
-            "status": "pass",
-            "detail": (
-                f"{covered}/{total_do_not} DO NOT directives have enforcement rules "
-                f"({coverage_pct:.0f}%)"
-            ),
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "pass",
+                "detail": (
+                    f"{covered}/{total_do_not} DO NOT directives have enforcement rules "
+                    f"({coverage_pct:.0f}%)"
+                ),
+            }
+        )
 
 
 def _check_path_references(
@@ -398,24 +464,25 @@ def _check_path_references(
     max_refs = int(thresholds.get("max_path_references", 50))
 
     if not path_refs:
-        checks.append({
-            "check": "path_references",
-            "status": "pass",
-            "detail": "No path references found in backticks",
-        })
+        checks.append(
+            {
+                "check": "path_references",
+                "status": "pass",
+                "detail": "No path references found in backticks",
+            }
+        )
         return
 
     # Very large numbers of path references usually indicate the file is
     # carrying too much implementation detail for an agent context doc.
     if len(path_refs) > max_refs:
-        checks.append({
-            "check": "path_reference_volume",
-            "status": "warn",
-            "detail": (
-                f"{len(path_refs)} path references found "
-                f"(threshold: {max_refs})."
-            ),
-        })
+        checks.append(
+            {
+                "check": "path_reference_volume",
+                "status": "warn",
+                "detail": (f"{len(path_refs)} path references found (threshold: {max_refs})."),
+            }
+        )
         suggestions.append(
             "Reduce path-reference density by moving exhaustive file lists to "
             "separate docs and keeping this context file concise."
@@ -426,19 +493,23 @@ def _check_path_references(
     if dead_paths:
         dead_str = ", ".join(dead_paths[:5])
         more = f" (+{len(dead_paths) - 5} more)" if len(dead_paths) > 5 else ""
-        checks.append({
-            "check": "path_references",
-            "status": "warn",
-            "detail": f"{len(dead_paths)} referenced path(s) don't exist: {dead_str}{more}",
-        })
+        checks.append(
+            {
+                "check": "path_references",
+                "status": "warn",
+                "detail": f"{len(dead_paths)} referenced path(s) don't exist: {dead_str}{more}",
+            }
+        )
         for p in dead_paths[:3]:
             suggestions.append(f"Remove or update dead path reference: `{p}`")
     else:
-        checks.append({
-            "check": "path_references",
-            "status": "pass",
-            "detail": f"All {len(path_refs)} path references verified",
-        })
+        checks.append(
+            {
+                "check": "path_references",
+                "status": "pass",
+                "detail": f"All {len(path_refs)} path references verified",
+            }
+        )
 
 
 _PATH_EXTENSIONS = (".py", ".md", ".yaml", ".yml", ".toml", ".json")
@@ -513,3 +584,83 @@ def _coverage_tokens(text: str) -> set[str]:
                 part = part[:-1]
             tokens.add(part)
     return tokens
+
+
+# ── Session Readiness Advisory ───────────────────────────────────────
+
+
+_REQUIRED_FACETS = ("core_theory", "problem_solving", "alignment")
+
+
+@dataclass
+class SessionReadiness:
+    """Result of checking whether theory context is ready for deep supervision."""
+
+    ready: bool = False
+    missing: list[str] = field(default_factory=list)
+    recommendation: str = ""
+
+
+def check_session_readiness(
+    project_root: str,
+    theory_profile: dict[str, Any] | None = None,
+) -> SessionReadiness:
+    """Check if the session has sufficient theory context for deep supervision.
+
+    Checks:
+    - Theory profile has required facets (core_theory, problem_solving, alignment)
+      with at least one claim each.
+    - At least one enforceable rule exists.
+
+    Args:
+        project_root: Repository root.
+        theory_profile: Pre-extracted theory profile (avoids re-extraction).
+
+    Returns:
+        SessionReadiness with ready flag, missing items, and recommendation.
+    """
+    missing: list[str] = []
+
+    # Check theory profile facets
+    if theory_profile is None:
+        missing.append("no_theory_profile")
+    else:
+        for facet in _REQUIRED_FACETS:
+            entries = theory_profile.get(facet, [])
+            has_claims = False
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("claims"):
+                    has_claims = True
+                    break
+            if not has_claims:
+                missing.append(f"missing_facet:{facet}")
+
+    # Check for enforceable rules (look for CLAUDE.md or context guidance)
+    has_rules = False
+    claude_path = Path(project_root) / "CLAUDE.md"
+    if claude_path.exists():
+        text = claude_path.read_text()
+        if "LINTGATE_FORBID_REGEX" in text or "LINTGATE_REQUIRE_REGEX" in text:
+            has_rules = True
+
+    if not has_rules:
+        missing.append("no_enforceable_rules")
+
+    if missing:
+        parts = []
+        if "no_theory_profile" in missing:
+            parts.append("extract project theory")
+        facet_missing = [m.split(":")[1] for m in missing if m.startswith("missing_facet:")]
+        if facet_missing:
+            parts.append(f"add claims for facets: {', '.join(facet_missing)}")
+        if "no_enforceable_rules" in missing:
+            parts.append("add enforceable rules to CLAUDE.md")
+        recommendation = f"Run bootstrap_context_files to {'; '.join(parts)}."
+    else:
+        recommendation = ""
+
+    return SessionReadiness(
+        ready=not missing,
+        missing=missing,
+        recommendation=recommendation,
+    )

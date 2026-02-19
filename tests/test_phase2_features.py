@@ -10,17 +10,18 @@ Tests:
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 from lintgate.config import load_config
 from lintgate.telemetry import _compute_trend, compute_telemetry_summary
 from lintgate.types import ProjectConfig
-
 
 # ── Phase 2A: Path Policies ─────────────────────────────────────────────
 
@@ -102,9 +103,30 @@ class TestTelemetryWithData:
     def test_aggregation_with_data(self, tmp_path: Path) -> None:
         project = "/tmp/test_proj"
         entries = [
-            {"blocking_count": 2, "warning_count": 3, "info_count": 1, "files_count": 5, "duration_ms": 100, "tier": "tier_2_manual"},
-            {"blocking_count": 0, "warning_count": 1, "info_count": 0, "files_count": 3, "duration_ms": 80, "tier": "tier_0_debounced"},
-            {"blocking_count": 1, "warning_count": 0, "info_count": 2, "files_count": 4, "duration_ms": 150, "tier": "tier_2_manual"},
+            {
+                "blocking_count": 2,
+                "warning_count": 3,
+                "info_count": 1,
+                "files_count": 5,
+                "duration_ms": 100,
+                "tier": "tier_2_manual",
+            },
+            {
+                "blocking_count": 0,
+                "warning_count": 1,
+                "info_count": 0,
+                "files_count": 3,
+                "duration_ms": 80,
+                "tier": "tier_0_debounced",
+            },
+            {
+                "blocking_count": 1,
+                "warning_count": 0,
+                "info_count": 2,
+                "files_count": 4,
+                "duration_ms": 150,
+                "tier": "tier_2_manual",
+            },
         ]
         self._write_metrics(tmp_path, project, entries)
 
@@ -123,10 +145,34 @@ class TestTelemetryWithData:
     def test_fix_rate_calculation(self, tmp_path: Path) -> None:
         project = "/tmp/fix_test"
         entries = [
-            {"blocking_count": 0, "warning_count": 0, "info_count": 0, "files_count": 1, "duration_ms": 50},
-            {"blocking_count": 0, "warning_count": 1, "info_count": 0, "files_count": 2, "duration_ms": 60},
-            {"blocking_count": 1, "warning_count": 0, "info_count": 0, "files_count": 1, "duration_ms": 70},
-            {"blocking_count": 0, "warning_count": 0, "info_count": 0, "files_count": 1, "duration_ms": 40},
+            {
+                "blocking_count": 0,
+                "warning_count": 0,
+                "info_count": 0,
+                "files_count": 1,
+                "duration_ms": 50,
+            },
+            {
+                "blocking_count": 0,
+                "warning_count": 1,
+                "info_count": 0,
+                "files_count": 2,
+                "duration_ms": 60,
+            },
+            {
+                "blocking_count": 1,
+                "warning_count": 0,
+                "info_count": 0,
+                "files_count": 1,
+                "duration_ms": 70,
+            },
+            {
+                "blocking_count": 0,
+                "warning_count": 0,
+                "info_count": 0,
+                "files_count": 1,
+                "duration_ms": 40,
+            },
         ]
         self._write_metrics(tmp_path, project, entries)
 
@@ -138,23 +184,38 @@ class TestTelemetryWithData:
 
     def test_filters_by_project(self, tmp_path: Path) -> None:
         """Only entries for the requested project are counted."""
-        self._write_metrics(tmp_path, "/tmp/proj_a", [
-            {"blocking_count": 1, "warning_count": 0, "info_count": 0, "files_count": 1, "duration_ms": 50},
-        ])
+        self._write_metrics(
+            tmp_path,
+            "/tmp/proj_a",
+            [
+                {
+                    "blocking_count": 1,
+                    "warning_count": 0,
+                    "info_count": 0,
+                    "files_count": 1,
+                    "duration_ms": 50,
+                },
+            ],
+        )
         # Manually append entries for proj_b to the same file
         today = datetime.now().strftime("%Y%m%d")
         metrics_file = tmp_path / f"lintgate_{today}.jsonl"
         with open(metrics_file, "a") as f:
-            f.write(json.dumps({
-                "timestamp": datetime.now().isoformat(),
-                "event": "mcp_lint_run",
-                "project": "/tmp/proj_b",
-                "blocking_count": 5,
-                "warning_count": 0,
-                "info_count": 0,
-                "files_count": 1,
-                "duration_ms": 50,
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "event": "mcp_lint_run",
+                        "project": "/tmp/proj_b",
+                        "blocking_count": 5,
+                        "warning_count": 0,
+                        "info_count": 0,
+                        "files_count": 1,
+                        "duration_ms": 50,
+                    }
+                )
+                + "\n"
+            )
 
         with patch("lintgate.telemetry.METRICS_DIR", tmp_path):
             summary = compute_telemetry_summary("/tmp/proj_a", period="1d")

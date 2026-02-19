@@ -14,10 +14,10 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from lintgate.types import ChangeClassification, LintIssue
-
+if TYPE_CHECKING:
+    from lintgate.types import ChangeClassification, LintIssue
 
 # ── Supervision Event ─────────────────────────────────────────────────
 
@@ -157,6 +157,33 @@ class TokenPolicy:
 
 
 @dataclass
+class InquiryConfig:
+    """Configuration for the Architecture of Inquiry features.
+
+    Groups all inquiry-related flags under controlplane.inquiry.*
+    to avoid config sprawl at the top level.
+    """
+
+    theory_grounded_signals: bool = False
+    prediction_tracking: bool = False
+    theory_coherence_check: bool = False
+    living_context: bool = False
+    session_gate: bool = False
+
+    def any_enabled(self) -> bool:
+        """Check if any inquiry feature is enabled."""
+        return any(
+            [
+                self.theory_grounded_signals,
+                self.prediction_tracking,
+                self.theory_coherence_check,
+                self.living_context,
+                self.session_gate,
+            ]
+        )
+
+
+@dataclass
 class ControlPlaneConfig:
     """Top-level ControlPlane configuration.
 
@@ -173,6 +200,8 @@ class ControlPlaneConfig:
     session_memory: bool = False
     session_max_age_hours: float = 4.0
     constraint_proposal_threshold: int = 5
+    # Architecture of Inquiry features (grouped under controlplane.inquiry.*)
+    inquiry: InquiryConfig = field(default_factory=InquiryConfig)
     # Global behavior profile (cross-session learning)
     global_memory_enabled: bool = False
     global_memory_alpha: float = 0.6

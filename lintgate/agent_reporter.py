@@ -150,7 +150,9 @@ def _add_fixable_section(parts: list[str], metrics: dict[str, Any]) -> None:
     """Add auto-fixable count as actionable suggestion."""
     fixable = metrics.get("fixable_count", 0)
     if fixable > 0:
-        parts.append(f"Auto-fixable: {fixable} issue{'s' if fixable != 1 else ''} (run: ruff check --fix)")
+        parts.append(
+            f"Auto-fixable: {fixable} issue{'s' if fixable != 1 else ''} (run: ruff check --fix)"
+        )
 
 
 def _add_recurrence_section(parts: list[str], recurrence_summary: dict[str, Any] | None) -> None:
@@ -226,8 +228,7 @@ def _add_linter_status_section(parts: list[str], result: AggregatedResult) -> No
         if errored:
             status_parts.append(f"{errored} errored")
         parts.append(
-            f"Linters: {result.metrics.get('linters_run', 0)} ran, "
-            f"{', '.join(status_parts)}"
+            f"Linters: {result.metrics.get('linters_run', 0)} ran, {', '.join(status_parts)}"
         )
 
     if result.total_duration_ms > 2000:
@@ -249,15 +250,10 @@ def _compute_delta(
     """Compute the delta between current and previous run."""
     return {
         "blocking_delta": (
-            current.metrics.get("blocking_count", 0)
-            - last_run.get("blocking_count", 0)
+            current.metrics.get("blocking_count", 0) - last_run.get("blocking_count", 0)
         ),
         "warning_delta": (
-            current.metrics.get("warning_count", 0)
-            - last_run.get("warning_count", 0)
+            current.metrics.get("warning_count", 0) - last_run.get("warning_count", 0)
         ),
-        "total_delta": (
-            current.metrics.get("total_issues", 0)
-            - last_run.get("total_issues", 0)
-        ),
+        "total_delta": (current.metrics.get("total_issues", 0) - last_run.get("total_issues", 0)),
     }

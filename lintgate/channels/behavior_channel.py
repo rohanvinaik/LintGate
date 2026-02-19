@@ -34,8 +34,8 @@ import time
 from typing import Any
 
 from lintgate.controlplane.behavior_compass import (
-    BehaviorCompass,
     DEFAULT_THRESHOLDS,
+    BehaviorCompass,
     error_memory_key,
 )
 from lintgate.controlplane.types import (
@@ -44,6 +44,132 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import LintIssue
+
+# ── Theory Grounding ─────────────────────────────────────────────────
+
+# Maps each behavioral signal to the theory facets and keywords most
+# relevant to it. Used by _ground_finding_in_theory to pull specific
+# claims from the project's theory profile into hook messages.
+SIGNAL_THEORY_MAP: dict[str, dict[str, Any]] = {
+    "approach_cycling": {
+        "facets": ["problem_solving", "alignment"],
+        "keywords": ["approach", "strategy", "heuristic"],
+    },
+    "failure_amnesia": {
+        "facets": ["alignment", "anti_patterns"],
+        "keywords": ["learn", "error", "constraint"],
+    },
+    "premature_action": {
+        "facets": ["problem_solving"],
+        "keywords": ["verify", "understand", "plan"],
+    },
+    "brute_force_escalation": {
+        "facets": ["problem_solving", "anti_patterns"],
+        "keywords": ["escalate", "complexity", "decompose"],
+    },
+    "verification_debt": {
+        "facets": ["alignment"],
+        "keywords": ["verify", "validate", "correct"],
+    },
+    "stale_model": {
+        "facets": ["core_theory", "alignment"],
+        "keywords": ["update", "model", "understand"],
+    },
+    "serial_discovery": {
+        "facets": ["problem_solving"],
+        "keywords": ["predict", "proactive", "enumerate"],
+    },
+    "tool_repetition": {
+        "facets": ["problem_solving", "anti_patterns"],
+        "keywords": ["repetition", "stuck", "progress"],
+    },
+    "consecutive_failures": {
+        "facets": ["problem_solving"],
+        "keywords": ["failure", "constraint", "pause"],
+    },
+}
+
+_THEORY_CODA_MAX_CHARS = 150
+
+
+def _ground_finding_in_theory(
+    finding: LintIssue,
+    signal_name: str,
+    theory_profile: dict[str, Any] | None,
+) -> str | None:
+    """Append a theory coda to a behavioral finding's message.
+
+    Pulls 1-2 short claims from the project's theory profile that are
+    relevant to the signal. Returns the coda text (for dedup tracking)
+    or None if no grounding was applied.
+
+    Args:
+        finding: The LintIssue to augment (modified in place).
+        signal_name: The signal name (key into SIGNAL_THEORY_MAP).
+        theory_profile: Pre-extracted theory profile dict, or None.
+
+    Returns:
+        The coda text string, or None if no coda was added.
+    """
+    if not theory_profile or signal_name not in SIGNAL_THEORY_MAP:
+        return None
+
+    from lintgate.theory_extractor import get_theory_context_from_profile
+
+    mapping = SIGNAL_THEORY_MAP[signal_name]
+    facets = mapping.get("facets", [])
+    keywords = mapping.get("keywords", [])
+
+    # Query each facet and collect best claims
+    all_claims: list[dict[str, Any]] = []
+    for facet in facets:
+        result = get_theory_context_from_profile(
+            theory_profile,
+            facet=facet,
+            keywords=keywords,
+            max_claims=2,
+        )
+        all_claims.extend(result.get("claims", []))
+
+    if not all_claims:
+        return None
+
+    # Deduplicate and sort by relevance
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for c in all_claims:
+        if c["claim"] not in seen:
+            seen.add(c["claim"])
+            unique.append(c)
+    unique.sort(key=lambda c: -c.get("relevance_score", 0))
+
+    # Build coda: cap at ~150 chars total, 1-2 claims
+    coda_parts: list[str] = []
+    total_len = 0
+    for claim in unique[:2]:
+        text = claim["claim"]
+        # Truncate individual claim if too long
+        if len(text) > 80:
+            text = text[:77] + "..."
+        if total_len + len(text) > _THEORY_CODA_MAX_CHARS:
+            break
+        coda_parts.append(f"'{text}'")
+        total_len += len(text)
+
+    if not coda_parts:
+        return None
+
+    coda = f" Theory: {'; '.join(coda_parts)}."
+
+    # Append to finding message
+    finding.message = finding.message.rstrip() + coda
+
+    # Store in evidence
+    if not finding.evidence:
+        finding.evidence = {}
+    finding.evidence["theory_context"] = [c["claim"] for c in unique[:2]]
+
+    return coda
 
 
 # ── Intent Bias Scorer ─────────────────────────────────────────────────
@@ -92,9 +218,7 @@ class _IntentBiasScorer:
             self.recent_counts[intent] = self.recent_counts.get(intent, 0) + 1
         self.recent_window = len(recent)
 
-    def _effective_bias_weight(
-        self, signal_name: str, config_key: str, default: float
-    ) -> float:
+    def _effective_bias_weight(self, signal_name: str, config_key: str, default: float) -> float:
         """Merge project bias weight with global prior.
 
         effective = project_weight + alpha * global_adjustment
@@ -146,7 +270,9 @@ class _IntentBiasScorer:
                 between = self.compass.intent_history[-between_count:] if between_count > 0 else []
                 has_verify = any(intent in ("verify", "inspect") for intent in between)
                 if not has_verify:
-                    delta = self._effective_bias_weight("failure_amnesia", "failure_amnesia_bias", 0.15)
+                    delta = self._effective_bias_weight(
+                        "failure_amnesia", "failure_amnesia_bias", 0.15
+                    )
                     terms.append("repeated_error,no_verify_between")
                     return (min(delta, _BIAS_CAP), terms)
                 break
@@ -157,11 +283,14 @@ class _IntentBiasScorer:
         terms: list[str] = []
         if self.compass.precheck_count_session == 0:
             failure_hyps = [
-                h for h in self.compass.hypotheses
+                h
+                for h in self.compass.hypotheses
                 if h.source == "command_failure" and h.status in ("active", "confirmed")
             ]
             if len(failure_hyps) >= 1:
-                delta = self._effective_bias_weight("serial_discovery", "serial_discovery_early_bias", 0.10)
+                delta = self._effective_bias_weight(
+                    "serial_discovery", "serial_discovery_early_bias", 0.10
+                )
                 terms.append(f"failure_hyps={len(failure_hyps)},precheck=0")
                 return (min(delta, _BIAS_CAP), terms)
         return (0.0, terms)
@@ -227,7 +356,13 @@ class _SignalCoordinator:
         "serial_discovery_early": 7,
     }
 
-    def __init__(self, compass: BehaviorCompass, thresholds: dict[str, Any]):
+    def __init__(
+        self,
+        compass: BehaviorCompass,
+        thresholds: dict[str, Any],
+        theory_profile: dict[str, Any] | None = None,
+        recent_codas: dict[str, str] | None = None,
+    ):
         self.compass = compass
         self.thresholds = thresholds
         self.findings: list[LintIssue] = []
@@ -236,6 +371,10 @@ class _SignalCoordinator:
         self._pending_priority: int = 999
         self._nudge_signals: list[str] = []  # Signals that produced nudges
         self.run_fire_counts: dict[str, int] = {}  # Per-execution signal firings
+        # Architecture of Inquiry: theory grounding
+        self._theory_profile = theory_profile
+        self._recent_codas: dict[str, str] = recent_codas or {}
+        self._new_codas: dict[str, str] = {}  # Codas generated this run
 
     def can_fire(self, signal_name: str) -> bool:
         """Check if a signal is past its cooldown."""
@@ -273,6 +412,18 @@ class _SignalCoordinator:
                 finding.message = f"[persistent] {finding.message}"
             else:
                 finding.severity = "warning"
+
+        # Theory grounding: append relevant theory claims to finding message
+        if self._theory_profile is not None:
+            coda = _ground_finding_in_theory(finding, signal_name, self._theory_profile)
+            if coda is not None:
+                prev_coda = self._recent_codas.get(signal_name)
+                if prev_coda == coda:
+                    # Dedup: same coda as last run for this signal — strip it
+                    finding.message = finding.message[: -len(coda)]
+                    finding.evidence.pop("theory_context", None)
+                else:
+                    self._new_codas[signal_name] = coda
 
         self.findings.append(finding)
 
@@ -351,9 +502,7 @@ def _error_like_match(candidate: str, latest: str) -> bool:
 
     # Handle truncation: one normalized message may be a long prefix of the other.
     shorter, longer = (
-        (cand_norm, latest_norm)
-        if len(cand_norm) <= len(latest_norm)
-        else (latest_norm, cand_norm)
+        (cand_norm, latest_norm) if len(cand_norm) <= len(latest_norm) else (latest_norm, cand_norm)
     )
     if len(shorter) >= 12 and shorter in longer:
         return True
@@ -371,7 +520,7 @@ def _extract_hypothesis_error_candidates(evidence_for: list[str]) -> list[str]:
         lowered = txt.lower()
         for prefix in _ERROR_EVIDENCE_PREFIXES:
             if lowered.startswith(prefix):
-                extracted = txt[len(prefix):].strip()
+                extracted = txt[len(prefix) :].strip()
                 if extracted:
                     candidates.append(extracted)
                 break
@@ -430,9 +579,22 @@ class BehaviorChannel:
         # Load global behavior priors (if injected by hook/MCP)
         global_priors = event.raw_input.get("behavior_global_priors")
 
+        # Architecture of Inquiry: load theory profile for grounding
+        theory_profile = (
+            event.raw_input.get("theory_profile")
+            if config.inquiry.theory_grounded_signals
+            else None
+        )
+        recent_codas = compass_data.get("_theory_recent_codas", {})
+
         # Create scorer and coordinator
         scorer = _IntentBiasScorer(compass, bias_weights, global_priors=global_priors)
-        coord = _SignalCoordinator(compass, thresholds)
+        coord = _SignalCoordinator(
+            compass,
+            thresholds,
+            theory_profile=theory_profile,
+            recent_codas=recent_codas,
+        )
 
         # Run all 9 detection rules
         _detect_approach_cycling(compass, thresholds, coord, scorer)
@@ -445,6 +607,21 @@ class BehaviorChannel:
         _detect_verification_debt(compass, thresholds, coord, scorer)
         _detect_stale_model(compass, thresholds, coord, scorer)
 
+        # Prediction accuracy modulation (only with ≥5 checked predictions)
+        if config.inquiry.prediction_tracking:
+            from lintgate.controlplane.behavior_compass import compute_prediction_accuracy
+
+            pred_accuracy = compute_prediction_accuracy(compass)
+            if pred_accuracy is not None:
+                for finding in coord.findings:
+                    if pred_accuracy > 0.70 and finding.severity == "informational":
+                        # High accuracy → agent predicts well, soften soft signals
+                        if finding.confidence is not None:
+                            finding.confidence = round(max(0.0, finding.confidence - 0.15), 2)
+                    elif pred_accuracy < 0.30 and finding.confidence is not None:
+                        # Low accuracy → agent predicts poorly, amplify signals
+                        finding.confidence = round(min(1.0, finding.confidence + 0.15), 2)
+
         findings, next_actions, nudge_signals = coord.finalize()
 
         # Compute nudge outcomes for global profile:
@@ -452,9 +629,7 @@ class BehaviorChannel:
         # If previous nudge signals exist and no precheck → "ignored"
         nudge_outcomes: dict[str, str] = {}
         if compass.pending_nudge_signals:
-            precheck_delta = (
-                compass.precheck_count_session - compass.pending_nudge_precheck_count
-            )
+            precheck_delta = compass.precheck_count_session - compass.pending_nudge_precheck_count
             outcome = "accepted" if precheck_delta > 0 else "ignored"
             for sig in compass.pending_nudge_signals:
                 nudge_outcomes[sig] = outcome
@@ -508,6 +683,7 @@ class BehaviorChannel:
                     "pending_nudge_signals": compass.pending_nudge_signals,
                     "pending_nudge_precheck_count": compass.pending_nudge_precheck_count,
                     "nudge_outcomes": compass.nudge_outcomes,
+                    "_theory_recent_codas": coord._new_codas,
                 },
                 "intent_summary": scorer.build_evidence_trace(),
                 "global_profile_delta": {
@@ -545,8 +721,7 @@ def _detect_approach_cycling(
     cutoff = now - (window_min * 60)
 
     recent_failed = [
-        a for a in compass.approaches
-        if a.outcome == "failed" and a.last_event >= cutoff
+        a for a in compass.approaches if a.outcome == "failed" and a.last_event >= cutoff
     ]
 
     if len(recent_failed) >= count_threshold:
@@ -802,9 +977,7 @@ def _detect_serial_discovery(
     Stage 1 (early nudge): 1+ failure-sourced hypothesis + precheck_count=0
     Stage 2 (existing): 3+ failure-sourced hypotheses, 0 from precheck
     """
-    active_hyps = [
-        h for h in compass.hypotheses if h.status in ("active", "confirmed")
-    ]
+    active_hyps = [h for h in compass.hypotheses if h.status in ("active", "confirmed")]
 
     failure_sourced = sum(1 for h in active_hyps if h.source == "command_failure")
     precheck_sourced = sum(1 for h in active_hyps if h.source == "precheck_declared")

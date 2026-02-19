@@ -23,7 +23,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ── Dataclasses ──────────────────────────────────────────────────────────
 
 
@@ -121,6 +120,84 @@ class ApproachAttempt:
         )
 
 
+# ── Prediction Tracking (Architecture of Inquiry) ────────────────────
+
+
+@dataclass
+class PredictionExpectation:
+    """Structured expected outcome for deterministic falsification.
+
+    Types:
+    - exit_code: Compare against command exit code (int)
+    - error_signature: Check if value is substring of error output
+    - stdout_contains: Check if value is substring of stdout
+    """
+
+    type: str = "exit_code"  # "exit_code" | "error_signature" | "stdout_contains"
+    value: str | int = 0  # The expected value
+    negate: bool = False  # True means "NOT this outcome"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"type": self.type, "value": self.value, "negate": self.negate}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PredictionExpectation:
+        return cls(
+            type=data.get("type", "exit_code"),
+            value=data.get("value", 0),
+            negate=data.get("negate", False),
+        )
+
+
+@dataclass
+class Prediction:
+    """A falsifiable prediction registered via behavior_precheck.
+
+    Tracks what the agent expected to happen and whether it was confirmed
+    or falsified by the actual outcome. Only applicable to execute/Bash flows.
+    """
+
+    prediction_id: str = ""
+    claim: str = ""  # Free-text: "I expect this command to succeed"
+    expected: PredictionExpectation = field(default_factory=PredictionExpectation)
+    declared_at_event: int = 0
+    declared_sig: str = ""  # Command signature the prediction applies to
+    linked_hypothesis_id: str | None = None
+    status: str = "pending"  # "pending" | "confirmed" | "falsified" | "expired"
+    checked_at_event: int | None = None
+    actual_outcome: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prediction_id": self.prediction_id,
+            "claim": self.claim,
+            "expected": self.expected.to_dict(),
+            "declared_at_event": self.declared_at_event,
+            "declared_sig": self.declared_sig,
+            "linked_hypothesis_id": self.linked_hypothesis_id,
+            "status": self.status,
+            "checked_at_event": self.checked_at_event,
+            "actual_outcome": self.actual_outcome,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Prediction:
+        exp_data = data.get("expected", {})
+        return cls(
+            prediction_id=data.get("prediction_id", ""),
+            claim=data.get("claim", ""),
+            expected=PredictionExpectation.from_dict(exp_data)
+            if isinstance(exp_data, dict)
+            else PredictionExpectation(),
+            declared_at_event=data.get("declared_at_event", 0),
+            declared_sig=data.get("declared_sig", ""),
+            linked_hypothesis_id=data.get("linked_hypothesis_id"),
+            status=data.get("status", "pending"),
+            checked_at_event=data.get("checked_at_event"),
+            actual_outcome=data.get("actual_outcome"),
+        )
+
+
 @dataclass
 class CoverageMetrics:
     """Computed behavioral statistics."""
@@ -170,19 +247,34 @@ class BehaviorCompass:
     coverage: CoverageMetrics = field(default_factory=CoverageMetrics)
     uncertainty_zones: list[str] = field(default_factory=list)
     action_history: list[dict[str, Any]] = field(default_factory=list)
-    error_memory: dict[str, dict[str, Any]] = field(default_factory=dict)  # error_hash -> aggregate stats
+    error_memory: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )  # error_hash -> aggregate stats
     # ── v2: intent bias layer ──
-    intent_history: list[str] = field(default_factory=list)       # Last 30 intents (rolling)
-    hypothesis_version: int = 0                                    # Monotonic; +1 on any hyp mutation
-    precheck_count_session: int = 0                                # Precheck invocations this session
-    event_counter: int = 0                                         # Monotonic per-event for cooldowns
-    last_fired: dict[str, int] = field(default_factory=dict)       # signal → event_counter at last fire
-    signal_fire_counts: dict[str, int] = field(default_factory=dict)  # signal → session-total firings
-    early_nudge_emitted: bool = False                              # One-time serial_discovery stage 1
+    intent_history: list[str] = field(default_factory=list)  # Last 30 intents (rolling)
+    hypothesis_version: int = 0  # Monotonic; +1 on any hyp mutation
+    precheck_count_session: int = 0  # Precheck invocations this session
+    event_counter: int = 0  # Monotonic per-event for cooldowns
+    last_fired: dict[str, int] = field(default_factory=dict)  # signal → event_counter at last fire
+    signal_fire_counts: dict[str, int] = field(
+        default_factory=dict
+    )  # signal → session-total firings
+    early_nudge_emitted: bool = False  # One-time serial_discovery stage 1
     # ── v3: global behavior profile ──
-    pending_nudge_signals: list[str] = field(default_factory=list)  # Signals with active nudges awaiting outcome
-    pending_nudge_precheck_count: int = 0  # precheck_count snapshot when pending_nudge_signals was set
-    nudge_outcomes: dict[str, str] = field(default_factory=dict)    # signal → "accepted" | "ignored" (per session)
+    pending_nudge_signals: list[str] = field(
+        default_factory=list
+    )  # Signals with active nudges awaiting outcome
+    pending_nudge_precheck_count: int = (
+        0  # precheck_count snapshot when pending_nudge_signals was set
+    )
+    nudge_outcomes: dict[str, str] = field(
+        default_factory=dict
+    )  # signal → "accepted" | "ignored" (per session)
+    # ── v4: Architecture of Inquiry — prediction tracking ──
+    pending_predictions: list[Prediction] = field(default_factory=list)
+    prediction_log: list[dict[str, Any]] = field(
+        default_factory=list
+    )  # confirmed/falsified history
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -202,6 +294,8 @@ class BehaviorCompass:
             "pending_nudge_signals": self.pending_nudge_signals,
             "pending_nudge_precheck_count": self.pending_nudge_precheck_count,
             "nudge_outcomes": self.nudge_outcomes,
+            "pending_predictions": [p.to_dict() for p in self.pending_predictions],
+            "prediction_log": self.prediction_log,
         }
 
     @classmethod
@@ -209,14 +303,8 @@ class BehaviorCompass:
         if not data:
             return cls()
         return cls(
-            hypotheses=[
-                BehaviorHypothesis.from_dict(h)
-                for h in data.get("hypotheses", [])
-            ],
-            approaches=[
-                ApproachAttempt.from_dict(a)
-                for a in data.get("approaches", [])
-            ],
+            hypotheses=[BehaviorHypothesis.from_dict(h) for h in data.get("hypotheses", [])],
+            approaches=[ApproachAttempt.from_dict(a) for a in data.get("approaches", [])],
             coverage=CoverageMetrics.from_dict(data.get("coverage", {})),
             uncertainty_zones=data.get("uncertainty_zones", []),
             action_history=data.get("action_history", []),
@@ -231,6 +319,10 @@ class BehaviorCompass:
             pending_nudge_signals=data.get("pending_nudge_signals", []),
             pending_nudge_precheck_count=data.get("pending_nudge_precheck_count", 0),
             nudge_outcomes=data.get("nudge_outcomes", {}),
+            pending_predictions=[
+                Prediction.from_dict(p) for p in data.get("pending_predictions", [])
+            ],
+            prediction_log=data.get("prediction_log", []),
         )
 
 
@@ -546,9 +638,7 @@ def extract_error_sig(stderr: str) -> str:
         # Strip absolute paths
         cleaned = _ABS_PATH_PATTERN.sub(r"\1", stripped)
         # Strip timestamps (common patterns: ISO, syslog, bracketed)
-        cleaned = re.sub(
-            r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\d]*\s*", "", cleaned
-        )
+        cleaned = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\d]*\s*", "", cleaned)
         cleaned = re.sub(r"\[\d+[:.]\d+\]\s*", "", cleaned)
 
         # Truncate to reasonable length
@@ -575,6 +665,134 @@ def _make_hypothesis_id(claim: str, sig: str) -> str:
 
 
 # ── Core update functions ────────────────────────────────────────────────
+
+
+_PREDICTION_EXPIRY_EVENTS = 20  # Expire predictions after this many events without check
+
+
+def _check_predictions(
+    compass: BehaviorCompass,
+    tool_name: str,
+    command_sig: str,
+    exit_code: int | None,
+    error_sig: str,
+    output_str: str,
+    cfg: dict[str, Any],
+) -> None:
+    """Check pending predictions against actual outcomes.
+
+    Only checks for Bash/execute events. Updates prediction status,
+    strengthens/weakens linked hypotheses, and logs outcomes.
+    """
+    # Only check predictions for Bash/execute events
+    if tool_name != "Bash":
+        return
+
+    still_pending: list[Prediction] = []
+
+    for pred in compass.pending_predictions:
+        # Check expiry
+        if compass.event_counter - pred.declared_at_event > _PREDICTION_EXPIRY_EVENTS:
+            pred.status = "expired"
+            compass.prediction_log.append(
+                {
+                    "prediction_id": pred.prediction_id,
+                    "status": "expired",
+                    "event": compass.event_counter,
+                }
+            )
+            continue
+
+        # Check if this prediction applies to the current command
+        # Require full signature match (e.g. "git:status" only matches "git:status")
+        # Skip predictions with empty/unknown sigs — they can't be meaningfully checked
+        if not pred.declared_sig or pred.declared_sig == "unknown:unknown":
+            still_pending.append(pred)
+            continue
+        if not command_sig or command_sig == "unknown:unknown":
+            still_pending.append(pred)
+            continue
+        if pred.declared_sig != command_sig:
+            still_pending.append(pred)
+            continue
+
+        # Evaluate the prediction
+        exp = pred.expected
+        matched = False
+
+        if exp.type == "exit_code":
+            expected_code = int(exp.value) if isinstance(exp.value, (int, str)) else 0
+            if exit_code is not None:
+                matched = exit_code == expected_code
+        elif exp.type == "error_signature":
+            matched = str(exp.value).lower() in error_sig.lower() if error_sig else False
+        elif exp.type == "stdout_contains":
+            matched = str(exp.value).lower() in output_str.lower() if output_str else False
+
+        # Handle negation
+        if exp.negate:
+            matched = not matched
+
+        if matched:
+            pred.status = "confirmed"
+        else:
+            pred.status = "falsified"
+
+        pred.checked_at_event = compass.event_counter
+        pred.actual_outcome = f"exit={exit_code}, err={error_sig[:50]}"
+
+        compass.prediction_log.append(
+            {
+                "prediction_id": pred.prediction_id,
+                "status": pred.status,
+                "event": compass.event_counter,
+                "expected_type": exp.type,
+                "expected_value": exp.value,
+                "actual_outcome": pred.actual_outcome,
+            }
+        )
+
+        # Strengthen/weaken linked hypothesis
+        if pred.linked_hypothesis_id:
+            for hyp in compass.hypotheses:
+                if hyp.id == pred.linked_hypothesis_id:
+                    if pred.status == "confirmed":
+                        delta = cfg.get("strengthen_delta", 0.15)
+                        hyp.confidence = min(hyp.confidence + delta, 1.0)
+                        hyp.evidence_for.append(
+                            f"prediction confirmed at event {compass.event_counter}"
+                        )
+                    elif pred.status == "falsified":
+                        delta = cfg.get("weaken_delta", 0.1)
+                        hyp.confidence = max(hyp.confidence - delta, 0.0)
+                        hyp.evidence_against.append(
+                            f"prediction falsified at event {compass.event_counter}"
+                        )
+                    compass.hypothesis_version += 1
+                    break
+
+    compass.pending_predictions = still_pending
+
+    # Keep prediction_log bounded
+    if len(compass.prediction_log) > 100:
+        compass.prediction_log = compass.prediction_log[-100:]
+
+
+def compute_prediction_accuracy(compass: BehaviorCompass) -> float | None:
+    """Compute prediction accuracy from the prediction log.
+
+    Returns None if fewer than 5 predictions have been checked
+    (insufficient data for meaningful accuracy).
+    """
+    checked = [
+        entry
+        for entry in compass.prediction_log
+        if entry.get("status") in ("confirmed", "falsified")
+    ]
+    if len(checked) < 5:
+        return None
+    confirmed = sum(1 for e in checked if e["status"] == "confirmed")
+    return confirmed / len(checked)
 
 
 def record_tool_event(
@@ -605,6 +823,7 @@ def record_tool_event(
     command_sig = ""
     exit_code: int | None = None
     error_sig = ""
+    output_str = ""
 
     if tool_name == "Bash":
         cmd = ""
@@ -614,7 +833,7 @@ def record_tool_event(
             cmd = tool_input
         command_sig = normalize_command_sig(cmd)
 
-    # Parse exit code and error from output
+        # Parse exit code and error from output
         output_str = tool_output if isinstance(tool_output, str) else str(tool_output)
         # Common patterns for exit code in tool output
         exit_match = re.search(
@@ -660,6 +879,9 @@ def record_tool_event(
     # so newly created hypotheses don't get double-strengthened by their own event)
     if tool_name == "Bash" and command_sig:
         _test_hypotheses(compass, command_sig, exit_code, error_sig, now, cfg)
+
+    # Check pending predictions against actual outcomes (Bash events only)
+    _check_predictions(compass, tool_name, command_sig, exit_code, error_sig, output_str, cfg)
 
     # Auto-generate hypothesis from Bash failure
     if tool_name == "Bash" and exit_code is not None and exit_code != 0 and error_sig:
@@ -981,9 +1203,9 @@ def compute_coverage(
 
     # Count hypotheses that were predicted (existed before the failure that confirmed them)
     predicted = sum(
-        1 for h in active_hyps
-        if h.source == "precheck_declared"
-        and h.confidence >= promote_threshold
+        1
+        for h in active_hyps
+        if h.source == "precheck_declared" and h.confidence >= promote_threshold
     )
 
     # Approach stats
@@ -994,15 +1216,10 @@ def compute_coverage(
     # Action ratio from recent history
     recent = compass.action_history[-10:]
     bash_count = sum(1 for e in recent if e.get("tool") == "Bash")
-    read_count = sum(
-        1 for e in recent if e.get("tool") in ("Read", "Grep", "Glob")
-    )
+    read_count = sum(1 for e in recent if e.get("tool") in ("Read", "Grep", "Glob"))
 
     # Prediction recall
-    surprise = sum(
-        1 for h in active_hyps
-        if h.source == "command_failure" and h.confidence >= 0.5
-    )
+    surprise = sum(1 for h in active_hyps if h.source == "command_failure" and h.confidence >= 0.5)
     total_discovered = predicted + surprise
     recall = predicted / total_discovered if total_discovered > 0 else 0.0
 
@@ -1056,8 +1273,7 @@ def compute_uncertainty_zones(compass: BehaviorCompass) -> list[str]:
             continue
         if 0.0 < hyp.confidence < 0.4:
             zones.append(
-                f"Low-confidence hypothesis: {hyp.claim[:80]} "
-                f"(confidence: {hyp.confidence:.2f})"
+                f"Low-confidence hypothesis: {hyp.claim[:80]} (confidence: {hyp.confidence:.2f})"
             )
 
     # 3. Hypotheses with conflicting evidence
@@ -1113,9 +1329,8 @@ def find_relevant_hypotheses(
                     break
 
         # Check tool match
-        if not matched and tool:
-            if tool in hyp.applies_to_tools:
-                matched = True
+        if not matched and tool and tool in hyp.applies_to_tools:
+            matched = True
 
         if matched:
             results.append(hyp)
@@ -1148,7 +1363,9 @@ def add_declared_hypothesis(
     for existing in compass.hypotheses:
         if existing.id == hyp_id:
             # Strengthen existing — agent re-declared it
-            update_hypothesis(compass, hyp_id, "strengthen", "Re-declared via precheck", now=now, cfg=cfg)
+            update_hypothesis(
+                compass, hyp_id, "strengthen", "Re-declared via precheck", now=now, cfg=cfg
+            )
             return existing
 
     binary = sig.split(":")[0] if ":" in sig else sig

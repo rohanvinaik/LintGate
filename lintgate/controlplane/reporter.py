@@ -339,6 +339,16 @@ def _format_proposed_constraints(proposals: list[dict]) -> str:
         parts.append(f"  [{rule_type}] ({conf_pct} confidence): {rule}")
         if rationale:
             parts.append(f"    Reason: {rationale}")
+        # Surface drift warning if present
+        if p.get("drift_warning"):
+            tc = p.get("theory_coherence", {})
+            contradicting = tc.get("contradicting_claims", []) if tc else []
+            if contradicting:
+                parts.append(
+                    f"    DRIFT WARNING: contradicts theory claim: '{contradicting[0][:80]}'"
+                )
+            else:
+                parts.append("    DRIFT WARNING: potential conflict with project theory")
     if len(proposals) > 3:
         parts.append(f"  ... and {len(proposals) - 3} more proposals")
     parts.append("  Use controlplane_agent_feedback to accept or reject.")

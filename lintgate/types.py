@@ -48,7 +48,11 @@ class LintIssue:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict, omitting None/empty fields for compact JSON."""
-        return {k: v for k, v in self.__dict__.items() if v is not None and v != [] and v != {} and v != ""}
+        return {
+            k: v
+            for k, v in self.__dict__.items()
+            if v is not None and v != [] and v != {} and v != ""
+        }
 
     def short_location(self) -> str:
         """Short file:line reference for display."""
@@ -76,25 +80,29 @@ class LintIssue:
 # ─── Change Classification ───────────────────────────────────────────────
 
 # Change kinds (what category of change was this?)
-CHANGE_KINDS = frozenset({
-    "import",       # Only import statements changed
-    "config",       # Config files (yaml, toml, json, .env)
-    "logic",        # Business logic / implementation code
-    "test",         # Test files
-    "docs",         # Documentation files
-    "structural",   # Class/function definitions added/removed/renamed
-    "dependency",   # Dependency files (requirements.txt, package.json)
-    "build",        # Build commands (pip install, npm install, etc.)
-})
+CHANGE_KINDS = frozenset(
+    {
+        "import",  # Only import statements changed
+        "config",  # Config files (yaml, toml, json, .env)
+        "logic",  # Business logic / implementation code
+        "test",  # Test files
+        "docs",  # Documentation files
+        "structural",  # Class/function definitions added/removed/renamed
+        "dependency",  # Dependency files (requirements.txt, package.json)
+        "build",  # Build commands (pip install, npm install, etc.)
+    }
+)
 
 # Risk levels (how dangerous is this change?)
-RISK_LEVELS = frozenset({
-    "none",          # No actual change (failed bash command, read-only)
-    "cosmetic",      # Docs, comments, formatting only
-    "moderate",      # Normal code changes
-    "structural",    # Function/class signatures changed, new files
-    "architectural", # Pipeline-critical paths, cross-file structural changes
-})
+RISK_LEVELS = frozenset(
+    {
+        "none",  # No actual change (failed bash command, read-only)
+        "cosmetic",  # Docs, comments, formatting only
+        "moderate",  # Normal code changes
+        "structural",  # Function/class signatures changed, new files
+        "architectural",  # Pipeline-critical paths, cross-file structural changes
+    }
+)
 
 
 @dataclass
@@ -219,10 +227,12 @@ class ProjectConfig:
     extra_tier3_linters: list[str] = field(default_factory=list)
     tool_version_requirements: dict[str, str] = field(default_factory=dict)
     path_policies: list[dict[str, Any]] = field(default_factory=list)
-    debounce: dict[str, float] = field(default_factory=lambda: {
-        "tier_0": 0.0,
-        "tier_1": 2.0,
-        "tier_2": 3.0,
-        "tier_3": 5.0,
-    })
+    debounce: dict[str, float] = field(
+        default_factory=lambda: {
+            "tier_0": 0.0,
+            "tier_1": 2.0,
+            "tier_2": 3.0,
+            "tier_3": 5.0,
+        }
+    )
     total_timeout_ms: int = 8000

@@ -54,9 +54,7 @@ class ImportChecker(BaseLinter):
         for filepath in ctx.files:
             yield from self._check_file_imports(filepath, ctx)
 
-    def _check_file_imports(
-        self, filepath: str, ctx: LinterContext
-    ) -> Iterable[LintIssue]:
+    def _check_file_imports(self, filepath: str, ctx: LinterContext) -> Iterable[LintIssue]:
         """Parse a file's imports and verify they resolve."""
         try:
             with open(filepath) as f:
@@ -134,9 +132,7 @@ class ImportChecker(BaseLinter):
 
         return any(os.path.exists(c) for c in local_candidates)
 
-    def _run_custom(
-        self, command: str, ctx: LinterContext
-    ) -> Iterable[LintIssue]:
+    def _run_custom(self, command: str, ctx: LinterContext) -> Iterable[LintIssue]:
         """Run a user-defined import verification command."""
         import shlex
 

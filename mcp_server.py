@@ -73,14 +73,16 @@ except ModuleNotFoundError:
     from lintgate.versioning import format_version_audit_summary, run_version_audit
 
 _MCP_INSTRUCTIONS = (
-    "LintGate v0.2: intelligent change-aware linting with remediation, telemetry, "
-    "and ControlPlane supervision mesh. "
-    "Workflow: lint_files/lint_project → lint_get_details (drill-down by run_id) → "
+    "LintGate v0.2: real-time quality supervision for AI-generated code. "
+    "28 MCP tools for linting, behavioral drift detection, theory extraction, "
+    "and the Architecture of Inquiry. "
+    "Start: build_theory_pack (orient) → controlplane_run (full supervision mesh) → "
+    "behavior_precheck (register predictions before Bash). "
+    "Lint workflow: lint_files/lint_project → lint_get_details (drill-down) → "
     "lint_fix (auto-fix safe issues). "
-    "All lint responses include next_actions with suggested follow-up tools. "
-    "Use telemetry_summary for ROI tracking, controlplane_run for multi-channel "
-    "supervision (lint+tests+deps+git), dep_health_check/dep_sync for dependency "
-    "management, and bootstrap_context_files/extract_project_theory for context docs."
+    "All responses include next_actions. "
+    "Living context: context_patch_review → context_patch_apply to evolve CLAUDE.md. "
+    "See AGENTS.md for tools by cognitive mode, SKILL.md for quick orientation."
 )
 
 
@@ -107,8 +109,14 @@ mcp = _build_mcp_server()
 
 TIER_LINTERS = {
     0: ["ruff_check"],
-    1: ["ruff_check", "ruff_format", "import_checker", "version_checker",
-        "context_rule_checker", "redefinition_checker"],
+    1: [
+        "ruff_check",
+        "ruff_format",
+        "import_checker",
+        "version_checker",
+        "context_rule_checker",
+        "redefinition_checker",
+    ],
     2: [
         "ruff_check",
         "ruff_format",
@@ -254,13 +262,15 @@ def _collect_all_issues(aggregated: Any) -> list[LintIssue]:
 def _build_linter_diagnostics(results: list[Any]) -> list[dict[str, Any]]:
     diagnostics = []
     for result in sorted(results, key=lambda r: r.linter_name):
-        diagnostics.append({
-            "linter": result.linter_name,
-            "status": result.status,
-            "issue_count": len(result.issues),
-            "duration_ms": round(result.duration_ms, 1),
-            "error": result.error,
-        })
+        diagnostics.append(
+            {
+                "linter": result.linter_name,
+                "status": result.status,
+                "issue_count": len(result.issues),
+                "duration_ms": round(result.duration_ms, 1),
+                "error": result.error,
+            }
+        )
     return diagnostics
 
 
@@ -275,37 +285,42 @@ def _build_next_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
     fixable = context.get("fixable", 0)
     run_id = context.get("run_id", "")
     warnings = context.get("warnings", 0)
-    informational = context.get("informational", 0)
 
     # If there are fixable issues, suggest lint_fix
     if fixable > 0:
-        actions.append({
-            "tool": "lint_fix",
-            "args": {"path": context.get("project", ""), "dry_run": True},
-            "safe": True,
-            "reason": f"{fixable} auto-fixable issue{'s' if fixable != 1 else ''}",
-            "priority": 1,
-        })
+        actions.append(
+            {
+                "tool": "lint_fix",
+                "args": {"path": context.get("project", ""), "dry_run": True},
+                "safe": True,
+                "reason": f"{fixable} auto-fixable issue{'s' if fixable != 1 else ''}",
+                "priority": 1,
+            }
+        )
 
     # If there are blocking issues and a run_id, suggest drill-down
     if blocking > 0 and run_id:
-        actions.append({
-            "tool": "lint_get_details",
-            "args": {"run_id": run_id, "severity": "blocking"},
-            "safe": True,
-            "reason": f"View {blocking} blocking issue details",
-            "priority": 2,
-        })
+        actions.append(
+            {
+                "tool": "lint_get_details",
+                "args": {"run_id": run_id, "severity": "blocking"},
+                "safe": True,
+                "reason": f"View {blocking} blocking issue details",
+                "priority": 2,
+            }
+        )
 
     # If many warnings, suggest details
     if warnings > 5 and run_id:
-        actions.append({
-            "tool": "lint_get_details",
-            "args": {"run_id": run_id, "severity": "warning"},
-            "safe": True,
-            "reason": f"View {warnings} warning details",
-            "priority": 3,
-        })
+        actions.append(
+            {
+                "tool": "lint_get_details",
+                "args": {"run_id": run_id, "severity": "warning"},
+                "safe": True,
+                "reason": f"View {warnings} warning details",
+                "priority": 3,
+            }
+        )
 
     return actions
 
@@ -415,19 +430,21 @@ def _run_lint(
 
     # Log metric.
     with contextlib.suppress(Exception):
-        log_metric({
-            "event": "mcp_lint_run",
-            "project": project_root,
-            "tier": lint_tier.name,
-            "files_count": len(files),
-            "blocking_count": len(aggregated.blocking),
-            "warning_count": len(aggregated.warnings),
-            "info_count": len(aggregated.informational),
-            "linters_run": aggregated.metrics.get("linters_run", 0),
-            "duration_ms": round(elapsed_ms, 1),
-            "repeated_issue_count": recurrence.get("repeated_issue_count", 0),
-            "output_mode": output_mode,
-        })
+        log_metric(
+            {
+                "event": "mcp_lint_run",
+                "project": project_root,
+                "tier": lint_tier.name,
+                "files_count": len(files),
+                "blocking_count": len(aggregated.blocking),
+                "warning_count": len(aggregated.warnings),
+                "info_count": len(aggregated.informational),
+                "linters_run": aggregated.metrics.get("linters_run", 0),
+                "duration_ms": round(elapsed_ms, 1),
+                "repeated_issue_count": recurrence.get("repeated_issue_count", 0),
+                "output_mode": output_mode,
+            }
+        )
 
     # ── Build response based on output_mode ──
 
@@ -525,7 +542,10 @@ def lint_files(
         raise ValueError(f"No specified files exist. Missing: {missing}")
 
     result = _run_lint(
-        existing, resolved_project_root, int(tier), strictness,
+        existing,
+        resolved_project_root,
+        int(tier),
+        strictness,
         output_mode="compact",
     )
     if missing:
@@ -552,7 +572,10 @@ def lint_project(
         raise ValueError(f"No Python files found under: {project_root}")
 
     result = _run_lint(
-        py_files, project_root, int(tier), strictness,
+        py_files,
+        project_root,
+        int(tier),
+        strictness,
         output_mode="compact",
     )
     result["total_python_files"] = len(py_files)
@@ -583,7 +606,9 @@ def lint_get_details(
 
     valid_severities = {"blocking", "warning", "informational", None}
     if severity not in valid_severities:
-        raise ValueError(f"Invalid severity '{severity}'; expected one of: blocking, warning, informational")
+        raise ValueError(
+            f"Invalid severity '{severity}'; expected one of: blocking, warning, informational"
+        )
 
     output: dict[str, Any] = {
         "run_id": run_id,
@@ -731,13 +756,15 @@ def audit_tool_versions(
         save_version_audit(project_root, audit)
 
     with contextlib.suppress(Exception):
-        log_version_event({
-            "event": "audit_tool_versions",
-            "project": project_root,
-            "auto_fix": auto_fix,
-            "issue_count": summary.get("issue_count", 0),
-            "post_fix_issue_count": summary.get("post_fix_issue_count"),
-        })
+        log_version_event(
+            {
+                "event": "audit_tool_versions",
+                "project": project_root,
+                "auto_fix": auto_fix,
+                "issue_count": summary.get("issue_count", 0),
+                "post_fix_issue_count": summary.get("post_fix_issue_count"),
+            }
+        )
 
     return json.dumps(
         {
@@ -770,6 +797,7 @@ def audit_context_health(path: str) -> str:
     Configure thresholds in lintgate.yaml under linters.context_auditor.
     """
     from lintgate.context_auditor import audit_context_health as _audit
+
     return json.dumps(_audit(_validate_project_root(path)), indent=2)
 
 
@@ -806,6 +834,163 @@ def bootstrap_context_files(
 
 
 @mcp.tool()
+def context_patch_review(path: str) -> str:
+    """Review pending context patches for CLAUDE.md managed sections.
+
+    Shows pending patches with diff previews. Agent or user must
+    explicitly call apply to write changes.
+
+    Args:
+        path: Project root path.
+    """
+    from lintgate.context_bootstrap import ContextPatch, apply_context_patch, generate_context_patch
+    from lintgate.controlplane.session_memory import get_or_create_session
+
+    project_root = _validate_project_root(path)
+    session = get_or_create_session(project_root)
+
+    pending = [p for p in session.pending_patches if p.get("status", "pending") == "pending"]
+
+    if not pending:
+        return json.dumps({"pending_count": 0, "message": "No pending context patches."}, indent=2)
+
+    previews = []
+    for p_dict in pending:
+        patch = ContextPatch.from_dict(p_dict)
+        # Rebuild patch from current file state so preview reflects cumulative changes.
+        refreshed = generate_context_patch(
+            project_root,
+            trigger=patch.trigger,
+            evidence=patch.evidence,
+        )
+        if refreshed is None:
+            previews.append(
+                {
+                    "patch_id": patch.patch_id,
+                    "section_id": patch.section_id,
+                    "trigger": patch.trigger,
+                    "rationale": patch.rationale,
+                    "diff_preview": None,
+                    "status": "no_op",
+                }
+            )
+            continue
+
+        # Preserve original patch id for stable review/apply UX.
+        refreshed.patch_id = patch.patch_id
+        preview = apply_context_patch(project_root, refreshed, dry_run=True)
+        previews.append(
+            {
+                "patch_id": refreshed.patch_id,
+                "section_id": refreshed.section_id,
+                "trigger": refreshed.trigger,
+                "rationale": refreshed.rationale,
+                "diff_preview": preview.get("diff_preview"),
+                "status": "pending",
+            }
+        )
+
+    return json.dumps(
+        {
+            "pending_count": len(pending),
+            "patches": previews,
+            "next_actions": [
+                {
+                    "tool": "context_patch_apply",
+                    "reason": "Apply pending context patches explicitly",
+                    "args": {"path": path},
+                }
+            ],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+def context_patch_apply(
+    path: str,
+    patch_ids: list[str] | None = None,
+    dry_run: bool = False,
+) -> str:
+    """Apply pending context patches to CLAUDE.md managed sections.
+
+    By default applies all pending patches. Pass patch_ids to apply specific ones.
+
+    Args:
+        path: Project root path.
+        patch_ids: Specific patch IDs to apply. If None, applies all pending.
+        dry_run: Preview changes without writing (default False).
+    """
+    from lintgate.context_bootstrap import ContextPatch, apply_context_patch, generate_context_patch
+    from lintgate.controlplane.session_memory import get_or_create_session, save_session
+
+    project_root = _validate_project_root(path)
+    session = get_or_create_session(project_root)
+
+    pending = [p for p in session.pending_patches if p.get("status", "pending") == "pending"]
+
+    if patch_ids is not None:
+        pending = [p for p in pending if p.get("patch_id") in patch_ids]
+
+    if not pending:
+        return json.dumps({"applied": 0, "message": "No matching pending patches."}, indent=2)
+
+    results = []
+    for p_dict in pending:
+        patch = ContextPatch.from_dict(p_dict)
+
+        # Rebuild patch from latest on-disk CLAUDE.md before applying.
+        # This prevents stale patch.new_content from clobbering earlier
+        # patches when multiple pending patches target the same section.
+        refreshed = generate_context_patch(
+            project_root,
+            trigger=patch.trigger,
+            evidence=patch.evidence,
+        )
+        if refreshed is None:
+            # No-op means already reflected or not applicable anymore.
+            results.append(
+                {
+                    "patch_id": patch.patch_id,
+                    "section_id": patch.section_id,
+                    "applied": False,
+                    "status": "no_op",
+                    "diff_preview": None,
+                }
+            )
+            if not dry_run:
+                p_dict["status"] = "applied"
+            continue
+
+        refreshed.patch_id = patch.patch_id
+        result = apply_context_patch(project_root, refreshed, dry_run=dry_run)
+        results.append(
+            {
+                "patch_id": refreshed.patch_id,
+                "section_id": refreshed.section_id,
+                "applied": result.get("applied", False),
+                "status": "applied" if result.get("applied", False) else "pending",
+                "diff_preview": result.get("diff_preview"),
+            }
+        )
+        if result.get("applied") and not dry_run:
+            # Mark patch as applied in session
+            p_dict["status"] = "applied"
+
+    if not dry_run:
+        save_session(session)
+
+    return json.dumps(
+        {
+            "dry_run": dry_run,
+            "applied": sum(1 for r in results if r["applied"]),
+            "results": results,
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
 def extract_theory_constraints(path: str) -> str:
     """Extract enforceable lint rules from CLAUDE.md/AGENTS.md prose directives.
 
@@ -814,6 +999,7 @@ def extract_theory_constraints(path: str) -> str:
     Returns proposed rules with copy-paste-ready lines for CLAUDE.md.
     """
     from lintgate.theory_extractor import extract_theory
+
     result = extract_theory(_validate_project_root(path))
     # Return just the enforceable rules for backward compat
     return json.dumps(result["enforceable_rules"], indent=2)
@@ -836,6 +1022,7 @@ def extract_project_theory(path: str) -> str:
     changes, or to detect drift from the project's theory.
     """
     from lintgate.theory_extractor import extract_theory
+
     return json.dumps(extract_theory(_validate_project_root(path)), indent=2)
 
 
@@ -857,6 +1044,7 @@ def build_theory_pack(
     context for ongoing sessions.
     """
     from lintgate.theory_extractor import build_theory_pack as _build
+
     return json.dumps(
         _build(
             _validate_project_root(path),
@@ -891,9 +1079,9 @@ def get_theory_context(
         raise ValueError("max_claims must be > 0")
 
     from lintgate.theory_extractor import get_theory_context as _get
+
     return json.dumps(
-        _get(_validate_project_root(path), facet=facet,
-             keywords=keywords, max_claims=max_claims),
+        _get(_validate_project_root(path), facet=facet, keywords=keywords, max_claims=max_claims),
         indent=2,
     )
 
@@ -912,6 +1100,7 @@ def dep_health_check(path: str) -> str:
     Returns a structured report with issues and suggestions.
     """
     from lintgate.dependency_health import full_dependency_health
+
     project_root = _validate_project_root(path)
     return json.dumps(full_dependency_health(project_root), indent=2)
 
@@ -939,30 +1128,40 @@ def dep_sync(
 
     # Check current state
     from lintgate.dependency_health import full_dependency_health
+
     health = full_dependency_health(project_root)
     result["health_before"] = health["summary"]
 
     uv_path = shutil.which("uv")
     if not uv_path:
-        result["error"] = "uv not found in PATH — install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        result["error"] = (
+            "uv not found in PATH — install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        )
         return json.dumps(result, indent=2)
 
     if create_venv:
         venv_path = root / ".venv"
         if venv_path.exists():
-            result["actions"].append({"action": "create_venv", "status": "skipped", "reason": ".venv already exists"})
+            result["actions"].append(
+                {"action": "create_venv", "status": "skipped", "reason": ".venv already exists"}
+            )
         else:
             try:
                 proc = subprocess.run(
                     [uv_path, "venv", ".venv"],
-                    capture_output=True, text=True, timeout=60, cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=project_root,
                 )
-                result["actions"].append({
-                    "action": "create_venv",
-                    "status": "ok" if proc.returncode == 0 else "error",
-                    "returncode": proc.returncode,
-                    "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
-                })
+                result["actions"].append(
+                    {
+                        "action": "create_venv",
+                        "status": "ok" if proc.returncode == 0 else "error",
+                        "returncode": proc.returncode,
+                        "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
+                    }
+                )
             except subprocess.TimeoutExpired:
                 result["actions"].append({"action": "create_venv", "status": "timeout"})
 
@@ -970,14 +1169,19 @@ def dep_sync(
         try:
             proc = subprocess.run(
                 [uv_path, "lock"],
-                capture_output=True, text=True, timeout=120, cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=project_root,
             )
-            result["actions"].append({
-                "action": "lock",
-                "status": "ok" if proc.returncode == 0 else "error",
-                "returncode": proc.returncode,
-                "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
-            })
+            result["actions"].append(
+                {
+                    "action": "lock",
+                    "status": "ok" if proc.returncode == 0 else "error",
+                    "returncode": proc.returncode,
+                    "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
+                }
+            )
         except subprocess.TimeoutExpired:
             result["actions"].append({"action": "lock", "status": "timeout"})
 
@@ -1133,6 +1337,7 @@ def controlplane_run(
     if cp_config.session_memory:
         with contextlib.suppress(Exception):
             from lintgate.controlplane.session_memory import get_or_create_session
+
             session = get_or_create_session(project_root, cp_config.session_max_age_hours)
 
     # Inject behavior compass into event for BehaviorChannel
@@ -1190,9 +1395,15 @@ def controlplane_run(
                     continue
                 compass = load_behavior_compass(session)
                 compass.last_fired = delta.get("last_fired", compass.last_fired)
-                compass.signal_fire_counts = delta.get("signal_fire_counts", compass.signal_fire_counts)
-                compass.early_nudge_emitted = delta.get("early_nudge_emitted", compass.early_nudge_emitted)
-                compass.pending_nudge_signals = delta.get("pending_nudge_signals", compass.pending_nudge_signals)
+                compass.signal_fire_counts = delta.get(
+                    "signal_fire_counts", compass.signal_fire_counts
+                )
+                compass.early_nudge_emitted = delta.get(
+                    "early_nudge_emitted", compass.early_nudge_emitted
+                )
+                compass.pending_nudge_signals = delta.get(
+                    "pending_nudge_signals", compass.pending_nudge_signals
+                )
                 compass.pending_nudge_precheck_count = delta.get(
                     "pending_nudge_precheck_count",
                     compass.pending_nudge_precheck_count,
@@ -1210,6 +1421,7 @@ def controlplane_run(
                                 load_global_profile,
                                 save_global_profile,
                             )
+
                             _gp = load_global_profile(ttl_days=cp_config.global_memory_ttl_days)
                             _sid = session.session_id if session else ""
                             apply_session_delta(_gp, gp_delta, session_id=_sid)
@@ -1269,7 +1481,9 @@ def controlplane_get_details(
     if details is None:
         raise ValueError(f"No ControlPlane run found with run_id: {run_id}")
 
-    sections_set = set(sections or ["findings", "channel_details", "evidence", "repairs", "coherence"])
+    sections_set = set(
+        sections or ["findings", "channel_details", "evidence", "repairs", "coherence"]
+    )
     output: dict[str, Any] = {"run_id": run_id, "duration_ms": details.get("duration_ms", 0)}
 
     if "coherence" in sections_set:
@@ -1334,6 +1548,7 @@ def controlplane_status(path: str | None = None) -> str:
     and the current config settings.
     """
     from lintgate.config import load_controlplane_config
+
     project_root = _validate_project_root(path) if path else os.getcwd()
 
     status: dict[str, Any] = {
@@ -1365,13 +1580,16 @@ def controlplane_status(path: str | None = None) -> str:
         if cp_config.session_memory:
             with contextlib.suppress(Exception):
                 from lintgate.controlplane.session_memory import load_session
+
                 session = load_session(project_root)
                 if session:
                     status["session"] = {
                         "session_id": session.session_id,
                         "runs": len(session.snapshots),
                         "coherence_trajectory": session.coherence_trajectory[-5:],
-                        "pending_repairs": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
+                        "pending_repairs": sum(
+                            1 for v in session.repair_outcomes.values() if v == "pending"
+                        ),
                         "proposed_constraints": len(session.proposed_constraints),
                         "active_proposals": sum(
                             1 for c in session.proposed_constraints if c.get("status") == "proposed"
@@ -1423,12 +1641,15 @@ def controlplane_test_skeleton(
     skeleton = generate_test_skeleton(target_file, project_root=project_root)
     test_path = generate_test_path(target_file, project_root)
 
-    return json.dumps({
-        "source_file": target_file,
-        "test_path": test_path,
-        "skeleton": skeleton,
-        "note": "Review and customize before saving. Use Write tool to create the file.",
-    }, indent=2)
+    return json.dumps(
+        {
+            "source_file": target_file,
+            "test_path": test_path,
+            "skeleton": skeleton,
+            "note": "Review and customize before saving. Use Write tool to create the file.",
+        },
+        indent=2,
+    )
 
 
 # ─── Session Memory Tools ────────────────────────────────────────────────
@@ -1466,13 +1687,16 @@ def controlplane_report_repair(
     report_repair_outcome(session, action_id, outcome)
     save_session(session)
 
-    return json.dumps({
-        "action_id": action_id,
-        "outcome": outcome,
-        "session_id": session.session_id,
-        "pending_repairs": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
-        "total_repairs_tracked": len(session.repair_outcomes),
-    }, indent=2)
+    return json.dumps(
+        {
+            "action_id": action_id,
+            "outcome": outcome,
+            "session_id": session.session_id,
+            "pending_repairs": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
+            "total_repairs_tracked": len(session.repair_outcomes),
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1507,38 +1731,68 @@ def controlplane_agent_feedback(
 
     # Record disagreement
     if disagreement:
-        session.agent_disagreements.append({
-            "run_id": run_id or "unknown",
-            "disagreement": disagreement,
-            "timestamp": time.time(),
-        })
+        session.agent_disagreements.append(
+            {
+                "run_id": run_id or "unknown",
+                "disagreement": disagreement,
+                "timestamp": time.time(),
+            }
+        )
         actions_taken.append(f"Recorded disagreement: {disagreement[:100]}")
 
     # Accept constraints
-    for key in (accepted_constraints or []):
+    accepted_rules: list[str] = []
+    for key in accepted_constraints or []:
         if update_constraint_status(session, key, "accepted"):
             actions_taken.append(f"Accepted constraint: {key}")
+            # Find the accepted rule text for patch generation
+            for p in session.proposed_constraints:
+                if p.get("pattern_key") == key and p.get("status") == "accepted":
+                    rule_text = p.get("proposed_rule", "")
+                    if rule_text:
+                        accepted_rules.append(rule_text)
+                    break
         else:
             actions_taken.append(f"Constraint not found: {key}")
 
     # Reject constraints
-    for key in (rejected_constraints or []):
+    for key in rejected_constraints or []:
         if update_constraint_status(session, key, "rejected"):
             actions_taken.append(f"Rejected constraint: {key}")
         else:
             actions_taken.append(f"Constraint not found: {key}")
 
+    # Generate context patches for accepted constraints (living context)
+    from lintgate.config import load_controlplane_config
+
+    cp_config = load_controlplane_config(project_root)
+    if cp_config and cp_config.inquiry.living_context and accepted_rules:
+        from lintgate.context_bootstrap import generate_context_patch
+
+        for rule_text in accepted_rules:
+            patch = generate_context_patch(
+                project_root,
+                trigger="constraint_accepted",
+                evidence={"rule": rule_text, "rationale": "Accepted via agent feedback"},
+            )
+            if patch is not None:
+                session.pending_patches.append(patch.to_dict())
+                actions_taken.append(f"Generated context patch: {patch.patch_id}")
+
     save_session(session)
 
-    return json.dumps({
-        "session_id": session.session_id,
-        "actions_taken": actions_taken,
-        "total_disagreements": len(session.agent_disagreements),
-        "proposed_constraints": len(session.proposed_constraints),
-        "active_proposals": sum(
-            1 for c in session.proposed_constraints if c.get("status") == "proposed"
-        ),
-    }, indent=2)
+    return json.dumps(
+        {
+            "session_id": session.session_id,
+            "actions_taken": actions_taken,
+            "total_disagreements": len(session.agent_disagreements),
+            "proposed_constraints": len(session.proposed_constraints),
+            "active_proposals": sum(
+                1 for c in session.proposed_constraints if c.get("status") == "proposed"
+            ),
+        },
+        indent=2,
+    )
 
 
 # ─── Remediation: Apply Repairs ──────────────────────────────────────────
@@ -1588,7 +1842,13 @@ def controlplane_apply_repairs(
     results: list[dict[str, Any]] = []
     for repair in pending_repairs:
         if repair.get("kind") != "command":
-            results.append({"action_id": repair.get("action_id"), "status": "skipped", "reason": "not a command"})
+            results.append(
+                {
+                    "action_id": repair.get("action_id"),
+                    "status": "skipped",
+                    "reason": "not a command",
+                }
+            )
             continue
 
         payload = repair.get("payload", {})
@@ -1596,35 +1856,60 @@ def controlplane_apply_repairs(
         cwd = payload.get("cwd", project_root)
 
         if not command:
-            results.append({"action_id": repair.get("action_id"), "status": "skipped", "reason": "empty command"})
+            results.append(
+                {
+                    "action_id": repair.get("action_id"),
+                    "status": "skipped",
+                    "reason": "empty command",
+                }
+            )
             continue
 
         try:
             proc = subprocess.run(
                 command.split(),
-                capture_output=True, text=True, timeout=60, cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=cwd,
             )
             status = "ok" if proc.returncode == 0 else "error"
-            results.append({
-                "action_id": repair.get("action_id"),
-                "command": command,
-                "status": status,
-                "returncode": proc.returncode,
-                "stderr": proc.stderr.strip()[-300:] if proc.stderr else None,
-            })
-            report_repair_outcome(session, repair.get("action_id", ""), "applied" if status == "ok" else "ignored")
+            results.append(
+                {
+                    "action_id": repair.get("action_id"),
+                    "command": command,
+                    "status": status,
+                    "returncode": proc.returncode,
+                    "stderr": proc.stderr.strip()[-300:] if proc.stderr else None,
+                }
+            )
+            report_repair_outcome(
+                session, repair.get("action_id", ""), "applied" if status == "ok" else "ignored"
+            )
         except subprocess.TimeoutExpired:
-            results.append({"action_id": repair.get("action_id"), "command": command, "status": "timeout"})
+            results.append(
+                {"action_id": repair.get("action_id"), "command": command, "status": "timeout"}
+            )
         except OSError as e:
-            results.append({"action_id": repair.get("action_id"), "command": command, "status": "error", "error": str(e)})
+            results.append(
+                {
+                    "action_id": repair.get("action_id"),
+                    "command": command,
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
 
     save_session(session)
 
-    return json.dumps({
-        "repairs_executed": len(results),
-        "results": results,
-        "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
-    }, indent=2)
+    return json.dumps(
+        {
+            "repairs_executed": len(results),
+            "results": results,
+            "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
+        },
+        indent=2,
+    )
 
 
 # ─── Telemetry Tools ────────────────────────────────────────────────────
@@ -1657,6 +1942,9 @@ def behavior_precheck(
     path: str,
     planned_action: str,
     known_constraints: list[str] | None = None,
+    prediction: str | None = None,
+    prediction_type: str | None = None,
+    prediction_value: str | int | None = None,
 ) -> str:
     """Check planned action against known behavioral constraints.
 
@@ -1668,11 +1956,17 @@ def behavior_precheck(
         path: Project root path.
         planned_action: Free text describing the planned action.
         known_constraints: Agent's self-reported constraints for this action.
+        prediction: Optional free-text description of expected outcome.
+        prediction_type: Type of prediction: "exit_code", "error_signature", or "stdout_contains".
+        prediction_value: The expected value for the prediction.
     """
     from lintgate.config import load_controlplane_config
     from lintgate.controlplane.behavior_compass import (
+        Prediction,
+        PredictionExpectation,
         add_declared_hypothesis,
         compute_coverage,
+        compute_prediction_accuracy,
         compute_uncertainty_zones,
         find_relevant_hypotheses,
         normalize_command_sig,
@@ -1710,6 +2004,42 @@ def behavior_precheck(
     for claim in declared:
         add_declared_hypothesis(compass, claim, command_sig)
 
+    # Register prediction if provided and action involves Bash/execute
+    _is_bash_action = any(
+        kw in planned_action.lower()
+        for kw in ("bash", "execute", "run", "command", "shell", "npm", "pip", "git", "make")
+    )
+    prediction_registered = False
+    _valid_prediction_types = {"exit_code", "error_signature", "stdout_contains"}
+    if (
+        prediction
+        and prediction_type
+        and prediction_value is not None
+        and _is_bash_action
+        and prediction_type in _valid_prediction_types
+        and command_sig
+        and command_sig != "unknown:unknown"
+    ):
+        import uuid
+
+        exp = PredictionExpectation(
+            type=prediction_type,
+            value=prediction_value,
+        )
+        # Link to most relevant hypothesis if available
+        linked_hyp_id = relevant[0].id if relevant else None
+
+        pred_obj = Prediction(
+            prediction_id=uuid.uuid4().hex[:8],
+            claim=prediction,
+            expected=exp,
+            declared_at_event=compass.event_counter,
+            declared_sig=command_sig,
+            linked_hypothesis_id=linked_hyp_id,
+        )
+        compass.pending_predictions.append(pred_obj)
+        prediction_registered = True
+
     # Compute coverage gap
     matched_relevant_ids: set[str] = set()
     for claim in declared:
@@ -1738,11 +2068,13 @@ def behavior_precheck(
             approach_binary = a.approach_sig.split(":")[0] if ":" in a.approach_sig else ""
             if binary and binary == approach_binary:
                 last_err = a.error_sigs[-1] if a.error_sigs else ""
-                similar_failures.append({
-                    "sig": a.approach_sig,
-                    "count": a.event_count,
-                    "error": last_err[:80],
-                })
+                similar_failures.append(
+                    {
+                        "sig": a.approach_sig,
+                        "count": a.event_count,
+                        "error": last_err[:80],
+                    }
+                )
 
     # Build recommendation
     parts = []
@@ -1753,10 +2085,14 @@ def behavior_precheck(
     if uncertainty:
         parts.append(f"{len(uncertainty)} uncertainty zone{'s' if len(uncertainty) != 1 else ''}")
     if similar_failures:
-        parts.append(f"{len(similar_failures)} similar past failure{'s' if len(similar_failures) != 1 else ''}")
+        parts.append(
+            f"{len(similar_failures)} similar past failure{'s' if len(similar_failures) != 1 else ''}"
+        )
 
     if parts:
-        recommendation = ". ".join(parts) + ". Consider researching uncertainty zones before acting."
+        recommendation = (
+            ". ".join(parts) + ". Consider researching uncertainty zones before acting."
+        )
     else:
         recommendation = "Good constraint coverage. Proceed with awareness of known constraints."
 
@@ -1782,13 +2118,42 @@ def behavior_precheck(
         "recommendation": recommendation,
     }
 
+    # Prediction tracking section
+    pred_accuracy = compute_prediction_accuracy(compass)
+    checked_count = len(
+        [e for e in compass.prediction_log if e.get("status") in ("confirmed", "falsified")]
+    )
+    prediction_section: dict[str, Any] = {
+        "pending_count": len(compass.pending_predictions),
+        "checked_count": checked_count,
+        "prediction_registered": prediction_registered,
+    }
+    if pred_accuracy is not None:
+        prediction_section["accuracy"] = round(pred_accuracy, 2)
+    else:
+        prediction_section["accuracy"] = None
+        if checked_count > 0:
+            prediction_section["accuracy_note"] = (
+                f"Need {5 - checked_count} more checked predictions for accuracy"
+            )
+    # Recent prediction outcomes (last 5)
+    recent_outcomes = compass.prediction_log[-5:] if compass.prediction_log else []
+    if recent_outcomes:
+        prediction_section["recent_outcomes"] = [
+            {"id": o.get("prediction_id", "?"), "status": o.get("status", "?")}
+            for o in recent_outcomes
+        ]
+    output["prediction_tracking"] = prediction_section
+
     next_actions = []
     if coverage_gap > 0 or recall < 0.5:
-        next_actions.append({
-            "tool": "behavior_precheck",
-            "reason": "Re-run after researching uncertainty zones",
-            "priority": 1,
-        })
+        next_actions.append(
+            {
+                "tool": "behavior_precheck",
+                "reason": "Re-run after researching uncertainty zones",
+                "priority": 1,
+            }
+        )
 
     if next_actions:
         output["next_actions"] = next_actions
@@ -1874,11 +2239,13 @@ def global_memory_reset(path: str) -> str:
     )
 
     save_global_profile(GlobalBehaviorProfile())
-    return _json_dumps({
-        "status": "reset",
-        "profile_path": str(GLOBAL_PROFILE_PATH),
-        "message": "Global behavior profile has been reset to empty state.",
-    })
+    return _json_dumps(
+        {
+            "status": "reset",
+            "profile_path": str(GLOBAL_PROFILE_PATH),
+            "message": "Global behavior profile has been reset to empty state.",
+        }
+    )
 
 
 # ─── Entry point ────────────────────────────────────────────────────────

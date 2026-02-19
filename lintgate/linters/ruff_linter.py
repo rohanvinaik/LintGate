@@ -16,26 +16,30 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 # Ruff error codes that should be blocking (prevent proceeding)
-_BLOCKING_CODES = frozenset({
-    # Pyflakes errors (undefined names, unused imports in certain contexts)
-    "F821",  # Undefined name
-    "F811",  # Redefinition of unused name
-    "F841",  # Local variable assigned but never used (in strict mode)
-    # Syntax errors
-    "E999",  # Syntax error
-})
+_BLOCKING_CODES = frozenset(
+    {
+        # Pyflakes errors (undefined names, unused imports in certain contexts)
+        "F821",  # Undefined name
+        "F811",  # Redefinition of unused name
+        "F841",  # Local variable assigned but never used (in strict mode)
+        # Syntax errors
+        "E999",  # Syntax error
+    }
+)
 
 # Ruff error codes that are informational (learning signal, not actionable)
-_INFORMATIONAL_CODES = frozenset({
-    "E501",  # Line too long
-    "W291",  # Trailing whitespace
-    "W292",  # No newline at end of file
-    "W293",  # Whitespace before ':'
-    "D100",  # Missing docstring in public module
-    "D101",  # Missing docstring in public class
-    "D102",  # Missing docstring in public method
-    "D103",  # Missing docstring in public function
-})
+_INFORMATIONAL_CODES = frozenset(
+    {
+        "E501",  # Line too long
+        "W291",  # Trailing whitespace
+        "W292",  # No newline at end of file
+        "W293",  # Whitespace before ':'
+        "D100",  # Missing docstring in public module
+        "D101",  # Missing docstring in public class
+        "D102",  # Missing docstring in public method
+        "D103",  # Missing docstring in public function
+    }
+)
 
 
 class RuffLinter(BaseLinter):
@@ -54,8 +58,10 @@ class RuffLinter(BaseLinter):
         """Run ruff check with JSON output on specified files."""
 
         cmd = [
-            "ruff", "check",
-            "--output-format", "json",
+            "ruff",
+            "check",
+            "--output-format",
+            "json",
             "--no-fix",  # Don't auto-fix, just report
         ]
 

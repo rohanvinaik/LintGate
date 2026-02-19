@@ -50,59 +50,111 @@ _MAX_MD_FILES = 100
 # explicitly in _discover_md_files(). This avoids picking up session
 # transcripts and temp files while still finding theory in rules docs.
 _SKIP_DIRS = {
-    ".git", "node_modules", ".venv", "venv", "__pycache__", ".tox",
-    "dist", "build", ".eggs", ".mypy_cache", ".pytest_cache",
-    "downloaded", ".claude",
+    ".git",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".tox",
+    "dist",
+    "build",
+    ".eggs",
+    ".mypy_cache",
+    ".pytest_cache",
+    "downloaded",
+    ".claude",
 }
 
 # Heading patterns that signal theory-relevant sections
 _THEORY_HEADING_SIGNALS: dict[str, list[str]] = {
     "core_theory": [
-        r"theor", r"abstract", r"introduction", r"foundation",
-        r"what (?:this|it) is", r"overview", r"definition",
+        r"theor",
+        r"abstract",
+        r"introduction",
+        r"foundation",
+        r"what (?:this|it) is",
+        r"overview",
+        r"definition",
         r"core (?:insight|concept|idea|principle)",
-        r"key insight", r"fundamental",
-        r"hypothesis", r"research question", r"motivation",
-        r"framing", r"scope and stance",
+        r"key insight",
+        r"fundamental",
+        r"hypothesis",
+        r"research question",
+        r"motivation",
+        r"framing",
+        r"scope and stance",
     ],
     "problem_solving": [
-        r"approach", r"method", r"strateg", r"heuristic",
+        r"approach",
+        r"method",
+        r"strateg",
+        r"heuristic",
         r"how (?:it|we|this) (?:work|solv|think|approach)",
-        r"algorithm", r"pipeline", r"workflow", r"process",
-        r"walkthrough", r"technique",
-        r"lesson", r"recommendation", r"what worked",
+        r"algorithm",
+        r"pipeline",
+        r"workflow",
+        r"process",
+        r"walkthrough",
+        r"technique",
+        r"lesson",
+        r"recommendation",
+        r"what worked",
         r"practical guidance",
     ],
     "alignment": [
-        r"alignment", r"proper.*(?:vs|versus).*improper",
+        r"alignment",
+        r"proper.*(?:vs|versus).*improper",
         r"(?:wrong|correct|right|good|bad)\s+(?:vs|versus|and|example)",
         r"example.*(?:wrong|correct|proper|improper)",
         r"(?:what|how).*(?:good|right|correct).*look",
         r"(?:why|how).*matters?",
-        r"non[- ]?goal", r"scope",
-        r"what could be better", r"what .* gets right",
+        r"non[- ]?goal",
+        r"scope",
+        r"what could be better",
+        r"what .* gets right",
     ],
     "architecture": [
-        r"architect", r"design", r"system", r"structure",
-        r"why (?:this|we|not)", r"rationale", r"trade-?off",
-        r"comparison", r"alternative",
-        r"integration", r"specification",
-        r"decomposition", r"module",
+        r"architect",
+        r"design",
+        r"system",
+        r"structure",
+        r"why (?:this|we|not)",
+        r"rationale",
+        r"trade-?off",
+        r"comparison",
+        r"alternative",
+        r"integration",
+        r"specification",
+        r"decomposition",
+        r"module",
     ],
     "anti_patterns": [
-        r"anti[- ]?pattern", r"pitfall", r"(?:do )?not",
-        r"avoid", r"warning", r"danger", r"mistake",
+        r"anti[- ]?pattern",
+        r"pitfall",
+        r"(?:do )?not",
+        r"avoid",
+        r"warning",
+        r"danger",
+        r"mistake",
         r"(?:what|how).*(?:wrong|fail|break|ruin)",
         r"common (?:error|mistake|problem)",
-        r"what didn.t work", r"caused problem",
-        r"risk", r"mitigation",
+        r"what didn.t work",
+        r"caused problem",
+        r"risk",
+        r"mitigation",
     ],
     "abstractions": [
-        r"concept", r"vocabular", r"terminolog", r"glossar",
+        r"concept",
+        r"vocabular",
+        r"terminolog",
+        r"glossar",
         r"key (?:term|concept|abstraction|definition)",
-        r"primitive", r"building block",
+        r"primitive",
+        r"building block",
         r"data (?:model|structure|type)",
-        r"component", r"metric", r"evaluation",
+        r"component",
+        r"metric",
+        r"evaluation",
     ],
 }
 
@@ -110,7 +162,10 @@ _THEORY_HEADING_SIGNALS: dict[str, list[str]] = {
 _THEORY_PARAGRAPH_SIGNALS = {
     "core_theory": [
         re.compile(r"the (?:key|core|fundamental|central) (?:insight|idea|principle|claim)", re.I),
-        re.compile(r"this (?:system|project|architecture|approach) (?:is|uses|implements|demonstrates)", re.I),
+        re.compile(
+            r"this (?:system|project|architecture|approach) (?:is|uses|implements|demonstrates)",
+            re.I,
+        ),
         re.compile(r"(?:we|the system) (?:define|articulate|propose|claim|argue)", re.I),
         re.compile(r"the theory (?:of|behind|underlying)", re.I),
         re.compile(r"we (?:hypothesize|propose|conjecture) that", re.I),
@@ -209,6 +264,7 @@ _REQUIRED_THEORY_FACETS = (
 
 
 # ─── Public API ──────────────────────────────────────────────────────────
+
 
 def extract_theory(project_root: str) -> dict[str, Any]:
     """Extract the conceptual theory profile of a project.
@@ -428,13 +484,87 @@ def get_theory_context(
                     score = 1  # No keywords = return everything in facet
 
                 if score > 0:
-                    results.append({
-                        "facet": f,
-                        "claim": claim,
-                        "source": entry["source"],
-                        "heading": entry["heading"],
-                        "relevance_score": score,
-                    })
+                    results.append(
+                        {
+                            "facet": f,
+                            "claim": claim,
+                            "source": entry["source"],
+                            "heading": entry["heading"],
+                            "relevance_score": score,
+                        }
+                    )
+
+    # Sort by relevance, then truncate
+    results.sort(key=lambda r: -r["relevance_score"])
+    total_matched = len(results)
+    results = results[:max_claims]
+
+    return {
+        "claims": results,
+        "total_matched": total_matched,
+        "returned_count": len(results),
+        "truncated": total_matched > len(results),
+        "query": {"facet": facet, "keywords": keywords},
+    }
+
+
+def get_theory_context_from_profile(
+    profile: dict[str, Any],
+    facet: str | None = None,
+    keywords: list[str] | None = None,
+    max_claims: int = 5,
+) -> dict[str, Any]:
+    """Tier 2 retrieval from a pre-extracted theory profile (no I/O).
+
+    Same logic as get_theory_context() but takes a pre-extracted profile dict
+    instead of calling extract_theory(). This avoids re-scanning all markdown
+    files on every signal — the caller caches the profile once per mesh run.
+
+    Args:
+        profile: The "theory_profile" dict from extract_theory() output.
+        facet: Optional facet to filter by.
+        keywords: Optional keywords to match against claim text.
+        max_claims: Maximum claims to return.
+
+    Returns:
+        Dict with matched claims, their sources, and the facet they belong to.
+        Returns empty results if profile is empty or None.
+    """
+    if not profile or max_claims <= 0:
+        return {
+            "claims": [],
+            "total_matched": 0,
+            "returned_count": 0,
+            "truncated": False,
+            "query": {"facet": facet, "keywords": keywords},
+        }
+
+    results: list[dict[str, Any]] = []
+
+    facets_to_search = [facet] if facet and facet in profile else list(profile.keys())
+
+    for f in facets_to_search:
+        for entry in profile.get(f, []):
+            for claim in entry.get("claims", []):
+                score = 0
+                if keywords:
+                    claim_lower = claim.lower()
+                    for kw in keywords:
+                        if kw.lower() in claim_lower:
+                            score += 1
+                else:
+                    score = 1  # No keywords = return everything in facet
+
+                if score > 0:
+                    results.append(
+                        {
+                            "facet": f,
+                            "claim": claim,
+                            "source": entry.get("source", ""),
+                            "heading": entry.get("heading", ""),
+                            "relevance_score": score,
+                        }
+                    )
 
     # Sort by relevance, then truncate
     results.sort(key=lambda r: -r["relevance_score"])
@@ -451,6 +581,7 @@ def get_theory_context(
 
 
 # ─── Document discovery ──────────────────────────────────────────────────
+
 
 def _discover_md_files(project_root: str) -> list[str]:
     """Find all markdown files in the project, respecting skip dirs.
@@ -474,10 +605,7 @@ def _discover_md_files(project_root: str) -> list[str]:
     # Main walk — skips hidden dirs and known noise dirs
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune skip dirs in-place
-        dirnames[:] = sorted([
-            d for d in dirnames
-            if d not in _SKIP_DIRS and not d.startswith(".")
-        ])
+        dirnames[:] = sorted([d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")])
 
         for fname in sorted(filenames):
             if fname.lower().endswith(".md"):
@@ -492,6 +620,7 @@ def _discover_md_files(project_root: str) -> list[str]:
 
 
 # ─── Document parsing ────────────────────────────────────────────────────
+
 
 class _Section:
     """A headed section from a markdown document."""
@@ -537,14 +666,16 @@ def _parse_document(md_path: str, project_root: str) -> list[_Section]:
             if current_body_lines:
                 body = "\n".join(current_body_lines).strip()
                 if body:
-                    sections.append(_Section(
-                        heading=current_heading,
-                        heading_level=current_level,
-                        body=body,
-                        source_file=md_path,
-                        rel_path=rel_path,
-                        line_no=current_line_no,
-                    ))
+                    sections.append(
+                        _Section(
+                            heading=current_heading,
+                            heading_level=current_level,
+                            body=body,
+                            source_file=md_path,
+                            rel_path=rel_path,
+                            line_no=current_line_no,
+                        )
+                    )
             current_heading = heading_match.group(2).strip()
             current_level = len(heading_match.group(1))
             current_body_lines = []
@@ -556,19 +687,22 @@ def _parse_document(md_path: str, project_root: str) -> list[_Section]:
     if current_body_lines:
         body = "\n".join(current_body_lines).strip()
         if body:
-            sections.append(_Section(
-                heading=current_heading,
-                heading_level=current_level,
-                body=body,
-                source_file=md_path,
-                rel_path=rel_path,
-                line_no=current_line_no,
-            ))
+            sections.append(
+                _Section(
+                    heading=current_heading,
+                    heading_level=current_level,
+                    body=body,
+                    source_file=md_path,
+                    rel_path=rel_path,
+                    line_no=current_line_no,
+                )
+            )
 
     return sections
 
 
 # ─── Theory profile construction ─────────────────────────────────────────
+
 
 def _build_theory_profile(sections: list[_Section]) -> dict[str, Any]:
     """Classify sections into theory facets and extract claims."""
@@ -586,11 +720,13 @@ def _build_theory_profile(sections: list[_Section]) -> dict[str, Any]:
         for facet in facets:
             claims = _extract_claims(section, facet)
             if claims:
-                profile[facet].append({
-                    "heading": section.heading,
-                    "source": f"{section.rel_path}:{section.line_no}",
-                    "claims": claims,
-                })
+                profile[facet].append(
+                    {
+                        "heading": section.heading,
+                        "source": f"{section.rel_path}:{section.line_no}",
+                        "claims": claims,
+                    }
+                )
 
     # Deduplicate claims within each facet
     for facet in profile:
@@ -703,11 +839,15 @@ def _score_claim(sentence: str, facet: str) -> int:
         if re.search(r"this (?:work|project|research) (?:address|test|investigat|explor)", s, re.I):
             score += 1
     elif facet == "problem_solving":
-        if re.search(r"\b(?:easier|better|tractable|efficient|guided)\b.*\b(?:than|over|compared)\b", s, re.I):
+        if re.search(
+            r"\b(?:easier|better|tractable|efficient|guided)\b.*\b(?:than|over|compared)\b", s, re.I
+        ):
             score += 2
         if re.search(r"\btransform.*(?:into|to)\b", s, re.I):
             score += 1
-        if re.search(r"\b(?:scan|parse|split|classif|extract|deduplicat|score|report)\w*\b", s, re.I):
+        if re.search(
+            r"\b(?:scan|parse|split|classif|extract|deduplicat|score|report)\w*\b", s, re.I
+        ):
             score += 1
         if re.search(r"\b(?:step|phase|pipeline|workflow|process)\b", s, re.I):
             score += 1
@@ -796,6 +936,7 @@ def _dedupe_facet_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 # ─── Enforceable rules extraction (from v1, kept as subset) ─────────────
 
+
 def _extract_enforceable_rules(
     guidance: dict[str, Any],
     existing_patterns: set[str],
@@ -828,17 +969,19 @@ def _extract_enforceable_rules(
                 continue
 
             prefix = "LINTGATE_FORBID_REGEX" if kind == "forbid_regex" else "LINTGATE_REQUIRE_REGEX"
-            proposed_rules.append({
-                "source_directive": directive,
-                "proposed_rule": {
-                    "kind": kind,
-                    "pattern": pattern,
-                    "severity": "blocking" if kind == "forbid_regex" else "warning",
-                    "message": f"Violates: {directive}",
-                },
-                "confidence": confidence,
-                "add_line": f"{prefix}: {pattern}",
-            })
+            proposed_rules.append(
+                {
+                    "source_directive": directive,
+                    "proposed_rule": {
+                        "kind": kind,
+                        "pattern": pattern,
+                        "severity": "blocking" if kind == "forbid_regex" else "warning",
+                        "message": f"Violates: {directive}",
+                    },
+                    "confidence": confidence,
+                    "add_line": f"{prefix}: {pattern}",
+                }
+            )
             break
 
     # Dedupe by pattern
@@ -859,6 +1002,7 @@ def _extract_enforceable_rules(
 
 
 # ─── Summary generation ─────────────────────────────────────────────────
+
 
 def _build_summary(profile: dict[str, Any]) -> dict[str, Any]:
     """Build a human-readable summary of the theory profile."""
@@ -891,12 +1035,13 @@ def _build_validity_report(
 ) -> dict[str, Any]:
     """Build deterministic quality diagnostics for theory extraction validity."""
     claims_by_facet = {
-        facet: sum(len(entry["claims"]) for entry in entries)
-        for facet, entries in profile.items()
+        facet: sum(len(entry["claims"]) for entry in entries) for facet, entries in profile.items()
     }
     total_claims = sum(claims_by_facet.values())
     facets_with_claims = [facet for facet, count in claims_by_facet.items() if count > 0]
-    missing_required = [facet for facet in _REQUIRED_THEORY_FACETS if claims_by_facet.get(facet, 0) == 0]
+    missing_required = [
+        facet for facet in _REQUIRED_THEORY_FACETS if claims_by_facet.get(facet, 0) == 0
+    ]
 
     total_entries = sum(len(entries) for entries in profile.values())
     traceable_entries = sum(
@@ -960,6 +1105,7 @@ def _build_validity_report(
 
 # ─── Utility functions ───────────────────────────────────────────────────
 
+
 def _pick_best_summary_claim(
     claims: list[str],
     exclude: set[str] | None = None,
@@ -993,7 +1139,11 @@ def _pick_best_summary_claim(
         if claim.count("/") > 2:
             s -= 2.0
         # Penalize purely descriptive content (no theory markers)
-        if not re.search(r"\b(?:because|since|therefore|rather|instead|enables?|designed|approach|key|core|fundamental|must|should|critical|hypothesis)\b", claim, re.I):
+        if not re.search(
+            r"\b(?:because|since|therefore|rather|instead|enables?|designed|approach|key|core|fundamental|must|should|critical|hypothesis)\b",
+            claim,
+            re.I,
+        ):
             s -= 1.0
 
         # Reward theory-quality language
@@ -1001,7 +1151,9 @@ def _pick_best_summary_claim(
             s += 2.0
         if re.search(r"\b(?:rather than|instead of|not by|unlike)\b", claim, re.I):
             s += 2.0
-        if re.search(r"\b(?:enables?|ensures?|provides?|designed|architecture|approach)\b", claim, re.I):
+        if re.search(
+            r"\b(?:enables?|ensures?|provides?|designed|architecture|approach)\b", claim, re.I
+        ):
             s += 1.0
         if re.search(r"\b(?:key|core|fundamental|central|critical)\b", claim, re.I):
             s += 1.0

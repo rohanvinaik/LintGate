@@ -45,7 +45,9 @@ class GlobalBehaviorProfile:
     updated_at: float = field(default_factory=time.time)
     session_count: int = 0  # Total sessions contributing
     last_session_id: str = ""  # Tracks distinct sessions for dedup
-    seen_session_ids: list[str] = field(default_factory=list)  # Distinct session IDs seen historically
+    seen_session_ids: list[str] = field(
+        default_factory=list
+    )  # Distinct session IDs seen historically
 
     # Signal frequency priors: signal_name → {total_firings, sessions_present}
     signal_priors: dict[str, dict[str, int]] = field(default_factory=dict)

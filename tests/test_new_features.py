@@ -40,7 +40,11 @@ def test_context_guidance_infers_solve_task_rule(tmp_path) -> None:
     agents.write_text("- DO NOT add solve_task_ functions to this project.\n")
 
     guidance = build_context_guidance(str(tmp_path))
-    inferred = [rule for rule in guidance["rules"] if rule.get("source") == "inferred:do_not_solve_task_prefix"]
+    inferred = [
+        rule
+        for rule in guidance["rules"]
+        if rule.get("source") == "inferred:do_not_solve_task_prefix"
+    ]
 
     assert inferred
     assert inferred[0]["kind"] == "forbid_regex"

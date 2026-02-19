@@ -49,8 +49,9 @@ class BanditLinter(BaseLinter):
 
         cmd = [
             "bandit",
-            "-f", "json",  # JSON output
-            "-q",          # Quiet (no progress)
+            "-f",
+            "json",  # JSON output
+            "-q",  # Quiet (no progress)
         ]
 
         # Add config file if specified
@@ -94,7 +95,8 @@ class BanditLinter(BaseLinter):
                     "more_info": item.get("more_info", ""),
                 },
                 suggestions=[
-                    f"See: {item['more_info']}" if item.get("more_info") else
-                    f"Review {test_name} finding for security implications",
+                    f"See: {item['more_info']}"
+                    if item.get("more_info")
+                    else f"Review {test_name} finding for security implications",
                 ],
             )

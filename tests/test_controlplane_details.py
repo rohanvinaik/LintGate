@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 from lintgate.state import (
-    load_run_details,
     load_controlplane_run,
-    save_run_details,
+    load_run_details,
     save_controlplane_run,
+    save_run_details,
 )
 
 # ── ControlPlane Run Cache ─────────────────────────────────────────────

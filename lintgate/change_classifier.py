@@ -20,17 +20,42 @@ from .types import ChangeClassification, DiffAnalysis, ProjectConfig
 
 _DOCS_EXTENSIONS = frozenset({".md", ".rst", ".txt", ".adoc", ".html", ".css"})
 _CONFIG_EXTENSIONS = frozenset({".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"})
-_CONFIG_NAMES = frozenset({
-    "pyproject.toml", "setup.cfg", "setup.py", ".flake8", ".pylintrc",
-    "mypy.ini", "tox.ini", "Makefile", "Dockerfile", ".dockerignore",
-    ".gitignore", ".editorconfig", "ruff.toml",
-})
-_DEPENDENCY_NAMES = frozenset({
-    "requirements.txt", "requirements-dev.txt", "requirements.in",
-    "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock",
-    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "Cargo.toml", "Cargo.lock", "go.mod", "go.sum",
-})
+_CONFIG_NAMES = frozenset(
+    {
+        "pyproject.toml",
+        "setup.cfg",
+        "setup.py",
+        ".flake8",
+        ".pylintrc",
+        "mypy.ini",
+        "tox.ini",
+        "Makefile",
+        "Dockerfile",
+        ".dockerignore",
+        ".gitignore",
+        ".editorconfig",
+        "ruff.toml",
+    }
+)
+_DEPENDENCY_NAMES = frozenset(
+    {
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements.in",
+        "Pipfile",
+        "Pipfile.lock",
+        "poetry.lock",
+        "uv.lock",
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "Cargo.toml",
+        "Cargo.lock",
+        "go.mod",
+        "go.sum",
+    }
+)
 _TEST_PATTERNS = (
     re.compile(r"test[s]?/"),
     re.compile(r"test_\w+\.py$"),
@@ -70,10 +95,31 @@ _BUILD_COMMAND_PATTERNS = (
 
 # Read-only bash commands that never need linting
 _READONLY_PREFIXES = (
-    "ls ", "cat ", "head ", "tail ", "grep ", "rg ", "find ", "tree ",
-    "git status", "git log", "git diff", "git show", "git branch",
-    "echo ", "wc ", "du ", "df ", "which ", "type ", "file ",
-    "python -c", "python3 -c", "pwd", "env ", "printenv",
+    "ls ",
+    "cat ",
+    "head ",
+    "tail ",
+    "grep ",
+    "rg ",
+    "find ",
+    "tree ",
+    "git status",
+    "git log",
+    "git diff",
+    "git show",
+    "git branch",
+    "echo ",
+    "wc ",
+    "du ",
+    "df ",
+    "which ",
+    "type ",
+    "file ",
+    "python -c",
+    "python3 -c",
+    "pwd",
+    "env ",
+    "printenv",
 )
 
 # Import statement patterns
@@ -120,17 +166,14 @@ def classify_change(
     touches_critical = False
     if config and config.pipeline_critical_paths:
         touches_critical = any(
-            _matches_pipeline_path(f, config.pipeline_critical_paths, cwd)
-            for f in files_changed
+            _matches_pipeline_path(f, config.pipeline_critical_paths, cwd) for f in files_changed
         )
 
     # Classify change kind
     change_kind = _classify_change_kind(files_changed, diff, tool_name, tool_input)
 
     # Classify risk level
-    risk_level = _classify_risk(
-        change_kind, diff, files_changed, touches_critical
-    )
+    risk_level = _classify_risk(change_kind, diff, files_changed, touches_critical)
 
     return ChangeClassification(
         files_changed=files_changed,
@@ -253,9 +296,7 @@ def _is_build_command(command: str) -> bool:
     return any(pat.search(command) for pat in _BUILD_COMMAND_PATTERNS)
 
 
-def _matches_pipeline_path(
-    filepath: str, critical_paths: list[str], cwd: str
-) -> bool:
+def _matches_pipeline_path(filepath: str, critical_paths: list[str], cwd: str) -> bool:
     """Check if a file matches any pipeline-critical path pattern."""
     # Normalize to relative path from project root
     try:
@@ -313,14 +354,10 @@ def _analyze_diff(tool_name: str, tool_input: dict) -> DiffAnalysis:
     )
 
     # Check if function signatures changed
-    func_sigs_changed = any(
-        _FUNC_SIG_PATTERN.match(line) for line in changed_lines
-    )
+    func_sigs_changed = any(_FUNC_SIG_PATTERN.match(line) for line in changed_lines)
 
     # Check if class definitions changed
-    class_changed = any(
-        _CLASS_PATTERN.match(line) for line in changed_lines
-    )
+    class_changed = any(_CLASS_PATTERN.match(line) for line in changed_lines)
 
     # Check if only formatting/whitespace changed
     formatting_only = False

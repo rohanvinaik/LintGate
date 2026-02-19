@@ -112,7 +112,9 @@ class StructureChecker(BaseLinter):
             yield from self._check_file(filepath, thresholds)
 
     def _check_file(
-        self, filepath: str, thresholds: dict[str, int],
+        self,
+        filepath: str,
+        thresholds: dict[str, int],
     ) -> Iterable[LintIssue]:
         """Run all checks on a single file."""
         try:
@@ -142,7 +144,9 @@ class StructureChecker(BaseLinter):
 
 
 def _check_file_size(
-    filepath: str, lines: list[str], thresholds: dict[str, int],
+    filepath: str,
+    lines: list[str],
+    thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check file-level size limits."""
     max_lines = thresholds["max_file_lines"]
@@ -169,14 +173,13 @@ def _check_file_size(
 
 
 def _check_file_structure(
-    filepath: str, tree: ast.Module, thresholds: dict[str, int],
+    filepath: str,
+    tree: ast.Module,
+    thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check file-level structural limits (classes, functions count)."""
     classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
-    functions = [
-        n for n in tree.body
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    functions = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
     max_classes = thresholds["max_file_classes"]
     if len(classes) > max_classes:
@@ -446,7 +449,9 @@ def _check_cognitive_complexity(
 
 
 def _check_class(
-    filepath: str, node: ast.ClassDef, thresholds: dict[str, int],
+    filepath: str,
+    node: ast.ClassDef,
+    thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check a single class for structural issues."""
     name = node.name
@@ -457,7 +462,9 @@ def _check_class(
 
 
 def _check_class_attributes(
-    filepath: str, node: ast.ClassDef, name: str,
+    filepath: str,
+    node: ast.ClassDef,
+    name: str,
     thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check instance attribute count (pylint R0902 — god class detector)."""
@@ -489,19 +496,15 @@ def _check_class_attributes(
 
 
 def _check_class_methods(
-    filepath: str, node: ast.ClassDef, name: str,
+    filepath: str,
+    node: ast.ClassDef,
+    name: str,
     thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check method count (pylint R0904 — god class indicator)."""
-    methods = [
-        n for n in node.body
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     # Don't count dunder methods — they're protocol implementations, not bloat
-    non_dunder = [
-        m for m in methods
-        if not (m.name.startswith("__") and m.name.endswith("__"))
-    ]
+    non_dunder = [m for m in methods if not (m.name.startswith("__") and m.name.endswith("__"))]
 
     count = len(non_dunder)
     max_methods = thresholds["max_class_methods"]
@@ -527,7 +530,9 @@ def _check_class_methods(
 
 
 def _check_class_parents(
-    filepath: str, node: ast.ClassDef, name: str,
+    filepath: str,
+    node: ast.ClassDef,
+    name: str,
     thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check inheritance depth (pylint R0901 — deep hierarchy smell)."""
@@ -552,7 +557,6 @@ def _check_class_parents(
                 "Consider using Protocol or ABC for interfaces",
             ],
         )
-
 
 
 # ─── AST helpers ─────────────────────────────────────────────────────────
@@ -622,7 +626,11 @@ def _collect_locals_from_node(child: ast.AST, local_names: set[str]) -> None:
     if isinstance(child, ast.Assign):
         for target in child.targets:
             _collect_names(target, local_names)
-    elif isinstance(child, ast.AnnAssign) and child.target or isinstance(child, (ast.AugAssign, ast.For, ast.AsyncFor)):
+    elif (
+        isinstance(child, ast.AnnAssign)
+        and child.target
+        or isinstance(child, (ast.AugAssign, ast.For, ast.AsyncFor))
+    ):
         _collect_names(child.target, local_names)
     elif isinstance(child, ast.With):
         for item in child.items:

@@ -34,3 +34,24 @@ Thumbs.db
 
 # Claude session state
 .claude/continuity/
+
+# Generated context files (created by setup.sh via bootstrap_context_files)
+# These are generated on first run and evolve via living context patches.
+# Do not commit — each installation bootstraps its own from project theory.
+.claude/CLAUDE.md
+.claude/rules/inquiry.md
+.claude/rules/theory.md
+
+# Auto-generated agent config files (created by integrate.sh)
+# These are pointer files — AGENTS.md is the source of truth.
+.cursorrules
+.cursor/
+.windsurfrules
+.clinerules
+.roo/
+.amazonq/
+.gai-instructions.md
+GEMINI.md
+CONVENTIONS.md
+.github/copilot-instructions.md
+.codex/

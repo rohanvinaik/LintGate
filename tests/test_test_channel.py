@@ -10,20 +10,18 @@ Verifies:
 
 from __future__ import annotations
 
-import os
 import textwrap
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from lintgate.channels.test_channel import (
     TestChannel,
-    TestFailure,
-    TestRunResult,
+    _parse_pytest_output,
     find_impacted_tests,
     run_tests,
-    _parse_pytest_output,
 )
 from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.skeleton_generator import (
@@ -35,7 +33,6 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import ChangeClassification
-
 
 # ── Protocol conformance ─────────────────────────────────────────────────
 
@@ -251,6 +248,7 @@ def test_run_tests_failure(mock_run: MagicMock) -> None:
 @patch("lintgate.channels.test_channel.subprocess.run")
 def test_run_tests_timeout(mock_run: MagicMock) -> None:
     import subprocess
+
     mock_run.side_effect = subprocess.TimeoutExpired(cmd="pytest", timeout=10)
     result = run_tests(["test_app.py"], "/tmp/project")
     assert result.timed_out is True
@@ -356,7 +354,8 @@ def test_channel_reports_test_failures(mock_run: MagicMock, tmp_path: Path) -> N
 def test_skeleton_generates_valid_python(tmp_path: Path) -> None:
     """Generated skeleton should be valid Python syntax."""
     src = tmp_path / "calculator.py"
-    src.write_text(textwrap.dedent("""\
+    src.write_text(
+        textwrap.dedent("""\
         def add(a: int, b: int) -> int:
             return a + b
 
@@ -364,13 +363,15 @@ def test_skeleton_generates_valid_python(tmp_path: Path) -> None:
             if b == 0:
                 raise ValueError("Cannot divide by zero")
             return a / b
-    """))
+    """)
+    )
 
     skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
     assert skeleton  # Non-empty
 
     # Should be valid Python
     import ast
+
     ast.parse(skeleton)
 
 
@@ -384,7 +385,9 @@ def test_skeleton_includes_imports(tmp_path: Path) -> None:
 
 def test_skeleton_includes_function_tests(tmp_path: Path) -> None:
     src = tmp_path / "module.py"
-    src.write_text("def validate(data: str) -> str:\n    if not data:\n        raise ValueError('empty')\n    return data")
+    src.write_text(
+        "def validate(data: str) -> str:\n    if not data:\n        raise ValueError('empty')\n    return data"
+    )
 
     skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
     assert "test_validate" in skeleton
@@ -392,14 +395,16 @@ def test_skeleton_includes_function_tests(tmp_path: Path) -> None:
 
 def test_skeleton_includes_class_tests(tmp_path: Path) -> None:
     src = tmp_path / "models.py"
-    src.write_text(textwrap.dedent("""\
+    src.write_text(
+        textwrap.dedent("""\
         from dataclasses import dataclass
 
         @dataclass
         class Config:
             name: str = "default"
             value: int = 0
-    """))
+    """)
+    )
 
     skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
     assert "TestConfig" in skeleton or "test_" in skeleton

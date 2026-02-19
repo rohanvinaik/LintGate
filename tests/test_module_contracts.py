@@ -8,10 +8,7 @@ pipeline was accidentally modified.
 
 from __future__ import annotations
 
-from dataclasses import fields
 from typing import TYPE_CHECKING
-
-import pytest
 
 from lintgate.change_classifier import classify_change
 from lintgate.lint_runner import run_linters

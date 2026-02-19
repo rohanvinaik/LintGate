@@ -520,7 +520,7 @@ class TestBuildFindingIndex:
         index = build_finding_index(mesh)
         assert len(index) == 2
         # All values are dicts with expected keys
-        for fp, info in index.items():
+        for _fp, info in index.items():
             assert "channel" in info
             assert "kind" in info
             assert "severity" in info
@@ -627,8 +627,24 @@ class TestComputeFindingDelta:
         assert len(delta["new"]) == 0
 
     def test_count_increase_reported_as_new_delta(self) -> None:
-        prev = {"fp1": {"channel": "lint", "kind": "k", "severity": "warning", "message": "m", "count": 1}}
-        curr = {"fp1": {"channel": "lint", "kind": "k", "severity": "warning", "message": "m", "count": 3}}
+        prev = {
+            "fp1": {
+                "channel": "lint",
+                "kind": "k",
+                "severity": "warning",
+                "message": "m",
+                "count": 1,
+            }
+        }
+        curr = {
+            "fp1": {
+                "channel": "lint",
+                "kind": "k",
+                "severity": "warning",
+                "message": "m",
+                "count": 3,
+            }
+        }
         delta = compute_finding_delta(curr, prev)
         assert delta["still_active_count"] == 1
         assert len(delta["new"]) == 1

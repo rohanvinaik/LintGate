@@ -9,12 +9,12 @@ Verifies:
 
 from __future__ import annotations
 
-import os
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from lintgate.channels.git_channel import (
     GitChannel,
@@ -30,7 +30,6 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import ChangeClassification
-
 
 # ── Protocol conformance ─────────────────────────────────────────────────
 
@@ -53,10 +52,12 @@ def test_git_channel_is_not_blocking() -> None:
 
 def test_should_run_on_logic_change() -> None:
     classification = ChangeClassification(
-        change_kind="logic", risk_level="moderate",
+        change_kind="logic",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Edit",
+        project_root="/tmp",
+        tool_name="Edit",
         change_classification=classification,
     )
     assert GitChannel().should_run(event, ControlPlaneConfig()) is True
@@ -64,10 +65,12 @@ def test_should_run_on_logic_change() -> None:
 
 def test_should_not_run_on_none_risk() -> None:
     classification = ChangeClassification(
-        change_kind="logic", risk_level="none",
+        change_kind="logic",
+        risk_level="none",
     )
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Bash",
+        project_root="/tmp",
+        tool_name="Bash",
         change_classification=classification,
     )
     assert GitChannel().should_run(event, ControlPlaneConfig()) is False
@@ -75,7 +78,8 @@ def test_should_not_run_on_none_risk() -> None:
 
 def test_should_not_run_without_classification() -> None:
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Edit",
+        project_root="/tmp",
+        tool_name="Edit",
         change_classification=None,
     )
     assert GitChannel().should_run(event, ControlPlaneConfig()) is False
@@ -97,7 +101,8 @@ def test_should_run_on_mcp_without_classification() -> None:
 def test_execute_skips_non_git_directory(tmp_path: Path) -> None:
     """Non-git directory → skip result."""
     classification = ChangeClassification(
-        change_kind="logic", risk_level="moderate",
+        change_kind="logic",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
         project_root=str(tmp_path),
@@ -135,6 +140,7 @@ def test_stale_lockfile_detected(tmp_path: Path) -> None:
     # Create lockfile first (older)
     lockfile.write_text("# lockfile\n")
     import time
+
     time.sleep(0.05)
     # Then manifest (newer)
     manifest.write_text("[project]\nname = 'test'\n")
@@ -153,6 +159,7 @@ def test_fresh_lockfile_no_findings(tmp_path: Path) -> None:
     # Create manifest first (older)
     manifest.write_text("[project]\nname = 'test'\n")
     import time
+
     time.sleep(0.05)
     # Then lockfile (newer)
     lockfile.write_text("# lockfile\n")
@@ -257,10 +264,10 @@ def test_execute_in_git_repo(tmp_path: Path) -> None:
     """Test execute in a real git repo (created for this test)."""
     # Initialize a git repo in tmp_path
     subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"],
-                    capture_output=True, cwd=str(tmp_path))
-    subprocess.run(["git", "config", "user.name", "Test"],
-                    capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"], capture_output=True, cwd=str(tmp_path)
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path))
 
     # Create a file and commit it
     (tmp_path / "app.py").write_text("x = 1\n")

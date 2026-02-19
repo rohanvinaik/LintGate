@@ -31,14 +31,30 @@ TIER_1_LINTERS = [
     "context_rule_checker",
     "redefinition_checker",
 ]
-TIER_2_LINTERS = ["ruff_check", "ruff_format", "mypy", "complexity_checker",
-                  "structure_checker", "version_checker", "context_rule_checker",
-                  "redefinition_checker"]
-TIER_3_LINTERS = ["ruff_check", "ruff_format", "mypy", "import_checker",
-                  "complexity_checker", "bandit", "structure_checker",
-                  "architecture_checker", "dead_code_checker",
-                  "version_checker", "context_rule_checker",
-                  "redefinition_checker"]
+TIER_2_LINTERS = [
+    "ruff_check",
+    "ruff_format",
+    "mypy",
+    "complexity_checker",
+    "structure_checker",
+    "version_checker",
+    "context_rule_checker",
+    "redefinition_checker",
+]
+TIER_3_LINTERS = [
+    "ruff_check",
+    "ruff_format",
+    "mypy",
+    "import_checker",
+    "complexity_checker",
+    "bandit",
+    "structure_checker",
+    "architecture_checker",
+    "dead_code_checker",
+    "version_checker",
+    "context_rule_checker",
+    "redefinition_checker",
+]
 
 # ─── Debounce state (file-backed, persists across process invocations) ──
 

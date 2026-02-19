@@ -59,9 +59,7 @@ def _check_file(file_path: str) -> Iterable[LintIssue]:
     # Check class-level definitions (methods)
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            yield from _check_scope(
-                node.body, file_path, scope_name=f"class {node.name}"
-            )
+            yield from _check_scope(node.body, file_path, scope_name=f"class {node.name}")
 
 
 def _check_scope(
@@ -160,9 +158,7 @@ def _has_property_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> boo
         if isinstance(decorator, ast.Attribute) and decorator.attr in ("setter", "deleter"):
             return True
         # @functools.cached_property or similar
-        if isinstance(decorator, ast.Attribute) and decorator.attr in (
-            "cached_property",
-        ):
+        if isinstance(decorator, ast.Attribute) and decorator.attr in ("cached_property",):
             return True
         if isinstance(decorator, ast.Name) and decorator.id == "cached_property":
             return True
@@ -175,7 +171,6 @@ def _is_type_checking_block(node: ast.stmt) -> bool:
         return False
     test = node.test
     # if TYPE_CHECKING: or if typing.TYPE_CHECKING:
-    return (
-        (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING")
-        or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
     )

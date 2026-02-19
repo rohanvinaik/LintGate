@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.coherence import compute_coherence
 from lintgate.controlplane.runtime import run_mesh
@@ -22,16 +20,15 @@ from lintgate.controlplane.types import (
 )
 from lintgate.types import LintIssue
 
-
 # ── Test fixtures ─────────────────────────────────────────────────────
 
 
 def _make_event(**kwargs) -> SupervisionEvent:
-    defaults = dict(
-        project_root="/tmp/test",
-        tool_name="Edit",
-        files_changed=["/tmp/test/app.py"],
-    )
+    defaults = {
+        "project_root": "/tmp/test",
+        "tool_name": "Edit",
+        "files_changed": ["/tmp/test/app.py"],
+    }
     defaults.update(kwargs)
     return SupervisionEvent(**defaults)
 
@@ -71,8 +68,10 @@ class FailChannel:
             severity="warning",
             findings=[
                 LintIssue(
-                    linter="test", kind="test_issue",
-                    message="Test failure", file="/tmp/test/app.py",
+                    linter="test",
+                    kind="test_issue",
+                    message="Test failure",
+                    file="/tmp/test/app.py",
                     severity="warning",
                 ),
             ],
@@ -266,9 +265,13 @@ def test_coherence_stable_with_skips() -> None:
 def test_coherence_isolated_single_failure() -> None:
     results = [
         ChannelResult(channel="lint", status="pass"),
-        ChannelResult(channel="tests", status="fail", findings=[
-            LintIssue(linter="tests", kind="failure", message="test failed"),
-        ]),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(linter="tests", kind="failure", message="test failed"),
+            ],
+        ),
         ChannelResult(channel="deps", status="pass"),
     ]
     coherence = compute_coherence(results)
@@ -281,9 +284,13 @@ def test_coherence_isolated_single_failure() -> None:
 
 def test_coherence_isolated_single_failure_without_pass_signals() -> None:
     results = [
-        ChannelResult(channel="tests", status="fail", findings=[
-            LintIssue(linter="tests", kind="failure", message="test failed"),
-        ]),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(linter="tests", kind="failure", message="test failed"),
+            ],
+        ),
         ChannelResult(channel="lint", status="skip"),
         ChannelResult(channel="deps", status="skip"),
     ]
@@ -295,12 +302,20 @@ def test_coherence_isolated_single_failure_without_pass_signals() -> None:
 
 def test_coherence_coupled_two_failures_shared_files() -> None:
     results = [
-        ChannelResult(channel="lint", status="fail", findings=[
-            LintIssue(linter="ruff", kind="E501", message="line too long", file="/app.py"),
-        ]),
-        ChannelResult(channel="tests", status="fail", findings=[
-            LintIssue(linter="pytest", kind="failure", message="test failed", file="/app.py"),
-        ]),
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(linter="ruff", kind="E501", message="line too long", file="/app.py"),
+            ],
+        ),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(linter="pytest", kind="failure", message="test failed", file="/app.py"),
+            ],
+        ),
         ChannelResult(channel="deps", status="pass"),
     ]
     coherence = compute_coherence(results)
@@ -310,15 +325,27 @@ def test_coherence_coupled_two_failures_shared_files() -> None:
 
 def test_coherence_systemic_three_failures() -> None:
     results = [
-        ChannelResult(channel="lint", status="fail", findings=[
-            LintIssue(linter="ruff", kind="E501", message="issue"),
-        ]),
-        ChannelResult(channel="tests", status="fail", findings=[
-            LintIssue(linter="pytest", kind="failure", message="issue"),
-        ]),
-        ChannelResult(channel="deps", status="fail", findings=[
-            LintIssue(linter="deps", kind="lockfile", message="issue"),
-        ]),
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(linter="ruff", kind="E501", message="issue"),
+            ],
+        ),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(linter="pytest", kind="failure", message="issue"),
+            ],
+        ),
+        ChannelResult(
+            channel="deps",
+            status="fail",
+            findings=[
+                LintIssue(linter="deps", kind="lockfile", message="issue"),
+            ],
+        ),
     ]
     coherence = compute_coherence(results)
     assert coherence.state == "systemic"
@@ -327,12 +354,20 @@ def test_coherence_systemic_three_failures() -> None:
 def test_coherence_systemic_cross_domain() -> None:
     """Infra (deps) + code (lint) failure = cross-domain = systemic."""
     results = [
-        ChannelResult(channel="lint", status="fail", findings=[
-            LintIssue(linter="ruff", kind="E501", message="issue"),
-        ]),
-        ChannelResult(channel="deps", status="fail", findings=[
-            LintIssue(linter="deps", kind="lockfile", message="issue"),
-        ]),
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(linter="ruff", kind="E501", message="issue"),
+            ],
+        ),
+        ChannelResult(
+            channel="deps",
+            status="fail",
+            findings=[
+                LintIssue(linter="deps", kind="lockfile", message="issue"),
+            ],
+        ),
     ]
     coherence = compute_coherence(results)
     assert coherence.state == "systemic"

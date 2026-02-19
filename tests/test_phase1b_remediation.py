@@ -153,7 +153,6 @@ class TestMtimeTracking:
         f.write_text("x = 1")
         before = _snapshot_mtimes([str(f)])
         # Simulate modification (bump mtime forward)
-        import time
 
         time.sleep(0.05)
         f.write_text("x = 2")

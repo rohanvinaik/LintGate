@@ -95,7 +95,10 @@ class ArchitectureChecker(BaseLinter):
                 continue
 
             yield from _check_file_layer_imports(
-                filepath, module_name, file_layer, layer_map,
+                filepath,
+                module_name,
+                file_layer,
+                layer_map,
             )
 
     # ─── Circular import detection ───────────────────────────────────
@@ -241,12 +244,12 @@ def _filepath_to_module(filepath: str, project_root: str) -> str | None:
     # Strip common prefixes
     for prefix in ("src/", "lib/"):
         if relpath.startswith(prefix):
-            relpath = relpath[len(prefix):]
+            relpath = relpath[len(prefix) :]
             break
 
     # Convert to module path
     if relpath.endswith("/__init__.py"):
-        module = relpath[:-len("/__init__.py")]
+        module = relpath[: -len("/__init__.py")]
     elif relpath.endswith(".py"):
         module = relpath[:-3]
     else:
@@ -282,16 +285,17 @@ def _build_layer_map(
 
 
 def _find_layer(
-    module_name: str, layer_map: dict[str, dict[str, Any]],
+    module_name: str,
+    layer_map: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
     """Find which layer a module belongs to (longest prefix match)."""
     best_match: dict[str, Any] | None = None
     best_length = 0
 
     for prefix, layer in layer_map.items():
-        if (
-            module_name == prefix or module_name.startswith(prefix + ".")
-        ) and len(prefix) > best_length:
+        if (module_name == prefix or module_name.startswith(prefix + ".")) and len(
+            prefix
+        ) > best_length:
             best_match = layer
             best_length = len(prefix)
 
@@ -357,18 +361,33 @@ def _check_file_layer_imports(
 
     for imp_module, lineno in imports:
         yield from _check_forbidden_import(
-            filepath, module_name, layer_name, imp_module, lineno, must_not_import,
+            filepath,
+            module_name,
+            layer_name,
+            imp_module,
+            lineno,
+            must_not_import,
         )
         if may_import:
             yield from _check_allowlist_import(
-                filepath, module_name, layer_name, imp_module, lineno,
-                may_import, file_layer, layer_map,
+                filepath,
+                module_name,
+                layer_name,
+                imp_module,
+                lineno,
+                may_import,
+                file_layer,
+                layer_map,
             )
 
 
 def _check_forbidden_import(
-    filepath: str, module_name: str, layer_name: str,
-    imp_module: str, lineno: int, must_not_import: set[str],
+    filepath: str,
+    module_name: str,
+    layer_name: str,
+    imp_module: str,
+    lineno: int,
+    must_not_import: set[str],
 ) -> Iterable[LintIssue]:
     """Check if an import violates a must_not_import rule."""
     for forbidden in must_not_import:
@@ -398,8 +417,12 @@ def _check_forbidden_import(
 
 
 def _check_allowlist_import(
-    filepath: str, module_name: str, layer_name: str,
-    imp_module: str, lineno: int, may_import: set[str],
+    filepath: str,
+    module_name: str,
+    layer_name: str,
+    imp_module: str,
+    lineno: int,
+    may_import: set[str],
     file_layer: dict[str, Any],
     layer_map: dict[str, dict[str, Any]],
 ) -> Iterable[LintIssue]:
@@ -408,10 +431,7 @@ def _check_allowlist_import(
     if not imp_layer or imp_layer["name"] == file_layer["name"]:
         return
 
-    allowed = any(
-        _module_matches_prefix(imp_module, prefix)
-        for prefix in may_import
-    )
+    allowed = any(_module_matches_prefix(imp_module, prefix) for prefix in may_import)
     if not allowed:
         yield LintIssue(
             linter="architecture",

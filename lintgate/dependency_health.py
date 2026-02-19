@@ -125,8 +125,7 @@ def quick_dependency_check(
     # 1. No venv detected
     if _has_python_project(root) and not _find_venv(root):
         warnings.append(
-            "No virtual environment detected in project. "
-            "Run `uv venv .venv` to create one."
+            "No virtual environment detected in project. Run `uv venv .venv` to create one."
         )
 
     # 2. Missing lockfile
@@ -267,29 +266,35 @@ def _check_lockfiles(root: Path) -> list[HealthCheck]:
         for _ecosystem, lock_names in _LOCKFILES.items():
             for lock_name in lock_names:
                 if (root / lock_name).exists():
-                    checks.append(HealthCheck(
-                        name=f"lockfile_{lock_name}",
-                        status="ok",
-                        message=f"Lockfile {lock_name} present",
-                    ))
+                    checks.append(
+                        HealthCheck(
+                            name=f"lockfile_{lock_name}",
+                            status="ok",
+                            message=f"Lockfile {lock_name} present",
+                        )
+                    )
         if not checks:
             # No manifests or lockfiles at all — that's fine for non-package projects
-            checks.append(HealthCheck(
-                name="lockfile",
-                status="ok",
-                message="No dependency manifests found — lockfile not needed",
-            ))
+            checks.append(
+                HealthCheck(
+                    name="lockfile",
+                    status="ok",
+                    message="No dependency manifests found — lockfile not needed",
+                )
+            )
         return checks
 
     for manifest, expected_locks in missing:
         lock_str = " or ".join(expected_locks)
-        checks.append(HealthCheck(
-            name=f"lockfile_for_{manifest}",
-            status="error",
-            message=f"{manifest} exists but no lockfile ({lock_str}) found",
-            suggestion="Run `uv lock` to generate a lockfile",
-            evidence={"manifest": manifest, "expected_locks": expected_locks},
-        ))
+        checks.append(
+            HealthCheck(
+                name=f"lockfile_for_{manifest}",
+                status="error",
+                message=f"{manifest} exists but no lockfile ({lock_str}) found",
+                suggestion="Run `uv lock` to generate a lockfile",
+                evidence={"manifest": manifest, "expected_locks": expected_locks},
+            )
+        )
 
     return checks
 
@@ -310,23 +315,27 @@ def _check_lockfile_freshness(root: Path) -> list[HealthCheck]:
         if manifest_mtime > lock_mtime:
             delta_s = manifest_mtime - lock_mtime
             delta_desc = _format_duration(delta_s)
-            checks.append(HealthCheck(
-                name=f"freshness_{lock_name}",
-                status="warning",
-                message=f"{lock_name} is {delta_desc} older than {manifest_name}",
-                suggestion="Run `uv lock` to sync the lockfile",
-                evidence={
-                    "lock": lock_name,
-                    "manifest": manifest_name,
-                    "staleness_seconds": round(delta_s, 1),
-                },
-            ))
+            checks.append(
+                HealthCheck(
+                    name=f"freshness_{lock_name}",
+                    status="warning",
+                    message=f"{lock_name} is {delta_desc} older than {manifest_name}",
+                    suggestion="Run `uv lock` to sync the lockfile",
+                    evidence={
+                        "lock": lock_name,
+                        "manifest": manifest_name,
+                        "staleness_seconds": round(delta_s, 1),
+                    },
+                )
+            )
         else:
-            checks.append(HealthCheck(
-                name=f"freshness_{lock_name}",
-                status="ok",
-                message=f"{lock_name} is up to date with {manifest_name}",
-            ))
+            checks.append(
+                HealthCheck(
+                    name=f"freshness_{lock_name}",
+                    status="ok",
+                    message=f"{lock_name} is up to date with {manifest_name}",
+                )
+            )
 
     return checks
 
@@ -364,13 +373,15 @@ def _check_conflicting_managers(root: Path) -> list[HealthCheck]:
 
     for file_a, file_b, message in _CONFLICTING_COMBOS:
         if (root / file_a).exists() and (root / file_b).exists():
-            checks.append(HealthCheck(
-                name=f"conflict_{file_a}_{file_b}",
-                status="warning",
-                message=message,
-                suggestion="Remove one and consolidate on a single package manager (uv recommended)",
-                evidence={"file_a": file_a, "file_b": file_b},
-            ))
+            checks.append(
+                HealthCheck(
+                    name=f"conflict_{file_a}_{file_b}",
+                    status="warning",
+                    message=message,
+                    suggestion="Remove one and consolidate on a single package manager (uv recommended)",
+                    evidence={"file_a": file_a, "file_b": file_b},
+                )
+            )
 
     return checks
 
@@ -394,38 +405,46 @@ def _check_manifest_health(root: Path) -> list[HealthCheck]:
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
     except Exception:
-        checks.append(HealthCheck(
-            name="manifest_parse",
-            status="error",
-            message="pyproject.toml failed to parse",
-        ))
+        checks.append(
+            HealthCheck(
+                name="manifest_parse",
+                status="error",
+                message="pyproject.toml failed to parse",
+            )
+        )
         return checks
 
     project = data.get("project", {})
 
     # Check requires-python
     if not project.get("requires-python"):
-        checks.append(HealthCheck(
-            name="manifest_requires_python",
-            status="warning",
-            message="pyproject.toml missing requires-python field",
-            suggestion="Add requires-python = '>=3.10' (or your minimum version)",
-        ))
+        checks.append(
+            HealthCheck(
+                name="manifest_requires_python",
+                status="warning",
+                message="pyproject.toml missing requires-python field",
+                suggestion="Add requires-python = '>=3.10' (or your minimum version)",
+            )
+        )
     else:
-        checks.append(HealthCheck(
-            name="manifest_requires_python",
-            status="ok",
-            message=f"requires-python = '{project['requires-python']}'",
-        ))
+        checks.append(
+            HealthCheck(
+                name="manifest_requires_python",
+                status="ok",
+                message=f"requires-python = '{project['requires-python']}'",
+            )
+        )
 
     # Check build-system
     if not data.get("build-system"):
-        checks.append(HealthCheck(
-            name="manifest_build_system",
-            status="warning",
-            message="pyproject.toml missing [build-system] — cannot install as package",
-            suggestion="Add [build-system] with hatchling, setuptools, or flit",
-        ))
+        checks.append(
+            HealthCheck(
+                name="manifest_build_system",
+                status="warning",
+                message="pyproject.toml missing [build-system] — cannot install as package",
+                suggestion="Add [build-system] with hatchling, setuptools, or flit",
+            )
+        )
 
     return checks
 
@@ -536,6 +555,7 @@ def _record_dep_event(project_root: str, change_kind: str) -> dict[str, Any] | N
     DEP_HEALTH_DIR.mkdir(parents=True, exist_ok=True)
 
     import hashlib
+
     key = hashlib.sha256(project_root.encode()).hexdigest()[:16]
     history_path = DEP_HEALTH_DIR / key
 
@@ -567,6 +587,7 @@ def _record_dep_event(project_root: str, change_kind: str) -> dict[str, Any] | N
 def _load_dep_history(project_root: str) -> dict[str, Any] | None:
     """Load dep change history for a project."""
     import hashlib
+
     key = hashlib.sha256(project_root.encode()).hexdigest()[:16]
     return _load_json(DEP_HEALTH_DIR / key)
 

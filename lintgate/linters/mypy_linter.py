@@ -25,20 +25,24 @@ _MYPY_LINE_RE = re.compile(
 )
 
 # Error codes that should be blocking
-_BLOCKING_CODES = frozenset({
-    "syntax",           # Syntax errors
-    "name-defined",     # Name not defined
-    "attr-defined",     # Attribute not defined
-    "import",           # Import error
-    "valid-type",       # Invalid type
-})
+_BLOCKING_CODES = frozenset(
+    {
+        "syntax",  # Syntax errors
+        "name-defined",  # Name not defined
+        "attr-defined",  # Attribute not defined
+        "import",  # Import error
+        "valid-type",  # Invalid type
+    }
+)
 
 # Error codes that are informational
-_INFORMATIONAL_CODES = frozenset({
-    "no-untyped-def",   # Missing type annotations
-    "type-arg",         # Missing type arguments
-    "unused-ignore",    # Unused type: ignore comment
-})
+_INFORMATIONAL_CODES = frozenset(
+    {
+        "no-untyped-def",  # Missing type annotations
+        "type-arg",  # Missing type arguments
+        "unused-ignore",  # Unused type: ignore comment
+    }
+)
 
 
 class MypyLinter(BaseLinter):

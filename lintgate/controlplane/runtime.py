@@ -45,7 +45,7 @@ def run_mesh(
     event: SupervisionEvent,
     config: ControlPlaneConfig,
     channels: list[Channel],
-    session: "SessionMemory | None" = None,
+    session: SessionMemory | None = None,
 ) -> MeshResult:
     """Execute the supervision mesh: parallel channels → coherence → result.
 
@@ -67,24 +67,36 @@ def run_mesh(
 
     for ch in channels:
         if not config.channel_enabled(ch.name):
-            skipped_results.append(ChannelResult(
-                channel=ch.name, status="skip", severity="none",
-                metrics={"reason": "disabled_in_config"},
-            ))
+            skipped_results.append(
+                ChannelResult(
+                    channel=ch.name,
+                    status="skip",
+                    severity="none",
+                    metrics={"reason": "disabled_in_config"},
+                )
+            )
             continue
 
         try:
             if not ch.should_run(event, config):
-                skipped_results.append(ChannelResult(
-                    channel=ch.name, status="skip", severity="none",
-                    metrics={"reason": "event_not_relevant"},
-                ))
+                skipped_results.append(
+                    ChannelResult(
+                        channel=ch.name,
+                        status="skip",
+                        severity="none",
+                        metrics={"reason": "event_not_relevant"},
+                    )
+                )
                 continue
         except Exception as e:
-            skipped_results.append(ChannelResult(
-                channel=ch.name, status="error", severity="none",
-                error_message=f"should_run failed: {type(e).__name__}: {e}",
-            ))
+            skipped_results.append(
+                ChannelResult(
+                    channel=ch.name,
+                    status="error",
+                    severity="none",
+                    error_message=f"should_run failed: {type(e).__name__}: {e}",
+                )
+            )
             continue
 
         active_channels.append(ch)
@@ -95,7 +107,10 @@ def run_mesh(
 
     if active_channels:
         results_from_exec = _execute_parallel(
-            active_channels, event, config, global_deadline,
+            active_channels,
+            event,
+            config,
+            global_deadline,
         )
         for ch_name, result in results_from_exec.items():
             channel_results.append(result)
@@ -154,7 +169,9 @@ def _execute_parallel(
                     results[ch.name] = result
                 except Exception as e:
                     results[ch.name] = ChannelResult(
-                        channel=ch.name, status="error", severity="none",
+                        channel=ch.name,
+                        status="error",
+                        severity="none",
                         error_message=f"Channel execution failed: {type(e).__name__}: {e}",
                     )
         except TimeoutError:
@@ -166,7 +183,9 @@ def _execute_parallel(
             if future not in done_futures:
                 future.cancel()
                 results[ch.name] = ChannelResult(
-                    channel=ch.name, status="timeout", severity="none",
+                    channel=ch.name,
+                    status="timeout",
+                    severity="none",
                     error_message=f"Exceeded global budget ({config.latency_budget_ms}ms)",
                 )
     finally:

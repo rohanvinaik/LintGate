@@ -25,15 +25,15 @@ if TYPE_CHECKING:
 
 # Default thresholds by strictness
 _CC_THRESHOLDS = {
-    "relaxed": 25,   # Grade E boundary
-    "normal": 20,    # Grade D boundary (same as lint.py)
-    "strict": 15,    # Grade C boundary
+    "relaxed": 25,  # Grade E boundary
+    "normal": 20,  # Grade D boundary (same as lint.py)
+    "strict": 15,  # Grade C boundary
 }
 
 _MI_THRESHOLDS = {
-    "relaxed": 5,    # Below C
-    "normal": 10,    # Grade B boundary
-    "strict": 20,    # Grade A boundary
+    "relaxed": 5,  # Below C
+    "normal": 10,  # Grade B boundary
+    "strict": 20,  # Grade A boundary
 }
 
 
@@ -137,8 +137,7 @@ class ComplexityChecker(BaseLinter):
                 linter="radon",
                 kind="maintainability",
                 message=(
-                    f"Maintainability index {mi_score:.1f} (grade {rank}, "
-                    f"threshold={mi_threshold})"
+                    f"Maintainability index {mi_score:.1f} (grade {rank}, threshold={mi_threshold})"
                 ),
                 file=filepath,
                 severity="warning" if mi_score >= 5 else "blocking",

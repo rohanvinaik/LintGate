@@ -2,28 +2,22 @@
 
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
 from unittest import mock
 
 import pytest
 
 from lintgate.controlplane.global_behavior_profile import (
-    DEFAULT_ALPHA,
-    DEFAULT_DECAY_HORIZON,
-    GLOBAL_PROFILE_PATH,
-    MIN_SAMPLE_SIZE,
-    PROFILE_TTL_DAYS,
-    GlobalBehaviorProfile,
     _GLOBAL_ADJ_CAP,
+    DEFAULT_ALPHA,
+    MIN_SAMPLE_SIZE,
+    GlobalBehaviorProfile,
     apply_session_delta,
     compute_alpha,
     compute_bias_adjustments,
     load_global_profile,
     save_global_profile,
 )
-
 
 # ── TestGlobalBehaviorProfile (dataclass basics) ────────────────────────
 

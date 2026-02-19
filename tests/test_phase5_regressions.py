@@ -40,6 +40,7 @@ class TestRecurrenceOutputCapping(unittest.TestCase):
         try:
             # Pre-populate memory with 50 signatures
             from lintgate.state import ISSUE_MEMORY_DIR, _project_hash
+
             ISSUE_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
             memory_path = ISSUE_MEMORY_DIR / _project_hash(tmpdir)
             signatures = {}
@@ -60,9 +61,12 @@ class TestRecurrenceOutputCapping(unittest.TestCase):
             # Create issues matching all 50 signatures
             issues = [
                 LintIssue(
-                    linter="ruff", kind="F821",
+                    linter="ruff",
+                    kind="F821",
                     message=f"Undefined name 'x_{i}'",
-                    file=f"file_{i}.py", line=i, severity="blocking",
+                    file=f"file_{i}.py",
+                    line=i,
+                    severity="blocking",
                 )
                 for i in range(50)
             ]
@@ -83,9 +87,12 @@ class TestRecurrenceOutputCapping(unittest.TestCase):
             "repeated_issue_count": 25,
             "top_repeated": [
                 {
-                    "linter": "ruff", "kind": "F821",
-                    "file": f"file_{i}.py", "line": i,
-                    "count": 5, "message": f"Error {i}",
+                    "linter": "ruff",
+                    "kind": "F821",
+                    "file": f"file_{i}.py",
+                    "line": i,
+                    "count": 5,
+                    "message": f"Error {i}",
                 }
                 for i in range(25)
             ],
@@ -134,9 +141,12 @@ class TestPatternBankCleanRuns(unittest.TestCase):
             # Now run 7 with one F821 issue
             issues = [
                 LintIssue(
-                    linter="ruff", kind="F821",
+                    linter="ruff",
+                    kind="F821",
                     message="Undefined name 'x'",
-                    file="test.py", line=1, severity="blocking",
+                    file="test.py",
+                    line=1,
+                    severity="blocking",
                 ),
             ]
             result = update_pattern_bank(tmpdir, issues)
@@ -147,12 +157,16 @@ class TestPatternBankCleanRuns(unittest.TestCase):
             # Pattern appeared in: run 4000 and <new> => 2 of last 5
             # Threshold is 3, so should NOT trigger recurring_across_runs
             recurring_alerts = [
-                a for a in result["alerted_patterns"]
+                a
+                for a in result["alerted_patterns"]
                 if a["alert_reason"] == "recurring_across_runs"
             ]
-            self.assertEqual(len(recurring_alerts), 0,
+            self.assertEqual(
+                len(recurring_alerts),
+                0,
                 "Should not fire recurring alert when pattern only appeared "
-                "in 2 of last 5 global runs")
+                "in 2 of last 5 global runs",
+            )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
             # Clean up bank file
@@ -166,6 +180,7 @@ class TestRedefinitionCheckerPropertySetter(unittest.TestCase):
     def _check_source(self, source: str) -> list[LintIssue]:
         """Helper to run redefinition checker on a source string."""
         from lintgate.linters.redefinition_checker import _check_file
+
         tmp_path = ""
         try:
             with tempfile.NamedTemporaryFile(
@@ -182,7 +197,7 @@ class TestRedefinitionCheckerPropertySetter(unittest.TestCase):
 
     def test_property_setter_not_flagged(self):
         """@property + @name.setter is valid Python, not a redefinition."""
-        source = '''
+        source = """
 class Config:
     @property
     def name(self):
@@ -191,14 +206,13 @@ class Config:
     @name.setter
     def name(self, value):
         self._name = value
-'''
+"""
         issues = self._check_source(source)
-        self.assertEqual(len(issues), 0,
-            f"@property/@setter should not be flagged, got: {issues}")
+        self.assertEqual(len(issues), 0, f"@property/@setter should not be flagged, got: {issues}")
 
     def test_property_deleter_not_flagged(self):
         """@property + @name.deleter is valid Python."""
-        source = '''
+        source = """
 class Resource:
     @property
     def handle(self):
@@ -207,13 +221,13 @@ class Resource:
     @handle.deleter
     def handle(self):
         del self._handle
-'''
+"""
         issues = self._check_source(source)
         self.assertEqual(len(issues), 0)
 
     def test_cached_property_not_flagged(self):
         """@cached_property should not be flagged."""
-        source = '''
+        source = """
 from functools import cached_property
 
 class Expensive:
@@ -224,20 +238,20 @@ class Expensive:
     @cached_property
     def other(self):
         return compute2()
-'''
+"""
         issues = self._check_source(source)
         self.assertEqual(len(issues), 0)
 
     def test_actual_redefinition_still_caught(self):
         """A real redefinition (no property decorator) should still be caught."""
-        source = '''
+        source = """
 class Broken:
     def process(self):
         return 1
 
     def process(self):
         return 2
-'''
+"""
         issues = self._check_source(source)
         self.assertEqual(len(issues), 1)
         self.assertIn("process", issues[0].message)
@@ -266,8 +280,7 @@ class TestTheoryExtractorRegex(unittest.TestCase):
         pattern = builder(match)
         self.assertIsNotNone(pattern)
         # The critical fix: must have \s* not bare s*
-        self.assertIn(r"\s*\(", pattern,
-            f"Pattern should contain '\\s*\\(' but got: {pattern}")
+        self.assertIn(r"\s*\(", pattern, f"Pattern should contain '\\s*\\(' but got: {pattern}")
         # The bug was producing "...apis*\(" — check the pattern doesn't
         # have a word char immediately before "s*\("
         self.assertIsNone(
@@ -294,9 +307,7 @@ class TestContextAuditorRuleCoverage(unittest.TestCase):
         # Guidance with a DO NOT directive
         guidance = {
             "directives": {
-                "do_not": [
-                    "DO NOT create task-specific functions like solve_task_abc()"
-                ],
+                "do_not": ["DO NOT create task-specific functions like solve_task_abc()"],
             },
         }
 
@@ -312,7 +323,10 @@ class TestContextAuditorRuleCoverage(unittest.TestCase):
         ]
 
         _check_rule_coverage(
-            checks, suggestions, guidance, existing_rules,
+            checks,
+            suggestions,
+            guidance,
+            existing_rules,
             {"min_rule_coverage_pct": 50},
         )
 
@@ -320,8 +334,7 @@ class TestContextAuditorRuleCoverage(unittest.TestCase):
         self.assertEqual(len(checks), 1)
         check = checks[0]
         # The words "task" and "specific" and "functions" overlap
-        self.assertIn("1/1", check["detail"],
-            f"Should show 1/1 coverage, got: {check['detail']}")
+        self.assertIn("1/1", check["detail"], f"Should show 1/1 coverage, got: {check['detail']}")
 
 
 class TestTheoryExtractorClaudeRules(unittest.TestCase):
@@ -338,12 +351,10 @@ class TestTheoryExtractorClaudeRules(unittest.TestCase):
             rules_dir = Path(tmpdir) / ".claude" / "rules"
             rules_dir.mkdir(parents=True)
             (rules_dir / "architecture.md").write_text(
-                "# Architecture Rules\n\n"
-                "The system uses compositional design.\n"
+                "# Architecture Rules\n\nThe system uses compositional design.\n"
             )
             (rules_dir / "testing.md").write_text(
-                "# Testing Rules\n\n"
-                "All changes must have tests.\n"
+                "# Testing Rules\n\nAll changes must have tests.\n"
             )
 
             found = _discover_md_files(tmpdir)
@@ -480,15 +491,13 @@ class TestTheoryPackAPI(unittest.TestCase):
             summaries = pack["facet_summaries"]
 
             # Filter out "(no theory content found)" — those are allowed to repeat
-            real_summaries = [
-                v for v in summaries.values()
-                if v != "(no theory content found)"
-            ]
+            real_summaries = [v for v in summaries.values() if v != "(no theory content found)"]
 
             # Each real summary should be unique
             self.assertEqual(
-                len(real_summaries), len(set(real_summaries)),
-                f"Duplicate summaries found: {real_summaries}"
+                len(real_summaries),
+                len(set(real_summaries)),
+                f"Duplicate summaries found: {real_summaries}",
             )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -504,13 +513,14 @@ class TestTheoryPackAPI(unittest.TestCase):
 
             # Should find "black-box" or "compositional" anti-pattern content
             has_relevant = (
-                "black" in anti_texts or
-                "compositional" in anti_texts or
-                "task-specific" in anti_texts or
-                "ruin" in anti_texts
+                "black" in anti_texts
+                or "compositional" in anti_texts
+                or "task-specific" in anti_texts
+                or "ruin" in anti_texts
             )
-            self.assertTrue(has_relevant,
-                f"Expected anti-pattern content, got: {pack['anti_patterns']}")
+            self.assertTrue(
+                has_relevant, f"Expected anti-pattern content, got: {pack['anti_patterns']}"
+            )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -551,12 +561,8 @@ class TestTheoryPackAPI(unittest.TestCase):
             # Each claim should contain at least one keyword
             for claim in result["claims"]:
                 claim_lower = claim["claim"].lower()
-                has_kw = any(
-                    kw in claim_lower
-                    for kw in ["compositional", "elimination"]
-                )
-                self.assertTrue(has_kw,
-                    f"Claim doesn't match keywords: {claim['claim'][:80]}")
+                has_kw = any(kw in claim_lower for kw in ["compositional", "elimination"])
+                self.assertTrue(has_kw, f"Claim doesn't match keywords: {claim['claim'][:80]}")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -589,9 +595,11 @@ class TestTheoryPackAPI(unittest.TestCase):
                 core_claims.extend(entry["claims"])
 
             all_text = " ".join(core_claims).lower()
-            self.assertIn("hypothesize", all_text,
-                f"'hypothesize' not found in core_theory claims: "
-                f"{core_claims[:3]}")
+            self.assertIn(
+                "hypothesize",
+                all_text,
+                f"'hypothesize' not found in core_theory claims: {core_claims[:3]}",
+            )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -609,12 +617,11 @@ class TestTheoryPackAPI(unittest.TestCase):
             # Should find content from JOURNAL.md's "Lessons Learned" section
             all_text = " ".join(ps_claims).lower()
             has_lesson_content = (
-                "validate" in all_text or
-                "iterative" in all_text or
-                "decomposition" in all_text
+                "validate" in all_text or "iterative" in all_text or "decomposition" in all_text
             )
-            self.assertTrue(has_lesson_content,
-                f"Expected lesson content in problem_solving: {ps_claims[:3]}")
+            self.assertTrue(
+                has_lesson_content, f"Expected lesson content in problem_solving: {ps_claims[:3]}"
+            )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -626,10 +633,8 @@ class TestTheoryPackAPI(unittest.TestCase):
         try:
             pack = build_theory_pack(tmpdir)
             tokens = pack["digest_token_estimate"]
-            self.assertGreaterEqual(tokens, 20,
-                f"Token estimate too low: {tokens}")
-            self.assertLessEqual(tokens, 2000,
-                f"Token estimate too high: {tokens}")
+            self.assertGreaterEqual(tokens, 20, f"Token estimate too low: {tokens}")
+            self.assertLessEqual(tokens, 2000, f"Token estimate too high: {tokens}")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

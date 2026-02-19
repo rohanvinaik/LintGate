@@ -211,16 +211,12 @@ def compute_coherence_with_history(
     if session.coherence_trajectory:
         prev_state = session.coherence_trajectory[-1]
         if _state_severity(base.state) > _state_severity(prev_state):
-            annotations.append(
-                f"REGRESSION: coherence degraded from {prev_state} → {base.state}"
-            )
+            annotations.append(f"REGRESSION: coherence degraded from {prev_state} → {base.state}")
 
     # 2. PERSISTENT detection: same channel loud 3+ consecutive runs
     persistent_channels = _detect_persistent_loud(session, base.loud_channels)
     for ch_name, streak in persistent_channels:
-        annotations.append(
-            f"PERSISTENT: {ch_name} has been failing for {streak} consecutive runs"
-        )
+        annotations.append(f"PERSISTENT: {ch_name} has been failing for {streak} consecutive runs")
 
     # 3. RESOLUTION detection: previously-loud channel now silent
     resolved = _detect_resolutions(session, base.silent_channels)
@@ -236,7 +232,9 @@ def compute_coherence_with_history(
     enriched_action = base.recommended_action
     if persistent_channels:
         ch_names = [ch for ch, _ in persistent_channels]
-        enriched_action += f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
+        enriched_action += (
+            f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
+        )
 
     return CoherenceResult(
         state=base.state,

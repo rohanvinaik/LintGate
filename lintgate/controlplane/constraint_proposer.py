@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .session_memory import SessionMemory
+    from .types import ControlPlaneConfig
 
 # Minimum number of recent runs a pattern must appear in to trigger a proposal
 _DEFAULT_PROPOSAL_THRESHOLD = 5
@@ -113,6 +114,38 @@ _BEHAVIOR_CONSTRAINT_MAP: dict[str, dict[str, Any]] = {
 
 
 @dataclass
+class TheoryCoherenceResult:
+    """Result of checking a constraint proposal against the project's theory profile.
+
+    Metadata-only: does not auto-adjust confidence. The heuristic contradiction
+    detection will have false positives, so we start with observation and let
+    results accumulate before trusting them for confidence modulation.
+    """
+
+    aligned: bool | None = None  # True=aligned, False=contradicting, None=no signal
+    supporting_claims: list[str] = field(default_factory=list)
+    contradicting_claims: list[str] = field(default_factory=list)
+    coherence_score: float = 0.0  # -1.0 (full contradiction) to +1.0 (full alignment)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "aligned": self.aligned,
+            "supporting_claims": self.supporting_claims,
+            "contradicting_claims": self.contradicting_claims,
+            "coherence_score": self.coherence_score,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TheoryCoherenceResult:
+        return cls(
+            aligned=data.get("aligned"),
+            supporting_claims=data.get("supporting_claims", []),
+            contradicting_claims=data.get("contradicting_claims", []),
+            coherence_score=data.get("coherence_score", 0.0),
+        )
+
+
+@dataclass
 class ProposedConstraint:
     """A constraint proposed from recurring pattern observation."""
 
@@ -123,6 +156,9 @@ class ProposedConstraint:
     rationale: str = ""  # Human-readable explanation
     confidence: float = 0.0  # 0.0-1.0 based on recurrence strength
     status: str = "proposed"  # proposed | accepted | rejected
+    # Architecture of Inquiry: theory coherence metadata (no confidence adjustment)
+    theory_coherence: TheoryCoherenceResult | None = None
+    drift_warning: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -133,10 +169,14 @@ class ProposedConstraint:
             "rationale": self.rationale,
             "confidence": self.confidence,
             "status": self.status,
+            "theory_coherence": self.theory_coherence.to_dict() if self.theory_coherence else None,
+            "drift_warning": self.drift_warning,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProposedConstraint:
+        tc_data = data.get("theory_coherence")
+        tc = TheoryCoherenceResult.from_dict(tc_data) if isinstance(tc_data, dict) else None
         return cls(
             source=data.get("source", "pattern_bank"),
             pattern_key=data.get("pattern_key", ""),
@@ -145,7 +185,207 @@ class ProposedConstraint:
             rationale=data.get("rationale", ""),
             confidence=data.get("confidence", 0.0),
             status=data.get("status", "proposed"),
+            theory_coherence=tc,
+            drift_warning=data.get("drift_warning", False),
         )
+
+
+# ── Theory Coherence Check ───────────────────────────────────────────
+
+# Words to exclude when extracting meaningful keywords
+_COHERENCE_STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "this",
+    "that",
+    "have",
+    "been",
+    "will",
+    "should",
+    "must",
+    "not",
+    "are",
+    "was",
+    "were",
+    "has",
+    "had",
+    "can",
+    "may",
+    "use",
+    "used",
+    "using",
+    "when",
+    "where",
+    "which",
+    "what",
+    "into",
+    "than",
+    "then",
+    "also",
+    "each",
+    "more",
+    "some",
+    "any",
+    "all",
+    "runs",
+    "last",
+    "detected",
+    "appeared",
+    "check",
+    "avoid",
+    "before",
+}
+
+# Polarity indicators for contradiction detection
+_POSITIVE_POLARITY = {
+    "do",
+    "use",
+    "prefer",
+    "recommend",
+    "require",
+    "ensure",
+    "always",
+    "should",
+    "must",
+}
+_NEGATIVE_POLARITY = {
+    "dont",
+    "don't",
+    "avoid",
+    "never",
+    "forbid",
+    "ban",
+    "not",
+    "no",
+    "prevent",
+    "stop",
+}
+
+
+def _extract_coherence_keywords(text: str) -> list[str]:
+    """Extract meaningful 4+ char words from text, minus stopwords."""
+    import re
+
+    words = re.findall(r"[a-z]{4,}", text.lower())
+    return [w for w in words if w not in _COHERENCE_STOPWORDS]
+
+
+def _is_contradicting(proposal_text: str, claim_text: str) -> bool:
+    """Heuristic: does the proposal forbid what the claim endorses, or vice versa?
+
+    Conservative: only flags clear contradictions where noun overlap exists
+    and polarity is reversed.
+    """
+    p_lower = proposal_text.lower()
+    c_lower = claim_text.lower()
+
+    # Extract meaningful nouns (4+ chars, not stopwords/polarity words)
+    all_polarity = _POSITIVE_POLARITY | _NEGATIVE_POLARITY
+    p_nouns = {w for w in _extract_coherence_keywords(p_lower) if w not in all_polarity}
+    c_nouns = {w for w in _extract_coherence_keywords(c_lower) if w not in all_polarity}
+
+    # Need at least 1 overlapping concept noun
+    overlap = p_nouns & c_nouns
+    if not overlap:
+        return False
+
+    # Check polarity: texts must have DIFFERENT dominant polarity
+    p_words = set(p_lower.split())
+    c_words = set(c_lower.split())
+
+    p_pos_count = len(p_words & _POSITIVE_POLARITY)
+    p_neg_count = len(p_words & _NEGATIVE_POLARITY)
+    c_pos_count = len(c_words & _POSITIVE_POLARITY)
+    c_neg_count = len(c_words & _NEGATIVE_POLARITY)
+
+    # Determine dominant polarity for each text
+    # If both have same dominant polarity → not contradicting
+    p_dominant = (
+        "positive"
+        if p_pos_count > p_neg_count
+        else ("negative" if p_neg_count > p_pos_count else "neutral")
+    )
+    c_dominant = (
+        "positive"
+        if c_pos_count > c_neg_count
+        else ("negative" if c_neg_count > c_pos_count else "neutral")
+    )
+
+    # Contradiction requires opposite dominant polarity
+    if p_dominant == "neutral" or c_dominant == "neutral":
+        return False
+    return p_dominant != c_dominant
+
+
+def check_theory_coherence(
+    proposal: ProposedConstraint,
+    theory_profile: dict[str, Any] | None,
+) -> TheoryCoherenceResult | None:
+    """Check a constraint proposal against the theory profile.
+
+    Metadata-only: returns alignment/contradiction data without modifying
+    the proposal's confidence. The heuristic may produce false positives,
+    so we start with observation before trusting it for modulation.
+
+    Args:
+        proposal: The constraint proposal to check.
+        theory_profile: Pre-extracted theory profile, or None.
+
+    Returns:
+        TheoryCoherenceResult with supporting/contradicting claims, or None
+        if no theory profile available.
+    """
+    if not theory_profile:
+        return None
+
+    from lintgate.theory_extractor import get_theory_context_from_profile
+
+    # Extract keywords from proposal's rule text and rationale
+    combined_text = f"{proposal.proposed_rule} {proposal.rationale}"
+    keywords = _extract_coherence_keywords(combined_text)
+
+    if not keywords:
+        return None
+
+    # Query theory profile for relevant claims
+    result = get_theory_context_from_profile(
+        theory_profile,
+        keywords=keywords[:5],  # Cap keywords to avoid over-broad matching
+        max_claims=10,
+    )
+
+    claims = result.get("claims", [])
+    if not claims:
+        return TheoryCoherenceResult(aligned=None, coherence_score=0.0)
+
+    supporting: list[str] = []
+    contradicting: list[str] = []
+
+    for claim_data in claims:
+        claim_text = claim_data.get("claim", "")
+        if _is_contradicting(combined_text, claim_text):
+            contradicting.append(claim_text)
+        else:
+            supporting.append(claim_text)
+
+    # Compute score: normalized difference
+    total = len(supporting) + len(contradicting)
+    if total == 0:
+        score = 0.0
+        aligned = None
+    else:
+        score = (len(supporting) - len(contradicting)) / total
+        aligned = score > 0 if score != 0 else None
+
+    return TheoryCoherenceResult(
+        aligned=aligned,
+        supporting_claims=supporting,
+        contradicting_claims=contradicting,
+        coherence_score=round(score, 3),
+    )
 
 
 def propose_constraints_from_patterns(
@@ -153,6 +393,7 @@ def propose_constraints_from_patterns(
     session: SessionMemory | None = None,
     existing_rules: list[str] | None = None,
     threshold: int = _DEFAULT_PROPOSAL_THRESHOLD,
+    config: ControlPlaneConfig | None = None,
 ) -> list[ProposedConstraint]:
     """Generate constraint proposals from recurring pattern bank alerts.
 
@@ -161,6 +402,7 @@ def propose_constraints_from_patterns(
         session: Active session memory (for dedup and status tracking).
         existing_rules: Current LINTGATE_FORBID/REQUIRE rules in CLAUDE.md.
         threshold: Minimum recent_run_count to trigger proposal.
+        config: ControlPlane config (used to gate inquiry features like coherence).
 
     Returns:
         List of ProposedConstraint objects. Empty if no patterns qualify.
@@ -238,6 +480,19 @@ def propose_constraints_from_patterns(
             confidence=round(confidence, 3),
             status="proposed",
         )
+
+        # Architecture of Inquiry: theory coherence check (metadata-only)
+        # Only run when inquiry.theory_coherence_check is explicitly enabled
+        _coherence_enabled = config is not None and config.inquiry.theory_coherence_check
+        theory_profile = None
+        if _coherence_enabled and session is not None:
+            theory_profile = getattr(session, "theory_profile_cache", None)
+        if theory_profile is not None:
+            coherence = check_theory_coherence(proposal, theory_profile)
+            if coherence is not None:
+                proposal.theory_coherence = coherence
+                if coherence.contradicting_claims:
+                    proposal.drift_warning = True
 
         proposals.append(proposal)
         already_proposed.add(pattern_key)

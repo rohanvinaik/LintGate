@@ -41,30 +41,35 @@ def build_registry(config: ProjectConfig) -> dict[str, BaseLinter]:
 
     try:
         from .linters.mypy_linter import MypyLinter
+
         _register(registry, MypyLinter(), config)
     except ImportError:
         pass
 
     try:
         from .linters.complexity_checker import ComplexityChecker
+
         _register(registry, ComplexityChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.import_checker import ImportChecker
+
         _register(registry, ImportChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.version_checker import VersionChecker
+
         _register(registry, VersionChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.bandit_linter import BanditLinter
+
         _register(registry, BanditLinter(), config)
     except ImportError:
         pass
@@ -73,30 +78,35 @@ def build_registry(config: ProjectConfig) -> dict[str, BaseLinter]:
 
     try:
         from .linters.structure_checker import StructureChecker
+
         _register(registry, StructureChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.context_rule_checker import ContextRuleChecker
+
         _register(registry, ContextRuleChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.redefinition_checker import RedefinitionChecker
+
         _register(registry, RedefinitionChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.architecture_checker import ArchitectureChecker
+
         _register(registry, ArchitectureChecker(), config)
     except ImportError:
         pass
 
     try:
         from .linters.dead_code_checker import DeadCodeChecker
+
         _register(registry, DeadCodeChecker(), config)
     except ImportError:
         pass

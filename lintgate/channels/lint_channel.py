@@ -18,9 +18,8 @@ import contextlib
 import time
 from typing import TYPE_CHECKING, Any
 
-from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.types import ChannelResult, ControlPlaneConfig, SupervisionEvent
-from lintgate.types import LintIssue, LintTier
+from lintgate.types import LintTier
 
 if TYPE_CHECKING:
     from lintgate.types import AggregatedResult
@@ -71,7 +70,9 @@ class LintChannel:
         classification = event.change_classification
         if classification is None:
             return ChannelResult(
-                channel=self.name, status="skip", severity="none",
+                channel=self.name,
+                status="skip",
+                severity="none",
                 metrics={"reason": "no_classification"},
             )
 
@@ -84,7 +85,9 @@ class LintChannel:
         tier = select_tier(classification, project_config)
         if tier.skip:
             return ChannelResult(
-                channel=self.name, status="skip", severity="none",
+                channel=self.name,
+                status="skip",
+                severity="none",
                 metrics={"reason": "tier_skip", "tier": tier.name},
             )
         tier = _apply_mcp_strictness_override(event, tier)
@@ -105,7 +108,8 @@ class LintChannel:
         from lintgate.results_aggregator import aggregate_results
 
         aggregated = aggregate_results(
-            linter_results, project_config,
+            linter_results,
+            project_config,
             tier_name=tier.name,
             tier_reason=tier.reason,
         )
@@ -116,11 +120,13 @@ class LintChannel:
         recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
         with contextlib.suppress(Exception):
             from lintgate.state import update_issue_memory
+
             recurrence = update_issue_memory(event.project_root, all_issues)
 
         pattern_report: dict[str, Any] = {"alerted_patterns": [], "top_categories": []}
         with contextlib.suppress(Exception):
             from lintgate.pattern_bank import update_pattern_bank
+
             pattern_report = update_pattern_bank(event.project_root, all_issues)
 
         # Convert to ChannelResult
@@ -149,7 +155,9 @@ class LintChannel:
         if classification is None:
             return (
                 ChannelResult(
-                    channel=self.name, status="skip", severity="none",
+                    channel=self.name,
+                    status="skip",
+                    severity="none",
                     metrics={"reason": "no_classification"},
                 ),
                 _empty_aggregated(),
@@ -163,7 +171,9 @@ class LintChannel:
         if tier.skip:
             return (
                 ChannelResult(
-                    channel=self.name, status="skip", severity="none",
+                    channel=self.name,
+                    status="skip",
+                    severity="none",
                     metrics={"reason": "tier_skip", "tier": tier.name},
                 ),
                 _empty_aggregated(),
@@ -184,7 +194,8 @@ class LintChannel:
         from lintgate.results_aggregator import aggregate_results
 
         aggregated = aggregate_results(
-            linter_results, project_config,
+            linter_results,
+            project_config,
             tier_name=tier.name,
             tier_reason=tier.reason,
         )
@@ -259,15 +270,18 @@ class LintChannel:
         """
         try:
             from lintgate.config import load_config
+
             return load_config(event.project_root)
         except Exception:
             from lintgate.types import ProjectConfig
+
             return ProjectConfig(project_root=event.project_root)
 
 
 def _empty_aggregated() -> AggregatedResult:
     """Create an empty AggregatedResult for skip cases."""
     from lintgate.types import AggregatedResult
+
     return AggregatedResult()
 
 

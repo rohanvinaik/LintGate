@@ -12,7 +12,6 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.types import (
     ChannelResult,
     ControlPlaneConfig,
@@ -92,25 +91,30 @@ class DependencyChannel:
 
         try:
             from lintgate.dependency_health import quick_dependency_check
+
             warnings = quick_dependency_check(project_root, change_kind, tool_input)
 
             for warning in warnings:
-                findings.append(LintIssue(
-                    linter="dep_channel",
-                    kind="dep_warning",
-                    message=warning,
-                    severity="informational",
-                ))
+                findings.append(
+                    LintIssue(
+                        linter="dep_channel",
+                        kind="dep_warning",
+                        message=warning,
+                        severity="informational",
+                    )
+                )
 
                 # Propose repair for lockfile issues
                 if "lockfile" in warning.lower() or "lock" in warning.lower():
-                    repairs.append(RepairAction(
-                        channel="deps",
-                        kind="command",
-                        summary="Run: uv lock",
-                        payload={"command": "uv lock", "cwd": project_root},
-                        safe=True,
-                    ))
+                    repairs.append(
+                        RepairAction(
+                            channel="deps",
+                            kind="command",
+                            summary="Run: uv lock",
+                            payload={"command": "uv lock", "cwd": project_root},
+                            safe=True,
+                        )
+                    )
         except ImportError:
             pass  # dependency_health module not available
         except Exception:
@@ -128,6 +132,7 @@ class DependencyChannel:
 
         try:
             from lintgate.dependency_health import full_dependency_health
+
             result = full_dependency_health(project_root)
 
             if not isinstance(result, dict):
@@ -142,25 +147,29 @@ class DependencyChannel:
                 "info": "informational",
             }
             for issue in result.get("issues", []):
-                findings.append(LintIssue(
-                    linter="dep_channel",
-                    kind=issue.get("name", "dep_issue"),
-                    message=issue.get("message", "Dependency issue"),
-                    severity=status_to_severity.get(
-                        issue.get("status", "info"), "informational"
-                    ),
-                ))
+                findings.append(
+                    LintIssue(
+                        linter="dep_channel",
+                        kind=issue.get("name", "dep_issue"),
+                        message=issue.get("message", "Dependency issue"),
+                        severity=status_to_severity.get(
+                            issue.get("status", "info"), "informational"
+                        ),
+                    )
+                )
 
                 # Each issue may carry its own suggestion string
                 suggestion = issue.get("suggestion")
                 if suggestion:
-                    repairs.append(RepairAction(
-                        channel="deps",
-                        kind="command",
-                        summary=suggestion,
-                        payload={"command": suggestion, "cwd": project_root},
-                        safe=True,
-                    ))
+                    repairs.append(
+                        RepairAction(
+                            channel="deps",
+                            kind="command",
+                            summary=suggestion,
+                            payload={"command": suggestion, "cwd": project_root},
+                            safe=True,
+                        )
+                    )
 
         except ImportError:
             pass

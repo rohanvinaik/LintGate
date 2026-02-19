@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 import sys
-import time
 
 from .types import ControlPlaneConfig, SupervisionEvent
 
@@ -146,18 +145,19 @@ def _cmd_status(args: argparse.Namespace) -> None:
     # Check for config
     try:
         from lintgate.config import load_config
+
         config = load_config(project_root)
-        print(f"Project config: Found")
+        print("Project config: Found")
         print(f"Total timeout: {config.total_timeout_ms}ms")
     except Exception:
-        print(f"Project config: Not found (using defaults)")
+        print("Project config: Not found (using defaults)")
 
     # List available channels
-    print(f"\nAvailable channels:")
-    print(f"  ✓ lint      — Code quality (ruff, mypy, complexity)")
-    print(f"  ✓ tests     — Test coverage and health")
-    print(f"  ✓ deps      — Dependency health")
-    print(f"  ✓ git       — Git hygiene")
+    print("\nAvailable channels:")
+    print("  ✓ lint      — Code quality (ruff, mypy, complexity)")
+    print("  ✓ tests     — Test coverage and health")
+    print("  ✓ deps      — Dependency health")
+    print("  ✓ git       — Git hygiene")
 
 
 def _discover_python_files(project_root: str, max_files: int = 50) -> list[str]:
@@ -167,9 +167,13 @@ def _discover_python_files(project_root: str, max_files: int = 50) -> list[str]:
 
     for dirpath, dirnames, filenames in os.walk(root):
         # Skip hidden dirs and common non-source dirs
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")
-                       and d not in ("node_modules", "__pycache__", ".venv", "venv",
-                                     "build", "dist", ".git", ".tox")]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not d.startswith(".")
+            and d
+            not in ("node_modules", "__pycache__", ".venv", "venv", "build", "dist", ".git", ".tox")
+        ]
         for f in filenames:
             if f.endswith(".py"):
                 files.append(os.path.join(dirpath, f))
@@ -196,7 +200,9 @@ def _print_human_readable(mesh_result) -> None:
 
         if cr.findings:
             for f in cr.findings[:5]:
-                sev_icon = {"blocking": "🔴", "warning": "🟡", "informational": "🔵"}.get(f.severity, "⚪")
+                sev_icon = {"blocking": "🔴", "warning": "🟡", "informational": "🔵"}.get(
+                    f.severity, "⚪"
+                )
                 location = f.short_location() if hasattr(f, "short_location") else ""
                 print(f"    {sev_icon} [{f.kind}] {location}: {f.message}")
             if len(cr.findings) > 5:

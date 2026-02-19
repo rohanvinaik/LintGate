@@ -17,14 +17,10 @@ Allowed diffs:
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from lintgate.change_classifier import classify_change
 from lintgate.channels.lint_channel import LintChannel
@@ -42,6 +38,7 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 
 # ── Debounce clearing ──────────────────────────────────────────────────
 
+
 def _clear_debounce() -> None:
     """Clear the tier selector's debounce state.
 
@@ -50,6 +47,7 @@ def _clear_debounce() -> None:
     call to be debounced. We must clear it between comparison runs.
     """
     from lintgate.tier_selector import _DEBOUNCE_FILE
+
     if _DEBOUNCE_FILE.exists():
         _DEBOUNCE_FILE.unlink()
 
@@ -94,7 +92,8 @@ def _run_direct_pipeline(input_data: dict[str, Any]) -> tuple[AggregatedResult, 
     registry = build_registry(config)
     linter_results = run_linters(tier, config, registry, timeout_ms=8000)
     aggregated = aggregate_results(
-        linter_results, config,
+        linter_results,
+        config,
         tier_name=tier.name,
         tier_reason=tier.reason,
     )
@@ -142,10 +141,7 @@ def _make_issue_set(issues: list) -> set[tuple]:
     Uses (linter, kind, file, line) tuples for comparison, ignoring
     ordering within the same severity bucket.
     """
-    return {
-        (i.linter, i.kind, i.file, i.line)
-        for i in issues
-    }
+    return {(i.linter, i.kind, i.file, i.line) for i in issues}
 
 
 # ── Protocol conformance ─────────────────────────────────────────────────
@@ -490,7 +486,9 @@ def test_mesh_with_lint_channel_matches_direct_pipeline() -> None:
         assert len(direct_agg.warnings) == 0
     else:
         # Issue counts must match
-        direct_total = len(direct_agg.blocking) + len(direct_agg.warnings) + len(direct_agg.informational)
+        direct_total = (
+            len(direct_agg.blocking) + len(direct_agg.warnings) + len(direct_agg.informational)
+        )
         channel_total = len(lint_result.findings)
         assert channel_total == direct_total, (
             f"Total issue count mismatch: direct={direct_total}, channel={channel_total}"

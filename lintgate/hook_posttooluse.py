@@ -78,6 +78,7 @@ def main() -> None:
     # ControlPlane dispatch: if enabled, run the supervision mesh instead
     try:
         from lintgate.config import load_controlplane_config
+
         cp_config = load_controlplane_config(cwd)
         if cp_config and cp_config.enabled:
             _run_controlplane(input_data, config, cp_config, cwd, start)
@@ -97,6 +98,7 @@ def main() -> None:
     if classification.change_kind in ("dependency", "build"):
         with contextlib.suppress(Exception):
             from lintgate.dependency_health import quick_dependency_check
+
             dep_warnings = quick_dependency_check(cwd, classification.change_kind, tool_input)
 
     # Phase 2: Select lint tier
@@ -115,7 +117,8 @@ def main() -> None:
 
     # Phase 4: Aggregate results
     aggregated = aggregate_results(
-        linter_results, config,
+        linter_results,
+        config,
         tier_name=tier.name,
         tier_reason=tier.reason,
     )
@@ -130,12 +133,14 @@ def main() -> None:
     pattern_report = {"alerted_patterns": [], "top_categories": []}
     with contextlib.suppress(Exception):
         from lintgate.pattern_bank import update_pattern_bank
+
         pattern_report = update_pattern_bank(cwd, all_issues)
 
     # Phase 5: Format report
     last_run = load_last_run(cwd)
     report = format_report(
-        aggregated, last_run,
+        aggregated,
+        last_run,
         recurrence_summary=recurrence,
         pattern_report=pattern_report,
     )
@@ -147,20 +152,22 @@ def main() -> None:
     # Log metrics (non-blocking)
     with contextlib.suppress(Exception):
         elapsed_ms = (time.perf_counter() - start) * 1000
-        log_metric({
-            "event": "lint_run",
-            "project": cwd,
-            "tier": tier.name,
-            "change_kind": classification.change_kind,
-            "risk_level": classification.risk_level,
-            "files": classification.files_changed,
-            "blocking_count": len(aggregated.blocking),
-            "warning_count": len(aggregated.warnings),
-            "info_count": len(aggregated.informational),
-            "linters_run": aggregated.metrics.get("linters_run", 0),
-            "duration_ms": round(elapsed_ms, 1),
-            "repeated_issue_count": recurrence.get("repeated_issue_count", 0),
-        })
+        log_metric(
+            {
+                "event": "lint_run",
+                "project": cwd,
+                "tier": tier.name,
+                "change_kind": classification.change_kind,
+                "risk_level": classification.risk_level,
+                "files": classification.files_changed,
+                "blocking_count": len(aggregated.blocking),
+                "warning_count": len(aggregated.warnings),
+                "info_count": len(aggregated.informational),
+                "linters_run": aggregated.metrics.get("linters_run", 0),
+                "duration_ms": round(elapsed_ms, 1),
+                "repeated_issue_count": recurrence.get("repeated_issue_count", 0),
+            }
+        )
 
     # Inject dependency health warnings into report
     if dep_warnings:
@@ -263,6 +270,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
 
     if cp_config.channel_enabled("behavior"):
         from lintgate.channels.behavior_channel import BehaviorChannel
+
         channels.append(BehaviorChannel())
 
     # Session memory: load or create session if enabled
@@ -271,6 +279,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
     if cp_config.session_memory:
         with contextlib.suppress(Exception):
             from lintgate.controlplane.session_memory import get_or_create_session
+
             session = get_or_create_session(cwd, cp_config.session_max_age_hours)
 
     # Inject behavior compass into event for BehaviorChannel (read-only for channel)
@@ -281,6 +290,48 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
     if _global_priors is not None:
         event.raw_input["behavior_global_priors"] = _global_priors
 
+    # Architecture of Inquiry: cache theory profile once per mesh run
+    if session is not None and cp_config.inquiry.any_enabled():
+        try:
+            from lintgate.theory_extractor import extract_theory
+
+            _theory_result = extract_theory(cwd)
+            session.theory_profile_cache = _theory_result.get("theory_profile")
+        except Exception:
+            # Graceful fallback: missing docs, parse errors, etc.
+            # All downstream consumers treat None as no-op.
+            session.theory_profile_cache = None
+
+        # Inject theory profile into event for channels (read-only)
+        if session.theory_profile_cache is not None:
+            event.raw_input["theory_profile"] = session.theory_profile_cache
+
+    # Advisory gate: warn when editing without sufficient theory context
+    _session_advisory: str | None = None
+    if (
+        session is not None
+        and cp_config.inquiry.session_gate
+        and tool_name in ("Write", "Edit", "MultiEdit")
+        and not session.behavior_compass.get("_session_ready", False)
+    ):
+        with contextlib.suppress(Exception):
+            from lintgate.context_auditor import check_session_readiness
+
+            _readiness = check_session_readiness(
+                cwd,
+                theory_profile=session.theory_profile_cache,
+            )
+            if not _readiness.ready:
+                _session_advisory = (
+                    f"[Session Advisory] Context not ready for deep supervision. "
+                    f"Missing: {', '.join(_readiness.missing)}. "
+                    f"{_readiness.recommendation}"
+                )
+                # Short-circuit expensive channels: remove behavior channel
+                channels = [ch for ch in channels if ch.name != "behavior"]
+            else:
+                session.behavior_compass["_session_ready"] = True
+
     # Run the mesh (with session for trajectory-aware coherence)
     mesh_result = run_mesh(event, cp_config, channels, session=session)
 
@@ -288,47 +339,69 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
     _finding_index: dict = {}
     with contextlib.suppress(Exception):
         from lintgate.controlplane.reporter import build_finding_index
+
         _finding_index = build_finding_index(mesh_result)
 
     # Session memory: record snapshot and run constraint proposer
     if session is not None:
         with contextlib.suppress(Exception):
             from lintgate.controlplane.session_memory import record_mesh_run, save_session
+
             snapshot = record_mesh_run(session, mesh_result, finding_index=_finding_index)
 
             # Enrich snapshot with behavioral fields
             for cr in mesh_result.channel_results:
                 if cr.channel == "behavior":
-                    snapshot.behavior_alerts = [
-                        f.kind for f in cr.findings
-                    ]
+                    snapshot.behavior_alerts = [f.kind for f in cr.findings]
                     # v2: Apply compass delta (cooldown counters, nudge flags)
                     if "behavior_compass_delta" in cr.metrics:
                         from lintgate.controlplane.session_memory import (
                             load_behavior_compass as _lbc,
+                        )
+                        from lintgate.controlplane.session_memory import (
                             save_behavior_compass as _sbc,
                         )
+
                         _delta = cr.metrics["behavior_compass_delta"]
                         _bc = _lbc(session)
                         _bc.last_fired = _delta.get("last_fired", _bc.last_fired)
-                        _bc.signal_fire_counts = _delta.get("signal_fire_counts", _bc.signal_fire_counts)
-                        _bc.early_nudge_emitted = _delta.get("early_nudge_emitted", _bc.early_nudge_emitted)
-                        _bc.pending_nudge_signals = _delta.get("pending_nudge_signals", _bc.pending_nudge_signals)
+                        _bc.signal_fire_counts = _delta.get(
+                            "signal_fire_counts", _bc.signal_fire_counts
+                        )
+                        _bc.early_nudge_emitted = _delta.get(
+                            "early_nudge_emitted", _bc.early_nudge_emitted
+                        )
+                        _bc.pending_nudge_signals = _delta.get(
+                            "pending_nudge_signals", _bc.pending_nudge_signals
+                        )
                         _bc.pending_nudge_precheck_count = _delta.get(
                             "pending_nudge_precheck_count",
                             _bc.pending_nudge_precheck_count,
                         )
                         _bc.nudge_outcomes = _delta.get("nudge_outcomes", _bc.nudge_outcomes)
                         _sbc(session, _bc)
+                        # Merge theory coda dedup state (not a compass field, stored as extra key)
+                        # Use dict merge so prior signals' codas aren't dropped
+                        if "_theory_recent_codas" in _delta:
+                            _existing_codas = session.behavior_compass.get(
+                                "_theory_recent_codas", {}
+                            )
+                            _existing_codas.update(_delta["_theory_recent_codas"])
+                            session.behavior_compass["_theory_recent_codas"] = _existing_codas
 
                     # v3: Apply global profile delta
                     if cp_config.global_memory_enabled and "global_profile_delta" in cr.metrics:
                         with contextlib.suppress(Exception):
                             from lintgate.controlplane.global_behavior_profile import (
                                 apply_session_delta as _apply_gp,
+                            )
+                            from lintgate.controlplane.global_behavior_profile import (
                                 load_global_profile as _load_gp,
+                            )
+                            from lintgate.controlplane.global_behavior_profile import (
                                 save_global_profile as _save_gp,
                             )
+
                             _gp = _load_gp(ttl_days=cp_config.global_memory_ttl_days)
                             _gp_delta = cr.metrics["global_profile_delta"]
                             _session_id = session.session_id if session else ""
@@ -373,6 +446,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                 propose_constraints_from_patterns,
                 store_proposals_in_session,
             )
+
             pattern_alerts: list[dict] = []
             # Extract recurring pattern report from lint channel
             for cr in mesh_result.channel_results:
@@ -392,12 +466,14 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                 recent_run_count = sum(1 for c in recent if c > 0)
                 if recent_run_count <= 0:
                     continue
-                pattern_alerts.append({
-                    "linter": linter,
-                    "kind": kind,
-                    "alert_reason": "recurring_across_runs",
-                    "recent_run_count": recent_run_count,
-                })
+                pattern_alerts.append(
+                    {
+                        "linter": linter,
+                        "kind": kind,
+                        "alert_reason": "recurring_across_runs",
+                        "recent_run_count": recent_run_count,
+                    }
+                )
 
             if pattern_alerts:
                 pattern_report = {"alerted_patterns": pattern_alerts}
@@ -405,6 +481,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                     pattern_report,
                     session=session,
                     threshold=cp_config.constraint_proposal_threshold,
+                    config=cp_config,
                 )
                 if proposals:
                     store_proposals_in_session(session, proposals)
@@ -414,7 +491,11 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
         # Save session after all updates
         with contextlib.suppress(Exception):
             from lintgate.controlplane.session_memory import save_session
+
             save_session(session)
+
+        # Clear transient theory profile cache (per-run only, not persisted)
+        session.theory_profile_cache = None
 
     # Save full run details for controlplane_get_details drill-down
     if _finding_index:
@@ -445,7 +526,13 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                     "error": _cr.error_message,
                     "findings": [f.to_dict() for f in _cr.findings],
                     "repairs": [
-                        {"action_id": r.action_id, "kind": r.kind, "summary": r.summary, "safe": r.safe, "payload": r.payload}
+                        {
+                            "action_id": r.action_id,
+                            "kind": r.kind,
+                            "summary": r.summary,
+                            "safe": r.safe,
+                            "payload": r.payload,
+                        }
                         for r in _cr.repairs
                     ],
                     "metrics": _cr.metrics,
@@ -460,18 +547,28 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
     # Log metrics (non-blocking)
     with contextlib.suppress(Exception):
         elapsed_ms = (time.perf_counter() - start) * 1000
-        log_metric({
-            "event": "controlplane_run",
-            "project": cwd,
-            "tool_name": tool_name,
-            "change_kind": classification.change_kind,
-            "risk_level": classification.risk_level,
-            "coherence_state": mesh_result.coherence.state,
-            "channels_run": len([r for r in mesh_result.channel_results if r.status != "skip"]),
-            "partial": mesh_result.partial,
-            "duration_ms": round(elapsed_ms, 1),
-            "session_active": session is not None,
-        })
+        log_metric(
+            {
+                "event": "controlplane_run",
+                "project": cwd,
+                "tool_name": tool_name,
+                "change_kind": classification.change_kind,
+                "risk_level": classification.risk_level,
+                "coherence_state": mesh_result.coherence.state,
+                "channels_run": len([r for r in mesh_result.channel_results if r.status != "skip"]),
+                "partial": mesh_result.partial,
+                "duration_ms": round(elapsed_ms, 1),
+                "session_active": session is not None,
+            }
+        )
+
+    # Inject session advisory if present
+    if _session_advisory and report:
+        existing_msg = report.get("systemMessage", "")
+        if existing_msg:
+            report["systemMessage"] = _session_advisory + "\n\n" + existing_msg
+        else:
+            report["systemMessage"] = _session_advisory
 
     # Output
     if report:
@@ -485,6 +582,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
 def _fallback_config(cwd: str):
     """Minimal config when loading fails."""
     from lintgate.types import ProjectConfig
+
     return ProjectConfig(project_root=cwd)
 
 

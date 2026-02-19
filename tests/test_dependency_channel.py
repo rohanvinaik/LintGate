@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from lintgate.channels.dependency_channel import DependencyChannel
 from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.types import (
@@ -21,7 +19,6 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import ChangeClassification
-
 
 # ── Protocol conformance ─────────────────────────────────────────────────
 
@@ -44,10 +41,12 @@ def test_dep_channel_is_not_blocking() -> None:
 
 def test_should_run_on_dependency_change() -> None:
     classification = ChangeClassification(
-        change_kind="dependency", risk_level="moderate",
+        change_kind="dependency",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Edit",
+        project_root="/tmp",
+        tool_name="Edit",
         change_classification=classification,
     )
     assert DependencyChannel().should_run(event, ControlPlaneConfig()) is True
@@ -55,10 +54,12 @@ def test_should_run_on_dependency_change() -> None:
 
 def test_should_run_on_build_command() -> None:
     classification = ChangeClassification(
-        change_kind="build", risk_level="moderate",
+        change_kind="build",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Bash",
+        project_root="/tmp",
+        tool_name="Bash",
         change_classification=classification,
     )
     assert DependencyChannel().should_run(event, ControlPlaneConfig()) is True
@@ -66,10 +67,12 @@ def test_should_run_on_build_command() -> None:
 
 def test_should_run_on_config_change() -> None:
     classification = ChangeClassification(
-        change_kind="config", risk_level="moderate",
+        change_kind="config",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Edit",
+        project_root="/tmp",
+        tool_name="Edit",
         change_classification=classification,
     )
     assert DependencyChannel().should_run(event, ControlPlaneConfig()) is True
@@ -77,10 +80,12 @@ def test_should_run_on_config_change() -> None:
 
 def test_should_not_run_on_logic_change() -> None:
     classification = ChangeClassification(
-        change_kind="logic", risk_level="moderate",
+        change_kind="logic",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Edit",
+        project_root="/tmp",
+        tool_name="Edit",
         change_classification=classification,
     )
     assert DependencyChannel().should_run(event, ControlPlaneConfig()) is False
@@ -88,7 +93,8 @@ def test_should_not_run_on_logic_change() -> None:
 
 def test_should_not_run_without_classification() -> None:
     event = SupervisionEvent(
-        project_root="/tmp", tool_name="Edit",
+        project_root="/tmp",
+        tool_name="Edit",
         change_classification=None,
     )
     assert DependencyChannel().should_run(event, ControlPlaneConfig()) is False
@@ -112,7 +118,8 @@ def test_execute_hook_calls_quick_check(mock_quick: MagicMock) -> None:
     mock_quick.return_value = ([], [])
 
     classification = ChangeClassification(
-        change_kind="dependency", risk_level="moderate",
+        change_kind="dependency",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
         surface="hook",
@@ -135,7 +142,8 @@ def test_execute_mcp_calls_full_check(mock_full: MagicMock) -> None:
     mock_full.return_value = ([], [])
 
     classification = ChangeClassification(
-        change_kind="dependency", risk_level="moderate",
+        change_kind="dependency",
+        risk_level="moderate",
     )
     event = SupervisionEvent(
         surface="mcp",
@@ -154,7 +162,8 @@ def test_execute_mcp_calls_full_check(mock_full: MagicMock) -> None:
 def test_execute_with_no_issues(tmp_path) -> None:
     """No issues → pass status, none severity."""
     classification = ChangeClassification(
-        change_kind="config", risk_level="cosmetic",
+        change_kind="config",
+        risk_level="cosmetic",
     )
     event = SupervisionEvent(
         surface="hook",
@@ -172,7 +181,8 @@ def test_execute_with_no_issues(tmp_path) -> None:
 
 def test_execute_returns_duration() -> None:
     classification = ChangeClassification(
-        change_kind="config", risk_level="cosmetic",
+        change_kind="config",
+        risk_level="cosmetic",
     )
     event = SupervisionEvent(
         surface="hook",

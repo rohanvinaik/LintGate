@@ -61,6 +61,9 @@ class SessionSnapshot:
     error_signature: str = ""  # Normalized error output
     behavior_alerts: list[str] = field(default_factory=list)  # Pattern names that fired
     finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
+    # Architecture of Inquiry: prediction tracking fields
+    prediction_accuracy: float | None = None
+    predictions_checked: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -84,6 +87,8 @@ class SessionSnapshot:
             error_signature=data.get("error_signature", ""),
             behavior_alerts=data.get("behavior_alerts", []),
             finding_index=data.get("finding_index", {}),
+            prediction_accuracy=data.get("prediction_accuracy"),
+            predictions_checked=data.get("predictions_checked", 0),
         )
 
 
@@ -107,6 +112,10 @@ class SessionMemory:
     proposed_constraints: list[dict[str, Any]] = field(default_factory=list)
     agent_disagreements: list[dict[str, Any]] = field(default_factory=list)
     behavior_compass: dict[str, Any] = field(default_factory=dict)  # Serialized BehaviorCompass
+    # Architecture of Inquiry: cached theory profile for current mesh run (transient, not persisted)
+    theory_profile_cache: dict[str, Any] | None = None
+    # Architecture of Inquiry: pending context patches awaiting explicit apply
+    pending_patches: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +130,8 @@ class SessionMemory:
             "proposed_constraints": self.proposed_constraints,
             "agent_disagreements": self.agent_disagreements,
             "behavior_compass": self.behavior_compass,
+            # theory_profile_cache is transient (per-run), not persisted
+            "pending_patches": self.pending_patches,
         }
 
     @classmethod
@@ -138,6 +149,9 @@ class SessionMemory:
             proposed_constraints=data.get("proposed_constraints", []),
             agent_disagreements=data.get("agent_disagreements", []),
             behavior_compass=data.get("behavior_compass", {}),
+            # theory_profile_cache is transient — always None on load
+            theory_profile_cache=None,
+            pending_patches=data.get("pending_patches", []),
         )
 
 
@@ -187,10 +201,9 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
     """
     session = load_session(project_root)
 
-    if session is not None:
-        if expire_session(session, max_age_hours):
-            # Session expired — start fresh
-            session = None
+    if session is not None and expire_session(session, max_age_hours):
+        # Session expired — start fresh
+        session = None
 
     if session is None:
         session = SessionMemory(
@@ -372,12 +385,10 @@ def detect_applied_repairs(
 
     # For now, we track repairs by their action_id status
     # A more sophisticated version would store finding-repair associations
-    for action_id, status in session.repair_outcomes.items():
-        if status == "pending":
-            # Check if blocking count decreased — simple heuristic
-            if last_snapshot.blocking_count < prev_snapshot.blocking_count:
-                # Mark as potentially applied (conservative: only if blocking decreased)
-                pass  # Future: correlate specific findings with specific repairs
+    for _action_id, status in session.repair_outcomes.items():
+        if status == "pending" and last_snapshot.blocking_count < prev_snapshot.blocking_count:
+            # Mark as potentially applied (conservative: only if blocking decreased)
+            pass  # Future: correlate specific findings with specific repairs
 
     return applied
 

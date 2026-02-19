@@ -19,9 +19,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-from lintgate.controlplane.channel import Channel
 from lintgate.controlplane.types import (
     ChannelResult,
     ControlPlaneConfig,
@@ -29,7 +27,6 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import LintIssue
-
 
 # ── Test runner result ───────────────────────────────────────────────────
 
@@ -94,31 +91,36 @@ class TestChannel:
         # Step 2: Check for missing tests
         for src_file in changed_files:
             if _is_source_file(src_file, project_root) and not _has_test(src_file, project_root):
-                findings.append(LintIssue(
-                    linter="test_channel",
-                    kind="missing_test",
-                    message=f"No test file found for {os.path.basename(src_file)}",
-                    file=src_file,
-                    severity="informational",
-                ))
+                findings.append(
+                    LintIssue(
+                        linter="test_channel",
+                        kind="missing_test",
+                        message=f"No test file found for {os.path.basename(src_file)}",
+                        file=src_file,
+                        severity="informational",
+                    )
+                )
                 # Propose skeleton repair
                 try:
                     from lintgate.controlplane.test_archetype_selector import select_archetypes
+
                     archetypes = select_archetypes(src_file, project_root)
                     if archetypes:
-                        repairs.append(RepairAction(
-                            channel="tests",
-                            kind="create_test_skeleton",
-                            summary=(
-                                f"Create test skeleton for {os.path.basename(src_file)} "
-                                f"({archetypes[0].name})"
-                            ),
-                            payload={
-                                "source_file": src_file,
-                                "archetypes": [a.name for a in archetypes],
-                            },
-                            safe=True,
-                        ))
+                        repairs.append(
+                            RepairAction(
+                                channel="tests",
+                                kind="create_test_skeleton",
+                                summary=(
+                                    f"Create test skeleton for {os.path.basename(src_file)} "
+                                    f"({archetypes[0].name})"
+                                ),
+                                payload={
+                                    "source_file": src_file,
+                                    "archetypes": [a.name for a in archetypes],
+                                },
+                                safe=True,
+                            )
+                        )
                 except Exception:
                     pass  # Archetype selection failure is non-fatal
 
@@ -130,27 +132,33 @@ class TestChannel:
             test_result = run_tests(impacted_tests, project_root, timeout_ms=remaining_ms)
 
             if test_result.timed_out:
-                findings.append(LintIssue(
-                    linter="test_channel",
-                    kind="test_timeout",
-                    message=f"Test execution timed out ({remaining_ms}ms budget)",
-                    severity="warning",
-                ))
+                findings.append(
+                    LintIssue(
+                        linter="test_channel",
+                        kind="test_timeout",
+                        message=f"Test execution timed out ({remaining_ms}ms budget)",
+                        severity="warning",
+                    )
+                )
 
             for failure in test_result.failures:
-                findings.append(LintIssue(
-                    linter="test_channel",
-                    kind="test_failure",
-                    message=failure.message,
-                    file=failure.file,
-                    line=failure.line,
-                    severity="warning",  # Advisory by default
-                ))
+                findings.append(
+                    LintIssue(
+                        linter="test_channel",
+                        kind="test_failure",
+                        message=failure.message,
+                        file=failure.file,
+                        line=failure.line,
+                        severity="warning",  # Advisory by default
+                    )
+                )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
         status = "fail" if findings else "pass"
-        severity = "warning" if any(f.severity == "warning" for f in findings) else (
-            "informational" if findings else "none"
+        severity = (
+            "warning"
+            if any(f.severity == "warning" for f in findings)
+            else ("informational" if findings else "none")
         )
 
         return ChannelResult(
@@ -189,7 +197,7 @@ def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str
         basename = src_path.stem  # e.g., "bar" from "bar.py"
 
         # Skip test files themselves and non-Python files
-        if not src_path.suffix == ".py":
+        if src_path.suffix != ".py":
             continue
         if basename.startswith("test_") or src_path.name == "conftest.py":
             # Changed file IS a test file — include it directly
@@ -233,10 +241,13 @@ def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str
         # Also check for underscore-joined names: test_foo_bar.py
         try:
             rel = src_path.relative_to(root)
-            joined_name = "test_" + "_".join(
-                p for p in rel.with_suffix("").parts
-                if p not in ("src", "lib", "__init__")
-            ) + ".py"
+            joined_name = (
+                "test_"
+                + "_".join(
+                    p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__")
+                )
+                + ".py"
+            )
             for test_dir in [root / "tests", root / "test"]:
                 candidate = test_dir / joined_name
                 if candidate.exists() and str(candidate) not in seen:
@@ -265,9 +276,13 @@ def run_tests(
         return TestRunResult()
 
     cmd = [
-        "python", "-m", "pytest",
+        "python",
+        "-m",
+        "pytest",
         *test_files,
-        "-q", "--tb=line", "--no-header",
+        "-q",
+        "--tb=line",
+        "--no-header",
     ]
 
     try:
@@ -320,11 +335,13 @@ def _parse_pytest_output(stdout: str, stderr: str, returncode: int) -> TestRunRe
             file_path = fail_match.group(1)
             test_name = fail_match.group(2)
             message = fail_match.group(3).strip() or f"Test {test_name} failed"
-            result.failures.append(TestFailure(
-                test_name=test_name,
-                file=file_path,
-                message=message,
-            ))
+            result.failures.append(
+                TestFailure(
+                    test_name=test_name,
+                    file=file_path,
+                    message=message,
+                )
+            )
 
     return result
 
@@ -342,9 +359,7 @@ def _is_source_file(filepath: str, project_root: str) -> bool:
     if p.stem.startswith("__"):
         return False
     # Exclude setup.py, conftest.py, etc.
-    if p.stem in ("setup", "conftest"):
-        return False
-    return True
+    return p.stem not in ("setup", "conftest")
 
 
 def _has_test(source_file: str, project_root: str) -> bool:

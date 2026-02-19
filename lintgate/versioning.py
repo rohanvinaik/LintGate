@@ -100,8 +100,7 @@ def collect_required_version_specs(
 ) -> dict[str, dict[str, Any]]:
     """Collect tool version requirements from project metadata and config."""
     requirements: dict[str, dict[str, Any]] = {
-        tool: {"specifiers": [], "sources": []}
-        for tool in _TRACKED_TOOLS
+        tool: {"specifiers": [], "sources": []} for tool in _TRACKED_TOOLS
     }
 
     if config_requirements:
@@ -137,7 +136,9 @@ def inspect_tool_versions(
     observations: list[dict[str, Any]] = []
 
     for tool_name, spec in sorted(_TRACKED_TOOLS.items()):
-        req_info = requirements.get(tool_name, {"specifiers": [], "sources": [], "combined_specifier": ""})
+        req_info = requirements.get(
+            tool_name, {"specifiers": [], "sources": [], "combined_specifier": ""}
+        )
         required_spec = str(req_info.get("combined_specifier", "") or "")
         installed_version = _installed_version(spec, project_root=project_root)
         executable_path = _which(spec.executable, project_root=project_root)
@@ -166,16 +167,18 @@ def inspect_tool_versions(
 
         suggestion = _suggest_fix_command(spec, required_spec)
 
-        observations.append({
-            "tool": tool_name,
-            "required_specifier": required_spec,
-            "requirement_sources": req_info.get("sources", []),
-            "installed_version": installed_version,
-            "executable_path": executable_path,
-            "status": status,
-            "message": message,
-            "suggested_fix": suggestion,
-        })
+        observations.append(
+            {
+                "tool": tool_name,
+                "required_specifier": required_spec,
+                "requirement_sources": req_info.get("sources", []),
+                "installed_version": installed_version,
+                "executable_path": executable_path,
+                "status": status,
+                "message": message,
+                "suggested_fix": suggestion,
+            }
+        )
 
     return observations
 
@@ -210,7 +213,9 @@ def _collect_from_pyproject(
     if isinstance(optional, dict):
         for group_name, group_deps in optional.items():
             if isinstance(group_deps, list):
-                dep_groups.append((f"pyproject.toml:project.optional-dependencies.{group_name}", group_deps))
+                dep_groups.append(
+                    (f"pyproject.toml:project.optional-dependencies.{group_name}", group_deps)
+                )
 
     for source, entries in dep_groups:
         for entry in entries:
@@ -326,8 +331,14 @@ def _installed_version(
             if venv_python.exists():
                 try:
                     result = subprocess.run(
-                        [str(venv_python), "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"],
-                        capture_output=True, text=True, timeout=5,
+                        [
+                            str(venv_python),
+                            "-c",
+                            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                     )
                     if result.returncode == 0:
                         return result.stdout.strip()
@@ -345,8 +356,14 @@ def _installed_version(
         if venv_python.exists():
             try:
                 result = subprocess.run(
-                    [str(venv_python), "-c", f"import importlib.metadata; print(importlib.metadata.version('{spec.package}'))"],
-                    capture_output=True, text=True, timeout=5,
+                    [
+                        str(venv_python),
+                        "-c",
+                        f"import importlib.metadata; print(importlib.metadata.version('{spec.package}'))",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if result.returncode == 0:
                     return result.stdout.strip()
@@ -424,27 +441,31 @@ def _attempt_repairs(
                 timeout=300,
             )
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-            fixes.append({
-                "tool": tool_name,
-                "command": cmd,
-                "returncode": proc.returncode,
-                "duration_ms": elapsed_ms,
-                "stdout_tail": _tail(proc.stdout),
-                "stderr_tail": _tail(proc.stderr),
-                "success": proc.returncode == 0,
-            })
+            fixes.append(
+                {
+                    "tool": tool_name,
+                    "command": cmd,
+                    "returncode": proc.returncode,
+                    "duration_ms": elapsed_ms,
+                    "stdout_tail": _tail(proc.stdout),
+                    "stderr_tail": _tail(proc.stderr),
+                    "success": proc.returncode == 0,
+                }
+            )
         except subprocess.TimeoutExpired as exc:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-            fixes.append({
-                "tool": tool_name,
-                "command": cmd,
-                "returncode": None,
-                "duration_ms": elapsed_ms,
-                "stdout_tail": _tail(exc.stdout or ""),
-                "stderr_tail": _tail(exc.stderr or ""),
-                "success": False,
-                "error": "pip install timed out after 300s",
-            })
+            fixes.append(
+                {
+                    "tool": tool_name,
+                    "command": cmd,
+                    "returncode": None,
+                    "duration_ms": elapsed_ms,
+                    "stdout_tail": _tail(exc.stdout or ""),
+                    "stderr_tail": _tail(exc.stderr or ""),
+                    "success": False,
+                    "error": "pip install timed out after 300s",
+                }
+            )
 
     return fixes
 

@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from lintgate.controlplane.behavior_compass import (
     DEFAULT_HYPOTHESIS_CONFIG,
-    DEFAULT_INTENT_MAP,
-    DEFAULT_INTENT_SIG_MAP,
-    DEFAULT_THRESHOLDS,
     INTENT_CATEGORIES,
     ApproachAttempt,
     BehaviorCompass,
     BehaviorHypothesis,
-    CoverageMetrics,
     add_declared_hypothesis,
     compute_coverage,
     compute_uncertainty_zones,
@@ -30,7 +24,6 @@ from lintgate.controlplane.behavior_compass import (
     resolve_intent,
     update_hypothesis,
 )
-
 
 # ── normalize_command_sig ─────────────────────────────────────────────
 
@@ -69,7 +62,9 @@ class TestNormalizeCommandSig:
         assert "tmp" in result
 
     def test_secret_redacted(self):
-        result = normalize_command_sig("curl -H 'Authorization: sk_test_abc123defghijklmnop' https://api.example.com")
+        result = normalize_command_sig(
+            "curl -H 'Authorization: sk_test_abc123defghijklmnop' https://api.example.com"
+        )
         # The secret token should NOT appear in the result
         assert "sk_test" not in result
         assert result.startswith("curl:")
@@ -145,21 +140,26 @@ class TestRecordToolEvent:
     def test_bash_failure_creates_hypothesis(self):
         compass = new_compass()
         record_tool_event(
-            compass, "Bash",
+            compass,
+            "Bash",
             {"command": "idevicerestore -e custom.ipsw"},
             "error: Unable to send iBSS to device\nexit code: 1",
             now=1000.0,
         )
         # Should create an auto-hypothesis at 0.3 confidence
         assert len(compass.hypotheses) == 1
-        assert compass.hypotheses[0].confidence == DEFAULT_HYPOTHESIS_CONFIG["auto_generate_confidence"]
+        assert (
+            compass.hypotheses[0].confidence
+            == DEFAULT_HYPOTHESIS_CONFIG["auto_generate_confidence"]
+        )
         assert compass.hypotheses[0].source == "command_failure"
         assert "idevicerestore" in compass.hypotheses[0].claim
 
     def test_bash_success_no_hypothesis(self):
         compass = new_compass()
         record_tool_event(
-            compass, "Bash",
+            compass,
+            "Bash",
             {"command": "git status"},
             "On branch main\nnothing to commit",
             now=1000.0,
@@ -169,7 +169,8 @@ class TestRecordToolEvent:
     def test_updates_approach(self):
         compass = new_compass()
         record_tool_event(
-            compass, "Bash",
+            compass,
+            "Bash",
             {"command": "pytest tests/"},
             "exit code: 1\n2 failed",
             now=1000.0,
@@ -187,7 +188,8 @@ class TestRecordToolEvent:
         compass = new_compass()
         # First failure creates hypothesis
         record_tool_event(
-            compass, "Bash",
+            compass,
+            "Bash",
             {"command": "idevicerestore -e fw.ipsw"},
             "error: Unable to send iBSS\nexit code: 1",
             now=1000.0,
@@ -196,7 +198,8 @@ class TestRecordToolEvent:
 
         # Second failure with same error should strengthen
         record_tool_event(
-            compass, "Bash",
+            compass,
+            "Bash",
             {"command": "idevicerestore -d fw.ipsw"},
             "error: Unable to send iBSS\nexit code: 1",
             now=1001.0,
@@ -246,30 +249,45 @@ class TestRecordToolEvent:
 class TestHypothesisManagement:
     def test_strengthen(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test claim", confidence=0.3,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test claim",
+                confidence=0.3,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         update_hypothesis(compass, "test1", "strengthen", "evidence A", now=1001.0)
         assert compass.hypotheses[0].confidence == pytest.approx(0.3 + 0.15)
         assert len(compass.hypotheses[0].evidence_for) == 1
 
     def test_weaken(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test claim", confidence=0.5,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test claim",
+                confidence=0.5,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         update_hypothesis(compass, "test1", "weaken", "counter evidence", now=1001.0)
         assert compass.hypotheses[0].confidence == pytest.approx(0.5 - 0.1)
 
     def test_promote_to_confirmed(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test claim", confidence=0.6,
-            evidence_for=["ev1"],
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test claim",
+                confidence=0.6,
+                evidence_for=["ev1"],
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         # After strengthening, should reach 0.75 with 2 evidence → confirmed
         update_hypothesis(compass, "test1", "strengthen", "ev2", now=1001.0)
         assert compass.hypotheses[0].status == "confirmed"
@@ -277,21 +295,31 @@ class TestHypothesisManagement:
 
     def test_weaken_to_expired(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test claim", confidence=0.05,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test claim",
+                confidence=0.05,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         update_hypothesis(compass, "test1", "weaken", "final blow", now=1001.0)
         assert compass.hypotheses[0].status == "expired"
         assert compass.hypotheses[0].confidence == 0.0
 
     def test_requires_min_evidence_for_promote(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test claim", confidence=0.6,
-            # Only 0 evidence_for items
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test claim",
+                confidence=0.6,
+                # Only 0 evidence_for items
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         # After strengthening: confidence=0.75, but only 1 evidence → not confirmed yet
         update_hypothesis(compass, "test1", "strengthen", "ev1", now=1001.0)
         assert compass.hypotheses[0].status == "active"  # Not confirmed yet
@@ -300,30 +328,45 @@ class TestHypothesisManagement:
 class TestDecay:
     def test_decay_after_one_hour(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test", confidence=0.5,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test",
+                confidence=0.5,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         # 2 hours later
         decay_stale(compass, 1000.0 + 7200)
         assert compass.hypotheses[0].confidence < 0.5
 
     def test_decay_within_one_hour_is_proportional(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test", confidence=0.5,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test",
+                confidence=0.5,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         # 30 minutes later
         decay_stale(compass, 1000.0 + 1800)
         assert compass.hypotheses[0].confidence == pytest.approx(0.475, abs=1e-3)
 
     def test_repeated_decay_uses_incremental_elapsed_time(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test", confidence=1.0,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test",
+                confidence=1.0,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         # First decay call after 2h
         decay_stale(compass, 1000.0 + 7200)
         first = compass.hypotheses[0].confidence
@@ -335,10 +378,15 @@ class TestDecay:
 
     def test_decay_to_expired(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="test1", claim="test", confidence=0.05,
-            created_at=1000.0, last_tested=1000.0,
-        ))
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="test1",
+                claim="test",
+                confidence=0.05,
+                created_at=1000.0,
+                last_tested=1000.0,
+            )
+        )
         # 24 hours later — should decay to 0 and expire
         decay_stale(compass, 1000.0 + 86400)
         assert compass.hypotheses[0].status == "expired"
@@ -350,10 +398,15 @@ class TestEviction:
         cfg = {**DEFAULT_HYPOTHESIS_CONFIG, "max_active": 3}
 
         for i in range(5):
-            compass.hypotheses.append(BehaviorHypothesis(
-                id=f"h{i}", claim=f"claim {i}", confidence=0.1 * (i + 1),
-                created_at=1000.0 + i, last_tested=1000.0 + i,
-            ))
+            compass.hypotheses.append(
+                BehaviorHypothesis(
+                    id=f"h{i}",
+                    claim=f"claim {i}",
+                    confidence=0.1 * (i + 1),
+                    created_at=1000.0 + i,
+                    last_tested=1000.0 + i,
+                )
+            )
 
         evict_overflow(compass, cfg)
         assert len(compass.hypotheses) == 3
@@ -402,12 +455,18 @@ class TestCoverage:
         compass = new_compass()
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="predicted", claim="p", confidence=0.8,
-                source="precheck_declared", status="confirmed",
+                id="predicted",
+                claim="p",
+                confidence=0.8,
+                source="precheck_declared",
+                status="confirmed",
             ),
             BehaviorHypothesis(
-                id="surprise", claim="s", confidence=0.6,
-                source="command_failure", status="active",
+                id="surprise",
+                claim="s",
+                confidence=0.6,
+                source="command_failure",
+                status="active",
             ),
         ]
 
@@ -436,8 +495,10 @@ class TestUncertaintyZones:
         compass = new_compass()
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="low confidence thing",
-                confidence=0.2, status="active",
+                id="h1",
+                claim="low confidence thing",
+                confidence=0.2,
+                status="active",
             ),
         ]
         zones = compute_uncertainty_zones(compass)
@@ -452,13 +513,17 @@ class TestFindRelevant:
         compass = new_compass()
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="idevicerestore fails",
-                confidence=0.5, status="active",
+                id="h1",
+                claim="idevicerestore fails",
+                confidence=0.5,
+                status="active",
                 applies_to_sigs=["idevicerestore:*"],
             ),
             BehaviorHypothesis(
-                id="h2", claim="git issue",
-                confidence=0.5, status="active",
+                id="h2",
+                claim="git issue",
+                confidence=0.5,
+                status="active",
                 applies_to_sigs=["git:*"],
             ),
         ]
@@ -470,8 +535,10 @@ class TestFindRelevant:
         compass = new_compass()
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="bash thing",
-                confidence=0.5, status="active",
+                id="h1",
+                claim="bash thing",
+                confidence=0.5,
+                status="active",
                 applies_to_tools=["Bash"],
             ),
         ]
@@ -482,8 +549,10 @@ class TestFindRelevant:
         compass = new_compass()
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="expired",
-                confidence=0.0, status="expired",
+                id="h1",
+                claim="expired",
+                confidence=0.0,
+                status="expired",
                 applies_to_sigs=["git:*"],
             ),
         ]
@@ -497,18 +566,24 @@ class TestFindRelevant:
 class TestDeclaredHypothesis:
     def test_adds_new(self):
         compass = new_compass()
-        hyp = add_declared_hypothesis(compass, "Device requires signed iBSS", "idevicerestore:restore", now=1000.0)
+        hyp = add_declared_hypothesis(
+            compass, "Device requires signed iBSS", "idevicerestore:restore", now=1000.0
+        )
         assert hyp.source == "precheck_declared"
         assert hyp.confidence == 0.5
         assert len(compass.hypotheses) == 1
 
     def test_strengthens_existing(self):
         compass = new_compass()
-        hyp1 = add_declared_hypothesis(compass, "Device requires signed iBSS", "idevicerestore:restore", now=1000.0)
+        hyp1 = add_declared_hypothesis(
+            compass, "Device requires signed iBSS", "idevicerestore:restore", now=1000.0
+        )
         initial = hyp1.confidence
 
         # Re-declare same claim
-        hyp2 = add_declared_hypothesis(compass, "Device requires signed iBSS", "idevicerestore:restore", now=1001.0)
+        add_declared_hypothesis(
+            compass, "Device requires signed iBSS", "idevicerestore:restore", now=1001.0
+        )
         assert len(compass.hypotheses) == 1  # No duplicate
         assert compass.hypotheses[0].confidence > initial  # Strengthened
 
@@ -519,16 +594,29 @@ class TestDeclaredHypothesis:
 class TestSerialization:
     def test_compass_roundtrip(self):
         compass = new_compass()
-        compass.hypotheses.append(BehaviorHypothesis(
-            id="h1", claim="test", confidence=0.5,
-            evidence_for=["ev1"], created_at=1000.0, last_tested=1000.0,
-            applies_to_sigs=["git:*"], applies_to_tools=["Bash"],
-        ))
-        compass.approaches.append(ApproachAttempt(
-            approach_sig="git:push", exit_codes=[0, 1],
-            started_at=1000.0, last_event=1001.0,
-        ))
-        compass.action_history.append({"tool": "Bash", "ts": 1000.0, "sig": "git:push", "exit": 0, "err": ""})
+        compass.hypotheses.append(
+            BehaviorHypothesis(
+                id="h1",
+                claim="test",
+                confidence=0.5,
+                evidence_for=["ev1"],
+                created_at=1000.0,
+                last_tested=1000.0,
+                applies_to_sigs=["git:*"],
+                applies_to_tools=["Bash"],
+            )
+        )
+        compass.approaches.append(
+            ApproachAttempt(
+                approach_sig="git:push",
+                exit_codes=[0, 1],
+                started_at=1000.0,
+                last_event=1001.0,
+            )
+        )
+        compass.action_history.append(
+            {"tool": "Bash", "ts": 1000.0, "sig": "git:push", "exit": 0, "err": ""}
+        )
         compass.error_memory = {
             "err01": {"count": 2, "first_seen": 900.0, "last_seen": 1000.0, "last_sig": "error X"},
         }
@@ -617,9 +705,13 @@ class TestResolveIntent:
     def test_all_categories_valid(self):
         """All resolved intents must be in INTENT_CATEGORIES."""
         test_cases = [
-            ("Read", ""), ("Write", ""), ("Bash", "pytest:tests"),
-            ("Bash", "git:status"), ("Bash", "mkdir:foo"),
-            ("Bash", ""), ("UnknownTool", ""),
+            ("Read", ""),
+            ("Write", ""),
+            ("Bash", "pytest:tests"),
+            ("Bash", "git:status"),
+            ("Bash", "mkdir:foo"),
+            ("Bash", ""),
+            ("UnknownTool", ""),
         ]
         for tool, sig in test_cases:
             result = resolve_intent(tool, sig)
@@ -666,17 +758,24 @@ class TestHypothesisVersion:
     def test_version_increments_on_auto_generate(self):
         compass = new_compass()
         record_tool_event(
-            compass, "Bash", {"command": "idevicerestore -e foo.ipsw"},
-            "ERROR: unable to send iBSS\nexit_code: 1", now=100.0,
+            compass,
+            "Bash",
+            {"command": "idevicerestore -e foo.ipsw"},
+            "ERROR: unable to send iBSS\nexit_code: 1",
+            now=100.0,
         )
         assert compass.hypothesis_version >= 1
 
     def test_version_increments_on_strengthen(self):
         compass = new_compass()
         hyp = BehaviorHypothesis(
-            id="test1234", claim="test fails",
-            confidence=0.4, source="command_failure",
-            created_at=100.0, last_tested=100.0, last_decay=100.0,
+            id="test1234",
+            claim="test fails",
+            confidence=0.4,
+            source="command_failure",
+            created_at=100.0,
+            last_tested=100.0,
+            last_decay=100.0,
         )
         compass.hypotheses.append(hyp)
         v_before = compass.hypothesis_version
@@ -686,9 +785,13 @@ class TestHypothesisVersion:
     def test_version_increments_on_weaken(self):
         compass = new_compass()
         hyp = BehaviorHypothesis(
-            id="test1234", claim="test fails",
-            confidence=0.5, source="command_failure",
-            created_at=100.0, last_tested=100.0, last_decay=100.0,
+            id="test1234",
+            claim="test fails",
+            confidence=0.5,
+            source="command_failure",
+            created_at=100.0,
+            last_tested=100.0,
+            last_decay=100.0,
         )
         compass.hypotheses.append(hyp)
         v_before = compass.hypothesis_version
@@ -698,9 +801,13 @@ class TestHypothesisVersion:
     def test_version_increments_on_decay_expire(self):
         compass = new_compass()
         hyp = BehaviorHypothesis(
-            id="test1234", claim="test fails",
-            confidence=0.01, source="command_failure",
-            created_at=100.0, last_tested=100.0, last_decay=100.0,
+            id="test1234",
+            claim="test fails",
+            confidence=0.01,
+            source="command_failure",
+            created_at=100.0,
+            last_tested=100.0,
+            last_decay=100.0,
         )
         compass.hypotheses.append(hyp)
         v_before = compass.hypothesis_version
@@ -724,7 +831,11 @@ class TestApproachHypVersionTracking:
         compass = new_compass()
         compass.hypothesis_version = 5
         record_tool_event(
-            compass, "Bash", {"command": "make build"}, "exit_code: 0", now=100.0,
+            compass,
+            "Bash",
+            {"command": "make build"},
+            "exit_code: 0",
+            now=100.0,
         )
         assert len(compass.approaches) == 1
         assert compass.approaches[0].hyp_version_at_start == 5
@@ -733,11 +844,19 @@ class TestApproachHypVersionTracking:
         compass = new_compass()
         compass.hypothesis_version = 3
         record_tool_event(
-            compass, "Bash", {"command": "make build"}, "exit_code: 0", now=100.0,
+            compass,
+            "Bash",
+            {"command": "make build"},
+            "exit_code: 0",
+            now=100.0,
         )
         compass.hypothesis_version = 7
         record_tool_event(
-            compass, "Bash", {"command": "make build"}, "exit_code: 0", now=101.0,
+            compass,
+            "Bash",
+            {"command": "make build"},
+            "exit_code: 0",
+            now=101.0,
         )
         assert compass.approaches[0].hyp_version_at_start == 3
 
@@ -774,8 +893,11 @@ class TestPrecheckCountSession:
     def test_not_incremented_by_failure(self):
         compass = new_compass()
         record_tool_event(
-            compass, "Bash", {"command": "bad_cmd"},
-            "error: something failed\nexit_code: 1", now=100.0,
+            compass,
+            "Bash",
+            {"command": "bad_cmd"},
+            "error: something failed\nexit_code: 1",
+            now=100.0,
         )
         assert compass.precheck_count_session == 0
 
@@ -830,8 +952,10 @@ class TestSerializationV2:
 
     def test_approach_attempt_hyp_version_roundtrip(self):
         approach = ApproachAttempt(
-            approach_sig="test:cmd", hyp_version_at_start=5,
-            started_at=100.0, last_event=100.0,
+            approach_sig="test:cmd",
+            hyp_version_at_start=5,
+            started_at=100.0,
+            last_event=100.0,
         )
         data = approach.to_dict()
         restored = ApproachAttempt.from_dict(data)

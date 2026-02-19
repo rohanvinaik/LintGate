@@ -6,19 +6,16 @@ test patterns from source file AST analysis.
 
 from __future__ import annotations
 
-import os
 import textwrap
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from lintgate.controlplane.test_archetype_selector import (
-    ArchetypeMatch,
-    SourceSignals,
     extract_signals,
     select_archetypes,
 )
-
 
 # ── Fixture helpers ─────────────────────────────────────────────────────
 
@@ -34,12 +31,15 @@ def _write_source(tmp_path: Path, content: str, filename: str = "module.py") -> 
 
 
 def test_extract_signals_from_typed_function(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         def process(data: str, count: int = 0) -> list[str]:
             if not data:
                 raise ValueError("empty")
             return [data] * count
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_typed_functions
     assert signals.has_guard_clauses
@@ -48,7 +48,9 @@ def test_extract_signals_from_typed_function(tmp_path: Path) -> None:
 
 
 def test_extract_signals_from_try_except(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import json
 
         def parse_config(path: str) -> dict:
@@ -57,7 +59,8 @@ def test_extract_signals_from_try_except(tmp_path: Path) -> None:
                     return json.load(f)
             except (OSError, json.JSONDecodeError) as e:
                 raise ValueError(f"Bad config: {e}")
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_try_except
     assert signals.has_file_io
@@ -65,31 +68,39 @@ def test_extract_signals_from_try_except(tmp_path: Path) -> None:
 
 
 def test_extract_signals_from_http_imports(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import requests
 
         def fetch_data(url: str) -> dict:
             response = requests.get(url)
             return response.json()
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_http_imports
 
 
 def test_extract_signals_from_subprocess(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import subprocess
 
         def run_command(cmd: str) -> str:
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
             return result.stdout
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_subprocess
 
 
 def test_extract_signals_from_dataclass(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         from dataclasses import dataclass, field
 
         @dataclass
@@ -97,7 +108,8 @@ def test_extract_signals_from_dataclass(tmp_path: Path) -> None:
             name: str = "default"
             enabled: bool = True
             items: list[str] = field(default_factory=list)
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_dataclasses
     assert len(signals.classes) >= 1
@@ -105,7 +117,9 @@ def test_extract_signals_from_dataclass(tmp_path: Path) -> None:
 
 
 def test_extract_signals_from_stateful_class(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         class Counter:
             def __init__(self):
                 self.count = 0
@@ -117,7 +131,8 @@ def test_extract_signals_from_stateful_class(tmp_path: Path) -> None:
 
             def reset(self):
                 self.count = 0
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_stateful_classes
     assert len(signals.classes) >= 1
@@ -125,7 +140,9 @@ def test_extract_signals_from_stateful_class(tmp_path: Path) -> None:
 
 
 def test_extract_signals_from_encode_decode(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import json
 
         def encode_message(data: dict) -> str:
@@ -133,32 +150,39 @@ def test_extract_signals_from_encode_decode(tmp_path: Path) -> None:
 
         def decode_message(raw: str) -> dict:
             return json.loads(raw)
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_encode_decode
     assert signals.has_json_dump_load
 
 
 def test_extract_signals_from_to_from_pairs(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         def to_dict(obj) -> dict:
             return {"name": obj.name, "value": obj.value}
 
         def from_dict(data: dict):
             return type("Obj", (), data)()
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_to_from_pairs
 
 
 def test_extract_signals_from_yaml_import(tmp_path: Path) -> None:
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import yaml
 
         def load_config(path: str) -> dict:
             with open(path) as f:
                 return yaml.safe_load(f)
-    """)
+    """,
+    )
     signals = extract_signals(source)
     assert signals.has_yaml_toml_json
     assert signals.has_file_io
@@ -169,7 +193,9 @@ def test_extract_signals_from_yaml_import(tmp_path: Path) -> None:
 
 def test_http_file_selects_error_handling_and_mock_isolation(tmp_path: Path) -> None:
     """File with HTTP calls → error_handling + mock_isolation."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import requests
 
         def fetch_users(base_url: str) -> list[dict]:
@@ -179,7 +205,8 @@ def test_http_file_selects_error_handling_and_mock_isolation(tmp_path: Path) -> 
                 return response.json()
             except requests.RequestException as e:
                 raise ConnectionError(f"Failed to fetch: {e}")
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     archetype_names = {m.name for m in matches}
 
@@ -189,7 +216,9 @@ def test_http_file_selects_error_handling_and_mock_isolation(tmp_path: Path) -> 
 
 def test_dataclass_file_selects_configuration(tmp_path: Path) -> None:
     """File with dataclasses → configuration."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         from dataclasses import dataclass, field
         from typing import Any
 
@@ -199,7 +228,8 @@ def test_dataclass_file_selects_configuration(tmp_path: Path) -> None:
             port: int = 8080
             debug: bool = False
             extras: dict[str, Any] = field(default_factory=dict)
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     archetype_names = {m.name for m in matches}
 
@@ -208,7 +238,9 @@ def test_dataclass_file_selects_configuration(tmp_path: Path) -> None:
 
 def test_encode_decode_file_selects_round_trip(tmp_path: Path) -> None:
     """File with encode/decode functions → round_trip."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import json
         import base64
 
@@ -219,7 +251,8 @@ def test_encode_decode_file_selects_round_trip(tmp_path: Path) -> None:
         def decode_payload(encoded: str) -> dict:
             json_str = base64.b64decode(encoded.encode()).decode()
             return json.loads(json_str)
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     archetype_names = {m.name for m in matches}
 
@@ -228,7 +261,9 @@ def test_encode_decode_file_selects_round_trip(tmp_path: Path) -> None:
 
 def test_stateful_class_selects_state_invariant(tmp_path: Path) -> None:
     """File with stateful class → state_invariant."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         class TaskQueue:
             def __init__(self):
                 self.tasks = []
@@ -245,7 +280,8 @@ def test_stateful_class_selects_state_invariant(tmp_path: Path) -> None:
             def fail(self, task, error):
                 self.tasks.remove(task)
                 self.failed.append((task, error))
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     archetype_names = {m.name for m in matches}
 
@@ -254,11 +290,14 @@ def test_stateful_class_selects_state_invariant(tmp_path: Path) -> None:
 
 def test_no_clear_signals_returns_input_validation(tmp_path: Path) -> None:
     """File with no clear signals → default input_validation at low confidence."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         x = 1
         y = 2
         z = x + y
-    """)
+    """,
+    )
     matches = select_archetypes(source)
 
     assert len(matches) >= 1
@@ -270,7 +309,9 @@ def test_no_clear_signals_returns_input_validation(tmp_path: Path) -> None:
 
 def test_subprocess_file_selects_mock_isolation(tmp_path: Path) -> None:
     """File with subprocess calls → mock_isolation."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import subprocess
 
         def run_linter(files: list[str]) -> str:
@@ -281,7 +322,8 @@ def test_subprocess_file_selects_mock_isolation(tmp_path: Path) -> None:
             if result.returncode != 0:
                 raise RuntimeError(f"Lint failed: {result.stderr}")
             return result.stdout
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     archetype_names = {m.name for m in matches}
 
@@ -291,14 +333,17 @@ def test_subprocess_file_selects_mock_isolation(tmp_path: Path) -> None:
 
 def test_guard_clause_file_selects_input_validation(tmp_path: Path) -> None:
     """File with guard clauses → high-confidence input_validation."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         def validate_email(email: str) -> str:
             if not email:
                 raise ValueError("Email cannot be empty")
             if "@" not in email:
                 raise ValueError("Invalid email format")
             return email.strip().lower()
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     iv = [m for m in matches if m.name == "input_validation"]
     assert len(iv) == 1
@@ -310,7 +355,9 @@ def test_guard_clause_file_selects_input_validation(tmp_path: Path) -> None:
 
 def test_results_sorted_by_confidence(tmp_path: Path) -> None:
     """Verify that results are sorted by confidence descending."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import requests
         from dataclasses import dataclass
 
@@ -324,19 +371,22 @@ def test_results_sorted_by_confidence(tmp_path: Path) -> None:
                 return resp.json()
             except Exception as e:
                 raise ConnectionError(str(e))
-    """)
+    """,
+    )
     matches = select_archetypes(source)
 
     for i in range(len(matches) - 1):
         assert matches[i].confidence >= matches[i + 1].confidence, (
             f"Results not sorted: {matches[i].name}({matches[i].confidence}) "
-            f"before {matches[i+1].name}({matches[i+1].confidence})"
+            f"before {matches[i + 1].name}({matches[i + 1].confidence})"
         )
 
 
 def test_all_results_above_threshold(tmp_path: Path) -> None:
     """Verify all returned results have confidence > 0.3."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         import subprocess
         import json
 
@@ -346,7 +396,8 @@ def test_all_results_above_threshold(tmp_path: Path) -> None:
                 return json.loads(result.stdout)
             except (subprocess.SubprocessError, json.JSONDecodeError) as e:
                 raise RuntimeError(str(e))
-    """)
+    """,
+    )
     matches = select_archetypes(source)
 
     for m in matches:
@@ -384,7 +435,9 @@ def test_empty_file_returns_low_confidence(tmp_path: Path) -> None:
 
 def test_archetype_match_has_relevant_functions(tmp_path: Path) -> None:
     """Verify that matches include relevant function names."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         def validate_input(data: str) -> str:
             if not data:
                 raise ValueError("empty")
@@ -392,7 +445,8 @@ def test_archetype_match_has_relevant_functions(tmp_path: Path) -> None:
 
         def helper():
             pass
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     iv = [m for m in matches if m.name == "input_validation"]
     assert len(iv) == 1
@@ -401,14 +455,17 @@ def test_archetype_match_has_relevant_functions(tmp_path: Path) -> None:
 
 def test_archetype_match_has_relevant_classes(tmp_path: Path) -> None:
     """Verify that matches include relevant class names."""
-    source = _write_source(tmp_path, """\
+    source = _write_source(
+        tmp_path,
+        """\
         from dataclasses import dataclass
 
         @dataclass
         class Settings:
             name: str = "default"
             value: int = 0
-    """)
+    """,
+    )
     matches = select_archetypes(source)
     cfg = [m for m in matches if m.name == "configuration"]
     assert len(cfg) == 1

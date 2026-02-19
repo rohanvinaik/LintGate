@@ -101,21 +101,26 @@ def update_pattern_bank(
     alerts: list[dict[str, Any]] = []
 
     for key, current in current_patterns.items():
-        entry = patterns.get(key, {
-            "linter": current["linter"],
-            "kind": current["kind"],
-            "total_count": 0,
-            "first_seen": now,
-            "run_history": [],
-        })
+        entry = patterns.get(
+            key,
+            {
+                "linter": current["linter"],
+                "kind": current["kind"],
+                "total_count": 0,
+                "first_seen": now,
+                "run_history": [],
+            },
+        )
 
         # Append this run to history
-        entry["run_history"].append({
-            "run_id": run_id,
-            "timestamp": now,
-            "count": current["count"],
-            "files": len(current["files"]),
-        })
+        entry["run_history"].append(
+            {
+                "run_id": run_id,
+                "timestamp": now,
+                "count": current["count"],
+                "files": len(current["files"]),
+            }
+        )
 
         # Trim history to max
         if len(entry["run_history"]) > _MAX_RUN_HISTORY:
@@ -136,15 +141,17 @@ def update_pattern_bank(
             alert_reason = "recurring_across_runs"
 
         if alert_reason:
-            alerts.append({
-                "linter": current["linter"],
-                "kind": current["kind"],
-                "count_this_run": current["count"],
-                "files_this_run": len(current["files"]),
-                "recent_run_count": recent_run_count,
-                "total_count": entry["total_count"],
-                "alert_reason": alert_reason,
-            })
+            alerts.append(
+                {
+                    "linter": current["linter"],
+                    "kind": current["kind"],
+                    "count_this_run": current["count"],
+                    "files_this_run": len(current["files"]),
+                    "recent_run_count": recent_run_count,
+                    "total_count": entry["total_count"],
+                    "alert_reason": alert_reason,
+                }
+            )
 
         patterns[key] = entry
 
@@ -191,6 +198,7 @@ def update_pattern_bank(
 def _project_hash(cwd: str) -> str:
     """Generate a stable hash for a project path."""
     import hashlib
+
     return hashlib.sha256(cwd.encode()).hexdigest()[:16]
 
 

@@ -57,7 +57,9 @@ class VersionChecker(BaseLinter):
             suggestion = item.get("suggested_fix")
             if suggestion:
                 suggestions.append(f"Run: {suggestion}")
-            suggestions.append("Use MCP tool audit_tool_versions(path, auto_fix=true) to repair and verify")
+            suggestions.append(
+                "Use MCP tool audit_tool_versions(path, auto_fix=true) to repair and verify"
+            )
 
             yield LintIssue(
                 linter="version_checker",
@@ -84,6 +86,10 @@ def _source_file_path(sources: list[str] | Any, project_root: str) -> str | None
         if not isinstance(source, str):
             continue
         file_part = source.split(":", 1)[0]
-        if file_part.startswith(".claude/") or file_part.endswith(".txt") or file_part.endswith(".toml"):
+        if (
+            file_part.startswith(".claude/")
+            or file_part.endswith(".txt")
+            or file_part.endswith(".toml")
+        ):
             return os.path.normpath(os.path.join(project_root, file_part))
     return None

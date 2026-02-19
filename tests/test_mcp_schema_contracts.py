@@ -7,20 +7,13 @@ next_actions have required fields, and output sizes stay within budget.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-# Ensure project root is on path for mcp_server imports
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
 from lintgate.state import generate_run_id, load_run_details, save_run_details
-from lintgate.types import AggregatedResult, LinterResult, LintIssue, ProjectConfig
-
+from lintgate.types import LintIssue
 
 # ── next_actions Schema ─────────────────────────────────────────────────
 
@@ -227,9 +220,7 @@ class TestBehaviorMcpContracts:
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(exist_ok=True)
         (claude_dir / "lintgate.yaml").write_text(
-            "controlplane:\n"
-            "  enabled: true\n"
-            "  session_memory: true\n"
+            "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
         with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
@@ -248,7 +239,14 @@ class TestBehaviorMcpContracts:
                 for i in range(3)
             ]
             compass.action_history = [
-                {"tool": "Bash", "ts": 200.0, "sig": "cmd:2", "exit": 1, "err": "fail", "intent": "execute"},
+                {
+                    "tool": "Bash",
+                    "ts": 200.0,
+                    "sig": "cmd:2",
+                    "exit": 1,
+                    "err": "fail",
+                    "intent": "execute",
+                },
             ]
             compass.intent_history = ["execute"]
             save_behavior_compass(session, compass)
@@ -273,9 +271,7 @@ class TestBehaviorMcpContracts:
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(exist_ok=True)
         (claude_dir / "lintgate.yaml").write_text(
-            "controlplane:\n"
-            "  enabled: true\n"
-            "  session_memory: true\n"
+            "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
         with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
@@ -312,10 +308,20 @@ class TestLintGetDetailsContract:
                 "informational": 1,
                 "fixable": 1,
                 "blocking_issues": [
-                    {"kind": "F821", "message": "undefined name", "severity": "blocking", "issue_id": "abc123def456"},
+                    {
+                        "kind": "F821",
+                        "message": "undefined name",
+                        "severity": "blocking",
+                        "issue_id": "abc123def456",
+                    },
                 ],
                 "warning_issues": [
-                    {"kind": "E501", "message": "line too long", "severity": "warning", "issue_id": "xyz789uvw012"},
+                    {
+                        "kind": "E501",
+                        "message": "line too long",
+                        "severity": "warning",
+                        "issue_id": "xyz789uvw012",
+                    },
                 ],
                 "info_issues": [],
                 "recurrence": {"repeated_issue_count": 0, "top_repeated": []},
@@ -412,17 +418,36 @@ class TestPayloadSizeRegression:
             "informational": 8,
             "fixable": 5,
             "blocking_issues": [
-                {"id": f"blk00000000{i}", "kind": f"F82{i}", "loc": f"src/module_{i}.py:{i * 10}", "msg": f"undefined name 'function_{i}'"}
+                {
+                    "id": f"blk00000000{i}",
+                    "kind": f"F82{i}",
+                    "loc": f"src/module_{i}.py:{i * 10}",
+                    "msg": f"undefined name 'function_{i}'",
+                }
                 for i in range(3)
             ],
             "next_actions": [
-                {"tool": "lint_fix", "args": {"path": "/tmp/proj", "dry_run": True}, "safe": True, "reason": "5 auto-fixable issues", "priority": 1},
-                {"tool": "lint_get_details", "args": {"run_id": "abc123def456", "severity": "blocking"}, "safe": True, "reason": "View 3 blocking issue details", "priority": 2},
+                {
+                    "tool": "lint_fix",
+                    "args": {"path": "/tmp/proj", "dry_run": True},
+                    "safe": True,
+                    "reason": "5 auto-fixable issues",
+                    "priority": 1,
+                },
+                {
+                    "tool": "lint_get_details",
+                    "args": {"run_id": "abc123def456", "severity": "blocking"},
+                    "safe": True,
+                    "reason": "View 3 blocking issue details",
+                    "priority": 2,
+                },
             ],
         }
         serialized = json.dumps(compact, separators=(",", ":"))
         estimated_tokens = len(serialized) / 4
-        assert estimated_tokens < 400, f"Compact output too large: ~{estimated_tokens:.0f} tokens ({len(serialized)} chars)"
+        assert estimated_tokens < 400, (
+            f"Compact output too large: ~{estimated_tokens:.0f} tokens ({len(serialized)} chars)"
+        )
 
     def test_standard_output_under_800_tokens(self) -> None:
         """Standard output with blocking + warning details under 800 tokens."""
@@ -436,22 +461,51 @@ class TestPayloadSizeRegression:
             "informational": 8,
             "fixable": 3,
             "linters_run": 4,
-            "linter_statuses": {"ruff_check": "ok", "ruff_format": "ok", "mypy": "ok", "complexity_checker": "ok"},
+            "linter_statuses": {
+                "ruff_check": "ok",
+                "ruff_format": "ok",
+                "mypy": "ok",
+                "complexity_checker": "ok",
+            },
             "blocking_issues": [
-                {"linter": "ruff", "kind": "F821", "message": "undefined name 'foo'", "file": "src/mod.py", "line": 10, "severity": "blocking", "issue_id": "blk000000001"}
+                {
+                    "linter": "ruff",
+                    "kind": "F821",
+                    "message": "undefined name 'foo'",
+                    "file": "src/mod.py",
+                    "line": 10,
+                    "severity": "blocking",
+                    "issue_id": "blk000000001",
+                }
                 for _ in range(2)
             ],
             "warning_issues": [
-                {"linter": "ruff", "kind": "E501", "message": "line too long (120 > 100 characters)", "file": f"src/mod{i}.py", "line": i * 5, "severity": "warning", "issue_id": f"wrn{i:09d}"}
+                {
+                    "linter": "ruff",
+                    "kind": "E501",
+                    "message": "line too long (120 > 100 characters)",
+                    "file": f"src/mod{i}.py",
+                    "line": i * 5,
+                    "severity": "warning",
+                    "issue_id": f"wrn{i:09d}",
+                }
                 for i in range(5)
             ],
             "next_actions": [
-                {"tool": "lint_fix", "args": {"path": "/tmp", "dry_run": True}, "safe": True, "reason": "3 auto-fixable issues", "priority": 1},
+                {
+                    "tool": "lint_fix",
+                    "args": {"path": "/tmp", "dry_run": True},
+                    "safe": True,
+                    "reason": "3 auto-fixable issues",
+                    "priority": 1,
+                },
             ],
         }
         serialized = json.dumps(standard, separators=(",", ":"))
         estimated_tokens = len(serialized) / 4
-        assert estimated_tokens < 800, f"Standard output too large: ~{estimated_tokens:.0f} tokens ({len(serialized)} chars)"
+        assert estimated_tokens < 800, (
+            f"Standard output too large: ~{estimated_tokens:.0f} tokens ({len(serialized)} chars)"
+        )
 
     def test_compact_smaller_than_standard(self) -> None:
         from mcp_server import _json_dumps
@@ -490,9 +544,9 @@ class TestVersionConsistency:
 
     def test_lint_status_reports_v020(self) -> None:
         """The version constant in lint_status should be 0.2.0."""
-        from mcp_server import lint_status
         # Can't easily call lint_status without a real project, so we check the source
         import mcp_server
+
         source = Path(mcp_server.__file__).read_text()
         assert '"version": "0.2.0"' in source or "'version': '0.2.0'" in source
 
@@ -528,7 +582,6 @@ class TestIssueIdContracts:
 
 
 class TestRunIdContracts:
-
     def test_run_id_length(self) -> None:
         assert len(generate_run_id()) == 12
 

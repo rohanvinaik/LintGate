@@ -34,7 +34,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     Returns None if the controlplane section is absent or disabled.
     The caller can check `config.enabled` to decide whether to use it.
     """
-    from .controlplane.types import ChannelConfig, ControlPlaneConfig, TokenPolicy
+    from .controlplane.types import ChannelConfig, ControlPlaneConfig, InquiryConfig, TokenPolicy
 
     config_path = os.path.join(cwd, ".claude", "lintgate.yaml")
     if not os.path.exists(config_path) or not _YAML_AVAILABLE:
@@ -59,6 +59,17 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         constraint_proposal_threshold=int(cp_raw.get("constraint_proposal_threshold", 5)),
     )
 
+    # Parse inquiry config (Architecture of Inquiry features)
+    inquiry_raw = cp_raw.get("inquiry", {})
+    if isinstance(inquiry_raw, dict):
+        cp_config.inquiry = InquiryConfig(
+            theory_grounded_signals=bool(inquiry_raw.get("theory_grounded_signals", False)),
+            prediction_tracking=bool(inquiry_raw.get("prediction_tracking", False)),
+            theory_coherence_check=bool(inquiry_raw.get("theory_coherence_check", False)),
+            living_context=bool(inquiry_raw.get("living_context", False)),
+            session_gate=bool(inquiry_raw.get("session_gate", False)),
+        )
+
     # Parse global memory config
     global_mem = cp_raw.get("global_memory", {})
     if isinstance(global_mem, dict):
@@ -81,10 +92,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         for name, ch_conf in channels_raw.items():
             if isinstance(ch_conf, dict):
                 known_keys = {"enabled", "blocking", "timeout_ms", "max_findings_shown"}
-                settings = {
-                    k: v for k, v in ch_conf.items()
-                    if k not in known_keys
-                }
+                settings = {k: v for k, v in ch_conf.items() if k not in known_keys}
                 cp_config.channels[name] = ChannelConfig(
                     enabled=ch_conf.get("enabled", True),
                     blocking=ch_conf.get("blocking", name == "lint"),
@@ -156,12 +164,14 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
     if isinstance(path_policies_raw, list):
         for policy in path_policies_raw:
             if isinstance(policy, dict) and "glob" in policy:
-                config.path_policies.append({
-                    "glob": policy["glob"],
-                    "tier": int(policy.get("tier", 2)),
-                    "strictness": policy.get("strictness", "normal"),
-                    "include_info": policy.get("include_info", True),
-                })
+                config.path_policies.append(
+                    {
+                        "glob": policy["glob"],
+                        "tier": int(policy.get("tier", 2)),
+                        "strictness": policy.get("strictness", "normal"),
+                        "include_info": policy.get("include_info", True),
+                    }
+                )
 
     # Debounce
     debounce_raw = raw.get("debounce", {})

@@ -70,6 +70,7 @@ class DeadCodeChecker(BaseLinter):
     def _vulture_available(self) -> bool:
         """Check if vulture is installed."""
         import shutil
+
         return shutil.which("vulture") is not None
 
     def _run_vulture(
@@ -81,7 +82,8 @@ class DeadCodeChecker(BaseLinter):
         """Run vulture for comprehensive dead code detection."""
         cmd = [
             "vulture",
-            "--min-confidence", str(min_confidence),
+            "--min-confidence",
+            str(min_confidence),
         ]
 
         # Add whitelist files from config
@@ -104,13 +106,16 @@ class DeadCodeChecker(BaseLinter):
         # Vulture outputs one line per finding: filepath:line: message (confidence%)
         if result.stdout:
             yield from _parse_vulture_output(
-                result.stdout, severity_default,
+                result.stdout,
+                severity_default,
             )
 
     # ─── AST fallback mode ───────────────────────────────────────────
 
     def _run_ast_fallback(
-        self, ctx: LinterContext, severity_default: str,
+        self,
+        ctx: LinterContext,
+        severity_default: str,
     ) -> Iterable[LintIssue]:
         """Per-file AST-based dead code detection (simple but catches common patterns).
 
@@ -135,13 +140,12 @@ class DeadCodeChecker(BaseLinter):
 # ─── Vulture output parser ───────────────────────────────────────────────
 
 # Vulture output format: filepath:line: unused TYPE 'NAME' (confidence%)
-_VULTURE_RE = re.compile(
-    r"^(.+?):(\d+):\s+(.+?)\s+\((\d+)%\s+confidence\)\s*$"
-)
+_VULTURE_RE = re.compile(r"^(.+?):(\d+):\s+(.+?)\s+\((\d+)%\s+confidence\)\s*$")
 
 
 def _parse_vulture_output(
-    output: str, severity_default: str,
+    output: str,
+    severity_default: str,
 ) -> Iterable[LintIssue]:
     """Parse vulture's text output into LintIssues."""
     for line in output.strip().splitlines():
@@ -217,7 +221,8 @@ def _suggestions_for_kind(kind: str) -> list[str]:
 
 
 def _ast_dead_code_check(
-    filepath: str, severity_default: str,
+    filepath: str,
+    severity_default: str,
 ) -> Iterable[LintIssue]:
     """Simple AST-based dead code detection for a single file.
 

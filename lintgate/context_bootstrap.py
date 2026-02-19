@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import os
 import re
+import time
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -87,8 +90,9 @@ def bootstrap_context_files(
     )
 
     drafts: dict[str, str] = {
-        "CLAUDE.md": claude_text,
+        ".claude/CLAUDE.md": claude_text,
         "AGENTS.md": agents_text,
+        ".claude/rules/inquiry.md": _render_inquiry_md(),
     }
     if include_theory_rules_doc:
         drafts[".claude/rules/theory.md"] = _render_theory_rules_md(
@@ -99,6 +103,10 @@ def bootstrap_context_files(
             rule_lines=rule_lines,
         )
 
+    # AGENTS.md is hand-maintained (source of truth for all agents).
+    # Never overwrite it — even with overwrite=True. Only generate if missing.
+    _NEVER_OVERWRITE = {"AGENTS.md"}
+
     file_reports: list[dict[str, Any]] = []
     written: list[str] = []
     skipped_existing: list[str] = []
@@ -108,7 +116,7 @@ def bootstrap_context_files(
         status = "planned"
 
         if write:
-            if exists and not overwrite:
+            if exists and (not overwrite or rel_path in _NEVER_OVERWRITE):
                 status = "skipped_exists"
                 skipped_existing.append(str(target))
             else:
@@ -117,13 +125,15 @@ def bootstrap_context_files(
                 status = "written"
                 written.append(str(target))
 
-        file_reports.append({
-            "relative_path": rel_path,
-            "absolute_path": str(target),
-            "status": status,
-            "line_count": len(content.splitlines()),
-            "content": content,
-        })
+        file_reports.append(
+            {
+                "relative_path": rel_path,
+                "absolute_path": str(target),
+                "status": status,
+                "line_count": len(content.splitlines()),
+                "content": content,
+            }
+        )
 
     return {
         "project": str(root),
@@ -131,7 +141,9 @@ def bootstrap_context_files(
         "source_signals": {
             "docs_scanned": theory_full.get("docs_scanned", 0),
             "context_files_found": len(guidance.get("context_files", [])),
-            "proposed_rule_count": len(theory_full.get("enforceable_rules", {}).get("proposed_rules", [])),
+            "proposed_rule_count": len(
+                theory_full.get("enforceable_rules", {}).get("proposed_rules", [])
+            ),
             "audit_summary": _summarize_audit(audit),
         },
         "files": file_reports,
@@ -303,89 +315,209 @@ def _render_claude_md(
     rule_lines: list[str],
     project_root: str = "",
 ) -> str:
+    """Render a full CLAUDE.md with cognitive context, not just a skeleton.
+
+    This produces a functional cognitive operating system: epistemic state
+    framework, dispositions, guardrails, managed sections, and deep references.
+    The output should be usable without hand-editing.
+    """
     core = _facet_or_fallback(
-        facet_summaries, "core_theory",
+        facet_summaries,
+        "core_theory",
         "Preserve the project's core abstractions and conceptual framing.",
     )
     approach = _facet_or_fallback(
-        facet_summaries, "problem_solving",
+        facet_summaries,
+        "problem_solving",
         "Prefer compositional and testable implementations over ad-hoc shortcuts.",
     )
     alignment = _facet_or_fallback(
-        facet_summaries, "alignment",
+        facet_summaries,
+        "alignment",
         "Optimize for correctness, clarity, and maintainability.",
     )
     architecture = _facet_or_fallback(
-        facet_summaries, "architecture",
+        facet_summaries,
+        "architecture",
         "Maintain explicit module boundaries and stable interfaces.",
     )
 
     description = metadata.get("description", "").strip()
+    name = metadata.get("name", "project")
     mission = description or core
 
     lines: list[str] = [
-        "# CLAUDE.md",
+        f"# {name} Context",
         "",
-        "## Project",
-        f"- Name: {metadata.get('name', 'project')}",
-        f"- Mission: {mission}",
+        "## What You Are Doing",
         "",
-        "## Working Mode",
-        "- Start with a short plan for non-trivial edits.",
-        "- Keep changes small, local, and easy to review.",
-        "- Run focused validation before handoff.",
-        "- Keep this file concise and move deep details into `.claude/rules/*.md`.",
+        f"{mission}. Your job is to write correct code; LintGate's job is to catch"
+        " the discipline failures that waste your intelligence budget."
+        if not mission.endswith(".")
+        else f"{mission} Your job is to write correct code; LintGate's job is to"
+        " catch the discipline failures that waste your intelligence budget.",
         "",
+        "## Know Your Epistemic State",
+        "",
+        "Before acting on a file you haven't read, before trying a third approach,"
+        " before ignoring a behavioral finding — ask yourself:",
+        "",
+        "- **Do I have theory context?** If not → `build_theory_pack`. The theory"
+        " profile tells you what this project values, how it solves problems, and"
+        " what it considers anti-patterns. Without it you are guessing at alignment.",
+        "- **Am I session-ready?** The session gate checks three things: theory"
+        " profile has core_theory + problem_solving + alignment facets with claims,"
+        " at least one enforceable rule exists, and no missing required facets."
+        " If the gate fires an advisory, run `bootstrap_context_files` before continuing.",
+        "- **What is my prediction accuracy?** If `behavior_precheck` shows accuracy"
+        " below 50% after 5+ predictions, your mental model of the project's"
+        " constraints is wrong. Stop and re-orient.",
+        "- **What is the coherence state?** If `controlplane_run` shows cross-channel"
+        " disagreement (lint + tests + git pointing at the same files), that"
+        " convergence IS the diagnosis. Read it.",
+        "",
+        "## Dispositions",
+        "",
+        "**When starting a session** — orient first. Call `build_theory_pack` or"
+        " `controlplane_status`. Read theory claims before writing code. The 200"
+        " tokens you spend orienting prevent the 2,000 tokens you spend on a"
+        " doomed approach.",
+        "",
+        "**When acting** — register predictions. Before any Bash command, call"
+        " `behavior_precheck` with a structured prediction (`prediction_type`:"
+        " exit_code/error_signature/stdout_contains, `prediction_value`: what you"
+        " expect). The system checks your prediction on the next tool event. This"
+        " is not bureaucracy — it builds the accuracy signal that modulates"
+        " behavioral finding confidence.",
+        "",
+        "**When stuck** — DO NOT try variant #4. If you have cycled through 3"
+        " approaches, your problem is not execution — it is understanding. Run"
+        " `behavior_precheck` to see your constraint coverage. Read the theory"
+        " claims attached to behavioral findings. The answer is almost always in"
+        " the constraints you have not yet verified, not in the approaches you"
+        " have not yet tried.",
+        "",
+        "**When the system speaks** — findings are weather reports, not commands."
+        ' "3 approaches in 20min, all failed" is an observation. The theory coda'
+        " attached to it connects the observation to the project's values. You"
+        " decide what to do. But if you ignore a hard signal and try the same"
+        " pattern again, the system will escalate — and it will be right.",
+        "",
+        "**When context evolves** — review and apply patches explicitly. When the"
+        " living_context system generates a context patch (from accepted"
+        " constraints, confirmed predictions, or recurring behavioral signals),"
+        " use `context_patch_review` to see the diff. Use `context_patch_apply`"
+        " to write it. Patches are never auto-applied. The cumulative rebasing"
+        " ensures multiple patches to the same section compose correctly — each"
+        " apply re-reads the current on-disk state.",
+        "",
+        "**When you change the system** — update the docs immediately, in the same"
+        " action. If you add an MCP tool, add it to AGENTS.md and README.md tool"
+        " tables and increment the count. Source of truth for tool count:"
+        " `grep -c \"@mcp.tool()\" mcp_server.py`. Documentation precision has"
+        " compounding returns — one stale count becomes a chain of wrong"
+        " assumptions across every session that reads it.",
+        "",
+        "## Mission",
+        "",
+        "- Keep feedback loops tight between generated code and validated code quality.",
+        "- Prefer deterministic checks and explicit diagnostics over ambiguous heuristics.",
+        "- Preserve graceful degradation when optional tooling is unavailable.",
+        "- Offload discipline to the deterministic layer so the agent spends its"
+        " intelligence budget on novel reasoning.",
+        "",
+        "## Guardrails",
+        "",
+        "- DO NOT disable lint channels globally to hide regressions.",
+        "- DO NOT auto-apply generated repairs without explicit acceptance.",
+        "- DO NOT try a 4th approach without running `behavior_precheck` first.",
+        "- DO NOT ignore theory codas on behavioral findings — they exist to"
+        " connect observations to project values.",
+        "- MUST keep hook and MCP outputs machine-readable and stable for"
+        " downstream consumers.",
+        "- MUST preserve backward-compatible MCP tool contracts unless versioned"
+        " intentionally.",
+        "- MUST update AGENTS.md, README.md, and docs/design.md when adding,"
+        " removing, or changing MCP tools. Verify with"
+        ' `grep -c "@mcp.tool()" mcp_server.py`.',
+        "- MUST update docs/design.md YAML examples when adding config options.",
+        "",
+        "<!-- LINTGATE:BEGIN theory_alignment v1 -->",
         "## Theory-Aligned Development",
         f"- Core theory: {core}",
         f"- Preferred approach: {approach}",
         f"- Alignment criteria: {alignment}",
         f"- Architecture intent: {architecture}",
+        "<!-- LINTGATE:END theory_alignment -->",
         "",
-        "## Do / Do Not",
-        f"- DO: {approach}",
-        f"- DO: {alignment}",
+        "<!-- LINTGATE:BEGIN do_dont v1 -->",
     ]
 
+    # Add extracted do/don't items
+    lines.append(f"- DO: {approach}")
+    lines.append(f"- DO: {alignment}")
     for item in anti_patterns[:4]:
         lines.append(f"- DO NOT: {item}")
+    lines.append("<!-- LINTGATE:END do_dont -->")
 
-    lines.extend([
-        "",
-        "## Machine-Enforceable Rules (LintGate)",
-    ])
+    lines.extend(
+        [
+            "",
+            "<!-- LINTGATE:BEGIN machine_rules v1 -->",
+        ]
+    )
     if rule_lines:
         lines.extend(rule_lines)
     else:
-        lines.extend([
-            "# Add project-specific constraints as they become stable:",
-            "# LINTGATE_FORBID_REGEX: <regex>",
-            "# LINTGATE_REQUIRE_REGEX: <regex>",
-        ])
+        lines.extend(
+            [
+                "# Add project-specific constraints as they become stable:",
+                "# LINTGATE_FORBID_REGEX: <regex>",
+                "# LINTGATE_REQUIRE_REGEX: <regex>",
+            ]
+        )
+    lines.append("<!-- LINTGATE:END machine_rules -->")
 
     context_map_lines = [
         "",
+        "<!-- LINTGATE:BEGIN context_map v1 -->",
         "## Context Map",
         "- `.claude/rules/theory.md` - extracted theory summaries and anti-patterns.",
     ]
-    # Dynamically detect which config path exists (or omit the line)
     if project_root:
         if os.path.exists(os.path.join(project_root, "lintgate.yaml")):
-            context_map_lines.append("- `lintgate.yaml` - lint and ControlPlane configuration.")
+            context_map_lines.append(
+                "- `lintgate.yaml` - lint and ControlPlane configuration."
+            )
         elif os.path.exists(os.path.join(project_root, ".claude", "lintgate.yaml")):
-            context_map_lines.append("- `.claude/lintgate.yaml` - lint and ControlPlane configuration.")
-        # else: omit the config line entirely — user hasn't created one yet
+            context_map_lines.append(
+                "- `.claude/lintgate.yaml` - lint and ControlPlane configuration."
+            )
     else:
-        # Fallback when project_root not available
-        context_map_lines.append("- `.claude/lintgate.yaml` - lint and ControlPlane configuration.")
-
+        context_map_lines.append(
+            "- `.claude/lintgate.yaml` - lint and ControlPlane configuration."
+        )
+    context_map_lines.append("<!-- LINTGATE:END context_map -->")
     lines.extend(context_map_lines)
-    lines.extend([
-        "",
-        "## Maintenance",
-        "- Keep under ~300 lines; split detailed guidance into `.claude/rules/*.md` files.",
-        "- Re-run `audit_context_health` after major context updates.",
-    ])
+
+    lines.extend(
+        [
+            "",
+            "## Debt Tracking Policy",
+            "",
+            "- Known structural debt should be tracked in .claude/lintgate.yaml"
+            " exemptions with ticket references.",
+            "- Exemptions should target specific files and codes instead of global"
+            " severity downgrades.",
+            "- New exemptions require a concrete rationale and a remediation ticket.",
+            "",
+            "## Deep Reference",
+            "",
+            "- Architecture of Inquiry protocol: `.claude/rules/inquiry.md`",
+            "- Tool reference by cognitive mode: `AGENTS.md`",
+            "- Design deep dive: `docs/design.md`",
+        ]
+    )
 
     return "\n".join(lines).strip()
 
@@ -397,7 +529,8 @@ def _render_agents_md(
     commands: list[str],
 ) -> str:
     alignment = _facet_or_fallback(
-        facet_summaries, "alignment",
+        facet_summaries,
+        "alignment",
         "Deliver changes that are correct, maintainable, and aligned to project constraints.",
     )
 
@@ -421,17 +554,19 @@ def _render_agents_md(
     for cmd in commands:
         lines.append(f"- `{cmd}`")
 
-    lines.extend([
-        "",
-        "## Theory and Context",
-        "- Read `CLAUDE.md` and `.claude/rules/theory.md` before deep refactors.",
-        f"- Keep implementation aligned with: {alignment}",
-        "- If work conflicts with explicit rules, stop and request clarification.",
-        "",
-        "## Handoff Expectations",
-        "- Summarize what changed and why.",
-        "- Report what was tested and what remains unverified.",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Theory and Context",
+            "- Read `CLAUDE.md` and `.claude/rules/theory.md` before deep refactors.",
+            f"- Keep implementation aligned with: {alignment}",
+            "- If work conflicts with explicit rules, stop and request clarification.",
+            "",
+            "## Handoff Expectations",
+            "- Summarize what changed and why.",
+            "- Report what was tested and what remains unverified.",
+        ]
+    )
 
     return "\n".join(lines).strip()
 
@@ -476,17 +611,21 @@ def _render_theory_rules_md(
         )
         lines.append(f"- {label}: {summary}")
 
-    lines.extend([
-        "",
-        "## High-Signal Anti-Patterns",
-    ])
+    lines.extend(
+        [
+            "",
+            "## High-Signal Anti-Patterns",
+        ]
+    )
     for item in anti_patterns:
         lines.append(f"- {item}")
 
-    lines.extend([
-        "",
-        "## Enforceable Rules",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Enforceable Rules",
+        ]
+    )
     if rule_lines:
         lines.extend([f"- `{line}`" for line in rule_lines])
     else:
@@ -494,18 +633,115 @@ def _render_theory_rules_md(
 
     missing = validity.get("missing_required_facets", [])
     warnings = validity.get("warnings", [])
-    lines.extend([
-        "",
-        "## Extraction Quality",
-        f"- Validity status: {validity.get('status', 'unknown')}",
-        f"- Docs scanned: {theory_full.get('docs_scanned', 0)}",
-        f"- Total claims: {validity.get('total_claims', 0)}",
-        f"- Missing required facets: {', '.join(missing) if missing else 'none'}",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Extraction Quality",
+            f"- Validity status: {validity.get('status', 'unknown')}",
+            f"- Docs scanned: {theory_full.get('docs_scanned', 0)}",
+            f"- Total claims: {validity.get('total_claims', 0)}",
+            f"- Missing required facets: {', '.join(missing) if missing else 'none'}",
+        ]
+    )
     for warn in warnings[:3]:
         lines.append(f"- Warning: {_normalize_sentence(str(warn))}")
 
     return "\n".join(lines).strip()
+
+
+def _render_inquiry_md() -> str:
+    """Render the Architecture of Inquiry protocol reference.
+
+    This is static content — the inquiry protocol is the same for any project
+    using LintGate. It documents the 5 opt-in features that close the loop
+    between behavioral detection and theory extraction.
+    """
+    return """\
+# Architecture of Inquiry — Protocol Reference
+
+Five opt-in features that close the loop between behavioral detection and \
+theory extraction. All disabled by default. Enable in `.claude/lintgate.yaml` \
+under `controlplane.inquiry.*`.
+
+## Features
+
+### theory_grounded_signals
+
+When a behavioral signal fires, relevant theory claims are pulled from the \
+project's theory profile and appended as a coda to the finding message.
+
+- **Implementation**: `lintgate/channels/behavior_channel.py` — \
+`SIGNAL_THEORY_MAP`, `_ground_finding_in_theory()`
+- **Coda cap**: 150 characters max, 1-2 claims per finding
+- **Dedup**: Consecutive identical codas for the same signal are suppressed
+- **Requires**: Theory profile cache (extracted once per ControlPlane run)
+
+### prediction_tracking
+
+Before Bash commands, the agent registers a falsifiable prediction via \
+`behavior_precheck` with structured expected outcomes.
+
+- **Implementation**: `lintgate/controlplane/behavior_compass.py` — \
+`Prediction`, `PredictionExpectation`, `_check_predictions()`
+- **Prediction types**: `exit_code` (int), `error_signature` (substring), \
+`stdout_contains` (substring)
+- **Matching**: Exact full command-signature match. Empty/unknown sigs rejected.
+- **Accuracy modulation**: After 5+ checked predictions. >70% softens by -0.15. \
+<30% amplifies by +0.15.
+- **Expiry**: Unchecked predictions expire after 20 events.
+
+### theory_coherence_check
+
+When the constraint proposer generates a new rule, it checks the rule against \
+the project's theory profile.
+
+- **Implementation**: `lintgate/controlplane/constraint_proposer.py` — \
+`TheoryCoherenceResult`, `check_theory_coherence()`
+- **Output**: `aligned`, `supporting_claims`, `contradicting_claims`, \
+`coherence_score` (-1.0 to +1.0)
+- **Metadata-only**: Confidence is NOT auto-adjusted (conservative by design).
+- **Config gated**: Only runs when `inquiry.theory_coherence_check` is True.
+
+### living_context
+
+CLAUDE.md becomes a living document. Behavioral discoveries flow back as \
+managed-section patches.
+
+- **Implementation**: `lintgate/context_bootstrap.py` — `ContextPatch`, \
+`generate_context_patch()`, `apply_context_patch()`
+- **Managed sections**: `<!-- LINTGATE:BEGIN section_id vN -->` / \
+`<!-- LINTGATE:END section_id -->`. Section IDs: `machine_rules`, `do_dont`, \
+`theory_alignment`, `context_map`
+- **Cumulative rebasing**: `context_patch_apply` re-reads on-disk state. \
+Multiple patches to the same section compose correctly.
+- **Apply is always explicit**: Use `context_patch_review` to inspect, \
+`context_patch_apply` to write.
+
+### session_gate
+
+Advisory warning on file modification when the context bootstrap hasn't passed \
+minimum validity.
+
+- **Implementation**: `lintgate/context_auditor.py` — `SessionReadiness`, \
+`check_session_readiness()`
+- **On failure**: Advisory warning + short-circuits expensive channels.
+- **On pass**: Marks session ready; subsequent events skip the check.
+
+## Enabling
+
+```yaml
+controlplane:
+  enabled: true
+  inquiry:
+    theory_grounded_signals: true
+    prediction_tracking: true
+    theory_coherence_check: true
+    living_context: true
+    session_gate: true
+```
+
+All five features require `controlplane.enabled: true`. Each degrades gracefully \
+when its dependencies are unavailable."""
 
 
 def _facet_or_fallback(
@@ -543,3 +779,334 @@ def _summarize_audit(audit: dict[str, Any]) -> dict[str, int]:
         elif status == "pass":
             out["passes"] += 1
     return out
+
+
+# ── Managed Section Parsing & Patch Protocol ─────────────────────────
+
+
+_MANAGED_BEGIN_RE = re.compile(
+    r"<!--\s*LINTGATE:BEGIN\s+(\w+)\s+v(\d+)\s*-->",
+)
+_MANAGED_END_RE = re.compile(
+    r"<!--\s*LINTGATE:END\s+(\w+)\s*-->",
+)
+
+MANAGED_SECTION_IDS = ("machine_rules", "do_dont", "theory_alignment", "context_map")
+
+
+@dataclass
+class ManagedSection:
+    """A parsed managed section from a CLAUDE.md file."""
+
+    section_id: str
+    version: int
+    content: str
+    start_pos: int  # char offset of BEGIN marker
+    end_pos: int  # char offset after END marker
+
+
+@dataclass
+class ContextPatch:
+    """A proposed patch to a managed section in CLAUDE.md."""
+
+    patch_id: str = ""
+    section_id: str = ""
+    trigger: str = ""  # "constraint_accepted" | "prediction_confirmed" | "recurring_behavioral_signal" | "theory_coherence_update"
+    old_content: str = ""
+    new_content: str = ""
+    rationale: str = ""
+    evidence: dict[str, Any] = field(default_factory=dict)
+    coherence_check: dict[str, Any] | None = None
+    status: str = "pending"  # "pending" | "applied" | "rejected"
+    created_at: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "patch_id": self.patch_id,
+            "section_id": self.section_id,
+            "trigger": self.trigger,
+            "old_content": self.old_content,
+            "new_content": self.new_content,
+            "rationale": self.rationale,
+            "evidence": self.evidence,
+            "coherence_check": self.coherence_check,
+            "status": self.status,
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ContextPatch:
+        return cls(
+            patch_id=data.get("patch_id", ""),
+            section_id=data.get("section_id", ""),
+            trigger=data.get("trigger", ""),
+            old_content=data.get("old_content", ""),
+            new_content=data.get("new_content", ""),
+            rationale=data.get("rationale", ""),
+            evidence=data.get("evidence", {}),
+            coherence_check=data.get("coherence_check"),
+            status=data.get("status", "pending"),
+            created_at=data.get("created_at", 0.0),
+        )
+
+
+def _parse_managed_sections(text: str) -> dict[str, ManagedSection]:
+    """Parse LINTGATE:BEGIN/END markers from CLAUDE.md text.
+
+    Returns dict of section_id → ManagedSection.
+    """
+    sections: dict[str, ManagedSection] = {}
+
+    for begin_match in _MANAGED_BEGIN_RE.finditer(text):
+        section_id = begin_match.group(1)
+        version = int(begin_match.group(2))
+        begin_end = begin_match.end()
+
+        end_pattern = re.compile(
+            rf"<!--\s*LINTGATE:END\s+{re.escape(section_id)}\s*-->",
+        )
+        end_match = end_pattern.search(text, begin_end)
+        if end_match is None:
+            continue  # Unclosed marker — skip
+
+        content = text[begin_end : end_match.start()]
+        sections[section_id] = ManagedSection(
+            section_id=section_id,
+            version=version,
+            content=content,
+            start_pos=begin_match.start(),
+            end_pos=end_match.end(),
+        )
+
+    return sections
+
+
+def _migrate_to_managed_sections(text: str) -> tuple[str, list[str]]:
+    """Add managed section markers to a pre-upgrade CLAUDE.md.
+
+    Uses heading heuristics to identify where to insert markers.
+    Returns (migrated_text, list_of_migrated_section_ids).
+
+    If markers already exist, returns text unchanged.
+    """
+    if "LINTGATE:BEGIN" in text:
+        return text, []
+
+    migrated_ids: list[str] = []
+    lines = text.split("\n")
+    result_lines: list[str] = []
+    i = 0
+
+    # Heading → section_id mapping for migration
+    heading_map: dict[str, str] = {
+        "theory-aligned development": "theory_alignment",
+        "do / do not": "do_dont",
+        "do/do not": "do_dont",
+        "machine-enforceable rules": "machine_rules",
+        "machine rules": "machine_rules",
+        "context map": "context_map",
+    }
+
+    open_section: str | None = None
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip().lower()
+
+        # Check if this line is a heading that matches a managed section
+        if stripped.startswith("#"):
+            heading_text = re.sub(r"^#+\s*", "", stripped).strip()
+            # Remove trailing markers like "(lintgate)" if present
+            heading_text = re.sub(r"\s*\(.*\)\s*$", "", heading_text).strip()
+
+            matched_id = None
+            for pattern, sid in heading_map.items():
+                if pattern in heading_text:
+                    matched_id = sid
+                    break
+
+            if matched_id:
+                # Close any currently open section
+                if open_section:
+                    result_lines.append(f"<!-- LINTGATE:END {open_section} -->")
+
+                # Open new section
+                result_lines.append(f"<!-- LINTGATE:BEGIN {matched_id} v1 -->")
+                open_section = matched_id
+                migrated_ids.append(matched_id)
+                result_lines.append(line)
+                i += 1
+                continue
+
+            # Different heading — close any open section
+            if open_section:
+                result_lines.append(f"<!-- LINTGATE:END {open_section} -->")
+                open_section = None
+
+        result_lines.append(line)
+        i += 1
+
+    # Close any trailing open section
+    if open_section:
+        result_lines.append(f"<!-- LINTGATE:END {open_section} -->")
+
+    return "\n".join(result_lines), migrated_ids
+
+
+def generate_context_patch(
+    project_root: str,
+    trigger: str,
+    evidence: dict[str, Any],
+) -> ContextPatch | None:
+    """Generate a patch for a managed section in CLAUDE.md.
+
+    Args:
+        project_root: Repository root.
+        trigger: One of "constraint_accepted", "prediction_confirmed",
+                 "recurring_behavioral_signal", "theory_coherence_update".
+        evidence: Supporting data for the patch (e.g., rule text, signal name).
+
+    Returns:
+        ContextPatch or None if no update needed / already present.
+    """
+    claude_path = Path(project_root) / "CLAUDE.md"
+    if not claude_path.exists():
+        return None
+
+    text = claude_path.read_text()
+
+    # Migrate if needed
+    if "LINTGATE:BEGIN" not in text:
+        text, _ = _migrate_to_managed_sections(text)
+
+    sections = _parse_managed_sections(text)
+
+    # Determine target section and new content based on trigger
+    if trigger == "constraint_accepted":
+        section_id = "machine_rules"
+        rule_text = evidence.get("rule", "")
+        if not rule_text:
+            return None
+        section = sections.get(section_id)
+        if section is None:
+            return None
+        # Idempotency: check if rule already exists
+        if rule_text in section.content:
+            return None
+        new_content = section.content.rstrip() + f"\n{rule_text}\n"
+
+    elif trigger in ("prediction_confirmed", "recurring_behavioral_signal"):
+        section_id = "do_dont"
+        entry = evidence.get("entry", "")
+        if not entry:
+            return None
+        section = sections.get(section_id)
+        if section is None:
+            return None
+        # Idempotency
+        if entry in section.content:
+            return None
+        new_content = section.content.rstrip() + f"\n- DO NOT: {entry}\n"
+
+    elif trigger == "theory_coherence_update":
+        section_id = "theory_alignment"
+        update_text = evidence.get("update", "")
+        if not update_text:
+            return None
+        section = sections.get(section_id)
+        if section is None:
+            return None
+        if update_text in section.content:
+            return None
+        new_content = section.content.rstrip() + f"\n- {update_text}\n"
+
+    else:
+        return None
+
+    return ContextPatch(
+        patch_id=uuid.uuid4().hex[:8],
+        section_id=section_id,
+        trigger=trigger,
+        old_content=section.content,
+        new_content=new_content,
+        rationale=evidence.get("rationale", f"Auto-generated from {trigger}"),
+        evidence=evidence,
+        status="pending",
+        created_at=time.time(),
+    )
+
+
+def apply_context_patch(
+    project_root: str,
+    patch: ContextPatch,
+    *,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Apply a context patch to CLAUDE.md.
+
+    Args:
+        project_root: Repository root.
+        patch: The ContextPatch to apply.
+        dry_run: If True (default), return diff preview without writing.
+
+    Returns:
+        Dict with "applied", "diff_preview", and optionally "validation".
+    """
+    claude_path = Path(project_root) / "CLAUDE.md"
+    if not claude_path.exists():
+        return {"applied": False, "error": "CLAUDE.md not found"}
+
+    text = claude_path.read_text()
+
+    # Migrate if needed
+    migrated = False
+    if "LINTGATE:BEGIN" not in text:
+        text, migrated_ids = _migrate_to_managed_sections(text)
+        migrated = bool(migrated_ids)
+
+    sections = _parse_managed_sections(text)
+    section = sections.get(patch.section_id)
+    if section is None:
+        return {"applied": False, "error": f"Section '{patch.section_id}' not found"}
+
+    # Build new text: replace section content and increment version
+    new_version = section.version + 1
+    new_begin = f"<!-- LINTGATE:BEGIN {patch.section_id} v{new_version} -->"
+
+    # Replace the entire managed block
+    before = text[: section.start_pos]
+    end_marker = f"<!-- LINTGATE:END {patch.section_id} -->"
+    after = text[section.end_pos :]
+
+    new_text = before + new_begin + patch.new_content + end_marker + after
+
+    # Build diff preview (simple before/after)
+    diff_preview = {
+        "section_id": patch.section_id,
+        "old_version": section.version,
+        "new_version": new_version,
+        "old_content": patch.old_content.strip(),
+        "new_content": patch.new_content.strip(),
+        "migrated": migrated,
+    }
+
+    if dry_run:
+        return {"applied": False, "dry_run": True, "diff_preview": diff_preview}
+
+    # Write the file
+    claude_path.write_text(new_text)
+    patch.status = "applied"
+
+    # Validate with audit
+    validation = None
+    try:
+        audit_result = audit_context_health(project_root)
+        validation = _summarize_audit(audit_result)
+    except Exception:
+        pass
+
+    return {
+        "applied": True,
+        "diff_preview": diff_preview,
+        "validation": validation,
+    }

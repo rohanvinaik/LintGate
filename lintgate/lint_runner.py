@@ -54,11 +54,13 @@ def run_linters(
     # Report unknown linters
     results: list[LinterResult] = []
     for name in unknown:
-        results.append(LinterResult(
-            linter_name=name,
-            status="skipped",
-            error=f"Unknown linter: {name}",
-        ))
+        results.append(
+            LinterResult(
+                linter_name=name,
+                status="skipped",
+                error=f"Unknown linter: {name}",
+            )
+        )
 
     if not selected:
         return results
@@ -90,11 +92,13 @@ def run_linters(
                     results.append(result)
                 except Exception as e:
                     linter = futures[fut]
-                    results.append(LinterResult(
-                        linter_name=linter.name,
-                        status="error",
-                        error=f"Executor error: {type(e).__name__}: {e}",
-                    ))
+                    results.append(
+                        LinterResult(
+                            linter_name=linter.name,
+                            status="error",
+                            error=f"Executor error: {type(e).__name__}: {e}",
+                        )
+                    )
         except FuturesTimeoutError:
             # Expected when one or more linters exceed the remaining global budget.
             for fut, linter in futures.items():
@@ -102,11 +106,13 @@ def run_linters(
                     continue
                 fut.cancel()
                 timed_out_futures.add(fut)
-                results.append(LinterResult(
-                    linter_name=linter.name,
-                    status="timeout",
-                    error=f"Total budget exceeded ({timeout_ms}ms)",
-                ))
+                results.append(
+                    LinterResult(
+                        linter_name=linter.name,
+                        status="timeout",
+                        error=f"Total budget exceeded ({timeout_ms}ms)",
+                    )
+                )
 
     # Check for futures that didn't complete in time
     for fut, linter in futures.items():
@@ -119,19 +125,23 @@ def run_linters(
                 result = fut.result(timeout=0.0)
                 results.append(result)
             except Exception as e:
-                results.append(LinterResult(
-                    linter_name=linter.name,
-                    status="error",
-                    error=f"Executor error: {type(e).__name__}: {e}",
-                ))
+                results.append(
+                    LinterResult(
+                        linter_name=linter.name,
+                        status="error",
+                        error=f"Executor error: {type(e).__name__}: {e}",
+                    )
+                )
             continue
 
         if not fut.done():
             fut.cancel()
-            results.append(LinterResult(
-                linter_name=linter.name,
-                status="timeout",
-                error=f"Total budget exceeded ({timeout_ms}ms)",
-            ))
+            results.append(
+                LinterResult(
+                    linter_name=linter.name,
+                    status="timeout",
+                    error=f"Total budget exceeded ({timeout_ms}ms)",
+                )
+            )
 
     return results

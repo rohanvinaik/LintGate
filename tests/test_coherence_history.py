@@ -6,16 +6,13 @@ that detects regressions, persistent failures, and resolutions.
 
 from __future__ import annotations
 
-import pytest
-
 from lintgate.controlplane.coherence import (
     compute_coherence,
     compute_coherence_with_history,
 )
 from lintgate.controlplane.session_memory import SessionMemory, SessionSnapshot
-from lintgate.controlplane.types import ChannelResult, CoherenceResult
+from lintgate.controlplane.types import ChannelResult
 from lintgate.types import LintIssue
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -26,12 +23,16 @@ def _make_channel_results(
 ) -> list[ChannelResult]:
     """Build channel results with loud (fail) and silent (pass) channels."""
     results = []
-    for name in (loud or []):
-        results.append(ChannelResult(
-            channel=name, status="fail", severity="warning",
-            findings=[LintIssue(linter=name, kind="E001", severity="warning", message="issue")],
-        ))
-    for name in (silent or []):
+    for name in loud or []:
+        results.append(
+            ChannelResult(
+                channel=name,
+                status="fail",
+                severity="warning",
+                findings=[LintIssue(linter=name, kind="E001", severity="warning", message="issue")],
+            )
+        )
+    for name in silent or []:
         results.append(ChannelResult(channel=name, status="pass"))
     return results
 
@@ -43,12 +44,14 @@ def _make_session_with_snapshots(
     """Build a session with specified snapshot history."""
     session = SessionMemory(project_root="/test")
     for snap_data in snapshots:
-        session.snapshots.append(SessionSnapshot(
-            run_id=snap_data.get("run_id", "r"),
-            coherence_state=snap_data.get("state", "stable"),
-            loud_channels=snap_data.get("loud", []),
-            silent_channels=snap_data.get("silent", []),
-        ))
+        session.snapshots.append(
+            SessionSnapshot(
+                run_id=snap_data.get("run_id", "r"),
+                coherence_state=snap_data.get("state", "stable"),
+                loud_channels=snap_data.get("loud", []),
+                silent_channels=snap_data.get("silent", []),
+            )
+        )
     if trajectory:
         session.coherence_trajectory = trajectory
     else:

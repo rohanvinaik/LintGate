@@ -6,14 +6,8 @@ Tests each Phase 0 bug fix in isolation to prevent regression.
 from __future__ import annotations
 
 import json
-import os
-import time
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
-
-import pytest
-
 
 # ── 0.1: Path stripping uses removeprefix, not lstrip ───────────────────
 
@@ -86,7 +80,9 @@ def test_bootstrap_detects_claude_lintgate_yaml(tmp_path: Path) -> None:
 
 
 def test_bootstrap_omits_config_line_when_no_yaml(tmp_path: Path) -> None:
-    """No config file → no config reference in Context Map."""
+    """No config file → no config reference in Context Map managed section."""
+    import re
+
     from lintgate.context_bootstrap import _render_claude_md
 
     text = _render_claude_md(
@@ -96,7 +92,17 @@ def test_bootstrap_omits_config_line_when_no_yaml(tmp_path: Path) -> None:
         rule_lines=[],
         project_root=str(tmp_path),
     )
-    assert "lintgate.yaml" not in text
+    # Extract just the context_map managed section — the debt tracking policy
+    # may mention lintgate.yaml as generic guidance, but the context map should
+    # only reference files that actually exist.
+    ctx_match = re.search(
+        r"<!-- LINTGATE:BEGIN context_map.*?-->(.+?)<!-- LINTGATE:END context_map -->",
+        text,
+        re.DOTALL,
+    )
+    assert ctx_match is not None, "context_map section not found"
+    context_map_section = ctx_match.group(1)
+    assert "lintgate.yaml" not in context_map_section
 
 
 # ── 0.3: Dependency channel reads correct schema keys ────────────────────
@@ -105,11 +111,6 @@ def test_bootstrap_omits_config_line_when_no_yaml(tmp_path: Path) -> None:
 def test_dep_channel_reads_name_and_status_keys() -> None:
     """Full check should use 'name' (not 'check') and 'status' (not 'severity')."""
     from lintgate.channels.dependency_channel import DependencyChannel
-    from lintgate.controlplane.types import (
-        ControlPlaneConfig,
-        SupervisionEvent,
-    )
-    from lintgate.types import ChangeClassification
 
     # Mock full_dependency_health to return schema-correct data
     mock_result = {
@@ -129,7 +130,7 @@ def test_dep_channel_reads_name_and_status_keys() -> None:
         "summary": {"health": "needs_attention"},
     }
 
-    with patch("lintgate.channels.dependency_channel.DependencyChannel._full_check") as mock:
+    with patch("lintgate.channels.dependency_channel.DependencyChannel._full_check"):
         # Call _full_check directly to verify schema handling
         channel = DependencyChannel()
 
@@ -231,7 +232,9 @@ def test_reporter_header_respects_tiny_budget() -> None:
         event=SupervisionEvent(project_root="/tmp"),
         channel_results=[
             ChannelResult(
-                channel="lint", status="fail", severity="blocking",
+                channel="lint",
+                status="fail",
+                severity="blocking",
                 findings=findings,
             ),
         ],
@@ -268,8 +271,10 @@ def test_reporter_blocking_granularity() -> None:
 
     findings = [
         LintIssue(
-            linter="ruff", kind=f"F{800+i}", severity="blocking",
-            message=f"Undefined name 'var_{i}' in some_long_module_name.py line {i*10}",
+            linter="ruff",
+            kind=f"F{800 + i}",
+            severity="blocking",
+            message=f"Undefined name 'var_{i}' in some_long_module_name.py line {i * 10}",
         )
         for i in range(15)
     ]
@@ -277,7 +282,9 @@ def test_reporter_blocking_granularity() -> None:
         event=SupervisionEvent(project_root="/tmp"),
         channel_results=[
             ChannelResult(
-                channel="lint", status="fail", severity="blocking",
+                channel="lint",
+                status="fail",
+                severity="blocking",
                 findings=findings,
             ),
         ],
@@ -340,9 +347,9 @@ def test_which_falls_back_to_system_path(tmp_path: Path) -> None:
     from lintgate.versioning import _which
 
     # tmp_path has no venv — should fall back to system
-    result = _which("python3", project_root=str(tmp_path))
+    _which("python3", project_root=str(tmp_path))
     # python3 should be found in system PATH
-    assert result is not None or True  # May not exist on all systems; don't fail
+    assert True  # May not exist on all systems; don't fail
 
 
 def test_base_linter_available_uses_venv(tmp_path: Path) -> None:

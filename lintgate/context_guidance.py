@@ -31,11 +31,7 @@ def build_context_guidance(
         "do": _dedupe_text(_flatten(parsed, "do")),
         "do_not": _dedupe_text(_flatten(parsed, "do_not")),
     }
-    path_hints = sorted({
-        hint
-        for item in parsed
-        for hint in item.get("path_hints", [])
-    })
+    path_hints = sorted({hint for item in parsed for hint in item.get("path_hints", [])})
     rules = collect_context_rules(project_root)
 
     resolved_files = _resolve_files(files or [], project_root)
@@ -222,7 +218,7 @@ def _parse_rule_line(
     source = f"{source_path}:{line_no}"
 
     if cleaned.startswith(_FORBID_PREFIX):
-        pattern = cleaned[len(_FORBID_PREFIX):].strip()
+        pattern = cleaned[len(_FORBID_PREFIX) :].strip()
         if pattern:
             return {
                 "kind": "forbid_regex",
@@ -233,7 +229,7 @@ def _parse_rule_line(
             }
 
     if cleaned.startswith(_REQUIRE_PREFIX):
-        pattern = cleaned[len(_REQUIRE_PREFIX):].strip()
+        pattern = cleaned[len(_REQUIRE_PREFIX) :].strip()
         if pattern:
             return {
                 "kind": "require_regex",
@@ -246,7 +242,7 @@ def _parse_rule_line(
     if not cleaned.startswith(_RULE_PREFIX):
         return None
 
-    body = cleaned[len(_RULE_PREFIX):].strip()
+    body = cleaned[len(_RULE_PREFIX) :].strip()
     parts = [p.strip() for p in body.split(";") if p.strip()]
     attrs: dict[str, str] = {}
     for part in parts:
@@ -265,7 +261,9 @@ def _parse_rule_line(
         "severity": attrs.get("severity", "warning"),
         "message": attrs.get(
             "message",
-            "Context rule violation" if kind == "forbid_regex" else "Missing required context pattern",
+            "Context rule violation"
+            if kind == "forbid_regex"
+            else "Missing required context pattern",
         ),
         "path_glob": attrs.get("path"),
         "source": source,
@@ -275,23 +273,23 @@ def _parse_rule_line(
 def _infer_rules_from_directives(parsed: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Infer practical anti-drift rules from natural-language directives."""
     combined_do_not = " ".join(
-        line
-        for item in parsed
-        for line in item.get("directives", {}).get("do_not", [])
+        line for item in parsed for line in item.get("directives", {}).get("do_not", [])
     ).lower()
 
     inferred: list[dict[str, Any]] = []
     if "solve_task_" in combined_do_not:
-        inferred.append({
-            "kind": "forbid_regex",
-            "pattern": r"def\s+solve_task_[A-Za-z0-9_]*\s*\(",
-            "severity": "blocking",
-            "message": (
-                "Task-specific solver function detected (solve_task_*). "
-                "Context guidance requires compositional primitive-based programs."
-            ),
-            "source": "inferred:do_not_solve_task_prefix",
-        })
+        inferred.append(
+            {
+                "kind": "forbid_regex",
+                "pattern": r"def\s+solve_task_[A-Za-z0-9_]*\s*\(",
+                "severity": "blocking",
+                "message": (
+                    "Task-specific solver function detected (solve_task_*). "
+                    "Context guidance requires compositional primitive-based programs."
+                ),
+                "source": "inferred:do_not_solve_task_prefix",
+            }
+        )
 
     return inferred
 
@@ -338,4 +336,3 @@ def _dedupe_text(values: list[str]) -> list[str]:
         seen.add(key)
         out.append(key)
     return out
-

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from lintgate.controlplane.constraint_proposer import (
     ProposedConstraint,
     propose_constraints_from_patterns,
@@ -11,7 +9,6 @@ from lintgate.controlplane.constraint_proposer import (
     update_constraint_status,
 )
 from lintgate.controlplane.session_memory import SessionMemory
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -105,10 +102,12 @@ class TestDeduplication:
     def test_no_duplicate_proposals_in_session(self):
         """Already-proposed patterns in session should not be re-proposed."""
         session = SessionMemory(project_root="/test")
-        session.proposed_constraints.append({
-            "pattern_key": "ruff|F821",
-            "status": "proposed",
-        })
+        session.proposed_constraints.append(
+            {
+                "pattern_key": "ruff|F821",
+                "status": "proposed",
+            }
+        )
 
         report = _make_pattern_report([_recurring_alert(kind="F821")])
         proposals = propose_constraints_from_patterns(report, session=session, threshold=3)
@@ -118,10 +117,12 @@ class TestDeduplication:
     def test_different_pattern_not_deduped(self):
         """Different patterns should still generate proposals."""
         session = SessionMemory(project_root="/test")
-        session.proposed_constraints.append({
-            "pattern_key": "ruff|F821",
-            "status": "proposed",
-        })
+        session.proposed_constraints.append(
+            {
+                "pattern_key": "ruff|F821",
+                "status": "proposed",
+            }
+        )
 
         report = _make_pattern_report([_recurring_alert(kind="F401")])
         proposals = propose_constraints_from_patterns(report, session=session, threshold=3)
@@ -138,7 +139,9 @@ class TestDeduplication:
             "# LINTGATE_FORBID_REGEX: undefined name pattern — avoid referencing undefined symbols",
         ]
         proposals = propose_constraints_from_patterns(
-            report, existing_rules=existing_rules, threshold=3,
+            report,
+            existing_rules=existing_rules,
+            threshold=3,
         )
 
         assert len(proposals) == 0
@@ -168,7 +171,9 @@ class TestConfidence:
         """Multiple proposals should be sorted by confidence descending."""
         alerts = [
             _recurring_alert(kind="F821", recent_run_count=5),  # high base_confidence
-            _recurring_alert(kind="complexity", linter="radon", recent_run_count=5),  # low base_confidence
+            _recurring_alert(
+                kind="complexity", linter="radon", recent_run_count=5
+            ),  # low base_confidence
         ]
         report = _make_pattern_report(alerts)
         proposals = propose_constraints_from_patterns(report, threshold=3)
@@ -204,10 +209,12 @@ class TestSessionIntegration:
 
     def test_update_status_accepted(self):
         session = SessionMemory(project_root="/test")
-        session.proposed_constraints.append({
-            "pattern_key": "ruff|F821",
-            "status": "proposed",
-        })
+        session.proposed_constraints.append(
+            {
+                "pattern_key": "ruff|F821",
+                "status": "proposed",
+            }
+        )
 
         result = update_constraint_status(session, "ruff|F821", "accepted")
         assert result is True

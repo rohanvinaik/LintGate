@@ -12,9 +12,7 @@ No Jinja2 dependency — uses simple string templates.
 
 from __future__ import annotations
 
-import ast
 import os
-from typing import Any
 
 from .test_archetype_selector import (
     ArchetypeMatch,
@@ -46,8 +44,7 @@ def generate_test_skeleton(
 
     if archetypes:
         # Use requested archetypes
-        matches = [ArchetypeMatch(name=a, confidence=1.0, reason="requested")
-                    for a in archetypes]
+        matches = [ArchetypeMatch(name=a, confidence=1.0, reason="requested") for a in archetypes]
     else:
         matches = select_archetypes(source_file, project_root)
 
@@ -180,7 +177,7 @@ def _generate_function_tests(
         lines.append(f"def test_{fn}_returns_expected_output() -> None:")
         lines.append(f'    """Test {fn} with valid input."""')
         if func.args:
-            args_placeholder = ", ".join(f"..." for _ in func.args)
+            args_placeholder = ", ".join("..." for _ in func.args)
             lines.append(f"    result = {fn}({args_placeholder})")
         else:
             lines.append(f"    result = {fn}()")
@@ -199,7 +196,7 @@ def _generate_function_tests(
     if "error_handling" in archetype_names and func.raises:
         lines.append(f"def test_{fn}_handles_errors_gracefully() -> None:")
         lines.append(f'    """Test {fn} error handling."""')
-        lines.append(f"    # TODO: Trigger error condition and verify handling")
+        lines.append("    # TODO: Trigger error condition and verify handling")
         lines.append("    pass")
         lines.append("")
 
@@ -221,16 +218,16 @@ def _generate_class_tests(
         lines.append(f"class Test{cn}Config:")
         lines.append(f'    """Configuration tests for {cn}."""')
         lines.append("")
-        lines.append(f"    def test_default_creation(self) -> None:")
+        lines.append("    def test_default_creation(self) -> None:")
         lines.append(f'        """Test {cn} can be created with defaults."""')
         lines.append(f"        obj = {cn}()")
         lines.append("        assert obj is not None")
         lines.append("")
 
         if cls.init_defaults > 0:
-            lines.append(f"    def test_override_defaults(self) -> None:")
+            lines.append("    def test_override_defaults(self) -> None:")
             lines.append(f'        """Test {cn} with overridden defaults."""')
-            lines.append(f"        # TODO: Provide override values")
+            lines.append("        # TODO: Provide override values")
             lines.append(f"        obj = {cn}()")
             lines.append("        assert obj is not None")
             lines.append("")
@@ -240,10 +237,10 @@ def _generate_class_tests(
         lines.append(f"class Test{cn}State:")
         lines.append(f'    """State invariant tests for {cn}."""')
         lines.append("")
-        lines.append(f"    def test_initial_state(self) -> None:")
+        lines.append("    def test_initial_state(self) -> None:")
         lines.append(f'        """Test {cn} initial state after creation."""')
         lines.append(f"        obj = {cn}()")
-        lines.append(f"        # TODO: Assert initial field values")
+        lines.append("        # TODO: Assert initial field values")
         lines.append("        assert obj is not None")
         lines.append("")
 
@@ -257,7 +254,7 @@ def _generate_class_tests(
             lines.append(f'        """Test {cn}.{method} state changes."""')
             lines.append(f"        obj = {cn}()")
             lines.append(f"        obj.{method}()  # TODO: Provide arguments")
-            lines.append(f"        # TODO: Assert state changed correctly")
+            lines.append("        # TODO: Assert state changed correctly")
             lines.append("")
 
     return lines

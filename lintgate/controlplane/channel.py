@@ -18,9 +18,10 @@ The channel protocol enables:
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from .types import ChannelResult, ControlPlaneConfig, SupervisionEvent
+if TYPE_CHECKING:
+    from .types import ChannelResult, ControlPlaneConfig, SupervisionEvent
 
 
 @runtime_checkable

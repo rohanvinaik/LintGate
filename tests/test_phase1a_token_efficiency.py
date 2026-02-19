@@ -10,18 +10,14 @@ Tests:
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from lintgate.results_aggregator import aggregate_results
 from lintgate.state import (
-    RUNS_DIR,
     generate_run_id,
     load_run_details,
     save_run_details,
@@ -33,28 +29,37 @@ from lintgate.types import (
     ProjectConfig,
 )
 
-
 # ── Deterministic Issue IDs ──────────────────────────────────────────────
 
 
 class TestIssueIds:
     def test_compute_issue_id_is_deterministic(self) -> None:
-        issue = LintIssue(linter="ruff", kind="F821", message="undefined name 'foo'", file="test.py", line=10)
+        issue = LintIssue(
+            linter="ruff", kind="F821", message="undefined name 'foo'", file="test.py", line=10
+        )
         id1 = issue.compute_issue_id()
         id2 = issue.compute_issue_id()
         assert id1 == id2
         assert len(id1) == 12  # sha256 hex[:12]
 
     def test_different_issues_get_different_ids(self) -> None:
-        issue1 = LintIssue(linter="ruff", kind="F821", message="undefined name 'foo'", file="a.py", line=10)
-        issue2 = LintIssue(linter="ruff", kind="F821", message="undefined name 'bar'", file="a.py", line=20)
+        issue1 = LintIssue(
+            linter="ruff", kind="F821", message="undefined name 'foo'", file="a.py", line=10
+        )
+        issue2 = LintIssue(
+            linter="ruff", kind="F821", message="undefined name 'bar'", file="a.py", line=20
+        )
         assert issue1.compute_issue_id() != issue2.compute_issue_id()
 
     def test_issue_id_uses_message_prefix(self) -> None:
         """Only first 50 chars of message are used — long messages with same prefix get same ID."""
         short_msg = "x" * 50
-        issue1 = LintIssue(linter="ruff", kind="F821", message=short_msg + "AAAA", file="a.py", line=1)
-        issue2 = LintIssue(linter="ruff", kind="F821", message=short_msg + "BBBB", file="a.py", line=1)
+        issue1 = LintIssue(
+            linter="ruff", kind="F821", message=short_msg + "AAAA", file="a.py", line=1
+        )
+        issue2 = LintIssue(
+            linter="ruff", kind="F821", message=short_msg + "BBBB", file="a.py", line=1
+        )
         assert issue1.compute_issue_id() == issue2.compute_issue_id()
 
     def test_issue_id_set_by_aggregator(self) -> None:
@@ -62,8 +67,22 @@ class TestIssueIds:
         lr = LinterResult(
             linter_name="ruff",
             issues=[
-                LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=1, severity="blocking"),
-                LintIssue(linter="ruff", kind="E501", message="line too long", file="a.py", line=5, severity="warning"),
+                LintIssue(
+                    linter="ruff",
+                    kind="F821",
+                    message="undef foo",
+                    file="a.py",
+                    line=1,
+                    severity="blocking",
+                ),
+                LintIssue(
+                    linter="ruff",
+                    kind="E501",
+                    message="line too long",
+                    file="a.py",
+                    line=5,
+                    severity="warning",
+                ),
             ],
             status="ok",
         )
@@ -147,21 +166,39 @@ class TestOutputModes:
     def _make_mock_aggregated(blocking_count: int = 2, warning_count: int = 3, info_count: int = 5):
         """Create a mock AggregatedResult."""
         blocking = [
-            LintIssue(linter="ruff", kind=f"F82{i}", message=f"blocking issue {i}",
-                       file=f"src/mod{i}.py", line=i * 10, severity="blocking",
-                       issue_id=f"blk_{i:012d}")
+            LintIssue(
+                linter="ruff",
+                kind=f"F82{i}",
+                message=f"blocking issue {i}",
+                file=f"src/mod{i}.py",
+                line=i * 10,
+                severity="blocking",
+                issue_id=f"blk_{i:012d}",
+            )
             for i in range(blocking_count)
         ]
         warnings = [
-            LintIssue(linter="ruff", kind=f"W{i}01", message=f"warning issue {i}",
-                       file=f"src/mod{i}.py", line=i * 10, severity="warning",
-                       issue_id=f"wrn_{i:012d}")
+            LintIssue(
+                linter="ruff",
+                kind=f"W{i}01",
+                message=f"warning issue {i}",
+                file=f"src/mod{i}.py",
+                line=i * 10,
+                severity="warning",
+                issue_id=f"wrn_{i:012d}",
+            )
             for i in range(warning_count)
         ]
         informational = [
-            LintIssue(linter="radon", kind=f"C{i}01", message=f"info issue {i}",
-                       file=f"src/mod{i}.py", line=i * 10, severity="informational",
-                       issue_id=f"inf_{i:012d}")
+            LintIssue(
+                linter="radon",
+                kind=f"C{i}01",
+                message=f"info issue {i}",
+                file=f"src/mod{i}.py",
+                line=i * 10,
+                severity="informational",
+                issue_id=f"inf_{i:012d}",
+            )
             for i in range(info_count)
         ]
         return AggregatedResult(
@@ -188,9 +225,8 @@ class TestOutputModes:
     def test_compact_has_run_id(self) -> None:
         """Compact output always includes run_id."""
         # Import the MCP module functions
-        import importlib
         import sys
-        mcp_path = str(Path(__file__).resolve().parent.parent / "mcp_server.py")
+
         # We test the _json_dumps helper directly
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
         from mcp_server import _json_dumps
@@ -261,13 +297,25 @@ class TestTokenBudget:
             "informational": 12,
             "fixable": 3,
             "blocking_issues": [
-                {"id": "blk000000001", "kind": "F821", "loc": "module.py:42", "msg": "undefined name 'process_data'"},
-                {"id": "blk000000002", "kind": "F841", "loc": "utils.py:15", "msg": "local variable 'tmp' is assigned but never used"},
+                {
+                    "id": "blk000000001",
+                    "kind": "F821",
+                    "loc": "module.py:42",
+                    "msg": "undefined name 'process_data'",
+                },
+                {
+                    "id": "blk000000002",
+                    "kind": "F841",
+                    "loc": "utils.py:15",
+                    "msg": "local variable 'tmp' is assigned but never used",
+                },
             ],
         }
         serialized = json.dumps(compact, separators=(",", ":"))
         estimated_tokens = len(serialized) / 4  # rough approximation
-        assert estimated_tokens < 300, f"Compact output too large: ~{estimated_tokens:.0f} tokens ({len(serialized)} chars)"
+        assert estimated_tokens < 300, (
+            f"Compact output too large: ~{estimated_tokens:.0f} tokens ({len(serialized)} chars)"
+        )
 
 
 # ── JSON Schema Stability ────────────────────────────────────────────────
@@ -287,7 +335,16 @@ class TestSchemaStability:
             "informational": 0,
             "fixable": 0,
         }
-        required_keys = {"run_id", "tier", "files_linted", "duration_ms", "blocking", "warnings", "informational", "fixable"}
+        required_keys = {
+            "run_id",
+            "tier",
+            "files_linted",
+            "duration_ms",
+            "blocking",
+            "warnings",
+            "informational",
+            "fixable",
+        }
         assert required_keys.issubset(compact.keys())
 
     def test_lint_get_details_schema(self, tmp_path: Path) -> None:
@@ -299,7 +356,9 @@ class TestSchemaStability:
                 "project": "/tmp/project",
                 "duration_ms": 150.0,
                 "blocking_issues": [{"kind": "F821", "message": "undef", "severity": "blocking"}],
-                "warning_issues": [{"kind": "E501", "message": "line too long", "severity": "warning"}],
+                "warning_issues": [
+                    {"kind": "E501", "message": "line too long", "severity": "warning"}
+                ],
                 "info_issues": [],
                 "recurrence": {"repeated_issue_count": 1, "top_repeated": []},
                 "linter_diagnostics": [{"linter": "ruff_check", "status": "ok"}],
@@ -342,7 +401,14 @@ class TestAggregatorIssueId:
         lr1 = LinterResult(
             linter_name="ruff",
             issues=[
-                LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=1, severity="blocking"),
+                LintIssue(
+                    linter="ruff",
+                    kind="F821",
+                    message="undef foo",
+                    file="a.py",
+                    line=1,
+                    severity="blocking",
+                ),
             ],
             status="ok",
         )
@@ -350,9 +416,23 @@ class TestAggregatorIssueId:
             linter_name="mypy",
             issues=[
                 # Same file+line+kind — should be deduped
-                LintIssue(linter="mypy", kind="F821", message="undef foo", file="a.py", line=1, severity="warning"),
+                LintIssue(
+                    linter="mypy",
+                    kind="F821",
+                    message="undef foo",
+                    file="a.py",
+                    line=1,
+                    severity="warning",
+                ),
                 # Different — should survive
-                LintIssue(linter="mypy", kind="E303", message="too many blank lines", file="b.py", line=10, severity="warning"),
+                LintIssue(
+                    linter="mypy",
+                    kind="E303",
+                    message="too many blank lines",
+                    file="b.py",
+                    line=10,
+                    severity="warning",
+                ),
             ],
             status="ok",
         )
@@ -369,11 +449,19 @@ class TestAggregatorIssueId:
 
     def test_issue_ids_stable_across_runs(self) -> None:
         """Same input produces same issue IDs."""
+
         def make_result():
             lr = LinterResult(
                 linter_name="ruff",
                 issues=[
-                    LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=1, severity="blocking"),
+                    LintIssue(
+                        linter="ruff",
+                        kind="F821",
+                        message="undef foo",
+                        file="a.py",
+                        line=1,
+                        severity="blocking",
+                    ),
                 ],
                 status="ok",
             )
@@ -385,7 +473,6 @@ class TestAggregatorIssueId:
 
 
 import sys  # noqa: E402 — needed for path manipulation in tests
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
