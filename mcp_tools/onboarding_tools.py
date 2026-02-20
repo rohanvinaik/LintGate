@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -36,12 +38,141 @@ def _format_cmd(cmd: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in cmd)
 
 
-def _install_command_for_package(project_root: str, package: str) -> list[str] | None:
-    """Build an installer command targeting the project venv."""
+def _linter_available(linter: Any, project_root: str) -> bool:
+    """Check linter availability with backward-compatible signatures."""
+    try:
+        return bool(linter.available(project_root=project_root))
+    except TypeError:
+        return bool(linter.available())
+
+
+def _venv_create_command() -> tuple[list[str], str]:
+    """Build preferred venv creation command and manager label."""
+    uv_path = shutil.which("uv")
+    if uv_path:
+        return [uv_path, "venv", ".venv"], "uv"
+    return [sys.executable, "-m", "venv", ".venv"], "python_venv"
+
+
+def _ensure_project_venv(project_root: str) -> dict[str, Any]:
+    """Ensure a project-local virtualenv exists and has pip available."""
+    existing = _project_venv_python(project_root)
+    if existing:
+        return {"status": "present", "venv_python": existing}
+
+    create_cmd, manager = _venv_create_command()
+    try:
+        create_result = subprocess.run(
+            create_cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "timeout",
+            "manager": manager,
+            "command": _format_cmd(create_cmd),
+            "reason": "venv_create_timed_out_after_120s",
+        }
+
+    if create_result.returncode != 0:
+        return {
+            "status": "error",
+            "manager": manager,
+            "command": _format_cmd(create_cmd),
+            "returncode": create_result.returncode,
+            "stderr_tail": (create_result.stderr or "")[-240:],
+            "reason": "venv_create_failed",
+        }
+
     venv_python = _project_venv_python(project_root)
     if not venv_python:
-        return None
-    return [venv_python, "-m", "pip", "install", package]
+        return {
+            "status": "error",
+            "manager": manager,
+            "command": _format_cmd(create_cmd),
+            "reason": "venv_created_but_python_missing",
+        }
+
+    pip_check_cmd = [venv_python, "-m", "pip", "--version"]
+    try:
+        pip_check = subprocess.run(
+            pip_check_cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "created",
+            "manager": manager,
+            "command": _format_cmd(create_cmd),
+            "venv_python": venv_python,
+            "pip_ready": False,
+            "pip_check": "timeout",
+        }
+
+    if pip_check.returncode == 0:
+        return {
+            "status": "created",
+            "manager": manager,
+            "command": _format_cmd(create_cmd),
+            "venv_python": venv_python,
+            "pip_ready": True,
+        }
+
+    ensurepip_cmd = [venv_python, "-m", "ensurepip", "--upgrade"]
+    try:
+        ensure_result = subprocess.run(
+            ensurepip_cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "created",
+            "manager": manager,
+            "command": _format_cmd(create_cmd),
+            "venv_python": venv_python,
+            "pip_ready": False,
+            "pip_bootstrap": "timeout",
+        }
+
+    return {
+        "status": "created",
+        "manager": manager,
+        "command": _format_cmd(create_cmd),
+        "venv_python": venv_python,
+        "pip_ready": ensure_result.returncode == 0,
+        "pip_bootstrap_command": _format_cmd(ensurepip_cmd),
+        "pip_bootstrap_returncode": ensure_result.returncode,
+        "pip_bootstrap_stderr_tail": (ensure_result.stderr or "")[-240:],
+    }
+
+
+def _install_commands_for_package(project_root: str, package: str) -> list[list[str]]:
+    """Build preferred installer commands for a package in the project venv."""
+    venv_python = _project_venv_python(project_root)
+    if not venv_python:
+        return []
+
+    commands: list[list[str]] = []
+    uv_path = shutil.which("uv")
+    if uv_path:
+        commands.append([uv_path, "pip", "install", "--python", venv_python, package])
+    commands.append([venv_python, "-m", "pip", "install", package])
+    return commands
+
+
+def _install_command_for_package(project_root: str, package: str) -> list[str] | None:
+    """Build an installer command targeting the project venv."""
+    commands = _install_commands_for_package(project_root, package)
+    return commands[0] if commands else None
 
 
 def _collect_external_tool_gaps(project_root: str) -> dict[str, Any]:
@@ -67,7 +198,7 @@ def _collect_external_tool_gaps(project_root: str) -> dict[str, Any]:
             },
         )
         entry["required_by"].append(linter_name)
-        entry["available"] = entry["available"] and linter.available(project_root=project_root)
+        entry["available"] = entry["available"] and _linter_available(linter, project_root)
 
     missing_tools: list[dict[str, Any]] = []
     for tool in sorted(tool_matrix):
@@ -105,8 +236,8 @@ def _auto_install_optional_tools(
         if tool not in _OPTIONAL_STARTUP_PACKAGES:
             continue
 
-        cmd = _install_command_for_package(project_root, package)
-        if not cmd:
+        cmds = _install_commands_for_package(project_root, package)
+        if not cmds:
             attempts.append(
                 {
                     "tool": tool,
@@ -117,34 +248,62 @@ def _auto_install_optional_tools(
             )
             continue
 
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=180,
-            )
-        except subprocess.TimeoutExpired:
-            attempts.append(
-                {
-                    "tool": tool,
-                    "package": package,
-                    "status": "timeout",
-                    "command": _format_cmd(cmd),
-                    "reason": "install_timed_out_after_180s",
-                }
-            )
-            continue
+        command_results: list[dict[str, Any]] = []
+        installed = False
+        for cmd in cmds:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
+            except subprocess.TimeoutExpired:
+                command_results.append(
+                    {
+                        "status": "timeout",
+                        "command": _format_cmd(cmd),
+                        "reason": "install_timed_out_after_180s",
+                    }
+                )
+                continue
 
-        attempts.append(
-            {
-                "tool": tool,
-                "package": package,
+            command_result = {
                 "status": "installed" if result.returncode == 0 else "error",
                 "command": _format_cmd(cmd),
                 "returncode": result.returncode,
                 "stderr_tail": (result.stderr or "")[-240:],
+            }
+            command_results.append(command_result)
+            if result.returncode == 0:
+                attempts.append(
+                    {
+                        "tool": tool,
+                        "package": package,
+                        "status": "installed",
+                        "command": command_result["command"],
+                        "returncode": 0,
+                        "attempted_commands": command_results,
+                    }
+                )
+                installed = True
+                break
+
+        if installed:
+            continue
+
+        last_result = command_results[-1] if command_results else {}
+        attempts.append(
+            {
+                "tool": tool,
+                "package": package,
+                "status": "error",
+                "reason": "all_install_commands_failed",
+                "command": last_result.get("command"),
+                "returncode": last_result.get("returncode"),
+                "stderr_tail": last_result.get("stderr_tail"),
+                "attempted_commands": command_results,
             }
         )
 
@@ -242,6 +401,7 @@ def register(mcp, helpers):
 
         Startup automation (default ON):
         - Auto-generates .claude/lintgate.yaml when missing
+        - Auto-provisions project venv (.venv) with uv fallback to stdlib venv
         - Detects missing linter executables with install commands
         - Attempts auto-install of optional tools (ty, pip-audit) in project venv
 
@@ -252,6 +412,7 @@ def register(mcp, helpers):
 
         config_status_before = helpers["_build_onboarding_status"](project_root)
         startup_actions: list[dict[str, Any]] = []
+        venv_setup: dict[str, Any] = {"status": "not_requested"}
 
         if auto_setup and not os.path.exists(config_path):
             yaml_content = _scaffold_config_yaml(project_root, helpers)
@@ -264,6 +425,26 @@ def register(mcp, helpers):
                     "path": config_path,
                 }
             )
+
+        if auto_setup:
+            venv_setup = _ensure_project_venv(project_root)
+            if venv_setup.get("status") == "created":
+                startup_actions.append(
+                    {
+                        "action": "venv_provisioned",
+                        "manager": venv_setup.get("manager"),
+                        "venv_python": venv_setup.get("venv_python"),
+                        "pip_ready": venv_setup.get("pip_ready"),
+                    }
+                )
+            elif venv_setup.get("status") in {"error", "timeout"}:
+                startup_actions.append(
+                    {
+                        "action": "venv_provision_failed",
+                        "manager": venv_setup.get("manager"),
+                        "reason": venv_setup.get("reason", "unknown"),
+                    }
+                )
 
         tool_gaps_before = _collect_external_tool_gaps(project_root)
         install_attempts: list[dict[str, Any]] = []
@@ -282,6 +463,7 @@ def register(mcp, helpers):
 
         config_status = helpers["_build_onboarding_status"](project_root)
         tool_gaps_after = _collect_external_tool_gaps(project_root)
+        venv_python_after = _project_venv_python(project_root)
 
         # Build dynamic next_actions based on project state
         next_actions: list[dict[str, str]] = []
@@ -309,6 +491,16 @@ def register(mcp, helpers):
                     "tool": "scaffold_config",
                     "reason": "Generate/repair project-specific lintgate.yaml for persistent config",
                     "example": f'scaffold_config(path="{project_root}", write=True)',
+                }
+            )
+
+        if not venv_python_after:
+            create_cmd, _ = _venv_create_command()
+            next_actions.append(
+                {
+                    "tool": "Bash",
+                    "reason": "Create project virtual environment for tool installs and isolated runs",
+                    "example": _format_cmd(create_cmd),
                 }
             )
 
@@ -372,12 +564,15 @@ def register(mcp, helpers):
                 "auto_install_optional_linters_requested": auto_install_optional_linters,
                 "config_status_before": config_status_before,
                 "config_status_after": config_status,
+                "venv_setup": venv_setup,
+                "venv_python": venv_python_after,
                 "missing_tools_before": tool_gaps_before["missing_tools"],
                 "install_attempts": install_attempts,
                 "missing_tools_after": tool_gaps_after["missing_tools"],
                 "actions_applied": startup_actions,
                 "startup_ready": (
                     config_status["config_state"] == "config_enabled"
+                    and venv_python_after is not None
                     and len(tool_gaps_after["missing_tools"]) == 0
                 ),
             },

@@ -14,7 +14,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 
 | Tool              | Purpose                                                                |
 | ----------------- | ---------------------------------------------------------------------- |
-| `getting_started` | First-call orientation with startup automation (auto config scaffold + missing-tool diagnostics + next actions) |
+| `getting_started` | First-call orientation with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics + next actions) |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
 
 ### Lint Pipeline

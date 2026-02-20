@@ -212,6 +212,8 @@ class TestGettingStarted:
         result = json.loads(getting_started(str(tmp_path)))
         assert "startup_setup" in result
         startup = result["startup_setup"]
+        assert "venv_setup" in startup
+        assert "venv_python" in startup
         assert "missing_tools_before" in startup
         assert "missing_tools_after" in startup
         assert "actions_applied" in startup
@@ -230,6 +232,76 @@ class TestGettingStarted:
         assert any(
             action.get("action") == "config_scaffolded"
             for action in result["startup_setup"]["actions_applied"]
+        )
+
+    def test_auto_setup_records_venv_provision_action(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import getting_started
+
+        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_python = str(tmp_path / ".venv" / "bin" / "python")
+
+        with (
+            mock.patch(
+                "mcp_tools.onboarding_tools._ensure_project_venv",
+                return_value={
+                    "status": "created",
+                    "manager": "uv",
+                    "venv_python": fake_python,
+                    "pip_ready": True,
+                },
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._collect_external_tool_gaps",
+                side_effect=[fake_gaps, fake_gaps],
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._project_venv_python",
+                return_value=fake_python,
+            ),
+        ):
+            result = json.loads(getting_started(str(tmp_path)))
+
+        assert result["startup_setup"]["venv_setup"]["status"] == "created"
+        assert any(
+            action.get("action") == "venv_provisioned"
+            for action in result["startup_setup"]["actions_applied"]
+        )
+
+    def test_next_actions_include_venv_create_when_missing(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import getting_started
+
+        fake_gaps = {"tool_status": [], "missing_tools": []}
+        with (
+            mock.patch(
+                "mcp_tools.onboarding_tools._ensure_project_venv",
+                return_value={
+                    "status": "error",
+                    "manager": "uv",
+                    "reason": "venv_create_failed",
+                },
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._collect_external_tool_gaps",
+                side_effect=[fake_gaps, fake_gaps],
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._project_venv_python",
+                return_value=None,
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._venv_create_command",
+                return_value=(["uv", "venv", ".venv"], "uv"),
+            ),
+        ):
+            result = json.loads(getting_started(str(tmp_path)))
+
+        assert any(
+            action.get("example") == "uv venv .venv"
+            for action in result["next_actions"]
         )
 
     def test_missing_tool_reasons_are_reported_without_manual_probe(self, tmp_path: Path) -> None:

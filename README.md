@@ -100,7 +100,7 @@ This creates the venv, installs dependencies, configures the PostToolUse hook, r
 
 ### First 5 Minutes
 
-1. `getting_started(path)` — project-specific onboarding with startup automation (auto config scaffold + missing-tool diagnostics/remediation).
+1. `getting_started(path)` — project-specific onboarding with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics/remediation).
 2. `controlplane_run(path)` — full health check across 6 channels. Works without config.
 3. `controlplane_get_details(run_id)` — drill into what matters.
 4. `lint_fix(path)` — auto-fix safe issues.
