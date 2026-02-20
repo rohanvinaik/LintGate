@@ -10,12 +10,13 @@ Extracted from behavior_channel.py for module size compliance.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from lintgate.controlplane.behavior_compass import (
-    BehaviorCompass,
-)
-from lintgate.types import LintIssue
+if TYPE_CHECKING:
+    from lintgate.controlplane.behavior_compass import (
+        BehaviorCompass,
+    )
+    from lintgate.types import LintIssue
 
 # ── Theory Grounding ─────────────────────────────────────────────────
 
