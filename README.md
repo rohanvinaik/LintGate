@@ -111,6 +111,8 @@ Independent tool validation of the LintGate codebase (92 Python files, ~24K LOC)
 
 #### Before/After: Autonomous Professionalization (commit `f6b68fd` → `5a34596`)
 
+**Total human input required to produce the "After" column: one sentence.** *"Professionalize this codebase."* Not a single word more. No corrections, no guidance, no steering. The agent read the codebase, identified the structural problems, decomposed 6 monolithic modules, extracted 9 new files, and verified every step — autonomously, across 3 context windows.
+
 | Metric | Before | After | Delta |
 | --- | --- | --- | --- |
 | **Pylint score** | 9.38/10 | 9.42/10 | +0.04 |
