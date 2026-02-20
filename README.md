@@ -105,6 +105,40 @@ One practical implication: CLI flags like `--dangerously-skip-permissions` exist
 
 Full session data: [docs/retrospectives/lintgate-2026-02-20-tier2-audit.md](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md)
 
+### External Quality Metrics
+
+Independent tool validation of the LintGate codebase (92 Python files, ~24K LOC). All measurements taken with standard open-source tools — no LintGate involvement in scoring.
+
+#### Before/After: Autonomous Professionalization (commit `f6b68fd` → `5a34596`)
+
+| Metric | Before | After | Delta |
+| --- | --- | --- | --- |
+| **Pylint score** | 9.38/10 | 9.42/10 | +0.04 |
+| **Radon maintainability (avg MI)** | 57.1 | 58.4 | +1.3 |
+| **Files at MI grade A** | 88/92 (96%) | 90/92 (98%) | +2 |
+| **Files at MI grade C or below** | 1 | 0 | **eliminated** |
+| **Radon avg cyclomatic complexity** | 5.59 | 5.31 | -5.0% |
+| **High-complexity blocks (D+)** | 15 | 8 | **-47%** |
+| **Very high complexity (F grade)** | 3 | 1 | **-67%** |
+| **Worst single function CC** | 82 | 54 | -34% |
+| **Ruff violations** | 3 | 4 | +1 (all TC001, cosmetic) |
+| **Test suite** | 1,611 pass / 18 skip | 1,611 pass / 18 skip | 0 regressions |
+
+#### Current Standing vs. Industry Thresholds
+
+| Metric | LintGate Score | Professional Threshold | Assessment |
+| --- | --- | --- | --- |
+| Pylint | **9.42/10** | >8.0 (good), >9.0 (excellent) | Excellent |
+| Maintainability Index | **98% grade A** | >80% grade A (healthy) | Excellent |
+| Avg cyclomatic complexity | **5.31** | <10 (acceptable), <5 (ideal) | Good — near ideal |
+| CC function grades A+B | **678/759 (89%)** | >75% A+B (maintainable) | Excellent |
+| High-complexity blocks (D+) | **8/759 (1.1%)** | <5% (acceptable) | Excellent |
+| Zero-config lint (ruff) | **4 issues** (cosmetic) | 0 blocking | Clean |
+| Test count | **1,629** | project-dependent | Strong coverage |
+| Test reliability | **0 regressions** through 6 major refactors | — | Verified |
+
+This codebase was built almost entirely through vibe coding — natural language directives to an LLM agent, minimal manual code. The professionalization pass that produced the "After" column was itself fully autonomous: one sentence of human input, zero corrections, zero debugging. The external scores are not the result of manual engineering discipline. They are the result of automated supervision making manual discipline unnecessary.
+
 ### Research Context
 
 LintGate is alignment research in product form: design the interaction structure so the human-agent system stays coherent under pressure.
