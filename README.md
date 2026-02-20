@@ -20,7 +20,7 @@ The autonomous professionalization of LintGate's own codebase — 33,000 lines, 
 
 The zero is not a typo. Across every refactoring step, the agent wrote correct code on the first attempt. Every step passed 1,611 tests. Every step passed the linter. There was nothing to debug. The entire debugging phase of software development — the most expensive, most failure-prone phase — simply didn't occur.
 
-Total human input: three words. Total cost: ~$21. Total regressions: zero.
+Total human input: three words. Total cost: ~590,000 tokens. Total regressions: zero.
 
 The codebase it refactored was LintGate itself. The tool diagnosed its own code as requiring fundamental restructuring, then *was the infrastructure that enabled that restructuring to succeed*. The tool that teaches agents discipline was itself maintained by the discipline it provides.
 
