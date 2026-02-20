@@ -44,9 +44,7 @@ class TestMCPInstructions:
             "facet summaries",
             "Architecture of Inquiry",
         ]:
-            assert jargon.lower() not in _MCP_INSTRUCTIONS.lower(), (
-                f"Jargon found: {jargon}"
-            )
+            assert jargon.lower() not in _MCP_INSTRUCTIONS.lower(), f"Jargon found: {jargon}"
 
     def test_includes_workflow_guidance(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
@@ -226,9 +224,7 @@ class TestOnboardingStatusHelper:
     def test_config_disabled_state(self, tmp_path: Path) -> None:
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: false\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         from mcp_server import _build_onboarding_status
 
         status = _build_onboarding_status(str(tmp_path))
@@ -242,9 +238,7 @@ class TestOnboardingStatusHelper:
     def test_config_without_controlplane_section_state(self, tmp_path: Path) -> None:
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "linters:\n  ruff_check:\n    enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("linters:\n  ruff_check:\n    enabled: true\n")
         from mcp_server import _build_onboarding_status
 
         status = _build_onboarding_status(str(tmp_path))
@@ -258,9 +252,7 @@ class TestOnboardingStatusHelper:
     def test_config_enabled_state(self, tmp_path: Path) -> None:
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import _build_onboarding_status
 
         status = _build_onboarding_status(str(tmp_path))
@@ -291,9 +283,7 @@ class TestOnboardingStatusHelper:
         from mcp_server import _build_onboarding_status
 
         status = _build_onboarding_status(str(tmp_path))
-        assert status["config_path_checked"].endswith(
-            ".claude/lintgate.yaml"
-        )
+        assert status["config_path_checked"].endswith(".claude/lintgate.yaml")
 
 
 # ── Bootstrap agent_instructions ────────────────────────────────────────
@@ -362,9 +352,7 @@ class TestControlPlaneRunOnboarding:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import controlplane_run
 
         result = json.loads(controlplane_run(str(tmp_path)))
@@ -375,9 +363,7 @@ class TestControlPlaneRunOnboarding:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: false\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         from mcp_server import controlplane_run
 
         result = json.loads(controlplane_run(str(tmp_path)))
@@ -409,9 +395,7 @@ class TestControlPlaneStatusBackwardCompat:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: false\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         from mcp_server import controlplane_status
 
         result = json.loads(controlplane_status(str(tmp_path)))
@@ -425,9 +409,7 @@ class TestControlPlaneStatusBackwardCompat:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import controlplane_status
 
         result = json.loads(controlplane_status(str(tmp_path)))
@@ -455,9 +437,7 @@ class TestLintStatusOnboarding:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import lint_status
 
         result = json.loads(lint_status(str(tmp_path)))

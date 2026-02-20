@@ -8,7 +8,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from lintgate.config import load_controlplane_config
-from lintgate.controlplane.session_memory import SessionMemory, SessionSnapshot
+from lintgate.controlplane.session_memory import (
+    BehaviorEventData,
+    SessionMemory,
+    SessionSnapshot,
+)
 from lintgate.controlplane.types import ControlPlaneConfig, InquiryConfig
 from lintgate.theory_extractor import get_theory_context_from_profile
 
@@ -174,7 +178,9 @@ class TestSnapshotPredictionFields:
         assert snap.predictions_checked == 0
 
     def test_roundtrip(self) -> None:
-        snap = SessionSnapshot(prediction_accuracy=0.75, predictions_checked=10)
+        snap = SessionSnapshot(
+            behavior=BehaviorEventData(prediction_accuracy=0.75, predictions_checked=10)
+        )
         d = snap.to_dict()
         restored = SessionSnapshot.from_dict(d)
         assert restored.prediction_accuracy == 0.75

@@ -125,10 +125,21 @@ def _is_mutated_in_body(name: str, body: list[ast.stmt]) -> bool:
     return False
 
 
-_MUTATION_METHODS = frozenset({
-    "append", "extend", "remove", "insert", "pop", "clear",
-    "add", "discard", "update", "sort", "reverse",
-})
+_MUTATION_METHODS = frozenset(
+    {
+        "append",
+        "extend",
+        "remove",
+        "insert",
+        "pop",
+        "clear",
+        "add",
+        "discard",
+        "update",
+        "sort",
+        "reverse",
+    }
+)
 
 
 def _is_mutation_call(node: ast.AST, name: str) -> bool:

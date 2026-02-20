@@ -59,9 +59,7 @@ class TestLinterCount:
     def test_linter_count_in_project_structure(self):
         """Project structure comments should reference 18 linter implementations."""
         readme = _read_file("README.md")
-        assert "18 linter" in readme, (
-            "README.md project structure doesn't mention '18 linter'"
-        )
+        assert "18 linter" in readme, "README.md project structure doesn't mention '18 linter'"
 
 
 class TestMCPToolCount:
@@ -75,7 +73,9 @@ class TestMCPToolCount:
 
         # README and AGENTS should reference the actual count
         count_str = str(actual_count)
-        assert f"{count_str} " in readme or f"({count_str})" in readme or f"{count_str} " in agents, (
+        assert (
+            f"{count_str} " in readme or f"({count_str})" in readme or f"{count_str} " in agents
+        ), (
             f"MCP tool count is {actual_count} but docs don't match. "
             f"Run: grep -Rho '@mcp.tool()' mcp_server.py mcp_tools | wc -l"
         )
@@ -91,7 +91,10 @@ class TestMCPToolCount:
     def test_integrate_uses_dynamic_tool_count(self):
         """integrate.sh should derive tool count from source of truth."""
         integrate = _read_file("integrate.sh")
-        assert 'grep -Rho "@mcp.tool()" "$LINTGATE_DIR/mcp_server.py" "$LINTGATE_DIR/mcp_tools"' in integrate
+        assert (
+            'grep -Rho "@mcp.tool()" "$LINTGATE_DIR/mcp_server.py" "$LINTGATE_DIR/mcp_tools"'
+            in integrate
+        )
         assert "$TOOL_COUNT tools by cognitive mode" in integrate
 
     def test_mcp_tool_count_is_35(self):

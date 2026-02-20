@@ -498,7 +498,7 @@ The structure channel's error profile is genuinely uncorrelated with the other c
 
 Code drift is when the agent writes the wrong code. Behavioral drift is when the agent *reasons* wrong — trying failed approaches repeatedly, ignoring error messages it saw ten minutes ago, acting faster than it understands, or brute-forcing solutions without building a model of what constraints actually apply. Behavioral drift is upstream of code drift: an agent stuck in a bad reasoning loop will produce bad code until its strategy changes, regardless of how many lint errors you report.
 
-LintGate's behavioral drift detection works through three components within a session, plus an optional cross-session learning layer: a **Behavior Channel** (reactive, part of the ControlPlane mesh) that watches tool-use patterns for anti-patterns, an **intent bias layer** (structural, threaded through the channel) that classifies every tool use into a 6-category intent taxonomy and uses that structure to sharpen signal confidence, a **constraint_check** MCP tool (proactive) that forces the agent to articulate its constraint model before acting, and a **global behavior profile** (persistent, cross-session) that aggregates behavioral patterns over days/weeks to warm-start the bias layer on new sessions (see [Cross-Session Learning](#cross-session-learning)).
+LintGate's behavioral drift detection works through three components within a session, plus an optional cross-session learning layer: a **Behavior Channel** (reactive, part of the ControlPlane mesh) that watches tool-use patterns for anti-patterns, an **intent bias layer** (structural, threaded through the channel) that classifies every tool use into a 6-category intent taxonomy and uses that structure to sharpen signal confidence, three **orthogonal MCP tools** (proactive) — `constraint_check` for constraint co-construction, `prediction_register` for falsifiable predictions, and `hygiene_check` for command-class preconditions — and a **global behavior profile** (persistent, cross-session) that aggregates behavioral patterns over days/weeks to warm-start the bias layer on new sessions (see [Cross-Session Learning](#cross-session-learning)).
 
 ### The Behavioral Compass
 
@@ -520,7 +520,7 @@ The compass tracks two categories of state:
 
 - **Intent history**: A rolling window (last 30) of resolved intents — one of `inspect`, `modify`, `verify`, `execute`, `meta`, or `unknown` — appended on every tool use. This is the raw material the intent bias scorer uses to compute verification debt streaks, failure amnesia bias, and other intent-derived signals.
 
-- **Precheck count**: How many times the agent has invoked `constraint_check` this session. Used to suppress the serial discovery early nudge — once the agent demonstrates proactive constraint articulation, the reactive nudge backs off.
+- **Constraint check count**: How many times the agent has invoked `constraint_check` this session. Used to suppress the serial discovery early nudge — once the agent demonstrates proactive constraint articulation, the reactive nudge backs off.
 
 - **Signal coordination counters**: Per-signal `last_fired` event counter and cumulative `signal_fire_counts`, used by the signal coordinator for cooldown enforcement and escalation tracking. A one-time `early_nudge_emitted` flag prevents the serial discovery early nudge from repeating.
 
@@ -534,13 +534,13 @@ The behavior channel runs nine detection rules against compass state, producing 
 | `failure_amnesia` | Hard | warning | Same error signature repeated — dual-source: action history repeats OR hypothesis evidence match |
 | `brute_force_escalation` | Hard | warning | More approaches tried than constraints understood |
 | `premature_action` | Soft | informational | High bash:read ratio (>3:1) with high failure rate (>50%) |
-| `serial_discovery` | Soft | informational | Two-stage: early nudge on 1st failure hypothesis with 0 prechecks; escalation at 3+ failure-sourced, 0 predicted |
+| `serial_discovery` | Soft | informational | Two-stage: early nudge on 1st failure hypothesis with 0 constraint checks; escalation at 3+ failure-sourced, 0 predicted |
 | `tool_repetition` | Soft | informational | Same command signature 4+ times in 30 minutes |
 | `verification_debt` | Soft | informational | 8+ consecutive execute/modify intents with no verify or inspect |
 | `stale_model` | Soft | informational | 2+ approach changes without hypothesis model updates |
-| `consecutive_failures` | Trigger | (none) | 3+ straight Bash failures — triggers precheck nudge |
+| `consecutive_failures` | Trigger | (none) | 3+ straight Bash failures — triggers `constraint_check` nudge |
 
-Hard signals participate in coherence (a behavior channel warning alongside a lint failure produces a "coupled" diagnosis). Soft signals are informational only — they describe weather, not make judgments. All rules run through the signal coordinator, which enforces per-signal cooldowns, deduplicates precheck nudges, and escalates persistent signals.
+Hard signals participate in coherence (a behavior channel warning alongside a lint failure produces a "coupled" diagnosis). Soft signals are informational only — they describe weather, not make judgments. All rules run through the signal coordinator, which enforces per-signal cooldowns, deduplicates `constraint_check` nudges, and escalates persistent signals.
 
 All thresholds are configurable per-project in `lintgate.yaml` under `controlplane.channels.behavior`.
 
@@ -565,26 +565,28 @@ Four bias methods:
 |------|-----------|-------|--------|
 | `verification_debt` | 8+ consecutive execute/modify intents, 0 verify/inspect | +0.20 | Strengthens verification_debt finding |
 | `failure_amnesia` | Repeated error with no verify/inspect between occurrences | +0.15 | Strengthens failure_amnesia finding |
-| `serial_discovery` | 1+ failure-sourced hypothesis, 0 prechecks this session | +0.10 | Strengthens serial_discovery early nudge |
+| `serial_discovery` | 1+ failure-sourced hypothesis, 0 constraint checks this session | +0.10 | Strengthens serial_discovery early nudge |
 | `stale_model` | 2+ approaches created at same hypothesis version | +0.15 | Strengthens stale_model finding |
 
 **Evidence traces**: Every finding carries a structured evidence dict: `{window, intent_counts, matched_bias_terms, score_delta}`. This makes findings auditable — you can see exactly which intents were in the window, which bias terms fired, and how much they shifted the confidence score.
 
 ### Signal Coordination
 
-The signal coordinator prevents noise. Without it, nine detection rules firing on every tool use would produce a blizzard of findings and redundant precheck nudges. Three mechanisms keep the output clean:
+The signal coordinator prevents noise. Without it, nine detection rules firing on every tool use would produce a blizzard of findings and redundant `constraint_check` nudges. Three mechanisms keep the output clean:
 
 **Per-signal cooldown**: A signal cannot fire again until at least 10 events (configurable) have elapsed since its last firing. The first firing is always allowed. This prevents the same finding from repeating on every tool use when the underlying condition persists.
 
-**Precheck nudge dedup**: Multiple signals may want to suggest a `constraint_check`, but the agent should only receive one nudge per execution cycle. The coordinator tracks a priority ranking (approach_cycling=1, failure_amnesia=2, brute_force=3, consecutive_failures=4, verification_debt=5, stale_model=6, serial_discovery_early=7) and only emits the highest-priority nudge. Lower-priority nudges are silently dropped.
+**Constraint check nudge dedup**: Multiple signals may want to suggest a `constraint_check`, but the agent should only receive one nudge per execution cycle. The coordinator tracks a priority ranking (approach_cycling=1, failure_amnesia=2, brute_force=3, consecutive_failures=4, verification_debt=5, stale_model=6, serial_discovery_early=7) and only emits the highest-priority nudge. Lower-priority nudges are silently dropped.
 
 **Escalation**: When the same signal fires repeatedly across a session, the coordinator escalates it. After 3 firings (configurable), soft signals are promoted from `informational` to `warning` severity, and hard signals get a `[persistent]` tag prepended to their message. This distinguishes a one-time observation from a systemic pattern.
 
 Signal coordination state (last_fired counters, fire counts, early_nudge_emitted flag) is propagated back to session memory via compass delta in `ChannelResult.metrics`, applied by the hook after the mesh completes. This keeps the behavior channel read-only during execution while persisting coordination state across runs.
 
-### The Precheck Tool
+### The Behavioral Tools (Orthogonal Decomposition)
 
-The `constraint_check` MCP tool implements **co-construction**: instead of telling the agent what its constraints are, it asks the agent to state its own model, then computes what is missing.
+The behavioral supervision surface is decomposed into three orthogonal tools, each addressing one independent concern. This follows LintGate's core thesis: orthogonal lenses with uncorrelated errors compose into diagnostic signal through their agreement structure. A monolithic tool that checks hygiene AND constraints AND predictions conflates three independent signals into one opaque output. Three tools let the agent (and the system) reason about each concern independently.
+
+**`constraint_check`** — constraint co-construction. Instead of telling the agent what its constraints are, it asks the agent to state its own model, then computes what is missing.
 
 The agent calls `constraint_check(path, planned_action, known_constraints)` before taking an action. The tool:
 
@@ -594,9 +596,15 @@ The agent calls `constraint_check(path, planned_action, known_constraints)` befo
 4. Computes coverage gaps — constraints in the compass that the agent did not mention
 5. Returns the constraint ledger, uncertainty zones, similar past failures, and a recommendation
 
-Agent-declared constraints not already in the compass are added as hypotheses with source `precheck_declared` at confidence 0.5. This is how proactive reasoning gets recorded — and it is what distinguishes an agent that understands its problem from one that is just trying things. Each precheck invocation also increments the session's precheck count, which suppresses the serial discovery early nudge and reduces the serial discovery bias term — creating a feedback loop where proactive constraint articulation directly reduces reactive signal noise.
+Agent-declared constraints not already in the compass are added as hypotheses with source `precheck_declared` at confidence 0.5. This is how proactive reasoning gets recorded — and it is what distinguishes an agent that understands its problem from one that is just trying things. Each invocation increments the session's constraint check count, which suppresses the serial discovery early nudge and reduces the serial discovery bias term — creating a feedback loop where proactive constraint articulation directly reduces reactive signal noise.
 
-The precheck is triggered automatically by the behavior channel (via `next_actions` in the channel result) when signals fire — with the highest-priority signal's nudge winning the dedup: approach cycling, then failure amnesia, then brute-force escalation, then consecutive failures, then verification debt, then stale model, then serial discovery.
+The constraint check is triggered automatically by the behavior channel (via `next_actions` in the channel result) when signals fire — with the highest-priority signal's nudge winning the dedup: approach cycling, then failure amnesia, then brute-force escalation, then consecutive failures, then verification debt, then stale model, then serial discovery.
+
+**`prediction_register`** — falsifiable prediction registration. A standalone tool for registering structured predictions (prediction_type, prediction_value) before executing commands. Predictions are stored in the behavioral compass and checked automatically against actual Bash outcomes on the next hook cycle. See [Falsifiable Predictions](#falsifiable-predictions-prediction_tracking) for the full prediction lifecycle.
+
+**`hygiene_check`** — command-class precondition checks. Delegates to `lintgate/hygiene.py` to classify the planned command and run domain-specific safety checks (venv active, lockfile fresh, secrets in diff, versions pinned). See [Hygiene Prechecks](#hygiene-prechecks-command-class-awareness) for the full check matrix.
+
+**`behavior_precheck`** (deprecated) — a backward-compatibility wrapper that delegates to all three tools above and merges their outputs. Retained for one release cycle to avoid breaking existing agent integrations. Emits a deprecation notice with migration guidance in every response.
 
 ### Command Normalization
 
@@ -1180,11 +1188,11 @@ Configure in `~/.mcp.json` (global) or `.mcp.json` (project-level):
 
 **Silent channels are diagnostic.** Borrowed from OTP supervision: a channel that finds nothing is not just "clean" — it's actively narrowing the space of possible problems. The ControlPlane's coherence engine treats silence as first-class evidence.
 
-**Co-construction, not instruction.** The behavioral precheck tool does not tell the agent what its constraints are. It asks the agent to state its own model, then computes the gap. The diagnostic signal is the *difference* between what the agent thinks it knows and what the system has recorded. This is more effective than broadcasting constraints — an agent that generates its own constraint model is more likely to actually use it, and the gap computation catches blind spots that a static constraint list would miss.
+**Co-construction, not instruction.** The `constraint_check` tool does not tell the agent what its constraints are. It asks the agent to state its own model, then computes the gap. The diagnostic signal is the *difference* between what the agent thinks it knows and what the system has recorded. This is more effective than broadcasting constraints — an agent that generates its own constraint model is more likely to actually use it, and the gap computation catches blind spots that a static constraint list would miss.
 
-**Constraints are hypotheses, not facts.** The behavioral compass treats every constraint as a live hypothesis with a confidence score, evidence for and against, and a decay rate. A constraint learned from a failure starts at low confidence (0.3) and requires confirming evidence to promote. A constraint declared via precheck starts at moderate confidence (0.5). Constraints that go untested for hours decay toward zero. This prevents stale constraints from polluting the model and ensures the compass reflects the agent's *current* understanding, not a historical artifact.
+**Constraints are hypotheses, not facts.** The behavioral compass treats every constraint as a live hypothesis with a confidence score, evidence for and against, and a decay rate. A constraint learned from a failure starts at low confidence (0.3) and requires confirming evidence to promote. A constraint declared via `constraint_check` starts at moderate confidence (0.5). Constraints that go untested for hours decay toward zero. This prevents stale constraints from polluting the model and ensures the compass reflects the agent's *current* understanding, not a historical artifact.
 
-**Report weather, don't make judgments.** Behavioral findings describe patterns — "3 approaches attempted in 20 minutes, all failed" — not prescriptions. The agent decides what to do about it. Hard signals trigger precheck nudges (suggestions, not mandates). Soft signals are informational only. This matters because behavioral drift detection is inherently noisier than code analysis, and false positives that sound like commands erode trust faster than false positives that sound like observations.
+**Report weather, don't make judgments.** Behavioral findings describe patterns — "3 approaches attempted in 20 minutes, all failed" — not prescriptions. The agent decides what to do about it. Hard signals trigger `constraint_check` nudges (suggestions, not mandates). Soft signals are informational only. This matters because behavioral drift detection is inherently noisier than code analysis, and false positives that sound like commands erode trust faster than false positives that sound like observations.
 
 **Bias, don't gate.** The intent taxonomy classifies every tool use but never blocks or overrides a detection rule. Intent data adjusts confidence via bounded deltas (±0.25 cap), not binary filters. An agent running 8 consecutive modify commands without verification gets a higher-confidence `verification_debt` finding, but the finding still fires on the same threshold — intent makes it louder, not mandatory. This keeps the system advisory and prevents false positives from becoming false mandates.
 

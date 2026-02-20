@@ -60,9 +60,7 @@ def register(mcp, helpers):
 
         if hygiene_result is None:
             output["status"] = "no_checks_applicable"
-            output["message"] = (
-                "No hygiene checks applicable for this command class."
-            )
+            output["message"] = "No hygiene checks applicable for this command class."
         elif not hygiene_result.warnings:
             output["status"] = "pass"
             output["command_class"] = hygiene_result.command_class
@@ -189,9 +187,7 @@ def register(mcp, helpers):
         for a in compass.approaches:
             if a.outcome == "failed":
                 binary = command_sig.split(":")[0] if ":" in command_sig else ""
-                approach_binary = (
-                    a.approach_sig.split(":")[0] if ":" in a.approach_sig else ""
-                )
+                approach_binary = a.approach_sig.split(":")[0] if ":" in a.approach_sig else ""
                 if binary and binary == approach_binary:
                     last_err = a.error_sigs[-1] if a.error_sigs else ""
                     similar_failures.append(
@@ -221,8 +217,7 @@ def register(mcp, helpers):
 
         if parts:
             recommendation = (
-                ". ".join(parts)
-                + ". Consider researching uncertainty zones before acting."
+                ". ".join(parts) + ". Consider researching uncertainty zones before acting."
             )
         else:
             recommendation = (
@@ -373,11 +368,7 @@ def register(mcp, helpers):
             )
         )
 
-        if (
-            not _is_bash_action
-            or not command_sig
-            or command_sig == "unknown:unknown"
-        ):
+        if not _is_bash_action or not command_sig or command_sig == "unknown:unknown":
             return helpers["_json_dumps"](
                 {
                     "status": "not_applicable",
@@ -415,11 +406,7 @@ def register(mcp, helpers):
         # Compute accuracy section
         pred_accuracy = compute_prediction_accuracy(compass)
         checked_count = len(
-            [
-                e
-                for e in compass.prediction_log
-                if e.get("status") in ("confirmed", "falsified")
-            ]
+            [e for e in compass.prediction_log if e.get("status") in ("confirmed", "falsified")]
         )
         accuracy_section: dict[str, Any] = {
             "pending_count": len(compass.pending_predictions),
@@ -433,9 +420,7 @@ def register(mcp, helpers):
             )
 
         # Recent outcomes
-        recent_outcomes = (
-            compass.prediction_log[-5:] if compass.prediction_log else []
-        )
+        recent_outcomes = compass.prediction_log[-5:] if compass.prediction_log else []
         if recent_outcomes:
             accuracy_section["recent_outcomes"] = [
                 {
@@ -629,9 +614,7 @@ def register(mcp, helpers):
         total_intents = sum(profile.intent_ratios.values()) or 1
         normalized_intents = {
             k: round(v / total_intents, 3)
-            for k, v in sorted(
-                profile.intent_ratios.items(), key=lambda x: -x[1]
-            )
+            for k, v in sorted(profile.intent_ratios.items(), key=lambda x: -x[1])
         }
 
         output: dict[str, Any] = {
@@ -643,8 +626,7 @@ def register(mcp, helpers):
             "intent_ratios_normalized": normalized_intents,
             "nudge_outcomes": nudge_rates,
             "computed_bias_adjustments": {
-                k: round(v, 4)
-                for k, v in profile.computed_bias_adjustments.items()
+                k: round(v, 4) for k, v in profile.computed_bias_adjustments.items()
             },
             "alpha_config": {
                 "initial": cp_config.global_memory_alpha,

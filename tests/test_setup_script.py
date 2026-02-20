@@ -21,9 +21,7 @@ def _make_setup_harness(tmp_path: Path) -> Path:
     os.chmod(repo / "setup.sh", stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     (repo / "integrate.sh").write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        "echo \"integrate stub\"\n"
+        '#!/usr/bin/env bash\nset -euo pipefail\necho "integrate stub"\n'
     )
     os.chmod(repo / "integrate.sh", stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
@@ -67,26 +65,26 @@ def _make_setup_harness(tmp_path: Path) -> Path:
     (fake_bin / "uv").write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "if [[ \"${1:-}\" == \"venv\" ]]; then\n"
-        "  VENV_DIR=\"$2\"\n"
-        "  mkdir -p \"$VENV_DIR/bin\"\n"
-        "  ln -sf \"$REAL_PYTHON\" \"$VENV_DIR/bin/python3\"\n"
+        'if [[ "${1:-}" == "venv" ]]; then\n'
+        '  VENV_DIR="$2"\n'
+        '  mkdir -p "$VENV_DIR/bin"\n'
+        '  ln -sf "$REAL_PYTHON" "$VENV_DIR/bin/python3"\n'
         "  cat > \"$VENV_DIR/bin/lintgate\" <<'EOF'\n"
         "#!/usr/bin/env bash\n"
-        "echo \"{}\"\n"
+        'echo "{}"\n'
         "EOF\n"
         "  cat > \"$VENV_DIR/bin/lintgate-mcp\" <<'EOF'\n"
         "#!/usr/bin/env bash\n"
         "exit 0\n"
         "EOF\n"
-        "  chmod +x \"$VENV_DIR/bin/lintgate\"\n"
-        "  chmod +x \"$VENV_DIR/bin/lintgate-mcp\"\n"
+        '  chmod +x "$VENV_DIR/bin/lintgate"\n'
+        '  chmod +x "$VENV_DIR/bin/lintgate-mcp"\n'
         "  exit 0\n"
         "fi\n"
-        "if [[ \"${1:-}\" == \"pip\" ]]; then\n"
+        'if [[ "${1:-}" == "pip" ]]; then\n'
         "  exit 0\n"
         "fi\n"
-        "echo \"fake uv: unsupported args: $*\" >&2\n"
+        'echo "fake uv: unsupported args: $*" >&2\n'
         "exit 1\n"
     )
     os.chmod(fake_bin / "uv", stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)

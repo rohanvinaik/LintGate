@@ -27,32 +27,40 @@ def register(mcp, helpers):
         # Build dynamic next_actions based on project state
         next_actions: list[dict[str, str]] = []
         if config_status["config_state"] != "config_enabled":
-            next_actions.append({
-                "tool": "controlplane_run",
-                "reason": "Run a comprehensive health check (works without config)",
-                "example": f'controlplane_run(path="{project_root}")',
-            })
+            next_actions.append(
+                {
+                    "tool": "controlplane_run",
+                    "reason": "Run a comprehensive health check (works without config)",
+                    "example": f'controlplane_run(path="{project_root}")',
+                }
+            )
         else:
-            next_actions.append({
-                "tool": "controlplane_run",
-                "reason": "Run a comprehensive health check",
-                "example": f'controlplane_run(path="{project_root}")',
-            })
+            next_actions.append(
+                {
+                    "tool": "controlplane_run",
+                    "reason": "Run a comprehensive health check",
+                    "example": f'controlplane_run(path="{project_root}")',
+                }
+            )
 
         # Check if bootstrap files exist
         claude_md = os.path.join(project_root, ".claude", "CLAUDE.md")
         if not os.path.exists(claude_md):
-            next_actions.append({
-                "tool": "bootstrap_context_files",
-                "reason": "Generate project-specific CLAUDE.md with documented principles",
-                "example": f'bootstrap_context_files(path="{project_root}", write=True)',
-            })
+            next_actions.append(
+                {
+                    "tool": "bootstrap_context_files",
+                    "reason": "Generate project-specific CLAUDE.md with documented principles",
+                    "example": f'bootstrap_context_files(path="{project_root}", write=True)',
+                }
+            )
 
-        next_actions.append({
-            "tool": "lint_project",
-            "reason": "Full project lint scan",
-            "example": f'lint_project(path="{project_root}")',
-        })
+        next_actions.append(
+            {
+                "tool": "lint_project",
+                "reason": "Full project lint scan",
+                "example": f'lint_project(path="{project_root}")',
+            }
+        )
 
         output: dict[str, Any] = {
             "project": project_root,
@@ -60,10 +68,8 @@ def register(mcp, helpers):
             "essential_tools": {
                 "lint_files": "Check specific files after edits — "
                 'lint_files(files=["/path/to/file.py"])',
-                "lint_project": "Full project scan — "
-                'lint_project(path="/my/project")',
-                "lint_fix": "Auto-fix safe issues — "
-                'lint_fix(path="/my/project", dry_run=False)',
+                "lint_project": 'Full project scan — lint_project(path="/my/project")',
+                "lint_fix": 'Auto-fix safe issues — lint_fix(path="/my/project", dry_run=False)',
                 "controlplane_run": "6-channel health check (lint + tests + deps + git + behavior + structure) — "
                 'controlplane_run(path="/my/project")',
                 "controlplane_get_details": "Drill into health check findings — "

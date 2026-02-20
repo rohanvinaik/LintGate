@@ -41,6 +41,34 @@ _MAX_SNAPSHOTS = 50  # Prevent unbounded growth within a session
 
 
 @dataclass
+class BehaviorEventData:
+    """Behavioral event data populated by the behavior channel."""
+
+    action_type: str = ""  # "bash" | "write" | "edit" | "read" | "grep" | "glob"
+    command_signature: str = ""  # Normalized command family (redacted)
+    exit_code: int | None = None
+    error_signature: str = ""  # Normalized error output
+    behavior_alerts: list[str] = field(default_factory=list)  # Pattern names that fired
+    prediction_accuracy: float | None = None
+    predictions_checked: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BehaviorEventData:
+        return cls(
+            action_type=data.get("action_type", ""),
+            command_signature=data.get("command_signature", ""),
+            exit_code=data.get("exit_code"),
+            error_signature=data.get("error_signature", ""),
+            behavior_alerts=data.get("behavior_alerts", []),
+            prediction_accuracy=data.get("prediction_accuracy"),
+            predictions_checked=data.get("predictions_checked", 0),
+        )
+
+
+@dataclass
 class SessionSnapshot:
     """A single mesh run snapshot within a session."""
 
@@ -54,22 +82,48 @@ class SessionSnapshot:
     pattern_alerts: list[dict[str, Any]] = field(default_factory=list)
     repairs_proposed: list[str] = field(default_factory=list)  # action_ids
     repairs_applied: list[str] = field(default_factory=list)  # action_ids confirmed
-    # Behavioral fields (populated by behavior channel)
-    action_type: str = ""  # "bash" | "write" | "edit" | "read" | "grep" | "glob"
-    command_signature: str = ""  # Normalized command family (redacted)
-    exit_code: int | None = None
-    error_signature: str = ""  # Normalized error output
-    behavior_alerts: list[str] = field(default_factory=list)  # Pattern names that fired
+    behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
     finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
-    # Architecture of Inquiry: prediction tracking fields
-    prediction_accuracy: float | None = None
-    predictions_checked: int = 0
+
+    # Backward-compatible property accessors for behavior fields
+    @property
+    def action_type(self) -> str:
+        return self.behavior.action_type
+
+    @property
+    def command_signature(self) -> str:
+        return self.behavior.command_signature
+
+    @property
+    def exit_code(self) -> int | None:
+        return self.behavior.exit_code
+
+    @property
+    def error_signature(self) -> str:
+        return self.behavior.error_signature
+
+    @property
+    def behavior_alerts(self) -> list[str]:
+        return self.behavior.behavior_alerts
+
+    @property
+    def prediction_accuracy(self) -> float | None:
+        return self.behavior.prediction_accuracy
+
+    @property
+    def predictions_checked(self) -> int:
+        return self.behavior.predictions_checked
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        # Flatten behavior fields for backward-compatible serialization
+        beh = d.pop("behavior", {})
+        d.update(beh)
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SessionSnapshot:
+        behavior = BehaviorEventData.from_dict(data)
         return cls(
             run_id=data.get("run_id", ""),
             timestamp=data.get("timestamp", 0.0),
@@ -81,14 +135,8 @@ class SessionSnapshot:
             pattern_alerts=data.get("pattern_alerts", []),
             repairs_proposed=data.get("repairs_proposed", []),
             repairs_applied=data.get("repairs_applied", []),
-            action_type=data.get("action_type", ""),
-            command_signature=data.get("command_signature", ""),
-            exit_code=data.get("exit_code"),
-            error_signature=data.get("error_signature", ""),
-            behavior_alerts=data.get("behavior_alerts", []),
+            behavior=behavior,
             finding_index=data.get("finding_index", {}),
-            prediction_accuracy=data.get("prediction_accuracy"),
-            predictions_checked=data.get("predictions_checked", 0),
         )
 
 

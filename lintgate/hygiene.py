@@ -204,7 +204,16 @@ def _check_pinned_version(planned_action: str, project_root: str) -> HygieneWarn
 
     # Filter out flags and their arguments
     # Flags that take a value: -r, -c, -e, --requirement, --constraint, --target, -t, etc.
-    flags_with_args = {"-r", "-c", "-e", "-t", "--requirement", "--constraint", "--target", "--prefix"}
+    flags_with_args = {
+        "-r",
+        "-c",
+        "-e",
+        "-t",
+        "--requirement",
+        "--constraint",
+        "--target",
+        "--prefix",
+    }
     packages: list[str] = []
     skip_next = False
     for token in tokens:

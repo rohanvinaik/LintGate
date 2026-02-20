@@ -114,9 +114,7 @@ class TestModelProfileStore:
 
     def test_roundtrip(self):
         store = ModelProfileStore()
-        store.profiles["test:model"] = ModelProfile(
-            model_key="test:model", confidence=0.8
-        )
+        store.profiles["test:model"] = ModelProfile(model_key="test:model", confidence=0.8)
         d = store.to_dict()
         store2 = ModelProfileStore.from_dict(d)
         assert "test:model" in store2.profiles
@@ -169,9 +167,7 @@ class TestPersistence:
             "lintgate.controlplane.model_profiles._lintgate_home",
             return_value=tmp_path,
         ):
-            upsert_profile(
-                ModelProfile(model_key="anthropic:claude-opus-4", confidence=0.8)
-            )
+            upsert_profile(ModelProfile(model_key="anthropic:claude-opus-4", confidence=0.8))
             assert get_profile("claude-opus-4") is not None
             assert reset_profile("claude-opus-4") is True
             assert get_profile("claude-opus-4") is None

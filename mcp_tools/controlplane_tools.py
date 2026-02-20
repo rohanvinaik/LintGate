@@ -80,7 +80,9 @@ def register(mcp, helpers):
         }
 
         # Select requested channels
-        requested = [c.strip() for c in (channels or "lint,tests,deps,git,behavior,structure").split(",")]
+        requested = [
+            c.strip() for c in (channels or "lint,tests,deps,git,behavior,structure").split(",")
+        ]
         active_channels = []
         unknown = []
         for name in requested:

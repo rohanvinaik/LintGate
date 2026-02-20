@@ -25,9 +25,7 @@ class TestAntiPatternQuality:
     def test_all_under_length_limit(self):
         """Each item must be under 260 chars (the truncation threshold)."""
         for item in ZERO_STATE_ANTI_PATTERNS:
-            assert len(item) <= 260, (
-                f"Anti-pattern too long ({len(item)} chars): {item!r}"
-            )
+            assert len(item) <= 260, f"Anti-pattern too long ({len(item)} chars): {item!r}"
 
     def test_count_is_seven(self):
         """We should have exactly 7 curated anti-patterns."""

@@ -58,9 +58,7 @@ class TestDirectiveClassification3Way:
         from lintgate.context_auditor import classify_directive_enforceability
 
         # Has both dotted name (syntactic) and "approach" (architectural)
-        result = classify_directive_enforceability(
-            "DO NOT use this approach for os.path calls"
-        )
+        result = classify_directive_enforceability("DO NOT use this approach for os.path calls")
         assert result.classification in ("uncertain", "enforceable", "architectural")
         # Key: should have lower confidence than clear-cut cases
         if result.classification == "uncertain":
@@ -71,9 +69,7 @@ class TestDirectiveClassification3Way:
         from lintgate.context_auditor import _is_regex_enforceable
 
         assert _is_regex_enforceable("DO NOT use `threading.Thread` directly") is True
-        assert _is_regex_enforceable(
-            "DO NOT bypass shared abstractions"
-        ) is False
+        assert _is_regex_enforceable("DO NOT bypass shared abstractions") is False
 
     def test_classification_has_reason(self) -> None:
         from lintgate.context_auditor import classify_directive_enforceability

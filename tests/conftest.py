@@ -29,7 +29,11 @@ sys.path.insert(0, str(_ROOT))
 # Evict stale installed modules so imports resolve from this checkout.
 for name, module in list(sys.modules.items()):
     if (
-        (name == "mcp_server" or name == "mcp_tools" or name.startswith(("mcp_tools.", "lintgate.")))
+        (
+            name == "mcp_server"
+            or name == "mcp_tools"
+            or name.startswith(("mcp_tools.", "lintgate."))
+        )
         and module is not None
         and not _module_from_repo(module)
     ):

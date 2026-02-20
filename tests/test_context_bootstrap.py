@@ -179,7 +179,9 @@ def test_extracted_theory_overrides_defaults(tmp_path) -> None:
     do_dont_section = do_dont_match.group(1)
 
     # Should contain extracted claims in do_dont section
-    assert "black-box" in do_dont_section.lower() or "validation pipeline" in do_dont_section.lower()
+    assert (
+        "black-box" in do_dont_section.lower() or "validation pipeline" in do_dont_section.lower()
+    )
     # The curated default about "enumerating all known constraints" should NOT
     # appear in do_dont section when real claims are extracted
     assert "enumerating all known constraints" not in do_dont_section
@@ -249,20 +251,19 @@ class TestBootstrapModelProfileIntegration:
             model_key="anthropic:claude-opus-4",
             confidence=0.8,
             signal_risk={"approach_cycling": 0.6, "verification_debt": 0.5},
-            custom_anti_patterns=[
-                "Do not try a 4th approach without enumerating constraints."
-            ],
-            custom_dispositions=[
-                "MUST run constraint_check before 3rd approach."
-            ],
+            custom_anti_patterns=["Do not try a 4th approach without enumerating constraints."],
+            custom_dispositions=["MUST run constraint_check before 3rd approach."],
         )
 
-        with mock.patch(
-            "lintgate.controlplane.model_profiles.get_profile",
-            return_value=fake_profile,
-        ), mock.patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
-            return_value="anthropic:claude-opus-4",
+        with (
+            mock.patch(
+                "lintgate.controlplane.model_profiles.get_profile",
+                return_value=fake_profile,
+            ),
+            mock.patch(
+                "lintgate.controlplane.model_profiles.resolve_model_key",
+                return_value="anthropic:claude-opus-4",
+            ),
         ):
             payload = bootstrap_context_files(
                 str(tmp_path),
@@ -287,12 +288,15 @@ class TestBootstrapModelProfileIntegration:
         """When model_id resolves but no profile exists, fall back to defaults."""
         (tmp_path / "README.md").write_text("# Repo\n")
 
-        with mock.patch(
-            "lintgate.controlplane.model_profiles.get_profile",
-            return_value=None,
-        ), mock.patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
-            return_value="openai:gpt-4o",
+        with (
+            mock.patch(
+                "lintgate.controlplane.model_profiles.get_profile",
+                return_value=None,
+            ),
+            mock.patch(
+                "lintgate.controlplane.model_profiles.resolve_model_key",
+                return_value="openai:gpt-4o",
+            ),
         ):
             payload = bootstrap_context_files(
                 str(tmp_path),
@@ -323,12 +327,15 @@ class TestBootstrapModelProfileIntegration:
             ],
         )
 
-        with mock.patch(
-            "lintgate.controlplane.model_profiles.get_profile",
-            return_value=fake_profile,
-        ), mock.patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
-            return_value="anthropic:claude-opus-4",
+        with (
+            mock.patch(
+                "lintgate.controlplane.model_profiles.get_profile",
+                return_value=fake_profile,
+            ),
+            mock.patch(
+                "lintgate.controlplane.model_profiles.resolve_model_key",
+                return_value="anthropic:claude-opus-4",
+            ),
         ):
             payload = bootstrap_context_files(
                 str(tmp_path),

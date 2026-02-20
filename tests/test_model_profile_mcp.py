@@ -20,7 +20,7 @@ model_profile_status = _MCP_MODULE.model_profile_status
 _V2_ANSWERS = {
     "t1_error_reading": {
         "text": "First I would read the source file to understand the bug, "
-                "then examine the test output. The real issue is variable shadowing.",
+        "then examine the test output. The real issue is variable shadowing.",
         "tool_calls": ["Read", "Read", "Edit", "Bash"],
         "actions": [
             "Read utils.py to understand function",
@@ -33,7 +33,7 @@ _V2_ANSWERS = {
     },
     "t2_retry_behavior": {
         "text": "I would not retry the same command. Instead I would install "
-                "the missing dependency first.",
+        "the missing dependency first.",
         "tool_calls": ["Read", "Bash", "Bash"],
         "actions": [
             "Read pyproject.toml for dependencies",
@@ -59,8 +59,8 @@ _V2_ANSWERS = {
     },
     "t5_model_updating": {
         "text": "Based on attempt 1 (ALTER TABLE fails in SQLite) and attempt 2 "
-                "(foreign key on old table name), I would use a migration approach "
-                "that handles both constraints.",
+        "(foreign key on old table name), I would use a migration approach "
+        "that handles both constraints.",
         "constraint_refs": ["SQLite ALTER TABLE", "foreign key constraint"],
     },
 }

@@ -388,6 +388,45 @@ def check_theory_coherence(
     )
 
 
+def _resolve_constraint_template(linter: str, kind: str) -> dict[str, Any]:
+    """Resolve constraint template from behavioral → pattern → generic maps."""
+    if linter == "behavior_channel":
+        template_data = _BEHAVIOR_CONSTRAINT_MAP.get(kind)
+        if template_data is not None:
+            return template_data
+    template_data = _PATTERN_CONSTRAINT_MAP.get(kind)
+    if template_data is not None:
+        return template_data
+    return _build_generic_template(linter, kind)
+
+
+def _compute_proposal_confidence(template_data: dict[str, Any], recent_count: int) -> float:
+    """Compute confidence scaling with recurrence count."""
+    base_conf = template_data.get("base_confidence", 0.5)
+    recurrence_bonus = min((recent_count - 3) * 0.075, 0.15) if recent_count > 3 else 0.0
+    return min(base_conf + recurrence_bonus, 1.0)
+
+
+def _apply_coherence_check(
+    proposal: ProposedConstraint,
+    config: ControlPlaneConfig | None,
+    session: SessionMemory | None,
+) -> None:
+    """Apply theory coherence check to a proposal if enabled."""
+    if config is None or not config.inquiry.theory_coherence_check:
+        return
+    if session is None:
+        return
+    theory_profile = getattr(session, "theory_profile_cache", None)
+    if theory_profile is None:
+        return
+    coherence = check_theory_coherence(proposal, theory_profile)
+    if coherence is not None:
+        proposal.theory_coherence = coherence
+        if coherence.contradicting_claims:
+            proposal.drift_warning = True
+
+
 def propose_constraints_from_patterns(
     pattern_report: dict[str, Any],
     session: SessionMemory | None = None,
@@ -419,9 +458,7 @@ def propose_constraints_from_patterns(
         for constraint in session.proposed_constraints:
             already_proposed.add(constraint.get("pattern_key", ""))
 
-    # Build set of existing rule texts (dedup against CLAUDE.md)
     existing_rule_texts = set(existing_rules)
-
     proposals: list[ProposedConstraint] = []
 
     for alert in alerts:
@@ -429,47 +466,27 @@ def propose_constraints_from_patterns(
         kind = alert.get("kind", "")
         pattern_key = f"{linter}|{kind}"
 
-        # Only act on recurring-across-runs alerts
         if alert.get("alert_reason") != "recurring_across_runs":
             continue
 
         recent_count = alert.get("recent_run_count", 0)
-
-        # Must meet threshold
         if recent_count < threshold:
             continue
 
-        # Skip already-proposed patterns in this session
         if pattern_key in already_proposed:
             continue
 
-        # Look up constraint template — check behavioral map first for behavior_channel
-        template_data = None
-        if linter == "behavior_channel":
-            template_data = _BEHAVIOR_CONSTRAINT_MAP.get(kind)
-        if template_data is None:
-            template_data = _PATTERN_CONSTRAINT_MAP.get(kind)
-        if template_data is None:
-            # Generic fallback for unknown kinds
-            template_data = _build_generic_template(linter, kind)
-
-        # Build the proposal
+        template_data = _resolve_constraint_template(linter, kind)
         rule_text = template_data["template"]
 
-        # Skip if this rule already exists
         if rule_text in existing_rule_texts:
             continue
 
         rationale = template_data["rationale_template"].format(
             count=recent_count,
-            window=5,  # _RECENT_WINDOW from pattern_bank
+            window=5,
         )
-
-        # Confidence scales with recurrence — more runs = higher confidence
-        base_conf = template_data.get("base_confidence", 0.5)
-        # Scale: 3/5 runs → base, 5/5 runs → base + 0.15
-        recurrence_bonus = min((recent_count - 3) * 0.075, 0.15) if recent_count > 3 else 0.0
-        confidence = min(base_conf + recurrence_bonus, 1.0)
+        confidence = _compute_proposal_confidence(template_data, recent_count)
 
         proposal = ProposedConstraint(
             source="pattern_bank",
@@ -481,25 +498,12 @@ def propose_constraints_from_patterns(
             status="proposed",
         )
 
-        # Architecture of Inquiry: theory coherence check (metadata-only)
-        # Only run when inquiry.theory_coherence_check is explicitly enabled
-        _coherence_enabled = config is not None and config.inquiry.theory_coherence_check
-        theory_profile = None
-        if _coherence_enabled and session is not None:
-            theory_profile = getattr(session, "theory_profile_cache", None)
-        if theory_profile is not None:
-            coherence = check_theory_coherence(proposal, theory_profile)
-            if coherence is not None:
-                proposal.theory_coherence = coherence
-                if coherence.contradicting_claims:
-                    proposal.drift_warning = True
+        _apply_coherence_check(proposal, config, session)
 
         proposals.append(proposal)
         already_proposed.add(pattern_key)
 
-    # Sort by confidence descending
     proposals.sort(key=lambda p: -p.confidence)
-
     return proposals
 
 

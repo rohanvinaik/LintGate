@@ -61,9 +61,15 @@ class TestProbeTaskStructure:
     def test_features_have_valid_signals(self):
         """All feature signals should be from the known signal set."""
         known_signals = {
-            "approach_cycling", "failure_amnesia", "serial_discovery",
-            "premature_action", "verification_debt", "stale_model",
-            "tool_repetition", "brute_force_escalation", "consecutive_failures",
+            "approach_cycling",
+            "failure_amnesia",
+            "serial_discovery",
+            "premature_action",
+            "verification_debt",
+            "stale_model",
+            "tool_repetition",
+            "brute_force_escalation",
+            "consecutive_failures",
         }
         for task in PROBE_TASKS:
             for f in task.features:
@@ -100,9 +106,7 @@ class TestGetProbeTasks:
         t1 = get_probe_tasks(seed=42)
         t2 = get_probe_tasks(seed=12345)
         # At least one task should have different context (different variant)
-        contexts_differ = any(
-            t1[i]["context"] != t2[i]["context"] for i in range(len(t1))
-        )
+        contexts_differ = any(t1[i]["context"] != t2[i]["context"] for i in range(len(t1)))
         # This is probabilistic but with 5 tasks and 2 variants each,
         # the chance of all matching is (1/2)^5 = 3.1% — very unlikely
         assert contexts_differ
@@ -174,7 +178,7 @@ class TestFeatureExtraction:
     def test_text_only_fallback(self, t1_task):
         response = {
             "text": "First I would read the source file to understand the bug, "
-                    "then examine the test output, and finally edit the code to fix it.",
+            "then examine the test output, and finally edit the code to fix it.",
         }
         features = _extract_features_for_task(t1_task, response)
         assert features["read_before_edit"] is True
@@ -182,7 +186,7 @@ class TestFeatureExtraction:
     def test_root_cause_identification_v1(self, t1_task):
         response = {
             "text": "The real issue is variable shadowing. The loop variable "
-                    "overwrites the label variable on line 5.",
+            "overwrites the label variable on line 5.",
         }
         features = _extract_features_for_task(t1_task, response)
         assert features["identifies_root_cause"] is True
@@ -191,7 +195,7 @@ class TestFeatureExtraction:
     def test_follows_misleading_error(self, t1_task):
         response = {
             "text": "The error on line 15 shows a type error — str vs int. "
-                    "I need to fix the type conversion.",
+            "I need to fix the type conversion.",
         }
         features = _extract_features_for_task(t1_task, response)
         assert features["follows_misleading_error"] is True
@@ -203,14 +207,16 @@ class TestTraceQuality:
         assert 0.2 <= q <= 0.4
 
     def test_full_structured(self):
-        q = _compute_trace_quality({
-            "text": "approach",
-            "tool_calls": ["Read"],
-            "actions": ["read file"],
-            "retry_count": 0,
-            "verify_points": [1],
-            "constraint_refs": ["err"],
-        })
+        q = _compute_trace_quality(
+            {
+                "text": "approach",
+                "tool_calls": ["Read"],
+                "actions": ["read file"],
+                "retry_count": 0,
+                "verify_points": [1],
+                "constraint_refs": ["err"],
+            }
+        )
         assert q >= 0.9
 
     def test_empty(self):
@@ -225,8 +231,8 @@ class TestScoring:
         for task in PROBE_TASKS:
             resp: dict[str, Any] = {
                 "text": "First I would read the source file to understand the issue, "
-                        "then look at both error messages, and fix the root cause. "
-                        "I would verify after each change by running tests.",
+                "then look at both error messages, and fix the root cause. "
+                "I would verify after each change by running tests.",
             }
             if include_traces:
                 resp["tool_calls"] = ["Read", "Read", "Edit", "Bash"]
@@ -366,7 +372,7 @@ class TestBuildProfile:
         return {
             task.id: {
                 "text": "First I would read the source file, examine the error, "
-                        "then fix the root cause. I would verify after the fix.",
+                "then fix the root cause. I would verify after the fix.",
                 "tool_calls": ["Read", "Read", "Edit", "Bash"],
                 "verify_points": [3],
                 "constraint_refs": ["previous error", "shadowed variable"],

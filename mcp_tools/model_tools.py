@@ -397,9 +397,7 @@ def register(mcp, helpers):
                 "generate model-aware bootstrap content"
             )
         else:
-            next_actions.append(
-                "Complete more tasks to increase confidence above 0.55 threshold."
-            )
+            next_actions.append("Complete more tasks to increase confidence above 0.55 threshold.")
         next_actions.append(
             f"model_profile_status(model_id='{model_id}') — view full profile details"
         )

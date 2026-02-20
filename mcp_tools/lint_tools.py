@@ -334,7 +334,9 @@ def register(mcp, helpers):
             target_files = helpers["_collect_python_files"](project_root)
 
         if not target_files:
-            return helpers["_json_dumps"]({"error": "No Python files found", "dry_run": dry_run}, "standard")
+            return helpers["_json_dumps"](
+                {"error": "No Python files found", "dry_run": dry_run}, "standard"
+            )
 
         result = run_safe_fixes(
             files=target_files,

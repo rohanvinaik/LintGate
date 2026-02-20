@@ -200,12 +200,14 @@ def log_feature_usage(
     This uses the same daily JSONL file as log_metric but with
     event="feature_usage" for easy filtering.
     """
-    log_metric({
-        "event": "feature_usage",
-        "feature": feature,
-        "project": project,
-        **(metadata or {}),
-    })
+    log_metric(
+        {
+            "event": "feature_usage",
+            "feature": feature,
+            "project": project,
+            **(metadata or {}),
+        }
+    )
 
 
 def _project_hash(cwd: str) -> str:

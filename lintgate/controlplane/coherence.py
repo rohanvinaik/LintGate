@@ -156,8 +156,7 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             # Cross-domain with only 2 failures — less certain it's truly systemic
             conf = 0.7
             notes.append(
-                "cross-domain failure (infra + code) with only 2 channels — "
-                "could be coincidental"
+                "cross-domain failure (infra + code) with only 2 channels — could be coincidental"
             )
         return CoherenceResult(
             state="systemic",

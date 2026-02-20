@@ -106,8 +106,15 @@ def compute_telemetry_summary(
     }
 
 
-def _load_entries(days: int, project_root: str | None) -> list[dict[str, Any]]:
-    """Load metric entries from daily JSONL files within the time window."""
+def _load_jsonl_entries(
+    days: int,
+    project_root: str | None,
+    event_type: str,
+) -> list[dict[str, Any]]:
+    """Load entries from daily JSONL files, filtered by event type and project.
+
+    Shared implementation for both lint-run and feature-usage loading.
+    """
     if not METRICS_DIR.exists():
         return []
 
@@ -115,38 +122,50 @@ def _load_entries(days: int, project_root: str | None) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
 
     for metrics_file in sorted(METRICS_DIR.glob("lintgate_*.jsonl")):
-        # Parse date from filename: lintgate_YYYYMMDD.jsonl
-        stem = metrics_file.stem  # lintgate_20240115
-        date_part = stem.replace("lintgate_", "")
-        try:
-            file_date = datetime.strptime(date_part, "%Y%m%d")
-        except ValueError:
+        file_date = _parse_metrics_file_date(metrics_file)
+        if file_date is None or file_date < cutoff:
             continue
 
-        if file_date < cutoff:
-            continue
-
-        try:
-            with open(metrics_file) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                        # Filter by project if specified
-                        if project_root and entry.get("project") != project_root:
-                            continue
-                        # Only lint runs
-                        if entry.get("event") != "mcp_lint_run":
-                            continue
-                        entries.append(entry)
-                    except json.JSONDecodeError:
-                        continue
-        except OSError:
-            continue
+        for entry in _read_jsonl_file(metrics_file):
+            if entry.get("event") != event_type:
+                continue
+            if project_root and entry.get("project") != project_root:
+                continue
+            entries.append(entry)
 
     return entries
+
+
+def _parse_metrics_file_date(metrics_file: Any) -> datetime | None:
+    """Parse date from metric filename (lintgate_YYYYMMDD.jsonl)."""
+    date_part = metrics_file.stem.replace("lintgate_", "")
+    try:
+        return datetime.strptime(date_part, "%Y%m%d")
+    except ValueError:
+        return None
+
+
+def _read_jsonl_file(metrics_file: Any) -> list[dict[str, Any]]:
+    """Read all valid JSON entries from a JSONL file."""
+    entries: list[dict[str, Any]] = []
+    try:
+        with open(metrics_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return entries
+
+
+def _load_entries(days: int, project_root: str | None) -> list[dict[str, Any]]:
+    """Load metric entries from daily JSONL files within the time window."""
+    return _load_jsonl_entries(days, project_root, "mcp_lint_run")
 
 
 def _compute_trend(entries: list[dict[str, Any]]) -> str:
@@ -251,39 +270,4 @@ def _load_feature_entries(
     project_root: str | None,
 ) -> list[dict[str, Any]]:
     """Load feature_usage events from daily JSONL files."""
-    if not METRICS_DIR.exists():
-        return []
-
-    cutoff = datetime.now() - timedelta(days=days)
-    entries: list[dict[str, Any]] = []
-
-    for metrics_file in sorted(METRICS_DIR.glob("lintgate_*.jsonl")):
-        stem = metrics_file.stem
-        date_part = stem.replace("lintgate_", "")
-        try:
-            file_date = datetime.strptime(date_part, "%Y%m%d")
-        except ValueError:
-            continue
-
-        if file_date < cutoff:
-            continue
-
-        try:
-            with open(metrics_file) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                        if entry.get("event") != "feature_usage":
-                            continue
-                        if project_root and entry.get("project") != project_root:
-                            continue
-                        entries.append(entry)
-                    except json.JSONDecodeError:
-                        continue
-        except OSError:
-            continue
-
-    return entries
+    return _load_jsonl_entries(days, project_root, "feature_usage")

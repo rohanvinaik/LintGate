@@ -671,8 +671,7 @@ class TestTheoryExtractionScoping(unittest.TestCase):
         try:
             opted_out = Path(tmpdir) / "opted_out.md"
             opted_out.write_text(
-                "---\ntheory_scope: false\n---\n\n"
-                "# Theory\n\nThis claim should not be extracted.\n"
+                "---\ntheory_scope: false\n---\n\n# Theory\n\nThis claim should not be extracted.\n"
             )
 
             sections = _parse_document(str(opted_out), tmpdir)

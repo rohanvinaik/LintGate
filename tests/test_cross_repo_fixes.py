@@ -68,10 +68,7 @@ class TestExtractPathRefsFiltering:
         """Legitimate file paths should still be detected."""
         from lintgate.context_auditor import _extract_path_refs
 
-        text = (
-            "See `src/main.py` for the entry point and "
-            "`docs/design.md` for architecture."
-        )
+        text = "See `src/main.py` for the entry point and `docs/design.md` for architecture."
         refs = _extract_path_refs(text)
         assert "src/main.py" in refs
         assert "docs/design.md" in refs
@@ -229,34 +226,33 @@ class TestDirectiveClassification:
         """'DO NOT bypass shared abstractions' — architectural, not regex."""
         from lintgate.context_auditor import _is_regex_enforceable
 
-        assert _is_regex_enforceable(
-            "Do not add task-specific one-off code that bypasses shared abstractions"
-        ) is False
+        assert (
+            _is_regex_enforceable(
+                "Do not add task-specific one-off code that bypasses shared abstractions"
+            )
+            is False
+        )
 
     def test_process_directive_not_enforceable(self) -> None:
         """'DO NOT iterate without understanding' — process, not regex."""
         from lintgate.context_auditor import _is_regex_enforceable
 
-        assert _is_regex_enforceable(
-            "Do not iterate without understanding constraints first"
-        ) is False
+        assert (
+            _is_regex_enforceable("Do not iterate without understanding constraints first") is False
+        )
 
     def test_behavioral_directive_not_enforceable(self) -> None:
         """'DO NOT repeat the same approach 4 times' — behavioral."""
         from lintgate.context_auditor import _is_regex_enforceable
 
-        assert _is_regex_enforceable(
-            "Do not repeat the same approach 4 times"
-        ) is False
+        assert _is_regex_enforceable("Do not repeat the same approach 4 times") is False
 
     def test_vague_directive_not_enforceable(self) -> None:
         """'DO NOT write code that is hard to debug' — too vague for regex."""
         from lintgate.context_auditor import _is_regex_enforceable
 
         # No specific tech/API cue → not enforceable
-        assert _is_regex_enforceable(
-            "Do not write code that is hard to debug"
-        ) is False
+        assert _is_regex_enforceable("Do not write code that is hard to debug") is False
 
 
 class TestRuleCoverageWithClassification:

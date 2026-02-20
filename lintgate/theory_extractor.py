@@ -208,7 +208,10 @@ _THEORY_PARAGRAPH_SIGNALS = {
     "architecture": [
         re.compile(r"\b(?:O\(n[²2]\)|quadratic|exponential|linear time)\b", re.I),
         re.compile(r"\b(?:vectori[sz]|batch|parallel)\b.*\b(?:instead|rather|prefer)\b", re.I),
-        re.compile(r"\b(?:performance|latency|throughput|bottleneck)\b.*\b(?:because|since|critical)\b", re.I),
+        re.compile(
+            r"\b(?:performance|latency|throughput|bottleneck)\b.*\b(?:because|since|critical)\b",
+            re.I,
+        ),
         re.compile(r"\b(?:JIT|numba|numpy|vectori[sz]ed)\b.*\b(?:hot|loop|path|critical)\b", re.I),
     ],
 }
@@ -932,7 +935,11 @@ def _score_claim(sentence: str, facet: str) -> int:
             score += 2  # "**Rationale:**" pattern from research docs
         if re.search(r"\b(?:decompos|modular|separation of concerns|drop[- ]?in)\b", s, re.I):
             score += 1
-        if re.search(r"\b(?:O\(n|quadratic|exponential|vectori[sz]|batch|performance|latency|throughput)\b", s, re.I):
+        if re.search(
+            r"\b(?:O\(n|quadratic|exponential|vectori[sz]|batch|performance|latency|throughput)\b",
+            s,
+            re.I,
+        ):
             score += 1  # Performance-related architectural claim
     elif facet == "anti_patterns":
         if re.search(r"\b(?:will|would|can|could)\s+(?:ruin|break|destroy|fail)\b", s, re.I):

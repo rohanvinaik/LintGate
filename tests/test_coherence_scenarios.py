@@ -148,7 +148,12 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "blocking",
                 "findings": [
-                    {"severity": "blocking", "kind": "F821", "message": "undefined name 'foo'", "file": "/src/a.py"},
+                    {
+                        "severity": "blocking",
+                        "kind": "F821",
+                        "message": "undefined name 'foo'",
+                        "file": "/src/a.py",
+                    },
                 ],
             },
             {"name": "tests", "status": "pass"},
@@ -304,7 +309,9 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "name": "deps",
                 "status": "fail",
                 "severity": "warning",
-                "findings": [{"severity": "warning", "file": "/pyproject.toml", "message": "dep issue"}],
+                "findings": [
+                    {"severity": "warning", "file": "/pyproject.toml", "message": "dep issue"}
+                ],
             },
             {"name": "tests", "status": "pass"},
         ],
@@ -387,7 +394,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "informational",
                 "findings": [
-                    {"severity": "informational", "kind": "approach_cycling", "message": "3 approaches tried"},
+                    {
+                        "severity": "informational",
+                        "kind": "approach_cycling",
+                        "message": "3 approaches tried",
+                    },
                 ],
             },
         ],
@@ -436,7 +447,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "informational",
                 "findings": [
-                    {"severity": "informational", "kind": "failure_amnesia", "message": "repeated error"},
+                    {
+                        "severity": "informational",
+                        "kind": "failure_amnesia",
+                        "message": "repeated error",
+                    },
                 ],
             },
             {"name": "tests", "status": "pass"},
@@ -591,8 +606,7 @@ class TestCoherenceGoldenRegression:
             f"to {coherence.loud_channels}"
         )
         assert sorted(coherence.silent_channels) == sorted(expected["silent_channels"]), (
-            f"Golden regression for '{scenario_name}': "
-            f"silent_channels changed"
+            f"Golden regression for '{scenario_name}': silent_channels changed"
         )
 
 
@@ -615,9 +629,7 @@ class TestCoherenceContractInvariants:
 
         failed_names = {r.channel for r in results if r.status == "fail"}
         for ch in coherence.loud_channels:
-            assert ch in failed_names, (
-                f"Loud channel '{ch}' is not in failed results"
-            )
+            assert ch in failed_names, f"Loud channel '{ch}' is not in failed results"
 
     @pytest.mark.parametrize("scenario_name", sorted(SCENARIOS.keys()))
     def test_silent_channels_are_passing(self, scenario_name: str):
@@ -628,9 +640,7 @@ class TestCoherenceContractInvariants:
 
         passed_names = {r.channel for r in results if r.status == "pass"}
         for ch in coherence.silent_channels:
-            assert ch in passed_names, (
-                f"Silent channel '{ch}' is not in passed results"
-            )
+            assert ch in passed_names, f"Silent channel '{ch}' is not in passed results"
 
     @pytest.mark.parametrize("scenario_name", sorted(SCENARIOS.keys()))
     def test_summary_is_nonempty(self, scenario_name: str):
@@ -686,6 +696,5 @@ class TestCoherenceContractInvariants:
             enabled = [r for r in results if r.status != "skip"]
             failures = [r for r in enabled if r.status == "fail"]
             assert len(failures) == 0, (
-                f"stable state but {len(failures)} channels failed: "
-                f"{[r.channel for r in failures]}"
+                f"stable state but {len(failures)} channels failed: {[r.channel for r in failures]}"
             )

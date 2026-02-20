@@ -78,6 +78,33 @@ The 18% supervision overhead displaces waste that accumulates at 3-4x the rate. 
 
 See [docs/design.md](docs/design.md) for calibration data, detailed cost profiles, and scaling analysis.
 
+### Validation: Physician, Heal Thyself
+
+LintGate's strongest evidence comes from auditing its own codebase.
+
+On 2026-02-20, Claude Opus 4.6 was given a single directive: "professionalize this codebase." LintGate's ControlPlane diagnosed its own code as **"systemic"** — multiple structural failures across lint, structure, and tests indicating an architectural problem, not isolated issues. The agent then autonomously executed 6 major module decompositions and 2 complexity reductions across 3 context windows, ~33,700 LOC, with zero human intervention beyond the initial instruction.
+
+Results:
+
+| Metric | Value |
+| --- | --- |
+| Blockers resolved | 18/20 (90%, remaining 2 are false positives) |
+| Regressions introduced | 0 |
+| Tests passing at every step | 1,611 |
+| Creation:Debugging:Verification ratio | **55:0:15** |
+| Total cost | ~$21.28 (~$1.18/blocker) |
+| LintGate-specific overhead | 12% of session tokens |
+
+The number that matters is the zero. In a normal agentic coding session, the overwhelming majority of tokens go to debugging — the write-fail-rewrite-fail-differently loop where context degrades and errors compound. In this session, the agent wrote correct code on every attempt. There was nothing to debug. The entire debugging phase of software development — the most expensive, most failure-prone phase — simply didn't occur.
+
+This is the empirical signature of catching reasoning failures upstream of code failures. The agent never entered the degraded state where debugging becomes necessary, because the supervision infrastructure prevented the drift that normally makes each successive edit worse than the last.
+
+The recursive structure matters: LintGate diagnosed its own codebase as needing fundamental restructuring, then *was the infrastructure that enabled that restructuring to succeed autonomously*. The tool that tells agents how to maintain discipline was itself maintained by the discipline it provides.
+
+One practical implication: CLI flags like `--dangerously-skip-permissions` exist because fully autonomous agent operation has historically been unsafe — one bad decision in minute three compounds into a destroyed codebase by minute thirty. When the supervision infrastructure prevents that compounding, the "dangerously" becomes a historical artifact. Autonomous operation isn't inherently dangerous. Autonomous operation *without feedback loops that prevent drift* is dangerous.
+
+Full session data: [docs/retrospectives/lintgate-2026-02-20-tier2-audit.md](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md)
+
 ### Research Context
 
 LintGate is alignment research in product form: design the interaction structure so the human-agent system stays coherent under pressure.
