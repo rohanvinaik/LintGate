@@ -68,5 +68,5 @@ def test_integrate_preserves_literal_backticks_in_cognitive_context(tmp_path: Pa
     context = (repo / ".codex" / "context.md").read_text()
     assert "`build_theory_pack`" in context
     assert "`controlplane_run`" in context
-    assert "`behavior_precheck`" in context
+    assert "`constraint_check`" in context
     assert "AGENTS.md (3 tools by cognitive mode)" in context

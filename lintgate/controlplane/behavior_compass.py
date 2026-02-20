@@ -2,7 +2,7 @@
 
 Tracks constraints discovered through tool-use patterns, maintains
 confidence-scored hypotheses, and computes coverage metrics for the
-behavior_precheck tool.
+constraint_check tool (formerly behavior_precheck).
 
 Design principles (from Grail hidden compass):
 - Hypotheses are live experiments, not static facts
@@ -31,7 +31,7 @@ class BehaviorHypothesis:
     """A live constraint hypothesis with confidence tracking.
 
     Auto-generated from command failures at low confidence (0.3),
-    promoted by evidence or agent declaration via precheck.
+    promoted by evidence or agent declaration via constraint_check.
     """
 
     id: str  # 8-char hash
@@ -151,7 +151,7 @@ class PredictionExpectation:
 
 @dataclass
 class Prediction:
-    """A falsifiable prediction registered via behavior_precheck.
+    """A falsifiable prediction registered via prediction_register (formerly behavior_precheck).
 
     Tracks what the agent expected to happen and whether it was confirmed
     or falsified by the actual outcome. Only applicable to execute/Bash flows.
@@ -253,7 +253,7 @@ class BehaviorCompass:
     # ── v2: intent bias layer ──
     intent_history: list[str] = field(default_factory=list)  # Last 30 intents (rolling)
     hypothesis_version: int = 0  # Monotonic; +1 on any hyp mutation
-    precheck_count_session: int = 0  # Precheck invocations this session
+    constraint_check_count_session: int = 0  # constraint_check invocations this session
     event_counter: int = 0  # Monotonic per-event for cooldowns
     last_fired: dict[str, int] = field(default_factory=dict)  # signal → event_counter at last fire
     signal_fire_counts: dict[str, int] = field(
@@ -264,8 +264,8 @@ class BehaviorCompass:
     pending_nudge_signals: list[str] = field(
         default_factory=list
     )  # Signals with active nudges awaiting outcome
-    pending_nudge_precheck_count: int = (
-        0  # precheck_count snapshot when pending_nudge_signals was set
+    pending_nudge_constraint_check_count: int = (
+        0  # constraint_check_count snapshot when pending_nudge_signals was set
     )
     nudge_outcomes: dict[str, str] = field(
         default_factory=dict
@@ -286,13 +286,13 @@ class BehaviorCompass:
             "error_memory": self.error_memory,
             "intent_history": self.intent_history,
             "hypothesis_version": self.hypothesis_version,
-            "precheck_count_session": self.precheck_count_session,
+            "constraint_check_count_session": self.constraint_check_count_session,
             "event_counter": self.event_counter,
             "last_fired": self.last_fired,
             "signal_fire_counts": self.signal_fire_counts,
             "early_nudge_emitted": self.early_nudge_emitted,
             "pending_nudge_signals": self.pending_nudge_signals,
-            "pending_nudge_precheck_count": self.pending_nudge_precheck_count,
+            "pending_nudge_constraint_check_count": self.pending_nudge_constraint_check_count,
             "nudge_outcomes": self.nudge_outcomes,
             "pending_predictions": [p.to_dict() for p in self.pending_predictions],
             "prediction_log": self.prediction_log,
@@ -311,13 +311,19 @@ class BehaviorCompass:
             error_memory=data.get("error_memory", {}),
             intent_history=data.get("intent_history", []),
             hypothesis_version=data.get("hypothesis_version", 0),
-            precheck_count_session=data.get("precheck_count_session", 0),
+            constraint_check_count_session=data.get(
+                "constraint_check_count_session",
+                data.get("precheck_count_session", 0),  # v1 compat
+            ),
             event_counter=data.get("event_counter", 0),
             last_fired=data.get("last_fired", {}),
             signal_fire_counts=data.get("signal_fire_counts", {}),
             early_nudge_emitted=data.get("early_nudge_emitted", False),
             pending_nudge_signals=data.get("pending_nudge_signals", []),
-            pending_nudge_precheck_count=data.get("pending_nudge_precheck_count", 0),
+            pending_nudge_constraint_check_count=data.get(
+                "pending_nudge_constraint_check_count",
+                data.get("pending_nudge_precheck_count", 0),  # v1 compat
+            ),
             nudge_outcomes=data.get("nudge_outcomes", {}),
             pending_predictions=[
                 Prediction.from_dict(p) for p in data.get("pending_predictions", [])
@@ -1374,7 +1380,7 @@ def add_declared_hypothesis(
         id=hyp_id,
         claim=claim,
         confidence=0.5,
-        evidence_for=["Declared via behavior_precheck"],
+        evidence_for=["Declared via constraint_check"],
         created_at=now,
         last_tested=now,
         last_decay=now,

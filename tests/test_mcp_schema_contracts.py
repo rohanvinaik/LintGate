@@ -227,7 +227,7 @@ class TestBehaviorMcpContracts:
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = load_behavior_compass(session)
 
-        assert compass.precheck_count_session == 1
+        assert compass.constraint_check_count_session == 1
 
     def test_controlplane_run_persists_behavior_delta(self, tmp_path: Path) -> None:
         from lintgate.controlplane.behavior_compass import ApproachAttempt, new_compass

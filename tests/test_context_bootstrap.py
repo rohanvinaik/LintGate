@@ -253,7 +253,7 @@ class TestBootstrapModelProfileIntegration:
                 "Do not try a 4th approach without enumerating constraints."
             ],
             custom_dispositions=[
-                "MUST run behavior_precheck before 3rd approach."
+                "MUST run constraint_check before 3rd approach."
             ],
         )
 

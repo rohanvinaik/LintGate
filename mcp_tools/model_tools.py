@@ -42,6 +42,7 @@ def register(mcp, helpers):
                         "model_key": key,
                         "status": status,
                         "confidence": profile.confidence,
+                        "probe_version": profile.probe_version,
                         "probe_runs": profile.probe_runs,
                         "telemetry_samples": profile.telemetry_samples,
                         "signal_count": len(profile.signal_risk),
@@ -146,19 +147,23 @@ def register(mcp, helpers):
     ) -> str:
         """Start a model calibration probe.
 
-        Returns 5 multiple-choice questions that reveal the model's behavioral
-        tendencies (approach cycling, verification habits, etc.). Answer all
-        questions and submit via model_profile_probe_submit.
+        Returns 5 behavioral micro-tasks that reveal the model's actual
+        coding tendencies (approach cycling, verification habits, etc.).
+        Complete each task and submit responses via model_profile_probe_submit.
+
+        Each task presents a small coding scenario. Respond with both a
+        text description of your approach AND structured trace fields
+        (tool_calls, actions, verify_points) for best calibration accuracy.
 
         Args:
             path: Project root path.
             model_id: Model identifier (e.g., "claude-opus-4", "gpt-4o").
-            probe_set: Probe question set. Currently only "quick" (5 questions).
+            probe_set: Probe task set. Currently only "quick" (5 tasks).
         """
         from lintgate.controlplane.model_probe import (
             PROBE_VERSION,
             SUPPORTED_PROBE_SETS,
-            get_probe_questions,
+            get_probe_tasks,
         )
         from lintgate.controlplane.model_profiles import (
             resolve_model_key,
@@ -176,7 +181,7 @@ def register(mcp, helpers):
             )
 
         try:
-            questions = get_probe_questions(probe_set)
+            tasks = get_probe_tasks(probe_set)
         except ValueError as e:
             return helpers["_json_dumps"](
                 {
@@ -196,6 +201,7 @@ def register(mcp, helpers):
 
             existing_info = {
                 "confidence": existing.confidence,
+                "probe_version": existing.probe_version,
                 "probe_runs": existing.probe_runs,
                 "age_days": round((_time.time() - existing.updated_at) / 86400, 1),
                 "status": "usable"
@@ -208,19 +214,46 @@ def register(mcp, helpers):
                 "model_key": canonical,
                 "probe_version": f"v{PROBE_VERSION}",
                 "probe_set": probe_set,
-                "question_count": len(questions),
-                "questions": questions,
-                "answer_schema": {
-                    "format": {"question_id": "choice_letter"},
-                    "example": {questions[0]["id"]: "B"},
-                    "minimum_answers": 3,
+                "task_count": len(tasks),
+                "tasks": tasks,
+                "response_schema": {
+                    "format": {
+                        "task_id": {
+                            "text": "str (required): Describe your approach",
+                            "tool_calls": "list[str] (optional): Ordered tool names",
+                            "actions": "list[str] (optional): Ordered action descriptions",
+                            "retry_count": "int (optional): Times same command retried",
+                            "verify_points": "list[int] (optional): After which steps you verify",
+                            "constraint_refs": "list[str] (optional): Errors/constraints referenced",
+                        },
+                    },
+                    "example": {
+                        tasks[0]["id"]: {
+                            "text": "I would first read the source file to understand the code...",
+                            "tool_calls": ["Read", "Read", "Edit", "Bash"],
+                            "actions": [
+                                "Read utils.py to understand function",
+                                "Read test output carefully",
+                                "Fix the shadowed variable on line 5",
+                                "Run pytest to verify",
+                            ],
+                            "verify_points": [3],
+                            "constraint_refs": ["variable shadowing in loop"],
+                        },
+                    },
+                    "minimum_tasks": 3,
+                    "note": (
+                        "Structured trace fields (tool_calls, actions, verify_points) "
+                        "significantly improve calibration accuracy. Text-only responses "
+                        "are accepted but produce lower-confidence profiles."
+                    ),
                 },
                 "existing_profile": existing_info,
                 "eta": "60-120 seconds",
                 "next_actions": [
-                    "Answer each question with a letter (A-D), then call "
+                    "Complete each task, then call "
                     f"model_profile_probe_submit(model_id='{model_id}', "
-                    "answers={{...}})",
+                    "answers={{task_id: {{text: '...', tool_calls: [...], ...}}}})",
                 ],
             }
         )
@@ -230,7 +263,7 @@ def register(mcp, helpers):
         path: str,
         model_id: str,
         answers: dict[str, str] | None = None,
-        probe_version: str = "v1",
+        probe_version: str = "v2",
     ) -> str:
         """Submit answers to a model calibration probe.
 
@@ -241,15 +274,15 @@ def register(mcp, helpers):
         Args:
             path: Project root path.
             model_id: Model identifier (e.g., "claude-opus-4").
-            answers: Question responses as {question_id: choice_letter}.
+            answers: Task responses as {task_id: response_dict}.
                 Minimum 3 answers required. Example:
-                {"q1_failure_response": "B", "q2_verification_habits": "A"}
-            probe_version: Probe version string (default "v1").
+                {"t1_error_reading": {"text": "I would first read...", "tool_calls": ["Read", "Edit"]}}
+            probe_version: Probe version string (default "v2").
         """
         from lintgate.controlplane.model_probe import (
+            PROBE_TASKS,
             PROBE_VERSION,
             build_profile_from_probe,
-            get_probe_questions,
         )
         from lintgate.controlplane.model_profiles import (
             get_profile,
@@ -259,12 +292,26 @@ def register(mcp, helpers):
 
         # Validate probe version
         expected_version = f"v{PROBE_VERSION}"
+        if probe_version == "v1":
+            return helpers["_json_dumps"](
+                {
+                    "error": "Probe v1 is no longer supported.",
+                    "current_version": expected_version,
+                    "hint": (
+                        "Run model_profile_probe_start to get v2 micro-task probes. "
+                        "v2 uses behavioral micro-tasks instead of multiple-choice questions."
+                    ),
+                    "next_actions": [
+                        f"model_profile_probe_start(model_id='{model_id}') — get v2 tasks",
+                    ],
+                }
+            )
         if probe_version != expected_version:
             return helpers["_json_dumps"](
                 {
                     "error": f"Unknown probe version: {probe_version!r}",
                     "expected": expected_version,
-                    "hint": "Run model_profile_probe_start to get current questions.",
+                    "hint": "Run model_profile_probe_start to get current tasks.",
                 }
             )
 
@@ -282,33 +329,44 @@ def register(mcp, helpers):
             return helpers["_json_dumps"](
                 {
                     "error": "No answers provided.",
-                    "hint": "Provide answers as {question_id: choice_letter}.",
+                    "hint": "Provide answers as {task_id: {text: '...', tool_calls: [...], ...}}.",
                 }
             )
 
-        valid_ids = {q["id"] for q in get_probe_questions()}
-        invalid_ids = set(answers.keys()) - valid_ids
+        # Normalize answers: if value is a string, wrap in {text: value}
+        # This handles v1-style answers and bare-text responses gracefully
+        normalized_answers: dict = {}
+        for task_id, answer in answers.items():
+            if isinstance(answer, str):
+                normalized_answers[task_id] = {"text": answer}
+            elif isinstance(answer, dict):
+                normalized_answers[task_id] = answer
+            else:
+                normalized_answers[task_id] = {"text": str(answer)}
+
+        valid_ids = {t.id for t in PROBE_TASKS}
+        invalid_ids = set(normalized_answers.keys()) - valid_ids
         if invalid_ids:
             return helpers["_json_dumps"](
                 {
-                    "error": f"Unknown question IDs: {sorted(invalid_ids)}",
+                    "error": f"Unknown task IDs: {sorted(invalid_ids)}",
                     "valid_ids": sorted(valid_ids),
                 }
             )
 
-        if len(answers) < 3:
+        if len(normalized_answers) < 3:
             return helpers["_json_dumps"](
                 {
                     "error": (
-                        f"Minimum 3 answers required, got {len(answers)}. "
-                        "Answer more questions for a usable profile."
+                        f"Minimum 3 task responses required, got {len(normalized_answers)}. "
+                        "Complete more tasks for a usable profile."
                     ),
                 }
             )
 
         # Score and build profile
         try:
-            profile = build_profile_from_probe(model_id, answers)
+            profile = build_profile_from_probe(model_id, normalized_answers)
         except ValueError as e:
             return helpers["_json_dumps"]({"error": str(e)})
 
@@ -340,7 +398,7 @@ def register(mcp, helpers):
             )
         else:
             next_actions.append(
-                "Answer more questions to increase confidence above 0.55 threshold."
+                "Complete more tasks to increase confidence above 0.55 threshold."
             )
         next_actions.append(
             f"model_profile_status(model_id='{model_id}') — view full profile details"
@@ -351,13 +409,16 @@ def register(mcp, helpers):
                 "model_key": canonical,
                 "status": status,
                 "confidence": profile.confidence,
+                "probe_version": profile.probe_version,
                 "probe_runs": profile.probe_runs,
                 "signal_risk": profile.signal_risk,
                 "custom_anti_patterns": profile.custom_anti_patterns,
                 "custom_dispositions": profile.custom_dispositions,
-                "answers_submitted": len(answers),
+                "tasks_scored": len(normalized_answers),
                 "message": (
-                    f"Profile created for {canonical} with confidence {profile.confidence:.2f}."
+                    f"Profile created for {canonical} with confidence {profile.confidence:.2f}. "
+                    f"Probe v{profile.probe_version} uses behavioral micro-tasks "
+                    f"(weak prior, decays fast as real telemetry arrives)."
                 ),
                 "next_actions": next_actions,
             }

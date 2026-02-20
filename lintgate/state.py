@@ -186,7 +186,10 @@ def log_feature_usage(
     """Log usage of an advanced subsystem feature for pruning decisions.
 
     Features tracked:
-    - behavior_precheck: Proactive constraint check
+    - constraint_check: Proactive constraint check
+    - hygiene_check: Command-class hygiene preconditions
+    - prediction_register: Prediction registration
+    - behavior_precheck_deprecated: Legacy wrapper (deprecated)
     - prediction_tracking: Prediction registration/checking
     - living_context: Context patch generation/application
     - model_calibration: Model profile probe/submit

@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 32 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 35 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 32 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
+LintGate provides 35 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
 
 ### Orient — understand before acting
 
@@ -88,7 +88,9 @@ LintGate provides 32 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 
 | Tool | Purpose |
 |------|---------|
-| `behavior_precheck` | State your constraints + prediction before Bash commands. Supports structured predictions: `prediction_type` (exit_code/error_signature/stdout_contains) + `prediction_value`. Includes hygiene prechecks: venv active, lockfile fresh, secrets in diff, version pins, clean working tree. |
+| `hygiene_check` | Command-class precondition checks before risky commands. Catches missing venv, stale lockfiles, unpinned versions, staged secrets. |
+| `constraint_check` | State your known constraints before acting. Returns coverage gaps, uncertainty zones, similar past failures, and constraint ledger. |
+| `prediction_register` | Register a falsifiable prediction before a command. Supports `prediction_type` (exit_code/error_signature/stdout_contains) + `prediction_value`. Predictions are checked automatically on next tool event. |
 | `controlplane_agent_feedback` | Record agreement/disagreement with findings. Accept/reject constraint proposals. |
 | `controlplane_report_repair` | Report outcome of a repair action (applied/ignored/rejected). |
 
@@ -125,22 +127,22 @@ LintGate provides 32 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | Tool | Purpose |
 |------|---------|
 | `model_profile_status` | Show calibration profile status for a model (or all models). Returns signal risk, confidence, staleness. |
-| `model_profile_probe_start` | Start a 5-question calibration probe. Returns questions + answer schema. |
-| `model_profile_probe_submit` | Submit probe answers. Scores deterministically into signal_risk vector, derives anti-patterns + guardrails, persists profile. |
+| `model_profile_probe_start` | Start a 5-task behavioral calibration probe. Returns micro-tasks + structured response schema. |
+| `model_profile_probe_submit` | Submit probe responses. Scores action traces (tool_calls, actions, verify_points) into signal_risk vector, derives anti-patterns + guardrails, persists profile. |
 
-**Calibration workflow**: `model_profile_probe_start` → answer 5 questions → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')`. Profiles are stored globally (`~/.lintgate/model_profiles.json`), keyed by `provider:model` canonical form, and applied only when the model key exactly matches. Passive telemetry refinement (EMA alpha=0.15) nudges the profile toward observed behavior across sessions.
+**Calibration workflow**: `model_profile_probe_start` → complete 5 micro-tasks with structured traces → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')`. Probe v2 uses behavioral micro-tasks that measure revealed policy (what a model does), not stated policy (what it says). Profiles are stored globally (`~/.lintgate/model_profiles.json`), keyed by `provider:model` canonical form. Weak prior capped at 0.60 confidence — decays fast as real telemetry arrives via EMA refinement (alpha=0.15).
 
 ## Professional Discipline Signals
 
-LintGate models the reflexive checks experienced engineers perform before risky operations. These run automatically as part of `behavior_precheck` — no separate tool calls needed.
+LintGate models the reflexive checks experienced engineers perform before risky operations.
 
-**Command-class hygiene**: When you plan to run `pip install`, `git commit`, `git push`, or `uv publish`, the hygiene precheck classifies the command and runs domain-specific precondition checks:
+**Command-class hygiene** (`hygiene_check`): When you plan to run `pip install`, `git commit`, `git push`, or `uv publish`, `hygiene_check` classifies the command and runs domain-specific precondition checks:
 - `pip_install` → Is a venv active? Does a lockfile exist? Are packages version-pinned?
 - `git_commit` / `git_push` → Are there secrets in the staged diff? Is the lockfile fresh?
 - `env_edit` → Is `.env` covered by `.gitignore`?
 - `publish_build` → Is the working tree clean? Is the lockfile fresh?
 
-**Secrets scanning**: The git channel scans staged diffs for high-confidence secret patterns (AWS keys, private keys, GitHub/GitLab tokens, connection strings, generic API keys). Findings never include the actual secret value — only the pattern name, file, and line range. This runs automatically in `controlplane_run` and in `behavior_precheck` before git commits.
+**Secrets scanning**: The git channel scans staged diffs for high-confidence secret patterns (AWS keys, private keys, GitHub/GitLab tokens, connection strings, generic API keys). Findings never include the actual secret value — only the pattern name, file, and line range. This runs automatically in `controlplane_run` (git channel), and is available as command preflight via `hygiene_check` (or legacy `behavior_precheck` wrapper).
 
 **Supply-chain integrity**: The `pip_audit` linter (Tier 2) scans dependencies for known vulnerabilities using the pip-audit database. Findings include the vulnerable package, installed version, CVE/GHSA ID, and fix version.
 
@@ -158,7 +160,7 @@ All findings are informational unless corroborated by other channels. The struct
 
 ## Feedback Loops
 
-**Prediction loop**: `behavior_precheck` (register prediction) → Bash command → `_check_predictions` (automatic on next tool event) → accuracy computed → modulates signal confidence after 5+ checked predictions. Accuracy > 70% softens signals; accuracy < 30% amplifies them.
+**Prediction loop**: `prediction_register` (register prediction) → Bash command → `_check_predictions` (automatic on next tool event) → accuracy computed → modulates signal confidence after 5+ checked predictions. Accuracy > 70% softens signals; accuracy < 30% amplifies them.
 
 **Constraint loop**: Recurring pattern detected → `constraint_proposer` generates rule → `controlplane_agent_feedback` (accept/reject) → accepted constraints flow to `generate_context_patch` → `context_patch_review` → `context_patch_apply`.
 
@@ -188,4 +190,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Add config option** → update YAML examples in docs/design.md and README.md.
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 32). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 35). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

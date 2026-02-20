@@ -431,7 +431,7 @@ def _recommended_commands(root: Path) -> list[str]:
 
 _GUARDRAIL_MAP: dict[str, str] = {
     "approach_cycling": (
-        "- MUST run `behavior_precheck` before attempting a 3rd approach"
+        "- MUST run `constraint_check` before attempting a 3rd approach"
         " (model profile indicates high approach-cycling risk)."
     ),
     "verification_debt": (
@@ -443,7 +443,7 @@ _GUARDRAIL_MAP: dict[str, str] = {
         " (model profile indicates premature-action risk)."
     ),
     "serial_discovery": (
-        "- MUST use `behavior_precheck` proactively at session start"
+        "- MUST use `constraint_check` proactively at session start"
         " (model profile indicates reactive constraint discovery)."
     ),
     "failure_amnesia": (
@@ -553,7 +553,7 @@ def _render_claude_md(
         " profile has core_theory + problem_solving + alignment facets with claims,"
         " at least one enforceable rule exists, and no missing required facets."
         " If the gate fires an advisory, run `bootstrap_context_files` before continuing.",
-        "- **What is my prediction accuracy?** If `behavior_precheck` shows accuracy"
+        "- **What is my prediction accuracy?** If `constraint_check` shows accuracy"
         " below 50% after 5+ predictions, your mental model of the project's"
         " constraints is wrong. Stop and re-orient.",
         "- **What is the coherence state?** If `controlplane_run` shows cross-channel"
@@ -568,7 +568,7 @@ def _render_claude_md(
         " doomed approach.",
         "",
         "**When acting** — register predictions. Before any Bash command, call"
-        " `behavior_precheck` with a structured prediction (`prediction_type`:"
+        " `constraint_check` with a structured prediction (`prediction_type`:"
         " exit_code/error_signature/stdout_contains, `prediction_value`: what you"
         " expect). The system checks your prediction on the next tool event. This"
         " is not bureaucracy — it builds the accuracy signal that modulates"
@@ -576,7 +576,7 @@ def _render_claude_md(
         "",
         "**When stuck** — DO NOT try variant #4. If you have cycled through 3"
         " approaches, your problem is not execution — it is understanding. Run"
-        " `behavior_precheck` to see your constraint coverage. Read the theory"
+        " `constraint_check` to see your constraint coverage. Read the theory"
         " claims attached to behavioral findings. The answer is almost always in"
         " the constraints you have not yet verified, not in the approaches you"
         " have not yet tried.",
@@ -615,7 +615,7 @@ def _render_claude_md(
         "",
         "- DO NOT disable lint channels globally to hide regressions.",
         "- DO NOT auto-apply generated repairs without explicit acceptance.",
-        "- DO NOT try a 4th approach without running `behavior_precheck` first.",
+        "- DO NOT try a 4th approach without running `constraint_check` first.",
         "- DO NOT ignore theory codas on behavioral findings — they exist to"
         " connect observations to project values.",
         "- MUST keep hook and MCP outputs machine-readable and stable for"
@@ -879,7 +879,7 @@ project's theory profile and appended as a coda to the finding message.
 ### prediction_tracking
 
 Before Bash commands, the agent registers a falsifiable prediction via \
-`behavior_precheck` with structured expected outcomes.
+`constraint_check` with structured expected outcomes.
 
 - **Implementation**: `lintgate/controlplane/behavior_compass.py` — \
 `Prediction`, `PredictionExpectation`, `_check_predictions()`

@@ -874,21 +874,21 @@ class TestEventCounter:
         assert compass.event_counter == 2
 
 
-# ── v2: precheck_count_session ──────────────────────────────────────────
+# ── v2: constraint_check_count_session ──────────────────────────────────────────
 
 
 class TestPrecheckCountSession:
     def test_not_incremented_by_declared_hypothesis_add(self):
         compass = new_compass()
         add_declared_hypothesis(compass, "test constraint", "test:cmd", now=100.0)
-        assert compass.precheck_count_session == 0
+        assert compass.constraint_check_count_session == 0
 
     def test_not_incremented_by_strengthen_existing(self):
         compass = new_compass()
         add_declared_hypothesis(compass, "test constraint", "test:cmd", now=100.0)
-        assert compass.precheck_count_session == 0
+        assert compass.constraint_check_count_session == 0
         add_declared_hypothesis(compass, "test constraint", "test:cmd", now=101.0)
-        assert compass.precheck_count_session == 0
+        assert compass.constraint_check_count_session == 0
 
     def test_not_incremented_by_failure(self):
         compass = new_compass()
@@ -899,7 +899,7 @@ class TestPrecheckCountSession:
             "error: something failed\nexit_code: 1",
             now=100.0,
         )
-        assert compass.precheck_count_session == 0
+        assert compass.constraint_check_count_session == 0
 
 
 # ── v2: serialization of new fields ─────────────────────────────────────
@@ -910,7 +910,7 @@ class TestSerializationV2:
         compass = new_compass()
         compass.intent_history = ["inspect", "modify", "execute"]
         compass.hypothesis_version = 7
-        compass.precheck_count_session = 3
+        compass.constraint_check_count_session = 3
         compass.event_counter = 42
         compass.last_fired = {"approach_cycling": 10}
         compass.signal_fire_counts = {"approach_cycling": 2}
@@ -924,7 +924,7 @@ class TestSerializationV2:
 
         assert restored.intent_history == ["inspect", "modify", "execute"]
         assert restored.hypothesis_version == 7
-        assert restored.precheck_count_session == 3
+        assert restored.constraint_check_count_session == 3
         assert restored.event_counter == 42
         assert restored.last_fired == {"approach_cycling": 10}
         assert restored.signal_fire_counts == {"approach_cycling": 2}
@@ -944,7 +944,7 @@ class TestSerializationV2:
         assert compass.intent_history == []
         assert compass.error_memory == {}
         assert compass.hypothesis_version == 0
-        assert compass.precheck_count_session == 0
+        assert compass.constraint_check_count_session == 0
         assert compass.event_counter == 0
         assert compass.last_fired == {}
         assert compass.signal_fire_counts == {}

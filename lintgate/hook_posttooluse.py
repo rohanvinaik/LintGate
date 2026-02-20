@@ -481,9 +481,9 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                         _bc.pending_nudge_signals = _delta.get(
                             "pending_nudge_signals", _bc.pending_nudge_signals
                         )
-                        _bc.pending_nudge_precheck_count = _delta.get(
-                            "pending_nudge_precheck_count",
-                            _bc.pending_nudge_precheck_count,
+                        _bc.pending_nudge_constraint_check_count = _delta.get(
+                            "pending_nudge_constraint_check_count",
+                            _bc.pending_nudge_constraint_check_count,
                         )
                         _bc.nudge_outcomes = _delta.get("nudge_outcomes", _bc.nudge_outcomes)
                         _sbc(session, _bc)

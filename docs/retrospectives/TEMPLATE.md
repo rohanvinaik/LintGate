@@ -211,9 +211,9 @@ lint_project → lint_get_details → [fixes] → lint_project → lint_fix → 
 ### Prediction Accuracy
 
 <!--
-If behavior_precheck was used, report prediction accuracy trajectory.
+If constraint_check was used, report prediction accuracy trajectory.
 This makes it possible to compare how quickly different agents calibrate
-to a project's constraints. Skip if behavior_precheck was not used.
+to a project's constraints. Skip if constraint_check was not used.
 -->
 
 | Metric | Value |
@@ -356,7 +356,7 @@ so the LintGate-specific overhead is visible, with supervision broken out by cog
 | File reads | [~N] | — | [N files, N lines] |
 | LintGate — Orient tools | [~N] | [~N] | [build_theory_pack, controlplane_status] |
 | LintGate — Act tools | [~N] | [~N] | [lint_files, lint_project, controlplane_run] |
-| LintGate — Reflect tools | [~N] | [~N] | [behavior_precheck, agent_feedback] |
+| LintGate — Reflect tools | [~N] | [~N] | [constraint_check, agent_feedback] |
 | LintGate — Evolve tools | [~N] | [~N] | [bootstrap_context_files, extract_theory] |
 | Edit tool calls | [~N] | [~N] | [N edits] |
 | Reasoning overhead | [~N] | [~N] | |

@@ -14,7 +14,8 @@ Domain modules:
 - controlplane_tools: controlplane_run, controlplane_get_details, controlplane_status,
                       controlplane_test_skeleton, controlplane_report_repair,
                       controlplane_agent_feedback, controlplane_apply_repairs
-- behavior_tools: behavior_precheck, global_memory_status, global_memory_reset
+- behavior_tools: hygiene_check, constraint_check, prediction_register,
+                  behavior_precheck (deprecated), global_memory_status, global_memory_reset
 - model_tools: model_profile_status, model_profile_probe_start, model_profile_probe_submit
 - telemetry_tools: telemetry_summary
 """

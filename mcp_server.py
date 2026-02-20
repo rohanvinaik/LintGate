@@ -74,7 +74,7 @@ _MCP_INSTRUCTIONS = (
     "First session: controlplane_run(path) → controlplane_get_details(run_id) → "
     "lint_fix → bootstrap_context_files(path, write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "32 tools total — use getting_started or lint_status to explore."
+    "35 tools total — use getting_started or lint_status to explore."
 )
 
 
@@ -186,7 +186,7 @@ def _build_onboarding_status(project_root: str) -> dict[str, Any]:
     """Build machine-readable + human-readable onboarding status.
 
     Reused by getting_started, controlplane_run, controlplane_status,
-    lint_status, and behavior_precheck to avoid drift across tools.
+    lint_status, and constraint_check to avoid drift across tools.
 
     Four config states are distinguished:
     - no_config: No .claude/lintgate.yaml found

@@ -94,7 +94,7 @@ class TestMCPToolCount:
         assert 'grep -Rho "@mcp.tool()" "$LINTGATE_DIR/mcp_server.py" "$LINTGATE_DIR/mcp_tools"' in integrate
         assert "$TOOL_COUNT tools by cognitive mode" in integrate
 
-    def test_mcp_tool_count_is_32(self):
-        """Sanity check: we currently have 32 MCP tools."""
+    def test_mcp_tool_count_is_35(self):
+        """Sanity check: we currently have 35 MCP tools."""
         actual = _count_mcp_tools()
-        assert actual == 32, f"Expected 32 MCP tools, got {actual}"
+        assert actual == 35, f"Expected 35 MCP tools, got {actual}"

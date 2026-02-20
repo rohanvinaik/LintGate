@@ -76,7 +76,7 @@ _PATTERN_CONSTRAINT_MAP: dict[str, dict[str, Any]] = {
 _BEHAVIOR_CONSTRAINT_MAP: dict[str, dict[str, Any]] = {
     "approach_cycling": {
         "rule_type": "theory_note",
-        "template": "Enumerate constraints before attempting new approach. Use behavior_precheck to state known constraints and identify gaps.",
+        "template": "Enumerate constraints before attempting new approach. Use constraint_check to state known constraints and identify gaps.",
         "rationale_template": "approach_cycling detected in {count} of last {window} mesh runs",
         "base_confidence": 0.6,
     },
@@ -106,7 +106,7 @@ _BEHAVIOR_CONSTRAINT_MAP: dict[str, dict[str, Any]] = {
     },
     "stale_model": {
         "rule_type": "theory_note",
-        "template": "Update constraint model between approach changes. Use behavior_precheck before switching strategies.",
+        "template": "Update constraint model between approach changes. Use constraint_check before switching strategies.",
         "rationale_template": "stale_model detected in {count} of last {window} mesh runs",
         "base_confidence": 0.5,
     },

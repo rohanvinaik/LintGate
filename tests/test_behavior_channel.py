@@ -184,7 +184,7 @@ class TestApproachCycling:
         result = ch.execute(_make_event(compass), _default_config())
 
         next_actions = result.metrics.get("next_actions", [])
-        assert any(a["tool"] == "behavior_precheck" for a in next_actions)
+        assert any(a["tool"] == "constraint_check" for a in next_actions)
 
 
 # ── failure_amnesia ──────────────────────────────────────────────────
@@ -352,8 +352,8 @@ class TestSerialDiscovery:
 
     def test_no_fire_with_precheck_declared(self):
         compass = new_compass()
-        # v2: set precheck_count_session so stage 1 is suppressed
-        compass.precheck_count_session = 1
+        # v2: set constraint_check_count_session so stage 1 is suppressed
+        compass.constraint_check_count_session = 1
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h0", claim="fail", confidence=0.4, source="command_failure", status="active"
@@ -518,7 +518,7 @@ class TestIntentBiasScorer:
 
     def test_serial_discovery_bias_fires_with_no_precheck(self):
         compass = new_compass()
-        compass.precheck_count_session = 0
+        compass.constraint_check_count_session = 0
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
@@ -531,7 +531,7 @@ class TestIntentBiasScorer:
 
     def test_serial_discovery_no_bias_with_precheck(self):
         compass = new_compass()
-        compass.precheck_count_session = 1
+        compass.constraint_check_count_session = 1
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
@@ -695,7 +695,7 @@ class TestStaleModel:
 class TestSerialDiscoveryTwoStage:
     def test_stage1_fires_on_first_failure_hyp(self):
         compass = new_compass()
-        compass.precheck_count_session = 0
+        compass.constraint_check_count_session = 0
         compass.early_nudge_emitted = False
         compass.hypotheses = [
             BehaviorHypothesis(
@@ -715,7 +715,7 @@ class TestSerialDiscoveryTwoStage:
 
     def test_stage1_suppressed_if_precheck_used(self):
         compass = new_compass()
-        compass.precheck_count_session = 1
+        compass.constraint_check_count_session = 1
         compass.early_nudge_emitted = False
         compass.hypotheses = [
             BehaviorHypothesis(
@@ -733,7 +733,7 @@ class TestSerialDiscoveryTwoStage:
 
     def test_stage1_fires_only_once(self):
         compass = new_compass()
-        compass.precheck_count_session = 0
+        compass.constraint_check_count_session = 0
         compass.early_nudge_emitted = True  # Already emitted
         compass.hypotheses = [
             BehaviorHypothesis(
@@ -751,7 +751,7 @@ class TestSerialDiscoveryTwoStage:
 
     def test_stage2_fires_at_3_failure_hyps(self):
         compass = new_compass()
-        compass.precheck_count_session = 0
+        compass.constraint_check_count_session = 0
         compass.early_nudge_emitted = True  # Stage 1 already fired
         compass.hypotheses = [
             BehaviorHypothesis(
@@ -868,7 +868,7 @@ class TestFailureAmnesiasDualSource:
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": "failed"},
         ]
         compass.intent_history = ["execute"]
-        compass.precheck_count_session = 1  # suppress serial_discovery stage-1 noise
+        compass.constraint_check_count_session = 1  # suppress serial_discovery stage-1 noise
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1",
@@ -898,7 +898,7 @@ class TestFailureAmnesiasDualSource:
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": latest_error},
         ]
         compass.intent_history = ["execute"]
-        compass.precheck_count_session = 1  # suppress serial_discovery stage-1 noise
+        compass.constraint_check_count_session = 1  # suppress serial_discovery stage-1 noise
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1",
@@ -984,7 +984,7 @@ class TestPrecheckNudgeDedup:
         result = ch.execute(_make_event(compass), _default_config())
         next_actions = result.metrics.get("next_actions", [])
         # At most 1 precheck nudge (dedup'd by priority)
-        precheck_nudges = [a for a in next_actions if a.get("tool") == "behavior_precheck"]
+        precheck_nudges = [a for a in next_actions if a.get("tool") == "constraint_check"]
         assert len(precheck_nudges) <= 1
 
     def test_higher_priority_signal_wins(self):
@@ -1010,7 +1010,7 @@ class TestPrecheckNudgeDedup:
 
         result = ch.execute(_make_event(compass), _default_config())
         next_actions = result.metrics.get("next_actions", [])
-        precheck_nudges = [a for a in next_actions if a.get("tool") == "behavior_precheck"]
+        precheck_nudges = [a for a in next_actions if a.get("tool") == "constraint_check"]
         if precheck_nudges:
             # approach_cycling (priority 1) should win over consecutive_failures (priority 4)
             assert "approach_cycling" in precheck_nudges[0].get("reason", "")
@@ -1132,7 +1132,7 @@ class TestEvidenceTrace:
 
         delta = result.metrics.get("behavior_compass_delta", {})
         assert "pending_nudge_signals" in delta
-        assert "pending_nudge_precheck_count" in delta
+        assert "pending_nudge_constraint_check_count" in delta
         assert "nudge_outcomes" in delta
 
 
@@ -1342,7 +1342,7 @@ class TestNudgeOutcomeTracking:
         """Previously pending nudges are marked 'accepted' when precheck_count > 0."""
         compass = new_compass()
         compass.pending_nudge_signals = ["verification_debt"]
-        compass.precheck_count_session = 1  # Precheck was used
+        compass.constraint_check_count_session = 1  # Precheck was used
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -1355,7 +1355,7 @@ class TestNudgeOutcomeTracking:
         """Previously pending nudges are marked 'ignored' when precheck_count == 0."""
         compass = new_compass()
         compass.pending_nudge_signals = ["approach_cycling"]
-        compass.precheck_count_session = 0  # No precheck
+        compass.constraint_check_count_session = 0  # No precheck
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -1368,8 +1368,8 @@ class TestNudgeOutcomeTracking:
         """Precheck must happen after nudge issuance to count as accepted."""
         compass = new_compass()
         compass.pending_nudge_signals = ["verification_debt"]
-        compass.pending_nudge_precheck_count = 1
-        compass.precheck_count_session = 1  # No new precheck since nudge
+        compass.pending_nudge_constraint_check_count = 1
+        compass.constraint_check_count_session = 1  # No new precheck since nudge
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())

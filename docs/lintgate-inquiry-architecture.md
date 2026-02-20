@@ -11,7 +11,7 @@
 
 LintGate's baseline pipeline is automatic and powerful: it fires on PostToolUse, the agent doesn't choose to use it, and it works. But the actually interesting parts of the system — the behavioral compass, the theory extractor, the precheck, the constraint proposer — all require intentional agent engagement. And LLMs are constitutionally bad at proactive tool invocation. They'll use a tool when prompted, and forget it exists the moment they're thinking hard about something else.
 
-There's also a deeper problem. Even when the agent *does* call the MCP tools, there's no guarantee the interaction is doing genuine work. An agent can fill in a behavior_precheck form in "execution mode" — producing plausible-looking constraint model output with zero actual reflection happening. The structural signature of that interaction is *bureaucratic*, not Socratic. It looks like inquiry; it isn't.
+There's also a deeper problem. Even when the agent *does* call the MCP tools, there's no guarantee the interaction is doing genuine work. An agent can fill in a constraint_check form in "execution mode" — producing plausible-looking constraint model output with zero actual reflection happening. The structural signature of that interaction is *bureaucratic*, not Socratic. It looks like inquiry; it isn't.
 
 The design challenge, then, is not just "how do we get the agent to call the right tools at the right moments?" It's: **how do we structure the hook/MCP interface such that the interactions that occur have the structural properties of genuine inquiry?** That's a different and harder question. The answer to the first question is engineering. The answer to the second is where the phenomenology paper earns its keep.
 
@@ -29,7 +29,7 @@ When a ball is sailing at your face, you don't reason about whether to duck. The
 
 **MCP tools are the high-level fuzzier instruments for generating complex profiles of meaning.** When a hook fires, it should be because the deterministic system has detected a pattern it cannot itself resolve. The MCP tool call is the invitation to the agent to do the work that only the agent can do: reflect on what the pattern means, surface what it knows or doesn't know, generate predictions, update its constraint model.
 
-The critical design implication: **hooks should always produce questions, not instructions.** Not "call behavior_precheck" but "before your next modification, answer: what is your current understanding of why the last three approaches failed, and what would need to be true for approach four to succeed?" The MCP tool call is then the *mechanism* for structuring that answer, not the answer itself. The hook fires the question; the tool provides the frame; the agent does the actual work.
+The critical design implication: **hooks should always produce questions, not instructions.** Not "call constraint_check" but "before your next modification, answer: what is your current understanding of why the last three approaches failed, and what would need to be true for approach four to succeed?" The MCP tool call is then the *mechanism* for structuring that answer, not the answer itself. The hook fires the question; the tool provides the frame; the agent does the actual work.
 
 This distinction matters because it changes the agent's stance from reactive to reflective. And reflective is where meaning-generation lives.
 
@@ -206,8 +206,8 @@ Listed in order of: (leverage × implementation cost⁻¹)
 
 ### Priority 2: Falsifiable Prediction Requirement in MCP Tools (Medium Leverage, Low Cost)
 
-**What**: When `behavior_precheck` is called following a hook, require the agent to state a specific falsifiable prediction about what should happen next. Log the prediction. Check it on the next hook cycle.  
-**Where**: `mcp_server.py` behavior_precheck tool + `controlplane/session_memory.py` prediction storage  
+**What**: When `constraint_check` is called following a hook, require the agent to state a specific falsifiable prediction about what should happen next. Log the prediction. Check it on the next hook cycle.  
+**Where**: `mcp_server.py` constraint_check tool + `controlplane/session_memory.py` prediction storage  
 **Cost**: Low — the hypothesis lifecycle already exists; this extends it to precheck outputs  
 **Effect**: Converts precheck from a compliance form into a genuine epistemic act. Distinguishes agents that are actually updating their models from those that are filling in fields.
 

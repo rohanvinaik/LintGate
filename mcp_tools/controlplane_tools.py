@@ -189,9 +189,9 @@ def register(mcp, helpers):
                     compass.pending_nudge_signals = delta.get(
                         "pending_nudge_signals", compass.pending_nudge_signals
                     )
-                    compass.pending_nudge_precheck_count = delta.get(
-                        "pending_nudge_precheck_count",
-                        compass.pending_nudge_precheck_count,
+                    compass.pending_nudge_constraint_check_count = delta.get(
+                        "pending_nudge_constraint_check_count",
+                        compass.pending_nudge_constraint_check_count,
                     )
                     compass.nudge_outcomes = delta.get("nudge_outcomes", compass.nudge_outcomes)
                     save_behavior_compass(session, compass)

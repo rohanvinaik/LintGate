@@ -83,7 +83,7 @@ $GENERATED_MARKER
 # Quick start (if LintGate MCP tools are available):
 #   1. build_theory_pack  — orient to the project's theory profile
 #   2. controlplane_run   — 6-channel supervision mesh (lint, tests, deps, git, behavior, structure)
-#   3. behavior_precheck  — register predictions before Bash commands
+#   3. constraint_check  — register predictions before Bash commands
 #
 # Full tool reference: AGENTS.md ($TOOL_COUNT tools by cognitive mode)
 # Quick orientation: SKILL.md
@@ -133,7 +133,7 @@ before ignoring a behavioral finding — ask yourself:
 
 - **Do I have theory context?** If not → `build_theory_pack`. The theory profile
   tells you what this project values. Without it you are guessing at alignment.
-- **What is my prediction accuracy?** If `behavior_precheck` shows accuracy below
+- **What is my prediction accuracy?** If `constraint_check` shows accuracy below
   50% after 5+ predictions, your mental model of the project's constraints is wrong.
   Stop and re-orient.
 - **What is the coherence state?** If `controlplane_run` shows cross-channel
@@ -150,19 +150,19 @@ before ignoring a behavioral finding — ask yourself:
 tokens you spend on a doomed approach.
 
 **When acting** — register predictions. Before any Bash command, call
-`behavior_precheck` with a structured prediction. This builds the accuracy
+`constraint_check` with a structured prediction. This builds the accuracy
 signal that modulates behavioral finding confidence. The hygiene precheck
 classifies your command (pip_install, git_commit, env_edit, publish_build) and
 runs domain-specific precondition checks automatically.
 
 **When stuck** — DO NOT try variant #4. If you have cycled through 3 approaches,
-your problem is not execution — it is understanding. Run `behavior_precheck` to
+your problem is not execution — it is understanding. Run `constraint_check` to
 see your constraint coverage.
 
 **When the system speaks** — findings are weather reports, not commands. But if
 you ignore a hard signal and try the same pattern again, the system will escalate.
 
-**When installing packages** — review `behavior_precheck` hygiene output first.
+**When installing packages** — review `constraint_check` hygiene output first.
 If it warns about a missing venv, create one before installing. If it warns
 about unpinned versions, pin them. If it warns about a stale lockfile, refresh
 it after installing.
@@ -180,7 +180,7 @@ those should inform your dependency version choices. Prefer pinned versions.
 
 - DO NOT disable lint channels globally to hide regressions.
 - DO NOT auto-apply generated repairs without explicit acceptance.
-- DO NOT try a 4th approach without running `behavior_precheck` first.
+- DO NOT try a 4th approach without running `constraint_check` first.
 - DO NOT pip install without checking that a venv is active — hygiene precheck catches this.
 - DO NOT commit without reviewing secrets-in-diff warnings — leaked credentials are irrecoverable.
 - MUST keep hook and MCP outputs machine-readable and stable.
@@ -262,7 +262,7 @@ Key rules:
 - Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 - DO NOT disable lint channels globally
 - DO NOT auto-apply repairs without acceptance
-- DO NOT pip install without checking venv is active (behavior_precheck catches this)
+- DO NOT pip install without checking venv is active (constraint_check catches this)
 - DO NOT commit without reviewing secrets-in-diff warnings
 
 controlplane_run provides a 6-channel supervision mesh (lint, tests, deps, git,
@@ -270,7 +270,7 @@ behavior, structure) with cross-channel coherence and a structure snapshot for
 cheap codebase orientation.
 
 If LintGate MCP tools are available, start with:
-1. build_theory_pack → 2. controlplane_run → 3. behavior_precheck
+1. build_theory_pack → 2. controlplane_run → 3. constraint_check
 MDC_EOF
 )"
     printf '%s\n' "${mdc_template//__TOOL_COUNT__/$TOOL_COUNT}" > "$mdc_file"

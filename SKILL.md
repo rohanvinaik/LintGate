@@ -1,12 +1,12 @@
 # LintGate
 
-Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 32 MCP tools for on-demand analysis.
+Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 35 MCP tools for on-demand analysis.
 
 ## First Steps
 
 1. **Orient**: `build_theory_pack` — get the project's theory digest (~500-1500 tokens)
 2. **Check**: `controlplane_run` — 6-channel supervision mesh (lint + tests + deps + git + behavior + structure)
-3. **Reflect**: `behavior_precheck` — state your constraints before acting, register predictions
+3. **Reflect**: `constraint_check` — state your constraints before acting; `prediction_register` — register falsifiable predictions
 
 ## Key Concept
 
@@ -22,7 +22,7 @@ This detects which LLM agents are on the system and generates config files at th
 
 ## Reference
 
-- **AGENTS.md** — tool reference + self-integration for all agents (32 tools by cognitive mode)
+- **AGENTS.md** — tool reference + self-integration for all agents (35 tools by cognitive mode)
 - **`.claude/CLAUDE.md`** — Claude Code cognitive context: epistemic state, dispositions, guardrails, managed sections for living context. This is the deepest integration — behavioral discoveries flow back as patches.
 - `.claude/rules/inquiry.md` — Architecture of Inquiry protocol
 - `docs/design.md` — full architecture and design philosophy

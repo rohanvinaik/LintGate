@@ -22,7 +22,7 @@ A senior engineer would catch all of this — not by being smarter, but by havin
 
 ## What It Does
 
-LintGate operates as a PostToolUse hook (firing after every write, edit, or bash command) and as an MCP server (32 on-demand tools).
+LintGate operates as a PostToolUse hook (firing after every write, edit, or bash command) and as an MCP server (35 on-demand tools).
 
 ### Code Quality Supervision
 
@@ -36,7 +36,7 @@ LintGate operates as a PostToolUse hook (firing after every write, edit, or bash
 
 - **9 detection rules**: approach cycling (3+ failed approaches in 30 min), failure amnesia (same error repeated), brute-force escalation (more approaches than constraints understood), premature action (high bash:read ratio + high failure rate), serial discovery (all constraints discovered reactively), tool repetition, verification debt, stale model, consecutive failures.
 - **Intent bias layer**: classifies every tool use into 6 intent categories (inspect, modify, verify, execute, meta, unknown) and uses the pattern to adjust signal confidence. Deterministic — no LLM calls.
-- **Behavioral compass**: tracks live hypotheses, approach history, coverage metrics, and action timelines across a session. Co-construction via `behavior_precheck` — asks the agent to articulate its constraint model, then computes what's missing.
+- **Behavioral compass**: tracks live hypotheses, approach history, coverage metrics, and action timelines across a session. Co-construction via `constraint_check` — asks the agent to articulate its constraint model, then computes what's missing.
 
 ### Multi-Channel Coherence
 
@@ -53,7 +53,7 @@ LintGate operates as a PostToolUse hook (firing after every write, edit, or bash
 ### Cross-Session Learning
 
 - **Global behavior profiles**: aggregate behavioral patterns across sessions to warm-start new sessions. Alpha decay ensures local data always dominates.
-- **Model calibration**: 5-question deterministic probe profiles a model's behavioral tendencies, producing model-specific guardrails injected into context files.
+- **Model calibration**: 5-task behavioral micro-probe profiles a model's coding tendencies via revealed policy (what it does, not what it says), producing model-specific guardrails injected into context files.
 - **Pattern bank**: tracks recurring anti-patterns across runs. The constraint proposer translates persistent patterns into enforceable rules.
 
 ---
@@ -135,7 +135,7 @@ Configure the MCP server in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 32 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 35 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### First 5 Minutes
 
@@ -159,7 +159,7 @@ LintGate works from zero state and gets better as it accumulates signal:
 
 **Stage 1 — Theory extraction.** `bootstrap_context_files` scans all project markdown and produces a CLAUDE.md with project-specific dispositions, guardrails, and enforceable rules. Where project signal is insufficient, zero-state defaults persist.
 
-**Stage 2 — Model calibration.** A 5-question probe profiles the model's behavioral tendencies. The resulting signal risk vector produces model-specific guardrails — so a model prone to approach cycling gets explicit constraints about articulating its constraint model before a third attempt.
+**Stage 2 — Model calibration.** A 5-task behavioral micro-probe profiles the model's coding tendencies by observing what it does (tool call order, verification cadence, constraint references), not what it says. The resulting signal risk vector produces model-specific guardrails — so a model prone to approach cycling gets explicit constraints about articulating its constraint model before a third attempt. Weak prior capped at 0.60 confidence; decays fast as real telemetry arrives.
 
 **Stage 3 — Living context.** The ControlPlane detects recurring behavioral patterns, proposes constraints, and flows accepted constraints back into CLAUDE.md managed sections. The project's self-model evolves across sessions.
 
@@ -181,7 +181,7 @@ Each stage stands on its own. Stop at any stage and the system works — each la
 
 ---
 
-## MCP Tools (32)
+## MCP Tools (35)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 
@@ -222,11 +222,14 @@ Each stage stands on its own. Stop at any stage and the system works — each la
 ### Behavioral Supervision
 
 
-| Tool                   | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `behavior_precheck`    | State constraints + predictions before Bash commands |
-| `global_memory_status` | Cross-session behavioral priors and bias adjustments |
-| `global_memory_reset`  | Reset global behavior profile                        |
+| Tool                   | Purpose                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `hygiene_check`        | Command-class precondition checks before risky commands                 |
+| `constraint_check`     | State known constraints, get coverage gaps/uncertainty/similar failures |
+| `prediction_register`  | Register falsifiable predictions checked automatically on next events   |
+| `behavior_precheck`    | Deprecated compatibility wrapper over the three orthogonal tools        |
+| `global_memory_status` | Cross-session behavioral priors and bias adjustments                    |
+| `global_memory_reset`  | Reset global behavior profile                                           |
 
 
 ### Model Calibration
@@ -235,8 +238,8 @@ Each stage stands on its own. Stop at any stage and the system works — each la
 | Tool                         | Purpose                                                        |
 | ---------------------------- | -------------------------------------------------------------- |
 | `model_profile_status`       | Show calibration profile for a model or all models             |
-| `model_profile_probe_start`  | Start 5-question behavioral calibration probe                  |
-| `model_profile_probe_submit` | Submit answers, score into signal_risk vector, persist profile |
+| `model_profile_probe_start`  | Start 5-task behavioral micro-probe (revealed policy)          |
+| `model_profile_probe_submit` | Submit task responses, score into signal_risk vector, persist  |
 
 
 ### Theory & Context
@@ -315,7 +318,7 @@ lintgate/
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 32 MCP tool definitions
+├── mcp_tools/                       # 35 MCP tool definitions
 ├── tests/                           # 1500+ tests
 ├── docs/
 │   └── design.md                    # Full architecture + economics + philosophy

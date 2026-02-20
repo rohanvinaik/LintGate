@@ -233,7 +233,10 @@ def compute_feature_usage_summary(
 
 # All features we track — used to identify unused ones
 _ALL_TRACKED_FEATURES = {
-    "behavior_precheck",
+    "behavior_precheck_deprecated",
+    "constraint_check",
+    "hygiene_check",
+    "prediction_register",
     "prediction_tracking",
     "living_context",
     "model_calibration",

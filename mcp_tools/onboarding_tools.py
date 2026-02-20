@@ -77,7 +77,7 @@ def register(mcp, helpers):
                 "3. Run lint_fix(path, dry_run=False) to auto-fix safe issues",
                 "4. Run bootstrap_context_files(path, write=true) to generate persistent context files",
             ],
-            "all_tools_count": 32,
+            "all_tools_count": 35,
             "next_actions": next_actions,
         }
 

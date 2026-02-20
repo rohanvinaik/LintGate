@@ -109,7 +109,7 @@ The "silent channels are diagnostic" principle, borrowed from OTP/Erlang supervi
 
 LintGate's behavioral findings are currently advisory—the agent receives signals about strategy drift but is not prevented from continuing. Research on executive function shows that external constraints are more effective than advisory signals: children with impulse control deficits benefit more from environmental constraints (removing temptation) than from reminders.
 
-A natural extension would be to implement hard gates for the most robust behavioral signals. For instance, when `approach_cycling` is detected (3+ failed approaches in 30 minutes), the agent could be required to invoke `behavior_precheck` before attempting approach 4. This would change the dynamic from "you're in a loop; should you step back?" to "to continue, you must articulate your constraint model."
+A natural extension would be to implement hard gates for the most robust behavioral signals. For instance, when `approach_cycling` is detected (3+ failed approaches in 30 minutes), the agent could be required to invoke `constraint_check` before attempting approach 4. This would change the dynamic from "you're in a loop; should you step back?" to "to continue, you must articulate your constraint model."
 
 ### 4.2 Causal Inference from Behavioral Trajectories: Beyond Pattern Detection
 

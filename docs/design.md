@@ -315,7 +315,7 @@ The professional instinct layer operates at two levels:
 
 ### Hygiene Prechecks (Command-Class Awareness)
 
-Every planned action is classified into a command class, and domain-specific preconditions are checked before execution. This runs automatically inside `behavior_precheck`:
+Every planned action is classified into a command class, and domain-specific preconditions are checked before execution. This is exposed via `hygiene_check` (and available through the deprecated `behavior_precheck` wrapper):
 
 | Command Class | Patterns | Checks |
 |---|---|---|
@@ -330,7 +330,7 @@ Implementation: `lintgate/hygiene.py`. Each check function returns `HygieneWarni
 
 ### Secrets-in-Diff Scanning
 
-The git channel scans staged diffs for high-confidence secret patterns before every commit. This runs automatically in `controlplane_run` (git channel, Check 4) and inside `behavior_precheck` for git_commit commands.
+The git channel scans staged diffs for high-confidence secret patterns before every commit. This runs automatically in `controlplane_run` (git channel, Check 4), and can be invoked proactively with `hygiene_check` for git_commit/git_push command classes.
 
 Seven regex patterns scan only `+` lines (additions) in `git diff --cached`:
 - AWS access keys (`AKIA[0-9A-Z]{16}`)
@@ -498,7 +498,7 @@ The structure channel's error profile is genuinely uncorrelated with the other c
 
 Code drift is when the agent writes the wrong code. Behavioral drift is when the agent *reasons* wrong — trying failed approaches repeatedly, ignoring error messages it saw ten minutes ago, acting faster than it understands, or brute-forcing solutions without building a model of what constraints actually apply. Behavioral drift is upstream of code drift: an agent stuck in a bad reasoning loop will produce bad code until its strategy changes, regardless of how many lint errors you report.
 
-LintGate's behavioral drift detection works through three components within a session, plus an optional cross-session learning layer: a **Behavior Channel** (reactive, part of the ControlPlane mesh) that watches tool-use patterns for anti-patterns, an **intent bias layer** (structural, threaded through the channel) that classifies every tool use into a 6-category intent taxonomy and uses that structure to sharpen signal confidence, a **behavior_precheck** MCP tool (proactive) that forces the agent to articulate its constraint model before acting, and a **global behavior profile** (persistent, cross-session) that aggregates behavioral patterns over days/weeks to warm-start the bias layer on new sessions (see [Cross-Session Learning](#cross-session-learning)).
+LintGate's behavioral drift detection works through three components within a session, plus an optional cross-session learning layer: a **Behavior Channel** (reactive, part of the ControlPlane mesh) that watches tool-use patterns for anti-patterns, an **intent bias layer** (structural, threaded through the channel) that classifies every tool use into a 6-category intent taxonomy and uses that structure to sharpen signal confidence, a **constraint_check** MCP tool (proactive) that forces the agent to articulate its constraint model before acting, and a **global behavior profile** (persistent, cross-session) that aggregates behavioral patterns over days/weeks to warm-start the bias layer on new sessions (see [Cross-Session Learning](#cross-session-learning)).
 
 ### The Behavioral Compass
 
@@ -520,7 +520,7 @@ The compass tracks two categories of state:
 
 - **Intent history**: A rolling window (last 30) of resolved intents — one of `inspect`, `modify`, `verify`, `execute`, `meta`, or `unknown` — appended on every tool use. This is the raw material the intent bias scorer uses to compute verification debt streaks, failure amnesia bias, and other intent-derived signals.
 
-- **Precheck count**: How many times the agent has invoked `behavior_precheck` this session. Used to suppress the serial discovery early nudge — once the agent demonstrates proactive constraint articulation, the reactive nudge backs off.
+- **Precheck count**: How many times the agent has invoked `constraint_check` this session. Used to suppress the serial discovery early nudge — once the agent demonstrates proactive constraint articulation, the reactive nudge backs off.
 
 - **Signal coordination counters**: Per-signal `last_fired` event counter and cumulative `signal_fire_counts`, used by the signal coordinator for cooldown enforcement and escalation tracking. A one-time `early_nudge_emitted` flag prevents the serial discovery early nudge from repeating.
 
@@ -576,7 +576,7 @@ The signal coordinator prevents noise. Without it, nine detection rules firing o
 
 **Per-signal cooldown**: A signal cannot fire again until at least 10 events (configurable) have elapsed since its last firing. The first firing is always allowed. This prevents the same finding from repeating on every tool use when the underlying condition persists.
 
-**Precheck nudge dedup**: Multiple signals may want to suggest a `behavior_precheck`, but the agent should only receive one nudge per execution cycle. The coordinator tracks a priority ranking (approach_cycling=1, failure_amnesia=2, brute_force=3, consecutive_failures=4, verification_debt=5, stale_model=6, serial_discovery_early=7) and only emits the highest-priority nudge. Lower-priority nudges are silently dropped.
+**Precheck nudge dedup**: Multiple signals may want to suggest a `constraint_check`, but the agent should only receive one nudge per execution cycle. The coordinator tracks a priority ranking (approach_cycling=1, failure_amnesia=2, brute_force=3, consecutive_failures=4, verification_debt=5, stale_model=6, serial_discovery_early=7) and only emits the highest-priority nudge. Lower-priority nudges are silently dropped.
 
 **Escalation**: When the same signal fires repeatedly across a session, the coordinator escalates it. After 3 firings (configurable), soft signals are promoted from `informational` to `warning` severity, and hard signals get a `[persistent]` tag prepended to their message. This distinguishes a one-time observation from a systemic pattern.
 
@@ -584,9 +584,9 @@ Signal coordination state (last_fired counters, fire counts, early_nudge_emitted
 
 ### The Precheck Tool
 
-The `behavior_precheck` MCP tool implements **co-construction**: instead of telling the agent what its constraints are, it asks the agent to state its own model, then computes what is missing.
+The `constraint_check` MCP tool implements **co-construction**: instead of telling the agent what its constraints are, it asks the agent to state its own model, then computes what is missing.
 
-The agent calls `behavior_precheck(path, planned_action, known_constraints)` before taking an action. The tool:
+The agent calls `constraint_check(path, planned_action, known_constraints)` before taking an action. The tool:
 
 1. Loads the behavioral compass from session memory
 2. Finds hypotheses relevant to the planned action (scoped by command signature and tool type)
@@ -623,7 +623,7 @@ The global behavior profile lives at `~/.claude/lintgate/global_behavior_profile
 
 **Intent ratio priors**: Cumulative intent counts across all sessions. Over time, this reveals the agent's baseline intent distribution — how much it inspects vs. modifies vs. verifies vs. executes. A session that starts with an unusual intent ratio (relative to the global baseline) is more likely exhibiting drift.
 
-**Nudge outcome tracking**: When the behavior channel suggests a `behavior_precheck`, did the agent use it (accepted) or ignore it (ignored)? High acceptance rates for a signal mean the nudge is useful and should be boosted. Low acceptance rates mean the nudge is noise and should be dampened.
+**Nudge outcome tracking**: When the behavior channel suggests a `constraint_check`, did the agent use it (accepted) or ignore it (ignored)? High acceptance rates for a signal mean the nudge is useful and should be boosted. Low acceptance rates mean the nudge is noise and should be dampened.
 
 ### How Global Priors Enter the Bias Layer
 
@@ -672,17 +672,22 @@ Different LLM models exhibit different behavioral tendencies. A model prone to a
 
 ### The Probe
 
-The calibration probe is a set of 5 multiple-choice questions, each targeting specific behavioral signals:
+Probe v2 uses 5 micro-task scenarios (not multiple-choice). Each task targets specific behavioral signals and is scored from revealed policy features:
+- `tool_calls` order
+- `actions` sequence
+- verification cadence (`verify_points`)
+- retry behavior (`retry_count`)
+- constraint/error references (`constraint_refs`)
 
-| Question | Targets |
-|----------|---------|
-| Failure response | approach_cycling, failure_amnesia, brute_force_escalation |
-| Verification habits | verification_debt, premature_action |
+| Task | Targets |
+|---|---|
+| Error reading | failure_amnesia, premature_action, verification_debt |
+| Retry behavior | tool_repetition, approach_cycling, failure_amnesia |
+| Verification cadence | verification_debt |
 | Constraint discovery | serial_discovery, brute_force_escalation, premature_action |
-| Model updating | stale_model, approach_cycling |
-| Tool patterns | tool_repetition, consecutive_failures |
+| Model updating | stale_model, approach_cycling, failure_amnesia |
 
-Each choice maps deterministically to float deltas on a signal risk vector — no LLM inference, no heuristic scoring. The final vector is clamped to [0.0, 1.0] per signal. Confidence is computed from completeness: 5/5 answers = 0.80, 4/5 = 0.71, 3/5 = 0.62. Minimum usable confidence is 0.55.
+Scoring is deterministic: extracted features map to per-signal deltas, then values are clamped to [0.0, 1.0]. Confidence combines task completeness and trace quality and is capped at 0.60 (weak prior by design). Text-only responses are accepted but produce lower confidence than structured trace responses.
 
 ### Profile Structure
 
@@ -692,7 +697,7 @@ A `ModelProfile` stores:
 - **signal_risk**: `dict[str, float]` — per-signal risk levels
 - **custom_anti_patterns**: Anti-pattern strings derived from highest-risk signals
 - **custom_dispositions**: Guardrail MUST statements derived from high-risk signals (threshold 0.3)
-- **confidence**: 0.0–1.0 probe completeness score
+- **confidence**: 0.0–1.0 probe confidence (completeness + trace quality, capped at 0.60)
 - **telemetry_samples**: Count of passive refinement updates
 - **stale_after_days**: Default 30
 
@@ -751,13 +756,13 @@ Implementation: `behavior_channel.py` (`_ground_finding_in_theory`, `_SignalCoor
 
 ### Falsifiable Predictions (`prediction_tracking`)
 
-Agents register structured, falsifiable predictions via `behavior_precheck` — specifying a `prediction_type` (`exit_code`, `error_signature`, or `stdout_contains`), an expected value, and an optional negation flag. Predictions are stored in the behavioral compass and checked against actual Bash outcomes on the next hook cycle. Each prediction links to the most relevant hypothesis.
+Agents register structured, falsifiable predictions via `prediction_register` — specifying a `prediction_type` (`exit_code`, `error_signature`, or `stdout_contains`) and an expected value. Predictions are stored in the behavioral compass and checked against actual Bash outcomes on the next hook cycle. Each prediction links to the most relevant hypothesis.
 
 Prediction accuracy is computed after 5+ checked predictions. If accuracy exceeds 70%, soft signal confidence is dampened by -0.15 — the agent demonstrably understands the project, so reactive signals should be quieter. If accuracy falls below 30%, signal confidence is amplified by +0.15 — the agent's model is unreliable, and the supervision system should be louder.
 
 Predictions with empty or unresolvable command signatures (`unknown:unknown`) are rejected at registration. Only the three structured prediction types are accepted — unknown types are rejected to prevent implicit mismatches from silently weakening hypotheses. Predictions that go unchecked for 20 events expire.
 
-Implementation: `behavior_compass.py` (`PredictionExpectation`, `Prediction`, `_check_predictions`, `compute_prediction_accuracy`), `mcp_server.py` (`behavior_precheck` extended parameters).
+Implementation: `behavior_compass.py` (`PredictionExpectation`, `Prediction`, `_check_predictions`, `compute_prediction_accuracy`), `behavior_tools.py` (`prediction_register`).
 
 ### Theory Coherence Check (`theory_coherence_check`)
 
@@ -805,7 +810,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 32 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
+LintGate exposes 35 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
 
 ### Core Lint Workflow
 
@@ -857,12 +862,15 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `controlplane_report_repair(path, action_id)` | Report repair action outcome |
 | `controlplane_apply_repairs(path, safe_only)` | Execute proposed command-type repairs |
 | `controlplane_agent_feedback(path, ...)` | Agent feedback on findings/constraints |
-| `behavior_precheck(path, planned_action, known_constraints)` | Constraint co-construction: agent states model, tool computes gaps |
+| `hygiene_check(path, planned_action)` | Command-class precondition safety checks (venv/lockfile/secrets/git hygiene) |
+| `constraint_check(path, planned_action, known_constraints)` | Constraint co-construction: agent states model, tool computes gaps |
+| `prediction_register(path, planned_action, prediction, prediction_type, prediction_value)` | Register falsifiable predictions checked automatically on next tool event |
+| `behavior_precheck(path, ...)` | Deprecated compatibility wrapper that delegates to `hygiene_check` + `constraint_check` + `prediction_register` |
 | `global_memory_status(path)` | Show global behavior profile: session count, signal priors, nudge outcomes, computed adjustments |
 | `global_memory_reset(path)` | Reset the global behavior profile (useful after major workflow changes) |
 | `model_profile_status(path, model_id)` | Show model calibration profile status. If `model_id` is None, returns all profiles. |
-| `model_profile_probe_start(path, model_id)` | Start a 5-question behavioral calibration probe. Returns questions + answer schema. |
-| `model_profile_probe_submit(path, model_id, answers)` | Submit probe answers, score into signal_risk vector, derive anti-patterns + guardrails, persist profile. |
+| `model_profile_probe_start(path, model_id)` | Start a 5-task behavioral micro-probe. Returns micro-tasks + structured response schema. |
+| `model_profile_probe_submit(path, model_id, answers)` | Submit task responses (action traces + text), score into signal_risk vector, derive anti-patterns + guardrails, persist profile. |
 
 `controlplane_run` returns compact JSON with `run_id`, `coherence`, `counts`, channel summary, and `next_actions`. On first run in a session it inlines blocking issues; on subsequent runs it emits deltas (`new`, `escalated`, `resolved_count`, `still_active_count`). Use `controlplane_get_details` for drill-down without re-running channels.
 
@@ -1255,7 +1263,7 @@ lintgate/
 │   │   ├── constraint_proposer.py   # Pattern bank → theory refinement loop (incl. behavioral)
 │   │   ├── global_behavior_profile.py # Cross-session behavioral priors (global memory)
 │   │   ├── model_profiles.py        # Model-specific behavioral profiles + persistence
-│   │   ├── model_probe.py           # 5-question deterministic calibration probe engine
+│   │   ├── model_probe.py           # Behavioral micro-task calibration probe engine (v2)
 │   │   ├── reporter.py              # Mesh result → systemMessage formatting
 │   │   ├── skeleton_generator.py    # Test skeleton generation
 │   │   ├── test_archetype_selector.py # Test type selection heuristics
@@ -1268,7 +1276,7 @@ lintgate/
 │       ├── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
 │       └── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
-├── mcp_tools/                       # MCP domain modules (32 tool definitions)
+├── mcp_tools/                       # MCP domain modules (35 tool definitions)
 ├── tests/                           # 45 test files, 1500+ tests
 │   ├── test_module_contracts.py     # Interface parity gates
 │   ├── test_regressions.py          # Bug regression tests

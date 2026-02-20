@@ -279,9 +279,9 @@ class _IntentBiasScorer:
         return (0.0, terms)
 
     def serial_discovery_bias(self) -> tuple[float, list[str]]:
-        """Soft nudge on first failure-sourced hypothesis + precheck_count == 0."""
+        """Soft nudge on first failure-sourced hypothesis + constraint_check_count == 0."""
         terms: list[str] = []
-        if self.compass.precheck_count_session == 0:
+        if self.compass.constraint_check_count_session == 0:
             failure_hyps = [
                 h
                 for h in self.compass.hypotheses
@@ -534,7 +534,7 @@ class BehaviorChannel:
     """Supervision channel for agent behavioral drift detection.
 
     Advisory only — behavioral findings are weather-style observations,
-    not judgments. Hard signals trigger precheck nudges.
+    not judgments. Hard signals trigger constraint_check nudges.
     """
 
     name = "behavior"
@@ -629,7 +629,7 @@ class BehaviorChannel:
         # If previous nudge signals exist and no precheck → "ignored"
         nudge_outcomes: dict[str, str] = {}
         if compass.pending_nudge_signals:
-            precheck_delta = compass.precheck_count_session - compass.pending_nudge_precheck_count
+            precheck_delta = compass.constraint_check_count_session - compass.pending_nudge_constraint_check_count
             outcome = "accepted" if precheck_delta > 0 else "ignored"
             for sig in compass.pending_nudge_signals:
                 nudge_outcomes[sig] = outcome
@@ -637,7 +637,7 @@ class BehaviorChannel:
 
         # Update pending nudge signals for the next cycle
         compass.pending_nudge_signals = list(nudge_signals)
-        compass.pending_nudge_precheck_count = compass.precheck_count_session
+        compass.pending_nudge_constraint_check_count = compass.constraint_check_count_session
 
         # Global profile intent delta is per-run, not rolling-window cumulative.
         intent_delta: dict[str, int] = {}
@@ -681,7 +681,7 @@ class BehaviorChannel:
                     "signal_fire_counts": compass.signal_fire_counts,
                     "early_nudge_emitted": compass.early_nudge_emitted,
                     "pending_nudge_signals": compass.pending_nudge_signals,
-                    "pending_nudge_precheck_count": compass.pending_nudge_precheck_count,
+                    "pending_nudge_constraint_check_count": compass.pending_nudge_constraint_check_count,
                     "nudge_outcomes": compass.nudge_outcomes,
                     "_theory_recent_codas": coord._new_codas,
                 },
@@ -744,7 +744,7 @@ def _detect_approach_cycling(
             ),
             is_hard=True,
             precheck_nudge={
-                "tool": "behavior_precheck",
+                "tool": "constraint_check",
                 "reason": "approach_cycling detected — enumerate constraints before next attempt",
             },
         )
@@ -799,7 +799,7 @@ def _detect_failure_amnesia(
                 ),
                 is_hard=True,
                 precheck_nudge={
-                    "tool": "behavior_precheck",
+                    "tool": "constraint_check",
                     "reason": f"failure_amnesia: '{err_sig[:60]}' repeated — check constraint ledger",
                 },
             )
@@ -834,7 +834,7 @@ def _detect_failure_amnesia(
                 ),
                 is_hard=True,
                 precheck_nudge={
-                    "tool": "behavior_precheck",
+                    "tool": "constraint_check",
                     "reason": f"failure_amnesia: '{latest_err[:60]}' repeated across session",
                 },
             )
@@ -862,7 +862,7 @@ def _detect_failure_amnesia(
                     ),
                     is_hard=True,
                     precheck_nudge={
-                        "tool": "behavior_precheck",
+                        "tool": "constraint_check",
                         "reason": f"failure_amnesia: error matches hypothesis '{hyp.id}'",
                     },
                 )
@@ -902,7 +902,7 @@ def _detect_brute_force_escalation(
             ),
             is_hard=True,
             precheck_nudge={
-                "tool": "behavior_precheck",
+                "tool": "constraint_check",
                 "reason": "brute_force_escalation — approaches outpacing constraint understanding",
             },
         )
@@ -944,7 +944,7 @@ def _detect_premature_action(
         nudge = None
         if ratio > 5.0:
             nudge = {
-                "tool": "behavior_precheck",
+                "tool": "constraint_check",
                 "reason": f"extreme premature_action: {ratio:.1f}:1 bash:read ratio",
             }
 
@@ -974,7 +974,7 @@ def _detect_serial_discovery(
 ) -> None:
     """Detect constraints discovered reactively — two-stage.
 
-    Stage 1 (early nudge): 1+ failure-sourced hypothesis + precheck_count=0
+    Stage 1 (early nudge): 1+ failure-sourced hypothesis + constraint_check_count=0
     Stage 2 (existing): 3+ failure-sourced hypotheses, 0 from precheck
     """
     active_hyps = [h for h in compass.hypotheses if h.status in ("active", "confirmed")]
@@ -985,7 +985,7 @@ def _detect_serial_discovery(
     # Stage 1: Early nudge (one-time)
     if (
         failure_sourced >= 1
-        and compass.precheck_count_session == 0
+        and compass.constraint_check_count_session == 0
         and not compass.early_nudge_emitted
     ):
         bias, bias_terms = scorer.serial_discovery_bias()
@@ -1001,8 +1001,8 @@ def _detect_serial_discovery(
                 kind="serial_discovery",
                 message=(
                     f"{failure_sourced} constraint(s) discovered through failure, "
-                    "0 predicted via precheck. Consider proactive constraint enumeration "
-                    "with behavior_precheck."
+                    "0 predicted via constraint_check. Consider proactive constraint enumeration "
+                    "with constraint_check."
                 ),
                 severity="informational",
                 confidence=round(min(1.0, max(0.0, bias)), 2),
@@ -1010,8 +1010,8 @@ def _detect_serial_discovery(
             ),
             is_hard=False,
             precheck_nudge={
-                "tool": "behavior_precheck",
-                "reason": "serial_discovery_early — first failure-sourced constraint, no precheck used",
+                "tool": "constraint_check",
+                "reason": "serial_discovery_early — first failure-sourced constraint, no constraint_check used",
             },
         )
         compass.early_nudge_emitted = True
@@ -1027,7 +1027,7 @@ def _detect_serial_discovery(
                 kind="serial_discovery",
                 message=(
                     f"{failure_sourced} constraints discovered through failure, "
-                    "0 predicted via precheck. All learning is reactive — "
+                    "0 predicted via constraint_check. All learning is reactive — "
                     "consider proactive constraint enumeration."
                 ),
                 severity="informational",
@@ -1115,7 +1115,7 @@ def _detect_consecutive_failures(
         coord.register_nudge_only(
             "consecutive_failures",
             {
-                "tool": "behavior_precheck",
+                "tool": "constraint_check",
                 "reason": f"{consecutive} consecutive Bash failures — pause and check constraints",
             },
         )
@@ -1167,7 +1167,7 @@ def _detect_verification_debt(
         ),
         is_hard=False,
         precheck_nudge={
-            "tool": "behavior_precheck",
+            "tool": "constraint_check",
             "reason": f"verification_debt: {streak} actions without verification",
         },
     )
@@ -1212,7 +1212,7 @@ def _detect_stale_model(
             kind="stale_model",
             message=(
                 f"{max_streak} approach changes without constraint model updates. "
-                "Hypothesis set unchanged. Consider using behavior_precheck."
+                "Hypothesis set unchanged. Consider using constraint_check."
             ),
             severity="informational",
             confidence=round(min(1.0, max(0.0, bias)), 2),

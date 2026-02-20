@@ -61,7 +61,7 @@ class TestMCPInstructions:
     def test_mentions_tool_count(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
 
-        assert "32" in _MCP_INSTRUCTIONS
+        assert "35" in _MCP_INSTRUCTIONS
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────
@@ -193,7 +193,7 @@ class TestGettingStarted:
         from mcp_server import getting_started
 
         result = json.loads(getting_started(str(tmp_path)))
-        assert result["all_tools_count"] == 32
+        assert result["all_tools_count"] == 35
 
     def test_returns_next_actions(self, tmp_path: Path) -> None:
         import json
