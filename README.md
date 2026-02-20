@@ -81,6 +81,14 @@ The hook fires automatically on every code change. The MCP server provides 32 on
 
 Every LLM coding agent has its own auto-discovery convention. Rather than maintaining duplicate instruction files, LintGate uses a single source of truth (`AGENTS.md`) and generates minimal pointer files for each detected agent. Run `bash integrate.sh --list` to see which agents are detected, or `bash integrate.sh --clean` to remove generated files. See `AGENTS.md` for the full discovery table.
 
+### First 5 Minutes (Cold Start)
+
+1. `getting_started(path)` to get project-specific onboarding, setup state, and next actions.
+2. `controlplane_run(path)` for a full health check (works even without config).
+3. `controlplane_get_details(run_id)` to inspect findings you care about.
+4. `lint_fix(path, dry_run=True)` to preview safe fixes, then `dry_run=False` to apply.
+5. `bootstrap_context_files(path, write=True)` to generate persistent project context files.
+
 ---
 
 ## How It Works
@@ -112,6 +120,12 @@ Each stage is independently useful. A project at Stage 0 still gets the hook pip
 ## MCP Tools (32)
 
 Source of truth: `grep -c "@mcp.tool()" mcp_server.py`
+
+### Onboarding
+
+| Tool | Purpose |
+|------|---------|
+| `getting_started` | First-call orientation: setup status, essential workflow, and next actions |
 
 ### Lint Pipeline
 
