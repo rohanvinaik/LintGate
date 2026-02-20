@@ -13,7 +13,9 @@ committing. Type errors caught early prevent cascading failures."
 
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..types import LinterContext, LintIssue
@@ -97,6 +99,8 @@ class TyLinter(BaseLinter):
         if not isinstance(diagnostics, list):
             return
 
+        sys_path_hack_cache: dict[str, bool] = {}
+
         for item in diagnostics:
             check_name = item.get("check_name", "")
             description = item.get("description", "")
@@ -114,24 +118,45 @@ class TyLinter(BaseLinter):
                 begin = positions.get("begin", {})
                 line_no = begin.get("line")
 
+            sys_path_dynamic_import = check_name == "unresolved-import" and _uses_dynamic_sys_path(
+                filepath,
+                ctx.project_root,
+                cache=sys_path_hack_cache,
+            )
+            severity = _classify_severity(
+                severity_label,
+                check_name,
+                ctx.strictness,
+                sys_path_dynamic_import=sys_path_dynamic_import,
+            )
             yield LintIssue(
                 linter="ty",
                 kind=check_name or "type-error",
                 message=description.strip(),
                 file=filepath,
                 line=line_no,
-                severity=_classify_severity(severity_label, check_name, ctx.strictness),
+                severity=severity,
                 confidence=1.0,  # ty is deterministic
                 fixable=False,
                 evidence={
                     "check_name": check_name,
                     "ty_severity": severity_label,
+                    "sys_path_dynamic_import": sys_path_dynamic_import,
                 },
             )
 
 
-def _classify_severity(severity_label: str, check_name: str, strictness: str) -> str:
+def _classify_severity(
+    severity_label: str,
+    check_name: str,
+    strictness: str,
+    *,
+    sys_path_dynamic_import: bool = False,
+) -> str:
     """Map ty severity + check name to LintGate severity."""
+
+    if check_name == "unresolved-import" and sys_path_dynamic_import:
+        return "informational"
 
     # Specific check overrides
     if check_name in _BLOCKING_CHECKS:
@@ -145,3 +170,71 @@ def _classify_severity(severity_label: str, check_name: str, strictness: str) ->
 
     # Default: use the severity map
     return _SEVERITY_MAP.get(severity_label, "warning")
+
+
+def _uses_dynamic_sys_path(
+    issue_path: str | None,
+    project_root: str,
+    *,
+    cache: dict[str, bool],
+) -> bool:
+    """Check whether the issue file dynamically mutates sys.path."""
+    if not issue_path:
+        return False
+
+    normalized = Path(issue_path)
+    if not normalized.is_absolute():
+        normalized = Path(project_root) / normalized
+
+    filepath = str(normalized.resolve())
+    if filepath in cache:
+        return cache[filepath]
+
+    dynamic = _has_sys_path_mutation(filepath)
+    cache[filepath] = dynamic
+    return dynamic
+
+
+def _has_sys_path_mutation(filepath: str) -> bool:
+    """Detect common dynamic import patterns that confuse static import resolution."""
+    try:
+        source = Path(filepath).read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    try:
+        tree = ast.parse(source, filename=filepath)
+    except SyntaxError:
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if _is_sys_path_method_call(node):
+                return True
+            if _is_site_addsitedir_call(node):
+                return True
+    return False
+
+
+def _is_sys_path_method_call(node: ast.Call) -> bool:
+    """Check for sys.path.append/insert/extend calls."""
+    func = node.func
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in {"append", "insert", "extend"}
+        and isinstance(func.value, ast.Attribute)
+        and func.value.attr == "path"
+        and isinstance(func.value.value, ast.Name)
+        and func.value.value.id == "sys"
+    )
+
+
+def _is_site_addsitedir_call(node: ast.Call) -> bool:
+    """Check for site.addsitedir(...) calls."""
+    func = node.func
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "addsitedir"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "site"
+    )

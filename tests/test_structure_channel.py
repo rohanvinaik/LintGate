@@ -321,12 +321,22 @@ class TestOrphanExclusions:
             str(tmp_path / "pkg" / "utils.py"), "pkg.utils", str(tmp_path)
         )
 
+    def test_top_level_module_excluded(self, tmp_path):
+        assert _is_orphan_excluded(str(tmp_path / "tool.py"), "tool", str(tmp_path))
+
     def test_shebang_file_excluded(self, tmp_path):
         filepath = str(tmp_path / "script.py")
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, "w") as f:
             f.write("#!/usr/bin/env python3\nprint('hello')\n")
         assert _is_orphan_excluded(filepath, "script", str(tmp_path))
+
+    def test_main_guard_file_excluded(self, tmp_path):
+        filepath = str(tmp_path / "pkg" / "runner.py")
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "w") as f:
+            f.write("if __name__ == '__main__':\n    raise SystemExit(0)\n")
+        assert _is_orphan_excluded(filepath, "pkg.runner", str(tmp_path))
 
     def test_cli_excluded(self, tmp_path):
         assert _is_orphan_excluded(str(tmp_path / "cli.py"), "cli", str(tmp_path))

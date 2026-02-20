@@ -420,6 +420,76 @@ def test_coherence_weighted_coupled_independent_three_channels_lists_all_actions
         assert ch_name in coherence.recommended_action
 
 
+def test_coherence_weighted_cross_domain_low_signal_is_not_systemic() -> None:
+    results = [
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="ruff",
+                    kind="E501",
+                    message="line too long",
+                    severity="warning",
+                    file="/a.py",
+                ),
+            ],
+        ),
+        ChannelResult(
+            channel="deps",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="deps",
+                    kind="lockfile",
+                    message="lock drift",
+                    severity="informational",
+                    file="/pyproject.toml",
+                ),
+            ],
+        ),
+        ChannelResult(channel="tests", status="pass"),
+    ]
+    coherence = compute_coherence(results, severity_weighted=True)
+    assert coherence.state == "coupled"
+
+
+def test_coherence_weighted_orders_channels_by_failure_volume() -> None:
+    results = [
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="ruff",
+                    kind="E501",
+                    message=f"line too long {i}",
+                    severity="warning",
+                    file="/a.py",
+                )
+                for i in range(6)
+            ],
+        ),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="pytest",
+                    kind="failure",
+                    message="single failure",
+                    severity="warning",
+                    file="/b.py",
+                ),
+            ],
+        ),
+        ChannelResult(channel="deps", status="pass"),
+    ]
+    coherence = compute_coherence(results, severity_weighted=True)
+    assert coherence.state == "coupled"
+    assert coherence.recommended_action.startswith("Address lint first")
+
+
 def test_coherence_systemic_three_failures() -> None:
     results = [
         ChannelResult(

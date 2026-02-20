@@ -155,21 +155,32 @@ def compute_coherence(
             classification_notes=notes,
         )
 
-    # Rule 4: systemic — three+ failures or cross-domain failure
-    # When severity_weighted, informational-only failures contribute less.
+    # Rule 4: systemic — three+ failures or cross-domain failure.
+    # When severity_weighted, severity + volume determine channel contribution.
     effective_failure_count = (
         _effective_failure_count(failed) if severity_weighted else float(len(failed))
     )
-    if effective_failure_count >= 3.0 or _is_cross_domain_failure(failed):
+    has_cross_domain_failure = (
+        _is_cross_domain_failure(failed, effective_failure_count)
+        if severity_weighted
+        else _is_cross_domain_failure(failed)
+    )
+    if effective_failure_count >= 3.0 or has_cross_domain_failure:
         notes = []
         if effective_failure_count >= 3.0:
             conf = 0.9
+            if severity_weighted:
+                notes.append(
+                    f"severity-weighted failure score={effective_failure_count:.2f} (>=3.0)"
+                )
         else:
             # Cross-domain with only 2 failures — less certain it's truly systemic
             conf = 0.7
             notes.append(
                 "cross-domain failure (infra + code) with only 2 channels — could be coincidental"
             )
+            if severity_weighted:
+                notes.append(f"severity-weighted failure score={effective_failure_count:.2f}")
         return CoherenceResult(
             state="systemic",
             summary=(
@@ -383,30 +394,61 @@ def _detect_resolutions(
     return sorted(last_loud & current_silent_set)
 
 
-_SEVERITY_WEIGHT = {"blocking": 1.0, "warning": 0.5, "informational": 0.25, "none": 0.0}
+_SEVERITY_WEIGHT = {"blocking": 1.0, "warning": 0.55, "informational": 0.25, "none": 0.0}
+
+# Severity count weights for volume-aware scoring.
+_BLOCKING_COUNT_WEIGHT = 1.0
+_WARNING_COUNT_WEIGHT = 0.35
+_INFO_COUNT_WEIGHT = 0.10
+
+# Cap per-channel contribution so one noisy channel doesn't dominate globally.
+_MAX_CHANNEL_FAILURE_WEIGHT = 2.0
 
 
 def _channel_failure_weight(result: ChannelResult) -> float:
-    """Compute severity weight contribution for a single failed channel."""
-    if not result.findings:
-        return _SEVERITY_WEIGHT.get(result.severity, 0.5)
-    return max(
-        (_SEVERITY_WEIGHT.get(f.severity, 0.25) for f in result.findings),
-        default=0.25,
+    """Compute severity-and-volume weighted contribution for one failed channel."""
+    counts = _finding_severity_counts(result)
+    base_score = (
+        counts["blocking"] * _BLOCKING_COUNT_WEIGHT
+        + counts["warning"] * _WARNING_COUNT_WEIGHT
+        + counts["informational"] * _INFO_COUNT_WEIGHT
     )
+    if base_score > 0:
+        return min(_MAX_CHANNEL_FAILURE_WEIGHT, base_score)
+    return _SEVERITY_WEIGHT.get(result.severity, 0.5)
+
+
+def _finding_severity_counts(result: ChannelResult) -> dict[str, int]:
+    """Count findings by severity with robust fallback to channel-level severity."""
+    counts: dict[str, int] = {
+        "blocking": 0,
+        "warning": 0,
+        "informational": 0,
+    }
+    for finding in result.findings:
+        sev = finding.severity if finding.severity in counts else "informational"
+        counts[sev] += 1
+
+    if sum(counts.values()) == 0 and result.status == "fail":
+        if result.severity in counts:
+            counts[result.severity] = 1
+        elif result.severity != "none":
+            counts["warning"] = 1
+    return counts
 
 
 def _effective_failure_count(failed_results: list[ChannelResult]) -> float:
     """Compute severity-weighted failure count.
 
-    Each failed channel contributes a weight based on its highest-severity finding:
-    - blocking: 1.0 (full failure)
-    - warning: 0.5
-    - informational: 0.25
-    - no findings: 0.0
+    Each failed channel contributes a capped weighted score from its finding mix:
+    - blocking findings: 1.0 each
+    - warning findings: 0.35 each
+    - informational findings: 0.10 each
+    - per-channel cap: 2.0
 
-    This prevents 3 channels with only informational findings from being
-    classified as "systemic" (0.25 * 3 = 0.75 < 3.0 threshold).
+    This distinguishes one-channel "debt" from broad systemic failures:
+    three channels with only one warning each produce 1.05 total (coupled),
+    while channels with many blockers cross systemic threshold quickly.
     """
     return sum(_channel_failure_weight(result) for result in failed_results)
 
@@ -437,11 +479,17 @@ def _find_shared_files(failed_results: list[ChannelResult]) -> set[str]:
     return shared
 
 
-def _is_cross_domain_failure(failed_results: list[ChannelResult]) -> bool:
+def _is_cross_domain_failure(
+    failed_results: list[ChannelResult],
+    effective_failure_count: float | None = None,
+) -> bool:
     """Check for cross-domain failure pattern.
 
     Cross-domain: infrastructure channels (deps, git) + code channels
     (lint, tests, structure) both failing suggests a deeper structural issue.
+
+    When effective_failure_count is provided, require a minimum weighted
+    signal to avoid classifying low-severity cross-domain noise as systemic.
     """
     infra_channels = {"deps", "git"}
     code_channels = {"lint", "tests", "structure"}
@@ -449,5 +497,8 @@ def _is_cross_domain_failure(failed_results: list[ChannelResult]) -> bool:
     failed_names = {r.channel for r in failed_results}
     has_infra_failure = bool(failed_names & infra_channels)
     has_code_failure = bool(failed_names & code_channels)
-
-    return has_infra_failure and has_code_failure
+    if not (has_infra_failure and has_code_failure):
+        return False
+    if effective_failure_count is None:
+        return True
+    return effective_failure_count >= 1.25

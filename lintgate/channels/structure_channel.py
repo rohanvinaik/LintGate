@@ -547,6 +547,10 @@ def _is_orphan_excluded(filepath: str, module: str, project_root: str) -> bool:
     if stem in _ORPHAN_EXCLUDE_NAMES:
         return True
 
+    # Exclude top-level modules outside packages (typically standalone scripts)
+    if "." not in module:
+        return True
+
     # Exclude files in excluded directory patterns
     relpath = os.path.relpath(filepath, project_root)
     parts = Path(relpath).parts
@@ -563,6 +567,15 @@ def _is_orphan_excluded(filepath: str, module: str, project_root: str) -> bool:
         with open(filepath) as f:
             first_line = f.readline()
             if first_line.startswith("#!"):
+                return True
+    except OSError:
+        pass
+
+    # Exclude modules with explicit __main__ entrypoint guards
+    try:
+        with open(filepath) as f:
+            source = f.read()
+            if "__name__" in source and "__main__" in source:
                 return True
     except OSError:
         pass

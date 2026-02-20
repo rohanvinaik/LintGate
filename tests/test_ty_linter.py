@@ -181,6 +181,60 @@ class TestTyLinterParsing:
 
         assert len(issues) == 2
 
+    def test_unresolved_import_downgraded_when_sys_path_mutated(self, tmp_path):
+        linter = TyLinter()
+        target = tmp_path / "script.py"
+        target.write_text(
+            "import sys\n"
+            "sys.path.insert(0, 'vendor')\n"
+            "import missing_pkg\n",
+        )
+        ctx = self._make_ctx(tmp_path, files=[str(target)])
+
+        diagnostics = [
+            {
+                "description": "Cannot resolve import `missing_pkg`",
+                "check_name": "unresolved-import",
+                "severity": "major",
+                "location": {"path": str(target), "lines": {"begin": 3}},
+            }
+        ]
+        mock_result = MagicMock()
+        mock_result.stdout = json.dumps(diagnostics)
+        mock_result.returncode = 1
+
+        with patch.object(linter, "run_command", return_value=mock_result):
+            issues = list(linter.run(ctx))
+
+        assert len(issues) == 1
+        assert issues[0].severity == "informational"
+        assert issues[0].evidence["sys_path_dynamic_import"] is True
+
+    def test_unresolved_import_without_sys_path_remains_blocking(self, tmp_path):
+        linter = TyLinter()
+        target = tmp_path / "module.py"
+        target.write_text("import missing_pkg\n")
+        ctx = self._make_ctx(tmp_path, files=[str(target)])
+
+        diagnostics = [
+            {
+                "description": "Cannot resolve import `missing_pkg`",
+                "check_name": "unresolved-import",
+                "severity": "major",
+                "location": {"path": str(target), "lines": {"begin": 1}},
+            }
+        ]
+        mock_result = MagicMock()
+        mock_result.stdout = json.dumps(diagnostics)
+        mock_result.returncode = 1
+
+        with patch.object(linter, "run_command", return_value=mock_result):
+            issues = list(linter.run(ctx))
+
+        assert len(issues) == 1
+        assert issues[0].severity == "blocking"
+        assert issues[0].evidence["sys_path_dynamic_import"] is False
+
     def test_extra_args_from_config(self, tmp_path):
         linter = TyLinter()
         from lintgate.types import LinterContext
