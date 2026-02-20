@@ -79,8 +79,8 @@ def test_bootstrap_detects_claude_lintgate_yaml(tmp_path: Path) -> None:
     assert "`.claude/lintgate.yaml`" in text
 
 
-def test_bootstrap_omits_config_line_when_no_yaml(tmp_path: Path) -> None:
-    """No config file → no config reference in Context Map managed section."""
+def test_bootstrap_suggests_controlplane_when_no_yaml(tmp_path: Path) -> None:
+    """No config file → context map suggests creating lintgate.yaml with ControlPlane."""
     import re
 
     from lintgate.context_bootstrap import _render_claude_md
@@ -92,9 +92,7 @@ def test_bootstrap_omits_config_line_when_no_yaml(tmp_path: Path) -> None:
         rule_lines=[],
         project_root=str(tmp_path),
     )
-    # Extract just the context_map managed section — the debt tracking policy
-    # may mention lintgate.yaml as generic guidance, but the context map should
-    # only reference files that actually exist.
+    # Extract just the context_map managed section
     ctx_match = re.search(
         r"<!-- LINTGATE:BEGIN context_map.*?-->(.+?)<!-- LINTGATE:END context_map -->",
         text,
@@ -102,7 +100,10 @@ def test_bootstrap_omits_config_line_when_no_yaml(tmp_path: Path) -> None:
     )
     assert ctx_match is not None, "context_map section not found"
     context_map_section = ctx_match.group(1)
-    assert "lintgate.yaml" not in context_map_section
+    # Should mention lintgate.yaml with "not yet created" hint
+    assert "lintgate.yaml" in context_map_section
+    assert "not yet created" in context_map_section
+    assert "controlplane" in context_map_section.lower()
 
 
 # ── 0.3: Dependency channel reads correct schema keys ────────────────────

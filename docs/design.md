@@ -125,7 +125,7 @@ The change classifier runs in under 10ms. It inspects tool input to determine fi
 
 ## The Linter Registry
 
-Fourteen linters, all independently deployable. Each wraps one tool or analysis, yields structured `LintIssue` objects, and knows nothing about the others. The runner composes them.
+Fifteen linters, all independently deployable. Each wraps one tool or analysis, yields structured `LintIssue` objects, and knows nothing about the others. The runner composes them.
 
 | Linter | Tier | External Tool | What It Catches |
 |---|---|---|---|
@@ -138,6 +138,7 @@ Fourteen linters, all independently deployable. Each wraps one tool or analysis,
 | `mypy` | 2 | mypy | Type errors |
 | `complexity_checker` | 2 | radon | Cyclomatic complexity, maintainability index |
 | `structure_checker` | 2 | built-in | God functions, god classes, deep nesting, cognitive complexity, file bloat |
+| `performance_checker` | 2 | built-in | Quadratic membership, re.compile in loops, sorted()[0], string concat in loops, unnecessary wrappers, sequential I/O, numerical loops without vectorization |
 | `custom_linter` | 2 | configurable | User-defined lint commands |
 | `bandit` | 3 | bandit | Security vulnerabilities (OWASP patterns) |
 | `architecture_checker` | 3 | built-in | Layer violations, circular imports, responsibility diffusion |
@@ -147,6 +148,37 @@ Fourteen linters, all independently deployable. Each wraps one tool or analysis,
 External tools are auto-detected via `shutil.which()`. If mypy is not installed, the mypy linter silently disables itself. **LintGate works out of the box with just ruff** — everything else is additive. Install more tools, get more coverage. No configuration required.
 
 Every linter implements a common protocol: `run(context) -> Iterable[LintIssue]`. Issues carry a severity (`blocking` / `warning` / `informational`), a confidence score (0.0–1.0), linter identity, file/line location, and a machine-readable kind (e.g., `F821`, `return-value`, `complexity`). This uniformity is what makes the aggregator, pattern bank, and ControlPlane possible — they all speak the same issue language.
+
+### Performance Anti-Pattern Detection
+
+The `performance_checker` is a pure AST linter (Tier 2, no external dependencies) that detects structurally wrong performance choices — patterns that are mathematically inferior regardless of context. These are not micro-optimizations or style preferences. A `for val in other: if val in my_list` inside a loop is O(n²) when `my_set` makes it O(n). `sorted(x)[0]` is O(n log n) when `min(x)` is O(n). `re.compile(literal)` inside a function recompiles on every call when hoisting to module level compiles once. These are facts about complexity classes, not opinions about coding style.
+
+The 8 checks (PERF001–PERF008):
+
+| Check | Severity | Pattern | Fix |
+|-------|----------|---------|-----|
+| PERF001 | warning | `x in some_list` inside loop (loop-invariant) | Convert to set |
+| PERF002 | warning | `re.compile(literal)` inside function body | Hoist to module level |
+| PERF003 | warning | `sorted(x)[0]` or `sorted(x)[-1]` | Use `min()`/`max()` |
+| PERF004 | warning | String `+=` inside loop (3+ statements) | Use `''.join(parts)` |
+| PERF005 | informational | `list(range(...))` in for-loop iteration | Remove list() wrapper |
+| PERF006 | informational | `for k in d.keys()` | Use `for k in d` |
+| PERF007 | informational | Arithmetic loop over large range without numpy/numba | Consider vectorization |
+| PERF008 | informational | `requests.*` or variable-path `open()` in loop | Batch or parallelize |
+
+PERF001–PERF004 are severity `warning` because they are always structurally wrong. PERF005–PERF008 are `informational` because they have edge cases — the agent decides what to do with the signal.
+
+False-positive guardrails are critical: PERF001 only fires when the membership container is loop-invariant (not mutated inside the loop body). PERF002 skips `@lru_cache`/`@cache` decorated functions. PERF007 requires non-trivial loop bounds and arithmetic operations on the loop variable, and skips files that already import numpy/pandas/numba.
+
+Performance findings integrate through the existing lint pipeline — no new MCP tools, no behavior channel changes. When `performance_checker|PERF001` recurs across runs, the pattern bank fires a `PATTERN ALERT`. The constraint proposer generates rule proposals. The coherence engine naturally surfaces performance findings alongside other lint signals. This is the "lossy lenses" principle: the performance checker is one more cheap, independent signal whose agreement with complexity, structure, and test signals produces insight that no individual tool could generate alone.
+
+Configuration:
+```yaml
+linters:
+  performance_checker:
+    enabled: true
+    disabled_checks: ["PERF007"]  # stable IDs, not prose names
+```
 
 ---
 
@@ -205,13 +237,18 @@ The constraint extractor bridges the gap between prose directives and machine en
 
 ### Context Bootstrap (Authoring)
 
-`bootstrap_context_files` generates best-practice context-file drafts by composing three signals:
+`bootstrap_context_files` generates best-practice context-file drafts by composing up to four signals:
 
 1. Existing context directives and machine rules (`context_guidance`)
 2. Context quality diagnostics (`audit_context_health`)
 3. Theory summaries and enforceable-rule proposals (`build_theory_pack` + `extract_project_theory`)
+4. Model-specific behavioral profile (when `model_id` is provided)
 
 The tool drafts concise `CLAUDE.md` and `AGENTS.md` files (plus optional `.claude/rules/theory.md`) designed for agent consumption: high-signal directives, explicit quality gates, and machine-enforceable rules at the top. It defaults to dry-run output and only writes files when `write=true`.
+
+When a model profile is available and usable (confidence ≥ 0.55, not stale), the bootstrap tool injects model-biased guardrails into the Guardrails section and replaces generic anti-patterns with model-specific ones in the `do_dont` managed section. The `source_signals` in the response reports `model_profile_applied`, `model_key`, and `model_profile_confidence` for transparency.
+
+**Zero-state defaults.** When no theory claims exist and no model profile is provided, the bootstrap tool uses battle-tested defaults: 7 curated anti-patterns and 4 facet fallbacks distilled from field experience. These are not placeholders — they encode the lessons from hundreds of real sessions (approach cycling, serial discovery, failure amnesia, root-cause clustering, bounded checklists, layered signal composition, performance anti-patterns). Project-extracted theory replaces them where available; model-specific anti-patterns take precedence over both.
 
 ---
 
@@ -534,6 +571,77 @@ The total adjustment per signal is clamped to ±0.10, well inside the existing �
 
 ---
 
+## Model Calibration
+
+Different LLM models exhibit different behavioral tendencies. A model prone to approach cycling needs different guardrails than one prone to verification debt. Model calibration creates per-model behavioral profiles that customize supervision output.
+
+### The Probe
+
+The calibration probe is a set of 5 multiple-choice questions, each targeting specific behavioral signals:
+
+| Question | Targets |
+|----------|---------|
+| Failure response | approach_cycling, failure_amnesia, brute_force_escalation |
+| Verification habits | verification_debt, premature_action |
+| Constraint discovery | serial_discovery, brute_force_escalation, premature_action |
+| Model updating | stale_model, approach_cycling |
+| Tool patterns | tool_repetition, consecutive_failures |
+
+Each choice maps deterministically to float deltas on a signal risk vector — no LLM inference, no heuristic scoring. The final vector is clamped to [0.0, 1.0] per signal. Confidence is computed from completeness: 5/5 answers = 0.80, 4/5 = 0.71, 3/5 = 0.62. Minimum usable confidence is 0.55.
+
+### Profile Structure
+
+A `ModelProfile` stores:
+
+- **model_key**: Canonical `provider:model` format (e.g., `anthropic:claude-opus-4`, `openai:gpt-4o`)
+- **signal_risk**: `dict[str, float]` — per-signal risk levels
+- **custom_anti_patterns**: Anti-pattern strings derived from highest-risk signals
+- **custom_dispositions**: Guardrail MUST statements derived from high-risk signals (threshold 0.3)
+- **confidence**: 0.0–1.0 probe completeness score
+- **telemetry_samples**: Count of passive refinement updates
+- **stale_after_days**: Default 30
+
+Profiles are stored at `~/.lintgate/model_profiles.json` (or `LINTGATE_HOME` env). Global, not per-project. A model calibrated once works across all repos.
+
+### Key Canonicalization
+
+`resolve_model_key()` maps raw identifiers to `provider:model` format:
+
+- `claude-opus-4` → `anthropic:claude-opus-4`
+- `gpt-4o` → `openai:gpt-4o`
+- `gemini-2.0-flash` → `google:gemini-2.0-flash`
+- `anthropic:claude-sonnet-4` → `anthropic:claude-sonnet-4` (already canonical)
+- `unknown-model` → `None` (graceful fallback, no profile applied)
+
+Provider prefixes: `claude` → anthropic, `gpt/o1/o3/o4` → openai, `gemini` → google, `llama` → meta, `mistral/codestral` → mistralai, `deepseek` → deepseek.
+
+### Passive Telemetry Refinement
+
+The probe anchors the profile. Real-world behavior nudges it. After a ControlPlane run, the hook applies EMA (exponential moving average) updates to the profile's signal_risk vector using observed signal fire counts from the behavioral compass:
+
+```
+new_risk = (1 - alpha) * current_risk + alpha * observed_rate
+```
+
+Where alpha = 0.15, and `observed_rate` is normalized fire counts relative to total events. Updates only apply when the session has ≥ 10 events (enough data to be meaningful) and at least one signal actually fired (no-op sessions don't dilute the profile). The session cap is 10 updates — beyond that, the current session's behavior is fully represented.
+
+### Isolation
+
+Profiles apply only when the model key exactly matches. No cross-model bleed, no "closest match" fallback. If no profile exists for the current model, the system falls through to project theory defaults or battle-tested zero-state defaults. This is conservative by design — applying one model's behavioral profile to another would produce misleading guardrails.
+
+### Bootstrap Integration
+
+When `bootstrap_context_files(model_id='...')` is called:
+
+1. Resolve the model key via `resolve_model_key()`
+2. Load the profile if it exists and is usable (confidence ≥ 0.55, not stale)
+3. If usable: inject model-specific custom_anti_patterns into the `do_dont` section, inject `_model_biased_guardrails()` output into the Guardrails section
+4. If not usable: fall through to project theory → zero-state defaults
+
+The `source_signals` in the bootstrap response reports whether a model profile was applied, which model key was resolved, and the profile's confidence level.
+
+---
+
 ## Architecture of Inquiry
 
 The Architecture of Inquiry transforms LintGate from a reactive lint pipeline into a system that closes the loop between behavioral detection and theory extraction. Five opt-in features (configured under `controlplane.inquiry.*`) create epistemic feedback loops where the agent's own reasoning becomes the input to the supervision system.
@@ -602,7 +710,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 28 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
+LintGate exposes 32 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
 
 ### Core Lint Workflow
 
@@ -623,7 +731,7 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `audit_tool_versions(path, auto_fix)` | Check and optionally fix tool version mismatches |
 | `context_guidance(path, files)` | Summarize CLAUDE.md/AGENTS.md guidance and machine rules |
 | `audit_context_health(path)` | Audit context file quality against best practices |
-| `bootstrap_context_files(path, write)` | Generate best-practice context files from theory + audits |
+| `bootstrap_context_files(path, write, model_id)` | Generate best-practice context files from theory + audits. Pass `model_id` for model-aware calibration. |
 | `context_patch_review(path)` | Review pending managed-section context patches with diff previews |
 | `context_patch_apply(path, patch_ids, dry_run)` | Explicitly apply pending context patches to CLAUDE.md |
 | `extract_theory_constraints(path)` | Extract enforceable lint rules from prose directives |
@@ -657,6 +765,9 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `behavior_precheck(path, planned_action, known_constraints)` | Constraint co-construction: agent states model, tool computes gaps |
 | `global_memory_status(path)` | Show global behavior profile: session count, signal priors, nudge outcomes, computed adjustments |
 | `global_memory_reset(path)` | Reset the global behavior profile (useful after major workflow changes) |
+| `model_profile_status(path, model_id)` | Show model calibration profile status. If `model_id` is None, returns all profiles. |
+| `model_profile_probe_start(path, model_id)` | Start a 5-question behavioral calibration probe. Returns questions + answer schema. |
+| `model_profile_probe_submit(path, model_id, answers)` | Submit probe answers, score into signal_risk vector, derive anti-patterns + guardrails, persist profile. |
 
 `controlplane_run` returns compact JSON with `run_id`, `coherence`, `counts`, channel summary, and `next_actions`. On first run in a session it inlines blocking issues; on subsequent runs it emits deltas (`new`, `escalated`, `resolved_count`, `still_active_count`). Use `controlplane_get_details` for drill-down without re-running channels.
 
@@ -935,16 +1046,16 @@ Configure in `~/.mcp.json` (global) or `.mcp.json` (project-level):
 {
   "mcpServers": {
     "lintgate": {
-      "command": "/path/to/lintgate/.venv/bin/python3",
-      "args": ["/path/to/lintgate/mcp_server.py"]
+      "command": "/path/to/lintgate/.venv/bin/lintgate-mcp",
+      "args": []
     }
   }
 }
 ```
 
-**Important**: Always use the venv Python binary, not system `python3`. The venv has `mcp` and all linter packages installed. System Python may not.
+**Important**: Always use the venv-installed entrypoint, not a system binary. The venv contains `mcp` and all linter packages.
 
-The entry points `lintgate-mcp` and `controlplane-mcp` (in `.venv/bin/`) also work if you prefer console scripts over direct python invocation.
+`lintgate-mcp` and `controlplane-mcp` are equivalent entry points (both serve the same MCP tool surface).
 
 ---
 
@@ -1013,12 +1124,13 @@ lintgate/
 │   ├── lint_fixer.py                # Auto-fix via ruff (safe rules + format)
 │   ├── pattern_bank.py              # Categorical anti-tail-chasing
 │   ├── context_guidance.py          # CLAUDE.md/AGENTS.md parsing
-│   ├── context_auditor.py           # Context file health checks
+│   ├── context_auditor.py           # Context file health checks + session readiness
+│   ├── bootstrap_defaults.py        # Battle-tested zero-state anti-patterns + facet fallbacks
+│   ├── context_bootstrap.py         # Context file generation + managed sections + patches + model-aware bootstrap
 │   ├── theory_extractor.py          # Project theory profiling (6 facets + enforceable rules)
 │   ├── versioning.py                # Tool version auditing
 │   ├── dependency_health.py         # Dependency health monitoring
-│   ├── context_bootstrap.py         # Living context: managed sections, context patches, bootstrap
-│   ├── linters/                     # 14 linter implementations
+│   ├── linters/                     # 15 linter implementations
 │   │   ├── base.py                  # Base linter protocol
 │   │   ├── ruff_linter.py           # ruff check + format
 │   │   ├── mypy_linter.py           # Type checking
@@ -1028,6 +1140,7 @@ lintgate/
 │   │   ├── cognitive_complexity.py  # Understanding difficulty
 │   │   ├── architecture_checker.py  # Layer violations, circular imports
 │   │   ├── dead_code_checker.py     # Unused code (vulture)
+│   │   ├── performance_checker.py   # Performance anti-patterns (AST-based)
 │   │   ├── bandit_linter.py         # Security vulnerabilities
 │   │   ├── context_rule_checker.py  # CLAUDE.md/AGENTS.md rule enforcement
 │   │   ├── version_checker.py       # Tool version validation
@@ -1042,6 +1155,8 @@ lintgate/
 │   │   ├── behavior_compass.py      # Behavioral drift data model, hypothesis lifecycle, intent taxonomy
 │   │   ├── constraint_proposer.py   # Pattern bank → theory refinement loop (incl. behavioral)
 │   │   ├── global_behavior_profile.py # Cross-session behavioral priors (global memory)
+│   │   ├── model_profiles.py        # Model-specific behavioral profiles + persistence
+│   │   ├── model_probe.py           # 5-question deterministic calibration probe engine
 │   │   ├── reporter.py              # Mesh result → systemMessage formatting
 │   │   ├── skeleton_generator.py    # Test skeleton generation
 │   │   ├── test_archetype_selector.py # Test type selection heuristics
@@ -1052,8 +1167,8 @@ lintgate/
 │       ├── dependency_channel.py    # Dependency health checks
 │       ├── git_channel.py           # Git state analysis
 │       └── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
-├── mcp_server.py                    # MCP tool interface (28 tools)
-├── tests/                           # 32 test files
+├── mcp_server.py                    # MCP tool interface (32 tools)
+├── tests/                           # 39 test files, 890+ tests
 │   ├── test_module_contracts.py     # Interface parity gates
 │   ├── test_regressions.py          # Bug regression tests
 │   ├── test_lint_parity.py          # Linter output parity
@@ -1066,6 +1181,12 @@ lintgate/
 │   ├── test_behavior_compass.py     # Behavioral compass, hypothesis lifecycle, intent taxonomy
 │   ├── test_behavior_channel.py     # Detection rules, intent bias, signal coordination, global priors
 │   ├── test_global_behavior_profile.py # Cross-session learning tests
+│   ├── test_model_profiles.py       # Model profile system tests
+│   ├── test_model_probe.py          # Calibration probe engine tests
+│   ├── test_bootstrap_defaults.py   # Zero-state defaults tests
+│   ├── test_performance_checker.py  # Performance anti-pattern detection tests
+│   ├── test_doc_counts.py           # Count drift regression tests
+│   ├── test_phase5_regressions.py   # Regression tests (scoping, defaults, integration)
 │   ├── test_*_channel.py            # Per-channel tests
 │   └── golden/                      # Golden fixture files
 └── pyproject.toml                   # Package config (MIT, Python >=3.10)

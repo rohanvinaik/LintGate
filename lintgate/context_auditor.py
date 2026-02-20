@@ -362,41 +362,36 @@ def _check_rule_coverage(
         )
         return
 
-    # Count how many DO NOT directives have corresponding rules.
+    # Categorize directives: only regex-enforceable ones count toward
+    # the coverage percentage.  Architectural/process directives are
+    # reported separately — they can't be meaningfully enforced via regex.
+    enforceable: list[str] = []
+    architectural: list[str] = []
+    for directive in do_not_directives:
+        if _is_regex_enforceable(directive):
+            enforceable.append(directive)
+        else:
+            architectural.append(directive)
+
+    # Count how many enforceable DO NOT directives have corresponding rules.
     # Match by: (a) directive text appears in rule message/source, OR
     # (b) key nouns from the directive appear in the rule pattern, OR
     # (c) the rule's message references the directive.
     forbid_rules = [r for r in existing_rules if r.get("kind") == "forbid_regex"]
+    require_rules = [r for r in existing_rules if r.get("kind") == "require_regex"]
+    all_matching_rules = forbid_rules + require_rules
+
     covered = 0
     uncovered_directives: list[str] = []
 
-    for directive in do_not_directives:
+    for directive in enforceable:
         directive_lower = directive.lower()
         # Extract significant words from the directive for fuzzy matching
         directive_words = _coverage_tokens(directive_lower)
-        directive_words -= {
-            "that",
-            "which",
-            "with",
-            "from",
-            "this",
-            "have",
-            "does",
-            "will",
-            "should",
-            "must",
-            "into",
-            "them",
-            "than",
-            "been",
-            "each",
-            "only",
-            "also",
-            "just",
-        }
+        directive_words -= _COVERAGE_STOPWORDS
 
         has_rule = False
-        for r in forbid_rules:
+        for r in all_matching_rules:
             rule_text = " ".join(
                 [
                     str(r.get("message", "")),
@@ -410,12 +405,15 @@ def _check_rule_coverage(
                 has_rule = True
                 break
 
-            # Key-word overlap: if 2+ significant directive words appear in
-            # the rule's pattern or message, consider it covered
+            # Key-word overlap: 2+ significant directive words must appear
+            # in the rule's text.  For very short directives (≤3 tokens
+            # after stopword removal), 1 overlapping token suffices — these
+            # are typically single-term bans like "DO NOT use checkra1n".
             if directive_words:
                 rule_words = _coverage_tokens(rule_text)
                 overlap = directive_words & rule_words
-                if len(overlap) >= 2:
+                min_overlap = 1 if len(directive_words) <= 3 else 2
+                if len(overlap) >= min_overlap:
                     has_rule = True
                     break
 
@@ -424,7 +422,23 @@ def _check_rule_coverage(
         else:
             uncovered_directives.append(directive)
 
-    coverage_pct = (covered / total_do_not) * 100
+    total_enforceable = len(enforceable)
+
+    # When all directives are architectural, report pass — there's nothing
+    # regex can enforce, so 0/0 is not a failure.
+    if total_enforceable == 0:
+        arch_note = f" ({len(architectural)} architectural directive(s) noted)" if architectural else ""
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "pass",
+                "detail": f"No regex-enforceable DO NOT directives found{arch_note}",
+            }
+        )
+        return
+
+    coverage_pct = (covered / total_enforceable) * 100
+    arch_note = f" ({len(architectural)} architectural)" if architectural else ""
 
     if coverage_pct < min_coverage_pct:
         checks.append(
@@ -432,8 +446,8 @@ def _check_rule_coverage(
                 "check": "machine_rules",
                 "status": "warn",
                 "detail": (
-                    f"{covered}/{total_do_not} DO NOT directives have enforcement rules "
-                    f"({coverage_pct:.0f}%, threshold: {min_coverage_pct}%)"
+                    f"{covered}/{total_enforceable} enforceable DO NOT directives have rules "
+                    f"({coverage_pct:.0f}%, threshold: {min_coverage_pct}%){arch_note}"
                 ),
             }
         )
@@ -446,8 +460,8 @@ def _check_rule_coverage(
                 "check": "machine_rules",
                 "status": "pass",
                 "detail": (
-                    f"{covered}/{total_do_not} DO NOT directives have enforcement rules "
-                    f"({coverage_pct:.0f}%)"
+                    f"{covered}/{total_enforceable} enforceable DO NOT directives have rules "
+                    f"({coverage_pct:.0f}%){arch_note}"
                 ),
             }
         )
@@ -515,11 +529,28 @@ def _check_path_references(
 _PATH_EXTENSIONS = (".py", ".md", ".yaml", ".yml", ".toml", ".json")
 _URL_PREFIXES = ("http://", "https://", "ftp://")
 
+# Shell commands often appear in backticks; skip candidates that start with
+# common CLI tools/runners to avoid treating them as file paths.
+_SHELL_CMD_PREFIXES = (
+    "uv ", "uv run ", "pip ", "python ", "python3 ", "npm ", "npx ",
+    "cargo ", "go ", "git ", "docker ", "make ", "brew ", "curl ", "wget ",
+    "grep ", "rg ", "find ", "cat ", "ls ", "cd ", "mkdir ", "rm ",
+    "cp ", "mv ", "chmod ", "chown ", "sudo ", "apt ", "yum ",
+)
+
+# HuggingFace-style model IDs: vendor/model-variant (no file extension,
+# no nested paths).  E.g. "meta-llama/Llama-3.1-8B".
+_HF_MODEL_ID_RE = re.compile(
+    r"^[A-Za-z0-9_-]+/[A-Za-z0-9._-]+$"
+)
+
 
 def _extract_path_refs(text: str) -> list[str]:
     """Extract likely file-path references from backtick-quoted text.
 
     Only considers inline backtick references (not inside code blocks).
+    Applies heuristic filters to reduce false positives from shell commands,
+    HuggingFace model IDs, and other non-path backtick content.
     """
 
     # Strip fenced code blocks before extracting backtick paths
@@ -539,22 +570,83 @@ def _extract_path_refs(text: str) -> list[str]:
             continue
         if " " in candidate and os.sep not in candidate:
             continue
+
+        # Skip shell commands (e.g., `uv run ruff check .`)
+        candidate_lower = candidate.lower()
+        if any(candidate_lower.startswith(prefix) for prefix in _SHELL_CMD_PREFIXES):
+            continue
+
+        # Skip HuggingFace-style model IDs (vendor/model-name, no extension,
+        # no nested slashes).  E.g. `meta-llama/Llama-3.1-8B`.
+        if (
+            "/" in candidate
+            and not any(candidate.endswith(ext) for ext in _PATH_EXTENSIONS)
+            and candidate.count("/") == 1
+            and _HF_MODEL_ID_RE.match(candidate)
+        ):
+            continue
+
         refs.append(candidate)
     return refs
 
 
 def _find_dead_paths(path_refs: list[str], project_root: str) -> list[str]:
-    """Check which path references don't exist on disk."""
+    """Check which path references don't exist on disk.
+
+    Handles home-directory paths (``~/...``) by expanding ``~`` before
+    checking, and searches common subdirectories (``src/``) for bare
+    module names like ``cpid.py`` that aren't at the project root.
+    """
     dead: list[str] = []
     for ref in path_refs:
         # Skip glob patterns
         if "*" in ref or "?" in ref:
             continue
+
+        # Expand home directory paths (~/...) — these are absolute, not
+        # relative to project_root.
+        if ref.startswith("~/") or ref.startswith("~\\"):
+            expanded = os.path.expanduser(ref)
+            if not os.path.exists(expanded):
+                dead.append(ref)
+            continue
+
         ref_clean = ref.removeprefix("./")
         full_path = os.path.join(project_root, ref_clean)
-        if not os.path.exists(full_path):
-            dead.append(ref)
+        if os.path.exists(full_path):
+            continue
+
+        # For bare filenames (no directory component), search common
+        # subdirectories before declaring dead.  Handles CLAUDE.md
+        # architecture diagrams that reference `cpid.py` when the actual
+        # file lives at `src/package/cpid.py`.
+        if "/" not in ref_clean and "\\" not in ref_clean and _find_bare_name_in_project(ref_clean, project_root):
+            continue
+
+        dead.append(ref)
     return dead
+
+
+def _find_bare_name_in_project(name: str, project_root: str) -> bool:
+    """Check if a bare filename exists anywhere under common source dirs.
+
+    Limits search depth to 3 levels to keep this fast.
+    """
+    search_roots = [project_root]
+    for subdir in ("src", "lib", "app", "pkg"):
+        candidate = os.path.join(project_root, subdir)
+        if os.path.isdir(candidate):
+            search_roots.append(candidate)
+
+    for root in search_roots:
+        for dirpath, _dirnames, filenames in os.walk(root):
+            # Limit depth: only search 3 levels deep from each search root
+            depth = dirpath[len(root) :].count(os.sep)
+            if depth > 3:
+                continue
+            if name in filenames:
+                return True
+    return False
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────
@@ -584,6 +676,161 @@ def _coverage_tokens(text: str) -> set[str]:
                 part = part[:-1]
             tokens.add(part)
     return tokens
+
+
+_COVERAGE_STOPWORDS = {
+    "that",
+    "which",
+    "with",
+    "from",
+    "this",
+    "have",
+    "does",
+    "will",
+    "should",
+    "must",
+    "into",
+    "them",
+    "than",
+    "been",
+    "each",
+    "only",
+    "also",
+    "just",
+}
+
+
+# Concrete syntactic identifiers that a regex could plausibly match.
+# These patterns detect specific named things that could appear in code.
+_SYNTACTIC_IDENTIFIER_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\w+(?:\.\w+)+"),  # dotted names: threading.Thread, os.path
+    re.compile(r"`[^`]+`"),  # backtick-quoted identifiers
+    re.compile(r"\b[A-Z][A-Z0-9_]{3,}\b"),  # UPPER_CASE constants (4+ chars, skips NOT/AND)
+    re.compile(r"\b\w+_\w+\(\)"),  # function call syntax: solve_task_abc()
+    re.compile(r"\b\w+_\w+_\w+\b"),  # deep snake_case: solve_task_abc (2+ underscores)
+]
+
+# Architectural / process / behavioral cues — these describe decisions,
+# not syntactic patterns.  Presence of these strongly indicates a directive
+# that can't be regex-enforced.
+_ARCHITECTURAL_CUE_RE = re.compile(
+    r"\b(?:"
+    r"approach|abstraction|bypass|coherence|constraint|discipline|"
+    r"iterate|understand|verify|repeat|same\s+approach|one-off|"
+    r"task-specific|ad[\s-]?hoc|shortcut|"
+    r"instead\s+of|prefer\b.*\bover|"
+    r"without\s+(?:understanding|checking|verifying|reading)|"
+    r"hard\s+to|difficult|ensure|maintain|avoid\s+\w+ing"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _count_syntactic_ids(text: str) -> int:
+    """Count distinct syntactic identifier matches in directive text."""
+    matches: set[str] = set()
+    for pat in _SYNTACTIC_IDENTIFIER_PATTERNS:
+        for m in pat.findall(text):
+            matches.add(m)
+    return len(matches)
+
+
+def _has_syntactic_id(text: str) -> bool:
+    """Check if directive text contains any syntactic identifier."""
+    return any(pat.search(text) for pat in _SYNTACTIC_IDENTIFIER_PATTERNS)
+
+
+def _is_regex_enforceable(directive: str) -> bool:
+    """Classify whether a DO NOT directive can be enforced via regex.
+
+    Returns True for syntactic/API directives ("DO NOT use checkra1n"),
+    False for architectural/process directives ("DO NOT bypass shared
+    abstractions") that require human/LLM judgment.
+
+    The heuristic: a directive is enforceable only if it references a
+    concrete syntactic identifier (dotted name, backtick, UPPER_CASE,
+    function call, deep snake_case) and does NOT have stronger
+    architectural/process cues.
+    """
+    return classify_directive_enforceability(directive).classification == "enforceable"
+
+
+@dataclass
+class DirectiveClassification:
+    """3-way classification of a DO NOT directive's enforceability.
+
+    Attributes:
+        classification: One of "enforceable", "architectural", or "uncertain".
+        confidence: 0.0–1.0.  High for clear syntactic or clear architectural;
+            low when signals conflict or are absent.
+        reason: Short explanation of why the classifier chose this bucket.
+    """
+
+    classification: str  # "enforceable" | "architectural" | "uncertain"
+    confidence: float = 1.0
+    reason: str = ""
+
+
+def classify_directive_enforceability(directive: str) -> DirectiveClassification:
+    """3-way classifier: enforceable / architectural / uncertain.
+
+    The ``uncertain`` bucket captures directives where the heuristic signals
+    conflict (both syntactic and architectural cues with similar counts) or
+    where no strong signal exists in either direction.  Bootstrap surfaces
+    these to the calling agent via ``needs_review`` so ambiguity is resolved
+    cheaply in-context rather than silently dropped.
+    """
+    text = directive.strip()
+
+    has_syntactic = _has_syntactic_id(text)
+    has_architectural = bool(_ARCHITECTURAL_CUE_RE.search(text))
+
+    # Clear syntactic, no architectural → enforceable (high confidence)
+    if has_syntactic and not has_architectural:
+        return DirectiveClassification(
+            classification="enforceable",
+            confidence=0.95,
+            reason="Contains syntactic identifier with no architectural cues.",
+        )
+
+    # Both present: count to decide
+    if has_syntactic and has_architectural:
+        syn_count = _count_syntactic_ids(text)
+        arch_count = len(_ARCHITECTURAL_CUE_RE.findall(text))
+        if syn_count > arch_count:
+            return DirectiveClassification(
+                classification="enforceable",
+                confidence=0.7,
+                reason=f"Syntactic signals ({syn_count}) outweigh architectural ({arch_count}).",
+            )
+        if arch_count > syn_count:
+            return DirectiveClassification(
+                classification="architectural",
+                confidence=0.7,
+                reason=f"Architectural cues ({arch_count}) outweigh syntactic ({syn_count}).",
+            )
+        # Equal counts → uncertain
+        return DirectiveClassification(
+            classification="uncertain",
+            confidence=0.4,
+            reason=f"Equal syntactic ({syn_count}) and architectural ({arch_count}) signals.",
+        )
+
+    # Architectural only → clear architectural
+    if has_architectural and not has_syntactic:
+        return DirectiveClassification(
+            classification="architectural",
+            confidence=0.9,
+            reason="Architectural/process cues with no syntactic identifiers.",
+        )
+
+    # Neither signal → uncertain (bare English; could be a technology name
+    # the heuristic doesn't recognise, or just a vague directive)
+    return DirectiveClassification(
+        classification="uncertain",
+        confidence=0.3,
+        reason="No syntactic or architectural signals detected.",
+    )
 
 
 # ── Session Readiness Advisory ───────────────────────────────────────

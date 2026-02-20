@@ -1,3 +1,7 @@
+---
+theory_scope: false
+---
+
 # LintGate Agent Retrospective: [Project Name] — [Session Type]
 
 <!--

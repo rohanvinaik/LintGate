@@ -20,7 +20,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .context_auditor import audit_context_health
+from .bootstrap_defaults import ZERO_STATE_ANTI_PATTERNS, ZERO_STATE_FACET_FALLBACKS
+from .context_auditor import (
+    audit_context_health,
+    classify_directive_enforceability,
+)
 from .context_guidance import build_context_guidance
 from .theory_extractor import build_theory_pack, extract_theory
 
@@ -35,6 +39,44 @@ _NEGATIVE_CUE_RE = re.compile(
     re.IGNORECASE,
 )
 _NO_THEORY = "(no theory content found)"
+_PERF_ANTI_PATTERN_CUE = "O(n²)"
+
+
+@dataclass
+class ReviewItem:
+    """A structured uncertainty marker for the calling agent to resolve.
+
+    Bootstrap surfaces these when its heuristic is uncertain about a
+    classification, a dead-path reference has nearby candidates, or a
+    facet fell back to generic defaults.  The calling agent reads these,
+    resolves each one trivially (it has project context the deterministic
+    tool lacks), and edits the draft accordingly.
+
+    Attributes:
+        review_type: Category of uncertainty: ``directive_classification``,
+            ``dead_path_candidate``, or ``facet_fallback``.
+        context: The specific content in question (directive text, path
+            reference, or facet key).
+        question: A short, answerable question for the agent.
+        options: Concrete resolution choices (e.g., ["enforceable",
+            "architectural", "remove"]).
+        detail: Extra context such as confidence score or candidate paths.
+    """
+
+    review_type: str  # directive_classification | dead_path_candidate | facet_fallback
+    context: str
+    question: str
+    options: list[str] = field(default_factory=list)
+    detail: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.review_type,
+            "context": self.context,
+            "question": self.question,
+            "options": self.options,
+            "detail": self.detail,
+        }
 
 
 def bootstrap_context_files(
@@ -44,6 +86,8 @@ def bootstrap_context_files(
     overwrite: bool = False,
     include_theory_rules_doc: bool = True,
     max_machine_rules: int = 12,
+    model_id: str | None = None,
+    use_model_profile: bool = True,
 ) -> dict[str, Any]:
     """Generate or write context-file drafts grounded in project theory.
 
@@ -53,6 +97,8 @@ def bootstrap_context_files(
         overwrite: When writing, overwrite existing files.
         include_theory_rules_doc: Include `.claude/rules/theory.md` draft.
         max_machine_rules: Max LINTGATE_* rule lines to include.
+        model_id: Optional model identifier for model-aware calibration.
+        use_model_profile: When True (default), apply model profile if available.
 
     Returns:
         A structured payload with draft contents, write outcomes, and source
@@ -67,9 +113,34 @@ def bootstrap_context_files(
     theory_pack = build_theory_pack(str(root), include_full_profile=False)
     theory_full = extract_theory(str(root))
 
+    # Resolve model profile for calibration
+    model_profile_dict: dict[str, Any] | None = None
+    model_key_resolved: str | None = None
+    model_profile_confidence: float = 0.0
+    if model_id and use_model_profile:
+        try:
+            from .controlplane.model_profiles import get_profile, resolve_model_key
+
+            model_key_resolved = resolve_model_key(model_id)
+            if model_key_resolved:
+                profile = get_profile(model_id)
+                if profile and profile.is_usable():
+                    model_profile_dict = profile.to_dict()
+                    model_profile_confidence = profile.confidence
+        except Exception:
+            pass  # Non-fatal — fall through to generic defaults
+
     metadata = _project_metadata(root)
     facet_summaries = theory_pack.get("facet_summaries", {})
-    anti_patterns = _select_actionable_anti_patterns(theory_pack.get("anti_patterns", []))
+
+    # Model-specific anti-patterns take precedence when available
+    if model_profile_dict and model_profile_dict.get("custom_anti_patterns"):
+        anti_patterns = model_profile_dict["custom_anti_patterns"][:5]
+    else:
+        anti_patterns = _select_actionable_anti_patterns(
+            theory_pack.get("anti_patterns", [])
+        )
+
     rule_lines = _collect_machine_rule_lines(
         guidance=guidance,
         theory=theory_full,
@@ -82,6 +153,7 @@ def bootstrap_context_files(
         anti_patterns=anti_patterns,
         rule_lines=rule_lines,
         project_root=str(root),
+        model_profile=model_profile_dict,
     )
     agents_text = _render_agents_md(
         metadata=metadata,
@@ -105,7 +177,7 @@ def bootstrap_context_files(
 
     # AGENTS.md is hand-maintained (source of truth for all agents).
     # Never overwrite it — even with overwrite=True. Only generate if missing.
-    _NEVER_OVERWRITE = {"AGENTS.md"}
+    never_overwrite = {"AGENTS.md"}
 
     file_reports: list[dict[str, Any]] = []
     written: list[str] = []
@@ -116,7 +188,7 @@ def bootstrap_context_files(
         status = "planned"
 
         if write:
-            if exists and (not overwrite or rel_path in _NEVER_OVERWRITE):
+            if exists and (not overwrite or rel_path in never_overwrite):
                 status = "skipped_exists"
                 skipped_existing.append(str(target))
             else:
@@ -135,6 +207,35 @@ def bootstrap_context_files(
             }
         )
 
+    # Build quick-win suggestions based on project state
+    quick_wins = _build_quick_wins(root, guidance, theory_full)
+
+    # Collect structured uncertainty markers for the calling agent
+    review_items = _collect_review_items(
+        guidance=guidance,
+        facet_summaries=facet_summaries,
+        audit=audit,
+        project_root=str(root),
+    )
+
+    # Build ordered agent instructions, referencing files by relative_path search
+    claude_md_path = next(
+        (r["relative_path"] for r in file_reports if "CLAUDE.md" in r["relative_path"]),
+        "CLAUDE.md",
+    )
+    agent_steps: list[str] = [
+        f"Review the generated {claude_md_path} draft — check that principles match the project.",
+    ]
+    if review_items:
+        agent_steps.append(
+            f"Resolve {len(review_items)} needs_review item(s) — "
+            "each is a quick classification or short summary."
+        )
+    if quick_wins:
+        agent_steps.append("Act on quick_wins: " + "; ".join(quick_wins[:3]))
+    agent_steps.append("If satisfied, re-run with write=true to save files to disk.")
+    agent_steps.append("Run controlplane_run(path) for a full project health check.")
+
     return {
         "project": str(root),
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -145,13 +246,21 @@ def bootstrap_context_files(
                 theory_full.get("enforceable_rules", {}).get("proposed_rules", [])
             ),
             "audit_summary": _summarize_audit(audit),
+            "model_profile_applied": model_profile_dict is not None,
+            "model_key": model_key_resolved,
+            "model_profile_confidence": model_profile_confidence,
         },
         "files": file_reports,
         "written_files": written,
         "skipped_existing_files": skipped_existing,
+        "quick_wins": quick_wins,
+        "needs_review": [item.to_dict() for item in review_items],
+        "agent_instructions": agent_steps,
         "llm_usage_hint": (
-            "Review generated drafts, tailor directives to your repo conventions, "
-            "then run audit_context_health and context_guidance to validate."
+            "Review generated drafts. If 'needs_review' contains items, resolve "
+            "each one (they are cheap — just classify or provide a short summary) "
+            "then edit the draft accordingly. Finally run audit_context_health and "
+            "context_guidance to validate."
         ),
     }
 
@@ -266,10 +375,23 @@ def _select_actionable_anti_patterns(claims: list[str], max_items: int = 5) -> l
     if selected:
         return selected
 
-    return [
-        "Do not add task-specific one-off code that bypasses shared abstractions.",
-        "Do not ignore failing lint, test, or dependency checks before handoff.",
-    ]
+    if max_items <= 0:
+        return []
+
+    defaults = ZERO_STATE_ANTI_PATTERNS[:max_items]
+    if max_items >= 4:
+        perf_item = next(
+            (item for item in ZERO_STATE_ANTI_PATTERNS if _PERF_ANTI_PATTERN_CUE in item),
+            None,
+        )
+        # Keep at least one performance anti-pattern in the first 4 visible DO NOT entries.
+        if perf_item and perf_item not in defaults[:4]:
+            if perf_item in defaults:
+                defaults.remove(perf_item)
+            defaults.insert(min(3, len(defaults)), perf_item)
+            defaults = defaults[:max_items]
+
+    return defaults
 
 
 def _recommended_commands(root: Path) -> list[str]:
@@ -307,6 +429,67 @@ def _recommended_commands(root: Path) -> list[str]:
     return deduped
 
 
+_GUARDRAIL_MAP: dict[str, str] = {
+    "approach_cycling": (
+        "- MUST run `behavior_precheck` before attempting a 3rd approach"
+        " (model profile indicates high approach-cycling risk)."
+    ),
+    "verification_debt": (
+        "- MUST verify after every 3 edits, not just at the end"
+        " (model profile indicates high verification-debt risk)."
+    ),
+    "premature_action": (
+        "- MUST read relevant code before any Bash command"
+        " (model profile indicates premature-action risk)."
+    ),
+    "serial_discovery": (
+        "- MUST use `behavior_precheck` proactively at session start"
+        " (model profile indicates reactive constraint discovery)."
+    ),
+    "failure_amnesia": (
+        "- MUST review error signatures from prior attempts before retrying"
+        " (model profile indicates failure-amnesia risk)."
+    ),
+    "stale_model": (
+        "- MUST update hypothesis model after each failed approach"
+        " (model profile indicates stale-model risk)."
+    ),
+    "tool_repetition": (
+        "- MUST vary approach after 2 repetitions of the same command"
+        " (model profile indicates tool-repetition risk)."
+    ),
+}
+
+
+def _model_biased_guardrails(
+    profile: dict[str, Any] | None,
+    threshold: float = 0.3,
+    max_guardrails: int = 4,
+) -> list[str]:
+    """Generate model-specific guardrails from a profile's signal_risk vector.
+
+    Returns guardrail lines for signals with risk >= threshold, capped at max_guardrails.
+    """
+    if not profile:
+        return []
+
+    signal_risk = profile.get("signal_risk", {})
+    if not signal_risk:
+        return []
+
+    # Rank signals by risk, descending
+    ranked = sorted(signal_risk.items(), key=lambda x: -x[1])
+    guardrails: list[str] = []
+    for signal, risk in ranked:
+        if risk < threshold:
+            continue
+        if signal in _GUARDRAIL_MAP:
+            guardrails.append(_GUARDRAIL_MAP[signal])
+        if len(guardrails) >= max_guardrails:
+            break
+    return guardrails
+
+
 def _render_claude_md(
     *,
     metadata: dict[str, str],
@@ -314,6 +497,7 @@ def _render_claude_md(
     anti_patterns: list[str],
     rule_lines: list[str],
     project_root: str = "",
+    model_profile: dict[str, Any] | None = None,
 ) -> str:
     """Render a full CLAUDE.md with cognitive context, not just a skeleton.
 
@@ -324,22 +508,22 @@ def _render_claude_md(
     core = _facet_or_fallback(
         facet_summaries,
         "core_theory",
-        "Preserve the project's core abstractions and conceptual framing.",
+        ZERO_STATE_FACET_FALLBACKS["core_theory"],
     )
     approach = _facet_or_fallback(
         facet_summaries,
         "problem_solving",
-        "Prefer compositional and testable implementations over ad-hoc shortcuts.",
+        ZERO_STATE_FACET_FALLBACKS["problem_solving"],
     )
     alignment = _facet_or_fallback(
         facet_summaries,
         "alignment",
-        "Optimize for correctness, clarity, and maintainability.",
+        ZERO_STATE_FACET_FALLBACKS["alignment"],
     )
     architecture = _facet_or_fallback(
         facet_summaries,
         "architecture",
-        "Maintain explicit module boundaries and stable interfaces.",
+        ZERO_STATE_FACET_FALLBACKS["architecture"],
     )
 
     description = metadata.get("description", "").strip()
@@ -441,6 +625,16 @@ def _render_claude_md(
         " removing, or changing MCP tools. Verify with"
         ' `grep -c "@mcp.tool()" mcp_server.py`.',
         "- MUST update docs/design.md YAML examples when adding config options.",
+    ]
+
+    # Inject model-biased guardrails when a usable profile exists
+    model_guardrails = _model_biased_guardrails(model_profile) if model_profile else []
+    if model_guardrails:
+        lines.append("")
+        lines.append("<!-- Model-profile calibrated guardrails -->")
+        lines.extend(model_guardrails)
+
+    lines.extend([
         "",
         "<!-- LINTGATE:BEGIN theory_alignment v1 -->",
         "## Theory-Aligned Development",
@@ -451,7 +645,7 @@ def _render_claude_md(
         "<!-- LINTGATE:END theory_alignment -->",
         "",
         "<!-- LINTGATE:BEGIN do_dont v1 -->",
-    ]
+    ])
 
     # Add extracted do/don't items
     lines.append(f"- DO: {approach}")
@@ -484,18 +678,23 @@ def _render_claude_md(
         "## Context Map",
         "- `.claude/rules/theory.md` - extracted theory summaries and anti-patterns.",
     ]
+    has_lintgate_yaml = False
     if project_root:
         if os.path.exists(os.path.join(project_root, "lintgate.yaml")):
             context_map_lines.append(
                 "- `lintgate.yaml` - lint and ControlPlane configuration."
             )
+            has_lintgate_yaml = True
         elif os.path.exists(os.path.join(project_root, ".claude", "lintgate.yaml")):
             context_map_lines.append(
                 "- `.claude/lintgate.yaml` - lint and ControlPlane configuration."
             )
-    else:
+            has_lintgate_yaml = True
+    if not has_lintgate_yaml:
         context_map_lines.append(
-            "- `.claude/lintgate.yaml` - lint and ControlPlane configuration."
+            "- `.claude/lintgate.yaml` - lint and ControlPlane configuration"
+            " (**not yet created** — create with `controlplane: {enabled: true}`"
+            " to activate the full supervision mesh)."
         )
     context_map_lines.append("<!-- LINTGATE:END context_map -->")
     lines.extend(context_map_lines)
@@ -779,6 +978,181 @@ def _summarize_audit(audit: dict[str, Any]) -> dict[str, int]:
         elif status == "pass":
             out["passes"] += 1
     return out
+
+
+def _build_quick_wins(
+    root: Path,
+    guidance: dict[str, Any],
+    theory: dict[str, Any],
+) -> list[str]:
+    """Generate actionable quick-win suggestions for the project.
+
+    These are concrete next steps that improve LintGate's value immediately.
+    """
+    wins: list[str] = []
+
+    # 1. ControlPlane not configured
+    has_config = (
+        (root / "lintgate.yaml").exists()
+        or (root / ".claude" / "lintgate.yaml").exists()
+    )
+    if not has_config:
+        wins.append(
+            "Create `.claude/lintgate.yaml` with `controlplane: {enabled: true}` "
+            "to activate the full supervision mesh (lint + tests + deps + git + behavior)."
+        )
+
+    # 2. No enforceable rules despite existing directives
+    rules = guidance.get("rules", [])
+    do_not_count = len(guidance.get("directives", {}).get("do_not", []))
+    if do_not_count > 0 and not rules:
+        wins.append(
+            f"Found {do_not_count} DO NOT directive(s) but no LINTGATE_FORBID_REGEX rules. "
+            "Run `extract_theory_constraints` to generate enforceable rules."
+        )
+
+    # 3. Proposed rules not yet adopted
+    proposed = theory.get("enforceable_rules", {}).get("proposed_rules", [])
+    if proposed:
+        wins.append(
+            f"{len(proposed)} rule(s) proposed from theory extraction — review and "
+            "add to CLAUDE.md to make them enforceable."
+        )
+
+    # 4. No lockfile
+    if (root / "pyproject.toml").exists():
+        has_lock = (root / "uv.lock").exists() or (root / "poetry.lock").exists()
+        if not has_lock:
+            wins.append(
+                "No lockfile found. Run `uv lock` or `poetry lock` for reproducible installs."
+            )
+
+    return wins
+
+
+# ── needs_review Collection ──────────────────────────────────────────
+
+
+def _collect_review_items(
+    *,
+    guidance: dict[str, Any],
+    facet_summaries: dict[str, str],
+    audit: dict[str, Any],
+    project_root: str,
+) -> list[ReviewItem]:
+    """Collect structured uncertainty markers for the calling agent.
+
+    Three sources of review items:
+
+    1. **Directive classification** — DO NOT directives where the
+       heuristic is uncertain whether they are regex-enforceable or
+       architectural.
+    2. **Dead path candidates** — backtick-quoted paths flagged as dead
+       by the auditor that the agent might be able to resolve (e.g., the
+       path is slightly wrong, or the file was moved).
+    3. **Facet fallback** — theory facets that fell back to generic
+       zero-state defaults because extraction found no project-specific
+       claims.  The agent can often provide a better summary.
+    """
+    items: list[ReviewItem] = []
+    _collect_directive_review_items(items, guidance)
+    _collect_dead_path_review_items(items, audit)
+    _collect_facet_fallback_items(items, facet_summaries)
+    return items
+
+
+def _collect_directive_review_items(
+    items: list[ReviewItem],
+    guidance: dict[str, Any],
+) -> None:
+    """Surface DO NOT directives where enforceability is uncertain."""
+    do_not_directives = guidance.get("directives", {}).get("do_not", [])
+    for directive in do_not_directives:
+        result = classify_directive_enforceability(directive)
+        if result.classification == "uncertain":
+            items.append(
+                ReviewItem(
+                    review_type="directive_classification",
+                    context=directive,
+                    question=(
+                        "Is this directive regex-enforceable (references a specific "
+                        "API, identifier, or pattern) or architectural (describes a "
+                        "process/approach that requires human judgment)?"
+                    ),
+                    options=["enforceable", "architectural"],
+                    detail={
+                        "confidence": result.confidence,
+                        "reason": result.reason,
+                    },
+                )
+            )
+
+
+def _collect_dead_path_review_items(
+    items: list[ReviewItem],
+    audit: dict[str, Any],
+) -> None:
+    """Surface dead-path warnings so the agent can confirm/fix them."""
+    for file_result in audit.get("audit", []):
+        for check in file_result.get("health_checks", []):
+            if check.get("check") != "path_references":
+                continue
+            if check.get("status") != "warn":
+                continue
+            # Extract dead paths from the detail string
+            detail_text = check.get("detail", "")
+            if "don't exist" not in detail_text:
+                continue
+            # The detail format is:
+            #   "3 referenced path(s) don't exist: foo, bar, baz (+N more)"
+            colon_idx = detail_text.find(": ")
+            if colon_idx < 0:
+                continue
+            paths_part = detail_text[colon_idx + 2 :]
+            # Strip "(+N more)" suffix
+            paren_idx = paths_part.rfind(" (+")
+            if paren_idx >= 0:
+                paths_part = paths_part[:paren_idx]
+            dead_paths = [p.strip() for p in paths_part.split(",") if p.strip()]
+            for dp in dead_paths:
+                items.append(
+                    ReviewItem(
+                        review_type="dead_path_candidate",
+                        context=dp,
+                        question=(
+                            f"The path `{dp}` referenced in "
+                            f"`{file_result.get('name', '?')}` does not exist. "
+                            "Should it be updated, removed, or is it correct "
+                            "(e.g., it's created at runtime)?"
+                        ),
+                        options=["update_path", "remove_reference", "keep_as_is"],
+                        detail={"source_file": file_result.get("file", "")},
+                    )
+                )
+
+
+def _collect_facet_fallback_items(
+    items: list[ReviewItem],
+    facet_summaries: dict[str, str],
+) -> None:
+    """Surface facets that fell back to zero-state defaults."""
+    for key, fallback in ZERO_STATE_FACET_FALLBACKS.items():
+        actual = (facet_summaries.get(key) or "").strip()
+        if not actual or actual in (_NO_THEORY, fallback):
+            items.append(
+                ReviewItem(
+                    review_type="facet_fallback",
+                    context=key,
+                    question=(
+                        f"The '{key}' theory facet has no project-specific content "
+                        "and fell back to a generic default. Can you provide a "
+                        "1-2 sentence summary of this project's approach to "
+                        f"'{key}'?"
+                    ),
+                    options=["provide_summary", "keep_default"],
+                    detail={"default_used": fallback},
+                )
+            )
 
 
 # ── Managed Section Parsing & Patch Protocol ─────────────────────────

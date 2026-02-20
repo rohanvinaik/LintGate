@@ -73,16 +73,20 @@ except ModuleNotFoundError:
     from lintgate.versioning import format_version_audit_summary, run_version_audit
 
 _MCP_INSTRUCTIONS = (
-    "LintGate v0.2: real-time quality supervision for AI-generated code. "
-    "28 MCP tools for linting, behavioral drift detection, theory extraction, "
-    "and the Architecture of Inquiry. "
-    "Start: build_theory_pack (orient) → controlplane_run (full supervision mesh) → "
-    "behavior_precheck (register predictions before Bash). "
-    "Lint workflow: lint_files/lint_project → lint_get_details (drill-down) → "
-    "lint_fix (auto-fix safe issues). "
-    "All responses include next_actions. "
-    "Living context: context_patch_review → context_patch_apply to evolve CLAUDE.md. "
-    "See AGENTS.md for tools by cognitive mode, SKILL.md for quick orientation."
+    "LintGate: code quality analysis for Python projects. "
+    "Start with getting_started(path) for project-specific guidance.\n"
+    "Essential workflow (6 core tools):\n"
+    "  1. lint_files — lint files you just edited\n"
+    "  2. lint_project — full project lint scan\n"
+    "  3. lint_fix — auto-fix safe issues\n"
+    "  4. controlplane_run — comprehensive project health check "
+    "(lint + tests + deps + git; works without config)\n"
+    "  5. controlplane_get_details — drill into health check findings\n"
+    "  6. bootstrap_context_files — generate project-specific CLAUDE.md\n"
+    "First session: controlplane_run(path) → controlplane_get_details(run_id) → "
+    "lint_fix → bootstrap_context_files(path, write=true).\n"
+    "All responses include next_actions with suggested follow-up tools. "
+    "32 tools total — use getting_started or lint_status to explore."
 )
 
 
@@ -177,6 +181,76 @@ def _validate_project_root(path: str, arg_name: str = "path") -> str:
     if not path or not os.path.isdir(path):
         raise ValueError(f"{arg_name} must be an existing directory: {path}")
     return os.path.abspath(path)
+
+
+def _build_onboarding_status(project_root: str) -> dict[str, Any]:
+    """Build machine-readable + human-readable onboarding status.
+
+    Reused by getting_started, controlplane_run, controlplane_status,
+    lint_status, and behavior_precheck to avoid drift across tools.
+
+    Four config states are distinguished:
+    - no_config: No .claude/lintgate.yaml found
+    - config_no_controlplane_section: Config file exists but lacks controlplane section
+    - config_disabled: Config exists but controlplane.enabled is false
+    - config_enabled: Fully active
+    """
+    from lintgate.config import load_controlplane_config
+
+    config_path = os.path.join(project_root, ".claude", "lintgate.yaml")
+    config_file_exists = os.path.exists(config_path)
+    cp_config = load_controlplane_config(project_root)
+    has_controlplane_section = False
+    if config_file_exists:
+        with contextlib.suppress(Exception):
+            import yaml as _yaml
+
+            with open(config_path) as _f:
+                _raw = _yaml.safe_load(_f) or {}
+            has_controlplane_section = bool(
+                isinstance(_raw, dict) and isinstance(_raw.get("controlplane"), dict)
+            )
+
+    # Machine-readable flags — always present regardless of state
+    status: dict[str, Any] = {
+        "config_found": config_file_exists,
+        "config_path_checked": config_path,
+        "controlplane_enabled": cp_config.enabled if cp_config else False,
+        "automatic_hook_active": cp_config.enabled if cp_config else False,
+        "using_default_config": cp_config is None,
+    }
+
+    # State classification with human-readable hint
+    if not config_file_exists:
+        status["config_state"] = "no_config"
+        status["setup_hint"] = (
+            "No config file found. LintGate tools work without config, but to enable "
+            "automatic quality checks on every file edit, create .claude/lintgate.yaml with:\n"
+            "  controlplane:\n"
+            "    enabled: true"
+        )
+    elif cp_config is None and not has_controlplane_section:
+        status["config_state"] = "config_no_controlplane_section"
+        status["setup_hint"] = (
+            "Config file found, but it has no controlplane section. "
+            "Lint tools still work, but automatic quality checks on every file edit "
+            "require adding:\n"
+            "  controlplane:\n"
+            "    enabled: true"
+        )
+    elif not cp_config.enabled:
+        status["config_state"] = "config_disabled"
+        status["setup_hint"] = (
+            "Config file found but ControlPlane is disabled. To enable automatic quality "
+            "checks on every file edit, set enabled: true in .claude/lintgate.yaml:\n"
+            "  controlplane:\n"
+            "    enabled: true"
+        )
+    else:
+        status["config_state"] = "config_enabled"
+        # No setup_hint needed — fully configured
+
+    return status
 
 
 def _collect_python_files(project_root: str) -> list[str]:
@@ -516,6 +590,80 @@ def _run_lint(
 
 
 @mcp.tool()
+def getting_started(path: str) -> str:
+    """Start here. Get oriented with LintGate on any project.
+
+    WHEN TO USE: First time using LintGate on a project, or when unsure
+    what to do next. Returns project status, recommended next steps, and
+    the essential tool workflow.
+
+    Example: getting_started(path="/my/project")
+    """
+    project_root = _validate_project_root(path)
+
+    config_status = _build_onboarding_status(project_root)
+
+    # Build dynamic next_actions based on project state
+    next_actions: list[dict[str, str]] = []
+    if config_status["config_state"] != "config_enabled":
+        next_actions.append({
+            "tool": "controlplane_run",
+            "reason": "Run a comprehensive health check (works without config)",
+            "example": f'controlplane_run(path="{project_root}")',
+        })
+    else:
+        next_actions.append({
+            "tool": "controlplane_run",
+            "reason": "Run a comprehensive health check",
+            "example": f'controlplane_run(path="{project_root}")',
+        })
+
+    # Check if bootstrap files exist
+    claude_md = os.path.join(project_root, ".claude", "CLAUDE.md")
+    if not os.path.exists(claude_md):
+        next_actions.append({
+            "tool": "bootstrap_context_files",
+            "reason": "Generate project-specific CLAUDE.md with documented principles",
+            "example": f'bootstrap_context_files(path="{project_root}", write=True)',
+        })
+
+    next_actions.append({
+        "tool": "lint_project",
+        "reason": "Full project lint scan",
+        "example": f'lint_project(path="{project_root}")',
+    })
+
+    output: dict[str, Any] = {
+        "project": project_root,
+        "config_status": config_status,
+        "essential_tools": {
+            "lint_files": "Check specific files after edits — "
+            'lint_files(files=["/path/to/file.py"])',
+            "lint_project": "Full project scan — "
+            'lint_project(path="/my/project")',
+            "lint_fix": "Auto-fix safe issues — "
+            'lint_fix(path="/my/project", dry_run=False)',
+            "controlplane_run": "Comprehensive health check (lint + tests + deps + git) — "
+            'controlplane_run(path="/my/project")',
+            "controlplane_get_details": "Drill into health check findings — "
+            'controlplane_get_details(run_id="...")',
+            "bootstrap_context_files": "Generate project CLAUDE.md — "
+            'bootstrap_context_files(path="/my/project", write=True)',
+        },
+        "first_session_workflow": [
+            "1. Run controlplane_run(path) for a full project health check",
+            "2. Run controlplane_get_details(run_id) to review specific findings",
+            "3. Run lint_fix(path, dry_run=False) to auto-fix safe issues",
+            "4. Run bootstrap_context_files(path, write=true) to generate persistent context files",
+        ],
+        "all_tools_count": 32,
+        "next_actions": next_actions,
+    }
+
+    return json.dumps(output, indent=2)
+
+
+@mcp.tool()
 def lint_files(
     files: list[str],
     tier: Literal[0, 1, 2, 3] = 2,
@@ -523,6 +671,11 @@ def lint_files(
     strictness: Literal["relaxed", "normal", "strict"] = "normal",
 ) -> str:
     """Lint specific files at a given tier level.
+
+    WHEN TO USE: After editing Python files. This is the most common tool —
+    call it after every code change to catch issues early.
+
+    Example: lint_files(files=["/my/project/src/main.py"])
 
     Returns compact JSON with run_id, issue counts, and next_actions.
     Use lint_get_details(run_id) to drill into full issue details.
@@ -560,6 +713,11 @@ def lint_project(
     strictness: Literal["relaxed", "normal", "strict"] = "normal",
 ) -> str:
     """Lint all Python files in a project at a given tier level.
+
+    WHEN TO USE: For a full project scan — run at the start of a session
+    or before committing. For checking specific files after edits, use lint_files instead.
+
+    Example: lint_project(path="/my/project")
 
     Returns compact JSON with run_id, issue counts, and next_actions.
     Use lint_get_details(run_id) to drill into full issue details.
@@ -726,6 +884,11 @@ def lint_status(path: str | None = None) -> str:
     except Exception:
         status["today_metrics"] = None
 
+    # Surface onboarding when ControlPlane is not fully configured
+    _onboarding = _build_onboarding_status(project_root)
+    if _onboarding.get("config_state") != "config_enabled":
+        status["onboarding"] = _onboarding
+
     return json.dumps(status, indent=2)
 
 
@@ -808,17 +971,28 @@ def bootstrap_context_files(
     overwrite: bool = False,
     include_theory_rules_doc: bool = True,
     max_machine_rules: int = 12,
+    model_id: str | None = None,
+    use_model_profile: bool = True,
 ) -> str:
-    """Generate best-practice CLAUDE.md/AGENTS.md from theory + context signals.
+    """Generate project-specific CLAUDE.md and AGENTS.md from documented principles.
 
-    Combines context guidance, context-health audit, and project theory extraction
-    into concise drafts for:
-    - CLAUDE.md
-    - AGENTS.md
-    - .claude/rules/theory.md (optional)
+    WHEN TO USE: On first session with a project, or when project documentation
+    changes significantly. Scans all markdown docs in the repo to extract principles,
+    anti-patterns, and lint rules, then generates context files that persist across sessions.
 
-    Default mode is non-destructive (`write=false`) and returns draft text.
-    Set `write=true` to create/update files.
+    Example: bootstrap_context_files(path="/my/project", write=True)
+
+    Generates:
+    - CLAUDE.md — project principles, anti-patterns, and enforceable lint rules
+    - AGENTS.md — tool reference for all agents
+    - .claude/rules/theory.md (optional) — extracted principles as rules
+
+    Default mode is non-destructive (`write=false`) — returns drafts for review.
+    Set `write=true` to create/update files on disk.
+
+    Returns `needs_review` — items where automated analysis was uncertain and the
+    agent can cheaply resolve. Returns `quick_wins` — concrete next steps.
+    Returns `agent_instructions` — ordered workflow for what to do with the result.
     """
     project_root = _validate_project_root(path)
     return json.dumps(
@@ -828,6 +1002,8 @@ def bootstrap_context_files(
             overwrite=overwrite,
             include_theory_rules_doc=include_theory_rules_doc,
             max_machine_rules=max_machine_rules,
+            model_id=model_id,
+            use_model_profile=use_model_profile,
         ),
         indent=2,
     )
@@ -835,10 +1011,10 @@ def bootstrap_context_files(
 
 @mcp.tool()
 def context_patch_review(path: str) -> str:
-    """Review pending context patches for CLAUDE.md managed sections.
+    """Review pending updates to CLAUDE.md auto-managed sections.
 
-    Shows pending patches with diff previews. Agent or user must
-    explicitly call apply to write changes.
+    Shows pending patches with diff previews. Use context_patch_apply
+    to write the changes after reviewing.
 
     Args:
         path: Project root path.
@@ -1007,19 +1183,16 @@ def extract_theory_constraints(path: str) -> str:
 
 @mcp.tool()
 def extract_project_theory(path: str) -> str:
-    """Extract the conceptual theory profile of a project.
+    """Extract documented principles, philosophy, and patterns from project markdown files.
 
-    Scans ALL markdown documents in the codebase (not just CLAUDE.md) to
-    identify the project's theoretical framework, problem-solving approach,
-    alignment criteria, architectural philosophy, anti-patterns, and key
-    abstractions.
+    WHEN TO USE: To understand a project's documented guidelines before making changes,
+    or to check if changes align with documented principles.
 
-    Returns a structured theory profile with 6 facets, each containing
-    claims extracted from the documentation with source references.
-    Also includes enforceable lint rules as a subset.
-
-    Use this to understand a project's conceptual space before making
-    changes, or to detect drift from the project's theory.
+    Scans all markdown documents in the codebase to identify: core principles,
+    problem-solving approach, alignment criteria, architectural philosophy,
+    anti-patterns, and key abstractions. Returns a structured profile with 6
+    categories, each containing claims extracted from documentation with source
+    references. Also includes enforceable lint rules as a subset.
     """
     from lintgate.theory_extractor import extract_theory
 
@@ -1031,17 +1204,15 @@ def build_theory_pack(
     path: str,
     include_full_profile: bool = False,
 ) -> str:
-    """Build a compact theory digest optimized for agent context injection.
+    """Build a compact summary of project principles for quick reference.
 
-    Returns a two-tier payload:
-    - Tier 1 (digest_text): ~500-1500 tokens, ready for system prompt.
-      Contains enforceable rules, facet summaries, anti-pattern list.
-      Designed for prompt cache placement (high-attention start position).
-    - Tier 2 (full_profile): Complete claims for on-demand retrieval.
-      Only included when include_full_profile=true to keep default payloads small.
+    Returns a two-level payload:
+    - Summary (~500-1500 tokens): enforceable rules, principle summaries, anti-pattern list.
+    - Full detail: complete documented claims for deeper lookup
+      (only included when include_full_profile=true).
 
-    Use this instead of extract_project_theory when you need token-efficient
-    context for ongoing sessions.
+    Use this instead of extract_project_theory when you need a token-efficient
+    overview for ongoing work.
     """
     from lintgate.theory_extractor import build_theory_pack as _build
 
@@ -1061,18 +1232,18 @@ def get_theory_context(
     keywords: list[str] | None = None,
     max_claims: int = 5,
 ) -> str:
-    """On-demand retrieval of specific theory claims (Tier 2).
+    """Look up specific documented project principles by topic or keywords.
 
-    Call this when you need deeper reasoning about a specific violation
-    or design decision. Returns the most relevant claims matched by
-    facet and/or keyword overlap.
+    WHEN TO USE: When you need deeper reasoning about a specific issue or design
+    decision. Returns the most relevant documented principles matched by
+    category and/or keyword overlap.
 
     Args:
         path: Project root path.
-        facet: Optional facet filter (core_theory, problem_solving,
+        facet: Optional category filter (core_theory, problem_solving,
             alignment, architecture, anti_patterns, abstractions).
-        keywords: Optional keywords to match against claim text.
-        max_claims: Max claims to return (default 5).
+        keywords: Optional keywords to match against principle text.
+        max_claims: Max principles to return (default 5).
             Must be > 0.
     """
     if max_claims <= 0:
@@ -1203,7 +1374,12 @@ def lint_fix(
     dry_run: bool = True,
     safe_only: bool = True,
 ) -> str:
-    """Auto-fix safe lint issues (ruff --fix/format).
+    """Auto-fix safe lint issues found by lint_files or lint_project.
+
+    WHEN TO USE: After lint_files/lint_project reports fixable issues.
+    Applies ruff's safe auto-fix rules (formatting, import sorting, simple corrections).
+
+    Example: lint_fix(path="/my/project", dry_run=False)
 
     Default is dry_run=True which previews changes without modifying files.
     Set dry_run=False to apply fixes.
@@ -1253,11 +1429,18 @@ def controlplane_run(
     channels: str | None = None,
     strictness: Literal["relaxed", "normal", "strict"] = "normal",
 ) -> str:
-    """Run the ControlPlane supervision mesh on a project.
+    """Run a comprehensive project health check across multiple dimensions.
 
-    Executes independent analysis channels in parallel (lint, tests, deps, git,
-    behavior) and returns a cross-channel coherence diagnosis. Silent channels
-    provide confident exclusion — their silence IS diagnostic information.
+    WHEN TO USE: At the start of a session to understand project state, or after
+    significant changes. This is the most thorough single analysis available.
+    Works without any configuration file.
+
+    Example: controlplane_run(path="/my/project")
+
+    Runs 5 independent analysis channels in parallel: lint (code quality),
+    tests (coverage and health), deps (dependency issues), git (hygiene),
+    behavior (patterns across sessions). Returns compact findings with a run_id.
+    Use controlplane_get_details(run_id) to drill into specific findings.
 
     Args:
         path: Project root path.
@@ -1451,6 +1634,11 @@ def controlplane_run(
     # Remove finding_index from returned output (it's stored, not sent to agent)
     compact.pop("finding_index", None)
 
+    # Include onboarding when not fully configured
+    _onboarding = _build_onboarding_status(project_root)
+    if _onboarding.get("config_state") != "config_enabled":
+        compact["onboarding"] = _onboarding
+
     return _json_dumps(compact, output_mode="compact")
 
 
@@ -1464,8 +1652,11 @@ def controlplane_get_details(
 ) -> str:
     """Drill into a previous ControlPlane run by run_id.
 
-    Use after controlplane_run (which return a run_id in compact mode)
-    to retrieve full issue details without re-running.
+    WHEN TO USE: After controlplane_run returns findings. The compact output
+    shows counts and summaries — use this to see full issue details, evidence,
+    and suggested repairs.
+
+    Example: controlplane_get_details(run_id="cp_abc123")
 
     Args:
         run_id: The run_id from a controlplane_run response.
@@ -1597,9 +1788,14 @@ def controlplane_status(path: str | None = None) -> str:
                     }
                 else:
                     status["session"] = None
+
+        # Config exists but CP disabled — surface onboarding
+        if not cp_config.enabled:
+            status["onboarding"] = _build_onboarding_status(project_root)
     else:
-        status["controlplane_enabled"] = False
-        status["note"] = "Add 'controlplane: enabled: true' to .claude/lintgate.yaml to enable"
+        status["controlplane_enabled"] = False  # backward compat
+        status["note"] = "Add 'controlplane: enabled: true' to .claude/lintgate.yaml to enable"  # backward compat
+        status["onboarding"] = _build_onboarding_status(project_root)
 
     # Available channels
     status["available_channels"] = {
@@ -1946,11 +2142,14 @@ def behavior_precheck(
     prediction_type: str | None = None,
     prediction_value: str | int | None = None,
 ) -> str:
-    """Check planned action against known behavioral constraints.
+    """Check a planned action against known constraints before executing it.
 
-    Asks the agent to state predicted constraints and computes coverage gaps.
-    Returns constraint ledger, uncertainty zones, and similar past failures.
-    Use before taking action to avoid approach cycling.
+    WHEN TO USE: Before running Bash commands or making significant changes.
+    State what you plan to do and what constraints you know about — this tool
+    identifies coverage gaps, uncertainty zones, and similar past failures.
+
+    Example: behavior_precheck(path="/my/project", planned_action="run pytest",
+        known_constraints=["some tests may fail due to missing fixtures"])
 
     Args:
         path: Project root path.
@@ -2118,6 +2317,17 @@ def behavior_precheck(
         "recommendation": recommendation,
     }
 
+    # First-session guidance when precheck_count_session was just incremented to 1
+    if compass.precheck_count_session == 1:
+        output["first_session_hint"] = (
+            "First precheck this session — predictions and constraint tracking "
+            "improve as you use behavior_precheck before taking actions. "
+            "State your known constraints and register predictions for best results."
+        )
+        _bp_onboarding = _build_onboarding_status(project_root)
+        if _bp_onboarding.get("config_state") != "config_enabled":
+            output["onboarding"] = _bp_onboarding
+
     # Prediction tracking section
     pred_accuracy = compute_prediction_accuracy(compass)
     checked_count = len(
@@ -2166,8 +2376,10 @@ def behavior_precheck(
 
 @mcp.tool()
 def global_memory_status(path: str) -> str:
-    """Show global behavior profile status: session count, signal priors,
-    intent ratios, nudge outcomes, computed bias adjustments, alpha config.
+    """Show cross-session behavioral analysis status.
+
+    Returns session count, learned patterns, calibration settings,
+    and computed bias adjustments from accumulated behavioral data.
 
     Args:
         path: Project root path.
@@ -2246,6 +2458,338 @@ def global_memory_reset(path: str) -> str:
             "message": "Global behavior profile has been reset to empty state.",
         }
     )
+
+
+# ─── Model Calibration ─────────────────────────────────────────────────
+
+
+@mcp.tool()
+def model_profile_status(
+    path: str,
+    model_id: str | None = None,
+) -> str:
+    """Show model calibration profile status.
+
+    Returns the resolved model key, calibration status, signal risk vector,
+    and confidence level. If model_id is None, returns all stored profiles.
+
+    Args:
+        path: Project root path.
+        model_id: Optional model identifier (e.g., "claude-opus-4", "gpt-4o").
+            If None, returns summary of all stored profiles.
+    """
+    from lintgate.controlplane.model_profiles import (
+        load_profiles,
+        resolve_model_key,
+    )
+
+    store = load_profiles()
+
+    if model_id is None:
+        # Summary of all stored profiles
+        summaries = []
+        for key, profile in store.profiles.items():
+            status = "usable" if profile.is_usable() else (
+                "stale" if profile.is_stale() else "low_confidence"
+            )
+            summaries.append({
+                "model_key": key,
+                "status": status,
+                "confidence": profile.confidence,
+                "probe_runs": profile.probe_runs,
+                "telemetry_samples": profile.telemetry_samples,
+                "signal_count": len(profile.signal_risk),
+                "age_days": round((
+                    __import__("time").time() - profile.updated_at
+                ) / 86400, 1),
+            })
+        return _json_dumps({
+            "profiles_count": len(summaries),
+            "profiles": summaries,
+            "next_actions": [
+                "model_profile_probe_start(model_id='<model>') — "
+                "calibrate a new model",
+            ] if not summaries else [
+                "model_profile_probe_start(model_id='<model>') — "
+                "calibrate or recalibrate a model",
+                "bootstrap_context_files(model_id='<model>') — "
+                "generate model-aware bootstrap content",
+            ],
+        })
+
+    # Specific model lookup
+    canonical = resolve_model_key(model_id)
+    if canonical is None:
+        return _json_dumps({
+            "model_id": model_id,
+            "status": "unresolved",
+            "message": (
+                f"Cannot resolve model identifier {model_id!r}. "
+                "Expected format: 'claude-opus-4', 'gpt-4o', "
+                "or 'provider:model-name'."
+            ),
+            "next_actions": [
+                "Provide a recognized model identifier.",
+            ],
+        })
+
+    profile = store.profiles.get(canonical)
+    if profile is None:
+        return _json_dumps({
+            "model_key": canonical,
+            "status": "no_profile",
+            "message": f"No calibration profile found for {canonical}.",
+            "next_actions": [
+                f"model_profile_probe_start(model_id='{model_id}') — "
+                "run calibration probe (60-120 seconds)",
+            ],
+        })
+
+    import time as _time
+
+    status = "usable" if profile.is_usable() else (
+        "stale" if profile.is_stale() else "low_confidence"
+    )
+    age_days = round((_time.time() - profile.updated_at) / 86400, 1)
+
+    result: dict = {
+        "model_key": canonical,
+        "status": status,
+        "confidence": profile.confidence,
+        "probe_version": profile.probe_version,
+        "probe_runs": profile.probe_runs,
+        "telemetry_samples": profile.telemetry_samples,
+        "age_days": age_days,
+        "signal_risk": profile.signal_risk,
+        "custom_anti_patterns_count": len(profile.custom_anti_patterns),
+        "custom_dispositions_count": len(profile.custom_dispositions),
+    }
+
+    next_actions = []
+    if status == "stale":
+        next_actions.append(
+            f"model_profile_probe_start(model_id='{model_id}') — "
+            "recalibrate (profile is stale)"
+        )
+    elif status == "low_confidence":
+        next_actions.append(
+            f"model_profile_probe_start(model_id='{model_id}') — "
+            "recalibrate (low confidence)"
+        )
+    if status == "usable":
+        next_actions.append(
+            f"bootstrap_context_files(model_id='{model_id}') — "
+            "generate model-aware bootstrap content"
+        )
+    result["next_actions"] = next_actions
+    return _json_dumps(result)
+
+
+@mcp.tool()
+def model_profile_probe_start(
+    path: str,
+    model_id: str,
+    probe_set: str = "quick",
+) -> str:
+    """Start a model calibration probe.
+
+    Returns 5 multiple-choice questions that reveal the model's behavioral
+    tendencies (approach cycling, verification habits, etc.). Answer all
+    questions and submit via model_profile_probe_submit.
+
+    Args:
+        path: Project root path.
+        model_id: Model identifier (e.g., "claude-opus-4", "gpt-4o").
+        probe_set: Probe question set. Currently only "quick" (5 questions).
+    """
+    from lintgate.controlplane.model_probe import (
+        PROBE_VERSION,
+        SUPPORTED_PROBE_SETS,
+        get_probe_questions,
+    )
+    from lintgate.controlplane.model_profiles import (
+        resolve_model_key,
+    )
+
+    canonical = resolve_model_key(model_id)
+    if canonical is None:
+        return _json_dumps({
+            "error": f"Cannot resolve model identifier {model_id!r}.",
+            "hint": (
+                "Expected format: 'claude-opus-4', 'gpt-4o', "
+                "or 'provider:model-name'."
+            ),
+        })
+
+    try:
+        questions = get_probe_questions(probe_set)
+    except ValueError as e:
+        return _json_dumps({
+            "error": str(e),
+            "supported_probe_sets": sorted(SUPPORTED_PROBE_SETS),
+        })
+    probe_set = probe_set.strip().lower()
+
+    # Check for existing profile
+    from lintgate.controlplane.model_profiles import get_profile
+
+    existing = get_profile(model_id)
+    existing_info = None
+    if existing is not None:
+        import time as _time
+
+        existing_info = {
+            "confidence": existing.confidence,
+            "probe_runs": existing.probe_runs,
+            "age_days": round(
+                (_time.time() - existing.updated_at) / 86400, 1
+            ),
+            "status": "usable" if existing.is_usable() else (
+                "stale" if existing.is_stale() else "low_confidence"
+            ),
+        }
+
+    return _json_dumps({
+        "model_key": canonical,
+        "probe_version": f"v{PROBE_VERSION}",
+        "probe_set": probe_set,
+        "question_count": len(questions),
+        "questions": questions,
+        "answer_schema": {
+            "format": {"question_id": "choice_letter"},
+            "example": {questions[0]["id"]: "B"},
+            "minimum_answers": 3,
+        },
+        "existing_profile": existing_info,
+        "eta": "60-120 seconds",
+        "next_actions": [
+            "Answer each question with a letter (A-D), then call "
+            f"model_profile_probe_submit(model_id='{model_id}', "
+            "answers={{...}})",
+        ],
+    })
+
+
+@mcp.tool()
+def model_profile_probe_submit(
+    path: str,
+    model_id: str,
+    answers: dict[str, str] | None = None,
+    probe_version: str = "v1",
+) -> str:
+    """Submit answers to a model calibration probe.
+
+    Scores the responses deterministically into a signal_risk vector,
+    derives model-specific anti-patterns and guardrail dispositions,
+    and persists the profile for future bootstrap use.
+
+    Args:
+        path: Project root path.
+        model_id: Model identifier (e.g., "claude-opus-4").
+        answers: Question responses as {question_id: choice_letter}.
+            Minimum 3 answers required. Example:
+            {"q1_failure_response": "B", "q2_verification_habits": "A"}
+        probe_version: Probe version string (default "v1").
+    """
+    from lintgate.controlplane.model_probe import (
+        PROBE_VERSION,
+        build_profile_from_probe,
+        get_probe_questions,
+    )
+    from lintgate.controlplane.model_profiles import (
+        get_profile,
+        resolve_model_key,
+        upsert_profile,
+    )
+
+    # Validate probe version
+    expected_version = f"v{PROBE_VERSION}"
+    if probe_version != expected_version:
+        return _json_dumps({
+            "error": f"Unknown probe version: {probe_version!r}",
+            "expected": expected_version,
+            "hint": "Run model_profile_probe_start to get current questions.",
+        })
+
+    # Validate model key
+    canonical = resolve_model_key(model_id)
+    if canonical is None:
+        return _json_dumps({
+            "error": f"Cannot resolve model identifier {model_id!r}.",
+        })
+
+    # Validate answers
+    if not answers:
+        return _json_dumps({
+            "error": "No answers provided.",
+            "hint": "Provide answers as {question_id: choice_letter}.",
+        })
+
+    valid_ids = {q["id"] for q in get_probe_questions()}
+    invalid_ids = set(answers.keys()) - valid_ids
+    if invalid_ids:
+        return _json_dumps({
+            "error": f"Unknown question IDs: {sorted(invalid_ids)}",
+            "valid_ids": sorted(valid_ids),
+        })
+
+    if len(answers) < 3:
+        return _json_dumps({
+            "error": (
+                f"Minimum 3 answers required, got {len(answers)}. "
+                "Answer more questions for a usable profile."
+            ),
+        })
+
+    # Score and build profile
+    try:
+        profile = build_profile_from_probe(model_id, answers)
+    except ValueError as e:
+        return _json_dumps({"error": str(e)})
+
+    # Preserve run history on recalibration.
+    existing = get_profile(model_id)
+    if existing is not None:
+        profile.created_at = existing.created_at
+        profile.probe_runs = max(existing.probe_runs, 1) + 1
+        profile.stale_after_days = existing.stale_after_days
+
+    # Persist
+    upsert_profile(profile)
+
+    status = "usable" if profile.is_usable() else "low_confidence"
+
+    next_actions = []
+    if status == "usable":
+        next_actions.append(
+            f"bootstrap_context_files(model_id='{model_id}') — "
+            "generate model-aware bootstrap content"
+        )
+    else:
+        next_actions.append(
+            "Answer more questions to increase confidence above 0.55 "
+            "threshold."
+        )
+    next_actions.append(
+        f"model_profile_status(model_id='{model_id}') — "
+        "view full profile details"
+    )
+
+    return _json_dumps({
+        "model_key": canonical,
+        "status": status,
+        "confidence": profile.confidence,
+        "probe_runs": profile.probe_runs,
+        "signal_risk": profile.signal_risk,
+        "custom_anti_patterns": profile.custom_anti_patterns,
+        "custom_dispositions": profile.custom_dispositions,
+        "answers_submitted": len(answers),
+        "message": (
+            f"Profile created for {canonical} with confidence "
+            f"{profile.confidence:.2f}."
+        ),
+        "next_actions": next_actions,
+    })
 
 
 # ─── Entry point ────────────────────────────────────────────────────────

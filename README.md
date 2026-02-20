@@ -10,12 +10,13 @@ LintGate fires every time an LLM coding agent writes, edits, or executes a comma
 
 ## What It Does
 
-- **5-phase lint pipeline**: change classification → tier selection → parallel linting (14 linters) → result aggregation → agent-formatted reporting
+- **5-phase lint pipeline**: change classification → tier selection → parallel linting (15 linters) → result aggregation → agent-formatted reporting
 - **ControlPlane supervision mesh**: 5 independent channels (lint, tests, deps, git, behavior) running in parallel with cross-channel coherence analysis
 - **Behavioral drift detection**: 9 detection rules (approach cycling, failure amnesia, premature action, brute-force escalation, verification debt, stale model, serial discovery, tool repetition, consecutive failures) with intent-aware bias and signal coordination
 - **Theory extraction**: 6 theory facets + enforceable rules extracted from all project markdown — deterministic, no LLM calls
 - **Architecture of Inquiry**: 5 opt-in features that close the loop between behavioral detection and theory extraction — theory-grounded signals, falsifiable predictions, coherence checking, living context patches, session readiness gates
 - **Cross-session learning**: global behavioral priors that warm-start new sessions, with alpha decay to zero as local data accumulates
+- **Model calibration**: per-model behavioral profiling via a 5-question deterministic probe, producing model-specific guardrails and anti-patterns that are injected into context files. Passive EMA refinement across sessions.
 - **Anti-drift systems**: issue memory, pattern bank, context rule enforcement
 - **Zero-config usability**: works on any Python project with just ruff installed. Every additional tool is additive.
 - **Token-efficient**: silent when nothing is wrong (`{}`), compact when something is, delta-only on subsequent runs
@@ -67,14 +68,14 @@ Configure the MCP server in `~/.mcp.json` (or project-level `.mcp.json`):
 {
   "mcpServers": {
     "lintgate": {
-      "command": "/path/to/lintgate/.venv/bin/python3",
-      "args": ["/path/to/lintgate/mcp_server.py"]
+      "command": "/path/to/lintgate/.venv/bin/lintgate-mcp",
+      "args": []
     }
   }
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 28 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 32 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 
@@ -92,7 +93,23 @@ Every LLM coding agent has its own auto-discovery convention. Rather than mainta
 
 ---
 
-## MCP Tools (28)
+## The Bootstrap Process
+
+LintGate is designed to be useful from zero state — no project history, no theory, no model calibration — and to become progressively more effective as it accumulates signal. This is the progression from a cold start to full cognitive integration:
+
+**Stage 0 — Zero state.** The agent has never seen this project. No CLAUDE.md, no theory profile, no calibration. LintGate fires on every tool use via the PostToolUse hook using battle-tested defaults: 7 curated anti-patterns distilled from field experience (approach cycling, serial constraint discovery, failure amnesia, root-cause clustering, bounded checklists, layered signal composition, performance anti-patterns) and 4 facet fallbacks covering core theory, problem-solving, alignment, and architecture. These are not placeholders — they are the lessons LintGate learned from hundreds of real sessions, and they provide useful guardrails even before the system knows anything about the specific project.
+
+**Stage 1 — Theory extraction.** `bootstrap_context_files` scans all markdown in the project and extracts a theory profile: 6 facets (core theory, problem-solving, alignment, architecture, anti-patterns, key abstractions) plus enforceable rules. This produces a CLAUDE.md with project-specific dispositions, guardrails, and managed sections for living context. Once theory exists, the zero-state defaults are replaced by project-grounded content — but only where the project has enough signal. Facets without claims fall back to the battle-tested defaults rather than empty placeholders.
+
+**Stage 2 — Model calibration.** `model_profile_probe_start` presents 5 multiple-choice questions that reveal the model's behavioral tendencies. The agent answers, `model_profile_probe_submit` scores the responses deterministically into a signal risk vector, derives model-specific anti-patterns and guardrail dispositions, and persists the profile at `~/.lintgate/model_profiles.json`. The profile is keyed by canonical `provider:model` format (e.g., `anthropic:claude-opus-4`) and applies only when the model key matches exactly. On subsequent calls to `bootstrap_context_files(model_id='...')`, the system injects model-biased guardrails into CLAUDE.md — so a model with high approach-cycling risk gets explicit guardrails about running `behavior_precheck` before a 3rd attempt.
+
+**Stage 3 — Living context.** As the agent works, the ControlPlane's behavior channel detects patterns. Recurring signals generate constraint proposals. Accepted constraints become `context_patch` entries that flow back into CLAUDE.md's managed sections. The project's self-model evolves with each session. Passive telemetry refinement (EMA alpha=0.15) nudges the model profile toward observed behavior — the probe anchors the profile, and real-world signal fires adjust it over time.
+
+Each stage is independently useful. A project at Stage 0 still gets the hook pipeline, the ControlPlane mesh, and sensible defaults. Stage 1 adds project grounding. Stage 2 adds model awareness. Stage 3 adds cross-session evolution. You can stop at any stage and the system works — each layer is additive.
+
+---
+
+## MCP Tools (32)
 
 Source of truth: `grep -c "@mcp.tool()" mcp_server.py`
 
@@ -126,6 +143,14 @@ Source of truth: `grep -c "@mcp.tool()" mcp_server.py`
 | `global_memory_status` | Cross-session behavioral priors and bias adjustments |
 | `global_memory_reset` | Reset global behavior profile |
 
+### Model Calibration
+
+| Tool | Purpose |
+|------|---------|
+| `model_profile_status` | Show calibration profile status for a model or all models |
+| `model_profile_probe_start` | Start a 5-question behavioral calibration probe |
+| `model_profile_probe_submit` | Submit probe answers, score into signal_risk vector, persist profile |
+
 ### Theory & Context
 
 | Tool | Purpose |
@@ -136,7 +161,7 @@ Source of truth: `grep -c "@mcp.tool()" mcp_server.py`
 | `extract_theory_constraints` | DO NOT / MUST directives → proposed lint rules |
 | `context_guidance` | Machine-usable rules and context signals |
 | `audit_context_health` | CLAUDE.md/AGENTS.md quality audit |
-| `bootstrap_context_files` | Generate context files from theory + signals |
+| `bootstrap_context_files` | Generate context files from theory + signals. Pass `model_id` for model-aware calibration. |
 | `context_patch_review` | Show pending living-context patches |
 | `context_patch_apply` | Apply patches to CLAUDE.md managed sections |
 
@@ -203,23 +228,26 @@ lintgate/
 │   ├── pattern_bank.py              # Categorical anti-tail-chasing
 │   ├── context_guidance.py          # CLAUDE.md/AGENTS.md parsing
 │   ├── context_auditor.py           # Context file health checks + session readiness
+│   ├── bootstrap_defaults.py         # Battle-tested zero-state anti-patterns + facet fallbacks
 │   ├── context_bootstrap.py         # Context file generation + managed sections + patches
 │   ├── theory_extractor.py          # Project theory profiling (6 facets + enforceable rules)
 │   ├── versioning.py                # Tool version auditing
 │   ├── dependency_health.py         # Dependency health monitoring
-│   ├── linters/                     # 14 linter implementations
+│   ├── linters/                     # 15 linter implementations
 │   ├── controlplane/                # ControlPlane supervision mesh
 │   │   ├── types.py                 # SupervisionEvent, MeshResult, InquiryConfig
 │   │   ├── behavior_compass.py      # Hypothesis lifecycle, predictions, intent taxonomy
 │   │   ├── constraint_proposer.py   # Pattern → rule proposals + theory coherence
 │   │   ├── session_memory.py        # Cross-run state + theory profile cache
 │   │   ├── global_behavior_profile.py # Cross-session priors (alpha decay)
+│   │   ├── model_profiles.py        # Model-specific behavioral profiles + persistence
+│   │   ├── model_probe.py           # 5-question deterministic calibration probe
 │   │   └── ...                      # channel.py, runtime.py, coherence.py, reporter.py, etc.
 │   └── channels/                    # ControlPlane channel implementations
 │       ├── behavior_channel.py      # 9 detection rules + theory grounding
 │       └── ...                      # lint, test, dependency, git channels
-├── mcp_server.py                    # MCP tool interface (28 tools)
-├── tests/                           # 756+ tests
+├── mcp_server.py                    # MCP tool interface (32 tools)
+├── tests/                           # 890+ tests
 ├── docs/                            # Design deep dive, field reports
 │   └── design.md                    # Full architecture + calibration + philosophy
 ├── AGENTS.md                        # Universal agent entry point (single source of truth)
@@ -235,11 +263,12 @@ lintgate/
 
 See [docs/design.md](docs/design.md) for:
 - The 5-phase pipeline in detail (with ASCII diagram)
-- Tiered lint selection and the 14-linter registry
+- Tiered lint selection and the 15-linter registry
 - ControlPlane architecture: coherence engine, session memory, constraint proposer
 - Behavioral drift detection: 9 rules, intent taxonomy, signal coordination
 - Architecture of Inquiry: theory grounding, predictions, coherence, living context
 - Cross-session learning: global profiles, alpha decay, safety properties
+- Model calibration: per-model behavioral profiling, bootstrap progression, EMA refinement
 - Token economics: calibration data, duty cycle analysis, scaling properties
 - Design philosophy: 13 principles
 - Design lineage: 4 precursor projects

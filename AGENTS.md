@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 28 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 32 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -13,7 +13,7 @@ If you are discovering LintGate for the first time:
 
 1. **Install**: Run `bash setup.sh` from the LintGate project root. This creates the venv, installs dependencies, configures the PostToolUse hook, and registers the MCP server.
 2. **Integrate**: Run `bash integrate.sh` to auto-detect your agent type and generate config files. If your agent type is not detected, this file (AGENTS.md) is still your reference.
-3. **Orient**: Once MCP tools are available, call `build_theory_pack` to load the project's theory digest, then `controlplane_run` for full supervision.
+3. **Orient**: Once MCP tools are available, call `build_theory_pack` to load the project's theory digest, then `controlplane_run` for full supervision. Optionally, run `model_profile_probe_start` → answer → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')` for model-specific calibration.
 
 ### Tiered Integration
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 28 MCP tools. Source of truth: `grep -c "@mcp.tool()" mcp_server.py`.
+LintGate provides 32 MCP tools. Source of truth: `grep -c "@mcp.tool()" mcp_server.py`.
 
 ### Orient — understand before acting
 
@@ -96,7 +96,7 @@ LintGate provides 28 MCP tools. Source of truth: `grep -c "@mcp.tool()" mcp_serv
 
 | Tool | Purpose |
 |------|---------|
-| `bootstrap_context_files` | Generate CLAUDE.md/AGENTS.md from theory + context signals. Non-destructive by default. |
+| `bootstrap_context_files` | Generate CLAUDE.md/AGENTS.md from theory + context signals. Pass `model_id` for model-aware calibration. Non-destructive by default. |
 | `extract_project_theory` | Full theory profile: 6 facets + enforceable rules from all markdown. |
 | `extract_theory_constraints` | DO NOT / MUST directives → proposed lint rules. |
 | `audit_context_health` | Check CLAUDE.md/AGENTS.md quality against best practices. |
@@ -119,6 +119,16 @@ LintGate provides 28 MCP tools. Source of truth: `grep -c "@mcp.tool()" mcp_serv
 |------|---------|
 | `global_memory_status` | Session count, signal priors, intent ratios, nudge outcomes, bias adjustments. |
 | `global_memory_reset` | Reset global behavior profile. Use after major workflow changes. |
+
+### Calibrate — model-specific behavioral profiling
+
+| Tool | Purpose |
+|------|---------|
+| `model_profile_status` | Show calibration profile status for a model (or all models). Returns signal risk, confidence, staleness. |
+| `model_profile_probe_start` | Start a 5-question calibration probe. Returns questions + answer schema. |
+| `model_profile_probe_submit` | Submit probe answers. Scores deterministically into signal_risk vector, derives anti-patterns + guardrails, persists profile. |
+
+**Calibration workflow**: `model_profile_probe_start` → answer 5 questions → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')`. Profiles are stored globally (`~/.lintgate/model_profiles.json`), keyed by `provider:model` canonical form, and applied only when the model key exactly matches. Passive telemetry refinement (EMA alpha=0.15) nudges the profile toward observed behavior across sessions.
 
 ## Feedback Loops
 
@@ -152,4 +162,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Add config option** → update YAML examples in docs/design.md and README.md.
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 
-Source of truth for tool count: `grep -c "@mcp.tool()" mcp_server.py` (currently 28). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -c "@mcp.tool()" mcp_server.py` (currently 32). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

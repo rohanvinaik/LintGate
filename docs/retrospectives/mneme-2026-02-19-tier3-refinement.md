@@ -1,3 +1,7 @@
+---
+theory_scope: false
+---
+
 # LintGate Agent Retrospective: Mneme Codebase Refinement
 
 <!--

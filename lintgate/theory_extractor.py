@@ -63,6 +63,7 @@ _SKIP_DIRS = {
     ".pytest_cache",
     "downloaded",
     ".claude",
+    "retrospectives",
 }
 
 # Heading patterns that signal theory-relevant sections
@@ -127,6 +128,11 @@ _THEORY_HEADING_SIGNALS: dict[str, list[str]] = {
         r"specification",
         r"decomposition",
         r"module",
+        r"performance",
+        r"optimi[sz]",
+        r"profil",
+        r"benchmark",
+        r"scaling",
     ],
     "anti_patterns": [
         r"anti[- ]?pattern",
@@ -198,6 +204,12 @@ _THEORY_PARAGRAPH_SIGNALS = {
         re.compile(r"bypass.* (?:learning|composition|architecture|system)", re.I),
         re.compile(r"(?:will|would|can) (?:ruin|break|destroy|undermine)", re.I),
         re.compile(r"(?:trying harder|brute force|premature|overfitting)", re.I),
+    ],
+    "architecture": [
+        re.compile(r"\b(?:O\(n[²2]\)|quadratic|exponential|linear time)\b", re.I),
+        re.compile(r"\b(?:vectori[sz]|batch|parallel)\b.*\b(?:instead|rather|prefer)\b", re.I),
+        re.compile(r"\b(?:performance|latency|throughput|bottleneck)\b.*\b(?:because|since|critical)\b", re.I),
+        re.compile(r"\b(?:JIT|numba|numpy|vectori[sz]ed)\b.*\b(?:hot|loop|path|critical)\b", re.I),
     ],
 }
 
@@ -285,7 +297,11 @@ def extract_theory(project_root: str) -> dict[str, Any]:
 
     # Parse each document into sections
     all_sections: list[_Section] = []
+    included_md_files: list[str] = []
     for md_path in md_files:
+        if _has_frontmatter_opt_out(md_path):
+            continue
+        included_md_files.append(md_path)
         all_sections.extend(_parse_document(md_path, project_root))
 
     # Classify sections into theory facets
@@ -301,15 +317,15 @@ def extract_theory(project_root: str) -> dict[str, Any]:
     summary = _build_summary(profile)
     validity = _build_validity_report(
         profile,
-        docs_scanned=len(md_files),
+        docs_scanned=len(included_md_files),
         sections_scanned=len(all_sections),
         enforceable=enforceable,
     )
 
     return {
         "theory_profile": profile,
-        "docs_scanned": len(md_files),
-        "doc_paths": [os.path.relpath(p, project_root) for p in md_files],
+        "docs_scanned": len(included_md_files),
+        "doc_paths": [os.path.relpath(p, project_root) for p in included_md_files],
         "enforceable_rules": enforceable,
         "summary": summary,
         "validity": validity,
@@ -644,8 +660,47 @@ class _Section:
         self.line_no = line_no
 
 
+def _has_frontmatter_opt_out(md_path: str) -> bool:
+    """Return True when markdown frontmatter declares `theory_scope: false`."""
+    try:
+        with open(md_path, errors="replace") as f:
+            head_lines: list[str] = []
+            for _ in range(10):
+                line = f.readline()
+                if line == "":
+                    break
+                head_lines.append(line.rstrip("\n"))
+    except OSError:
+        return False
+
+    if not head_lines:
+        return False
+    if head_lines[0].lstrip("\ufeff").strip() != "---":
+        return False
+
+    fm_end = None
+    for i, line in enumerate(head_lines[1:], 1):
+        if line.strip() == "---":
+            fm_end = i
+            break
+    if fm_end is None:
+        return False
+
+    frontmatter = "\n".join(head_lines[1:fm_end])
+    return bool(
+        re.search(
+            r"^\s*theory_scope\s*:\s*false\s*(?:#.*)?$",
+            frontmatter,
+            re.IGNORECASE | re.MULTILINE,
+        )
+    )
+
+
 def _parse_document(md_path: str, project_root: str) -> list[_Section]:
     """Parse a markdown file into headed sections."""
+    if _has_frontmatter_opt_out(md_path):
+        return []
+
     try:
         text = Path(md_path).read_text(errors="replace")
     except OSError:
@@ -877,6 +932,8 @@ def _score_claim(sentence: str, facet: str) -> int:
             score += 2  # "**Rationale:**" pattern from research docs
         if re.search(r"\b(?:decompos|modular|separation of concerns|drop[- ]?in)\b", s, re.I):
             score += 1
+        if re.search(r"\b(?:O\(n|quadratic|exponential|vectori[sz]|batch|performance|latency|throughput)\b", s, re.I):
+            score += 1  # Performance-related architectural claim
     elif facet == "anti_patterns":
         if re.search(r"\b(?:will|would|can|could)\s+(?:ruin|break|destroy|fail)\b", s, re.I):
             score += 2

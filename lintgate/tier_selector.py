@@ -40,6 +40,7 @@ TIER_2_LINTERS = [
     "version_checker",
     "context_rule_checker",
     "redefinition_checker",
+    "performance_checker",
 ]
 TIER_3_LINTERS = [
     "ruff_check",
@@ -54,6 +55,7 @@ TIER_3_LINTERS = [
     "version_checker",
     "context_rule_checker",
     "redefinition_checker",
+    "performance_checker",
 ]
 
 # ─── Debounce state (file-backed, persists across process invocations) ──

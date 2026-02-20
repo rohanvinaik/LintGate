@@ -639,5 +639,98 @@ class TestTheoryPackAPI(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+class TestTheoryExtractionScoping(unittest.TestCase):
+    """Theory extraction must not leak cross-project claims."""
+
+    def test_retrospectives_excluded_from_theory_scan(self):
+        """docs/retrospectives/ should be skipped by _discover_md_files."""
+        from lintgate.theory_extractor import _discover_md_files
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            (Path(tmpdir) / "README.md").write_text("# Project\n")
+            retro_dir = Path(tmpdir) / "docs" / "retrospectives"
+            retro_dir.mkdir(parents=True)
+            (retro_dir / "cross-project.md").write_text(
+                "# Retrospective\n\nThis is from another project.\n"
+            )
+
+            found = _discover_md_files(tmpdir)
+            basenames = [os.path.basename(p) for p in found]
+
+            self.assertIn("README.md", basenames)
+            self.assertNotIn("cross-project.md", basenames)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_frontmatter_opt_out(self):
+        """Files with theory_scope: false frontmatter should be skipped."""
+        from lintgate.theory_extractor import _parse_document
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            opted_out = Path(tmpdir) / "opted_out.md"
+            opted_out.write_text(
+                "---\ntheory_scope: false\n---\n\n"
+                "# Theory\n\nThis claim should not be extracted.\n"
+            )
+
+            sections = _parse_document(str(opted_out), tmpdir)
+            self.assertEqual(len(sections), 0, "Opted-out file should produce no sections")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_frontmatter_absent_means_included(self):
+        """Files without opt-out frontmatter should be included normally."""
+        from lintgate.theory_extractor import _parse_document
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            normal = Path(tmpdir) / "normal.md"
+            normal.write_text("# Theory\n\nThis claim should be extracted.\n")
+
+            sections = _parse_document(str(normal), tmpdir)
+            self.assertGreater(len(sections), 0, "Normal file should produce sections")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_frontmatter_other_keys_do_not_opt_out(self):
+        """Frontmatter with other keys (not theory_scope) should not opt out."""
+        from lintgate.theory_extractor import _parse_document
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            other_fm = Path(tmpdir) / "other_frontmatter.md"
+            other_fm.write_text(
+                "---\ntitle: My Doc\nauthor: Test\n---\n\n"
+                "# Theory\n\nThis content has frontmatter but no opt-out.\n"
+            )
+
+            sections = _parse_document(str(other_fm), tmpdir)
+            self.assertGreater(len(sections), 0)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_opted_out_files_not_counted_in_docs_scanned(self):
+        """Opted-out files should not appear in docs_scanned/doc_paths."""
+        from lintgate.theory_extractor import extract_theory
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            (Path(tmpdir) / "README.md").write_text("# Project\n")
+            (Path(tmpdir) / "included.md").write_text("# Theory\n\nInclude me.\n")
+            (Path(tmpdir) / "opted_out.md").write_text(
+                "---\ntheory_scope: false\n---\n\n# Theory\n\nDo not include me.\n"
+            )
+
+            result = extract_theory(tmpdir)
+            self.assertEqual(result["docs_scanned"], 2)
+            self.assertIn("README.md", result["doc_paths"])
+            self.assertIn("included.md", result["doc_paths"])
+            self.assertNotIn("opted_out.md", result["doc_paths"])
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

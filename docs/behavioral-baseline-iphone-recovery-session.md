@@ -1,3 +1,7 @@
+---
+theory_scope: false
+---
+
 # Behavioral Baseline: iPhone Recovery Session
 
 **Date:** 2026-02-17

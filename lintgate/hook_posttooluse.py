@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import time
+from typing import Any
 
 try:
     from lintgate.agent_reporter import format_report
@@ -48,6 +49,107 @@ except ModuleNotFoundError:
     from lintgate.results_aggregator import aggregate_results
     from lintgate.state import load_last_run, log_metric, save_run, update_issue_memory
     from lintgate.tier_selector import select_tier
+
+
+def _resolve_event_model_key(input_data: dict[str, Any]) -> str | None:
+    """Resolve model identity from hook payload fields/env vars.
+
+    Returns canonical provider:model key, or None when unavailable/unresolvable.
+    """
+    from lintgate.controlplane.model_profiles import resolve_model_key
+
+    candidates: list[str | None] = [
+        input_data.get("model"),
+        input_data.get("model_id"),
+        input_data.get("model_name"),
+        input_data.get("assistant_model"),
+    ]
+
+    metadata = input_data.get("metadata")
+    if isinstance(metadata, dict):
+        candidates.extend(
+            [
+                metadata.get("model"),
+                metadata.get("model_id"),
+                metadata.get("model_name"),
+            ]
+        )
+
+    session_meta = input_data.get("session")
+    if isinstance(session_meta, dict):
+        candidates.extend(
+            [
+                session_meta.get("model"),
+                session_meta.get("model_id"),
+                session_meta.get("model_name"),
+            ]
+        )
+
+    tool_input = input_data.get("tool_input")
+    if isinstance(tool_input, dict):
+        candidates.extend(
+            [
+                tool_input.get("model"),
+                tool_input.get("model_id"),
+            ]
+        )
+
+    for env_key in ("LINTGATE_MODEL_ID", "CLAUDE_MODEL", "OPENAI_MODEL", "MODEL"):
+        candidates.append(os.environ.get(env_key))
+
+    for raw in candidates:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        canonical = resolve_model_key(raw)
+        if canonical:
+            return canonical
+
+    return None
+
+
+def _select_telemetry_profile(store: Any, input_data: dict[str, Any]):
+    """Pick the exact model profile for telemetry updates.
+
+    Ambiguous fallback (e.g., "most recently updated profile") is intentionally
+    disallowed to prevent cross-model contamination.
+    """
+    model_key = _resolve_event_model_key(input_data)
+    if not model_key:
+        return None
+    profile = store.profiles.get(model_key)
+    if profile and profile.is_usable():
+        return profile
+    return None
+
+
+_SESSION_TELEMETRY_UPDATE_CAP = 10
+_SESSION_TELEMETRY_COUNTER_KEY = "_model_profile_telem_updates"
+
+
+def _session_telemetry_updates_used(session: Any) -> int:
+    """Return telemetry updates applied in the current session."""
+    if session is None or not hasattr(session, "behavior_compass"):
+        return 0
+    bc = session.behavior_compass
+    if not isinstance(bc, dict):
+        return 0
+    value = bc.get(_SESSION_TELEMETRY_COUNTER_KEY, 0)
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
+def _can_apply_session_telemetry(session: Any) -> bool:
+    """Check whether this session still has telemetry update budget."""
+    return _session_telemetry_updates_used(session) < _SESSION_TELEMETRY_UPDATE_CAP
+
+
+def _mark_session_telemetry_applied(session: Any) -> None:
+    """Increment the per-session telemetry update counter."""
+    if session is None or not hasattr(session, "behavior_compass"):
+        return
+    bc = session.behavior_compass
+    if not isinstance(bc, dict):
+        return
+    bc[_SESSION_TELEMETRY_COUNTER_KEY] = _session_telemetry_updates_used(session) + 1
 
 
 def main() -> None:
@@ -363,6 +465,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                         )
 
                         _delta = cr.metrics["behavior_compass_delta"]
+                        _existing_telem_updates = _session_telemetry_updates_used(session)
                         _bc = _lbc(session)
                         _bc.last_fired = _delta.get("last_fired", _bc.last_fired)
                         _bc.signal_fire_counts = _delta.get(
@@ -380,6 +483,10 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                         )
                         _bc.nudge_outcomes = _delta.get("nudge_outcomes", _bc.nudge_outcomes)
                         _sbc(session, _bc)
+                        if _existing_telem_updates > 0:
+                            session.behavior_compass[_SESSION_TELEMETRY_COUNTER_KEY] = (
+                                _existing_telem_updates
+                            )
                         # Merge theory coda dedup state (not a compass field, stored as extra key)
                         # Use dict merge so prior signals' codas aren't dropped
                         if "_theory_recent_codas" in _delta:
@@ -407,6 +514,46 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                             _session_id = session.session_id if session else ""
                             _apply_gp(_gp, _gp_delta, session_id=_session_id)
                             _save_gp(_gp)
+
+                    # v4: Model profile telemetry refinement
+                    with contextlib.suppress(Exception):
+                        from lintgate.controlplane.model_profiles import (
+                            apply_telemetry_update as _apply_telem,
+                        )
+                        from lintgate.controlplane.model_profiles import (
+                            load_profiles as _load_mp,
+                        )
+                        from lintgate.controlplane.model_profiles import (
+                            save_profiles as _save_mp,
+                        )
+
+                        _mp_store = _load_mp()
+                        _active = _select_telemetry_profile(_mp_store, input_data)
+                        _signal_fires = {}
+                        if session:
+                            _bc_data = session.behavior_compass
+                            if isinstance(_bc_data, dict):
+                                _signal_fires = _bc_data.get(
+                                    "signal_fire_counts", {}
+                                )
+                            _event_count = (
+                                _bc_data.get("event_counter", 0)
+                                if isinstance(_bc_data, dict)
+                                else 0
+                            )
+                        else:
+                            _event_count = 0
+                        if (
+                            _active is not None
+                            and _signal_fires
+                            and _event_count >= 10
+                            and _can_apply_session_telemetry(session)
+                        ):
+                            _apply_telem(
+                                _active, _signal_fires, _event_count
+                            )
+                            _mark_session_telemetry_applied(session)
+                            _save_mp(_mp_store)
 
                     break
 

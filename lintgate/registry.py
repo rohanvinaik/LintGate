@@ -111,6 +111,13 @@ def build_registry(config: ProjectConfig) -> dict[str, BaseLinter]:
     except ImportError:
         pass
 
+    try:
+        from .linters.performance_checker import PerformanceChecker
+
+        _register(registry, PerformanceChecker(), config)
+    except ImportError:
+        pass
+
     # ── Custom linters from config ────────────────────────────────
     # A linter config entry with a "command" key is treated as a custom
     # linter. This is the bridge for project-specific tools like
