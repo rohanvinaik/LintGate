@@ -62,7 +62,7 @@ except ModuleNotFoundError:
 
 _MCP_INSTRUCTIONS = (
     "LintGate: code quality analysis for Python projects. "
-    "Start with getting_started(path) for project-specific guidance.\n"
+    "Start with getting_started(path) for project-specific guidance and startup auto-setup.\n"
     "Essential workflow (6 core tools):\n"
     "  1. lint_files — lint files you just edited\n"
     "  2. lint_project — full project lint scan\n"

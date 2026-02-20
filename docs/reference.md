@@ -14,7 +14,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 
 | Tool              | Purpose                                                                |
 | ----------------- | ---------------------------------------------------------------------- |
-| `getting_started` | First-call orientation: setup status, essential workflow, next actions |
+| `getting_started` | First-call orientation with startup automation (auto config scaffold + missing-tool diagnostics + next actions) |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
 
 ### Lint Pipeline
@@ -25,7 +25,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `lint_project`     | Lint all Python files in a project        |
 | `lint_get_details` | Drill into a previous lint run by run_id  |
 | `lint_fix`         | Auto-fix safe issues (dry_run by default) |
-| `lint_status`      | Linter availability, run history, metrics |
+| `lint_status`      | Linter availability, run history, metrics, and missing-tool install hints |
 
 ### ControlPlane
 

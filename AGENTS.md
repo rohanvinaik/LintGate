@@ -69,7 +69,7 @@ LintGate provides 36 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `build_theory_pack` | Token-efficient theory digest (~500-1500 tokens). Call first in any session. |
 | `get_theory_context` | Deep retrieval of specific theory claims by facet/keyword. |
 | `controlplane_status` | Is ControlPlane enabled? Which channels? What config? |
-| `lint_status` | Linter availability, run history, version audits, today's metrics. |
+| `lint_status` | Linter availability, run history, version audits, today's metrics, and missing-tool install hints. |
 | `context_guidance` | Machine-usable rules and context signals for a project. |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals. Non-destructive by default. |
 

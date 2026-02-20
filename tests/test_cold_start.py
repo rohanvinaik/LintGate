@@ -7,6 +7,7 @@ include the guidance a cold agent needs to use LintGate effectively.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest import mock
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -202,6 +203,72 @@ class TestGettingStarted:
         assert "next_actions" in result
         assert isinstance(result["next_actions"], list)
         assert len(result["next_actions"]) >= 1
+
+    def test_startup_setup_payload_present(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import getting_started
+
+        result = json.loads(getting_started(str(tmp_path)))
+        assert "startup_setup" in result
+        startup = result["startup_setup"]
+        assert "missing_tools_before" in startup
+        assert "missing_tools_after" in startup
+        assert "actions_applied" in startup
+
+    def test_auto_setup_scaffolds_missing_config(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import getting_started
+
+        config_path = tmp_path / ".claude" / "lintgate.yaml"
+        assert not config_path.exists()
+
+        result = json.loads(getting_started(str(tmp_path)))
+        assert config_path.exists()
+        assert result["config_status"]["config_state"] == "config_enabled"
+        assert any(
+            action.get("action") == "config_scaffolded"
+            for action in result["startup_setup"]["actions_applied"]
+        )
+
+    def test_missing_tool_reasons_are_reported_without_manual_probe(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import getting_started
+
+        fake_gaps = {
+            "tool_status": [],
+            "missing_tools": [
+                {
+                    "tool": "ty",
+                    "package": "ty",
+                    "required_by": ["ty"],
+                    "reason": "executable_not_found",
+                    "install_command": "pip install ty",
+                    "auto_installable": False,
+                }
+            ],
+        }
+
+        with (
+            mock.patch(
+                "mcp_tools.onboarding_tools._collect_external_tool_gaps",
+                return_value=fake_gaps,
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._auto_install_optional_tools",
+                return_value=[],
+            ),
+        ):
+            result = json.loads(getting_started(str(tmp_path), auto_setup=False))
+
+        assert result["startup_setup"]["missing_tools_after"]
+        assert result["startup_setup"]["missing_tools_after"][0]["tool"] == "ty"
+        assert any(
+            action.get("example") == "pip install ty"
+            for action in result["next_actions"]
+        )
 
 
 class TestScaffoldConfig:
@@ -483,6 +550,15 @@ class TestLintStatusOnboarding:
 
         result = json.loads(lint_status(str(tmp_path)))
         assert "onboarding" not in result
+
+    def test_missing_tools_field_present(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import lint_status
+
+        result = json.loads(lint_status(str(tmp_path)))
+        assert "missing_tools" in result
+        assert isinstance(result["missing_tools"], list)
 
 
 # ── Deglosified docstrings ──────────────────────────────────────────────

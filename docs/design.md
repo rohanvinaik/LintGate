@@ -828,7 +828,7 @@ LintGate exposes 36 MCP tools. The recommended workflow is: **lint → drill-dow
 | `lint_project(path, tier)` | Lint all Python files in a project. Same compact output. |
 | `lint_get_details(run_id, severity)` | Drill into a previous run by `run_id` — full issue details without re-running linters. |
 | `lint_fix(path, dry_run)` | Auto-fix safe issues (ruff --fix/format). Default `dry_run=True` previews changes. |
-| `lint_status(path)` | Show available linters, run history, context metrics, and today's telemetry. |
+| `lint_status(path)` | Show available linters, run history, context metrics, today's telemetry, and missing-tool install hints. |
 
 All lint responses include a `next_actions` array with prioritized suggestions: "3 auto-fixable issues → try `lint_fix`" or "2 blocking issues → try `lint_get_details`". This lets the agent chain tools without guessing.
 
