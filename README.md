@@ -152,13 +152,15 @@ LintGate is alignment research in product form: design the interaction structure
 
 It's an applied instance of *relational engineering* — the working hypothesis that alignment quality is a property of the human-model interaction, not of the model alone. Behavioral drift, session-level degradation, the gap between formally correct outputs and genuinely productive process — these are interaction failures, addressable by deliberately constructing interaction architectures that maintain the conditions for co-construction.
 
-The theory is exploratory and instrumented. We evaluate by operational usefulness: fewer retries per resolved issue, less time in dead-end loops, faster convergence on root causes. [docs/design.md](docs/design.md) has the full architecture, calibration data, and design philosophy.
+The theory is exploratory and instrumented. We evaluate by operational usefulness: fewer retries per resolved issue, less time in dead-end loops, faster convergence on root causes. The theoretical foundations — three papers on constrained hallucination, phenomenological alignment, and relational ontology — are mapped in [docs/research.md](docs/research.md).
 
 ---
 
 *35 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Full architecture and design philosophy: [docs/design.md](docs/design.md)*
+
+*Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
 
 ---
 
