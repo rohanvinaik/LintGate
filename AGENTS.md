@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 32 MCP tools. Source of truth: `grep -c "@mcp.tool()" mcp_server.py`.
+LintGate provides 32 MCP tools. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
 
 ### Orient — understand before acting
 
@@ -157,9 +157,9 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 
 **When you change LintGate itself**, update all affected documentation in the same action:
 
-- **Add/remove MCP tool** → update tool tables in this file, README.md, and docs/design.md. Verify count with `grep -c "@mcp.tool()" mcp_server.py`.
+- **Add/remove MCP tool** → update tool tables in this file, README.md, and docs/design.md. Verify count with `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
 - **Change tool signature or semantics** → update the tool's description in all three files.
 - **Add config option** → update YAML examples in docs/design.md and README.md.
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 
-Source of truth for tool count: `grep -c "@mcp.tool()" mcp_server.py` (currently 32). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 32). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

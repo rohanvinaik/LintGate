@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
+import tomllib
 
 import lintgate.versioning as versioning
 import mcp_server
@@ -11,6 +13,13 @@ from lintgate.context_guidance import build_context_guidance
 from lintgate.linters.context_rule_checker import ContextRuleChecker
 from lintgate.types import AggregatedResult, LinterContext, LintIssue
 from lintgate.versioning import collect_required_version_specs, inspect_tool_versions
+
+
+def test_wheel_packaging_includes_mcp_tools_package() -> None:
+    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text())
+    wheel_cfg = data["tool"]["hatch"]["build"]["targets"]["wheel"]
+    assert "mcp_tools" in wheel_cfg.get("packages", [])
 
 
 def test_mcp_validation_rejects_invalid_tier(tmp_path) -> None:
@@ -130,9 +139,9 @@ def test_audit_tool_versions_persists_and_returns_summary(tmp_path, monkeypatch)
     def fake_log_version_event(event: dict) -> None:
         captured["event"] = event
 
-    monkeypatch.setattr(mcp_server, "run_version_audit", fake_run_version_audit)
-    monkeypatch.setattr(mcp_server, "save_version_audit", fake_save_version_audit)
-    monkeypatch.setattr(mcp_server, "log_version_event", fake_log_version_event)
+    monkeypatch.setattr("lintgate.versioning.run_version_audit", fake_run_version_audit)
+    monkeypatch.setattr("lintgate.state.save_version_audit", fake_save_version_audit)
+    monkeypatch.setattr("lintgate.state.log_version_event", fake_log_version_event)
 
     out = mcp_server.audit_tool_versions(path=str(tmp_path), auto_fix=True)
     payload = json.loads(out)

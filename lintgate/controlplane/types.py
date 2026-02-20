@@ -106,6 +106,15 @@ class CoherenceResult:
     - coupled: Two+ channels fail with overlapping files
     - systemic: Three+ channels fail, or cross-domain failure pattern
     - degraded: Any channel error/timeout beyond threshold
+
+    Confidence (0.0-1.0) indicates how certain the classification is:
+    - 1.0: Unambiguous (e.g., stable with all pass, degraded with errors)
+    - 0.8+: High confidence (e.g., isolated with 3+ silent channels)
+    - 0.5-0.8: Moderate (e.g., coupled vs systemic boundary cases)
+    - <0.5: Low confidence (e.g., 1 fail + 0 pass, ambiguous coupled/systemic)
+
+    classification_notes lists factors that made classification uncertain,
+    making brittle edge cases transparent rather than silently misclassified.
     """
 
     state: Literal["stable", "isolated", "coupled", "systemic", "degraded"] = "stable"
@@ -113,6 +122,8 @@ class CoherenceResult:
     recommended_action: str = ""
     silent_channels: list[str] = field(default_factory=list)
     loud_channels: list[str] = field(default_factory=list)
+    confidence: float = 1.0
+    classification_notes: list[str] = field(default_factory=list)
 
 
 # ── Mesh Result ───────────────────────────────────────────────────────

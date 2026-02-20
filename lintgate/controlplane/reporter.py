@@ -210,7 +210,7 @@ def format_mesh_report(
         hook_output["issues_json"] = [f.to_dict() for f in blocking[:10]]
 
     # ControlPlane-specific output
-    hook_output["controlplane"] = {
+    cp_output: dict[str, Any] = {
         "coherence_state": mesh_result.coherence.state,
         "channels_run": len(active_channels),
         "partial": mesh_result.partial,
@@ -219,6 +219,9 @@ def format_mesh_report(
             cr.channel: cr.status for cr in mesh_result.channel_results if cr.status != "skip"
         },
     }
+    if mesh_result.coherence.confidence < 1.0:
+        cp_output["coherence_confidence"] = mesh_result.coherence.confidence
+    hook_output["controlplane"] = cp_output
 
     if hook_output:
         output["hookSpecificOutput"] = hook_output
@@ -235,8 +238,12 @@ def _format_header(mesh_result: MeshResult) -> str:
     channel_count = sum(1 for cr in mesh_result.channel_results if cr.status != "skip")
     duration = mesh_result.duration_ms
 
+    conf_attr = ""
+    if coherence.confidence < 1.0:
+        conf_attr = f' confidence="{coherence.confidence:.2f}"'
+
     return (
-        f'<controlplane-report coherence="{coherence.state}" '
+        f'<controlplane-report coherence="{coherence.state}"{conf_attr} '
         f'channels="{channel_count}" '
         f'duration="{duration:.0f}ms">'
     )
@@ -260,9 +267,15 @@ def _format_blocking(findings: list) -> str:
 
 def _format_coherence(coherence) -> str:
     """Format coherence summary section."""
-    parts = [f"COHERENCE [{coherence.state}]: {coherence.summary}"]
+    conf_suffix = ""
+    if coherence.confidence < 1.0:
+        conf_suffix = f" (confidence: {coherence.confidence:.0%})"
+    parts = [f"COHERENCE [{coherence.state}]{conf_suffix}: {coherence.summary}"]
     if coherence.recommended_action:
         parts.append(f"  Action: {coherence.recommended_action}")
+    if getattr(coherence, "classification_notes", None):
+        for note in coherence.classification_notes:
+            parts.append(f"  Note: {note}")
     return "\n".join(parts)
 
 
@@ -507,12 +520,16 @@ def format_mesh_report_compact(
 
     # Coherence
     coherence = mesh_result.coherence
-    coherence_dict = {
+    coherence_dict: dict[str, Any] = {
         "state": coherence.state,
         "summary": coherence.summary,
     }
     if coherence.recommended_action:
         coherence_dict["action"] = coherence.recommended_action
+    if coherence.confidence < 1.0:
+        coherence_dict["confidence"] = coherence.confidence
+    if coherence.classification_notes:
+        coherence_dict["classification_notes"] = coherence.classification_notes
 
     # Counts
     channels_run = sum(1 for cr in mesh_result.channel_results if cr.status != "skip")

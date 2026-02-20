@@ -23,9 +23,20 @@ def _read_file(relative_path: str) -> str:
 
 
 def _count_mcp_tools() -> int:
-    """Count @mcp.tool() decorators in mcp_server.py — the source of truth."""
+    """Count @mcp.tool() decorators across mcp_server.py and mcp_tools/ — the source of truth."""
+    count = 0
+    # Count in main server file
     content = _read_file("mcp_server.py")
-    return len(re.findall(r"@mcp\.tool\(\)", content))
+    count += len(re.findall(r"@mcp\.tool\(\)", content))
+    # Count in domain modules
+    mcp_tools_dir = os.path.join(PROJECT_ROOT, "mcp_tools")
+    if os.path.isdir(mcp_tools_dir):
+        for fname in os.listdir(mcp_tools_dir):
+            if fname.endswith(".py"):
+                fpath = os.path.join(mcp_tools_dir, fname)
+                with open(fpath) as f:
+                    count += len(re.findall(r"@mcp\.tool\(\)", f.read()))
+    return count
 
 
 class TestLinterCount:
@@ -66,7 +77,7 @@ class TestMCPToolCount:
         count_str = str(actual_count)
         assert f"{count_str} " in readme or f"({count_str})" in readme or f"{count_str} " in agents, (
             f"MCP tool count is {actual_count} but docs don't match. "
-            f"Run: grep -c '@mcp.tool()' mcp_server.py"
+            f"Run: grep -Rho '@mcp.tool()' mcp_server.py mcp_tools | wc -l"
         )
 
     def test_skill_tool_count_matches(self):
@@ -80,7 +91,7 @@ class TestMCPToolCount:
     def test_integrate_uses_dynamic_tool_count(self):
         """integrate.sh should derive tool count from source of truth."""
         integrate = _read_file("integrate.sh")
-        assert 'TOOL_COUNT="$(grep -c "@mcp.tool()" "$LINTGATE_DIR/mcp_server.py"' in integrate
+        assert 'grep -Rho "@mcp.tool()" "$LINTGATE_DIR/mcp_server.py" "$LINTGATE_DIR/mcp_tools"' in integrate
         assert "$TOOL_COUNT tools by cognitive mode" in integrate
 
     def test_mcp_tool_count_is_32(self):

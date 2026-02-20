@@ -1,0 +1,39 @@
+{
+  "scenario": "stable_with_skips",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "tests",
+        "status": "skip",
+        "finding_count": 0
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "git",
+        "status": "skip",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "stable",
+    "summary": "All channels clean.",
+    "recommended_action": "Continue.",
+    "silent_channels": [
+      "lint",
+      "deps"
+    ],
+    "loud_channels": [],
+    "confidence": 1.0,
+    "classification_notes": []
+  }
+}

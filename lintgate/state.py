@@ -178,6 +178,33 @@ def log_metric(data: dict[str, Any]) -> None:
         pass  # Non-fatal: metric logging should never crash the tool
 
 
+def log_feature_usage(
+    feature: str,
+    project: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Log usage of an advanced subsystem feature for pruning decisions.
+
+    Features tracked:
+    - behavior_precheck: Proactive constraint check
+    - prediction_tracking: Prediction registration/checking
+    - living_context: Context patch generation/application
+    - model_calibration: Model profile probe/submit
+    - theory_extraction: Theory extraction/lookup
+    - controlplane: Full mesh run
+    - bootstrap: Context file generation
+
+    This uses the same daily JSONL file as log_metric but with
+    event="feature_usage" for easy filtering.
+    """
+    log_metric({
+        "event": "feature_usage",
+        "feature": feature,
+        "project": project,
+        **(metadata or {}),
+    })
+
+
 def _project_hash(cwd: str) -> str:
     """Generate a stable hash for a project path."""
     return hashlib.sha256(cwd.encode()).hexdigest()[:16]

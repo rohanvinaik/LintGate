@@ -1,0 +1,38 @@
+{
+  "scenario": "coupled_independent",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "coupled",
+    "summary": "lint, tests report independent issues.",
+    "recommended_action": "Address lint first (higher severity), then tests.",
+    "silent_channels": [
+      "deps"
+    ],
+    "loud_channels": [
+      "lint",
+      "tests"
+    ],
+    "confidence": 0.7,
+    "classification_notes": [
+      "no shared files between failing channels \u2014 classified as coupled but failures may be independent"
+    ]
+  }
+}

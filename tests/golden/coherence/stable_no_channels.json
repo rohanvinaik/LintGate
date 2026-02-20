@@ -1,0 +1,15 @@
+{
+  "scenario": "stable_no_channels",
+  "input": {
+    "channels": []
+  },
+  "expected": {
+    "state": "stable",
+    "summary": "No channels active.",
+    "recommended_action": "Continue.",
+    "silent_channels": [],
+    "loud_channels": [],
+    "confidence": 1.0,
+    "classification_notes": []
+  }
+}

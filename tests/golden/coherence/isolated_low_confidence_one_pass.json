@@ -1,0 +1,32 @@
+{
+  "scenario": "isolated_low_confidence_one_pass",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "isolated",
+    "summary": "Issue isolated to lint, but only tests passed; confidence is limited.",
+    "recommended_action": "Focus on lint findings first, then rerun to gather corroborating pass signals.",
+    "silent_channels": [
+      "tests"
+    ],
+    "loud_channels": [
+      "lint"
+    ],
+    "confidence": 0.6,
+    "classification_notes": [
+      "only 1 corroborating pass(es)"
+    ]
+  }
+}

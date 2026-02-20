@@ -1,0 +1,31 @@
+{
+  "scenario": "all_skipped",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "skip",
+        "finding_count": 0
+      },
+      {
+        "name": "tests",
+        "status": "skip",
+        "finding_count": 0
+      },
+      {
+        "name": "deps",
+        "status": "skip",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "stable",
+    "summary": "No channels active.",
+    "recommended_action": "Continue.",
+    "silent_channels": [],
+    "loud_channels": [],
+    "confidence": 1.0,
+    "classification_notes": []
+  }
+}

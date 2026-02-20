@@ -1,0 +1,50 @@
+{
+  "scenario": "systemic_infra_plus_code_five_channels",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "git",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "behavior",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "systemic",
+    "summary": "Multiple system failures: lint, git. This suggests a structural problem, not isolated issues.",
+    "recommended_action": "Step back and review the overall approach before fixing individual issues.",
+    "silent_channels": [
+      "tests",
+      "deps",
+      "behavior"
+    ],
+    "loud_channels": [
+      "lint",
+      "git"
+    ],
+    "confidence": 0.7,
+    "classification_notes": [
+      "cross-domain failure (infra + code) with only 2 channels \u2014 could be coincidental"
+    ]
+  }
+}

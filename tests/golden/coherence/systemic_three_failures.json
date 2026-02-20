@@ -1,0 +1,42 @@
+{
+  "scenario": "systemic_three_failures",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "deps",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "git",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "systemic",
+    "summary": "Multiple system failures: lint, tests, deps. This suggests a structural problem, not isolated issues.",
+    "recommended_action": "Step back and review the overall approach before fixing individual issues.",
+    "silent_channels": [
+      "git"
+    ],
+    "loud_channels": [
+      "lint",
+      "tests",
+      "deps"
+    ],
+    "confidence": 0.9,
+    "classification_notes": []
+  }
+}

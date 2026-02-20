@@ -1,0 +1,38 @@
+{
+  "scenario": "systemic_cross_domain",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "deps",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "systemic",
+    "summary": "Multiple system failures: lint, deps. This suggests a structural problem, not isolated issues.",
+    "recommended_action": "Step back and review the overall approach before fixing individual issues.",
+    "silent_channels": [
+      "tests"
+    ],
+    "loud_channels": [
+      "lint",
+      "deps"
+    ],
+    "confidence": 0.7,
+    "classification_notes": [
+      "cross-domain failure (infra + code) with only 2 channels \u2014 could be coincidental"
+    ]
+  }
+}

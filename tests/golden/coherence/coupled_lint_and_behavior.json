@@ -1,0 +1,44 @@
+{
+  "scenario": "coupled_lint_and_behavior",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "behavior",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "coupled",
+    "summary": "lint, behavior report independent issues.",
+    "recommended_action": "Address lint first (higher severity), then behavior.",
+    "silent_channels": [
+      "tests",
+      "deps"
+    ],
+    "loud_channels": [
+      "lint",
+      "behavior"
+    ],
+    "confidence": 0.7,
+    "classification_notes": [
+      "no shared files between failing channels \u2014 classified as coupled but failures may be independent"
+    ]
+  }
+}

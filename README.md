@@ -119,7 +119,7 @@ Each stage is independently useful. A project at Stage 0 still gets the hook pip
 
 ## MCP Tools (32)
 
-Source of truth: `grep -c "@mcp.tool()" mcp_server.py`
+Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 
 ### Onboarding
 
@@ -260,7 +260,8 @@ lintgate/
 │   └── channels/                    # ControlPlane channel implementations
 │       ├── behavior_channel.py      # 9 detection rules + theory grounding
 │       └── ...                      # lint, test, dependency, git channels
-├── mcp_server.py                    # MCP tool interface (32 tools)
+├── mcp_server.py                    # MCP bootstrap + shared helpers
+├── mcp_tools/                       # MCP domain modules (32 tool definitions)
 ├── tests/                           # 890+ tests
 ├── docs/                            # Design deep dive, field reports
 │   └── design.md                    # Full architecture + calibration + philosophy

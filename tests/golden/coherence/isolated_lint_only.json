@@ -1,0 +1,42 @@
+{
+  "scenario": "isolated_lint_only",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "git",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "isolated",
+    "summary": "Issue isolated to lint. tests, deps, git confirm no problems in their domains.",
+    "recommended_action": "Focus on lint findings.",
+    "silent_channels": [
+      "tests",
+      "deps",
+      "git"
+    ],
+    "loud_channels": [
+      "lint"
+    ],
+    "confidence": 1.0,
+    "classification_notes": []
+  }
+}

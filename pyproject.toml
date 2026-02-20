@@ -60,7 +60,7 @@ controlplane-mcp = "mcp_server:mcp.run"
 [tool.hatch.build.targets.wheel]
 # Include mcp_server.py at the root of the wheel so `mcp_server:mcp.run`
 # entry points resolve correctly when installed as a package.
-packages = ["lintgate"]
+packages = ["lintgate", "mcp_tools"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "mcp_server.py" = "mcp_server.py"
@@ -76,7 +76,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["lintgate"]
+known-first-party = ["lintgate", "mcp_tools"]
 
 [tool.mypy]
 python_version = "3.10"

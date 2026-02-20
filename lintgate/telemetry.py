@@ -169,3 +169,118 @@ def _compute_trend(entries: list[dict[str, Any]]) -> str:
     elif avg_second > avg_first * 1.2:
         return "degrading"
     return "stable"
+
+
+def compute_feature_usage_summary(
+    project_root: str | None = None,
+    period: str = "7d",
+) -> dict[str, Any]:
+    """Aggregate feature usage telemetry for data-driven pruning decisions.
+
+    Reads feature_usage events from the same JSONL metric files and produces
+    per-feature usage counts. This enables answering: "Are predictions,
+    living context, model profiles actually being used?"
+
+    Args:
+        project_root: Filter to a specific project (None = all projects).
+        period: Time window — "1d", "7d", "30d", or "all".
+
+    Returns:
+        Dict with per-feature counts, total invocations, and active features.
+    """
+    days = _PERIOD_MAP.get(period, 7)
+    entries = _load_feature_entries(days, project_root)
+
+    if not entries:
+        return {
+            "period": period,
+            "total_invocations": 0,
+            "features": {},
+            "active_features": [],
+            "unused_features": _ALL_TRACKED_FEATURES.copy(),
+        }
+
+    # Count per feature
+    feature_counts: dict[str, int] = {}
+    feature_projects: dict[str, set[str]] = {}
+    for e in entries:
+        feat = e.get("feature", "unknown")
+        feature_counts[feat] = feature_counts.get(feat, 0) + 1
+        proj = e.get("project", "")
+        if proj:
+            feature_projects.setdefault(feat, set()).add(proj)
+
+    total = sum(feature_counts.values())
+    active = sorted(feature_counts.keys())
+    unused = sorted(_ALL_TRACKED_FEATURES - set(active))
+
+    features_detail: dict[str, dict[str, Any]] = {}
+    for feat in sorted(feature_counts.keys()):
+        features_detail[feat] = {
+            "invocations": feature_counts[feat],
+            "projects": len(feature_projects.get(feat, set())),
+            "pct_of_total": round(feature_counts[feat] / max(total, 1) * 100, 1),
+        }
+
+    return {
+        "period": period,
+        "total_invocations": total,
+        "features": features_detail,
+        "active_features": active,
+        "unused_features": unused,
+    }
+
+
+# All features we track — used to identify unused ones
+_ALL_TRACKED_FEATURES = {
+    "behavior_precheck",
+    "prediction_tracking",
+    "living_context",
+    "model_calibration",
+    "theory_extraction",
+    "controlplane",
+    "bootstrap",
+}
+
+
+def _load_feature_entries(
+    days: int,
+    project_root: str | None,
+) -> list[dict[str, Any]]:
+    """Load feature_usage events from daily JSONL files."""
+    if not METRICS_DIR.exists():
+        return []
+
+    cutoff = datetime.now() - timedelta(days=days)
+    entries: list[dict[str, Any]] = []
+
+    for metrics_file in sorted(METRICS_DIR.glob("lintgate_*.jsonl")):
+        stem = metrics_file.stem
+        date_part = stem.replace("lintgate_", "")
+        try:
+            file_date = datetime.strptime(date_part, "%Y%m%d")
+        except ValueError:
+            continue
+
+        if file_date < cutoff:
+            continue
+
+        try:
+            with open(metrics_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("event") != "feature_usage":
+                            continue
+                        if project_root and entry.get("project") != project_root:
+                            continue
+                        entries.append(entry)
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            continue
+
+    return entries

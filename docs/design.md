@@ -777,7 +777,7 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 |---|---|
 | `telemetry_summary(path, period)` | ROI dashboard: runs, issues, fix rate, token cost, quality trend |
 
-> **Source of truth for tool inventory**: Run `grep -c "@mcp.tool()" mcp_server.py` to get the authoritative count. Tool tables in all documentation files should be cross-checked against this count.
+> **Source of truth for tool inventory**: Run `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` to get the authoritative count. Tool tables in all documentation files should be cross-checked against this count.
 
 ---
 
@@ -1167,7 +1167,8 @@ lintgate/
 │       ├── dependency_channel.py    # Dependency health checks
 │       ├── git_channel.py           # Git state analysis
 │       └── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
-├── mcp_server.py                    # MCP tool interface (32 tools)
+├── mcp_server.py                    # MCP bootstrap + shared helpers
+├── mcp_tools/                       # MCP domain modules (32 tool definitions)
 ├── tests/                           # 39 test files, 890+ tests
 │   ├── test_module_contracts.py     # Interface parity gates
 │   ├── test_regressions.py          # Bug regression tests

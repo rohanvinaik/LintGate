@@ -598,7 +598,8 @@ def _render_claude_md(
         "**When you change the system** — update the docs immediately, in the same"
         " action. If you add an MCP tool, add it to AGENTS.md and README.md tool"
         " tables and increment the count. Source of truth for tool count:"
-        " `grep -c \"@mcp.tool()\" mcp_server.py`. Documentation precision has"
+        " `grep -Rho \"@mcp.tool()\" mcp_server.py mcp_tools | wc -l`."
+        " Documentation precision has"
         " compounding returns — one stale count becomes a chain of wrong"
         " assumptions across every session that reads it.",
         "",
@@ -623,7 +624,7 @@ def _render_claude_md(
         " intentionally.",
         "- MUST update AGENTS.md, README.md, and docs/design.md when adding,"
         " removing, or changing MCP tools. Verify with"
-        ' `grep -c "@mcp.tool()" mcp_server.py`.',
+        ' `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.',
         "- MUST update docs/design.md YAML examples when adding config options.",
     ]
 

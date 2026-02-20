@@ -1,0 +1,36 @@
+{
+  "scenario": "coupled_shared_files",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "coupled",
+    "summary": "lint, tests both report issues in /src/shared.py. These failures are likely related.",
+    "recommended_action": "Address the shared files first: /src/shared.py.",
+    "silent_channels": [
+      "deps"
+    ],
+    "loud_channels": [
+      "lint",
+      "tests"
+    ],
+    "confidence": 0.85,
+    "classification_notes": []
+  }
+}

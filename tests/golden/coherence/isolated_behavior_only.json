@@ -1,0 +1,42 @@
+{
+  "scenario": "isolated_behavior_only",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "tests",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "behavior",
+        "status": "fail",
+        "finding_count": 1
+      }
+    ]
+  },
+  "expected": {
+    "state": "isolated",
+    "summary": "Issue isolated to behavior. lint, tests, deps confirm no problems in their domains.",
+    "recommended_action": "Focus on behavior findings.",
+    "silent_channels": [
+      "lint",
+      "tests",
+      "deps"
+    ],
+    "loud_channels": [
+      "behavior"
+    ],
+    "confidence": 1.0,
+    "classification_notes": []
+  }
+}

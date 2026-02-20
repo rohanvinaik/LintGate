@@ -1,0 +1,30 @@
+{
+  "scenario": "isolated_low_confidence_no_pass",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "fail",
+        "finding_count": 1
+      },
+      {
+        "name": "tests",
+        "status": "skip",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "isolated",
+    "summary": "Issue reported by lint. No channels passed, so exclusion confidence is limited.",
+    "recommended_action": "Focus on lint findings first, then rerun to gather corroborating pass signals.",
+    "silent_channels": [],
+    "loud_channels": [
+      "lint"
+    ],
+    "confidence": 0.3,
+    "classification_notes": [
+      "no corroborating passes \u2014 isolation is assumed, not confirmed"
+    ]
+  }
+}

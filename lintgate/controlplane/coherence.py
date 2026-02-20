@@ -57,12 +57,16 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             recommended_action="Continue.",
             silent_channels=[],
             loud_channels=[],
+            confidence=1.0,
         )
 
     # Rule 5: degraded — check before failure rules
     # Any channel error/timeout is a system health concern
     if errored:
         errored_names = [r.channel for r in errored]
+        notes = [f"{len(errored_names)} channel(s) errored/timed out"]
+        if failed:
+            notes.append(f"also {len(failed)} channel(s) failed — failures may be masked by errors")
         return CoherenceResult(
             state="degraded",
             summary=(
@@ -77,6 +81,8 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             ),
             silent_channels=silent,
             loud_channels=loud,
+            confidence=0.9,  # Degraded is unambiguous but results are incomplete
+            classification_notes=notes,
         )
 
     # Rule 1: stable — all channels pass
@@ -87,6 +93,7 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             recommended_action="Continue.",
             silent_channels=silent,
             loud_channels=[],
+            confidence=1.0,
         )
 
     # Rule 2: isolated — exactly one failure, >=2 passes
@@ -94,6 +101,8 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
     # concentrates attention on the single failing one
     if len(failed) == 1 and len(passed) >= 2:
         failing_channel = failed[0].channel
+        # More passing channels = higher confidence in isolation
+        conf = min(1.0, 0.7 + 0.1 * len(passed))
         return CoherenceResult(
             state="isolated",
             summary=(
@@ -103,6 +112,7 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             recommended_action=f"Focus on {failing_channel} findings.",
             silent_channels=silent,
             loud_channels=loud,
+            confidence=round(conf, 2),
         )
 
     # Single-channel failure with limited corroboration:
@@ -110,16 +120,21 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
     # enough passing channels to strongly exclude other domains.
     if len(failed) == 1:
         failing_channel = failed[0].channel
+        notes: list[str] = []
         if passed:
+            conf = 0.5 + 0.1 * len(passed)
             summary = (
                 f"Issue isolated to {failing_channel}, but only "
                 f"{', '.join(silent)} passed; confidence is limited."
             )
+            notes.append(f"only {len(passed)} corroborating pass(es)")
         else:
+            conf = 0.3
             summary = (
                 f"Issue reported by {failing_channel}. "
                 "No channels passed, so exclusion confidence is limited."
             )
+            notes.append("no corroborating passes — isolation is assumed, not confirmed")
         return CoherenceResult(
             state="isolated",
             summary=summary,
@@ -128,10 +143,22 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             ),
             silent_channels=silent,
             loud_channels=loud,
+            confidence=round(min(conf, 1.0), 2),
+            classification_notes=notes,
         )
 
     # Rule 4: systemic — three+ failures or cross-domain failure
     if len(failed) >= 3 or _is_cross_domain_failure(failed):
+        notes = []
+        if len(failed) >= 3:
+            conf = 0.9
+        else:
+            # Cross-domain with only 2 failures — less certain it's truly systemic
+            conf = 0.7
+            notes.append(
+                "cross-domain failure (infra + code) with only 2 channels — "
+                "could be coincidental"
+            )
         return CoherenceResult(
             state="systemic",
             summary=(
@@ -141,6 +168,8 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             recommended_action="Step back and review the overall approach before fixing individual issues.",
             silent_channels=silent,
             loud_channels=loud,
+            confidence=round(conf, 2),
+            classification_notes=notes,
         )
 
     # Rule 3: coupled — two+ failures, check for file overlap
@@ -157,6 +186,7 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
                 recommended_action=f"Address the shared files first: {file_list}.",
                 silent_channels=silent,
                 loud_channels=loud,
+                confidence=0.85,
             )
 
         # Two failures, no file overlap — still coupled but independent
@@ -166,6 +196,11 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
             recommended_action=f"Address {loud[0]} first (higher severity), then {loud[1]}.",
             silent_channels=silent,
             loud_channels=loud,
+            confidence=0.7,
+            classification_notes=[
+                "no shared files between failing channels — "
+                "classified as coupled but failures may be independent"
+            ],
         )
 
     # Fallback (shouldn't reach here, but defensive)
@@ -175,6 +210,8 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
         recommended_action="Address blocking issues first.",
         silent_channels=silent,
         loud_channels=loud,
+        confidence=0.5,
+        classification_notes=["fallback classification — rule matching was inconclusive"],
     )
 
 
@@ -242,6 +279,8 @@ def compute_coherence_with_history(
         recommended_action=enriched_action,
         silent_channels=base.silent_channels,
         loud_channels=base.loud_channels,
+        confidence=base.confidence,
+        classification_notes=base.classification_notes,
     )
 
 

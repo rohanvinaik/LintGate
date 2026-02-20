@@ -1,0 +1,36 @@
+{
+  "scenario": "degraded_channel_timeout",
+  "input": {
+    "channels": [
+      {
+        "name": "lint",
+        "status": "pass",
+        "finding_count": 0
+      },
+      {
+        "name": "tests",
+        "status": "timeout",
+        "finding_count": 0
+      },
+      {
+        "name": "deps",
+        "status": "pass",
+        "finding_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "state": "degraded",
+    "summary": "Channel tests errored/timed out. Results may be incomplete.",
+    "recommended_action": "Check tests channel health. Available results from: lint, deps.",
+    "silent_channels": [
+      "lint",
+      "deps"
+    ],
+    "loud_channels": [],
+    "confidence": 0.9,
+    "classification_notes": [
+      "1 channel(s) errored/timed out"
+    ]
+  }
+}
