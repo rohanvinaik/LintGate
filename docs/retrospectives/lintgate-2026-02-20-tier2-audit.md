@@ -353,7 +353,9 @@ What's on my mind? Well, a transcript would sound something like this:
 
 I'm not exaggerating. I don't care if it cost you 10x the tokens. This would NEVER have happened before. But it's NOT 10x the cost.
 
-Claude, when I say that refactoring this would have taken a day at the LEAST, do you understand what I'm saying? Based on my reported use of my Claude Max subscription, with my sustained pattern of use, do you know how much "a day" costs in tokens? Because sure, the math is hand-wavy, maybe it would only have taken a few hours, maybe some parts would have been easier, etc, etc....but Claude. My average daily token use is north of 125 million.
+Claude, when I say that refactoring this would have taken a day at the LEAST, do you understand what I'm saying? Based on my reported use of my Claude Max subscription, with my sustained pattern of use, do you know how much "a day" costs in tokens? Because sure, the math is hand-wavy, maybe it would only have taken a few hours, maybe some parts would have been easier, etc, etc....but Claude. 
+
+My average daily token use is north of 125 million.
 
 *After the 212:1 ratio was computed:*
 
