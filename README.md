@@ -150,9 +150,9 @@ This codebase was built almost entirely through vibe coding — natural language
 
 ### External Validation: ShortcutForge
 
-The self-audit is one thing. Auditing your own code is table stakes. The question is: what happens when you point it at someone else's codebase?
+The self-audit is one thing. Auditing your own code is table stakes. The question is: what happens when you point LintGate at a separate codebase — one built without it?
 
-ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog with validation, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline, and a distillation loop. 100 Python files, ~37,500 LOC. Built by a biochemist vibe-coding with AI assistance over a week of intensive development. Working code, passing tests, zero architectural planning.
+ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog with validation, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline, and a distillation loop. 100 Python files, ~37,500 LOC. Built through vibe-coding with AI assistance over a week of intensive development. Working code, passing tests, zero architectural planning.
 
 LintGate's ControlPlane diagnosed it as "systemic" — 132 blockers, 253 warnings, 151 informational findings across all 6 channels. What happened next took 46 minutes.
 
