@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "lintgate"
 version = "0.2.0"
-description = "Real-time quality supervision for AI-generated code"
+description = "Proactive professional cognition stack for LLM coding agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Rohan Vinaik"},
 ]
-keywords = ["linting", "claude-code", "llm", "code-quality", "mcp", "ai-coding"]
+keywords = ["linting", "claude-code", "llm", "code-quality", "mcp", "ai-coding", "professionalization", "engineering-discipline", "secrets-detection", "supply-chain"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -37,9 +37,11 @@ dependencies = [
 full = [
     "ruff>=0.4.0",
     "mypy>=1.8",
+    "ty>=0.0.17",
     "radon>=6.0",
     "bandit>=1.7",
     "vulture>=2.0",
+    "pip-audit>=2.6",
 ]
 # MCP server
 mcp = [

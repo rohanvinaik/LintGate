@@ -4,7 +4,7 @@ Checks:
 1. Large uncommitted changes (>500 lines staged)
 2. Lockfile-manifest mismatch (pyproject.toml newer than uv.lock)
 3. Untracked sensitive files (.env, credentials)
-4. Branch naming policy (if configured)
+4. Secrets in staged diffs (API keys, tokens, private keys, connection strings)
 
 Advisory only — git hygiene issues are informational suggestions.
 All checks use subprocess git commands with timeout protection.
@@ -13,6 +13,7 @@ All checks use subprocess git commands with timeout protection.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -76,9 +77,18 @@ class GitChannel:
         sensitive_findings = _check_sensitive_files(project_root)
         findings.extend(sensitive_findings)
 
+        # Check 4: Secrets in staged diffs
+        secrets_findings = _check_diff_secrets(project_root)
+        findings.extend(secrets_findings)
+
         elapsed_ms = (time.perf_counter() - start) * 1000
         status = "fail" if findings else "pass"
-        severity = "informational" if findings else "none"
+        # Escalate severity if secrets found (warning-level)
+        severity = "none"
+        if findings:
+            severity = "informational"
+            if any(f.severity == "warning" for f in findings):
+                severity = "warning"
 
         return ChannelResult(
             channel=self.name,
@@ -87,8 +97,9 @@ class GitChannel:
             findings=findings,
             repairs=repairs,
             metrics={
-                "checks_run": 3,
+                "checks_run": 4,
                 "issue_count": len(findings),
+                "secrets_found": len(secrets_findings),
             },
             duration_ms=elapsed_ms,
         )
@@ -273,5 +284,140 @@ def _check_sensitive_files(project_root: str) -> list[LintIssue]:
 
     except (subprocess.TimeoutExpired, OSError):
         pass
+
+    return findings
+
+
+# ── Secrets detection patterns ──────────────────────────────────────────
+
+# Each pattern: (name, compiled regex, confidence)
+# Higher confidence = fewer false positives expected
+_SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
+    (
+        "aws_access_key",
+        re.compile(r"AKIA[0-9A-Z]{16}"),
+        0.95,
+    ),
+    (
+        "private_key",
+        re.compile(r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
+        0.99,
+    ),
+    (
+        "github_token",
+        re.compile(r"(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]{20,}"),
+        0.95,
+    ),
+    (
+        "gitlab_token",
+        re.compile(r"glpat-[A-Za-z0-9\-_]{20,}"),
+        0.95,
+    ),
+    (
+        "connection_string",
+        re.compile(r"(?i)(postgres|mysql|mongodb|redis)://[^\s]+:[^\s]+@"),
+        0.90,
+    ),
+    (
+        "generic_api_key",
+        re.compile(
+            r"(?i)(api[_-]?key|apikey|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"
+        ),
+        0.80,
+    ),
+    (
+        "generic_secret",
+        re.compile(
+            r"(?i)(token|secret|password|passwd|credential)\s*[:=]\s*['\"][^\s'\"]{16,}['\"]"
+        ),
+        0.75,
+    ),
+]
+
+
+def _check_diff_secrets(project_root: str) -> list[LintIssue]:
+    """Scan staged diff content for embedded secrets.
+
+    Professional instinct: Never commit secrets. A senior engineer reviews
+    diffs for credentials before every commit.
+
+    Only scans addition lines (+) to avoid flagging removals or context.
+    Never includes actual secret values in issue messages.
+    """
+    findings: list[LintIssue] = []
+
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--unified=0"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=project_root,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return findings
+    except (subprocess.TimeoutExpired, OSError):
+        return findings
+
+    current_file: str | None = None
+    current_hunk_start: int | None = None
+    line_offset = 0
+
+    for line in result.stdout.splitlines():
+        # Track which file we're in
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+            current_hunk_start = None
+            line_offset = 0
+            continue
+
+        if line.startswith("+++ "):
+            # Handle non-standard diff headers
+            current_file = None
+            continue
+
+        # Track hunk headers for line numbers: @@ -old,count +new,count @@
+        if line.startswith("@@"):
+            hunk_match = re.search(r"\+(\d+)", line)
+            if hunk_match:
+                current_hunk_start = int(hunk_match.group(1))
+                line_offset = 0
+            continue
+
+        # Only scan addition lines (new content being staged)
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+
+        added_content = line[1:]  # Strip the leading '+'
+        line_offset += 1
+        approx_line = (current_hunk_start or 0) + line_offset - 1
+
+        for pattern_name, pattern_re, confidence in _SECRET_PATTERNS:
+            if pattern_re.search(added_content):
+                file_path = os.path.join(project_root, current_file) if current_file else None
+                findings.append(
+                    LintIssue(
+                        linter="git_channel",
+                        kind="secret_in_diff",
+                        message=(
+                            f"Potential secret detected in staged diff ({pattern_name}). "
+                            f"Review before committing."
+                        ),
+                        file=file_path,
+                        line=approx_line if current_hunk_start else None,
+                        severity="warning",
+                        confidence=confidence,
+                        evidence={
+                            "pattern": pattern_name,
+                            "file": current_file,
+                        },
+                        suggestions=[
+                            "Remove the secret from the file",
+                            "Use environment variables instead",
+                            "Add to .gitignore if it's a secrets file",
+                        ],
+                    )
+                )
+                break  # One finding per line (avoid duplicate alerts)
 
     return findings

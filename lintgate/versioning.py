@@ -41,9 +41,11 @@ _TRACKED_TOOLS: dict[str, ToolSpec] = {
     "python": ToolSpec(tool="python", package=None, executable=None),
     "ruff": ToolSpec(tool="ruff", package="ruff", executable="ruff"),
     "mypy": ToolSpec(tool="mypy", package="mypy", executable="mypy"),
+    "ty": ToolSpec(tool="ty", package="ty", executable="ty"),
     "radon": ToolSpec(tool="radon", package="radon", executable="radon"),
     "bandit": ToolSpec(tool="bandit", package="bandit", executable="bandit"),
     "vulture": ToolSpec(tool="vulture", package="vulture", executable="vulture"),
+    "pip-audit": ToolSpec(tool="pip-audit", package="pip-audit", executable="pip-audit"),
 }
 
 _REQUIREMENTS_FILES = (

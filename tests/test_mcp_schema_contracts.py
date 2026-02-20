@@ -140,6 +140,27 @@ class TestOutputModeContracts:
         assert parsed == data
 
 
+# ── Tier Parity Contracts ───────────────────────────────────────────────
+
+
+class TestTierParityContracts:
+    """Verify MCP manual tiers stay aligned with hook/controlplane tiers."""
+
+    def test_mcp_tier_linters_match_tier_selector(self) -> None:
+        import mcp_server
+        from lintgate import tier_selector
+
+        expected = {
+            0: set(tier_selector.TIER_0_LINTERS),
+            1: set(tier_selector.TIER_1_LINTERS),
+            2: set(tier_selector.TIER_2_LINTERS),
+            3: set(tier_selector.TIER_3_LINTERS),
+        }
+        actual = {tier: set(names) for tier, names in mcp_server.TIER_LINTERS.items()}
+
+        assert actual == expected
+
+
 # ── Behavior MCP Contracts ───────────────────────────────────────────────
 
 
@@ -188,6 +209,7 @@ class TestBehaviorMcpContracts:
 
         payload = json.loads(controlplane_status(path=str(tmp_path)))
         assert "behavior" in payload["available_channels"]
+        assert "structure" in payload["available_channels"]
 
     def test_behavior_precheck_counts_invocation_once(self, tmp_path: Path) -> None:
         from lintgate.controlplane.session_memory import (

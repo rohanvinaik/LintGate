@@ -1000,7 +1000,7 @@ def _build_quick_wins(
     if not has_config:
         wins.append(
             "Create `.claude/lintgate.yaml` with `controlplane: {enabled: true}` "
-            "to activate the full supervision mesh (lint + tests + deps + git + behavior)."
+            "to activate the full supervision mesh (lint + tests + deps + git + behavior + structure)."
         )
 
     # 2. No enforceable rules despite existing directives

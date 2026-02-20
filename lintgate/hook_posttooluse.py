@@ -300,6 +300,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
     from lintgate.channels.dependency_channel import DependencyChannel
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
+    from lintgate.channels.structure_channel import StructureChannel
     from lintgate.channels.test_channel import TestChannel
     from lintgate.controlplane.reporter import format_mesh_report
     from lintgate.controlplane.runtime import run_mesh
@@ -369,6 +370,9 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
         DependencyChannel(),
         GitChannel(),
     ]
+
+    if cp_config.channel_enabled("structure"):
+        channels.append(StructureChannel())
 
     if cp_config.channel_enabled("behavior"):
         from lintgate.channels.behavior_channel import BehaviorChannel

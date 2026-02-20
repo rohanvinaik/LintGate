@@ -374,10 +374,10 @@ def _is_cross_domain_failure(failed_results: list[ChannelResult]) -> bool:
     """Check for cross-domain failure pattern.
 
     Cross-domain: infrastructure channels (deps, git) + code channels
-    (lint, tests) both failing suggests a deeper structural issue.
+    (lint, tests, structure) both failing suggests a deeper structural issue.
     """
     infra_channels = {"deps", "git"}
-    code_channels = {"lint", "tests"}
+    code_channels = {"lint", "tests", "structure"}
 
     failed_names = {r.channel for r in failed_results}
     has_infra_failure = bool(failed_names & infra_channels)

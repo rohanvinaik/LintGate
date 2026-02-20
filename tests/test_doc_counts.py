@@ -43,24 +43,24 @@ class TestLinterCount:
     """Verify linter count consistency across docs."""
 
     def test_linter_count_in_readme(self):
-        """README.md should reference 15 linters."""
+        """README.md should reference 18 linters."""
         content = _read_file("README.md")
-        assert "15 linters" in content or "Fifteen linters" in content, (
-            "README.md does not mention '15 linters'"
+        assert "18 linters" in content or "Eighteen linters" in content, (
+            "README.md does not mention '18 linters'"
         )
 
     def test_linter_count_in_design(self):
-        """docs/design.md should reference 15 linters."""
+        """docs/design.md should reference 18 linters."""
         content = _read_file("docs/design.md")
-        assert "15 linters" in content or "Fifteen linters" in content, (
-            "docs/design.md does not mention '15 linters' or 'Fifteen linters'"
+        assert "18 linters" in content or "Eighteen linters" in content, (
+            "docs/design.md does not mention '18 linters' or 'Eighteen linters'"
         )
 
     def test_linter_count_in_project_structure(self):
-        """Project structure comments should reference 15 linter implementations."""
+        """Project structure comments should reference 18 linter implementations."""
         readme = _read_file("README.md")
-        assert "15 linter" in readme, (
-            "README.md project structure doesn't mention '15 linter'"
+        assert "18 linter" in readme, (
+            "README.md project structure doesn't mention '18 linter'"
         )
 
 

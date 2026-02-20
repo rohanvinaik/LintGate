@@ -28,19 +28,21 @@ def register(mcp, helpers):
 
         Example: controlplane_run(path="/my/project")
 
-        Runs 5 independent analysis channels in parallel: lint (code quality),
+        Runs 6 independent analysis channels in parallel: lint (code quality),
         tests (coverage and health), deps (dependency issues), git (hygiene),
-        behavior (patterns across sessions). Returns compact findings with a run_id.
+        behavior (patterns across sessions), structure (codebase architecture).
+        Returns compact findings with a run_id.
         Use controlplane_get_details(run_id) to drill into specific findings.
 
         Args:
             path: Project root path.
-            channels: Comma-separated channel list (default: all). Options: lint,tests,deps,git,behavior
+            channels: Comma-separated channel list (default: all). Options: lint,tests,deps,git,behavior,structure
             strictness: Strictness level for analysis.
         """
         from lintgate.channels.dependency_channel import DependencyChannel
         from lintgate.channels.git_channel import GitChannel
         from lintgate.channels.lint_channel import LintChannel
+        from lintgate.channels.structure_channel import StructureChannel
         from lintgate.channels.test_channel import TestChannel
         from lintgate.config import load_controlplane_config
         from lintgate.controlplane.runtime import run_mesh
@@ -74,10 +76,11 @@ def register(mcp, helpers):
             "deps": DependencyChannel(),
             "git": GitChannel(),
             "behavior": BehaviorChannel(),
+            "structure": StructureChannel(),
         }
 
         # Select requested channels
-        requested = [c.strip() for c in (channels or "lint,tests,deps,git,behavior").split(",")]
+        requested = [c.strip() for c in (channels or "lint,tests,deps,git,behavior,structure").split(",")]
         active_channels = []
         unknown = []
         for name in requested:
@@ -258,7 +261,7 @@ def register(mcp, helpers):
 
         Args:
             run_id: The run_id from a controlplane_run response.
-            channel: Filter findings by channel (lint, tests, deps, git, behavior).
+            channel: Filter findings by channel (lint, tests, deps, git, behavior, structure).
             severity: Filter by severity (blocking, warning, informational).
             max_issues: Maximum findings to return (default 10).
             sections: Which sections to include. Default: all.
@@ -405,6 +408,7 @@ def register(mcp, helpers):
             "deps": "Dependency health (lockfile, venv, manifest)",
             "git": "Git hygiene (large changes, lockfile freshness, sensitive files)",
             "behavior": "Behavioral drift signals (approach cycling, failure amnesia, brute force escalation)",
+            "structure": "Codebase structure lens (import cycles, module-size concentration, orphans, package cohesion)",
         }
 
         return json.dumps(status, indent=2)

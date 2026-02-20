@@ -47,6 +47,13 @@ def build_registry(config: ProjectConfig) -> dict[str, BaseLinter]:
         pass
 
     try:
+        from .linters.ty_linter import TyLinter
+
+        _register(registry, TyLinter(), config)
+    except ImportError:
+        pass
+
+    try:
         from .linters.complexity_checker import ComplexityChecker
 
         _register(registry, ComplexityChecker(), config)
@@ -71,6 +78,20 @@ def build_registry(config: ProjectConfig) -> dict[str, BaseLinter]:
         from .linters.bandit_linter import BanditLinter
 
         _register(registry, BanditLinter(), config)
+    except ImportError:
+        pass
+
+    try:
+        from .linters.bandit_fast_linter import BanditFastLinter
+
+        _register(registry, BanditFastLinter(), config)
+    except ImportError:
+        pass
+
+    try:
+        from .linters.pip_audit_linter import PipAuditLinter
+
+        _register(registry, PipAuditLinter(), config)
     except ImportError:
         pass
 

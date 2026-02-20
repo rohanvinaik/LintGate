@@ -341,7 +341,11 @@ def _check_lockfile_freshness(root: Path) -> list[HealthCheck]:
 
 
 def _check_python_version_file(root: Path) -> HealthCheck:
-    """Check for .python-version file."""
+    """Check for .python-version file.
+
+    Escalates to error severity when CI config is present — convergent
+    evidence that reproducibility matters for this project.
+    """
     pv = root / ".python-version"
     if pv.exists():
         version = pv.read_text().strip()
@@ -359,27 +363,48 @@ def _check_python_version_file(root: Path) -> HealthCheck:
             message="No Python project — .python-version not needed",
         )
 
+    # Escalate severity when CI config exists (convergent evidence)
+    has_ci = _has_ci_config(root)
+    severity = "error" if has_ci else "warning"
+    msg = "No .python-version file — Python version not pinned"
+    if has_ci:
+        msg += " (CI config detected — reproducibility is critical)"
+
     return HealthCheck(
         name="python_version_file",
-        status="warning",
-        message="No .python-version file — Python version not pinned",
+        status=severity,
+        message=msg,
         suggestion="Create .python-version with your target version (e.g., '3.11')",
+        evidence={"has_ci": has_ci},
     )
 
 
 def _check_conflicting_managers(root: Path) -> list[HealthCheck]:
-    """Detect conflicting package manager artifacts."""
+    """Detect conflicting package manager artifacts.
+
+    Escalates to error when both conflicting files are lockfiles
+    (stronger evidence of active conflict vs. leftover artifacts).
+    """
     checks: list[HealthCheck] = []
+
+    all_lockfiles = {lf for locks in _LOCKFILES.values() for lf in locks}
 
     for file_a, file_b, message in _CONFLICTING_COMBOS:
         if (root / file_a).exists() and (root / file_b).exists():
+            # Escalate when both are lockfiles (active conflict)
+            both_are_locks = file_a in all_lockfiles and file_b in all_lockfiles
+            severity = "error" if both_are_locks else "warning"
             checks.append(
                 HealthCheck(
                     name=f"conflict_{file_a}_{file_b}",
-                    status="warning",
+                    status=severity,
                     message=message,
                     suggestion="Remove one and consolidate on a single package manager (uv recommended)",
-                    evidence={"file_a": file_a, "file_b": file_b},
+                    evidence={
+                        "file_a": file_a,
+                        "file_b": file_b,
+                        "both_lockfiles": both_are_locks,
+                    },
                 )
             )
 
@@ -387,7 +412,11 @@ def _check_conflicting_managers(root: Path) -> list[HealthCheck]:
 
 
 def _check_manifest_health(root: Path) -> list[HealthCheck]:
-    """Check pyproject.toml for required fields."""
+    """Check pyproject.toml for required fields and quality signals.
+
+    Professional instinct: A well-maintained manifest declares its
+    Python version constraint, build system, and separates dev deps.
+    """
     checks: list[HealthCheck] = []
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
@@ -424,6 +453,7 @@ def _check_manifest_health(root: Path) -> list[HealthCheck]:
                 status="warning",
                 message="pyproject.toml missing requires-python field",
                 suggestion="Add requires-python = '>=3.10' (or your minimum version)",
+                evidence={"manifest": "pyproject.toml", "issue": "missing_requires_python"},
             )
         )
     else:
@@ -443,6 +473,34 @@ def _check_manifest_health(root: Path) -> list[HealthCheck]:
                 status="warning",
                 message="pyproject.toml missing [build-system] — cannot install as package",
                 suggestion="Add [build-system] with hatchling, setuptools, or flit",
+            )
+        )
+
+    # Check for unpinned core dependencies
+    deps = project.get("dependencies", [])
+    unpinned = []
+    for dep in deps:
+        if isinstance(dep, str):
+            dep_clean = dep.strip()
+            # Skip markers and extras
+            if ";" in dep_clean:
+                dep_clean = dep_clean.split(";")[0].strip()
+            # Check for any version specifier
+            if dep_clean and not re.search(r"[><=!~]", dep_clean):
+                unpinned.append(dep_clean)
+
+    if unpinned:
+        checks.append(
+            HealthCheck(
+                name="manifest_unpinned_deps",
+                status="warning",
+                message=f"Core dependencies without version constraints: {', '.join(unpinned[:5])}",
+                suggestion="Add minimum version constraints (e.g., 'requests>=2.28')",
+                evidence={
+                    "unpinned": unpinned,
+                    "manifest": "pyproject.toml",
+                    "issue": "unpinned_core_deps",
+                },
             )
         )
 
@@ -505,6 +563,20 @@ def _has_python_project(root: Path) -> bool:
     """Detect if this is a Python project."""
     markers = ("pyproject.toml", "setup.py", "setup.cfg", "Pipfile", "requirements.txt")
     return any((root / m).exists() for m in markers)
+
+
+def _has_ci_config(root: Path) -> bool:
+    """Detect if the project has CI/CD configuration."""
+    ci_markers = [
+        root / ".github" / "workflows",
+        root / ".gitlab-ci.yml",
+        root / "Jenkinsfile",
+        root / ".circleci",
+        root / ".travis.yml",
+        root / "azure-pipelines.yml",
+        root / ".buildkite",
+    ]
+    return any(m.exists() for m in ci_markers)
 
 
 def _missing_lockfiles(root: Path) -> list[tuple[str, list[str]]]:

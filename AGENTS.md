@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 32 MCP tools. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
+LintGate provides 32 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
 
 ### Orient — understand before acting
 
@@ -80,7 +80,7 @@ LintGate provides 32 MCP tools. Source of truth: `grep -Rho "@mcp.tool()" mcp_se
 | `lint_project` | Lint all Python files in a project. Returns compact JSON + run_id. |
 | `lint_get_details` | Drill into a previous lint run by run_id. Filter by severity. |
 | `lint_fix` | Auto-fix safe lint issues (ruff --fix/format). Default: dry_run=True. |
-| `controlplane_run` | Full supervision mesh: lint + tests + deps + git + behavior in parallel. |
+| `controlplane_run` | Full supervision mesh: lint + tests + deps + git + behavior + structure in parallel. |
 | `controlplane_get_details` | Drill into a previous ControlPlane run. Filter by channel/severity. |
 | `controlplane_apply_repairs` | Execute proposed repair actions (command-type, safe-only by default). |
 
@@ -88,7 +88,7 @@ LintGate provides 32 MCP tools. Source of truth: `grep -Rho "@mcp.tool()" mcp_se
 
 | Tool | Purpose |
 |------|---------|
-| `behavior_precheck` | State your constraints + prediction before Bash commands. Supports structured predictions: `prediction_type` (exit_code/error_signature/stdout_contains) + `prediction_value`. |
+| `behavior_precheck` | State your constraints + prediction before Bash commands. Supports structured predictions: `prediction_type` (exit_code/error_signature/stdout_contains) + `prediction_value`. Includes hygiene prechecks: venv active, lockfile fresh, secrets in diff, version pins, clean working tree. |
 | `controlplane_agent_feedback` | Record agreement/disagreement with findings. Accept/reject constraint proposals. |
 | `controlplane_report_repair` | Report outcome of a repair action (applied/ignored/rejected). |
 
@@ -129,6 +129,32 @@ LintGate provides 32 MCP tools. Source of truth: `grep -Rho "@mcp.tool()" mcp_se
 | `model_profile_probe_submit` | Submit probe answers. Scores deterministically into signal_risk vector, derives anti-patterns + guardrails, persists profile. |
 
 **Calibration workflow**: `model_profile_probe_start` → answer 5 questions → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')`. Profiles are stored globally (`~/.lintgate/model_profiles.json`), keyed by `provider:model` canonical form, and applied only when the model key exactly matches. Passive telemetry refinement (EMA alpha=0.15) nudges the profile toward observed behavior across sessions.
+
+## Professional Discipline Signals
+
+LintGate models the reflexive checks experienced engineers perform before risky operations. These run automatically as part of `behavior_precheck` — no separate tool calls needed.
+
+**Command-class hygiene**: When you plan to run `pip install`, `git commit`, `git push`, or `uv publish`, the hygiene precheck classifies the command and runs domain-specific precondition checks:
+- `pip_install` → Is a venv active? Does a lockfile exist? Are packages version-pinned?
+- `git_commit` / `git_push` → Are there secrets in the staged diff? Is the lockfile fresh?
+- `env_edit` → Is `.env` covered by `.gitignore`?
+- `publish_build` → Is the working tree clean? Is the lockfile fresh?
+
+**Secrets scanning**: The git channel scans staged diffs for high-confidence secret patterns (AWS keys, private keys, GitHub/GitLab tokens, connection strings, generic API keys). Findings never include the actual secret value — only the pattern name, file, and line range. This runs automatically in `controlplane_run` and in `behavior_precheck` before git commits.
+
+**Supply-chain integrity**: The `pip_audit` linter (Tier 2) scans dependencies for known vulnerabilities using the pip-audit database. Findings include the vulnerable package, installed version, CVE/GHSA ID, and fix version.
+
+**Type integrity**: The `ty` linter (Tier 2) provides fast Rust-based type checking via Astral's ty. It complements mypy with faster execution and catches unresolved imports, undefined references, and type errors.
+
+**Security fast path**: The `bandit_fast` linter (Tier 2) runs a focused subset of bandit's security checks (hardcoded passwords, shell injection, weak hashing, pickle/marshal deserialization, unsafe SSL) on every structural change, not just deep Tier 3 scans.
+
+**Structural awareness**: The `structure` channel (ControlPlane) provides AST-based codebase architecture analysis. Four checks run automatically during `controlplane_run`:
+- `STRUCT001` — Import cycle detection (DFS-based, max depth 5)
+- `STRUCT002` — Module-size distribution skew (p90/p50 ratio, quantile-based thresholds)
+- `STRUCT003` — Orphan detection (unreferenced modules, excludes entrypoints/migrations/tests/plugins)
+- `STRUCT004` — Package cohesion ratio (intra- vs. inter-package imports)
+
+All findings are informational unless corroborated by other channels. The structure snapshot in `controlplane_run` output provides cheap orientation: file count, largest modules, package distribution, cycle/orphan counts.
 
 ## Feedback Loops
 

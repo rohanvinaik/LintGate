@@ -246,6 +246,28 @@ def register(mcp, helpers):
             ]
         output["prediction_tracking"] = prediction_section
 
+        # Hygiene precheck for command classes
+        hygiene_result = None
+        with contextlib.suppress(Exception):
+            from lintgate.hygiene import classify_and_check
+
+            hygiene_result = classify_and_check(planned_action, project_root)
+
+        if hygiene_result and hygiene_result.warnings:
+            output["hygiene"] = {
+                "command_class": hygiene_result.command_class,
+                "warnings": [
+                    {
+                        "check": w.check,
+                        "message": w.message,
+                        "confidence": round(w.confidence, 2),
+                        "actionability": w.actionability,
+                    }
+                    for w in hygiene_result.warnings
+                ],
+                "recommendation": hygiene_result.recommendation,
+            }
+
         next_actions = []
         if coverage_gap > 0 or recall < 0.5:
             next_actions.append(

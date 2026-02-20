@@ -64,7 +64,7 @@ def register(mcp, helpers):
                 'lint_project(path="/my/project")',
                 "lint_fix": "Auto-fix safe issues — "
                 'lint_fix(path="/my/project", dry_run=False)',
-                "controlplane_run": "Comprehensive health check (lint + tests + deps + git) — "
+                "controlplane_run": "6-channel health check (lint + tests + deps + git + behavior + structure) — "
                 'controlplane_run(path="/my/project")',
                 "controlplane_get_details": "Drill into health check findings — "
                 'controlplane_get_details(run_id="...")',

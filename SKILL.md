@@ -1,16 +1,16 @@
 # LintGate
 
-Real-time quality supervision for AI-generated code. Fires on every Write, Edit, and Bash via PostToolUse hooks. 32 MCP tools for on-demand analysis.
+Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 32 MCP tools for on-demand analysis.
 
 ## First Steps
 
 1. **Orient**: `build_theory_pack` — get the project's theory digest (~500-1500 tokens)
-2. **Check**: `controlplane_run` — full supervision mesh (lint + tests + deps + git + behavior)
+2. **Check**: `controlplane_run` — 6-channel supervision mesh (lint + tests + deps + git + behavior + structure)
 3. **Reflect**: `behavior_precheck` — state your constraints before acting, register predictions
 
 ## Key Concept
 
-LintGate is not just a linter. It supervises the agent's *reasoning strategy*, not just its code output. Behavioral drift detection catches approach cycling, failure amnesia, and verification debt. Theory extraction grounds findings in the project's own stated values. The Architecture of Inquiry closes the loop — behavioral discoveries flow back into the project's living semantic model.
+LintGate is not just a linter. It supervises the agent's *reasoning strategy*, not just its code output. The ControlPlane runs 6 independent channels in parallel — code quality, test health, dependency integrity, git hygiene, behavioral drift detection, and codebase structural analysis — with a coherence engine that reads the agreement and disagreement across channels as diagnostic signal. Theory extraction grounds findings in the project's own stated values. The Architecture of Inquiry closes the loop — behavioral discoveries flow back into the project's living semantic model.
 
 ## Setup
 

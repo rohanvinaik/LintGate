@@ -5,7 +5,7 @@ theory_scope: false
 # LintGate Agent Retrospective: [Project Name] — [Session Type]
 
 <!--
-RETROSPECTIVE TEMPLATE v1
+RETROSPECTIVE TEMPLATE v2
 
 == FILE NAMING CONVENTION ==
 
@@ -34,11 +34,11 @@ This convention ensures:
 == INSTRUCTIONS FOR AGENTS ==
 
 - Copy this template and replace all [BRACKETED] placeholders with project-specific content.
-- Preserve the section structure (Parts I-VIII + Summary). Skip sections that don't apply,
+- Preserve the section structure (Parts I-IX + Summary). Skip sections that don't apply,
   but note why they were skipped.
 - Each "Observation N" should follow the pattern: describe what happened, then extract what it
   reveals about LintGate or about the agent-tool interaction.
-- The Economics section (Part VIII) should use real numbers where available and clearly mark
+- The Economics section (Part IX) should use real numbers where available and clearly mark
   estimates. Don't fabricate precision — round numbers with stated assumptions are better than
   exact-looking numbers pulled from thin air.
 - The Summary table at the end should be an honest scorecard. Not everything will be "Excellent."
@@ -53,7 +53,9 @@ This convention ensures:
 | **Date** | [YYYY-MM-DD] |
 | **Scope** | [What was linted — file count, LOC, language(s)] |
 | **LintGate Tier** | [Tier 1/2/3, strict/normal, ControlPlane yes/no] |
+| **LintGate Version** | [commit hash, version tag, or "unknown"] |
 | **Session Type** | [Build / Refactoring / Audit / Post-implementation / Hybrid — brief description] |
+| **Session Continuity** | [Fresh / Resumed from handoff / Multi-window continuation] |
 | **Prior State** | [What state was the codebase in before this session? Working? Broken? New?] |
 
 ---
@@ -71,6 +73,17 @@ This convention ensures:
 | Blockers | [N] | [categorized list] |
 | Warnings | [N] | [categorized list] |
 | Informational | [N] | [brief note] |
+
+### Hygiene Baseline
+
+<!-- Captures the professional discipline posture at session start. -->
+
+| Signal | Status |
+|--------|--------|
+| Virtual environment | [active / missing / system Python] |
+| Lockfile | [fresh / stale / absent] |
+| .python-version | [present / missing] |
+| Structure snapshot | [cycles: N, orphans: N, largest module: X (N LOC)] |
 
 ### Theory Profile
 
@@ -104,7 +117,27 @@ session was rich. Quality over quantity.
 
 ---
 
-## Part III: Fix Patterns and Techniques
+## Part III: Professional Discipline Signals
+
+<!--
+How did the professional discipline signals (hygiene, secrets, supply-chain, type,
+security, structure) influence the session? This section captures whether these
+signals fired, whether they were actionable, and what happened as a result.
+Skip if no discipline signals fired.
+-->
+
+| Signal | Fired? | Actionable? | Outcome |
+|--------|--------|-------------|---------|
+| Hygiene precheck (command class) | [Yes/No — which class?] | [Useful / False positive / Missed] | [What happened] |
+| Secrets-in-diff | [Yes/No] | [...] | [...] |
+| Supply-chain (pip-audit) | [Yes/No] | [...] | [...] |
+| Type integrity (ty) | [Yes/No] | [...] | [...] |
+| Security fast path (bandit) | [Yes/No] | [...] | [...] |
+| Structure (cycles/size/orphans/cohesion) | [Yes/No — which codes?] | [...] | [...] |
+
+---
+
+## Part IV: Fix Patterns and Techniques
 
 <!--
 A reusable catalog of the fix patterns applied. This section has value beyond the
@@ -118,7 +151,7 @@ individual retrospective — other agents can learn from these patterns.
 
 ---
 
-## Part IV: Quantitative Results
+## Part V: Quantitative Results
 
 ### Before and After
 
@@ -142,6 +175,15 @@ This is critical for refactoring sessions — changes that break functionality a
 | [System/feature name] | Pass/Fail | [What was checked] |
 | [...] | [...] | [...] |
 
+### Reproducibility Notes
+
+<!--
+If you re-ran controlplane_run or lint_project at the end, did findings match
+expectations? Were there any non-deterministic results? Note any flaky findings.
+-->
+
+[Brief notes on reproducibility. If skipped, note "Not tested."]
+
 ### Time Budget
 
 | Phase | Time | Notes |
@@ -152,7 +194,7 @@ This is critical for refactoring sessions — changes that break functionality a
 
 ---
 
-## Part V: Process Assessment
+## Part VI: Process Assessment
 
 ### The LintGate Workflow
 
@@ -165,6 +207,34 @@ Was it the sequence you planned, or did it emerge organically?
 [tool call sequence, e.g.:]
 lint_project → lint_get_details → [fixes] → lint_project → lint_fix → controlplane_run
 ```
+
+### Prediction Accuracy
+
+<!--
+If behavior_precheck was used, report prediction accuracy trajectory.
+This makes it possible to compare how quickly different agents calibrate
+to a project's constraints. Skip if behavior_precheck was not used.
+-->
+
+| Metric | Value |
+|--------|-------|
+| Total predictions registered | [N] |
+| Predictions checked | [N] |
+| Accuracy (final) | [N%] |
+| Accuracy trend | [Improving / Stable / Degrading / N/A] |
+| Most common prediction failure | [description or "N/A"] |
+
+### Constraints Proposed
+
+<!--
+Track the constraint evolution loop: recurring patterns → proposed rules → accept/reject.
+This creates a longitudinal view of how project rules emerge. Skip if no constraints
+were proposed during this session.
+-->
+
+| Constraint | Source Signal | Accepted/Rejected | Rationale |
+|------------|-------------|-------------------|-----------|
+| [rule text] | [signal name] | [A/R] | [why] |
 
 ### What Works Well
 
@@ -191,7 +261,7 @@ experiences in this session, not generic wishlists.
 
 ---
 
-## Part VI: The Agent's Experience
+## Part VII: The Agent's Experience
 
 <!--
 First-person introspective section. How did LintGate change the agent's behavior,
@@ -209,9 +279,19 @@ Suggested subsections (use whichever apply):
 
 [...]
 
+### Trust Calibration
+
+<!--
+Did you learn to trust or distrust specific LintGate signals during this session?
+Did any signal's credibility change based on repeated accuracy or false positives?
+This produces comparable introspective data across agents and sessions.
+-->
+
+[Which signals gained or lost trust, and why.]
+
 ---
 
-## Part VII: Broader Observations
+## Part VIII: Broader Observations
 
 <!--
 Patterns that generalize beyond this specific project. What does this session reveal
@@ -225,7 +305,7 @@ of code quality work?
 
 ---
 
-## Part VIII: Economics
+## Part IX: Economics
 
 <!--
 The rough math on the session. Use real numbers where available, clearly mark estimates.
@@ -268,13 +348,16 @@ This section makes retrospectives comparable across projects and sessions.
 
 <!--
 Estimate if exact counts unavailable. State assumptions. Break down by component
-so the LintGate-specific overhead is visible.
+so the LintGate-specific overhead is visible, with supervision broken out by cognitive mode.
 -->
 
 | Component | Input Tokens | Output Tokens | Notes |
 |-----------|-------------|---------------|-------|
 | File reads | [~N] | — | [N files, N lines] |
-| LintGate tool calls | [~N] | [~N] | [which tools, how many calls] |
+| LintGate — Orient tools | [~N] | [~N] | [build_theory_pack, controlplane_status] |
+| LintGate — Act tools | [~N] | [~N] | [lint_files, lint_project, controlplane_run] |
+| LintGate — Reflect tools | [~N] | [~N] | [behavior_precheck, agent_feedback] |
+| LintGate — Evolve tools | [~N] | [~N] | [bootstrap_context_files, extract_theory] |
 | Edit tool calls | [~N] | [~N] | [N edits] |
 | Reasoning overhead | [~N] | [~N] | |
 | **Total** | **[~N]** | **[~N]** | |
@@ -342,6 +425,7 @@ from this specific session, not on what LintGate could theoretically do.
 | **Workflow integration** | [1-2 sentence assessment] |
 | **Regression detection** | [1-2 sentence assessment] |
 | **Structural insight** | [1-2 sentence assessment] |
+| **Professional discipline** | [1-2 sentence assessment — did hygiene/secrets/supply-chain signals help?] |
 | **Theory/documentation** | [1-2 sentence assessment] |
 | **Auto-fix** | [1-2 sentence assessment] |
 | **Noise level** | [1-2 sentence assessment] |

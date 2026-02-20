@@ -1,8 +1,10 @@
 # LintGate
 
-Real-time quality supervision for AI-generated code — from a biochemist who vibe-codes everything and got tired of watching agents waste their intelligence on discipline problems.
+A proactive professional cognition stack for LLM coding agents — from a biochemist who vibe-codes everything and got tired of watching agents waste their intelligence on discipline problems.
 
 The core insight: **multiple cheap, lossy lenses trained on the same codebase compose into something that looks like intelligence.** No individual tool can tell you "the agent is building on a broken abstraction." But when the type checker, the import analyzer, the complexity monitor, and the test runner all disagree in a specific pattern, that disagreement is diagnostic. This is not AI. It is the disciplined application of many bad instruments whose errors are uncorrelated — and whose agreement, therefore, means something.
+
+LintGate is more than a linter. It recapitulates the professional instincts of experienced engineers — the reflexive checks that distinguish senior from junior: verify types after changing signatures, scan diffs for secrets before committing, audit dependencies for known vulnerabilities, check that the venv is active before installing packages, ensure the lockfile is fresh before publishing. These are not intelligence problems. They are discipline problems, and discipline is exactly what LLMs are worst at and deterministic systems are best at.
 
 LintGate fires every time an LLM coding agent writes, edits, or executes a command that modifies files — classifying what changed, selecting appropriate linters, running them in parallel, and reporting structured results back before the next action. When nothing is wrong, you see nothing. When something is wrong, the agent knows immediately. And when the agent's *reasoning strategy* starts to drift — retrying failed approaches, ignoring discovered constraints, acting faster than it understands — the behavioral compass catches that too.
 
@@ -10,8 +12,9 @@ LintGate fires every time an LLM coding agent writes, edits, or executes a comma
 
 ## What It Does
 
-- **5-phase lint pipeline**: change classification → tier selection → parallel linting (15 linters) → result aggregation → agent-formatted reporting
-- **ControlPlane supervision mesh**: 5 independent channels (lint, tests, deps, git, behavior) running in parallel with cross-channel coherence analysis
+- **5-phase lint pipeline**: change classification → tier selection → parallel linting (18 linters) → result aggregation → agent-formatted reporting
+- **Professional instinct layer**: command-class hygiene prechecks (venv active? lockfile fresh? secrets in diff? working tree clean?), supply-chain vulnerability scanning, secrets-in-diff detection, type integrity verification — the reflexive checks senior engineers perform before every commit, install, or publish
+- **ControlPlane supervision mesh**: 6 independent channels (lint, tests, deps, git, behavior, structure) running in parallel with cross-channel coherence analysis. Git channel includes diff-aware secret scanning. Structure channel provides AST-based codebase architectural awareness.
 - **Behavioral drift detection**: 9 detection rules (approach cycling, failure amnesia, premature action, brute-force escalation, verification debt, stale model, serial discovery, tool repetition, consecutive failures) with intent-aware bias and signal coordination
 - **Theory extraction**: 6 theory facets + enforceable rules extracted from all project markdown — deterministic, no LLM calls
 - **Architecture of Inquiry**: 5 opt-in features that close the loop between behavioral detection and theory extraction — theory-grounded signals, falsifiable predictions, coherence checking, living context patches, session readiness gates
@@ -93,9 +96,9 @@ Every LLM coding agent has its own auto-discovery convention. Rather than mainta
 
 ## How It Works
 
-**The hook** fires on Write, Edit, MultiEdit, and Bash tool uses. Phase 1 classifies what changed and how risky it is. Phase 2 selects a lint tier (0-3, escalating strictness). Phase 3 runs selected linters in parallel with timeouts. Phase 4 deduplicates, applies exemptions, and splits findings by severity. Phase 5 formats a compact report for the agent — or `{}` when nothing is wrong.
+**The hook** fires on Write, Edit, MultiEdit, and Bash tool uses. Phase 1 classifies what changed and how risky it is. Phase 2 selects a lint tier (0-3, escalating strictness). Phase 3 runs 18 linters in parallel with timeouts — including ty for type integrity, bandit for security, and pip-audit for supply-chain vulnerabilities. Phase 4 deduplicates, applies exemptions, and splits findings by severity. Phase 5 formats a compact report for the agent — or `{}` when nothing is wrong.
 
-**The ControlPlane** runs 5 independent channels in parallel — lint (wraps the pipeline), tests (discovery + execution), deps (lockfile, venv, churn), git (state analysis), and behavior (9 detection rules for agent reasoning drift). A coherence engine reads the pattern across silent and loud channels. Session memory accumulates findings across runs. A constraint proposer turns recurring patterns into enforceable rules.
+**The ControlPlane** runs 6 independent channels in parallel — lint (wraps the pipeline), tests (discovery + execution), deps (lockfile, venv, churn, manifest quality), git (state analysis + secrets-in-diff scanning), behavior (9 detection rules for agent reasoning drift + hygiene prechecks), and structure (import cycles, module-size distribution, orphan detection, package cohesion). A coherence engine reads the pattern across silent and loud channels — a god-module flagged by both lint *and* structure is more likely a real problem than either signal alone. Session memory accumulates findings across runs. A constraint proposer turns recurring patterns into enforceable rules.
 
 **The Architecture of Inquiry** closes the loop. Theory-grounded signals attach project-specific theory claims to behavioral findings ("3 approaches attempted in 20min" becomes "3 approaches attempted in 20min. Theory: Constraint maps become architectures of possibility."). Falsifiable predictions create a feedback loop the agent can't fake — predict an exit code, system checks it, accuracy modulates future signal confidence. Living context patches flow behavioral discoveries back into CLAUDE.md's managed sections, making the project's self-model evolve with each session. All five features are opt-in via `controlplane.inquiry.*` config.
 
@@ -141,7 +144,7 @@ Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 
 | Tool | Purpose |
 |------|---------|
-| `controlplane_run` | Full supervision mesh (lint + tests + deps + git + behavior) |
+| `controlplane_run` | Full supervision mesh (lint + tests + deps + git + behavior + structure) |
 | `controlplane_get_details` | Drill into a ControlPlane run by run_id |
 | `controlplane_status` | Config and channel status |
 | `controlplane_apply_repairs` | Execute proposed repair actions |
@@ -247,7 +250,8 @@ lintgate/
 │   ├── theory_extractor.py          # Project theory profiling (6 facets + enforceable rules)
 │   ├── versioning.py                # Tool version auditing
 │   ├── dependency_health.py         # Dependency health monitoring
-│   ├── linters/                     # 15 linter implementations
+│   ├── hygiene.py                   # Command-class hygiene prechecks
+│   ├── linters/                     # 18 linter implementations
 │   ├── controlplane/                # ControlPlane supervision mesh
 │   │   ├── types.py                 # SupervisionEvent, MeshResult, InquiryConfig
 │   │   ├── behavior_compass.py      # Hypothesis lifecycle, predictions, intent taxonomy
@@ -259,10 +263,11 @@ lintgate/
 │   │   └── ...                      # channel.py, runtime.py, coherence.py, reporter.py, etc.
 │   └── channels/                    # ControlPlane channel implementations
 │       ├── behavior_channel.py      # 9 detection rules + theory grounding
+│       ├── structure_channel.py     # STRUCT001-004: cycles, size skew, orphans, cohesion
 │       └── ...                      # lint, test, dependency, git channels
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
 ├── mcp_tools/                       # MCP domain modules (32 tool definitions)
-├── tests/                           # 890+ tests
+├── tests/                           # 1500+ tests
 ├── docs/                            # Design deep dive, field reports
 │   └── design.md                    # Full architecture + calibration + philosophy
 ├── AGENTS.md                        # Universal agent entry point (single source of truth)
@@ -278,8 +283,9 @@ lintgate/
 
 See [docs/design.md](docs/design.md) for:
 - The 5-phase pipeline in detail (with ASCII diagram)
-- Tiered lint selection and the 15-linter registry
-- ControlPlane architecture: coherence engine, session memory, constraint proposer
+- Tiered lint selection and the 18-linter registry
+- Professional instinct layer: hygiene prechecks, secrets scanning, supply-chain integrity
+- ControlPlane architecture: 6-channel mesh, coherence engine, structure analysis, session memory, constraint proposer
 - Behavioral drift detection: 9 rules, intent taxonomy, signal coordination
 - Architecture of Inquiry: theory grounding, predictions, coherence, living context
 - Cross-session learning: global profiles, alpha decay, safety properties

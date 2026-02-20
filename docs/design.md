@@ -113,9 +113,9 @@ Not every change needs the same scrutiny. An import cleanup does not need cyclom
 | Docs, comments, formatting | Skip | Nothing |
 | Import-only changes | 1 | ruff, imports, context rules, redefinitions |
 | Config files | 1 | ruff, version checks, context rules |
-| Logic changes | 2 | ruff, mypy, complexity, structure, context rules, redefinitions |
+| Logic changes | 2 | ruff, mypy, ty, complexity, structure, bandit_fast, pip_audit, context rules, redefinitions |
 | Structural (signatures, classes) | 2 | Same as logic |
-| Architectural (critical paths, 3+ files) | 3 | Full suite: security, architecture, dead code, cognitive complexity |
+| Architectural (critical paths, 3+ files) | 3 | Full suite: security, architecture, dead code, cognitive complexity, ty, bandit_fast, pip_audit |
 
 The default is aggressive: **Tier 2 for ordinary code changes**. This is deliberate. In AI-first development, the agent produces code fast enough that the bottleneck shifts from writing to validating. Catching a type error three seconds after it's written is cheaper than debugging it thirty edits later.
 
@@ -125,7 +125,7 @@ The change classifier runs in under 10ms. It inspects tool input to determine fi
 
 ## The Linter Registry
 
-Fifteen linters, all independently deployable. Each wraps one tool or analysis, yields structured `LintIssue` objects, and knows nothing about the others. The runner composes them.
+Eighteen linters, all independently deployable. Each wraps one tool or analysis, yields structured `LintIssue` objects, and knows nothing about the others. The runner composes them.
 
 | Linter | Tier | External Tool | What It Catches |
 |---|---|---|---|
@@ -136,16 +136,21 @@ Fifteen linters, all independently deployable. Each wraps one tool or analysis, 
 | `context_rule_checker` | 1 | built-in | Drift from CLAUDE.md / AGENTS.md rules |
 | `redefinition_checker` | 1 | built-in | Duplicate function/class definitions at same scope |
 | `mypy` | 2 | mypy | Type errors |
+| `ty` | 2 | ty | Type integrity (Astral's Rust-based type checker) |
 | `complexity_checker` | 2 | radon | Cyclomatic complexity, maintainability index |
 | `structure_checker` | 2 | built-in | God functions, god classes, deep nesting, cognitive complexity, file bloat |
 | `performance_checker` | 2 | built-in | Quadratic membership, re.compile in loops, sorted()[0], string concat in loops, unnecessary wrappers, sequential I/O, numerical loops without vectorization |
+| `bandit_fast` | 2 | bandit | Focused security checks: hardcoded passwords, shell injection, weak hashing, pickle/marshal, unsafe SSL |
+| `pip_audit` | 2 | pip-audit | Supply-chain vulnerabilities in installed packages (CVE/GHSA database) |
 | `custom_linter` | 2 | configurable | User-defined lint commands |
-| `bandit` | 3 | bandit | Security vulnerabilities (OWASP patterns) |
+| `bandit` | 3 | bandit | Full security vulnerability scan (OWASP patterns) |
 | `architecture_checker` | 3 | built-in | Layer violations, circular imports, responsibility diffusion |
 | `dead_code_checker` | 3 | vulture / built-in | Unused functions, classes, imports |
 | `cognitive_complexity` | 3 | built-in | Understanding difficulty (distinct from cyclomatic) |
 
 External tools are auto-detected via `shutil.which()`. If mypy is not installed, the mypy linter silently disables itself. **LintGate works out of the box with just ruff** — everything else is additive. Install more tools, get more coverage. No configuration required.
+
+The three new Tier 2 linters (`ty`, `bandit_fast`, `pip_audit`) embody the "professional instinct" principle: they model checks that experienced engineers perform reflexively. `ty` catches type errors at Rust speed, complementing mypy. `bandit_fast` runs a focused subset of high-confidence security checks on every structural change (not just Tier 3 deep scans). `pip_audit` scans installed dependencies against vulnerability databases. All three follow the same `BaseLinter` protocol, degrade gracefully when their tools are missing, and integrate through the existing pipeline — no new MCP tools, no behavior channel changes.
 
 Every linter implements a common protocol: `run(context) -> Iterable[LintIssue]`. Issues carry a severity (`blocking` / `warning` / `informational`), a confidence score (0.0–1.0), linter identity, file/line location, and a machine-readable kind (e.g., `F821`, `return-value`, `complexity`). This uniformity is what makes the aggregator, pattern bank, and ControlPlane possible — they all speak the same issue language.
 
@@ -302,13 +307,70 @@ The theory system is designed for **token-efficient** agent consumption:
 
 ---
 
+## Professional Instinct Layer
+
+Beyond code quality linting, LintGate models the reflexive checks that distinguish senior from junior engineers — checks that are not about intelligence but about discipline. An experienced engineer doesn't think about checking for secrets before committing or verifying the venv is active before installing packages. These are professional instincts, performed reflexively, and their absence in LLM agents leads to costly environmental failures that compound across sessions.
+
+The professional instinct layer operates at two levels:
+
+### Hygiene Prechecks (Command-Class Awareness)
+
+Every planned action is classified into a command class, and domain-specific preconditions are checked before execution. This runs automatically inside `behavior_precheck`:
+
+| Command Class | Patterns | Checks |
+|---|---|---|
+| `pip_install` | `pip install`, `uv install`, `uv add` | venv active, lockfile exists, versions pinned |
+| `git_commit` | `git commit`, `git push` | no secrets in staged diff, lockfile fresh |
+| `env_edit` | `.env`, `export VAR=` | `.env` covered by `.gitignore` |
+| `publish_build` | `python -m build`, `twine upload`, `uv publish` | working tree clean, lockfile fresh |
+
+Each check is fast (<50ms), emits machine-verifiable evidence, and degrades gracefully when tools or state are unavailable. Unrecognized commands pass through with no warnings — the system only speaks when it has something worth saying.
+
+Implementation: `lintgate/hygiene.py`. Each check function returns `HygieneWarning | None` with confidence (0.0–1.0), evidence dict, and actionability level (immediate / investigate / advisory).
+
+### Secrets-in-Diff Scanning
+
+The git channel scans staged diffs for high-confidence secret patterns before every commit. This runs automatically in `controlplane_run` (git channel, Check 4) and inside `behavior_precheck` for git_commit commands.
+
+Seven regex patterns scan only `+` lines (additions) in `git diff --cached`:
+- AWS access keys (`AKIA[0-9A-Z]{16}`)
+- Private keys (RSA, EC, DSA, OPENSSH)
+- GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`)
+- GitLab tokens (`glpat-`)
+- Connection strings (postgres, mysql, mongodb, redis with credentials)
+- Generic API keys and secrets (16+ character values)
+
+Critical design decision: **secret values are never included in messages or evidence**. Findings report only the pattern name, file path, and line range. This prevents the monitoring system itself from becoming a secret-leaking vector.
+
+All findings carry `confidence = 0.85` (regex-based, possible false positives) and `severity = "warning"`. When secrets are found in a ControlPlane run, the git channel's overall severity escalates to warning level.
+
+### Supply-Chain Integrity
+
+The `pip_audit` linter scans installed packages against vulnerability databases. Every dependency with a known CVE or GHSA advisory produces a finding with:
+- The vulnerable package name and installed version
+- The vulnerability ID (CVE/GHSA)
+- Fix versions (when available)
+- Severity: CVE/GHSA IDs → warning, other IDs → informational
+- Confidence: 1.0 (database-backed, deterministic)
+
+This runs at Tier 2, meaning every structural code change triggers a dependency vulnerability check. The linter degrades gracefully when `pip-audit` is not installed.
+
+### Dependency Discipline
+
+The dependency health system (`lintgate/dependency_health.py`) uses convergent evidence to escalate severity:
+- Missing `.python-version` is informational by default, but escalates to error when CI config is present (the combination of "no pinned Python version" + "automated builds exist" is a reproducibility risk)
+- Conflicting package managers (e.g., both `poetry.lock` and `Pipfile.lock` present) escalates to error when both are lockfiles (not just manifests)
+- Manifest quality checks: missing `requires-python`, unpinned core dependencies
+
+---
+
 ## ControlPlane: The Supervision Mesh
 
 The ControlPlane is what happens when you ask: "What if the linter isn't enough? What if you need to supervise the agent across *multiple domains simultaneously* — code quality, test health, dependency integrity, git hygiene — and the real diagnostic signal is in the *agreement or disagreement* between those domains?"
 
 ### Architecture
 
-The ControlPlane replaces the 5-phase pipeline with a parallel supervision mesh:
+The ControlPlane replaces the 5-phase pipeline with a parallel supervision mesh (6 channels):
 
 ```
 SupervisionEvent
@@ -329,6 +391,7 @@ SupervisionEvent
   ├─ Channel: Git
   │    Uncommitted changes, branch hygiene
   │    Conflict detection, large file warnings
+  │    Secrets-in-diff scanning (staged content, 7 regex patterns)
   │
   ├─ Channel: Behavior
   │    Agent problem-solving strategy supervision
@@ -338,6 +401,15 @@ SupervisionEvent
   │          verification debt, stale model
   │    Signal coordinator: per-signal cooldown, nudge dedup, escalation
   │    Advisory only — weather-style observations, not judgments
+  │
+  ├─ Channel: Structure
+  │    Codebase architectural analysis (AST-based, symbolic only)
+  │    STRUCT001: Import cycle detection (DFS, max depth 5)
+  │    STRUCT002: Module-size distribution (p90/p50 ratio, quantile thresholds)
+  │    STRUCT003: Orphan detection (excludes entrypoints, migrations, tests, plugins)
+  │    STRUCT004: Package cohesion (intra- vs. inter-package import ratio)
+  │    Emits structure snapshot for cheap orientation in compact output
+  │    Advisory only — informational unless corroborated by other channels
   │
   └─ Coherence Engine
        Cross-channel diagnosis from multi-signal agreement
@@ -349,7 +421,7 @@ SupervisionEvent
 
 This is the novel piece — where the ControlPlane becomes more than the sum of its channels, and where the "lossy lenses" principle pays off.
 
-Each channel, individually, is a bad instrument. The lint channel can't tell you whether your architecture is sound — it can only tell you that `ruff` found three undefined names. The test channel can't tell you whether your dependencies are healthy — it can only tell you that two tests failed. The dependency channel knows nothing about code quality. The git channel knows nothing about test health. The behavior channel knows nothing about syntax — it only knows that the agent has tried three different approaches in twenty minutes and all of them failed.
+Each channel, individually, is a bad instrument. The lint channel can't tell you whether your architecture is sound — it can only tell you that `ruff` found three undefined names. The test channel can't tell you whether your dependencies are healthy — it can only tell you that two tests failed. The dependency channel knows nothing about code quality. The git channel knows nothing about test health. The structure channel knows nothing about runtime behavior — only static module relationships. The behavior channel knows nothing about syntax — it only knows that the agent has tried three different approaches in twenty minutes and all of them failed.
 
 But **the pattern of agreement and disagreement between them is a higher-order signal that none of them could produce alone.** When lint finds undefined names, tests fail on import errors, and the dependency channel reports a missing package — that's not three independent problems, that's one problem (a broken dependency) diagnosed from three angles. When lint is clean but tests fail, the problem is in test logic, not code quality. When everything is clean except git (large uncommitted diff), the code is fine but the workflow isn't. And when the behavior channel reports approach cycling while lint and tests are both failing — the agent isn't just writing bad code, it's *stuck*, and the right response is to step back and rethink, not to try a fifth variant of the same approach.
 
@@ -396,6 +468,29 @@ When the pattern bank detects a recurring anti-pattern (same `linter|kind` appea
 The proposer also promotes recurring *behavioral* findings. When the behavior channel's signals — `approach_cycling`, `failure_amnesia`, `brute_force_escalation`, `verification_debt`, or `stale_model` — appear across multiple session snapshots, the proposer generates theory-note constraints. These range from "enumerate constraints before attempting new approach" (approach cycling) to "verify downstream acceptance before long build sequences" (verification debt) to "update constraint model between approach changes" (stale model). Behavioral constraints flow through the same acceptance pipeline as code constraints.
 
 Proposals are stored in session memory with confidence scores and are **never auto-applied** — the agent or user must explicitly accept or reject them via the `controlplane_agent_feedback` MCP tool. Accepted constraints flow back into the theory extractor's rule set.
+
+### Structure Channel
+
+The structure channel provides AST-based codebase architectural analysis. It models a professional instinct that the other channels cannot: **a senior engineer carries a mental model of the codebase's shape** — where the import graph tangles, which modules accumulate too much responsibility, which files nobody references anymore. The structure channel provides that awareness cheaply and deterministically.
+
+Four checks with explicit finding codes:
+
+| Code | Check | Signal | Evidence |
+|------|-------|--------|----------|
+| STRUCT001 | Import cycles | DFS cycle detection, max depth 5 | `{cycle: [mod1, mod2, ...], length: N}` |
+| STRUCT002 | Module-size skew | Quantile-based: p90/p50 ratio, min sample guards | `{p50_loc, p90_loc, ratio, outliers: [...]}` |
+| STRUCT003 | Orphan detection | Modules not imported by any other module | `{module, file}` |
+| STRUCT004 | Package cohesion | Intra- vs. inter-package import ratio | `{intra_imports, inter_imports, cohesion_ratio}` |
+
+Design decisions:
+
+- **Symbolic only**: AST-based import extraction, no ML, no external services. Deterministic and fully offline. Reuses the existing `architecture_checks._helpers` for import extraction and module resolution.
+- **Quantile-based thresholds**: Module-size analysis uses p90/p50 ratio (default 5.0x) rather than absolute thresholds. Minimum sample-size guards (5 files) prevent noisy findings on small projects.
+- **Hardened false-positive handling**: Orphan detection excludes entrypoints (`__main__`, `cli`, `server`, `app`, `main`), migration directories, test files/directories, `__init__.py`, plugin/discovery patterns, and files with shebangs. Orphan findings carry lower confidence (0.6) reflecting the many valid reasons a module might not be imported.
+- **Informational severity**: All findings are informational unless corroborated by other channels. This is a deliberate design choice — structural findings are advisory, and severity escalation happens in the coherence engine when multiple channels point at the same files.
+- **Structure snapshot**: Every `controlplane_run` with the structure channel produces a compact snapshot in the metrics: file count, total LOC, median module LOC, largest modules, package distribution, cycle/orphan/low-cohesion counts. This is the cheap orientation that saves 500-2000 tokens of exploratory file reads.
+
+The structure channel's error profile is genuinely uncorrelated with the other channels — import cycles are invisible to ruff, module-size skew is invisible to tests, orphans are invisible to the dependency checker. This is the lossy-lenses admission criterion: the errors it catches are different in kind from what existing channels catch, and the coherence engine benefits from having another independent signal to triangulate with.
 
 ---
 
@@ -1129,11 +1224,13 @@ lintgate/
 │   ├── context_bootstrap.py         # Context file generation + managed sections + patches + model-aware bootstrap
 │   ├── theory_extractor.py          # Project theory profiling (6 facets + enforceable rules)
 │   ├── versioning.py                # Tool version auditing
-│   ├── dependency_health.py         # Dependency health monitoring
-│   ├── linters/                     # 15 linter implementations
+│   ├── dependency_health.py         # Dependency health monitoring + manifest quality
+│   ├── hygiene.py                   # Command-class hygiene prechecks
+│   ├── linters/                     # 18 linter implementations
 │   │   ├── base.py                  # Base linter protocol
 │   │   ├── ruff_linter.py           # ruff check + format
 │   │   ├── mypy_linter.py           # Type checking
+│   │   ├── ty_linter.py             # Type integrity (Astral's ty)
 │   │   ├── import_checker.py        # Hallucinated import detection
 │   │   ├── complexity_checker.py    # Cyclomatic complexity (radon)
 │   │   ├── structure_checker.py     # God functions, god classes, nesting
@@ -1141,7 +1238,9 @@ lintgate/
 │   │   ├── architecture_checker.py  # Layer violations, circular imports
 │   │   ├── dead_code_checker.py     # Unused code (vulture)
 │   │   ├── performance_checker.py   # Performance anti-patterns (AST-based)
-│   │   ├── bandit_linter.py         # Security vulnerabilities
+│   │   ├── bandit_linter.py         # Security vulnerabilities (full scan)
+│   │   ├── bandit_fast_linter.py    # Security fast path (focused Tier 2)
+│   │   ├── pip_audit_linter.py      # Supply-chain vulnerability scanning
 │   │   ├── context_rule_checker.py  # CLAUDE.md/AGENTS.md rule enforcement
 │   │   ├── version_checker.py       # Tool version validation
 │   │   ├── redefinition_checker.py  # Duplicate definitions
@@ -1165,11 +1264,12 @@ lintgate/
 │       ├── lint_channel.py          # Wraps the linter pipeline
 │       ├── test_channel.py          # Test discovery + execution
 │       ├── dependency_channel.py    # Dependency health checks
-│       ├── git_channel.py           # Git state analysis
-│       └── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
+│       ├── git_channel.py           # Git state analysis + secrets-in-diff scanning
+│       ├── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
+│       └── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
 ├── mcp_tools/                       # MCP domain modules (32 tool definitions)
-├── tests/                           # 39 test files, 890+ tests
+├── tests/                           # 45 test files, 1500+ tests
 │   ├── test_module_contracts.py     # Interface parity gates
 │   ├── test_regressions.py          # Bug regression tests
 │   ├── test_lint_parity.py          # Linter output parity
