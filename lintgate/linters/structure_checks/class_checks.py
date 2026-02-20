@@ -24,6 +24,25 @@ def check_class(
     yield from check_class_parents(filepath, node, name, thresholds)
 
 
+_ENUM_BASE_NAMES = frozenset({"Enum", "IntEnum", "StrEnum", "Flag", "IntFlag"})
+
+
+def _is_enum_subclass(node: ast.ClassDef) -> bool:
+    """Check if a class inherits from an Enum type."""
+    for base in node.bases:
+        # Direct: class Foo(Enum)
+        if isinstance(base, ast.Name) and base.id in _ENUM_BASE_NAMES:
+            return True
+        # Qualified: class Foo(enum.Enum)
+        if (
+            isinstance(base, ast.Attribute)
+            and base.attr in _ENUM_BASE_NAMES
+            and isinstance(base.value, ast.Name)
+        ):
+            return True
+    return False
+
+
 def check_class_attributes(
     filepath: str,
     node: ast.ClassDef,
@@ -31,6 +50,10 @@ def check_class_attributes(
     thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check instance attribute count (pylint R0902 — god class detector)."""
+    # Enum members are values, not responsibilities — skip the check.
+    if _is_enum_subclass(node):
+        return
+
     attrs = collect_class_attributes(node)
     count = len(attrs)
     max_attrs = thresholds["max_class_attributes"]

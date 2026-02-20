@@ -55,7 +55,7 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                     file=file_path,
                     line=node.lineno,
                     severity="warning",
-                    confidence=0.85,
+                    confidence=0.60,
                     evidence={
                         "container": container_name,
                         "check": "PERF001",
@@ -86,6 +86,10 @@ def _is_set_or_dict_name(name: str, tree: ast.AST) -> bool:
                     if isinstance(value, ast.Set):
                         return True
                     if isinstance(value, ast.Dict):
+                        return True
+                    if isinstance(value, ast.DictComp):
+                        return True
+                    if isinstance(value, ast.SetComp):
                         return True
     return False
 

@@ -27,6 +27,52 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
+_COMPAT_EXCEPTIONS = frozenset({"ModuleNotFoundError", "ImportError"})
+
+
+def _collect_guarded_import_lines(tree: ast.AST) -> set[int]:
+    """Return line numbers of imports inside try/except blocks that catch import errors.
+
+    Recognizes the standard compatibility pattern:
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
+    """
+    guarded: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        # Check if any handler catches ModuleNotFoundError or ImportError
+        catches_import_error = False
+        for handler in node.handlers:
+            if handler.type is None:
+                # Bare except — catches everything
+                catches_import_error = True
+                break
+            if isinstance(handler.type, ast.Name) and handler.type.id in _COMPAT_EXCEPTIONS:
+                catches_import_error = True
+                break
+            # Handle `except (ImportError, ModuleNotFoundError):`
+            if isinstance(handler.type, ast.Tuple):
+                for elt in handler.type.elts:
+                    if isinstance(elt, ast.Name) and elt.id in _COMPAT_EXCEPTIONS:
+                        catches_import_error = True
+                        break
+        if catches_import_error:
+            # Mark all import lines in both the try body and handler bodies
+            for stmt in node.body:
+                for child in ast.walk(stmt):
+                    if isinstance(child, (ast.Import, ast.ImportFrom)):
+                        guarded.add(child.lineno)
+            for handler in node.handlers:
+                for stmt in handler.body:
+                    for child in ast.walk(stmt):
+                        if isinstance(child, (ast.Import, ast.ImportFrom)):
+                            guarded.add(child.lineno)
+    return guarded
+
+
 class ImportChecker(BaseLinter):
     """Import checker — catches hallucinated and broken imports.
 
@@ -68,8 +114,14 @@ class ImportChecker(BaseLinter):
             # Syntax errors are caught by ruff — don't duplicate
             return
 
+        # Collect lines of imports guarded by try/except ImportError|ModuleNotFoundError.
+        # These are intentional compatibility patterns (e.g. tomllib/tomli).
+        guarded_lines = _collect_guarded_import_lines(tree)
+
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
+                if node.lineno in guarded_lines:
+                    continue
                 for alias in node.names:
                     if not self._module_exists(alias.name, ctx.project_root):
                         yield LintIssue(
@@ -90,6 +142,7 @@ class ImportChecker(BaseLinter):
                 isinstance(node, ast.ImportFrom)
                 and node.module
                 and node.level == 0
+                and node.lineno not in guarded_lines
                 and not self._module_exists(node.module, ctx.project_root)
             ):
                 # Skip relative imports

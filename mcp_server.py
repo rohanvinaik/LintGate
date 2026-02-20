@@ -74,7 +74,7 @@ _MCP_INSTRUCTIONS = (
     "First session: controlplane_run(path) → controlplane_get_details(run_id) → "
     "lint_fix → bootstrap_context_files(path, write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "35 tools total — use getting_started or lint_status to explore."
+    "36 tools total — use getting_started or lint_status to explore."
 )
 
 

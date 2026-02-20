@@ -5,7 +5,7 @@ register(mcp, helpers) functions. The main mcp_server.py
 calls each registration function to assemble the full tool surface.
 
 Domain modules:
-- onboarding_tools: getting_started
+- onboarding_tools: getting_started, scaffold_config
 - lint_tools: lint_files, lint_project, lint_get_details, lint_status, audit_tool_versions, lint_fix
 - context_tools: context_guidance, audit_context_health, bootstrap_context_files,
                   context_patch_review, context_patch_apply, extract_theory_constraints,

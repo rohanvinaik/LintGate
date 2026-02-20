@@ -213,6 +213,9 @@ class ControlPlaneConfig:
     constraint_proposal_threshold: int = 5
     # Architecture of Inquiry features (grouped under controlplane.inquiry.*)
     inquiry: InquiryConfig = field(default_factory=InquiryConfig)
+    # Severity-weighted coherence: when True, informational-only channel failures
+    # count less toward the "systemic" threshold (0.25 vs 1.0 for blocking).
+    severity_weighted_coherence: bool = False
     # Global behavior profile (cross-session learning)
     global_memory_enabled: bool = False
     global_memory_alpha: float = 0.6

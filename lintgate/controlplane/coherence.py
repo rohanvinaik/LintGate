@@ -31,11 +31,19 @@ if TYPE_CHECKING:
     from .session_memory import SessionMemory
 
 
-def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
+def compute_coherence(
+    channel_results: list[ChannelResult],
+    *,
+    severity_weighted: bool = False,
+) -> CoherenceResult:
     """Compute cross-channel coherence from channel results.
 
     Args:
         channel_results: Results from all channels (including skipped).
+        severity_weighted: When True, channel failures are weighted by their
+            highest-severity finding when evaluating the systemic threshold.
+            Informational-only failures count 0.25, warning-only 0.5,
+            blocking 1.0. Default False preserves V1 count-based behavior.
 
     Returns:
         CoherenceResult with state, summary, and recommended action.
@@ -148,9 +156,13 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
         )
 
     # Rule 4: systemic — three+ failures or cross-domain failure
-    if len(failed) >= 3 or _is_cross_domain_failure(failed):
+    # When severity_weighted, informational-only failures contribute less.
+    effective_failure_count = (
+        _effective_failure_count(failed) if severity_weighted else float(len(failed))
+    )
+    if effective_failure_count >= 3.0 or _is_cross_domain_failure(failed):
         notes = []
-        if len(failed) >= 3:
+        if effective_failure_count >= 3.0:
             conf = 0.9
         else:
             # Cross-domain with only 2 failures — less certain it's truly systemic
@@ -176,23 +188,41 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
         shared_files = _find_shared_files(failed)
         if shared_files:
             file_list = ", ".join(sorted(shared_files)[:3])
-            return CoherenceResult(
-                state="coupled",
-                summary=(
+            if len(loud) == 2:
+                summary = (
                     f"{', '.join(loud)} both report issues in {file_list}. "
                     f"These failures are likely related."
-                ),
-                recommended_action=f"Address the shared files first: {file_list}.",
+                )
+                action = f"Address the shared files first: {file_list}."
+            else:
+                ordered = _ordered_failed_channels(failed)
+                summary = (
+                    f"{', '.join(loud)} report overlapping issues in {file_list}. "
+                    f"These failures are likely related."
+                )
+                action = (
+                    f"Address shared files first: {file_list}, then resolve channel-specific findings in "
+                    f"{', '.join(ordered)}."
+                )
+            return CoherenceResult(
+                state="coupled",
+                summary=summary,
+                recommended_action=action,
                 silent_channels=silent,
                 loud_channels=loud,
                 confidence=0.85,
             )
 
         # Two failures, no file overlap — still coupled but independent
+        ordered = _ordered_failed_channels(failed)
+        if len(ordered) == 2:
+            action = f"Address {ordered[0]} first (higher severity), then {ordered[1]}."
+        else:
+            action = f"Address channels in order of severity/impact: {', '.join(ordered)}."
         return CoherenceResult(
             state="coupled",
             summary=f"{', '.join(loud)} report independent issues.",
-            recommended_action=f"Address {loud[0]} first (higher severity), then {loud[1]}.",
+            recommended_action=action,
             silent_channels=silent,
             loud_channels=loud,
             confidence=0.7,
@@ -217,6 +247,8 @@ def compute_coherence(channel_results: list[ChannelResult]) -> CoherenceResult:
 def compute_coherence_with_history(
     channel_results: list[ChannelResult],
     session: SessionMemory | None = None,
+    *,
+    severity_weighted: bool = False,
 ) -> CoherenceResult:
     """Compute coherence with trajectory-aware annotations from session history.
 
@@ -232,11 +264,12 @@ def compute_coherence_with_history(
         channel_results: Results from all channels.
         session: Optional session memory for history. If None, behaves
                  identically to compute_coherence().
+        severity_weighted: Forward to compute_coherence().
 
     Returns:
         CoherenceResult with enriched summary/action if history available.
     """
-    base = compute_coherence(channel_results)
+    base = compute_coherence(channel_results, severity_weighted=severity_weighted)
 
     if session is None or not session.snapshots:
         return base
@@ -348,6 +381,41 @@ def _detect_resolutions(
     current_silent_set = set(current_silent)
 
     return sorted(last_loud & current_silent_set)
+
+
+_SEVERITY_WEIGHT = {"blocking": 1.0, "warning": 0.5, "informational": 0.25, "none": 0.0}
+
+
+def _channel_failure_weight(result: ChannelResult) -> float:
+    """Compute severity weight contribution for a single failed channel."""
+    if not result.findings:
+        return _SEVERITY_WEIGHT.get(result.severity, 0.5)
+    return max(
+        (_SEVERITY_WEIGHT.get(f.severity, 0.25) for f in result.findings),
+        default=0.25,
+    )
+
+
+def _effective_failure_count(failed_results: list[ChannelResult]) -> float:
+    """Compute severity-weighted failure count.
+
+    Each failed channel contributes a weight based on its highest-severity finding:
+    - blocking: 1.0 (full failure)
+    - warning: 0.5
+    - informational: 0.25
+    - no findings: 0.0
+
+    This prevents 3 channels with only informational findings from being
+    classified as "systemic" (0.25 * 3 = 0.75 < 3.0 threshold).
+    """
+    return sum(_channel_failure_weight(result) for result in failed_results)
+
+
+def _ordered_failed_channels(failed_results: list[ChannelResult]) -> list[str]:
+    """Return failing channels sorted by severity weight (highest first)."""
+    weighted = [(result.channel, _channel_failure_weight(result)) for result in failed_results]
+    weighted.sort(key=lambda item: (-item[1], item[0]))
+    return [name for name, _weight in weighted]
 
 
 def _find_shared_files(failed_results: list[ChannelResult]) -> set[str]:

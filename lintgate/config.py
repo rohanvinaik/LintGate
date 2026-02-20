@@ -57,6 +57,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         session_memory=cp_raw.get("session_memory", False),
         session_max_age_hours=float(cp_raw.get("session_max_age_hours", 4.0)),
         constraint_proposal_threshold=int(cp_raw.get("constraint_proposal_threshold", 5)),
+        severity_weighted_coherence=bool(cp_raw.get("severity_weighted_coherence", False)),
     )
 
     # Parse inquiry config (Architecture of Inquiry features)

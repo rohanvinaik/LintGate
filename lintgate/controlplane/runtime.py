@@ -120,10 +120,13 @@ def run_mesh(
     # Phase 3: Run coherence engine (with history if session available)
     from .coherence import compute_coherence, compute_coherence_with_history
 
+    sw = config.severity_weighted_coherence
     if session is not None:
-        coherence = compute_coherence_with_history(channel_results, session)
+        coherence = compute_coherence_with_history(
+            channel_results, session, severity_weighted=sw,
+        )
     else:
-        coherence = compute_coherence(channel_results)
+        coherence = compute_coherence(channel_results, severity_weighted=sw)
 
     elapsed_ms = (time.perf_counter() - start) * 1000
     return MeshResult(

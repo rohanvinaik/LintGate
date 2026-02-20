@@ -323,6 +323,103 @@ def test_coherence_coupled_two_failures_shared_files() -> None:
     assert "app.py" in coherence.summary
 
 
+def test_coherence_weighted_coupled_shared_files_three_channels_plural_wording() -> None:
+    results = [
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="ruff",
+                    kind="E501",
+                    message="line too long",
+                    file="/app.py",
+                    severity="informational",
+                ),
+            ],
+        ),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="pytest",
+                    kind="failure",
+                    message="test failed",
+                    file="/app.py",
+                    severity="informational",
+                ),
+            ],
+        ),
+        ChannelResult(
+            channel="structure",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="structure",
+                    kind="STRUCT004",
+                    message="low cohesion",
+                    file="/app.py",
+                    severity="informational",
+                ),
+            ],
+        ),
+    ]
+    coherence = compute_coherence(results, severity_weighted=True)
+    assert coherence.state == "coupled"
+    assert "both report" not in coherence.summary
+    assert "overlapping issues" in coherence.summary
+
+
+def test_coherence_weighted_coupled_independent_three_channels_lists_all_actions() -> None:
+    results = [
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="ruff",
+                    kind="E501",
+                    message="line too long",
+                    file="/a.py",
+                    severity="informational",
+                ),
+            ],
+        ),
+        ChannelResult(
+            channel="tests",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="pytest",
+                    kind="failure",
+                    message="test failed",
+                    file="/b.py",
+                    severity="informational",
+                ),
+            ],
+        ),
+        ChannelResult(
+            channel="structure",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="structure",
+                    kind="STRUCT002",
+                    message="module skew",
+                    file="/c.py",
+                    severity="informational",
+                ),
+            ],
+        ),
+    ]
+    coherence = compute_coherence(results, severity_weighted=True)
+    assert coherence.state == "coupled"
+    assert "independent issues" in coherence.summary
+    for ch_name in ("lint", "tests", "structure"):
+        assert ch_name in coherence.recommended_action
+
+
 def test_coherence_systemic_three_failures() -> None:
     results = [
         ChannelResult(

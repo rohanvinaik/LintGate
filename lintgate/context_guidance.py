@@ -188,7 +188,9 @@ def _flatten(items: list[dict[str, Any]], key: str) -> list[str]:
 
 
 def _clean_line(line: str) -> str:
-    """Remove markdown bullets and emphasis wrappers."""
+    """Remove markdown heading markers, bullets, and emphasis wrappers."""
+    # Strip leading markdown heading markers (# / ## / ###)
+    line = re.sub(r"^#+\s*", "", line).strip()
     line = _BULLET_PREFIX_RE.sub("", line).strip()
     line = line.strip("*").strip()
     return line

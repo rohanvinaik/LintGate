@@ -59,7 +59,7 @@ class TestMCPInstructions:
     def test_mentions_tool_count(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
 
-        assert "35" in _MCP_INSTRUCTIONS
+        assert "36" in _MCP_INSTRUCTIONS
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────
@@ -191,7 +191,7 @@ class TestGettingStarted:
         from mcp_server import getting_started
 
         result = json.loads(getting_started(str(tmp_path)))
-        assert result["all_tools_count"] == 35
+        assert result["all_tools_count"] == 36
 
     def test_returns_next_actions(self, tmp_path: Path) -> None:
         import json
@@ -202,6 +202,47 @@ class TestGettingStarted:
         assert "next_actions" in result
         assert isinstance(result["next_actions"], list)
         assert len(result["next_actions"]) >= 1
+
+
+class TestScaffoldConfig:
+    """The scaffold_config tool should be safe-by-default and preview-friendly."""
+
+    def test_exists_as_mcp_tool(self) -> None:
+        from mcp_server import scaffold_config
+
+        assert callable(scaffold_config)
+
+    def test_preview_returns_yaml_for_new_project(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import scaffold_config
+
+        (tmp_path / "app.py").write_text("print('hello')\n")
+        result = json.loads(scaffold_config(str(tmp_path), write=False))
+
+        assert result["status"] == "preview"
+        assert "yaml" in result
+        assert "controlplane:" in result["yaml"]
+
+    def test_preview_existing_config_still_returns_yaml_without_writing(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import scaffold_config
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "lintgate.yaml"
+        original = "controlplane:\n  enabled: false\n"
+        config_file.write_text(original)
+        (tmp_path / "app.py").write_text("print('hello')\n")
+
+        result = json.loads(scaffold_config(str(tmp_path), write=False))
+
+        assert result["status"] == "preview_existing"
+        assert "yaml" in result
+        assert "controlplane:" in result["yaml"]
+        assert "message" in result
+        assert config_file.read_text() == original
 
 
 # ── _build_onboarding_status helper ────────────────────────────────────

@@ -37,6 +37,45 @@ _MI_THRESHOLDS = {
 }
 
 
+def _cc_suggestions(name: str, cc: int, threshold: int) -> list[str]:
+    """Return actionable decomposition hints based on complexity level."""
+    suggestions: list[str] = []
+
+    if cc > 40:
+        # Extreme — likely a dispatch function or state machine
+        suggestions.append(
+            f"CC={cc} is extreme. '{name}' likely handles multiple concerns — "
+            "split into a dispatcher + dedicated handler per case."
+        )
+        suggestions.append(
+            "Look for repeated if/elif chains or match/case arms that can "
+            "become a dict-dispatch or strategy pattern."
+        )
+    elif cc > 25:
+        # Very high — needs structural decomposition
+        suggestions.append(
+            f"CC={cc} is very high. Extract each independent branch in '{name}' "
+            "into its own helper function with a descriptive name."
+        )
+        suggestions.append(
+            "If the function validates multiple conditions, extract a "
+            "_validate_*() helper for each concern."
+        )
+    elif cc > threshold:
+        # Above threshold — targeted extraction
+        suggestions.append(
+            f"Extract nested conditional blocks in '{name}' into named helpers "
+            f"to bring complexity below {threshold}."
+        )
+
+    # Universal guidance
+    suggestions.append(
+        "Each early-return guard clause removes one branch from CC count."
+    )
+
+    return suggestions
+
+
 class ComplexityChecker(BaseLinter):
     """Radon CC + MI checker — catches overly complex functions and files.
 
@@ -103,9 +142,7 @@ class ComplexityChecker(BaseLinter):
                     severity=severity,
                     confidence=1.0,
                     evidence={"complexity": cc, "grade": rank, "threshold": threshold},
-                    suggestions=[
-                        f"Consider extracting helper functions to reduce complexity below {threshold}",
-                    ],
+                    suggestions=_cc_suggestions(name, cc, threshold),
                 )
 
     def _check_mi(self, ctx: LinterContext) -> Iterable[LintIssue]:

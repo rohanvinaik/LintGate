@@ -59,7 +59,7 @@ def aggregate_results(
     # Apply severity overrides from config
     if config.severity_overrides:
         for issue in unique:
-            override = config.severity_overrides.get(issue.kind)
+            override = _resolve_severity_override(issue.kind, config.severity_overrides)
             if override:
                 issue.severity = override
 
@@ -107,6 +107,24 @@ def aggregate_results(
         total_duration_ms=total_duration,
         files_linted=files_linted,
     )
+
+
+def _resolve_severity_override(kind: str, overrides: dict[str, str]) -> str | None:
+    """Match issue kind against severity overrides with prefix support.
+
+    Bandit emits composite kinds like "B603/subprocess_without_shell_equals_true".
+    This allows an override key of "B603" to match "B603/..." via prefix.
+    Exact matches take priority over prefix matches.
+    """
+    # Exact match first
+    if kind in overrides:
+        return overrides[kind]
+    # Prefix match: "B603" matches "B603/subprocess_without_shell_equals_true"
+    if "/" in kind:
+        prefix = kind.split("/", 1)[0]
+        if prefix in overrides:
+            return overrides[prefix]
+    return None
 
 
 def _deduplicate(issues: list[LintIssue]) -> list[LintIssue]:
