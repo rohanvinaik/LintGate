@@ -78,7 +78,7 @@ LintGate works from zero state and gets better as it accumulates signal:
 
 **Stage 0 — Zero state.** No config, no history, no theory. Works immediately with just ruff installed.
 
-**Stage 1 — Theory extraction.** Scans project documentation and produces a CLAUDE.md with project-specific dispositions, guardrails, and enforceable rules.
+**Stage 1 — Theory extraction.** Scans project documentation and produces a CLAUDE.md and AGENTS.md with project-specific dispositions, guardrails, and enforceable rules.
 
 **Stage 2 — Model calibration.** A 5-task behavioral micro-probe profiles the model's coding tendencies by observing what it *does*, not what it *says*. Model-specific guardrails.
 
