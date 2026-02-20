@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 36 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 37 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (36)
+## MCP Tools (37)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (36 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (37 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -16,6 +16,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | ----------------- | ---------------------------------------------------------------------- |
 | `getting_started` | First-call orientation with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics + next actions) |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
+| `setup_github_quality` | Generate Code Climate/SonarCloud configs, README badges, .gitignore augmentation |
 
 ### Lint Pipeline
 
@@ -166,7 +167,7 @@ lintgate/
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 36 MCP tool definitions
+├── mcp_tools/                       # 37 MCP tool definitions
 ├── tests/                           # 1,600+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy
@@ -214,7 +215,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 36 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 37 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 

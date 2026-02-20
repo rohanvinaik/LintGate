@@ -30,7 +30,7 @@ This channel is ADVISORY and read-only for session state:
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lintgate.controlplane.behavior_compass import (
     DEFAULT_THRESHOLDS,
@@ -41,7 +41,6 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
-from lintgate.types import LintIssue
 
 from .behavior_detection import (
     detect_approach_cycling,
@@ -68,6 +67,9 @@ from .behavior_scoring import (
 from .behavior_scoring import (
     SignalCoordinator as _SignalCoordinator,
 )
+
+if TYPE_CHECKING:
+    from lintgate.types import LintIssue
 
 # ── Config Loading ─────────────────────────────────────────────────────
 

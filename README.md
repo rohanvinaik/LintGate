@@ -1,5 +1,9 @@
 # LintGate
 
+[![Maintainability](https://api.codeclimate.com/v1/badges/PLACEHOLDER/maintainability)](https://codeclimate.com/github/rohanvinaik/LintGate/maintainability)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 **Three words. Zero debugging.**
 
 A biochemist kept running into the same problem with AI-generated code. Not complex bugs — *discipline* bugs. The agent would try an approach, fail, and try a variant instead of updating its model. It would hit an error, move on, and hit the same error twenty minutes later. It would act before it understood.
@@ -144,6 +148,40 @@ Independent tool validation of the LintGate codebase (92 Python files, ~24K LOC)
 
 This codebase was built almost entirely through vibe coding — natural language directives to an LLM agent, minimal manual code. The professionalization pass was itself fully autonomous. The external scores are not the result of manual engineering discipline. They are the result of automated supervision making manual discipline unnecessary.
 
+### External Validation: ShortcutForge
+
+The self-audit is one thing. Auditing your own code is table stakes. The question is: what happens when you point it at someone else's codebase?
+
+ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog with validation, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline, and a distillation loop. 100 Python files, ~37,500 LOC. Built by a biochemist vibe-coding with AI assistance over a week of intensive development. Working code, passing tests, zero architectural planning.
+
+LintGate's ControlPlane diagnosed it as "systemic" — 132 blockers, 253 warnings, 151 informational findings across all 6 channels. What happened next took 46 minutes.
+
+| Metric | Before | After | Delta |
+| --- | --- | --- | --- |
+| **Blockers** | 132 | 7 | **-95%** |
+| **Pylint score** | 8.49/10 | 9.44/10 | **+0.95** (crossed "excellent") |
+| **Ruff violations** | 266 | 0 | **-100%** |
+| **High-complexity blocks (D+)** | 27 | 10 | **-63%** |
+| **Very high complexity (F grade)** | 5 | 1 | **-80%** |
+| **Worst single function CC** | 95 | 79 | -17% |
+| **Python files** | 91 | 57 | restructured |
+| **MI grade C or below** | 1 | 0 | **eliminated** |
+| **Test suite** | 477 pass | 477 pass | 0 regressions |
+
+The 7 remaining blockers are irreducible architectural characteristics — 5 cohesive files that happen to be long, 2 data classes that genuinely need many fields. Not debt. Just shape.
+
+Three things stand out:
+
+**The highest-ROI fix was not a code change.** 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Adding two lines to `pyproject.toml` — `extra-paths = ["src", "cli", "training", "research/src"]` — eliminated them all. Configuration before code.
+
+**The maintainability index broke.** Not "decreased" — the metric stopped being comparable. The file count changed from 91 to 57 because the codebase was *restructured*. Fewer files, each scoring better than the originals. The denominator of the measurement changed because the shape of the codebase changed. That's not cleanup. That's a restructuring that improved every axis simultaneously.
+
+**The largest god-function was decomposed into 15 methods with zero regressions.** `Orchestrator.generate()` — 620 lines, CC=95, 231 statements — was split along phase boundaries into a clean pipeline tree. All 25 orchestrator tests passed on the first run. The function was correct before. Now it's correct *and* maintainable.
+
+Total session cost: ~$10.31. Cost per blocker resolved: $0.12. Time per blocker: 31 seconds.
+
+[Full session data](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md)
+
 ---
 
 ## Research Context
@@ -156,7 +194,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*36 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*37 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Full architecture and design philosophy: [docs/design.md](docs/design.md)*
 

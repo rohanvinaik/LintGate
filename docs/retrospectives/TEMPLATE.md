@@ -163,6 +163,125 @@ individual retrospective — other agents can learn from these patterns.
 | ControlPlane coherence | [state] | [state] | [Improved/Same/Degraded] |
 | [Project-specific metrics] | [...] | [...] | [...] |
 
+### Independent Tool Metrics: Before/After Autonomous Professionalization
+
+<!--
+LintGate-independent measurements using standard Python quality tools. These provide
+an external validation of the professionalization work — LintGate findings are the
+agent's internal view; pylint/radon/ruff are the industry's external view.
+
+METHODOLOGY:
+1. Stash all working changes: `git stash push -m "metrics" --include-untracked`
+2. Run all tools on the clean (before) state
+3. Restore changes: `git stash pop`
+4. Run all tools again on the professionalized (after) state
+5. Compare
+
+This ensures identical tool versions and configuration for both measurements.
+
+SCOPE: Run tools on all Python source directories in the project. Adjust the
+directory list to match your project layout. Example for a typical project:
+
+    DIRS="src/ cli/ training/ research/src/ tools/ tests/"
+
+For pylint, you may need an --init-hook to set sys.path if the project uses
+non-standard import resolution:
+
+    --init-hook="import sys; sys.path.insert(0, 'src'); ..."
+
+If pylint hits F0010 (fatal parse error) on a directory like tests/ that lacks
+__init__.py, pass test files as globs instead: tests/test_*.py
+
+TOOLS AND COMMANDS:
+
+    # Pylint score (0-10)
+    pylint $DIRS --exit-zero [--init-hook="..."] | grep "rated at"
+
+    # Radon Maintainability Index — per-file grades and average
+    radon mi $DIRS -s
+    # Parse output to count grades A/B/C and compute average MI
+
+    # Radon Cyclomatic Complexity — per-block grades, average, and distribution
+    radon cc $DIRS -s -j | python3 -c "
+    import json, sys
+    data = json.load(sys.stdin)
+    all_blocks = []
+    for fname, blocks in data.items():
+        for b in blocks:
+            all_blocks.append((b['complexity'], b['name'], fname))
+    all_blocks.sort(reverse=True)
+    total = len(all_blocks)
+    grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0, 'F': 0}
+    for cc, name, fname in all_blocks:
+        if cc <= 5: grade_counts['A'] += 1
+        elif cc <= 10: grade_counts['B'] += 1
+        elif cc <= 20: grade_counts['C'] += 1
+        elif cc <= 30: grade_counts['D'] += 1
+        elif cc <= 40: grade_counts['E'] += 1
+        else: grade_counts['F'] += 1
+    avg = sum(cc for cc, _, _ in all_blocks) / total if total else 0
+    print(f'Total blocks: {total}')
+    print(f'Average CC: {avg:.2f}')
+    for g in 'ABCDEF':
+        pct = grade_counts[g]/total*100 if total else 0
+        print(f'  Grade {g}: {grade_counts[g]} ({pct:.1f}%)')
+    print(f'  A+B: {grade_counts[\"A\"]+grade_counts[\"B\"]} ({(grade_counts[\"A\"]+grade_counts[\"B\"])/total*100:.1f}%)')
+    print(f'  D+E+F (high): {grade_counts[\"D\"]+grade_counts[\"E\"]+grade_counts[\"F\"]}')
+    print(f'Worst: {all_blocks[0][0]}  {all_blocks[0][1]}  {all_blocks[0][2]}')
+    "
+
+    # Ruff violations
+    ruff check $DIRS | tail -3
+
+    # Test suite
+    python -m pytest tests/ -q --tb=no | tail -5
+
+INSTALL (if not already available):
+    pip install pylint radon ruff   # or: uv pip install pylint radon ruff
+
+Skip this section if the session was audit-only (no code changes) or if these tools
+are unavailable. Note "Skipped — audit-only session" or "Skipped — tools not installed."
+-->
+
+| Metric | Before | After | Delta |
+|--------|--------|-------|-------|
+| **Pylint score** | [N / 10] | [N / 10] | [+/-N] |
+| **Radon maintainability (avg MI)** | [N] | [N] | [+/-N] |
+| **Files at MI grade A** | [N / total] | [N / total] | [change] |
+| **Files at MI grade C or below** | [N (list worst)] | [N] | [change] |
+| **Radon avg cyclomatic complexity** | [N] | [N] | [+/-N] |
+| **High-complexity blocks (D+)** | [N / total (N%)] | [N / total (N%)] | [change] |
+| **Very high complexity (F grade)** | [N blocks] | [N blocks] | [change] |
+| **Worst single function CC** | [N (`function_name`)] | [N (`function_name`)] | [change] |
+| **Ruff violations** | [N] | [N] | [N (N% reduction)] |
+| **Test suite** | [N passed, N subtests] | [N passed, N subtests] | [regressions?] |
+
+[1-2 sentences interpreting the deltas. Which metrics moved and why? Which didn't and why not? A hygiene-focused session will move ruff/pylint but not radon CC; a structural refactoring session will move radon CC and MI but may not change ruff counts.]
+
+### Current Standing vs. Industry Thresholds
+
+<!--
+Standard Python quality thresholds for context. Adjust thresholds if the project
+has its own documented standards (e.g., stricter CC limits, higher pylint floor).
+
+Reference thresholds:
+  Pylint:     ≥ 8.0 good, ≥ 9.0 excellent, ≥ 9.5 exceptional
+  MI:         ≥ 20 maintainable (grade A/B), ≥ 40 healthy, < 10 unmaintainable
+  Avg CC:     ≤ 5 low, ≤ 10 moderate, > 15 high
+  A+B grade:  > 85% target for production code
+  D+ blocks:  < 5% acceptable, < 2% good
+  Tests:      100% pass required
+-->
+
+| Metric | Current Value | Industry Threshold | Status |
+|--------|--------------|-------------------|--------|
+| **Pylint** | [N / 10] | ≥ 8.0 good, ≥ 9.0 excellent | [Good / Excellent / Below threshold] |
+| **Maintainability Index** | [avg N, N% grade A/B] | ≥ 20 maintainable, ≥ 40 healthy | [Healthy / Maintainable / At risk] |
+| **Avg cyclomatic complexity** | [N (grade X)] | ≤ 5 low, ≤ 10 moderate | [Low / Moderate / High] |
+| **Function grades A+B** | [N% (N / total)] | > 85% target | [Exceeds / Meets / Below] |
+| **High-complexity blocks (D+)** | [N% (N / total)] | < 5% acceptable | [Well within / Acceptable / Exceeds] |
+| **Test reliability** | [N/N passed (100%)] | 100% pass required | [Pass / Fail] |
+
 ### Integration Verification
 
 <!--

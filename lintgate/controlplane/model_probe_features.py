@@ -8,9 +8,10 @@ Extracted from model_probe.py for module size compliance.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .model_probe_tasks import ProbeTask
+if TYPE_CHECKING:
+    from .model_probe_tasks import ProbeTask
 
 # ── Indicator Sets ──────────────────────────────────────────────────
 

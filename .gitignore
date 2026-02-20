@@ -16,6 +16,10 @@ build/
 .ruff_cache/
 .pytest_cache/
 
+# External quality tools (local analysis artifacts)
+.qlty/
+.scannerwork/
+
 # OS artifacts
 .DS_Store
 Thumbs.db
