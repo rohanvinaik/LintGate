@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 41 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 49 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (41)
+## MCP Tools (49)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (41 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (49 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -195,7 +195,7 @@ lintgate/
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 41 MCP tool definitions (incl. habit_tools.py)
+├── mcp_tools/                       # 49 MCP tool definitions (incl. habit_tools.py, compass_tools.py)
 ├── tests/                           # 1,770+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy
@@ -243,7 +243,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 41 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 49 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 

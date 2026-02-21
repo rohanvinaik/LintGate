@@ -4,9 +4,11 @@ Converts MeshResult into systemMessage + hookSpecificOutput JSON
 suitable for Claude Code's PostToolUse hook protocol.
 
 Token budget strategy (OTP-inspired):
+- Dynamic budget: scales proportionally to finding volume (worse code → bigger report)
+- Static hook_max_tokens serves as floor for clean codebases
 - Only inject non-zero channels (silent channels omitted — silence IS info)
 - Strict priority order for sections
-- Token counting + truncation of low-priority sections
+- Token counting + truncation of low-priority sections when budget is exhausted
 - Truncation metadata always emitted
 
 Section priority order (highest → lowest):
@@ -20,11 +22,9 @@ Section priority order (highest → lowest):
 8. Repair action suggestions
 9. Proposed constraints (from session memory feedback loop)
 
-Backward compatibility:
-- When only lint channel has findings → produce output compatible with
-  legacy agent_reporter.format_report() format
-- hookSpecificOutput.lint_blocking and blocking_count preserved
-- New hookSpecificOutput.controlplane object added alongside
+Protocol note:
+- PostToolUse hookSpecificOutput must match Claude's schema:
+  {"hookEventName": "PostToolUse", "additionalContext": "..."}
 """
 
 from __future__ import annotations
@@ -34,6 +34,49 @@ import os
 from typing import Any
 
 from .types import ChannelResult, ControlPlaneConfig, MeshResult
+
+
+# ── Dynamic token budget ────────────────────────────────────────────────
+
+# Per-section token costs (empirical from typical output)
+_BUDGET_BASE = 300          # header + coherence + channel summary + close tag
+_BUDGET_PER_BLOCKING = 75   # each blocking finding with evidence
+_BUDGET_PER_WARNING = 50    # each warning finding
+_BUDGET_PER_INFO = 20       # each informational finding (channel summary line)
+_BUDGET_PER_REPAIR = 40     # each repair suggestion
+_BUDGET_HARD_CAP = 12000    # common-sense upper bound for dynamic growth
+
+
+def _compute_dynamic_budget(
+    all_findings: list,
+    mesh_result: MeshResult,
+    config: ControlPlaneConfig,
+) -> int:
+    """Compute token budget proportional to finding volume.
+
+    The budget scales with the actual content that needs reporting.
+    Worse code produces more findings, which need more tokens — that's
+    signal fidelity. The static hook_max_tokens serves as the floor
+    for clean codebases.
+    """
+    blocking = sum(1 for f in all_findings if f.severity == "blocking")
+    warnings = sum(1 for f in all_findings if f.severity == "warning")
+    informational = sum(1 for f in all_findings if f.severity == "informational")
+    repairs = sum(len(cr.repairs) for cr in mesh_result.channel_results)
+
+    dynamic = (
+        _BUDGET_BASE
+        + blocking * _BUDGET_PER_BLOCKING
+        + warnings * _BUDGET_PER_WARNING
+        + informational * _BUDGET_PER_INFO
+        + repairs * _BUDGET_PER_REPAIR
+    )
+
+    # Dynamic budget can grow with issue volume, but never unbounded.
+    floor = max(1, int(config.token_policy.hook_max_tokens))
+    effective_floor = min(floor, _BUDGET_HARD_CAP)
+    dynamic_capped = min(dynamic, _BUDGET_HARD_CAP)
+    return max(dynamic_capped, effective_floor)
 
 
 def format_mesh_report(
@@ -70,7 +113,7 @@ def format_mesh_report(
         if not has_problems:
             return {}
 
-    max_tokens = config.token_policy.hook_max_tokens
+    max_tokens = _compute_dynamic_budget(all_findings, mesh_result, config)
     parts: list[str] = []
     token_estimate = 0
 
@@ -183,48 +226,34 @@ def format_mesh_report(
     # Close tag
     parts.append("</controlplane-report>")
 
-    # Count truncated sections
-    total_possible = 9  # Max sections we might have
-    sections_included = len(parts) - 2  # Minus header and close tag
-    truncated_count = max(0, total_possible - sections_included)
-    hidden_findings = (
-        len(all_findings) - len(blocking) - min(len(warnings), 3) - min(len(informational), 1)
-    )
+    # Count findings not shown in the systemMessage text.
+    # Blocking: up to 5 shown inline; warnings: up to 3; informational: count only.
+    shown_blocking = min(len(blocking), 5)
+    shown_warnings = min(len(warnings), 3)
+    hidden_findings = len(all_findings) - shown_blocking - shown_warnings
 
-    if truncated_count > 0 and hidden_findings > 0:
+    if hidden_findings > 0:
         parts.insert(
             -1,
-            f"[Truncated: {truncated_count} sections omitted, {hidden_findings} findings hidden]",
+            f"[{hidden_findings} findings not shown inline]",
         )
 
     message = "\n".join(parts)
     output: dict[str, Any] = {"systemMessage": message}
 
-    # Build hookSpecificOutput
-    hook_output: dict[str, Any] = {}
-
-    # Legacy compatibility: lint_blocking field
-    if blocking:
-        hook_output["lint_blocking"] = True
-        hook_output["blocking_count"] = len(blocking)
-        hook_output["issues_json"] = [f.to_dict() for f in blocking[:10]]
-
-    # ControlPlane-specific output
-    cp_output: dict[str, Any] = {
-        "coherence_state": mesh_result.coherence.state,
-        "channels_run": len(active_channels),
-        "partial": mesh_result.partial,
-        "duration_ms": mesh_result.duration_ms,
-        "channel_statuses": {
-            cr.channel: cr.status for cr in mesh_result.channel_results if cr.status != "skip"
-        },
+    # Claude PostToolUse hook schema: hookEventName + optional additionalContext.
+    additional_context = _build_posttooluse_context(
+        mesh_result=mesh_result,
+        blocking_count=len(blocking),
+        warning_count=len(warnings),
+        informational_count=len(informational),
+        hidden_findings=hidden_findings,
+        channels_run=len(active_channels),
+    )
+    output["hookSpecificOutput"] = {
+        "hookEventName": "PostToolUse",
+        "additionalContext": additional_context,
     }
-    if mesh_result.coherence.confidence < 1.0:
-        cp_output["coherence_confidence"] = mesh_result.coherence.confidence
-    hook_output["controlplane"] = cp_output
-
-    if hook_output:
-        output["hookSpecificOutput"] = hook_output
 
     return output
 
@@ -366,6 +395,38 @@ def _format_proposed_constraints(proposals: list[dict]) -> str:
         parts.append(f"  ... and {len(proposals) - 3} more proposals")
     parts.append("  Use controlplane_agent_feedback to accept or reject.")
     return "\n".join(parts)
+
+
+def _build_posttooluse_context(
+    *,
+    mesh_result: MeshResult,
+    blocking_count: int,
+    warning_count: int,
+    informational_count: int,
+    hidden_findings: int,
+    channels_run: int,
+) -> str:
+    """Build compact additional context for Claude PostToolUse hooks."""
+    statuses = ",".join(
+        f"{cr.channel}:{cr.status}"
+        for cr in mesh_result.channel_results
+        if cr.status != "skip"
+    )
+    incomplete = ",".join(mesh_result.incomplete_channels) if mesh_result.partial else ""
+    parts = [
+        f"coherence={mesh_result.coherence.state}",
+        f"channels_run={channels_run}",
+        f"blocking_count={blocking_count}",
+        f"warning_count={warning_count}",
+        f"informational_count={informational_count}",
+    ]
+    if hidden_findings > 0:
+        parts.append(f"hidden_findings={hidden_findings}")
+    if incomplete:
+        parts.append(f"incomplete_channels={incomplete}")
+    if statuses:
+        parts.append(f"channel_statuses={statuses}")
+    return "; ".join(parts)
 
 
 # ── Finding Fingerprint & Delta ──────────────────────────────────────────

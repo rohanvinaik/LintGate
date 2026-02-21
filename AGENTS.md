@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 41 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 49 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 41 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
+LintGate provides 49 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
 
 ### Orient — understand before acting
 
@@ -145,6 +145,21 @@ LintGate provides 41 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 
 **Sustain workflow**: When approaching context limits during sustained work, call `habit_status` to check token pressure and habit score. If compaction is needed, `habit_compact` produces a 10-section structured snapshot: session_summary, active_hypothesis, constraint_space, files_context, test_status, recent_errors, lint_state, behavioral_notes, theory_digest, and focus_directive. The snapshot preserves everything the agent needs to continue working after compaction — compaction is refinement, not loss. `declare_mode("habit")` forces immediate entry for sessions that begin with sustained execution; `declare_mode("standard")` exits.
 
+### Compass — 4-axis project understanding
+
+| Tool | Purpose |
+|------|---------|
+| `compass_status` | Show compass axes, depths, gap report, staleness, and cognitive mode. |
+| `compass_check` | Check an action against toward/away/forbidden directives. |
+| `compass_update` | Re-extract compass from project docs, run code inference, optionally render context files for AI tools. |
+| `compass_interview` | Gap-filling interview — returns prioritized questions or applies answers to fill sparse axes. |
+| `compass_reset` | Scoped state reset (compass/session/project/global) with dry-run default. |
+| `theory_mode_enter` | Enter theory exploration mode. Provides write-advisories and tracks exploration claims. |
+| `theory_mode_freeze` | Freeze compass and exit theory mode to normal. Validates required axes. |
+| `setup_hooks` | Generate .claude/settings.json hook configuration for compass-aware hooks. |
+
+**Compass workflow**: `compass_update(path, write=True)` extracts theory from markdown docs, maps 7 facets to 4 axes (problem, solution, implementation, world), runs code inference, detects gaps. If gaps exist, `compass_interview` provides prioritized questions. Use `theory_mode_enter` → explore → `theory_mode_freeze` for deep investigation. Frozen compass constrains execution via toward/away/forbidden directives checked by `compass_check`. Multi-model context files generated via `compass_update(targets=["all"])`.
+
 ## Professional Discipline Signals
 
 LintGate models the reflexive checks experienced engineers perform before risky operations.
@@ -205,4 +220,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 41). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 49). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

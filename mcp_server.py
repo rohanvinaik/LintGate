@@ -71,10 +71,19 @@ _MCP_INSTRUCTIONS = (
     "(lint + tests + deps + git; works without config)\n"
     "  5. controlplane_get_details — drill into health check findings\n"
     "  6. bootstrap_context_files — generate project-specific CLAUDE.md\n"
+    "Project compass (4-axis project understanding):\n"
+    "  7. compass_status — show axis depths, gaps, staleness, and mode\n"
+    "  8. compass_update — extract compass from project docs, optionally render context files\n"
+    "  9. compass_interview — fill sparse axes with answers or code inference\n"
+    "  10. compass_check — check an action against toward/away/forbidden directives\n"
+    "  11. theory_mode_enter — enter theory exploration mode\n"
+    "  12. theory_mode_freeze — freeze compass and exit to normal mode\n"
     "First session: controlplane_run(path) → controlplane_get_details(run_id) → "
     "lint_fix → bootstrap_context_files(path, write=true).\n"
+    "Compass workflow: compass_update(path, write=true) → compass_interview(path) → "
+    "compass_update(path, targets=['all'], write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "37 tools total — use getting_started or lint_status to explore."
+    "49 tools total — use getting_started or lint_status to explore."
 )
 
 

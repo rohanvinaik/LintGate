@@ -620,6 +620,7 @@ def register(mcp, helpers):
             report_repair_outcome,
             save_session,
         )
+        from lintgate.state import load_controlplane_run
 
         project_root = helpers["_validate_project_root"](path)
         session = get_or_create_session(project_root)
@@ -628,8 +629,18 @@ def register(mcp, helpers):
         pending_repairs: list[dict[str, Any]] = []
         if session.snapshots:
             latest = session.snapshots[-1]
-            for repair in latest.get("repairs", []):
+            # Load full repair details from the persisted controlplane run
+            all_repairs: list[dict[str, Any]] = []
+            run_details = load_controlplane_run(latest.run_id) if latest.run_id else None
+            if run_details:
+                for ch_data in run_details.get("channels", {}).values():
+                    all_repairs.extend(ch_data.get("repairs", []))
+            # Filter to only repairs proposed in this snapshot
+            proposed_ids = set(latest.repairs_proposed)
+            for repair in all_repairs:
                 repair_id = repair.get("action_id", "")
+                if repair_id not in proposed_ids:
+                    continue
                 outcome = session.repair_outcomes.get(repair_id, "pending")
                 if outcome != "pending":
                     continue

@@ -59,15 +59,33 @@ def format_report(
     message = "\n".join(parts)
     output: dict[str, Any] = {"systemMessage": message}
 
-    # For blocking issues, add structured JSON for programmatic parsing
+    # Claude PostToolUse hook schema allows optional additionalContext only.
     if result.blocking:
         output["hookSpecificOutput"] = {
-            "lint_blocking": True,
-            "blocking_count": len(result.blocking),
-            "issues_json": [i.to_dict() for i in result.blocking[:10]],
+            "hookEventName": "PostToolUse",
+            "additionalContext": _build_posttooluse_context(result),
         }
 
     return output
+
+
+def _build_posttooluse_context(result: AggregatedResult) -> str:
+    """Build compact additional context for PostToolUse schema."""
+    blocking = len(result.blocking)
+    warnings = len(result.warnings)
+    informational = len(result.informational)
+    top = ", ".join(
+        f"{issue.linter}/{issue.kind}:{issue.short_location()}"
+        for issue in result.blocking[:3]
+    )
+    parts = [
+        f"blocking_count={blocking}",
+        f"warning_count={warnings}",
+        f"informational_count={informational}",
+    ]
+    if top:
+        parts.append(f"top_blocking={top}")
+    return "; ".join(parts)
 
 
 # ─── Section formatters ─────────────────────────────────────────────────

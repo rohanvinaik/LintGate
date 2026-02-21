@@ -13,6 +13,7 @@ Verifies:
 from __future__ import annotations
 
 from lintgate.controlplane.reporter import (
+    _compute_dynamic_budget,
     build_finding_index,
     compute_finding_delta,
     compute_finding_fingerprint,
@@ -128,7 +129,7 @@ def test_blocking_findings_in_report() -> None:
 
 
 def test_blocking_in_hook_specific_output() -> None:
-    """Blocking issues should be in hookSpecificOutput for programmatic access."""
+    """hookSpecificOutput should follow Claude PostToolUse schema."""
     mesh = _make_mesh(
         [
             ChannelResult(
@@ -142,8 +143,9 @@ def test_blocking_in_hook_specific_output() -> None:
     report = format_mesh_report(mesh)
 
     assert "hookSpecificOutput" in report
-    assert report["hookSpecificOutput"]["lint_blocking"] is True
-    assert report["hookSpecificOutput"]["blocking_count"] == 1
+    assert report["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    ctx = report["hookSpecificOutput"].get("additionalContext", "")
+    assert "blocking_count=1" in ctx
 
 
 # ── Warning findings ─────────────────────────────────────────────────────
@@ -295,6 +297,30 @@ def test_token_budget_truncation() -> None:
     assert estimated_tokens < 400  # 2x budget is acceptable with mandatory sections
 
 
+def test_dynamic_budget_hard_cap() -> None:
+    """Dynamic budget should grow with findings but stay under hard cap."""
+    findings = [
+        _make_issue("blocking", message=f"Issue number {i} with long payload for budget stress")
+        for i in range(2000)
+    ]
+    mesh = _make_mesh(
+        [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="blocking",
+                findings=findings,
+            ),
+        ]
+    )
+    config = ControlPlaneConfig(
+        token_policy=TokenPolicy(hook_max_tokens=900),
+    )
+    budget = _compute_dynamic_budget(findings, mesh, config)
+    assert budget <= 12000
+    assert budget >= 900
+
+
 def test_truncation_metadata_present() -> None:
     """Truncation metadata should be present when budget exceeded."""
     findings = [_make_issue("warning", message=f"Warning {i}") for i in range(20)]
@@ -318,10 +344,10 @@ def test_truncation_metadata_present() -> None:
     assert "systemMessage" in report
 
 
-# ── ControlPlane hookSpecificOutput ──────────────────────────────────────
+# ── PostToolUse hook schema context ──────────────────────────────────────
 
 
-def test_controlplane_output_present() -> None:
+def test_posttooluse_context_includes_coherence_and_counts() -> None:
     mesh = _make_mesh(
         [
             ChannelResult(
@@ -334,14 +360,15 @@ def test_controlplane_output_present() -> None:
     )
     report = format_mesh_report(mesh)
 
-    cp_output = report["hookSpecificOutput"]["controlplane"]
-    assert cp_output["coherence_state"] == "stable"
-    assert cp_output["channels_run"] >= 1
-    assert cp_output["partial"] is False
-    assert cp_output["duration_ms"] == 42.5
+    hs = report["hookSpecificOutput"]
+    assert hs["hookEventName"] == "PostToolUse"
+    ctx = hs["additionalContext"]
+    assert "coherence=stable" in ctx
+    assert "channels_run=1" in ctx
+    assert "warning_count=1" in ctx
 
 
-def test_controlplane_output_channel_statuses() -> None:
+def test_posttooluse_context_includes_channel_statuses() -> None:
     mesh = _make_mesh(
         [
             ChannelResult(
@@ -353,10 +380,11 @@ def test_controlplane_output_channel_statuses() -> None:
     )
     report = format_mesh_report(mesh)
 
-    statuses = report["hookSpecificOutput"]["controlplane"]["channel_statuses"]
-    assert "lint" in statuses
-    assert "tests" in statuses
-    assert "deps" not in statuses  # Skip channels excluded
+    ctx = report["hookSpecificOutput"]["additionalContext"]
+    assert "channel_statuses=" in ctx
+    assert "lint:fail" in ctx
+    assert "tests:pass" in ctx
+    assert "deps" not in ctx  # Skip channels excluded
 
 
 # ── Repair suggestions ───────────────────────────────────────────────────

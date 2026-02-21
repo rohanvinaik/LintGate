@@ -818,7 +818,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 41 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
+LintGate exposes 49 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
 
 ### Core Lint Workflow
 
@@ -1467,7 +1467,7 @@ lintgate/
 │       ├── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
 │       └── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
-├── mcp_tools/                       # MCP domain modules (41 tool definitions)
+├── mcp_tools/                       # MCP domain modules (49 tool definitions)
 │   ├── habit_tools.py               # declare_mode, habit_status, habit_compact, habit_configure
 │   └── ...                          # lint_tools, controlplane_tools, behavior_tools, etc.
 ├── tests/                           # 47+ test files, 1770+ tests

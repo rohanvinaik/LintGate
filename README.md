@@ -194,7 +194,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*41 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*49 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Full architecture and design philosophy: [docs/design.md](docs/design.md)*
 

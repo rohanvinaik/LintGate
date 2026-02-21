@@ -1,3 +1,12 @@
+controlplane:
+  enabled: true
+  inquiry:
+    theory_grounded_signals: true
+    prediction_tracking: true
+    theory_coherence_check: true
+    living_context: true
+    session_gate: true
+
 pipeline_critical_paths:
   - "lintgate/hook_posttooluse.py"
   - "lintgate/controlplane/"

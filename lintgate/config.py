@@ -98,6 +98,12 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         cp_config.habit_mode_exit_score = float(habit_raw.get("exit_score", 0.40))
         cp_config.habit_mode_sustain_calls = int(habit_raw.get("sustain_calls", 5))
 
+    # Parse compass config
+    compass_raw = cp_raw.get("compass", {})
+    if isinstance(compass_raw, dict):
+        cp_config.compass_enabled = compass_raw.get("enabled", False)
+        cp_config.compass_staleness_hours = float(compass_raw.get("staleness_hours", 24.0))
+
     # Parse per-channel configs
     channels_raw = cp_raw.get("channels", {})
     if isinstance(channels_raw, dict):

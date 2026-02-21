@@ -221,6 +221,9 @@ class ControlPlaneConfig:
     global_memory_alpha: float = 0.6
     global_memory_decay_horizon: int = 50
     global_memory_ttl_days: int = 90
+    # Compass system (cognitive mode axis tracking)
+    compass_enabled: bool = False
+    compass_staleness_hours: float = 24.0
     # Habit Mode (context window management)
     habit_mode_enabled: bool = True
     habit_mode_auto_detect: bool = True

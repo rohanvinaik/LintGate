@@ -19,10 +19,13 @@ Domain modules:
 - model_tools: model_profile_status, model_profile_probe_start, model_profile_probe_submit
 - telemetry_tools: telemetry_summary
 - habit_tools: declare_mode, habit_status, habit_compact, habit_configure
+- compass_tools: compass_status, compass_check, compass_update, compass_interview,
+                  compass_reset, theory_mode_enter, theory_mode_freeze, setup_hooks
 """
 
 from . import (
     behavior_tools,
+    compass_tools,
     context_tools,
     controlplane_tools,
     dep_tools,
@@ -43,6 +46,7 @@ ALL_MODULES = [
     model_tools,
     telemetry_tools,
     habit_tools,
+    compass_tools,
 ]
 
 
