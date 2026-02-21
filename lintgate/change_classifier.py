@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from .types import ChangeClassification, DiffAnalysis, ProjectConfig
 
@@ -130,7 +131,7 @@ _CLASS_PATTERN = re.compile(r"^\s*class\s+\w+")
 
 def classify_change(
     tool_name: str,
-    tool_input: dict,
+    tool_input: dict[str, Any],
     tool_output: str,
     cwd: str,
     config: ProjectConfig | None = None,
@@ -147,6 +148,9 @@ def classify_change(
     Returns:
         ChangeClassification with all fields populated
     """
+    tool_input = _as_dict(tool_input)
+    cwd = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+
     # Extract changed files
     files_changed = _extract_changed_files(tool_name, tool_input, cwd)
 
@@ -194,11 +198,11 @@ def classify_change(
 
 def _classify_no_file_change(
     tool_name: str,
-    tool_input: dict,
+    tool_input: dict[str, Any],
 ) -> ChangeClassification:
     """Classify tool events where no concrete file path is available."""
     if tool_name == "Bash":
-        command = tool_input.get("command", "")
+        command = _as_text(tool_input.get("command", ""))
         if _is_build_command(command):
             # Build/install commands can alter runtime dependencies without
             # touching source files directly.
@@ -214,18 +218,20 @@ def _classify_no_file_change(
 # ─── File extraction ─────────────────────────────────────────────────────
 
 
-def _extract_changed_files(tool_name: str, tool_input: dict, cwd: str) -> list[str]:
+def _extract_changed_files(tool_name: str, tool_input: dict[str, Any], cwd: str) -> list[str]:
     """Extract the list of files affected by this tool use."""
 
     if tool_name in ("Write", "Edit", "MultiEdit"):
         fp = tool_input.get("file_path", "")
         if fp:
-            return [_resolve_path(fp, cwd)]
+            resolved = _resolve_path(fp, cwd)
+            if resolved:
+                return [resolved]
 
     if tool_name == "Bash":
         # For Bash, we can't always know what files changed.
         # Check for common patterns in the command.
-        command = tool_input.get("command", "")
+        command = _as_text(tool_input.get("command", ""))
 
         # Skip read-only commands
         if _is_readonly_bash(command):
@@ -244,6 +250,10 @@ def _extract_changed_files(tool_name: str, tool_input: dict, cwd: str) -> list[s
 
 def _resolve_path(filepath: str, cwd: str) -> str:
     """Resolve a potentially relative path to absolute."""
+    if not isinstance(filepath, str) or not filepath:
+        return ""
+    if not isinstance(cwd, str) or not cwd:
+        cwd = os.getcwd()
     if os.path.isabs(filepath):
         return filepath
     return os.path.normpath(os.path.join(cwd, filepath))
@@ -285,6 +295,8 @@ def _is_test_file(filepath: str) -> bool:
 
 def _is_readonly_bash(command: str) -> bool:
     """Detect read-only bash commands that don't need linting."""
+    if not isinstance(command, str):
+        return False
     cmd = command.strip()
     if not cmd:
         return True
@@ -293,11 +305,18 @@ def _is_readonly_bash(command: str) -> bool:
 
 def _is_build_command(command: str) -> bool:
     """Detect build/install commands."""
+    if not isinstance(command, str):
+        return False
     return any(pat.search(command) for pat in _BUILD_COMMAND_PATTERNS)
 
 
 def _matches_pipeline_path(filepath: str, critical_paths: list[str], cwd: str) -> bool:
     """Check if a file matches any pipeline-critical path pattern."""
+    if not isinstance(filepath, str) or not filepath:
+        return False
+    if not isinstance(cwd, str) or not cwd:
+        return False
+
     # Normalize to relative path from project root
     try:
         rel = os.path.relpath(filepath, cwd)
@@ -319,24 +338,34 @@ def _matches_pipeline_path(filepath: str, critical_paths: list[str], cwd: str) -
 # ─── Diff analysis ───────────────────────────────────────────────────────
 
 
-def _analyze_diff(tool_name: str, tool_input: dict) -> DiffAnalysis:
+def _analyze_diff(tool_name: str, tool_input: dict[str, Any]) -> DiffAnalysis:
     """Analyze the actual text changes from Write/Edit/MultiEdit."""
 
     if tool_name == "Edit":
-        old_text = tool_input.get("old_string", "")
-        new_text = tool_input.get("new_string", "")
+        old_text = _as_text(tool_input.get("old_string", ""))
+        new_text = _as_text(tool_input.get("new_string", ""))
         is_new = False
     elif tool_name == "Write":
         old_text = ""
-        new_text = tool_input.get("content", "")
+        new_text = _as_text(tool_input.get("content", ""))
         is_new = True
     elif tool_name == "MultiEdit":
         edits = tool_input.get("edits", [])
-        old_text = "\n".join(e.get("old_string", "") for e in edits)
-        new_text = "\n".join(e.get("new_string", "") for e in edits)
+        if not isinstance(edits, list):
+            edits = []
+        old_text = "\n".join(
+            _as_text(e.get("old_string", ""))
+            for e in edits
+            if isinstance(e, dict)
+        )
+        new_text = "\n".join(
+            _as_text(e.get("new_string", ""))
+            for e in edits
+            if isinstance(e, dict)
+        )
         is_new = False
     elif tool_name == "Bash":
-        command = tool_input.get("command", "")
+        command = _as_text(tool_input.get("command", ""))
         return DiffAnalysis(is_build_command=_is_build_command(command))
     else:
         return DiffAnalysis.empty()
@@ -385,12 +414,12 @@ def _classify_change_kind(
     files: list[str],
     diff: DiffAnalysis,
     tool_name: str,
-    tool_input: dict,
+    tool_input: dict[str, Any],
 ) -> str:
     """Determine what kind of change this is. Most specific wins."""
 
     # Build commands
-    if tool_name == "Bash" and _is_build_command(tool_input.get("command", "")):
+    if tool_name == "Bash" and _is_build_command(_as_text(tool_input.get("command", ""))):
         return "build"
 
     # Docs changes (all files are docs)
@@ -451,3 +480,13 @@ def _classify_risk(
 
     # Everything else: moderate
     return "moderate"
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Coerce untrusted hook payload fragments to dict."""
+    return value if isinstance(value, dict) else {}
+
+
+def _as_text(value: Any) -> str:
+    """Coerce arbitrary payload values to text for analysis."""
+    return value if isinstance(value, str) else ""

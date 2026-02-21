@@ -165,133 +165,154 @@ def main() -> None:
         # No input or malformed — pass through silently
         _exit_clean()
 
+    if not isinstance(input_data, dict):
+        _exit_clean()
+
     tool_name = input_data.get("tool_name", "")
-    tool_input = input_data.get("tool_input", {})
+    if not isinstance(tool_name, str):
+        tool_name = ""
+
+    raw_tool_input = input_data.get("tool_input", {})
+    if isinstance(raw_tool_input, dict):
+        tool_input = raw_tool_input
+    elif tool_name == "Bash" and isinstance(raw_tool_input, str):
+        tool_input = {"command": raw_tool_input}
+    else:
+        tool_input = {}
+
     tool_output = input_data.get("tool_output", "")
+    if not isinstance(tool_output, str):
+        tool_output = str(tool_output)
+
     cwd = input_data.get("cwd", os.getcwd())
+    if not isinstance(cwd, str) or not cwd:
+        cwd = os.getcwd()
 
-    # Quick exit: not a tool we care about
-    if tool_name not in ("Write", "Edit", "MultiEdit", "Bash"):
-        _exit_clean()
-
-    # Phase 0: Load config (fast — reads one YAML file or auto-detects)
     try:
-        config = load_config(cwd)
-    except Exception:
-        config = _fallback_config(cwd)
+        # Quick exit: not a tool we care about
+        if tool_name not in ("Write", "Edit", "MultiEdit", "Bash"):
+            _exit_clean()
 
-    # ControlPlane dispatch: if enabled, run the supervision mesh instead
-    try:
-        from lintgate.config import load_controlplane_config
+        # Phase 0: Load config (fast — reads one YAML file or auto-detects)
+        try:
+            config = load_config(cwd)
+        except Exception:
+            config = _fallback_config(cwd)
 
-        cp_config = load_controlplane_config(cwd)
-        if cp_config and cp_config.enabled:
-            _run_controlplane(input_data, config, cp_config, cwd, start)
-            return  # controlplane handles output and exit
-    except Exception:
-        pass  # Fall through to legacy pipeline on any error
+        # ControlPlane dispatch: if enabled, run the supervision mesh instead
+        try:
+            from lintgate.config import load_controlplane_config
 
-    # Phase 1: Classify the change
-    classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
+            cp_config = load_controlplane_config(cwd)
+            if cp_config and cp_config.enabled:
+                _run_controlplane(input_data, config, cp_config, cwd, start)
+                return  # controlplane handles output and exit
+        except Exception:
+            pass  # Fall through to legacy pipeline on any error
 
-    # Quick exit: no-op changes
-    if classification.risk_level == "none":
-        _exit_clean()
+        # Phase 1: Classify the change
+        classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
 
-    # Phase 1.5: Dependency health check (fast path, < 5ms)
-    dep_warnings: list[str] = []
-    if classification.change_kind in ("dependency", "build"):
-        with contextlib.suppress(Exception):
-            from lintgate.dependency_health import quick_dependency_check
+        # Quick exit: no-op changes
+        if classification.risk_level == "none":
+            _exit_clean()
 
-            dep_warnings = quick_dependency_check(cwd, classification.change_kind, tool_input)
+        # Phase 1.5: Dependency health check (fast path, < 5ms)
+        dep_warnings: list[str] = []
+        if classification.change_kind in ("dependency", "build"):
+            with contextlib.suppress(Exception):
+                from lintgate.dependency_health import quick_dependency_check
 
-    # Phase 2: Select lint tier
-    tier = select_tier(classification, config)
+                dep_warnings = quick_dependency_check(cwd, classification.change_kind, tool_input)
 
-    # Quick exit: tier says skip
-    if tier.skip:
-        _exit_clean()
+        # Phase 2: Select lint tier
+        tier = select_tier(classification, config)
 
-    # Phase 3: Build linter registry and run
-    registry = build_registry(config)
-    remaining_ms = config.total_timeout_ms - int((time.perf_counter() - start) * 1000)
-    remaining_ms = max(remaining_ms, 2000)  # At least 2s for linters
+        # Quick exit: tier says skip
+        if tier.skip:
+            _exit_clean()
 
-    linter_results = run_linters(tier, config, registry, timeout_ms=remaining_ms)
+        # Phase 3: Build linter registry and run
+        registry = build_registry(config)
+        remaining_ms = config.total_timeout_ms - int((time.perf_counter() - start) * 1000)
+        remaining_ms = max(remaining_ms, 2000)  # At least 2s for linters
 
-    # Phase 4: Aggregate results
-    aggregated = aggregate_results(
-        linter_results,
-        config,
-        tier_name=tier.name,
-        tier_reason=tier.reason,
-    )
+        linter_results = run_linters(tier, config, registry, timeout_ms=remaining_ms)
 
-    # Track recurring issue patterns before formatting.
-    all_issues = [*aggregated.blocking, *aggregated.warnings, *aggregated.informational]
-    recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
-    with contextlib.suppress(Exception):
-        recurrence = update_issue_memory(cwd, all_issues)
-
-    # Phase 3.5: Update pattern bank (categorical anti-tail-chasing)
-    pattern_report = {"alerted_patterns": [], "top_categories": []}
-    with contextlib.suppress(Exception):
-        from lintgate.pattern_bank import update_pattern_bank
-
-        pattern_report = update_pattern_bank(cwd, all_issues)
-
-    # Phase 5: Format report
-    last_run = load_last_run(cwd)
-    report = format_report(
-        aggregated,
-        last_run,
-        recurrence_summary=recurrence,
-        pattern_report=pattern_report,
-    )
-
-    # Save state for delta tracking
-    with contextlib.suppress(Exception):
-        save_run(cwd, aggregated)
-
-    # Log metrics (non-blocking)
-    with contextlib.suppress(Exception):
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        log_metric(
-            {
-                "event": "lint_run",
-                "project": cwd,
-                "tier": tier.name,
-                "change_kind": classification.change_kind,
-                "risk_level": classification.risk_level,
-                "files": classification.files_changed,
-                "blocking_count": len(aggregated.blocking),
-                "warning_count": len(aggregated.warnings),
-                "info_count": len(aggregated.informational),
-                "linters_run": aggregated.metrics.get("linters_run", 0),
-                "duration_ms": round(elapsed_ms, 1),
-                "repeated_issue_count": recurrence.get("repeated_issue_count", 0),
-            }
+        # Phase 4: Aggregate results
+        aggregated = aggregate_results(
+            linter_results,
+            config,
+            tier_name=tier.name,
+            tier_reason=tier.reason,
         )
 
-    # Inject dependency health warnings into report
-    if dep_warnings:
-        if not report:
-            report = {}
-        dep_msg = "\n".join(dep_warnings)
-        existing = report.get("systemMessage", "")
-        if existing:
-            report["systemMessage"] = existing + "\n\n--- Dependency Health ---\n" + dep_msg
+        # Track recurring issue patterns before formatting.
+        all_issues = [*aggregated.blocking, *aggregated.warnings, *aggregated.informational]
+        recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
+        with contextlib.suppress(Exception):
+            recurrence = update_issue_memory(cwd, all_issues)
+
+        # Phase 3.5: Update pattern bank (categorical anti-tail-chasing)
+        pattern_report = {"alerted_patterns": [], "top_categories": []}
+        with contextlib.suppress(Exception):
+            from lintgate.pattern_bank import update_pattern_bank
+
+            pattern_report = update_pattern_bank(cwd, all_issues)
+
+        # Phase 5: Format report
+        last_run = load_last_run(cwd)
+        report = format_report(
+            aggregated,
+            last_run,
+            recurrence_summary=recurrence,
+            pattern_report=pattern_report,
+        )
+
+        # Save state for delta tracking
+        with contextlib.suppress(Exception):
+            save_run(cwd, aggregated)
+
+        # Log metrics (non-blocking)
+        with contextlib.suppress(Exception):
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            log_metric(
+                {
+                    "event": "lint_run",
+                    "project": cwd,
+                    "tier": tier.name,
+                    "change_kind": classification.change_kind,
+                    "risk_level": classification.risk_level,
+                    "files": classification.files_changed,
+                    "blocking_count": len(aggregated.blocking),
+                    "warning_count": len(aggregated.warnings),
+                    "info_count": len(aggregated.informational),
+                    "linters_run": aggregated.metrics.get("linters_run", 0),
+                    "duration_ms": round(elapsed_ms, 1),
+                    "repeated_issue_count": recurrence.get("repeated_issue_count", 0),
+                }
+            )
+
+        # Inject dependency health warnings into report
+        if dep_warnings:
+            if not report:
+                report = {}
+            dep_msg = "\n".join(dep_warnings)
+            existing = report.get("systemMessage", "")
+            if existing:
+                report["systemMessage"] = existing + "\n\n--- Dependency Health ---\n" + dep_msg
+            else:
+                report["systemMessage"] = "--- Dependency Health ---\n" + dep_msg
+
+        # Output
+        if report:
+            print(json.dumps(report))
         else:
-            report["systemMessage"] = "--- Dependency Health ---\n" + dep_msg
+            print(json.dumps({}))
 
-    # Output
-    if report:
-        print(json.dumps(report))
-    else:
-        print(json.dumps({}))
-
-    sys.exit(0)
+        sys.exit(0)
+    except Exception:
+        _exit_clean()
 
 
 def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool_output) -> None:

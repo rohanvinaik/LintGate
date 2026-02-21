@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import io
+import json
+import sys
 from dataclasses import dataclass, field
+
+import pytest
 
 from lintgate.controlplane.model_profiles import ModelProfile, ModelProfileStore
 from lintgate.hook_posttooluse import (
@@ -11,6 +16,7 @@ from lintgate.hook_posttooluse import (
     _resolve_event_model_key,
     _select_telemetry_profile,
     _session_telemetry_updates_used,
+    main,
 )
 
 
@@ -82,3 +88,72 @@ def test_mark_session_telemetry_applied_increments_counter() -> None:
     _mark_session_telemetry_applied(session)
     _mark_session_telemetry_applied(session)
     assert session.behavior_compass["_model_profile_telem_updates"] == 2
+
+
+def _run_main_payload(payload: dict | list, monkeypatch: pytest.MonkeyPatch) -> tuple[int, str]:
+    stdin = io.StringIO(json.dumps(payload))
+    stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    return int(exc.value.code), stdout.getvalue().strip()
+
+
+def test_main_exits_clean_on_non_dict_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    code, output = _run_main_payload([], monkeypatch)
+    assert code == 0
+    assert output == "{}"
+
+
+def test_main_exits_clean_on_write_with_null_tool_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    code, output = _run_main_payload(
+        {
+            "tool_name": "Write",
+            "tool_input": None,
+            "tool_output": "ok",
+            "cwd": str(tmp_path),
+        },
+        monkeypatch,
+    )
+    assert code == 0
+    assert output == "{}"
+
+
+def test_main_accepts_string_bash_tool_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    code, output = _run_main_payload(
+        {
+            "tool_name": "Bash",
+            "tool_input": "pwd",
+            "tool_output": "ok",
+            "cwd": str(tmp_path),
+        },
+        monkeypatch,
+    )
+    assert code == 0
+    assert output == "{}"
+
+
+def test_main_exits_clean_on_multiedit_with_invalid_edits(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    code, output = _run_main_payload(
+        {
+            "tool_name": "MultiEdit",
+            "tool_input": {"edits": ["bad"]},
+            "tool_output": "ok",
+            "cwd": str(tmp_path),
+        },
+        monkeypatch,
+    )
+    assert code == 0
+    assert output == "{}"
