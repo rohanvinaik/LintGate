@@ -18,6 +18,7 @@ Domain modules:
                   behavior_precheck (deprecated), global_memory_status, global_memory_reset
 - model_tools: model_profile_status, model_profile_probe_start, model_profile_probe_submit
 - telemetry_tools: telemetry_summary
+- habit_tools: declare_mode, habit_status, habit_compact, habit_configure
 """
 
 from . import (
@@ -25,6 +26,7 @@ from . import (
     context_tools,
     controlplane_tools,
     dep_tools,
+    habit_tools,
     lint_tools,
     model_tools,
     onboarding_tools,
@@ -40,6 +42,7 @@ ALL_MODULES = [
     behavior_tools,
     model_tools,
     telemetry_tools,
+    habit_tools,
 ]
 
 

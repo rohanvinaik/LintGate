@@ -221,6 +221,14 @@ class ControlPlaneConfig:
     global_memory_alpha: float = 0.6
     global_memory_decay_horizon: int = 50
     global_memory_ttl_days: int = 90
+    # Habit Mode (context window management)
+    habit_mode_enabled: bool = True
+    habit_mode_auto_detect: bool = True
+    habit_mode_compact_threshold: float = 0.40
+    habit_mode_token_api_interval: int = 15
+    habit_mode_enter_score: float = 0.70
+    habit_mode_exit_score: float = 0.40
+    habit_mode_sustain_calls: int = 5
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

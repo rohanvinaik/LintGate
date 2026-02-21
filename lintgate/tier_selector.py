@@ -18,6 +18,7 @@ import os
 import time
 from pathlib import Path
 
+from .path_filters import is_backup_like_directory
 from .types import SKIP_TIER, ChangeClassification, LintTier, ProjectConfig
 
 # ─── Tier definitions ────────────────────────────────────────────────────
@@ -253,7 +254,11 @@ def _collect_project_python_files(
 
     files: list[str] = []
     for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [d for d in dirnames if d not in _PROJECT_SCAN_SKIP_DIRS]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _PROJECT_SCAN_SKIP_DIRS and not is_backup_like_directory(d)
+        ]
         for filename in filenames:
             if not filename.endswith(".py"):
                 continue

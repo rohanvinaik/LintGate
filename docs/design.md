@@ -818,7 +818,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 37 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
+LintGate exposes 41 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
 
 ### Core Lint Workflow
 
@@ -881,6 +881,17 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `model_profile_probe_submit(path, model_id, answers)` | Submit task responses (action traces + text), score into signal_risk vector, derive anti-patterns + guardrails, persist profile. |
 
 `controlplane_run` returns compact JSON with `run_id`, `coherence`, `counts`, channel summary, and `next_actions`. On first run in a session it inlines blocking issues; on subsequent runs it emits deltas (`new`, `escalated`, `resolved_count`, `still_active_count`). Use `controlplane_get_details` for drill-down without re-running channels.
+
+### Habit Mode
+
+| Tool | Purpose |
+|---|---|
+| `declare_mode(path, mode)` | Agent self-declares "habit" or "standard" mode (immediate, no sustain wait) |
+| `habit_status(path)` | Read-only status: active, score, signals, files, test status, token economics |
+| `habit_compact(path)` | Trigger compaction, return structured Habit State Snapshot (~3000 tokens) |
+| `habit_configure(path, ...)` | Runtime threshold adjustment: compact_threshold, enter_score, exit_score, sustain_calls, token_api_interval, context_window_size (session-scoped, safe-clamped) |
+
+`habit_compact` gathers all available context (session memory, compass, last lint run, theory pack, issue memory, token state) and produces a structured 10-section snapshot for post-compact injection. `habit_configure` overrides are session-scoped and clamped to safe ranges.
 
 ### Telemetry
 
@@ -995,6 +1006,167 @@ The agent is the most expensive component in the pipeline. It is good at novel r
 
 ---
 
+## Habit Mode: Context Window Management
+
+The Token Efficiency analysis above identifies the core economic problem — unsupervised agents waste ~64% of their token budget on discipline failures. But there is a second economic problem that supervision alone does not solve: **context window degradation during sustained execution.**
+
+When an agent enters a long refactoring session — the edit-test-fix loop that produces value — the context window fills with stale file reads, raw test output, superseded diffs, and intermediate reasoning that was useful ten minutes ago but is now ballast. The model gets progressively dumber as the session continues, not because its reasoning degrades, but because its attention is diluted across irrelevant context. When Claude Code's automatic compaction fires, it does a generic lossy summarization that discards structured state LintGate already tracks.
+
+The insight: LintGate already knows what matters. It tracks the behavioral trajectory, the active constraints, the lint state, the project's theory, the recurring issues, the coherence state. It should control what survives compaction — shedding ballast and injecting focused tool guidance. This turns context loss into context *refinement.* The model gets a 3,000-token distillation of everything it learned, and the stale reads are gone. The deterministic system remembers so the stochastic system does not have to.
+
+### Architecture
+
+Habit Mode operates as a "supra-tool" — mostly passive, called by the LintGate system itself on every tool event. The architecture is shared core + storage adapters:
+
+```
+Tool Event (hook)
+  │
+  ├─ Signal Collector     ← 8 signals from sliding window of 20 events
+  │    Pure arithmetic: tool types, intents, timestamps, file paths
+  │
+  ├─ Mode Detector        ← Weighted composite score (0.0-1.0)
+  │    Hysteresis: enter at 0.70 × 5 calls, exit at < 0.40
+  │    User message grading: directive / continuation / clarification
+  │
+  ├─ Token Tracker        ← Character-count heuristic + periodic API calibration
+  │    Compaction gate: 4 conditions (threshold + active + cooldown + delta)
+  │
+  └─ Compaction Strategy  ← 10-section structured snapshot (~3000 tokens)
+       Theory digest + lint state + constraints + tool guidance
+       Hard cap: 12,000 chars. Deterministic truncation.
+```
+
+**Dual persistence** — works with or without session_memory:
+- **Path A** (session-backed): Piggybacks on the behavioral compass and session memory infrastructure. Rich signals from `compass.action_history`. State stored in `session.behavior_compass["habit_mode"]`. Fires inside `_record_behavior_event()` after compass save, before session save.
+- **Path B** (standalone file-backed): Lightweight path when `session_memory` is disabled. Maintains a 30-entry action ring buffer at `~/.claude/lintgate/habit_state/<project_hash>.json`. Uses `quick_intent()` for tool classification instead of the full intent resolver.
+
+Both paths call identical core functions: `update_signals()` → `compute_habit_score()` → `update_mode()` → `build_compaction_snapshot()`. No behavioral divergence between paths — only storage differs.
+
+All signal computation, score calculation, mode transitions, and compaction logic live in pure functions in `lintgate/habit_mode.py`. No LLM calls, no subprocess calls, no file I/O in the hot path.
+
+### Signal Collector
+
+Eight signals computed from a sliding window of 20 recent tool events:
+
+| Signal | Computation | What It Indicates |
+|--------|------------|-------------------|
+| `read_edit_ratio` | Reads / max(Edits, 1) | Low ratio (< 2.0) = editing more than reading = execution phase |
+| `execute_pct` | % of calls with modify/verify/execute intent | High (> 0.5) = execution-heavy work |
+| `edit_streak` | Consecutive Edit/Write/MultiEdit at end of window | 3+ = sustained modification cadence |
+| `sub_agent_freq` | % of calls that are Task tool | Low (< 0.05) = not delegating = focused single-thread work |
+| `inter_tool_gap_median` | Median seconds between last 10 calls | Fast (< 3s) = rapid execution rhythm |
+| `same_file_ratio` | Proportion of file ops targeting already-seen files | High (> 0.6) = working in known territory |
+| `gather_pct` | % of calls with inspect/unknown intent | Complementary to execute_pct — low = not exploring |
+| `test_in_last_n` | pytest/test keyword in recent Bash calls | Boolean — test loop is active |
+
+Tool classification uses frozen sets: `_INSPECT_TOOLS` = {Read, Grep, Glob, WebFetch, WebSearch}, `_MODIFY_TOOLS` = {Write, Edit, MultiEdit, NotebookEdit}, `_META_TOOLS` = {Task, TodoWrite, AskUserQuestion}. Intent categories are reused from the existing `command_normalization` module.
+
+Pure arithmetic — no LLM calls, no string heuristics beyond tool name matching and keyword detection.
+
+### Mode Detector
+
+Weighted composite score (0.0-1.0) with hysteresis to prevent mode-flapping during mixed read-edit sequences:
+
+| Signal | Weight | Full (1.0) | Half (0.5) |
+|--------|--------|------------|------------|
+| `read_edit_ratio` | 0.25 | < 2.0 | < 3.0 |
+| `execute_pct` | 0.20 | > 0.5 | > 0.3 |
+| `edit_streak` | 0.15 | ≥ 3 | ≥ 2 |
+| `sub_agent_freq` | 0.10 | < 0.05 | < 0.15 |
+| `inter_tool_gap` | 0.10 | < 3s | < 5s |
+| `same_file_ratio` | 0.10 | > 0.6 | > 0.4 |
+| `declared` | 0.10 | True | — |
+
+**Mode transitions**:
+- **Enter**: `habit_score >= 0.70` sustained for 5 consecutive events. The sustain gate prevents false triggering during short bursts of editing within an otherwise exploratory session.
+- **Exit**: `habit_score < 0.40` (instant) OR user directive (instant reset to score 0.0).
+- **Declaration**: `declare_mode("habit")` bypasses the sustain gate entirely — immediate entry. `declare_mode("standard")` is unconditional exit.
+
+**User message grading** — the "conscious attention collapses subconscious habit" mechanism. Three categories with graded response:
+
+- **Directive** (stop, wait, actually, long messages > 50 chars, multi-sentence): Catastrophic reset — active→False, sustain_counter→0, declared→False, score→0.0. The agent's user has re-engaged with new intent.
+- **Continuation** (yes, ok, proceed, short confirmations ≤ 15 chars): **No effect.** These are expected between refactoring steps and should not collapse execution flow.
+- **Clarification** (short questions ending in ?): Gentle decay (−0.15 from habit_score). The user is checking in, not redirecting.
+
+Classification is by cheap heuristics: message length, keyword matching, sentence counting, ?-detection. The `_classify_user_message()` helper returns the type string. This prevents the common failure mode where a quick "ok" confirmation between refactoring steps collapses the agent out of habit mode.
+
+Implementation: `lintgate/habit_mode.py` (`HabitSignals`, `HabitModeState`, `update_signals`, `compute_habit_score`, `update_mode`, `signal_user_message`, `declare_mode`).
+
+### Token Tracker
+
+The token tracker estimates context window consumption and determines when compaction should trigger. All logic lives in `lintgate/token_tracker.py`.
+
+**Per-call estimation**: Serialize tool input + output to string, count characters, multiply by `calibration_factor` (default 0.25 — 1 token per 4 characters). Update running totals: `estimated_tokens_used`, `char_count_total`, `tool_call_count`. Classify tool as LintGate (matches `_LINTGATE_TOOL_PREFIXES`) vs external. Track `lines_written` for Write/Edit tools (count newlines).
+
+**API calibration**: Every ~15 tool calls (configurable), call Anthropic's free `POST /v1/messages/count_tokens` endpoint with a 500ms hard timeout. Compute new calibration factor from ground truth and blend 70% new + 30% old for smooth adjustment. Reset `estimated_tokens_used` to the API's ground truth value.
+
+**Resilience**: Exponential backoff on consecutive API failures — effective interval becomes `interval × 2^min(failures, 3)`, so after 3 consecutive failures the check interval grows from 15 to 120 calls. Counter resets on next success. All API calls wrapped in `contextlib.suppress(Exception)`. If the API is unreachable, the character-count heuristic continues operating without calibration — degraded accuracy but zero latency impact.
+
+**Anti-thrash compaction gate**: `should_compact()` requires ALL four conditions to be true:
+
+1. `estimated_tokens / context_window_size > threshold` (default 0.40 — aggressive, 40% of window)
+2. Habit mode is active
+3. `tool_calls_since_compact >= 20` (minimum calls between compacts — prevents rapid re-compaction)
+4. `estimated_tokens - last_compact_tokens >= 15,000` (delta gate — don't compact if barely anything was added since last time)
+
+**Economics tracking**: Total tool calls, LintGate vs external breakdown, lines written, compaction count, calibration count. Summary available via `habit_status` MCP tool and integrated into telemetry.
+
+### Compaction Strategy
+
+The compaction snapshot is a structured JSON document with 10 sections, ~3,000 tokens (hard cap 12,000 characters), designed for post-compact context injection. This is the core innovation: the model loses stale reads and superseded diffs but keeps the project's conceptual DNA, active constraints, and targeted tool guidance.
+
+| # | Section | Budget | Content |
+|---|---------|--------|---------|
+| 1 | `mode` | 50 tok | Active state, habit score, declared, compaction number |
+| 2 | `active_context` | 100 tok | MRU files (cap 10, basename fallback if paths too long), last test status |
+| 3 | `theory_digest` | 1500 tok | Full theory pack from `build_theory_pack` — the project's stated values, anti-patterns, enforceable rules |
+| 4 | `lint_state` | 400 tok | Blocking/warning counts, top 5 blocking issues (messages truncated to 80 chars) |
+| 5 | `behavioral_trajectory` | 300 tok | Top 3 constraints by confidence, top 2 error signatures by frequency, prediction recall |
+| 6 | `recurring_issues` | 150 tok | Top 3 recurrent issue patterns from issue memory |
+| 7 | `session_history` | 100 tok | Last 2 coherence snapshots (coherence state, blocking count, finding count) |
+| 8 | `coherence_trajectory` | 30 tok | Last 3 coherence states |
+| 9 | `token_state` | 50 tok | Estimated tokens used, total tool calls, lines written |
+| 10 | `tool_guidance` | 300 tok | Max 4 conditional tool injection recommendations |
+| | `focus_directive` | (inline) | "You are in Habit Mode. Focus: [files]. Test: pass/fail." |
+
+**Deterministic truncation**: If the serialized snapshot exceeds 12,000 characters, sections are truncated in priority order — low-value sections shed first: `session_history` → `recurring_issues` → `behavioral_trajectory` → `lint_state` → `coherence_trajectory`. The high-value sections — `mode`, `active_context`, `token_state`, `tool_guidance`, and `theory_digest` — are **never truncated**. They are the minimum viable compaction context.
+
+The theory digest (1,500 tokens of the project's conceptual DNA) always survives compaction. This means the post-compact model retains the project's stated values, problem-solving philosophy, and enforceable rules — exactly the context that prevents the behavioral drift the Token Efficiency analysis documents.
+
+### Tool Injection Engine
+
+The compaction snapshot includes conditional tool recommendations (max 4) based on behavioral metrics. This is the "sleeper hit" — it surgically targets the model's post-compact attention toward the most impactful LintGate tools given the session state:
+
+| Condition | Injected Tool | Priority |
+|-----------|--------------|----------|
+| `edit_streak > 5` AND no test in window | `prediction_register` | 1 |
+| Blocking lint issues > 3 | `lint_fix` | 1 |
+| 2+ recent failed approaches | `constraint_check` | 1 |
+| Recent coherence state = "systemic" | `controlplane_run` | 2 |
+| (always) | `habit_status` | 3 |
+
+Injections are sorted by priority and capped at 4. Each includes a reason (capped at 80 characters). The post-compact model sees not just "what you were working on" but "what you should do next" — converting the compaction event from a disruption into a course correction.
+
+### Habit Mode Configuration
+
+```yaml
+controlplane:
+  habit_mode:
+    enabled: true           # Master switch (default: true)
+    auto_detect: true       # Automatic mode detection from signals
+    compact_threshold: 0.40 # Compact at this % of context window
+    enter_score: 0.70       # Score threshold to enter habit mode
+    exit_score: 0.40        # Score threshold to exit habit mode
+    sustain_calls: 5        # Must sustain enter_score for N consecutive calls
+    token_api_interval: 15  # API calibration every N tool calls
+```
+
+All values can be overridden at runtime via `habit_configure` (session-scoped, clamped to safe ranges). The system works with or without `session_memory` — Path A for full integration, Path B for standalone operation. Both paths read the same config and call the same core functions.
+
+Implementation: `lintgate/habit_mode.py` (core), `lintgate/token_tracker.py` (token estimation + calibration), `mcp_tools/habit_tools.py` (4 MCP tools), `lintgate/hook_posttooluse.py` (Path A + Path B integration).
+
+---
+
 ## Configuration
 
 LintGate works with **zero config** for any Python project with ruff installed. For project-specific tuning, create `.claude/lintgate.yaml`:
@@ -1105,6 +1277,15 @@ controlplane:
     alpha: 0.6           # Initial weight for global priors (0-1)
     decay_horizon: 50    # Events before alpha reaches 0
     ttl_days: 90         # Prune profile data older than this
+  # Habit Mode (context window management, default enabled)
+  habit_mode:
+    enabled: true           # Master switch
+    auto_detect: true       # Auto-detect from signals (vs. declaration-only)
+    compact_threshold: 0.40 # Compact trigger: estimated_tokens / context_window
+    enter_score: 0.70       # habitScore threshold to enter (0.0-1.0)
+    exit_score: 0.40        # habitScore threshold to exit
+    sustain_calls: 5        # Consecutive events above enter_score to enter
+    token_api_interval: 15  # API calibration every N tool calls
   # Architecture of Inquiry (opt-in)
   inquiry:
     theory_grounded_signals: false
@@ -1242,6 +1423,8 @@ lintgate/
 │   ├── versioning.py                # Tool version auditing
 │   ├── dependency_health.py         # Dependency health monitoring + manifest quality
 │   ├── hygiene.py                   # Command-class hygiene prechecks
+│   ├── habit_mode.py                # Habit Mode: signals, scoring, compaction, dual persistence
+│   ├── token_tracker.py             # Token estimation, API calibration, compaction economics
 │   ├── linters/                     # 18 linter implementations
 │   │   ├── base.py                  # Base linter protocol
 │   │   ├── ruff_linter.py           # ruff check + format
@@ -1284,8 +1467,12 @@ lintgate/
 │       ├── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
 │       └── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
-├── mcp_tools/                       # MCP domain modules (37 tool definitions)
-├── tests/                           # 45 test files, 1500+ tests
+├── mcp_tools/                       # MCP domain modules (41 tool definitions)
+│   ├── habit_tools.py               # declare_mode, habit_status, habit_compact, habit_configure
+│   └── ...                          # lint_tools, controlplane_tools, behavior_tools, etc.
+├── tests/                           # 47+ test files, 1770+ tests
+│   ├── test_habit_mode.py           # Habit mode core logic (51 tests)
+│   ├── test_token_tracker.py        # Token tracker logic (30 tests)
 │   ├── test_module_contracts.py     # Interface parity gates
 │   ├── test_regressions.py          # Bug regression tests
 │   ├── test_lint_parity.py          # Linter output parity

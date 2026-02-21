@@ -223,6 +223,56 @@ class TestTelemetryWithData:
         assert summary["total_runs"] == 1
         assert summary["total_blocking_found"] == 1
 
+    def test_telemetry_includes_token_economics_when_present(self, tmp_path: Path) -> None:
+        project = "/tmp/habit_proj"
+        self._write_metrics(
+            tmp_path,
+            project,
+            [
+                {
+                    "blocking_count": 1,
+                    "warning_count": 0,
+                    "info_count": 0,
+                    "files_count": 1,
+                    "duration_ms": 50,
+                },
+            ],
+        )
+        today = datetime.now().strftime("%Y%m%d")
+        metrics_file = tmp_path / f"lintgate_{today}.jsonl"
+        with open(metrics_file, "a") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "event": "habit_mode_transition",
+                        "project": project,
+                        "transition": "enter",
+                        "habit_score": 0.83,
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "event": "habit_compact",
+                        "project": project,
+                        "estimated_tokens_before": 42000,
+                    }
+                )
+                + "\n"
+            )
+
+        with patch("lintgate.telemetry.METRICS_DIR", tmp_path):
+            summary = compute_telemetry_summary(project, period="1d")
+
+        assert "token_economics" in summary
+        assert summary["token_economics"]["habit_mode_entries"] == 1
+        assert summary["token_economics"]["compactions"] == 1
+        assert summary["token_economics"]["total_tokens_compacted"] == 42000
+
 
 class TestTrend:
     def test_few_entries_returns_no_data(self) -> None:

@@ -55,6 +55,7 @@ This convention ensures:
 | **LintGate Tier** | [Tier 1/2/3, strict/normal, ControlPlane yes/no] |
 | **LintGate Version** | [commit hash, version tag, or "unknown"] |
 | **Session Type** | [Build / Refactoring / Audit / Post-implementation / Hybrid — brief description] |
+| **Session Record(s)** | [Absolute path(s) to the JSONL session log(s) used. For multi-window sessions, list all in chronological order. If a single JSONL covers multiple retrospectives (e.g., a session that pivoted projects), note the approximate UTC timestamp where this retrospective's work begins.] |
 | **Session Continuity** | [Fresh / Resumed from handoff / Multi-window continuation] |
 | **Prior State** | [What state was the codebase in before this session? Working? Broken? New?] |
 

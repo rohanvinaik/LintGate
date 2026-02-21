@@ -316,7 +316,11 @@ def main() -> None:
 
 
 def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool_output) -> None:
-    """Record tool event in behavior compass (all events, including read-only)."""
+    """Record tool event in behavior compass (all events, including read-only).
+
+    Path A: When session_memory is enabled, piggybacks habit mode tracking
+    on the existing compass/session flow for richer signals.
+    """
     if not (cp_config.channel_enabled("behavior") and cp_config.session_memory):
         return
     with contextlib.suppress(Exception):
@@ -332,7 +336,320 @@ def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool
         compass = load_behavior_compass(session)
         record_tool_event(compass, tool_name, tool_input, tool_output)
         save_behavior_compass(session, compass)
+
+        # Path A: Habit mode tracking piggybacking on compass/session
+        if cp_config.habit_mode_enabled:
+            _update_habit_mode_path_a(
+                cp_config, session, compass, cwd, tool_name, tool_input, tool_output,
+            )
+
         save_session(session)
+
+
+def _update_habit_mode_path_a(
+    cp_config, session, compass, cwd, tool_name, tool_input, tool_output,
+) -> None:
+    """Path A: Habit mode tracking with full session/compass context.
+
+    Called from _record_behavior_event when session_memory is enabled.
+    Piggybacks on existing compass action_history for richer signals.
+    """
+    with contextlib.suppress(Exception):
+        from lintgate.habit_mode import (
+            build_compaction_snapshot,
+            detect_test_result,
+            load_habit_state,
+            save_habit_state,
+            track_active_files,
+            update_mode,
+            update_signals,
+        )
+        from lintgate.state import load_last_run, log_metric
+        from lintgate.token_tracker import (
+            do_api_calibration,
+            estimate_tool_tokens,
+            get_usage_summary,
+            load_tracker_state,
+            reset_post_compaction,
+            save_tracker_state,
+            should_api_check,
+            should_compact,
+        )
+
+        habit_state = load_habit_state(session.behavior_compass)
+        tracker = load_tracker_state(session.behavior_compass)
+
+        # Update signals from compass action_history (rich data)
+        update_signals(habit_state, compass.action_history)
+        track_active_files(habit_state, tool_name, tool_input)
+        estimate_tool_tokens(tracker, tool_name, tool_input, tool_output)
+
+        # Test result detection
+        if tool_name == "Bash":
+            cmd_sig = ""
+            if compass.action_history:
+                cmd_sig = compass.action_history[-1].get("sig", "")
+            out_str = tool_output if isinstance(tool_output, str) else ""
+            detect_test_result(habit_state, out_str, cmd_sig)
+
+        # Runtime overrides + auto-detect gating
+        overrides = session.behavior_compass.get("habit_config_overrides", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+
+        context_window_size = overrides.get("context_window_size")
+        if context_window_size is not None:
+            with contextlib.suppress(Exception):
+                tracker.context_window_size = int(context_window_size)
+
+        auto_detect_enabled = bool(overrides.get("auto_detect", cp_config.habit_mode_auto_detect))
+        transition = None
+        if auto_detect_enabled:
+            transition = update_mode(
+                habit_state,
+                compass.event_counter,
+                enter_score=overrides.get("enter_score", cp_config.habit_mode_enter_score),
+                exit_score=overrides.get("exit_score", cp_config.habit_mode_exit_score),
+                sustain_calls=overrides.get("sustain_calls", cp_config.habit_mode_sustain_calls),
+            )
+        elif habit_state.active:
+            # Declaration-driven mode still tracks event volume while active.
+            habit_state.total_events_in_habit += 1
+
+        # Token API calibration (every N calls, with timeout + backoff)
+        api_interval = overrides.get("token_api_interval", cp_config.habit_mode_token_api_interval)
+        if should_api_check(tracker, compass.event_counter, interval=api_interval):
+            with contextlib.suppress(Exception):
+                result = do_api_calibration(tracker, compass.event_counter, cwd)
+                if result:
+                    log_metric({
+                        "event": "token_estimate",
+                        "project": cwd,
+                        "source": "api",
+                        **result,
+                    })
+
+        if transition:
+            with contextlib.suppress(Exception):
+                log_metric({
+                    "event": "habit_mode_transition",
+                    "project": cwd,
+                    "transition": transition,
+                    "habit_score": habit_state.habit_score,
+                    "trigger": "auto_detect",
+                    "event_counter": compass.event_counter,
+                })
+
+        # Auto-compaction trigger in active habit mode.
+        compact_threshold = float(overrides.get(
+            "compact_threshold",
+            cp_config.habit_mode_compact_threshold,
+        ))
+        if should_compact(tracker, habit_state.active, threshold=compact_threshold):
+            with contextlib.suppress(Exception):
+                token_summary = get_usage_summary(tracker)
+                snapshot = build_compaction_snapshot(
+                    habit_state,
+                    cwd,
+                    session_memory=session.to_dict(),
+                    compass=compass.to_dict(),
+                    last_lint_run=load_last_run(cwd),
+                    token_estimate=token_summary,
+                )
+                habit_state.compaction_count += 1
+                habit_state.last_compaction_event = compass.event_counter
+                session.behavior_compass["habit_last_snapshot"] = snapshot
+                estimated_before = tracker.estimated_tokens_used
+                calls_compacted = tracker.tool_calls_since_compact
+                sections_included = sum(1 for v in snapshot.values() if v is not None)
+                reset_post_compaction(tracker)
+                log_metric({
+                    "event": "habit_compact",
+                    "project": cwd,
+                    "compaction_number": habit_state.compaction_count,
+                    "habit_score": habit_state.habit_score,
+                    "estimated_tokens_before": estimated_before,
+                    "tool_calls_compacted": calls_compacted,
+                    "sections_included": sections_included,
+                    "trigger": "auto",
+                })
+
+        save_habit_state(session.behavior_compass, habit_state)
+        save_tracker_state(session.behavior_compass, tracker)
+
+
+def _record_habit_event_lightweight(
+    cp_config, cwd: str, tool_name: str, tool_input, tool_output,
+) -> None:
+    """Path B: Lightweight habit mode tracking when session_memory is off.
+
+    Uses standalone file-backed state with a minimal action ring buffer.
+    Called from _run_controlplane when habit_mode is enabled but session_memory is not.
+    """
+    if not cp_config.habit_mode_enabled:
+        return
+    # Skip if session_memory is on — Path A handles it
+    if cp_config.session_memory and cp_config.channel_enabled("behavior"):
+        return
+
+    with contextlib.suppress(Exception):
+        import re
+        import time
+
+        from lintgate.habit_mode import (
+            MAX_ACTION_RING,
+            build_compaction_snapshot,
+            detect_test_result,
+            load_habit_state_standalone,
+            load_standalone_extras,
+            quick_intent,
+            save_habit_state_standalone,
+            track_active_files,
+            update_mode,
+            update_signals,
+        )
+        from lintgate.state import log_metric
+        from lintgate.token_tracker import (
+            TokenTrackerState,
+            do_api_calibration,
+            estimate_tool_tokens,
+            get_usage_summary,
+            reset_post_compaction,
+            should_api_check,
+            should_compact,
+        )
+
+        habit_state, action_ring = load_habit_state_standalone(cwd)
+        extras = load_standalone_extras(cwd)
+        raw_tracker = extras.get("token_tracker", {})
+        if not isinstance(raw_tracker, dict):
+            raw_tracker = {}
+        tracker = TokenTrackerState.from_dict(raw_tracker)
+        standalone_overrides = extras.get("config_overrides", {})
+        if not isinstance(standalone_overrides, dict):
+            standalone_overrides = {}
+        last_snapshot = extras.get("habit_last_snapshot")
+        if not isinstance(last_snapshot, dict):
+            last_snapshot = None
+        context_window_size = standalone_overrides.get("context_window_size")
+        if context_window_size is not None:
+            with contextlib.suppress(Exception):
+                tracker.context_window_size = int(context_window_size)
+
+        # Maintain minimal action ring buffer
+        sig = ""
+        command_text = ""
+        if isinstance(tool_input, dict):
+            sig = str(tool_input.get("file_path") or tool_input.get("path") or "")
+            command_text = str(tool_input.get("command", ""))
+        elif isinstance(tool_input, str):
+            command_text = tool_input
+        if tool_name == "Bash":
+            sig = command_text
+        action_ring.append({
+            "tool": tool_name,
+            "ts": time.time(),
+            "intent": quick_intent(tool_name),
+            "sig": sig,
+        })
+        if len(action_ring) > MAX_ACTION_RING:
+            action_ring = action_ring[-MAX_ACTION_RING:]
+
+        update_signals(habit_state, action_ring)
+        track_active_files(habit_state, tool_name, tool_input)
+        estimate_tool_tokens(tracker, tool_name, tool_input, tool_output)
+
+        # Test result detection for Bash
+        if tool_name == "Bash":
+            out_str = tool_output if isinstance(tool_output, str) else ""
+            if command_text and re.search(r"\b(pytest|test)\b", command_text.lower()):
+                detect_test_result(habit_state, out_str, command_text)
+
+        event_counter = tracker.tool_call_count
+        auto_detect_enabled = bool(standalone_overrides.get(
+            "auto_detect",
+            cp_config.habit_mode_auto_detect,
+        ))
+        transition = None
+        if auto_detect_enabled:
+            transition = update_mode(
+                habit_state,
+                event_counter,
+                enter_score=standalone_overrides.get("enter_score", cp_config.habit_mode_enter_score),
+                exit_score=standalone_overrides.get("exit_score", cp_config.habit_mode_exit_score),
+                sustain_calls=standalone_overrides.get(
+                    "sustain_calls",
+                    cp_config.habit_mode_sustain_calls,
+                ),
+            )
+        elif habit_state.active:
+            habit_state.total_events_in_habit += 1
+
+        # Token API calibration
+        api_interval = standalone_overrides.get(
+            "token_api_interval",
+            cp_config.habit_mode_token_api_interval,
+        )
+        if should_api_check(tracker, event_counter, interval=api_interval):
+            with contextlib.suppress(Exception):
+                result = do_api_calibration(tracker, event_counter, cwd)
+                if result:
+                    log_metric({
+                        "event": "token_estimate",
+                        "project": cwd,
+                        "source": "api",
+                        **result,
+                    })
+
+        if transition:
+            with contextlib.suppress(Exception):
+                log_metric({
+                    "event": "habit_mode_transition",
+                    "project": cwd,
+                    "transition": transition,
+                    "habit_score": habit_state.habit_score,
+                    "trigger": "auto_detect_lightweight",
+                    "event_counter": event_counter,
+                })
+
+        compact_threshold = float(standalone_overrides.get(
+            "compact_threshold",
+            cp_config.habit_mode_compact_threshold,
+        ))
+        if should_compact(tracker, habit_state.active, threshold=compact_threshold):
+            with contextlib.suppress(Exception):
+                token_summary = get_usage_summary(tracker)
+                snapshot = build_compaction_snapshot(
+                    habit_state,
+                    cwd,
+                    token_estimate=token_summary,
+                )
+                habit_state.compaction_count += 1
+                habit_state.last_compaction_event = event_counter
+                estimated_before = tracker.estimated_tokens_used
+                calls_compacted = tracker.tool_calls_since_compact
+                sections_included = sum(1 for v in snapshot.values() if v is not None)
+                last_snapshot = snapshot
+                reset_post_compaction(tracker)
+                log_metric({
+                    "event": "habit_compact",
+                    "project": cwd,
+                    "compaction_number": habit_state.compaction_count,
+                    "habit_score": habit_state.habit_score,
+                    "estimated_tokens_before": estimated_before,
+                    "tool_calls_compacted": calls_compacted,
+                    "sections_included": sections_included,
+                    "trigger": "auto_lightweight",
+                })
+
+        save_habit_state_standalone(
+            cwd,
+            habit_state,
+            action_ring,
+            tracker_dict=tracker.to_dict(),
+            config_overrides=standalone_overrides,
+            last_snapshot=last_snapshot,
+        )
 
 
 def _load_global_priors(cp_config) -> dict | None:
@@ -620,6 +937,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
     classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
 
     _record_behavior_event(cp_config, cwd, tool_name, tool_input, tool_output)
+    _record_habit_event_lightweight(cp_config, cwd, tool_name, tool_input, tool_output)
     global_priors = _load_global_priors(cp_config)
 
     if classification.risk_level == "none":

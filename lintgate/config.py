@@ -87,6 +87,17 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
             include_pass_details=token_raw.get("include_pass_details", False),
         )
 
+    # Parse habit_mode config
+    habit_raw = cp_raw.get("habit_mode", {})
+    if isinstance(habit_raw, dict):
+        cp_config.habit_mode_enabled = habit_raw.get("enabled", True)
+        cp_config.habit_mode_auto_detect = habit_raw.get("auto_detect", True)
+        cp_config.habit_mode_compact_threshold = float(habit_raw.get("compact_threshold", 0.40))
+        cp_config.habit_mode_token_api_interval = int(habit_raw.get("token_api_interval", 15))
+        cp_config.habit_mode_enter_score = float(habit_raw.get("enter_score", 0.70))
+        cp_config.habit_mode_exit_score = float(habit_raw.get("exit_score", 0.40))
+        cp_config.habit_mode_sustain_calls = int(habit_raw.get("sustain_calls", 5))
+
     # Parse per-channel configs
     channels_raw = cp_raw.get("channels", {})
     if isinstance(channels_raw, dict):

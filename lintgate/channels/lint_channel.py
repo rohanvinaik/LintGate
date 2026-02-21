@@ -15,6 +15,7 @@ is a pure wrapper — if the channel is removed, nothing else changes.
 from __future__ import annotations
 
 import contextlib
+import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -97,7 +98,8 @@ class LintChannel:
 
         registry = build_registry(project_config)
 
-        remaining_ms = self.timeout_ms - int((time.perf_counter() - start) * 1000)
+        timeout_budget_ms = _compute_dynamic_timeout_ms(config, self.name, tier.files)
+        remaining_ms = timeout_budget_ms - int((time.perf_counter() - start) * 1000)
         remaining_ms = max(remaining_ms, 2000)
 
         from lintgate.lint_runner import run_linters
@@ -137,6 +139,7 @@ class LintChannel:
             pattern_report,
             elapsed_ms,
             tier.strictness,
+            timeout_budget_ms,
         )
 
     def execute_pure(
@@ -212,6 +215,7 @@ class LintChannel:
             pattern_report,
             elapsed_ms,
             tier.strictness,
+            self.timeout_ms,
         )
         return channel_result, aggregated
 
@@ -222,6 +226,7 @@ class LintChannel:
         pattern_report: dict[str, Any],
         duration_ms: float,
         tier_strictness: str,
+        timeout_budget_ms: int,
     ) -> ChannelResult:
         """Convert AggregatedResult → ChannelResult.
 
@@ -258,6 +263,7 @@ class LintChannel:
                 "tier_strictness": tier_strictness,
                 "linter_statuses": aggregated.linter_statuses,
                 "files_linted": aggregated.files_linted,
+                "lint_timeout_ms": timeout_budget_ms,
             },
             duration_ms=duration_ms,
         )
@@ -283,6 +289,41 @@ def _empty_aggregated() -> AggregatedResult:
     from lintgate.types import AggregatedResult
 
     return AggregatedResult()
+
+
+def _estimate_scope_chars(
+    files: list[str],
+    max_files: int = 200,
+    max_chars: int = 2_000_000,
+) -> int:
+    """Estimate lint workload by summing scoped file byte sizes."""
+    total = 0
+    for filepath in files[:max_files]:
+        try:
+            total += max(0, os.path.getsize(filepath))
+        except OSError:
+            continue
+        if total >= max_chars:
+            return max_chars
+    return total
+
+
+def _compute_dynamic_timeout_ms(
+    config: ControlPlaneConfig,
+    channel_name: str,
+    files: list[str],
+) -> int:
+    """Adaptive timeout using scoped content size.
+
+    Formula:
+      timeout = clamp(base + 2.5*scope_kchars + 15*file_count, 2000, 0.9*latency_budget)
+    """
+    base = max(2000, int(config.channel_timeout(channel_name)))
+    scope_chars = _estimate_scope_chars(files)
+    dynamic_add = int((scope_chars / 1000.0) * 2.5) + (15 * min(len(files), 200))
+    dynamic = base + dynamic_add
+    cap = max(base, int(config.latency_budget_ms * 0.9))
+    return max(2000, min(dynamic, cap))
 
 
 def _apply_mcp_strictness_override(event: SupervisionEvent, tier: LintTier) -> LintTier:

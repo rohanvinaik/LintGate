@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from lintgate.channels.lint_channel import _apply_mcp_strictness_override
-from lintgate.controlplane.types import SupervisionEvent
+from lintgate.channels.lint_channel import (
+    _apply_mcp_strictness_override,
+    _compute_dynamic_timeout_ms,
+)
+from lintgate.controlplane.types import ChannelConfig, ControlPlaneConfig, SupervisionEvent
 from lintgate.types import LintTier
 
 
@@ -59,3 +62,22 @@ def test_mcp_strictness_override_ignores_non_mcp_surface() -> None:
     )
     out = _apply_mcp_strictness_override(event, _tier("normal"))
     assert out.strictness == "normal"
+
+
+def test_dynamic_timeout_respects_channel_baseline() -> None:
+    cp = ControlPlaneConfig(
+        enabled=True,
+        channels={"lint": ChannelConfig(timeout_ms=6400)},
+    )
+    timeout_ms = _compute_dynamic_timeout_ms(cp, "lint", [])
+    assert timeout_ms == 6400
+
+
+def test_dynamic_timeout_scales_with_scope_and_caps_to_budget(monkeypatch) -> None:
+    cp = ControlPlaneConfig(enabled=True, latency_budget_ms=12000)
+    monkeypatch.setattr(
+        "lintgate.channels.lint_channel.os.path.getsize",
+        lambda _: 1_000_000,
+    )
+    timeout_ms = _compute_dynamic_timeout_ms(cp, "lint", ["a.py", "b.py"])
+    assert timeout_ms == int(cp.latency_budget_ms * 0.9)

@@ -459,6 +459,14 @@ def save_behavior_compass(session: SessionMemory, compass: BehaviorCompass) -> N
     session.behavior_compass = compass.to_dict()
 
 
+# ── Habit Mode Helpers ────────────────────────────────────────────────
+
+
+def get_habit_mode_active(session: SessionMemory) -> bool:
+    """Quick check if habit mode is active without full deserialization."""
+    return bool(session.behavior_compass.get("habit_mode", {}).get("active", False))
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 

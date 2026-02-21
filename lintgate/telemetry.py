@@ -40,7 +40,7 @@ def compute_telemetry_summary(
     entries = _load_entries(days, project_root)
 
     if not entries:
-        return {
+        summary: dict[str, Any] = {
             "period": period,
             "total_runs": 0,
             "total_files_linted": 0,
@@ -54,6 +54,14 @@ def compute_telemetry_summary(
             "tier_distribution": {},
             "trend": "no_data",
         }
+        token_economics = compute_token_economics_summary(project_root, period=period)
+        if (
+            token_economics["habit_mode_entries"] > 0
+            or token_economics["habit_mode_exits"] > 0
+            or token_economics["compactions"] > 0
+        ):
+            summary["token_economics"] = token_economics
+        return summary
 
     total_runs = len(entries)
     total_blocking = sum(e.get("blocking_count", 0) for e in entries)
@@ -87,7 +95,7 @@ def compute_telemetry_summary(
     clean_runs = sum(1 for e in entries if e.get("blocking_count", 0) == 0)
     fix_rate = clean_runs / total_runs if total_runs > 0 else 0.0
 
-    return {
+    summary = {
         "period": period,
         "total_runs": total_runs,
         "total_files_linted": total_files,
@@ -104,6 +112,14 @@ def compute_telemetry_summary(
         "output_mode_distribution": mode_dist,
         "trend": trend,
     }
+    token_economics = compute_token_economics_summary(project_root, period=period)
+    if (
+        token_economics["habit_mode_entries"] > 0
+        or token_economics["habit_mode_exits"] > 0
+        or token_economics["compactions"] > 0
+    ):
+        summary["token_economics"] = token_economics
+    return summary
 
 
 def _load_jsonl_entries(
@@ -262,6 +278,8 @@ _ALL_TRACKED_FEATURES = {
     "theory_extraction",
     "controlplane",
     "bootstrap",
+    "habit_mode",
+    "token_tracking",
 }
 
 
@@ -271,3 +289,52 @@ def _load_feature_entries(
 ) -> list[dict[str, Any]]:
     """Load feature_usage events from daily JSONL files."""
     return _load_jsonl_entries(days, project_root, "feature_usage")
+
+
+def compute_token_economics_summary(
+    project_root: str | None = None,
+    period: str = "7d",
+) -> dict[str, Any]:
+    """Aggregate habit mode and token economics telemetry.
+
+    Reads habit_mode_transition and habit_compact metric events to produce
+    a summary of habit mode usage and token economics.
+
+    Args:
+        project_root: Filter to a specific project (None = all projects).
+        period: Time window — "1d", "7d", "30d", or "all".
+
+    Returns:
+        Dict with habit mode entries, exits, compactions, and token data.
+    """
+    days = _PERIOD_MAP.get(period, 7)
+
+    transitions = _load_jsonl_entries(days, project_root, "habit_mode_transition")
+    compactions = _load_jsonl_entries(days, project_root, "habit_compact")
+
+    if not transitions and not compactions:
+        return {
+            "period": period,
+            "habit_mode_entries": 0,
+            "habit_mode_exits": 0,
+            "compactions": 0,
+            "avg_habit_score_at_entry": 0.0,
+            "total_tokens_compacted": 0,
+        }
+
+    entries = [t for t in transitions if t.get("transition") == "enter"]
+    exits = [t for t in transitions if t.get("transition") == "exit"]
+
+    entry_scores = [t.get("habit_score", 0.0) for t in entries if "habit_score" in t]
+    avg_entry_score = sum(entry_scores) / max(len(entry_scores), 1) if entry_scores else 0.0
+
+    total_tokens_compacted = sum(c.get("estimated_tokens_before", 0) for c in compactions)
+
+    return {
+        "period": period,
+        "habit_mode_entries": len(entries),
+        "habit_mode_exits": len(exits),
+        "compactions": len(compactions),
+        "avg_habit_score_at_entry": round(avg_entry_score, 3),
+        "total_tokens_compacted": total_tokens_compacted,
+    }

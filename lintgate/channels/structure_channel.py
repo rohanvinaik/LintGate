@@ -33,6 +33,7 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
+from lintgate.path_filters import is_backup_like_directory
 from lintgate.types import LintIssue
 
 # ── Constants ────────────────────────────────────────────────────────────
@@ -199,7 +200,13 @@ def _discover_python_files(project_root: str) -> list[str]:
 
     for dirpath, dirnames, filenames in os.walk(project_root):
         # Prune excluded directories in-place
-        dirnames[:] = [d for d in dirnames if d not in exclude_dirs and not d.startswith(".")]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in exclude_dirs
+            and not d.startswith(".")
+            and not is_backup_like_directory(d)
+        ]
         for fn in filenames:
             if fn.endswith(".py"):
                 py_files.append(os.path.join(dirpath, fn))

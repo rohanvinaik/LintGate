@@ -62,6 +62,8 @@ The core mechanism, borrowed from how good instruments work: **multiple cheap, l
 
 **The behavioral compass** tracks the agent's reasoning strategy in real time: live hypotheses, approach history, intent patterns, coverage metrics. When the strategy drifts — retrying failed approaches, ignoring discovered constraints, acting without verifying — the behavior channel catches it and intervenes *before* the bad reasoning produces bad code. Nine detection rules, deterministic scoring, no LLM calls.
 
+**Habit Mode** manages the context window itself — the resource that everything else depends on. During sustained execution phases (bulk editing, test marathons, refactoring sweeps), the context fills with stale data that crowds out working state. Habit Mode detects these phases from tool-use signals, tracks token pressure via a calibrated estimator, and — when compaction approaches — produces a structured snapshot that turns context loss into context refinement. The deterministic system remembers so the stochastic system doesn't have to.
+
 The unsupervised agent spends ~64% of its token budget on discipline problems. LintGate's 18% supervision overhead displaces waste that accumulates at 3-4x the rate:
 
 | Metric | Unsupervised | Supervised |
@@ -192,7 +194,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*37 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*41 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Full architecture and design philosophy: [docs/design.md](docs/design.md)*
 

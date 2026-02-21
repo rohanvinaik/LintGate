@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 37 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 41 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (37)
+## MCP Tools (41)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (37 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (41 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -50,6 +50,15 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `behavior_precheck`    | Deprecated compatibility wrapper over the three orthogonal tools        |
 | `global_memory_status` | Cross-session behavioral priors and bias adjustments                    |
 | `global_memory_reset`  | Reset global behavior profile                                           |
+
+### Habit Mode
+
+| Tool               | Purpose                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `declare_mode`     | Self-declare "habit" or "standard" mode (immediate, no sustain wait)|
+| `habit_status`     | Read-only status: habit score, signals, active files, token state   |
+| `habit_compact`    | Trigger compaction NOW, returns structured Habit State Snapshot     |
+| `habit_configure`  | Runtime threshold adjustment (session-scoped, clamped to safe ranges)|
 
 ### Model Calibration
 
@@ -103,6 +112,16 @@ controlplane:
         approach_cycling_count: 3
         failure_amnesia_lookback: 30
 
+  # Habit Mode — context window management (opt-in)
+  habit_mode:
+    enabled: true
+    compact_threshold: 0.70        # Compact at 70% of context window
+    enter_score: 0.70              # habitScore to enter habit mode
+    exit_score: 0.40               # habitScore to exit habit mode
+    sustain_calls: 5               # Must sustain enter_score for N calls
+    token_api_interval: 15         # API calibration every N tool calls
+    context_window_size: 200000    # Context window size in tokens
+
   # Architecture of Inquiry (opt-in)
   inquiry:
     theory_grounded_signals: true
@@ -150,6 +169,13 @@ See [design.md](design.md) for the full configuration reference, calibration dat
 - **Model calibration**: 5-task behavioral micro-probe profiles model tendencies via revealed policy, producing model-specific guardrails.
 - **Pattern bank**: tracks recurring anti-patterns. The constraint proposer translates persistent patterns into enforceable rules.
 
+### Habit Mode
+
+- **Context window management**: detects sustained execution phases (editing, testing, refactoring) and produces structured compaction snapshots that turn context loss into context refinement. Compaction ≠ loss — the deterministic system remembers so the stochastic system doesn't have to.
+- **Dual persistence**: Path A (session-backed via ControlPlane state) for integrated sessions; Path B (standalone file-backed) for hook-only environments. Same core functions, different storage backends.
+- **Signal-driven mode detection**: 8 signals from a sliding window of 20 tool events — read_edit_ratio, execute_pct, edit_streak, sub_agent_freq, inter_tool_gap_median, same_file_ratio, gather_pct, test_in_last_n — weighted into a composite habitScore with hysteresis (enter at 0.70×5, exit at 0.40).
+- **Token tracker**: per-call char-count estimation (factor 0.25) with periodic Anthropic API calibration (free `count_tokens` endpoint, 500ms timeout, exponential backoff, 70/30 blend). Anti-thrash compaction gate prevents compaction storms.
+
 ---
 
 ## Project Structure
@@ -163,12 +189,14 @@ lintgate/
 │   ├── lint_runner.py               # Phase 3: Parallel execution with timeouts
 │   ├── results_aggregator.py        # Phase 4: Deduplicate, exempt, split severity
 │   ├── agent_reporter.py            # Phase 5: Format for agent consumption
+│   ├── habit_mode.py                # Habit Mode: signal collection, mode detection, compaction
+│   ├── token_tracker.py             # Token estimation, API calibration, economics
 │   ├── linters/                     # 18 linter implementations
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 37 MCP tool definitions
-├── tests/                           # 1,600+ tests
+├── mcp_tools/                       # 41 MCP tool definitions (incl. habit_tools.py)
+├── tests/                           # 1,770+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy
 │   └── reference.md                 # This file
@@ -215,7 +243,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 37 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 41 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 

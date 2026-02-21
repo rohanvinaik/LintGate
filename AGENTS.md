@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 37 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 41 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 37 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
+LintGate provides 41 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
 
 ### Orient — understand before acting
 
@@ -134,6 +134,17 @@ LintGate provides 37 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 
 **Calibration workflow**: `model_profile_probe_start` → complete 5 micro-tasks with structured traces → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')`. Probe v2 uses behavioral micro-tasks that measure revealed policy (what a model does), not stated policy (what it says). Profiles are stored globally (`~/.lintgate/model_profiles.json`), keyed by `provider:model` canonical form. Weak prior capped at 0.60 confidence — decays fast as real telemetry arrives via EMA refinement (alpha=0.15).
 
+### Sustain — context management for long sessions
+
+| Tool | Purpose |
+|------|---------|
+| `declare_mode` | Self-declare "habit" or "standard" mode. Immediate entry — bypasses the sustained-score requirement. Use when entering sustained refactoring/execution work. |
+| `habit_status` | Read-only check: habit score, active signals, active files, test status, compaction count, token economics. |
+| `habit_compact` | Trigger compaction NOW. Returns a structured Habit State Snapshot (~3000 tokens, hard cap 12000 chars) optimized for post-compact context injection. |
+| `habit_configure` | Runtime threshold adjustment (session-scoped). Adjusts compact_threshold, enter_score, exit_score, sustain_calls, token_api_interval, context_window_size. Values clamped to safe ranges. |
+
+**Sustain workflow**: When approaching context limits during sustained work, call `habit_status` to check token pressure and habit score. If compaction is needed, `habit_compact` produces a 10-section structured snapshot: session_summary, active_hypothesis, constraint_space, files_context, test_status, recent_errors, lint_state, behavioral_notes, theory_digest, and focus_directive. The snapshot preserves everything the agent needs to continue working after compaction — compaction is refinement, not loss. `declare_mode("habit")` forces immediate entry for sessions that begin with sustained execution; `declare_mode("standard")` exits.
+
 ## Professional Discipline Signals
 
 LintGate models the reflexive checks experienced engineers perform before risky operations.
@@ -180,8 +191,9 @@ All findings are informational unless corroborated by other channels. The struct
 | ControlPlane subsequent | ~200-400 tokens | Delta only |
 | Drill-down (either) | ~300-600 tokens | On demand, never automatic |
 | Theory pack | ~500-1500 tokens | One-time orient cost per session |
+| Habit compaction snapshot | ~3000 tokens | On-demand via `habit_compact`, hard cap 12000 chars |
 
-Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This displaces discipline failures that consume ~64% of unsupervised token budgets at 3-4x the rate.
+Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This displaces discipline failures that consume ~64% of unsupervised token budgets at 3-4x the rate. Habit Mode's token tracker monitors this budget continuously — when context pressure exceeds the compact threshold (default 70%), compaction produces a structured snapshot that preserves working state at ~3000 tokens instead of losing it entirely.
 
 ## Documentation Discipline
 
@@ -191,5 +203,6 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change tool signature or semantics** → update the tool's description in all three files.
 - **Add config option** → update YAML examples in docs/design.md and README.md.
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
+- **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 37). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 41). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

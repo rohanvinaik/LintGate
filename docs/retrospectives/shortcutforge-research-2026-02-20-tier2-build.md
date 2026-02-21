@@ -15,6 +15,7 @@ theory_scope: true
 | **LintGate Tier** | Tier 2, normal, ControlPlane yes |
 | **LintGate Version** | unknown (MCP server) |
 | **Session Type** | Build — doc rewrite (PAB/PAC foundational reframing) + Phase 0 infrastructure scaffolding |
+| **Session Record(s)** | `~/.claude/projects/-Users-rohanvinaik-ShortcutForge/ba95330e-2bbe-4a52-8136-4342d59bcdd4.jsonl` (doc rewrite + Phase 0 build, 2026-02-20T21:32 UTC; this session continues into the PABKit audit at ~22:51 UTC — see pabkit retrospective) |
 | **Session Continuity** | Fresh session, building on plan approved in prior session |
 | **Prior State** | Research docs existed at v1.1 (PAB bolted on as add-on). No Python code in research/ yet. Main ShortcutForge repo clean (git status clean on main). |
 

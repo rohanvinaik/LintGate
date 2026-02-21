@@ -15,6 +15,7 @@ theory_scope: false
 | **LintGate Tier** | Tier 2, normal strictness, ControlPlane used |
 | **LintGate Version** | 0.2.0 |
 | **Session Type** | Hybrid — audit then implementation of fixes |
+| **Session Record(s)** | `~/.claude/projects/-Users-rohanvinaik-iphone-recovery/552a530f-475c-4001-83ce-b25769682a4f.jsonl` (primary audit, 2026-02-20T13:01 UTC), `~/.claude/projects/-Users-rohanvinaik-iphone-recovery/0e0aac5d-1757-4c59-9d52-35465bc8394c.jsonl` (Part XI config analysis, 2026-02-20T15:30 UTC) |
 | **Session Continuity** | Fresh — no prior LintGate context in this session |
 | **Prior State** | Working codebase, 82 tests documented (108 discovered at runtime), clean git status on main |
 

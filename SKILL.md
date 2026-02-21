@@ -1,6 +1,6 @@
 # LintGate
 
-Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 37 MCP tools for on-demand analysis.
+Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 41 MCP tools for on-demand analysis.
 
 ## First Steps
 
@@ -10,7 +10,7 @@ Proactive professional cognition stack for LLM coding agents. Fires on every Wri
 
 ## Key Concept
 
-LintGate is not just a linter. It supervises the agent's *reasoning strategy*, not just its code output. The ControlPlane runs 6 independent channels in parallel — code quality, test health, dependency integrity, git hygiene, behavioral drift detection, and codebase structural analysis — with a coherence engine that reads the agreement and disagreement across channels as diagnostic signal. Theory extraction grounds findings in the project's own stated values. The Architecture of Inquiry closes the loop — behavioral discoveries flow back into the project's living semantic model.
+LintGate is not just a linter. It supervises the agent's *reasoning strategy*, not just its code output. The ControlPlane runs 6 independent channels in parallel — code quality, test health, dependency integrity, git hygiene, behavioral drift detection, and codebase structural analysis — with a coherence engine that reads the agreement and disagreement across channels as diagnostic signal. Theory extraction grounds findings in the project's own stated values. The Architecture of Inquiry closes the loop — behavioral discoveries flow back into the project's living semantic model. Habit Mode manages the context window itself — detecting sustained execution phases and producing structured compaction snapshots that turn context loss into context refinement.
 
 ## Setup
 
@@ -22,7 +22,7 @@ This detects which LLM agents are on the system and generates config files at th
 
 ## Reference
 
-- **AGENTS.md** — tool reference + self-integration for all agents (37 tools by cognitive mode)
+- **AGENTS.md** — tool reference + self-integration for all agents (41 tools by cognitive mode)
 - **`.claude/CLAUDE.md`** — Claude Code cognitive context: epistemic state, dispositions, guardrails, managed sections for living context. This is the deepest integration — behavioral discoveries flow back as patches.
 - `.claude/rules/inquiry.md` — Architecture of Inquiry protocol
 - `docs/design.md` — full architecture and design philosophy

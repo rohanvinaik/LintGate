@@ -486,6 +486,14 @@ class TestDiscoverFiles:
         files = _discover_python_files(str(tmp_path))
         assert all("__pycache__" not in f for f in files)
 
+    def test_excludes_backup_like_directories(self, tmp_path):
+        _write_file(str(tmp_path / "backup_20260220" / "old.py"), "x = 1\n")
+        _write_file(str(tmp_path / "src" / "live.py"), "y = 2\n")
+        files = _discover_python_files(str(tmp_path))
+        basenames = {os.path.basename(f) for f in files}
+        assert "live.py" in basenames
+        assert "old.py" not in basenames
+
 
 # ── Structure Snapshot Tests ─────────────────────────────────────────────
 

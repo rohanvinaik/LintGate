@@ -15,6 +15,7 @@ theory_scope: true
 | **LintGate Tier** | Tier 2, normal, ControlPlane yes |
 | **LintGate Version** | unknown (MCP server) |
 | **Session Type** | Audit + Hardening + Integration — external codebase we did not author, bugs found and fixed, complexity reduced, missing metric implemented, integrated as upstream dependency into ShortcutForge research |
+| **Session Record(s)** | `~/.claude/projects/-Users-rohanvinaik-ShortcutForge/ba95330e-2bbe-4a52-8136-4342d59bcdd4.jsonl` (shared with ShortcutForge research session; PABKit work begins at ~2026-02-20T22:51 UTC) |
 | **Session Continuity** | Extension of ShortcutForge research session; PABKit explored as related project |
 | **Prior State** | Upstream `main` branch, unmodified. 10 of 16 tests failing. No prior LintGate exposure. |
 | **Final State** | 0 blockers, 95 warnings, 7 informational, 17/17 tests passing, all 7 paper metrics implemented, installed as editable dependency in ShortcutForge research |
