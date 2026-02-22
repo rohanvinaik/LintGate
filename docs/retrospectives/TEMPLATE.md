@@ -428,8 +428,27 @@ of code quality work?
 ## Part IX: Economics
 
 <!--
-The rough math on the session. Use real numbers where available, clearly mark estimates.
-This section makes retrospectives comparable across projects and sessions.
+The economics section answers one question: **what did discipline infrastructure cost,
+and what did it save?** The fundamental unit is OUTPUT TOKENS — not input tokens, not
+dollars. Output tokens measure the model's actual generation work: code written, reasoning
+produced, decisions made. Input tokens are dominated by context re-reading (an implementation
+artifact) and are not meaningful for cost comparison.
+
+FRAMING: The correct comparison is **supervised (with LintGate) vs. unsupervised (naive
+vibe-coding)**. LintGate is a cost REDUCER, not overhead. Its tools are symbolic,
+deterministic, and run locally — they don't call the model API. LintGate's cost is the
+small number of API calls where the agent invoked a LintGate tool.
+
+STRUCTURE: Lead with the bottom line. Put session telemetry at the end as supporting
+data. Dollar costs are a one-line summary, not the headline.
+
+DATA SOURCE: If a Claude Code JSONL transcript is available, parse it for real numbers.
+Usage data lives in obj["message"]["usage"] with fields: input_tokens,
+cache_read_input_tokens, cache_creation_input_tokens, output_tokens. Count API calls
+and categorize them (writing, reading, routing, LintGate, bash, etc.). If no transcript
+is available, estimate from session scope and state assumptions clearly.
+
+REFERENCE: See the ModelAtlas retrospective (2026-02-22) for a fully worked example.
 -->
 
 ### Session Scope
@@ -443,91 +462,200 @@ This section makes retrospectives comparable across projects and sessions.
 | Lines moved/restructured | [~N] |
 | Net LOC delta | [+/- N] |
 
-### Time Allocation
-
-| Activity | Time | % | Category |
-|----------|------|---|----------|
-| [Activity] | [N min] | [N%] | Diagnosis / Creation / Debugging / Verification |
-| [...] | [...] | [...] | [...] |
-| **Total** | **[N min]** | **100%** | |
-
-**Creation:Debugging:Verification ratio — [N:N:N]**
-
-[1-2 sentences interpreting the ratio. What does it say about the session's efficiency?]
-
 ### Throughput
 
 | Metric | Value |
 |--------|-------|
-| Blockers resolved per hour | [N] |
-| Fastest batch | [N blockers in N min — what pattern?] |
-| Slowest individual fix | [N min — what was hard?] |
-| Lines reviewed per minute | [~N] |
-
-### Token Cost Estimate
-
-<!--
-Estimate if exact counts unavailable. State assumptions. Break down by component
-so the LintGate-specific overhead is visible, with supervision broken out by cognitive mode.
--->
-
-| Component | Input Tokens | Output Tokens | Notes |
-|-----------|-------------|---------------|-------|
-| File reads | [~N] | — | [N files, N lines] |
-| LintGate — Orient tools | [~N] | [~N] | [build_theory_pack, controlplane_status] |
-| LintGate — Act tools | [~N] | [~N] | [lint_files, lint_project, controlplane_run] |
-| LintGate — Reflect tools | [~N] | [~N] | [constraint_check, agent_feedback] |
-| LintGate — Evolve tools | [~N] | [~N] | [bootstrap_context_files, extract_theory] |
-| Edit tool calls | [~N] | [~N] | [N edits] |
-| Reasoning overhead | [~N] | [~N] | |
-| **Total** | **[~N]** | **[~N]** | |
-
-<!--
-Adjust pricing to the model used. Current reference rates:
-- Opus 4: $15/M input, $75/M output
-- Sonnet 4: $3/M input, $15/M output
-- Haiku 4.5: $0.80/M input, $4/M output
--->
-
-| Component | Cost |
-|-----------|------|
-| Input tokens | ~$[N] |
-| Output tokens | ~$[N] |
-| **Total session cost** | **~$[N]** |
-| LintGate-specific overhead | ~$[N] ([N%] of total) |
-
-### Cost Per Blocker
-
-| Metric | Value |
-|--------|-------|
-| Total cost / blockers | ~$[N] per blocker |
-| Total time / blockers | ~[N] min per blocker |
+| Blockers resolved per iteration | [N (varied by file)] |
+| Fastest batch | [N blockers in N edit — what pattern?] |
+| Slowest individual fix | [description — what was hard?] |
 
 ### Counterfactual: Without LintGate
 
 <!--
-What would the same task have looked like without the tool? Estimate time, completeness,
-and what would have been missed. Be honest — some sessions might show minimal LintGate
-benefit if the codebase was already clean.
+Qualitative comparison of what this session looked like vs. what it would have looked
+like without discipline infrastructure. Be honest — some sessions may show minimal
+LintGate benefit.
 -->
 
 | Dimension | With LintGate | Without LintGate | Delta |
 |-----------|--------------|-----------------|-------|
-| Issue discovery | [description] | [description] | [time saved/lost] |
+| Issue discovery | [description] | [description] | [impact] |
 | [Dimension] | [...] | [...] | [...] |
-| **Total estimated time** | [N min] | [N min] | **[N]x slower** |
 | **Completeness** | [%] | [%] | [what was missed] |
 
-### Return on Investment
+### Token Economics: Full Session Analysis
+
+<!--
+This is the core economics analysis. The structure below is required. Fill in real
+numbers where available, clearly mark estimates, and follow the supervised-vs-unsupervised
+framing throughout.
+-->
+
+Data parsed from [source — e.g., "Claude Code session JSONL transcript (N lines, N API calls)"]. The relevant comparison: **supervised (with LintGate) vs. unsupervised (naive vibe-coding).** What would this project have cost without discipline infrastructure?
+
+#### The Bottom Line
+
+<!--
+LEAD WITH THIS. The reader should get the entire story from this table alone.
+Output efficiency = (output tokens that became shipped code) / (total output tokens).
+Supervised efficiency is typically 20-30%. Unsupervised drops to 6-10% because most
+extra tokens go to code that gets rewritten, debug reasoning that leads nowhere, and
+rework of cascading failures.
+-->
+
+| | With LintGate | Without LintGate (counterfactual) |
+|--|--------------|----------------------------------|
+| **Output tokens to build [project]** | **~[N]** | **~[N]–[N]** |
+| **Code quality shipped** | [e.g., Production-grade] | [e.g., Structural debt] |
+| **Debug spirals** | [N] | [N] estimated |
+| **Regressions during build** | [N] | [N] estimated |
+| **Architectural backtracking** | [N] | [description] |
+| **Output tokens that became final code** | ~[N] ([N]% of output) | ~[N] ([N]% of output) |
+
+[1-2 sentences interpreting the table. Explain what output efficiency means: the supervised agent's output tokens mostly became real code, while the unsupervised agent's extra tokens are waste — rewrites, dead-end debugging, cascade cleanup.]
+
+#### Session Token Profile
+
+<!--
+Actual measured data from the session. Focus on output tokens and their distribution.
+LintGate tools are MCP-based (local, symbolic, deterministic) — they don't call the
+host model's API. LintGate's cost = the API calls where the agent invoked a LintGate
+tool and the model produced output tokens in response.
+-->
+
+From the session transcript — [N] API calls:
 
 | Metric | Value |
 |--------|-------|
-| LintGate overhead (time) | [N min] |
-| LintGate overhead (tokens/cost) | [~N tokens / ~$N] |
-| Time saved vs. manual approach | [~N min] |
-| Issues that would have been missed | [list] |
-| **Time ROI** | [~Nx return] |
-| **Token ROI** | [~Nx return] |
+| Total output tokens | [N] |
+| Output tokens that became shipped code/tests | ~[N] ([N] lines × ~5 tok/line) |
+| Output efficiency (shipped / total output) | [N]% |
+| API calls | [N] |
+| Median output per call | [N] tokens |
+| Top N calls (N%) produced | [N]% of all output |
+
+[1-2 sentences on burstiness. Agentic coding output is typically very bursty — most calls are navigation/routing with minimal output, while a handful of calls produce most of the actual code. Describe the pattern.]
+
+LintGate's direct token cost: **[N] API calls where the agent invoked a LintGate tool**, producing **~[N] output tokens ([N]% of session output).** At [model] pricing, the session cost ~$[N]. LintGate's share: ~$[N] ([N]%).
+
+#### What the Session DID NOT Contain
+
+<!--
+THE MOST IMPORTANT SUBSECTION. The value of discipline infrastructure is primarily
+in what DOESN'T happen. List the failure modes that were prevented. If the session
+had zero debug spirals, zero regressions, zero architectural backtracking — say so
+explicitly. This is the data that justifies the counterfactual estimate.
+-->
+
+The most important data is what's *absent*:
+
+- **[Zero/N] debug spirals.** [Description — e.g., "No write-fail-rewrite loops. Every file was written, linted at write-time, fixed immediately, and moved on."]
+- **[Zero/N] regressions.** [Description — e.g., "N tests passed on the first complete run."]
+- **[Zero/N] architectural backtracking.** [Description — e.g., "The compass kept the agent aligned to the spec."]
+- **[Zero/N] context pollution.** [Description — e.g., "No tracebacks, no cascading import failures filling the context window with noise."]
+
+The **Creation : Debugging : Verification** ratio was **[N : N : N]**. [1-2 sentences interpreting. If the debugging phase was zero or near-zero, say so — this is the signature of effective discipline infrastructure.]
+
+#### Why the Unsupervised Counterfactual Needs [N]× the Output Tokens
+
+<!--
+Use LintGate's cross-project efficiency data to ground the estimate. Reference the
+duty cycle numbers from LintGate's documentation:
+- Unsupervised: ~36% effective duty cycle, ~64% wasted on discipline failures, ~4× loss
+- Supervised: ~78% effective duty cycle, ~22% overhead, ~1.2× loss
+
+Then explain the COMPOUNDING EFFECT: discipline failures aren't independent. Each error
+degrades the context window, making subsequent reasoning worse. This is why the
+unsupervised cost isn't just 2× — it's 3-4×.
+-->
+
+LintGate's measured impact on agentic efficiency (from cross-project data):
+
+| Metric | Unsupervised | Supervised |
+|--------|-------------|-----------|
+| Effective duty cycle (output tokens on novel reasoning) | ~36% | ~78% |
+| Output tokens wasted on discipline failures | ~64% | ~22% |
+| Efficiency loss factor | ~4× | ~1.2× |
+
+This session produced ~[N] output tokens at 78% duty cycle — meaning ~[N] tokens of novel reasoning and ~[N] tokens of overhead. To produce the same ~[N] tokens of useful work at 36% duty cycle: **~[N] / 0.36 ≈ [N] output tokens.** That's the floor.
+
+The compounding pushes it to ~[N]–[N]. An unsupervised agent doesn't just waste tokens on individual errors — each error *degrades the context* for everything that follows, causing subsequent output to be even less efficient:
+
+<!--
+List 3-5 specific failure modes from THIS session that LintGate intercepted, and
+estimate the cascade cost of each. Be specific to the project — use actual function
+names, actual complexity scores, actual type errors caught.
+-->
+
+| Failure Mode | What Happens | Cost Impact |
+|-------------|-------------|-------------|
+| [Specific intercepted issue] | [What would have cascaded] | [N extra API calls] |
+| [Specific intercepted issue] | [What would have cascaded] | [N extra API calls] |
+| Context pollution | Each failed attempt leaves errors in the context window. Reasoning quality degrades as noise accumulates. | Multiplicative — affects all subsequent calls |
+| Architectural drift (no compass) | Without alignment checks, the agent may violate the spec. | 0 if lucky, 50–100+ if unlucky |
+
+Conservative estimate for intercepted issues alone: **[N]–[N] extra API calls.** Each extra call re-reads the (now larger, noisier) context window at full cost.
+
+#### The Quality Delta
+
+<!--
+Even if the unsupervised agent reaches the same line count, it ships different code.
+List 3-5 specific quality differences. Use actual function names and metrics from
+the session.
+-->
+
+Even if the unsupervised agent reaches the same line count, it ships different code:
+
+| Dimension | Supervised (actual) | Unsupervised (counterfactual) |
+|-----------|-------------------|-------------------------------|
+| [Specific quality dimension] | [What was actually shipped] | [What would have been shipped] |
+| [Specific quality dimension] | [...] | [...] |
+| Latent structural issues | [N] | Estimated [N] |
+
+[1-2 sentences on the downstream cost. The unsupervised agent may *finish* — but it finishes with structural debt that costs multiples to fix later.]
+
+#### LintGate's Return on Investment
+
+<!--
+THE SUMMARY TABLE. Token ROI = (output tokens saved) / (LintGate's output token cost).
+This is the headline number. Dollar cost is a one-line addendum, not the primary framing.
+-->
+
+| Metric | Tokens | $ ([model]) |
+|--------|--------|----------|
+| LintGate's direct output overhead | ~[N] tokens ([N]% of session output) | ~$[N] |
+| Total supervised session output | ~[N] tokens | ~$[N] |
+| Unsupervised counterfactual output | ~[N]–[N] tokens | ~$[N]–[N] |
+| **Output tokens saved** | **~[N]–[N]** | **~$[N]–[N]** |
+| **Output efficiency (supervised)** | [N]% (shipped code / total output) | |
+| **Output efficiency (unsupervised est.)** | [N]–[N]% | |
+| **Return on LintGate's token investment** | **~[N]–[N]× the tokens it consumed** | |
+
+[1-2 sentences on scaling. Discipline failures compound superlinearly (each wasted output token degrades context for subsequent reasoning), while LintGate's supervision overhead scales linearly (fixed per-file token cost for lint + structural checks). The gap widens with project complexity.]
+
+#### Session Telemetry (supporting data)
+
+<!--
+Raw numbers for reproducibility and cross-session comparison. This section supports
+the analysis above — it is NOT the headline.
+-->
+
+From JSONL transcript:
+
+| Metric | Value |
+|--------|-------|
+| API calls | [N (N writing, N reading, N routing, N LintGate, N bash, N task mgmt)] |
+| Output token distribution | [N]% of calls produced <100 tokens; top [N] calls ([N]%) produced [N]% of output |
+| Median output per call | [N] tokens |
+
+From `telemetry_summary` MCP tool:
+
+| Metric | Value |
+|--------|-------|
+| Lint runs | [N (tier, output mode)] |
+| Issues found | [N (N blockers, N warnings, N informational)] |
+| Trend | [Improving/Stable/Declining (specifics)] |
 
 ---
 

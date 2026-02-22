@@ -388,11 +388,14 @@ class TestGenerateTestsWorkflow:
         assert 'python-version: "3.11"' in content
 
     def test_enforces_coverage_and_diff_coverage(self) -> None:
-        """Tests workflow enforces global and PR diff coverage gates."""
+        """Tests workflow enforces symbol coverage and keeps diff coverage telemetry."""
         content = _generate_tests_workflow({"python_version": "3.11"})
-        assert "--cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }}" in content
+        assert "--cov-report=json:coverage.json" in content
+        assert "python -m lintgate.symbol_gate_runner" in content
+        assert "--surface ci" in content
         assert "diff-cover coverage.xml" in content
         assert "--fail-under=${{ steps.quality_policy.outputs.diff_coverage_min }}" in content
+        assert "continue-on-error: true" in content
         assert "--cov-config=.coveragerc" in content
 
     def test_validates_workflow_action_references(self) -> None:
@@ -497,6 +500,8 @@ class TestGeneratePrePushHook:
         assert "qlty check --all" in content
         assert "ruff check ." in content
         assert "python -m pytest" in content
+        assert "--cov-report=json:coverage.json" in content
+        assert "python -m lintgate.symbol_gate_runner" in content
 
     def test_contains_optional_sonar_gate_check(self) -> None:
         content = _generate_pre_push_hook()
@@ -711,10 +716,10 @@ class TestSetupGithubQualityTool:
         (tmp_path / "tests").mkdir()
         (tmp_path / "README.md").write_text("# Test\n\nHello.\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         with patch(
-            "mcp_tools.onboarding_tools._detect_github_remote",
+            "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"detected": True, "owner": "alice", "repo": "test"},
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=False))
@@ -755,10 +760,10 @@ class TestSetupGithubQualityTool:
         (tmp_path / "mypackage" / "__init__.py").touch()
         (tmp_path / "README.md").write_text("# Test\n\nHello.\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         with patch(
-            "mcp_tools.onboarding_tools._detect_github_remote",
+            "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"detected": True, "owner": "alice", "repo": "test"},
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
@@ -805,10 +810,10 @@ class TestSetupGithubQualityTool:
         (hooks_dir / "pre-push").write_text("#!/usr/bin/env bash\n")
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         with patch(
-            "mcp_tools.onboarding_tools._detect_github_remote",
+            "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"detected": True, "owner": "alice", "repo": "test"},
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
@@ -829,10 +834,10 @@ class TestSetupGithubQualityTool:
         """Works without GitHub remote — badges skipped."""
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         with patch(
-            "mcp_tools.onboarding_tools._detect_github_remote",
+            "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"detected": False, "reason": "no_github_remote_found"},
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=False))
@@ -844,10 +849,10 @@ class TestSetupGithubQualityTool:
         (tmp_path / ".gitignore").write_text("*.pyc\n")
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         with patch(
-            "mcp_tools.onboarding_tools._detect_github_remote",
+            "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"detected": True, "owner": "a", "repo": "b"},
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
@@ -861,14 +866,14 @@ class TestSetupGithubQualityTool:
         """Running twice does not duplicate gitignore patterns."""
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             setup_github_quality(str(tmp_path), write=True)
 
         # Second run — badges now exist, gitignore should need no changes
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         assert result["gitignore"]["status"] == "no_changes_needed"
@@ -887,10 +892,10 @@ class TestSetupGithubQualityTool:
         """Write mode creates .qlty/qlty.toml."""
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         assert result["qlty"]["status"] == "written"
@@ -909,10 +914,10 @@ class TestSetupGithubQualityTool:
         (qlty_dir / "qlty.toml").write_text("existing = true\n")
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         assert result["qlty"]["status"] == "already_exists"
@@ -922,10 +927,10 @@ class TestSetupGithubQualityTool:
         """Output includes guidance section with three-layer stack."""
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=False))
 
         assert "guidance" in result
@@ -936,10 +941,10 @@ class TestSetupGithubQualityTool:
         """Preview mode with token shows scanner status without running."""
         (tmp_path / "README.md").write_text("# Test\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(
                 setup_github_quality(
                     str(tmp_path),
@@ -956,12 +961,12 @@ class TestSetupGithubQualityTool:
         (tmp_path / "README.md").write_text("# Test\n")
         (tmp_path / "sonar-project.properties").write_text("sonar.projectKey=a_b\n")
 
-        from mcp_server import setup_github_quality
+        from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
         with (
-            patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock),
-            patch("mcp_tools.onboarding_tools._detect_sonar_scanner", return_value=None),
+            patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock),
+            patch("mcp_tools.setup_github_quality._detect_sonar_scanner", return_value=None),
         ):
             result = json.loads(
                 setup_github_quality(

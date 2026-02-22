@@ -1,5 +1,18 @@
 # LintGate
 
+<!-- lintgate:quality-badges:start -->
+[![Tests](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml)
+[![Security](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/rohanvinaik/LintGate/badge)](https://securityscorecards.dev/viewer/?uri=github.com/rohanvinaik/LintGate)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+<!-- lintgate:quality-badges:end -->
+
+
 [![Tests](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml)
 [![Security](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
@@ -7,31 +20,17 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**Three words. Zero debugging.**
+> An MCP server for real-time code quality supervision — built entirely through vibe coding by a biochemist with no formal CS training.
 
-A biochemist kept running into the same problem with AI-generated code. Not complex bugs — *discipline* bugs. The agent would try an approach, fail, and try a variant instead of updating its model. It would hit an error, move on, and hit the same error twenty minutes later. It would act before it understood.
+`--dangerously-skip-permissions`, minus the danger.
+
+A biochemist kept running into the same problem with AI-generated code. Not complex bugs — *discipline* bugs. The agent would act before it understood. It would hit an error, move on, and hit the same error twenty minutes later.
 
 These aren't intelligence failures. They're infrastructure failures. So he built the infrastructure.
 
 Then he pointed it at its own codebase and said: *"Professionalize this codebase."*
 
----
-
-## The Proof
-
-In a normal agentic coding session, the dominant cost is debugging — the write-fail-rewrite loop where each iteration degrades context and compounds errors. Code generation is cheap. *Correct* code generation is hard.
-
-The autonomous professionalization of LintGate's own codebase — 33,000 lines, 6 major module decompositions, 9 new files — produced this ratio:
-
-**Creation : Debugging : Verification — 55 : 0 : 15**
-
-The zero is not a typo. Across every refactoring step, the agent wrote correct code on the first attempt. Every step passed 1,611 tests. Every step passed the linter. There was nothing to debug. The entire debugging phase of software development — the most expensive, most failure-prone phase — simply didn't occur.
-
-Total human input: three words. Total cost: ~590,000 tokens. Total regressions: zero.
-
-The codebase it refactored was LintGate itself. The tool diagnosed its own code as requiring fundamental restructuring, then *was the infrastructure that enabled that restructuring to succeed*. The tool that teaches agents discipline was itself maintained by the discipline it provides.
-
-[Full session data](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md)
+And it did. Three words. Zero debugging.
 
 ---
 
@@ -67,17 +66,69 @@ The core mechanism, borrowed from how good instruments work: **multiple cheap, l
 
 **The behavioral compass** tracks the agent's reasoning strategy in real time: live hypotheses, approach history, intent patterns, coverage metrics. When the strategy drifts — retrying failed approaches, ignoring discovered constraints, acting without verifying — the behavior channel catches it and intervenes *before* the bad reasoning produces bad code. Nine detection rules, deterministic scoring, no LLM calls.
 
-**Habit Mode** manages the context window itself — the resource that everything else depends on. During sustained execution phases (bulk editing, test marathons, refactoring sweeps), the context fills with stale data that crowds out working state. Habit Mode detects these phases from tool-use signals, tracks token pressure via a calibrated estimator, and — when compaction approaches — produces a structured snapshot that turns context loss into context refinement. The deterministic system remembers so the stochastic system doesn't have to.
+---
 
-The unsupervised agent spends ~64% of its token budget on discipline problems. LintGate's 18% supervision overhead displaces waste that accumulates at 3-4x the rate:
+## The Economics
+
+The fundamental unit is **output tokens** — the model's actual generation work: code written, reasoning produced, decisions made. Input tokens are dominated by context re-reading and aren't meaningful for cost comparison. LintGate's tools are symbolic, deterministic, and run locally — they don't call the model API. Its cost is the small number of API calls where the agent invoked a LintGate tool.
+
+### The Bottom Line
+
+From a fully instrumented session — LintGate professionalized its own codebase (33,700 lines, 92 Python files, 3 context windows, human input: three words):
+
+| | With LintGate | Without LintGate (counterfactual) |
+| --- | --- | --- |
+| **Output tokens to ship** | **~207,000** | **~450,000–550,000** |
+| **Debug spirals** | 0 | 6+ estimated (one per decomposition) |
+| **Regressions** | 0 | 3–6 estimated |
+| **Test suite (1,611 tests)** | Green at every step | Batch-verified at end |
+| **Creation : Debugging : Verification** | 55 : 0 : 15 | ~30 : 40 : 30 (typical) |
+
+The supervised agent produced ~207K output tokens and touched 49% of the codebase — 36 files modified, 9 created, 6 monolithic modules decomposed into clean, independently testable components. Every refactoring step passed the linter. Every step passed the test suite. The entire debugging phase of software development simply didn't occur.
+
+The zero in the debugging column is not a typo. Six modules between 900 and 1,500 lines were each split along behavioral seams, producing 2–3 clean extraction modules with backward-compatible re-exports. All 1,611 tests passed on the first run after every split. The unsupervised agent would need 2–3× the output tokens because each failed decomposition pollutes the context window, degrading all subsequent reasoning.
+
+### Why the Gap Compounds
+
+Discipline failures don't add — they multiply. Each wasted output token degrades the context for everything that follows, causing subsequent output to be even less efficient:
 
 | Metric | Unsupervised | Supervised |
 | --- | --- | --- |
-| Effective duty cycle (tokens on novel reasoning) | ~36% | ~78% |
-| Tokens wasted on discipline failures | ~64% | ~22% |
-| Efficiency loss factor | ~4x | ~1.2x |
+| Effective duty cycle (output tokens on novel reasoning) | ~36% | ~78% |
+| Output tokens wasted on discipline failures | ~64% | ~22% |
 
-But the efficiency gain isn't the most interesting part. When discipline failures set a ceiling on what an agent can handle, removing them doesn't just make it faster — it lets the agent attempt problems that previously exceeded its effective capacity. The ceiling was never the model's reasoning. It was cumulative drift.
+LintGate consumed ~$2.60 of the $21.28 session — 12% of total cost — and returned the entire debugging phase as savings.
+
+### External Validation: ShortcutForge
+
+Auditing your own code is table stakes. The question is: what happens when you point LintGate at a codebase built *without* it?
+
+ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog with validation, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline, and a distillation loop. 100 Python files, ~37,500 LOC. Built through vibe-coding over a week of intensive development. Working code, passing tests, zero architectural planning.
+
+LintGate's ControlPlane diagnosed it as "systemic" — 132 blockers, 253 warnings, 151 informational findings across all 6 channels. What happened next took 46 minutes.
+
+| Metric | Before | After | Delta |
+| --- | --- | --- | --- |
+| **Blockers** | 132 | 7 | **-95%** |
+| **Pylint score** | 8.49/10 | 9.44/10 | **+0.95** (crossed "excellent") |
+| **Ruff violations** | 266 | 0 | **-100%** |
+| **High-complexity blocks (D+)** | 27 | 10 | **-63%** |
+| **Very high complexity (F grade)** | 5 | 1 | **-80%** |
+| **Worst single function CC** | 95 | 79 | -17% |
+| **Python files** | 91 | 57 | restructured |
+| **Test suite** | 477 pass | 477 pass | 0 regressions |
+
+The 7 remaining blockers are irreducible architectural characteristics — 5 cohesive files that happen to be long, 2 data classes that genuinely need many fields. Not debt. Just shape.
+
+Three things stand out:
+
+**The highest-ROI fix was not a code change.** 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Adding two lines to `pyproject.toml` eliminated them all. Configuration before code.
+
+**The maintainability index broke.** Not "decreased" — the metric stopped being comparable. The file count changed from 91 to 57 because the codebase was *restructured*. Fewer files, each scoring better than the originals. The denominator of the measurement changed because the shape of the codebase changed.
+
+**The largest god-function was decomposed into 15 methods with zero regressions.** `Orchestrator.generate()` — 620 lines, CC=95, 231 statements — was split along phase boundaries into a clean pipeline tree. All 25 orchestrator tests passed on the first run.
+
+Full session data: [ModelAtlas build](docs/retrospectives/hf-model-search-2026-02-22-tier2-build.md) · [LintGate self-audit](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge audit](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md)
 
 ---
 
@@ -119,73 +170,13 @@ For manual setup, hook/MCP configuration, and agent integration details, see [do
 
 ---
 
-## Validation
+## One More Thing
 
-Independent tool validation of the LintGate codebase (92 Python files, ~24K LOC). All measurements taken with standard open-source tools — no LintGate involvement in scoring.
+Everything above supervises the agent's *code*. Habit Mode supervises the resource that everything else depends on: the **context window**.
 
-### Before/After: Autonomous Professionalization *(2026-02-20 session snapshot)*
+During sustained execution — bulk editing, test marathons, refactoring sweeps — the context fills with stale data that crowds out working state. Habit Mode detects these phases from tool-use signals, tracks token pressure via a calibrated estimator, and when compaction approaches, produces a structured snapshot that turns context loss into context refinement. The deterministic system remembers so the stochastic system doesn't have to.
 
-**Total human input to produce the "After" column: one sentence.** *"Professionalize this codebase."* No corrections. No guidance. No steering.
-
-| Metric | Before | After | Delta |
-| --- | --- | --- | --- |
-| **Pylint score** | 9.38/10 | 9.42/10 | +0.04 |
-| **Radon maintainability (avg MI)** | 57.1 | 58.4 | +1.3 |
-| **Files at MI grade A** | 88/92 (96%) | 90/92 (98%) | +2 |
-| **Files at MI grade C or below** | 1 | 0 | **eliminated** |
-| **Radon avg cyclomatic complexity** | 5.59 | 5.31 | -5.0% |
-| **High-complexity blocks (D+)** | 15 | 8 | **-47%** |
-| **Very high complexity (F grade)** | 3 | 1 | **-67%** |
-| **Worst single function CC** | 82 | 54 | -34% |
-| **Ruff violations** | 3 | 4 | +1 (all cosmetic) |
-| **Test suite** | 1,611 pass | 1,611 pass | 0 regressions |
-
-### Current Standing vs. Industry Thresholds
-
-| Metric | LintGate | Professional Threshold | Assessment |
-| --- | --- | --- | --- |
-| Pylint | **9.42/10** | >9.0 (excellent) | Excellent |
-| Maintainability Index | **98% grade A** | >80% grade A (healthy) | Excellent |
-| Avg cyclomatic complexity | **5.31** | <10 (acceptable), <5 (ideal) | Good — near ideal |
-| Function grades A+B | **89%** | >75% (maintainable) | Excellent |
-| High-complexity blocks | **1.1%** | <5% (acceptable) | Excellent |
-| Test reliability | **0 regressions** through 6 major refactors | — | Verified |
-
-This codebase was built almost entirely through vibe coding — natural language directives to an LLM agent, minimal manual code. The professionalization pass was itself fully autonomous. The external scores are not the result of manual engineering discipline. They are the result of automated supervision making manual discipline unnecessary.
-
-### External Validation: ShortcutForge
-
-The self-audit is one thing. Auditing your own code is table stakes. The question is: what happens when you point LintGate at a separate codebase — one built without it?
-
-ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog with validation, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline, and a distillation loop. 100 Python files, ~37,500 LOC. Built through vibe-coding with AI assistance over a week of intensive development. Working code, passing tests, zero architectural planning.
-
-LintGate's ControlPlane diagnosed it as "systemic" — 132 blockers, 253 warnings, 151 informational findings across all 6 channels. What happened next took 46 minutes.
-
-| Metric | Before | After | Delta |
-| --- | --- | --- | --- |
-| **Blockers** | 132 | 7 | **-95%** |
-| **Pylint score** | 8.49/10 | 9.44/10 | **+0.95** (crossed "excellent") |
-| **Ruff violations** | 266 | 0 | **-100%** |
-| **High-complexity blocks (D+)** | 27 | 10 | **-63%** |
-| **Very high complexity (F grade)** | 5 | 1 | **-80%** |
-| **Worst single function CC** | 95 | 79 | -17% |
-| **Python files** | 91 | 57 | restructured |
-| **MI grade C or below** | 1 | 0 | **eliminated** |
-| **Test suite** | 477 pass | 477 pass | 0 regressions |
-
-The 7 remaining blockers are irreducible architectural characteristics — 5 cohesive files that happen to be long, 2 data classes that genuinely need many fields. Not debt. Just shape.
-
-Three things stand out:
-
-**The highest-ROI fix was not a code change.** 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Adding two lines to `pyproject.toml` — `extra-paths = ["src", "cli", "training", "research/src"]` — eliminated them all. Configuration before code.
-
-**The maintainability index broke.** Not "decreased" — the metric stopped being comparable. The file count changed from 91 to 57 because the codebase was *restructured*. Fewer files, each scoring better than the originals. The denominator of the measurement changed because the shape of the codebase changed. That's not cleanup. That's a restructuring that improved every axis simultaneously.
-
-**The largest god-function was decomposed into 15 methods with zero regressions.** `Orchestrator.generate()` — 620 lines, CC=95, 231 statements — was split along phase boundaries into a clean pipeline tree. All 25 orchestrator tests passed on the first run. The function was correct before. Now it's correct *and* maintainable.
-
-Total session cost: ~$10.31. Cost per blocker resolved: $0.12. Time per blocker: 31 seconds.
-
-[Full session data](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md)
+This is a complete theory of alignment in its own right. [Full architecture and design philosophy →](docs/design.md)
 
 ---
 
@@ -200,8 +191,6 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 ---
 
 *49 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
-
-*Full architecture and design philosophy: [docs/design.md](docs/design.md)*
 
 *Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
 

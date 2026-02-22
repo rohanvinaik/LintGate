@@ -21,7 +21,8 @@ coverage.xml
 htmlcov/
 
 # External quality tools (local analysis artifacts)
-.qlty/
+.qlty/*
+!.qlty/qlty.toml
 .scannerwork/
 
 # OS artifacts
@@ -64,3 +65,9 @@ GEMINI.md
 CONVENTIONS.md
 .github/copilot-instructions.md
 .codex/
+
+# Added by LintGate setup_github_quality
+.qlty/logs/
+.qlty/out/
+.qlty/plugin_cachedir/
+.qlty/results/

@@ -131,6 +131,17 @@ class TestQualityGatePush:
         assert result.should_block is True
         assert any("blocking" in m for m in result.messages)
 
+    def test_blocks_with_symbol_remediation_loop_message(self, tmp_path) -> None:
+        state = _fresh_state(blocking_issues=2, symbol_coverage_blockers=2)
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=_make_config()),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[]),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is True
+        assert any("Symbol coverage remediation loop required" in m for m in result.messages)
+
     def test_blocks_when_tests_failing(self, tmp_path) -> None:
         state = _fresh_state(last_test_status="fail")
         with (
@@ -256,6 +267,49 @@ class TestQualityGateFailOpen:
         assert result.should_block is False
         assert result.messages == []
 
+    def test_push_disabled(self, tmp_path) -> None:
+        """block_push=False → gate passes even with blocking issues."""
+        state = _fresh_state(blocking_issues=5)
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(block_push=False),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is False
+
+    def test_commit_disabled(self, tmp_path) -> None:
+        """advise_commit=False → no advisory on commit."""
+        state = _fresh_state(blocking_issues=5)
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(advise_commit=False),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+        ):
+            result = _check_quality_gate("git commit -m 'test'", str(tmp_path))
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_runtime_state_crash(self, tmp_path) -> None:
+        """Load state crash → state=None → blocks push (no quality run)."""
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch(
+                "lintgate.hooks.pre_tool.load_runtime_state",
+                side_effect=RuntimeError("disk error"),
+            ),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is True
+        assert any("No quality run" in m for m in result.messages)
+
 
 # ── Integration: handle() ────────────────────────────────────────────
 
@@ -314,3 +368,136 @@ class TestQualityGateIntegration:
     def test_handle_empty_input(self) -> None:
         result = handle({})
         assert result["continue"] is True
+
+
+# ── _check_quality_gate — missing branch coverage ────────────────────
+
+
+class TestQualityGateBranchCoverage:
+    """Cover remaining branch paths in _check_quality_gate."""
+
+    def test_check_secrets_disabled_skips_scan(self, tmp_path) -> None:
+        """check_secrets=False skips the secrets scan entirely (line 197 false branch)."""
+        state = _fresh_state(blocking_issues=1)
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(check_secrets=False),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+            # _check_diff_secrets should NOT be called; if it were, this would fail
+            patch(
+                "lintgate.hooks.pre_tool._check_diff_secrets",
+                side_effect=AssertionError("should not be called"),
+            ),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        # Should still block due to blocking issues, but no secrets message
+        assert result.should_block is True
+        assert not any("secret" in m for m in result.messages)
+        assert any("blocking" in m for m in result.messages)
+
+    def test_stale_state_commit_advisory(self, tmp_path) -> None:
+        """Stale state on commit produces advisory (not block)."""
+        old_state = _fresh_state(timestamp=time.time() - 3600)
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=old_state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[]),
+        ):
+            result = _check_quality_gate("git commit -m 'test'", str(tmp_path))
+        assert result.should_block is False
+        assert any("Advisory" in m for m in result.messages)
+        assert any("old" in m for m in result.messages)
+
+    def test_no_blocking_issues_but_tests_fail_push(self, tmp_path) -> None:
+        """blocking_issues=0, tests failing => blocks push (line 178 false, 193 true)."""
+        state = _fresh_state(blocking_issues=0, last_test_status="fail")
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[]),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is True
+        assert any("Tests" in m for m in result.messages)
+        # No blocking-issue message present
+        assert not any("blocking issue" in m for m in result.messages)
+
+    def test_multiple_failures_combined(self, tmp_path) -> None:
+        """Multiple failure conditions produce multiple messages."""
+        old_state = _fresh_state(
+            timestamp=time.time() - 7200,
+            blocking_issues=2,
+            last_test_status="fail",
+        )
+        fake_finding = type("LintIssue", (), {"message": "secret found"})()
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=old_state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[fake_finding]),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is True
+        # At least 4 messages: stale, blocking issues, resolve blockers, tests, secrets
+        assert len(result.messages) >= 4
+
+    def test_blocking_issues_zero_symbol_blockers_resolve_message(self, tmp_path) -> None:
+        """blocking_issues > 0, symbol_blockers=0 => 'Resolve blockers' message (line 190)."""
+        state = _fresh_state(blocking_issues=3)
+        # Ensure symbol_coverage_blockers is explicitly 0
+        state.symbol_coverage_blockers = 0
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[]),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is True
+        assert any("Resolve blockers" in m for m in result.messages)
+        assert not any("Symbol coverage remediation" in m for m in result.messages)
+
+    def test_fresh_state_no_failures_commit(self, tmp_path) -> None:
+        """Clean state on commit produces no messages (line 207 true branch)."""
+        state = _fresh_state()
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[]),
+        ):
+            result = _check_quality_gate("git commit -m 'clean'", str(tmp_path))
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_symbol_blockers_singular_message(self, tmp_path) -> None:
+        """symbol_coverage_blockers=1 uses singular form in message."""
+        state = _fresh_state(blocking_issues=1, symbol_coverage_blockers=1)
+        with (
+            patch(
+                "lintgate.hooks.pre_tool.load_controlplane_config",
+                return_value=_make_config(),
+            ),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+            patch("lintgate.hooks.pre_tool._check_diff_secrets", return_value=[]),
+        ):
+            result = _check_quality_gate("git push", str(tmp_path))
+        assert result.should_block is True
+        # Check singular form: "1 uncovered symbol blocker" (no trailing 's')
+        remediation_msgs = [m for m in result.messages if "Symbol coverage" in m]
+        assert len(remediation_msgs) == 1
+        assert "1 uncovered symbol blocker." in remediation_msgs[0]

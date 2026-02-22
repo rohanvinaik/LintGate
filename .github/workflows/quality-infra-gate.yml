@@ -1,0 +1,55 @@
+name: Quality Infrastructure Gate
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-infra-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Quality Infrastructure Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check quality infrastructure completeness
+        run: |
+          MISSING=0
+          if [ ! -e ".codeclimate.yml" ]; then echo "MISSING: .codeclimate.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e "sonar-project.properties" ]; then echo "MISSING: sonar-project.properties"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".coveragerc" ]; then echo "MISSING: .coveragerc"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".gitleaks.toml" ]; then echo "MISSING: .gitleaks.toml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/sonarcloud.yml" ]; then echo "MISSING: .github/workflows/sonarcloud.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/tests.yml" ]; then echo "MISSING: .github/workflows/tests.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/qlty.yml" ]; then echo "MISSING: .github/workflows/qlty.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/security-lite.yml" ]; then echo "MISSING: .github/workflows/security-lite.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/scorecard.yml" ]; then echo "MISSING: .github/workflows/scorecard.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/quality-infra-gate.yml" ]; then echo "MISSING: .github/workflows/quality-infra-gate.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".githooks/pre-push" ]; then echo "MISSING: .githooks/pre-push"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".qlty/qlty.toml" ]; then echo "MISSING: .qlty/qlty.toml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/dependabot.yml" ]; then echo "MISSING: .github/dependabot.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e "SECURITY.md" ]; then echo "MISSING: SECURITY.md"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "actions\/workflows\/tests\.yml\/badge\.svg" README.md 2>/dev/null; then echo "BADGE MISSING: actions/workflows/tests.yml/badge.svg"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "actions\/workflows\/security-lite\.yml\/badge\.svg" README.md 2>/dev/null; then echo "BADGE MISSING: actions/workflows/security-lite.yml/badge.svg"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "metric=alert_status" README.md 2>/dev/null; then echo "BADGE MISSING: metric=alert_status"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "metric=coverage" README.md 2>/dev/null; then echo "BADGE MISSING: metric=coverage"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "metric=security_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=security_rating"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "metric=sqale_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=sqale_rating"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "metric=reliability_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=reliability_rating"; MISSING=$((MISSING+1)); fi
+          if ! grep -q "securityscorecards\.dev" README.md 2>/dev/null; then echo "BADGE MISSING: securityscorecards.dev"; MISSING=$((MISSING+1)); fi
+          if [ "$MISSING" -gt 0 ]; then
+            echo ""
+            echo "Quality infrastructure is incomplete ($MISSING items missing)."
+            echo "Fix: run setup_github_quality(path=..., write=True)"
+            exit 1
+          fi
+          echo "Quality infrastructure: complete"

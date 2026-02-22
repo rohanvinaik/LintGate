@@ -163,6 +163,223 @@ def test_main_exits_clean_on_multiedit_with_invalid_edits(
     assert output == "{}"
 
 
+# ── _fallback_config ──────────────────────────────────────────────────
+
+
+class TestFallbackConfig:
+    """Cover _fallback_config (lines 385-389)."""
+
+    def test_returns_project_config_with_cwd(self, tmp_path) -> None:
+        from lintgate.hook_posttooluse import _fallback_config
+        from lintgate.types import ProjectConfig
+
+        config = _fallback_config(str(tmp_path))
+        assert isinstance(config, ProjectConfig)
+        assert config.project_root == str(tmp_path)
+
+    def test_returns_fresh_instance_each_call(self, tmp_path) -> None:
+        from lintgate.hook_posttooluse import _fallback_config
+
+        a = _fallback_config(str(tmp_path))
+        b = _fallback_config(str(tmp_path))
+        assert a is not b
+
+
+# ── _run_controlplane integration-style test with mocks ──────────────
+
+
+class TestRunControlplane:
+    """Cover _run_controlplane orchestration flow (lines 249-382)."""
+
+    def test_exits_clean_on_risk_none(self, tmp_path, monkeypatch) -> None:
+        """risk_level='none' triggers _exit_clean (line 282)."""
+        from unittest.mock import MagicMock, patch
+
+        from lintgate.hook_posttooluse import _run_controlplane
+        from lintgate.types import ChangeClassification
+
+        classification = ChangeClassification(
+            change_kind="none",
+            risk_level="none",
+            files_changed=[],
+        )
+
+        mock_config = MagicMock()
+        mock_cp_config = MagicMock()
+        mock_cp_config.channel_enabled.return_value = False
+
+        with (
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hook_habit.record_behavior_event"),
+            patch("lintgate.hook_habit.record_habit_event_lightweight"),
+            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            pytest.raises(SystemExit) as exc,
+        ):
+            _run_controlplane(
+                {"tool_name": "Bash", "tool_input": "ls", "tool_output": "ok"},
+                mock_config,
+                mock_cp_config,
+                str(tmp_path),
+                0.0,
+            )
+        assert exc.value.code == 0
+
+    def test_full_orchestration_path(self, tmp_path, monkeypatch) -> None:
+        """Full orchestration path with all heavy deps mocked."""
+        import io
+        from unittest.mock import MagicMock, patch
+
+        from lintgate.controlplane.types import (
+            ChannelResult,
+            CoherenceResult,
+            MeshResult,
+            SupervisionEvent,
+        )
+        from lintgate.hook_posttooluse import _run_controlplane
+        from lintgate.types import ChangeClassification
+
+        classification = ChangeClassification(
+            change_kind="code",
+            risk_level="low",
+            files_changed=["foo.py"],
+        )
+
+        mock_config = MagicMock()
+        mock_cp_config = MagicMock()
+        mock_cp_config.channel_enabled.return_value = False
+
+        mesh_result = MeshResult(
+            event=SupervisionEvent(project_root=str(tmp_path)),
+            channel_results=[ChannelResult(channel="lint", status="pass")],
+            coherence=CoherenceResult(state="stable", summary="all pass"),
+            duration_ms=10.0,
+        )
+
+        mock_session = MagicMock()
+        mock_session.behavior_compass = {}
+
+        stdout_capture = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", stdout_capture)
+
+        with (
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hook_habit.record_behavior_event"),
+            patch("lintgate.hook_habit.record_habit_event_lightweight"),
+            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
+            patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
+            patch(
+                "lintgate.hook_controlplane.extract_finding_indexes",
+                return_value=({}, {}, 0),
+            ),
+            patch(
+                "lintgate.hook_controlplane.setup_session_and_gate",
+                return_value=(mock_session, None),
+            ),
+            patch("lintgate.hook_controlplane.post_process_session", return_value=[]),
+            patch("lintgate.hook_controlplane.save_run_details"),
+            patch("lintgate.controlplane.reporter.format_mesh_report", return_value={}),
+            patch("lintgate.hook_controlplane.accumulate_session_telemetry"),
+            patch("lintgate.hook_controlplane.refresh_runtime_after_run"),
+            patch("lintgate.hook_arbitration.arbitrate_output", return_value={}),
+            patch("lintgate.hook_posttooluse.log_metric"),
+            pytest.raises(SystemExit) as exc,
+        ):
+            _run_controlplane(
+                {"tool_name": "Edit", "tool_input": {}, "tool_output": "ok"},
+                mock_config,
+                mock_cp_config,
+                str(tmp_path),
+                0.0,
+            )
+        assert exc.value.code == 0
+        output = stdout_capture.getvalue().strip()
+        parsed = json.loads(output)
+        assert isinstance(parsed, dict)
+
+    def test_advisory_prepended_to_report(self, tmp_path, monkeypatch) -> None:
+        """When setup_session_and_gate returns an advisory, it is prepended."""
+        import io
+        from unittest.mock import MagicMock, patch
+
+        from lintgate.controlplane.types import (
+            ChannelResult,
+            CoherenceResult,
+            MeshResult,
+            SupervisionEvent,
+        )
+        from lintgate.hook_posttooluse import _run_controlplane
+        from lintgate.types import ChangeClassification
+
+        classification = ChangeClassification(
+            change_kind="code",
+            risk_level="low",
+            files_changed=["foo.py"],
+        )
+
+        mock_config = MagicMock()
+        mock_cp_config = MagicMock()
+        mock_cp_config.channel_enabled.return_value = False
+
+        mesh_result = MeshResult(
+            event=SupervisionEvent(project_root=str(tmp_path)),
+            channel_results=[ChannelResult(channel="lint", status="pass")],
+            coherence=CoherenceResult(state="stable", summary="all pass"),
+            duration_ms=10.0,
+        )
+
+        mock_session = MagicMock()
+        mock_session.behavior_compass = {}
+
+        advisory_msg = "[SessionGate] Bootstrap required"
+
+        stdout_capture = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", stdout_capture)
+
+        with (
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hook_habit.record_behavior_event"),
+            patch("lintgate.hook_habit.record_habit_event_lightweight"),
+            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
+            patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
+            patch(
+                "lintgate.hook_controlplane.extract_finding_indexes",
+                return_value=({}, {}, 0),
+            ),
+            patch(
+                "lintgate.hook_controlplane.setup_session_and_gate",
+                return_value=(mock_session, advisory_msg),
+            ),
+            patch("lintgate.hook_controlplane.post_process_session", return_value=[]),
+            patch("lintgate.hook_controlplane.save_run_details"),
+            patch(
+                "lintgate.controlplane.reporter.format_mesh_report",
+                return_value={"systemMessage": "lint report"},
+            ),
+            patch("lintgate.hook_controlplane.accumulate_session_telemetry"),
+            patch("lintgate.hook_controlplane.refresh_runtime_after_run"),
+            patch(
+                "lintgate.hook_arbitration.arbitrate_output",
+                side_effect=lambda r, *a, **kw: r,
+            ),
+            patch("lintgate.hook_posttooluse.log_metric"),
+            pytest.raises(SystemExit) as exc,
+        ):
+            _run_controlplane(
+                {"tool_name": "Edit", "tool_input": {}, "tool_output": "ok"},
+                mock_config,
+                mock_cp_config,
+                str(tmp_path),
+                0.0,
+            )
+        assert exc.value.code == 0
+        output = stdout_capture.getvalue().strip()
+        parsed = json.loads(output)
+        assert advisory_msg in parsed["systemMessage"]
+        assert "lint report" in parsed["systemMessage"]
+
+
 @dataclass
 class _CpLite:
     habit_mode_enabled: bool = True

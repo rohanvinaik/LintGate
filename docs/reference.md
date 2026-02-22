@@ -114,8 +114,8 @@ LintGate works with **zero config** for any Python project with ruff installed. 
 # Quality policy — single source of truth for CI and LintGate gates
 quality_policy:
   coverage:
-    global_threshold: 80          # --cov-fail-under (CI + test channel)
-    diff_threshold: 80            # diff-cover --fail-under (CI PRs)
+    global_threshold: 80          # coverage telemetry target (non-blocking)
+    diff_threshold: 80            # diff-coverage telemetry target (non-blocking)
     source_packages:              # --cov=<pkg> (measure code, not tests)
       - lintgate
       - mcp_tools
@@ -136,6 +136,9 @@ pipeline_critical_paths:
 controlplane:
   enabled: true
   channels:
+    tests:
+      symbol_coverage:
+        enabled: true             # primary pass/fail gate (changed symbols)
     behavior:
       enabled: true
       thresholds:
