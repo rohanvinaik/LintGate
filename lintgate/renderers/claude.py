@@ -1,14 +1,33 @@
-"""Claude renderer -- outputs .claude/CLAUDE.md and .claude/rules/theory.md."""
+"""Claude renderer -- outputs .claude/CLAUDE.md and .claude/rules/theory.md.
+
+Dynamic files: .claude/rules/lg_session.md, .claude/rules/lg_focus.md
+"""
 
 from __future__ import annotations
 
-from ..compass import CompassState
+from typing import TYPE_CHECKING
+
 from ._helpers import axis_summary, format_directives, project_name, truncate_lines
+from .dynamic import (
+    delete_dynamic_file,
+    render_focus_content,
+    render_session_content,
+)
+from .host_adapter import CLAUDE_CAPABILITIES, HostCapabilities
+
+if TYPE_CHECKING:
+    from ..compass import CompassState
+
+_SESSION_PATH = ".claude/rules/lg_session.md"
+_FOCUS_PATH = ".claude/rules/lg_focus.md"
+
+_FRONTMATTER = '---\npaths:\n  - "**/*.py"\n---\n\n'
 
 
 class ClaudeRenderer:
     name = "claude"
     output_paths = [".claude/CLAUDE.md", ".claude/rules/theory.md"]
+    capabilities: HostCapabilities = CLAUDE_CAPABILITIES
 
     def render(
         self, compass: CompassState, metadata: dict[str, str]
@@ -85,3 +104,24 @@ class ClaudeRenderer:
             lines += ["", "## Anti-Patterns"] + [f"- {a}" for a in away]
 
         return "\n".join(lines)
+
+    # ── Dynamic rule files ───────────────────────────────────────────
+
+    def render_session(self, runtime: object) -> dict[str, str]:
+        """Render dynamic session state to .claude/rules/lg_session.md."""
+        content = _FRONTMATTER + render_session_content(runtime)
+        return {_SESSION_PATH: content}
+
+    def render_focus(self, runtime: object) -> dict[str, str]:
+        """Render dynamic focus state to .claude/rules/lg_focus.md."""
+        content = _FRONTMATTER + render_focus_content(runtime)
+        return {_FOCUS_PATH: content}
+
+    def cleanup_dynamic(self, project_root: str) -> list[str]:
+        """Remove session-scoped dynamic files."""
+        deleted = []
+        if delete_dynamic_file(project_root, _SESSION_PATH):
+            deleted.append(_SESSION_PATH)
+        if delete_dynamic_file(project_root, _FOCUS_PATH):
+            deleted.append(_FOCUS_PATH)
+        return deleted

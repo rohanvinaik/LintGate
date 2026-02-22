@@ -273,6 +273,66 @@ class TestTelemetryWithData:
         assert summary["token_economics"]["compactions"] == 1
         assert summary["token_economics"]["total_tokens_compacted"] == 42000
 
+    def test_token_economics_includes_calibration_and_runtime_write_metrics(
+        self, tmp_path: Path,
+    ) -> None:
+        project = "/tmp/runtime_metrics_proj"
+        self._write_metrics(
+            tmp_path,
+            project,
+            [
+                {
+                    "blocking_count": 0,
+                    "warning_count": 1,
+                    "info_count": 0,
+                    "files_count": 2,
+                    "duration_ms": 60,
+                },
+            ],
+        )
+
+        today = datetime.now().strftime("%Y%m%d")
+        metrics_file = tmp_path / f"lintgate_{today}.jsonl"
+        with open(metrics_file, "a") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "event": "token_estimate",
+                        "project": project,
+                        "source": "api",
+                        "delta": -120,
+                        "new_factor": 0.23,
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "event": "runtime_state_write",
+                        "project": project,
+                        "success": 1,
+                        "skipped_by_cadence": 0,
+                        "lock_contention_count": 2,
+                        "dynamic_status": "success",
+                    }
+                )
+                + "\n"
+            )
+
+        with patch("lintgate.telemetry.METRICS_DIR", tmp_path):
+            summary = compute_telemetry_summary(project, period="1d")
+
+        assert "token_economics" in summary
+        economics = summary["token_economics"]
+        assert economics["has_data"] is True
+        assert economics["token_estimate_events"] == 1
+        assert economics["api_calibration_events"] == 1
+        assert economics["runtime_state_writes"] == 1
+        assert economics["runtime_write_dynamic_status"]["success"] == 1
+
 
 class TestTrend:
     def test_few_entries_returns_no_data(self) -> None:

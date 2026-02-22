@@ -13,11 +13,15 @@ from lintgate.controlplane.model_profiles import ModelProfile, ModelProfileStore
 from lintgate.hook_posttooluse import (
     _can_apply_session_telemetry,
     _mark_session_telemetry_applied,
+    _record_habit_event_lightweight,
+    _refresh_runtime_state_lightweight,
     _resolve_event_model_key,
     _select_telemetry_profile,
     _session_telemetry_updates_used,
     main,
 )
+from lintgate.renderers.dynamic import read_generation_from_file
+from lintgate.runtime_state import load_runtime_state
 
 
 def test_resolve_event_model_key_from_top_level() -> None:
@@ -157,3 +161,144 @@ def test_main_exits_clean_on_multiedit_with_invalid_edits(
     )
     assert code == 0
     assert output == "{}"
+
+
+@dataclass
+class _CpLite:
+    habit_mode_enabled: bool = True
+    session_memory: bool = False
+    habit_mode_auto_detect: bool = True
+    habit_mode_enter_score: float = 0.70
+    habit_mode_exit_score: float = 0.40
+    habit_mode_sustain_calls: int = 5
+    habit_mode_token_api_interval: int = 99
+    habit_mode_compact_threshold: float = 0.95
+
+    def channel_enabled(self, _name: str) -> bool:
+        return False
+
+
+def test_posttooluse_runtime_state_flows_into_json_dumps(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mcp_server
+    from lintgate import habit_mode
+
+    monkeypatch.setattr(habit_mode, "_HABIT_STATE_DIR", tmp_path / ".standalone_habit")
+
+    cp = _CpLite()
+    _record_habit_event_lightweight(
+        cp,
+        str(tmp_path),
+        "Edit",
+        {
+            "file_path": str(tmp_path / "module.py"),
+            "old_string": "x = 1",
+            "new_string": "x = 2",
+        },
+        "ok",
+    )
+
+    runtime = load_runtime_state(str(tmp_path))
+    assert runtime is not None
+    assert runtime.active_files
+
+    payload = {"project": str(tmp_path), "status": "ok"}
+    rendered = mcp_server._json_dumps(payload, output_mode="compact")
+    parsed = json.loads(rendered)
+    assert "session_context" in parsed
+    assert parsed["session_context"]["gen"] >= 1
+    assert parsed["session_context"]["focus"]
+
+    extras = habit_mode.load_standalone_extras(str(tmp_path))
+    assert isinstance(extras.get("write_scheduler"), dict)
+
+
+def test_runtime_write_success_matches_watermark_generation(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    events: list[dict] = []
+
+    def capture(event):
+        events.append(event)
+
+    monkeypatch.setattr("lintgate.state.log_metric", capture)
+
+    _refresh_runtime_state_lightweight(
+        str(tmp_path),
+        tool_name="Edit",
+        tool_input={"file_path": str(tmp_path / "x.py")},
+        trigger="compaction",
+    )
+
+    metric = next(
+        (e for e in reversed(events) if e.get("event") == "runtime_state_write"),
+        None,
+    )
+    assert metric is not None
+    assert metric["success"] == 1
+
+    file_gen = read_generation_from_file(str(tmp_path), ".claude/rules/lg_session.md")
+    assert file_gen is not None
+    assert file_gen == metric["generation"]
+
+
+def test_runtime_write_failure_has_no_dynamic_watermark(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[dict] = []
+
+    def capture(event):
+        events.append(event)
+
+    monkeypatch.setattr("lintgate.state.log_metric", capture)
+
+    _refresh_runtime_state_lightweight(
+        str(tmp_path),
+        tool_name="Edit",
+        tool_input={"file_path": str(tmp_path / "x.py")},
+        trigger="compaction",
+    )
+
+    metric = next(
+        (e for e in reversed(events) if e.get("event") == "runtime_state_write"),
+        None,
+    )
+    assert metric is not None
+    assert metric["success"] == 0
+
+    file_gen = read_generation_from_file(str(tmp_path), ".claude/rules/lg_session.md")
+    assert file_gen is None
+
+
+def test_runtime_write_metric_includes_lock_contention_fields(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    events: list[dict] = []
+
+    def capture(event):
+        events.append(event)
+
+    monkeypatch.setattr("lintgate.state.log_metric", capture)
+
+    _refresh_runtime_state_lightweight(
+        str(tmp_path),
+        tool_name="Edit",
+        tool_input={"file_path": str(tmp_path / "y.py")},
+        trigger="compaction",
+    )
+
+    metric = next(
+        (e for e in reversed(events) if e.get("event") == "runtime_state_write"),
+        None,
+    )
+    assert metric is not None
+    assert "lock_contention_count" in metric
+    assert "lock_acquired" in metric
+    assert isinstance(metric["lock_contention_count"], int)

@@ -12,15 +12,16 @@ if TYPE_CHECKING:
 
 from mcp_tools.onboarding_tools import (
     _build_quality_guidance,
+    _compute_bandit_ci_skips,
     _compute_gitignore_additions,
     _detect_github_remote,
     _detect_project_layout,
     _detect_subprocess_usage,
     _generate_badge_markdown,
     _generate_codeclimate_yml,
+    _generate_qlty_toml,
     _generate_qlty_workflow,
     _generate_security_workflow,
-    _generate_qlty_toml,
     _generate_sonar_properties,
     _generate_sonar_workflow,
     _inject_badges_into_readme,
@@ -221,6 +222,23 @@ class TestGenerateSonarProperties:
 
         assert "sonar.projectKey=OWNER_REPO" in content
 
+    def test_excludes_shell_scripts(self) -> None:
+        """Shell scripts must be excluded from SonarCloud Python analysis."""
+        github = {"detected": True, "owner": "alice", "repo": "myrepo"}
+        layout = {"source_dirs": ["src"], "test_dirs": ["tests"],
+                  "python_version": "3.12", "exclude_patterns": ["tests/", "docs/"]}
+        content = _generate_sonar_properties(github, layout)
+        assert "*.sh" in content
+
+    def test_file_glob_patterns_not_corrupted(self) -> None:
+        """File-extension globs like *.sh must not become *.sh** in exclusions."""
+        github = {"detected": True, "owner": "alice", "repo": "myrepo"}
+        layout = {"source_dirs": ["src"], "test_dirs": ["tests"],
+                  "python_version": "3.12", "exclude_patterns": ["tests/", "*.sh"]}
+        content = _generate_sonar_properties(github, layout)
+        assert "*.sh" in content
+        assert "*.sh**" not in content
+
 
 class TestGenerateSonarWorkflow:
     """Tests for _generate_sonar_workflow."""
@@ -237,6 +255,28 @@ class TestGenerateSonarWorkflow:
         assert 'python-version: "3.12"' in content
         assert "SONAR_TOKEN" in content
 
+    def test_step_level_token_check(self) -> None:
+        """Token check uses step-level env + GITHUB_OUTPUT, not job-level secrets."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+
+        # Step-level check must exist
+        assert "check_token" in content
+        assert "GITHUB_OUTPUT" in content
+        assert "steps.check_token.outputs.has_token" in content
+
+        # Job-level if must NOT reference secrets context (actions/runner#520)
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("if:") and "secrets." in stripped:
+                msg = f"secrets context used in job-level if: {stripped!r}"
+                raise AssertionError(msg)
+
+    def test_single_job_pattern(self) -> None:
+        """Workflow must use a single job, not the broken two-job pattern."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+        assert "sonarcloud_missing_token" not in content
+        assert content.count("runs-on:") == 1
+
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
         content = _generate_sonar_workflow({"python_version": ">=3.11"})
         assert 'python-version: "3.11"' in content
@@ -252,8 +292,14 @@ class TestGenerateQltyWorkflow:
         assert "push:" in content
         assert "pull_request:" in content
         assert "workflow_dispatch:" in content
-        assert "curl -fsSL https://qlty.sh | sh" in content
         assert "check --all" in content
+
+    def test_uses_official_action(self) -> None:
+        """Must use qltysh/qlty-action/install@main, not curl | sh."""
+        content = _generate_qlty_workflow()
+        assert "qltysh/qlty-action/install@main" in content
+        assert "curl" not in content
+        assert "QLTY_BIN" not in content
 
 
 class TestGenerateSecurityWorkflow:
@@ -277,13 +323,54 @@ class TestGenerateSecurityWorkflow:
         assert 'python-version: "3.11"' in content
 
     def test_tool_runner_skips_subprocess_codes(self) -> None:
-        content = _generate_security_workflow({"python_version": "3.11"}, is_tool_runner=True)
-        assert "-s B101,B108,B404,B603,B607" in content
+        content = _generate_security_workflow(
+            {"python_version": "3.11"}, is_tool_runner=True,
+        )
+        # Base codes + subprocess codes; sorted
+        assert "B404" in content
+        assert "B603" in content
+        assert "B607" in content
+        assert "B101" in content
+        assert "B108" in content
 
     def test_non_tool_runner_keeps_subprocess_checks(self) -> None:
-        content = _generate_security_workflow({"python_version": "3.11"}, is_tool_runner=False)
-        assert "-s B101,B108" in content
+        content = _generate_security_workflow(
+            {"python_version": "3.11"}, is_tool_runner=False,
+        )
+        assert "B101" in content
+        assert "B108" in content
+        assert "B404" not in content
         assert "B603" not in content
+
+    def test_reads_severity_overrides_from_config(self, tmp_path: Path) -> None:
+        """Severity overrides in lintgate.yaml flow into the skip list."""
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "lintgate.yaml").write_text(
+            "severity_overrides:\n"
+            "  B110: informational\n"
+            "  B112: informational\n"
+            "  B105: informational\n"
+        )
+        content = _generate_security_workflow(
+            {"python_version": "3.11"}, project_root=str(tmp_path),
+        )
+        assert "B110" in content
+        assert "B112" in content
+        assert "B105" in content
+
+    def test_no_config_uses_defaults(self) -> None:
+        """Without a config file, only B101 and B108 are skipped."""
+        skips = _compute_bandit_ci_skips(None)
+        assert skips == ["B101", "B108"]
+
+    def test_invalid_config_degrades_gracefully(self, tmp_path: Path) -> None:
+        """Broken YAML doesn't crash — falls back to defaults."""
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "lintgate.yaml").write_text("{{{{invalid yaml")
+        skips = _compute_bandit_ci_skips(str(tmp_path))
+        assert skips == ["B101", "B108"]
 
 
 # ── Gitignore Additions ──────────────────────────────────────────────────
@@ -298,6 +385,7 @@ class TestComputeGitignoreAdditions:
         assert result["gitignore_exists"] is False
         assert len(result["additions"]) > 10
         assert ".venv/" in result["additions"]
+        assert ".lintgate/" in result["additions"]
 
     def test_detects_already_present(self, tmp_path: Path) -> None:
         """Patterns already in .gitignore are not duplicated."""
@@ -321,14 +409,17 @@ class TestComputeGitignoreAdditions:
 class TestGenerateBadgeMarkdown:
     """Tests for _generate_badge_markdown."""
 
-    def test_generates_codeclimate_and_sonar_badges(self) -> None:
-        """Both Code Climate and SonarCloud badges generated."""
+    def test_generates_workflow_and_sonar_badges(self) -> None:
+        """Security workflow badge and SonarCloud badges generated."""
         github = {"owner": "alice", "repo": "myrepo"}
         layout = {"license": None}
         badges = _generate_badge_markdown(github, layout)
 
-        assert "codeclimate.com" in badges
-        assert "PLACEHOLDER" in badges
+        # Workflow status badge instead of Code Climate PLACEHOLDER
+        assert "actions/workflows/security-lite.yml/badge.svg" in badges
+        assert "PLACEHOLDER" not in badges
+        assert "codeclimate.com" not in badges
+        # SonarCloud badges still present
         assert "sonarcloud.io" in badges
         assert "alice_myrepo" in badges
         assert "metric=coverage" in badges
@@ -401,11 +492,12 @@ class TestInjectBadgesIntoReadme:
         assert content.count("lintgate:quality-badges:start") == 1
 
     def test_readme_has_quality_badges_requires_security_metric(self, tmp_path: Path) -> None:
-        """README should fail quality badge check if security badge is missing."""
+        """README should fail quality badge check if security_rating metric is missing."""
         readme = tmp_path / "README.md"
         readme.write_text(
             "# My Project\n\n"
-            "[![Maintainability](https://api.codeclimate.com/v1/badges/abc/maintainability)](link)\n"
+            "[![Security](https://github.com/a/b/actions/workflows/security-lite.yml/badge.svg)]"
+            "(https://github.com/a/b/actions/workflows/security-lite.yml)\n"
             "[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?"
             "project=a_b&metric=alert_status)](link)\n"
             "[![Coverage](https://sonarcloud.io/api/project_badges/measure?"

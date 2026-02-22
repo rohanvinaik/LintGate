@@ -2,15 +2,20 @@
 
 Each renderer transforms CompassState into a context file tailored
 to a specific AI coding tool (Claude, Cursor, Copilot, etc.).
+
+The ``Renderer`` protocol covers static compass rendering.
+The ``HostAdapter`` protocol (in ``host_adapter.py``) extends it with
+dynamic rule file rendering and capability detection.
 """
 
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from lintgate.compass import CompassState
+    from lintgate.runtime_state import RuntimeState
 
 
 class Renderer(Protocol):
@@ -20,7 +25,7 @@ class Renderer(Protocol):
     output_paths: list[str]  # relative paths from project root
 
     def render(
-        self, compass: "CompassState", metadata: dict[str, str]
+        self, compass: CompassState, metadata: dict[str, str]
     ) -> dict[str, str]:
         """Return {relative_path: rendered_content}."""
         ...
@@ -58,10 +63,47 @@ class RendererRegistry:
                 found.append(target)
         return sorted(found)
 
+    def detect_host(self, project_root: str) -> str | None:
+        """Detect which AI coding host is actively running.
+
+        Checks environment variables first (most reliable), then
+        falls back to directory-based detection. Returns the name
+        of the detected host or None.
+        """
+        hosts = self.detect_runtime_hosts(project_root)
+        return hosts[0] if hosts else None
+
+    def detect_runtime_hosts(self, project_root: str) -> list[str]:
+        """Detect all active/runtime hosts that can consume dynamic rules.
+
+        If host env vars are present, returns only that host. Otherwise returns
+        all host directories discovered in the project root.
+        """
+        # Env var detection (most reliable — set by the host itself)
+        if os.environ.get("CLAUDE_CODE"):
+            return ["claude"]
+        if os.environ.get("CURSOR_SESSION_ID"):
+            return ["cursor"]
+        if os.environ.get("WINDSURF_SESSION"):
+            return ["windsurf"]
+
+        # Directory-based fallback (may include multiple hosts)
+        found: list[str] = []
+        if os.path.isdir(os.path.join(project_root, ".claude")):
+            found.append("claude")
+        if os.path.isdir(os.path.join(project_root, ".cursor")):
+            found.append("cursor")
+        if os.path.isdir(os.path.join(project_root, ".windsurf")):
+            found.append("windsurf")
+        if os.path.isdir(os.path.join(project_root, ".clinerules")):
+            found.append("cline")
+
+        return found
+
     def render_for_targets(
         self,
         targets: list[str],
-        compass: "CompassState",
+        compass: CompassState,
         metadata: dict[str, str],
     ) -> dict[str, str]:
         """Render context files for the given target list."""
@@ -71,6 +113,40 @@ class RendererRegistry:
             if renderer is not None:
                 results.update(renderer.render(compass, metadata))
         return results
+
+    def render_dynamic_for_targets(
+        self,
+        targets: list[str],
+        runtime: RuntimeState,
+    ) -> dict[str, str]:
+        """Render dynamic rule files for targets that support them.
+
+        Calls ``render_session()`` and ``render_focus()`` on each
+        renderer that has these methods (HostAdapter-compatible).
+        """
+        results: dict[str, str] = {}
+        for target in targets:
+            renderer = self._renderers.get(target)
+            if renderer is None:
+                continue
+            if hasattr(renderer, "render_session"):
+                results.update(renderer.render_session(runtime))
+            if hasattr(renderer, "render_focus"):
+                results.update(renderer.render_focus(runtime))
+        return results
+
+    def cleanup_dynamic_for_targets(
+        self,
+        targets: list[str],
+        project_root: str,
+    ) -> list[str]:
+        """Clean up dynamic files for all targets. Returns deleted paths."""
+        deleted: list[str] = []
+        for target in targets:
+            renderer = self._renderers.get(target)
+            if renderer is not None and hasattr(renderer, "cleanup_dynamic"):
+                deleted.extend(renderer.cleanup_dynamic(project_root))
+        return deleted
 
 
 def build_default_registry() -> RendererRegistry:

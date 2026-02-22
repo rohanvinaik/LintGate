@@ -22,23 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install qlty
-        run: curl -fsSL https://qlty.sh | sh
-
-      - name: Resolve qlty binary
-        shell: bash
-        run: |
-          for candidate in qlty "$HOME/.qlty/bin/qlty" "./qlty" "./bin/qlty"; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              echo "QLTY_BIN=$(command -v "$candidate")" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            if [ -x "$candidate" ]; then
-              echo "QLTY_BIN=$candidate" >> "$GITHUB_ENV"
-              exit 0
-            fi
-          done
-          echo "qlty binary not found after install" >&2
-          exit 1
+        uses: qltysh/qlty-action/install@main
 
       - name: Run qlty checks
-        run: "$QLTY_BIN" check --all
+        run: qlty check --all

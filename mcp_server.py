@@ -412,15 +412,41 @@ def _build_next_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
 _VALID_OUTPUT_MODES = {"compact", "standard", "full"}
 
 
+def _infer_project_root(payload: Any) -> str | None:
+    """Best-effort project root inference from MCP response payload."""
+    if not isinstance(payload, dict):
+        return None
+
+    for key in ("project_root", "project", "path", "cwd"):
+        raw = payload.get(key)
+        if not isinstance(raw, str) or not raw:
+            continue
+        abs_path = os.path.abspath(raw)
+        if os.path.isdir(abs_path):
+            return abs_path
+        if os.path.isfile(abs_path):
+            return os.path.dirname(abs_path)
+    return None
+
+
 def _json_dumps(data: Any, output_mode: str = "compact") -> str:
     """Serialize data to JSON with mode-appropriate formatting.
 
     compact/standard: no indent, compact separators (~15-20% smaller)
     full: indent=2 for human readability
     """
+    payload = data
+    if isinstance(data, dict):
+        with contextlib.suppress(Exception):
+            from mcp_tools.micro_refresh import attach_session_context
+
+            project_root = _infer_project_root(data)
+            if project_root:
+                payload = attach_session_context(dict(data), project_root)
+
     if output_mode == "full":
-        return json.dumps(data, indent=2)
-    return json.dumps(data, separators=(",", ":"))
+        return json.dumps(payload, indent=2)
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def _run_lint(

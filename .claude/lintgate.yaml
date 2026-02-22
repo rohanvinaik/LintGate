@@ -7,6 +7,14 @@ controlplane:
     living_context: true
     session_gate: true
 
+severity_overrides:
+  B110: informational   # try_except_pass — intentional fail-open
+  B112: informational   # try_except_continue — same pattern
+  B105: informational   # hardcoded_password_string — test fixtures
+  B106: informational   # hardcoded_password_funcarg — test fixtures
+  B310: informational   # urllib.request.urlopen — HTTPS API call with timeout, not arbitrary URL
+  B311: informational   # random.Random — deterministic probe variant selection, not crypto
+
 pipeline_critical_paths:
   - "lintgate/hook_posttooluse.py"
   - "lintgate/controlplane/"

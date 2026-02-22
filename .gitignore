@@ -38,6 +38,7 @@ Thumbs.db
 
 # Claude session state
 .claude/continuity/
+.lintgate/
 
 # Generated context files (created by setup.sh via bootstrap_context_files)
 # These are generated on first run and evolve via living context patches.

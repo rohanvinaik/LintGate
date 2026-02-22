@@ -1,14 +1,27 @@
-"""Cline renderer -- outputs .clinerules/compass.md."""
+"""Cline renderer -- outputs .clinerules/compass.md.
+
+Dynamic files: .clinerules/lg_session.md, .clinerules/lg_focus.md
+"""
 
 from __future__ import annotations
 
-from ..compass import CompassState
+from typing import TYPE_CHECKING
+
 from ._helpers import axis_summary, format_directives, project_name
+from .dynamic import delete_dynamic_file, render_focus_content, render_session_content
+from .host_adapter import CLINE_CAPABILITIES, HostCapabilities
+
+if TYPE_CHECKING:
+    from ..compass import CompassState
+
+_SESSION_PATH = ".clinerules/lg_session.md"
+_FOCUS_PATH = ".clinerules/lg_focus.md"
 
 
 class ClineRenderer:
     name = "cline"
     output_paths = [".clinerules/compass.md"]
+    capabilities: HostCapabilities = CLINE_CAPABILITIES
 
     def render(
         self, compass: CompassState, metadata: dict[str, str]
@@ -51,3 +64,22 @@ class ClineRenderer:
                 lines.append("")
 
         return {".clinerules/compass.md": "\n".join(lines)}
+
+    # ── Dynamic rule files ───────────────────────────────────────────
+
+    def render_session(self, runtime: object) -> dict[str, str]:
+        """Render dynamic session state to .clinerules/lg_session.md."""
+        return {_SESSION_PATH: render_session_content(runtime)}
+
+    def render_focus(self, runtime: object) -> dict[str, str]:
+        """Render dynamic focus state to .clinerules/lg_focus.md."""
+        return {_FOCUS_PATH: render_focus_content(runtime)}
+
+    def cleanup_dynamic(self, project_root: str) -> list[str]:
+        """Remove session-scoped dynamic files."""
+        deleted = []
+        if delete_dynamic_file(project_root, _SESSION_PATH):
+            deleted.append(_SESSION_PATH)
+        if delete_dynamic_file(project_root, _FOCUS_PATH):
+            deleted.append(_FOCUS_PATH)
+        return deleted

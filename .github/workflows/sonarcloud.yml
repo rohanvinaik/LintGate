@@ -19,31 +19,36 @@ jobs:
     name: SonarQube Cloud Scan
     runs-on: ubuntu-latest
     if: >
-      secrets.SONAR_TOKEN != '' &&
-      (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      - name: Check for SONAR_TOKEN
+        id: check_token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SONAR_TOKEN secret is not configured; skipping SonarQube Cloud scan."
+            echo "Add SONAR_TOKEN at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+          else
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout full history
+        if: steps.check_token.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Python
+        if: steps.check_token.outputs.has_token == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: SonarQube Cloud Scan
+        if: steps.check_token.outputs.has_token == 'true'
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-  sonarcloud_missing_token:
-    name: SonarQube Cloud Setup Notice
-    runs-on: ubuntu-latest
-    if: secrets.SONAR_TOKEN == ''
-    steps:
-      - name: Explain required secret
-        run: |
-          echo "SONAR_TOKEN secret is not configured; skipping SonarQube Cloud scan."
-          echo "Add SONAR_TOKEN at: https://github.com/${{ github.repository }}/settings/secrets/actions"

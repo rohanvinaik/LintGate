@@ -55,11 +55,7 @@ def compute_telemetry_summary(
             "trend": "no_data",
         }
         token_economics = compute_token_economics_summary(project_root, period=period)
-        if (
-            token_economics["habit_mode_entries"] > 0
-            or token_economics["habit_mode_exits"] > 0
-            or token_economics["compactions"] > 0
-        ):
+        if token_economics.get("has_data", False):
             summary["token_economics"] = token_economics
         return summary
 
@@ -113,11 +109,7 @@ def compute_telemetry_summary(
         "trend": trend,
     }
     token_economics = compute_token_economics_summary(project_root, period=period)
-    if (
-        token_economics["habit_mode_entries"] > 0
-        or token_economics["habit_mode_exits"] > 0
-        or token_economics["compactions"] > 0
-    ):
+    if token_economics.get("has_data", False):
         summary["token_economics"] = token_economics
     return summary
 
@@ -297,29 +289,46 @@ def compute_token_economics_summary(
 ) -> dict[str, Any]:
     """Aggregate habit mode and token economics telemetry.
 
-    Reads habit_mode_transition and habit_compact metric events to produce
-    a summary of habit mode usage and token economics.
+    Reads habit_mode_transition, habit_compact, token_estimate, and
+    runtime_state_write metric events to produce a summary of habit mode
+    usage, calibration quality, and runtime-state write cadence.
 
     Args:
         project_root: Filter to a specific project (None = all projects).
         period: Time window — "1d", "7d", "30d", or "all".
 
     Returns:
-        Dict with habit mode entries, exits, compactions, and token data.
+        Dict with habit mode entries, exits, compactions, token calibration
+        quality, and runtime-state write telemetry.
     """
     days = _PERIOD_MAP.get(period, 7)
 
     transitions = _load_jsonl_entries(days, project_root, "habit_mode_transition")
     compactions = _load_jsonl_entries(days, project_root, "habit_compact")
+    token_estimates = _load_jsonl_entries(days, project_root, "token_estimate")
+    runtime_writes = _load_jsonl_entries(days, project_root, "runtime_state_write")
 
-    if not transitions and not compactions:
+    if not transitions and not compactions and not token_estimates and not runtime_writes:
         return {
             "period": period,
+            "has_data": False,
             "habit_mode_entries": 0,
             "habit_mode_exits": 0,
             "compactions": 0,
             "avg_habit_score_at_entry": 0.0,
             "total_tokens_compacted": 0,
+            "avg_tokens_before_compaction": 0.0,
+            "avg_calls_per_compaction": 0.0,
+            "token_estimate_events": 0,
+            "api_calibration_events": 0,
+            "avg_calibration_delta": 0.0,
+            "avg_abs_calibration_delta": 0.0,
+            "avg_calibration_factor": 0.0,
+            "runtime_state_writes": 0,
+            "runtime_write_success_rate": 0.0,
+            "runtime_write_cadence_skips": 0,
+            "runtime_write_lock_contention_avg": 0.0,
+            "runtime_write_dynamic_status": {},
         }
 
     entries = [t for t in transitions if t.get("transition") == "enter"]
@@ -329,12 +338,85 @@ def compute_token_economics_summary(
     avg_entry_score = sum(entry_scores) / max(len(entry_scores), 1) if entry_scores else 0.0
 
     total_tokens_compacted = sum(c.get("estimated_tokens_before", 0) for c in compactions)
+    avg_tokens_before = total_tokens_compacted / len(compactions) if compactions else 0.0
+    compaction_calls = [
+        int(c.get("tool_calls_compacted", 0))
+        for c in compactions
+        if isinstance(c.get("tool_calls_compacted"), (int, float))
+    ]
+    avg_calls_per_compaction = (
+        sum(compaction_calls) / len(compaction_calls)
+        if compaction_calls
+        else 0.0
+    )
+
+    deltas = [
+        float(e.get("delta", 0.0))
+        for e in token_estimates
+        if isinstance(e.get("delta"), (int, float))
+    ]
+    new_factors = [
+        float(e.get("new_factor"))
+        for e in token_estimates
+        if isinstance(e.get("new_factor"), (int, float))
+    ]
+    api_calibration_events = sum(1 for e in token_estimates if e.get("source") == "api")
+
+    runtime_successes = sum(
+        int(bool(e.get("success", 0)))
+        for e in runtime_writes
+    )
+    runtime_write_success_rate = (
+        runtime_successes / len(runtime_writes)
+        if runtime_writes
+        else 0.0
+    )
+    runtime_write_cadence_skips = sum(
+        int(bool(e.get("skipped_by_cadence", 0)))
+        for e in runtime_writes
+    )
+    lock_contention_values = [
+        int(e.get("lock_contention_count", 0))
+        for e in runtime_writes
+        if isinstance(e.get("lock_contention_count"), (int, float))
+    ]
+    runtime_write_dynamic_status: dict[str, int] = {}
+    for entry in runtime_writes:
+        status = str(entry.get("dynamic_status", "") or "")
+        if not status:
+            continue
+        runtime_write_dynamic_status[status] = runtime_write_dynamic_status.get(status, 0) + 1
 
     return {
         "period": period,
+        "has_data": True,
         "habit_mode_entries": len(entries),
         "habit_mode_exits": len(exits),
         "compactions": len(compactions),
         "avg_habit_score_at_entry": round(avg_entry_score, 3),
         "total_tokens_compacted": total_tokens_compacted,
+        "avg_tokens_before_compaction": round(avg_tokens_before, 1),
+        "avg_calls_per_compaction": round(avg_calls_per_compaction, 2),
+        "token_estimate_events": len(token_estimates),
+        "api_calibration_events": api_calibration_events,
+        "avg_calibration_delta": round(sum(deltas) / len(deltas), 1) if deltas else 0.0,
+        "avg_abs_calibration_delta": (
+            round(sum(abs(d) for d in deltas) / len(deltas), 1)
+            if deltas
+            else 0.0
+        ),
+        "avg_calibration_factor": (
+            round(sum(new_factors) / len(new_factors), 6)
+            if new_factors
+            else 0.0
+        ),
+        "runtime_state_writes": len(runtime_writes),
+        "runtime_write_success_rate": round(runtime_write_success_rate, 3),
+        "runtime_write_cadence_skips": runtime_write_cadence_skips,
+        "runtime_write_lock_contention_avg": (
+            round(sum(lock_contention_values) / len(lock_contention_values), 3)
+            if lock_contention_values
+            else 0.0
+        ),
+        "runtime_write_dynamic_status": runtime_write_dynamic_status,
     }

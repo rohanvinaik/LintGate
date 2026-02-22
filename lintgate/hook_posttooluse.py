@@ -315,6 +315,284 @@ def main() -> None:
         _exit_clean()
 
 
+def _derive_focus_intent(tool_name: str, tool_input: Any) -> str:
+    """Extract a short focus sentence from the current tool action."""
+    if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and isinstance(tool_input, dict):
+        path = str(tool_input.get("file_path") or tool_input.get("path") or "").strip()
+        if path:
+            return f"Edit {os.path.basename(path)}"
+
+    if tool_name == "Bash":
+        command = ""
+        if isinstance(tool_input, dict):
+            command = str(tool_input.get("command", "")).strip()
+        elif isinstance(tool_input, str):
+            command = tool_input.strip()
+        if command:
+            normalized = re.sub(r"\s+", " ", command)
+            return f"Run `{normalized[:96]}`"
+
+    return f"Use {tool_name}" if tool_name else ""
+
+
+def _mesh_finding_counts(mesh_result: Any) -> tuple[int, int]:
+    """Return (blocking, warning) finding counts from a mesh result."""
+    blocking = 0
+    warnings = 0
+    for channel_result in mesh_result.channel_results:
+        for finding in channel_result.findings:
+            severity = str(getattr(finding, "severity", "")).lower()
+            if severity == "blocking":
+                blocking += 1
+            elif severity == "warning":
+                warnings += 1
+    return blocking, warnings
+
+
+def _runtime_targets(registry: Any, project_root: str) -> list[str]:
+    """Resolve runtime host targets for dynamic rule writes."""
+    targets: list[str] = []
+    with contextlib.suppress(Exception):
+        targets = list(registry.detect_runtime_hosts(project_root))
+    if targets:
+        return targets
+
+    with contextlib.suppress(Exception):
+        detected = registry.detect_host(project_root)
+        if detected:
+            return [detected]
+    return []
+
+
+def _write_dynamic_runtime_files(project_root: str, runtime_state: Any) -> tuple[bool, str]:
+    """Write dynamic rule files for all detected runtime hosts.
+
+    Returns:
+        (success, status)
+        status ∈ {"success", "no_targets", "write_failed", "error"}.
+    """
+    try:
+        from lintgate.renderers import build_default_registry
+        from lintgate.renderers.dynamic import write_dynamic_file
+
+        registry = build_default_registry()
+        targets = _runtime_targets(registry, project_root)
+        if not targets:
+            return False, "no_targets"
+        files = registry.render_dynamic_for_targets(targets, runtime_state)
+        if not files:
+            return False, "no_targets"
+        wrote_any = False
+        for rel_path, content in files.items():
+            if write_dynamic_file(project_root, rel_path, content):
+                wrote_any = True
+        return (wrote_any, "success" if wrote_any else "write_failed")
+    except Exception:
+        return False, "error"
+
+
+def _log_runtime_state_write_metric(
+    project_root: str,
+    *,
+    path_kind: str,
+    trigger: str,
+    mode: str,
+    generation: int,
+    attempted: int,
+    success: int,
+    skipped_by_cadence: int,
+    save_ok: bool,
+    lock_acquired: bool,
+    lock_contention_count: int,
+    dynamic_status: str,
+) -> None:
+    """Log runtime state write telemetry for cadence tuning."""
+    with contextlib.suppress(Exception):
+        from lintgate.state import log_metric
+
+        log_metric(
+            {
+                "event": "runtime_state_write",
+                "project": project_root,
+                "path": path_kind,
+                "trigger": trigger,
+                "mode": mode,
+                "generation": generation,
+                "attempted": int(bool(attempted)),
+                "success": int(bool(success)),
+                "skipped_by_cadence": int(bool(skipped_by_cadence)),
+                "save_ok": bool(save_ok),
+                "lock_acquired": bool(lock_acquired),
+                "lock_contention_count": max(0, int(lock_contention_count)),
+                "dynamic_status": dynamic_status,
+            }
+        )
+
+
+def _refresh_runtime_state_with_session(
+    project_root: str,
+    session: Any,
+    *,
+    compass: Any | None = None,
+    habit_state: Any | None = None,
+    tracker: Any | None = None,
+    mesh_result: Any | None = None,
+    tool_name: str = "",
+    tool_input: Any = None,
+    trigger: str = "tool_call",
+    transition: str | None = None,
+) -> None:
+    """Refresh persisted RuntimeState and cadenced dynamic rule files."""
+    with contextlib.suppress(Exception):
+        from lintgate.runtime_state import (
+            build_runtime_state,
+            save_runtime_state_with_meta,
+        )
+        from lintgate.write_scheduler import (
+            WriteScheduler,
+            mark_dirty,
+            record_tool_call,
+            record_write,
+            should_write,
+        )
+
+        coherence_state = ""
+        blocking = 0
+        warnings = 0
+        if mesh_result is not None:
+            coherence_state = str(mesh_result.coherence.state or "")
+            blocking, warnings = _mesh_finding_counts(mesh_result)
+
+        runtime = build_runtime_state(
+            project_root,
+            session=session,
+            habit_state=habit_state,
+            tracker=tracker,
+            compass=compass,
+            last_coherence_state=coherence_state,
+            last_blocking=blocking,
+            last_warnings=warnings,
+        )
+        focus_intent = _derive_focus_intent(tool_name, tool_input)
+        if focus_intent:
+            runtime.focus_intent = focus_intent[:160]
+        save_result = save_runtime_state_with_meta(project_root, runtime)
+        save_ok = bool(save_result.written)
+
+        raw_scheduler = session.behavior_compass.get("write_scheduler", {})
+        if isinstance(raw_scheduler, dict):
+            scheduler = WriteScheduler.from_dict(raw_scheduler)
+        else:
+            scheduler = WriteScheduler()
+
+        mark_dirty(scheduler)
+        if trigger == "tool_call":
+            record_tool_call(scheduler)
+        effective_trigger = "mode_transition" if transition else trigger
+        should_emit = save_ok and should_write(scheduler, runtime.generation, effective_trigger)
+        wrote_dynamic = False
+        dynamic_status = "save_failed" if not save_ok else "skipped_by_cadence"
+        if should_emit:
+            wrote_dynamic, dynamic_status = _write_dynamic_runtime_files(project_root, runtime)
+            if wrote_dynamic:
+                record_write(scheduler, runtime.generation)
+
+        session.behavior_compass["write_scheduler"] = scheduler.to_dict()
+        _log_runtime_state_write_metric(
+            project_root,
+            path_kind="session",
+            trigger=effective_trigger,
+            mode=str(runtime.mode or "normal"),
+            generation=int(runtime.generation),
+            attempted=1,
+            success=int(wrote_dynamic),
+            skipped_by_cadence=int(not should_emit),
+            save_ok=save_ok,
+            lock_acquired=save_result.lock_acquired,
+            lock_contention_count=save_result.contention_count,
+            dynamic_status=dynamic_status,
+        )
+
+
+def _refresh_runtime_state_lightweight(
+    project_root: str,
+    *,
+    habit_state: Any | None = None,
+    tracker: Any | None = None,
+    mesh_result: Any | None = None,
+    tool_name: str = "",
+    tool_input: Any = None,
+    trigger: str = "tool_call",
+    transition: str | None = None,
+    scheduler_dict: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Refresh RuntimeState for non-session paths with scheduler persistence."""
+    with contextlib.suppress(Exception):
+        from lintgate.runtime_state import (
+            build_runtime_state,
+            save_runtime_state_with_meta,
+        )
+        from lintgate.write_scheduler import (
+            WriteScheduler,
+            mark_dirty,
+            record_tool_call,
+            record_write,
+            should_write,
+        )
+
+        runtime = build_runtime_state(
+            project_root,
+            habit_state=habit_state,
+            tracker=tracker,
+        )
+        if habit_state is not None:
+            runtime.mode = "habit" if habit_state.active else "normal"
+        if mesh_result is not None:
+            runtime.coherence_state = str(mesh_result.coherence.state or runtime.coherence_state)
+            runtime.blocking_issues, runtime.warning_issues = _mesh_finding_counts(mesh_result)
+
+        focus_intent = _derive_focus_intent(tool_name, tool_input)
+        if focus_intent:
+            runtime.focus_intent = focus_intent[:160]
+        save_result = save_runtime_state_with_meta(project_root, runtime)
+        save_ok = bool(save_result.written)
+
+        if isinstance(scheduler_dict, dict):
+            scheduler = WriteScheduler.from_dict(scheduler_dict)
+        else:
+            scheduler = WriteScheduler()
+
+        mark_dirty(scheduler)
+        if trigger == "tool_call":
+            record_tool_call(scheduler)
+        effective_trigger = "mode_transition" if transition else trigger
+        should_emit = save_ok and should_write(scheduler, runtime.generation, effective_trigger)
+        wrote_dynamic = False
+        dynamic_status = "save_failed" if not save_ok else "skipped_by_cadence"
+        if should_emit:
+            wrote_dynamic, dynamic_status = _write_dynamic_runtime_files(project_root, runtime)
+            if wrote_dynamic:
+                record_write(scheduler, runtime.generation)
+
+        _log_runtime_state_write_metric(
+            project_root,
+            path_kind="standalone",
+            trigger=effective_trigger,
+            mode=str(runtime.mode or "normal"),
+            generation=int(runtime.generation),
+            attempted=1,
+            success=int(wrote_dynamic),
+            skipped_by_cadence=int(not should_emit),
+            save_ok=save_ok,
+            lock_acquired=save_result.lock_acquired,
+            lock_contention_count=save_result.contention_count,
+            dynamic_status=dynamic_status,
+        )
+        return scheduler.to_dict()
+
+    return None
+
+
 def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool_output) -> None:
     """Record tool event in behavior compass (all events, including read-only).
 
@@ -342,6 +620,15 @@ def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool
             _update_habit_mode_path_a(
                 cp_config, session, compass, cwd, tool_name, tool_input, tool_output,
             )
+        else:
+            _refresh_runtime_state_with_session(
+                cwd,
+                session,
+                compass=compass,
+                tool_name=tool_name,
+                tool_input=tool_input,
+                trigger="tool_call",
+            )
 
         save_session(session)
 
@@ -364,7 +651,7 @@ def _update_habit_mode_path_a(
             update_mode,
             update_signals,
         )
-        from lintgate.state import load_last_run, log_metric
+        from lintgate.state import load_last_run, log_feature_usage, log_metric
         from lintgate.token_tracker import (
             do_api_calibration,
             estimate_tool_tokens,
@@ -378,6 +665,16 @@ def _update_habit_mode_path_a(
 
         habit_state = load_habit_state(session.behavior_compass)
         tracker = load_tracker_state(session.behavior_compass)
+
+        # Feature-usage telemetry: one emission per session.
+        if not session.behavior_compass.get("_feature_habit_mode_logged", False):
+            with contextlib.suppress(Exception):
+                log_feature_usage("habit_mode", cwd, {"source": "hook_posttooluse"})
+            session.behavior_compass["_feature_habit_mode_logged"] = True
+        if not session.behavior_compass.get("_feature_token_tracking_logged", False):
+            with contextlib.suppress(Exception):
+                log_feature_usage("token_tracking", cwd, {"source": "hook_posttooluse"})
+            session.behavior_compass["_feature_token_tracking_logged"] = True
 
         # Update signals from compass action_history (rich data)
         update_signals(habit_state, compass.action_history)
@@ -441,6 +738,7 @@ def _update_habit_mode_path_a(
                 })
 
         # Auto-compaction trigger in active habit mode.
+        did_compact = False
         compact_threshold = float(overrides.get(
             "compact_threshold",
             cp_config.habit_mode_compact_threshold,
@@ -463,6 +761,7 @@ def _update_habit_mode_path_a(
                 calls_compacted = tracker.tool_calls_since_compact
                 sections_included = sum(1 for v in snapshot.values() if v is not None)
                 reset_post_compaction(tracker)
+                did_compact = True
                 log_metric({
                     "event": "habit_compact",
                     "project": cwd,
@@ -476,6 +775,17 @@ def _update_habit_mode_path_a(
 
         save_habit_state(session.behavior_compass, habit_state)
         save_tracker_state(session.behavior_compass, tracker)
+        _refresh_runtime_state_with_session(
+            cwd,
+            session,
+            compass=compass,
+            habit_state=habit_state,
+            tracker=tracker,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            trigger="compaction" if did_compact else "tool_call",
+            transition=transition,
+        )
 
 
 def _record_habit_event_lightweight(
@@ -528,6 +838,9 @@ def _record_habit_event_lightweight(
         standalone_overrides = extras.get("config_overrides", {})
         if not isinstance(standalone_overrides, dict):
             standalone_overrides = {}
+        standalone_scheduler = extras.get("write_scheduler", {})
+        if not isinstance(standalone_scheduler, dict):
+            standalone_scheduler = {}
         last_snapshot = extras.get("habit_last_snapshot")
         if not isinstance(last_snapshot, dict):
             last_snapshot = None
@@ -612,6 +925,7 @@ def _record_habit_event_lightweight(
                     "event_counter": event_counter,
                 })
 
+        did_compact = False
         compact_threshold = float(standalone_overrides.get(
             "compact_threshold",
             cp_config.habit_mode_compact_threshold,
@@ -631,6 +945,7 @@ def _record_habit_event_lightweight(
                 sections_included = sum(1 for v in snapshot.values() if v is not None)
                 last_snapshot = snapshot
                 reset_post_compaction(tracker)
+                did_compact = True
                 log_metric({
                     "event": "habit_compact",
                     "project": cwd,
@@ -642,6 +957,19 @@ def _record_habit_event_lightweight(
                     "trigger": "auto_lightweight",
                 })
 
+        updated_scheduler = _refresh_runtime_state_lightweight(
+            cwd,
+            habit_state=habit_state,
+            tracker=tracker,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            trigger="compaction" if did_compact else "tool_call",
+            transition=transition,
+            scheduler_dict=standalone_scheduler,
+        )
+        if isinstance(updated_scheduler, dict):
+            standalone_scheduler = updated_scheduler
+
         save_habit_state_standalone(
             cwd,
             habit_state,
@@ -649,6 +977,7 @@ def _record_habit_event_lightweight(
             tracker_dict=tracker.to_dict(),
             config_overrides=standalone_overrides,
             last_snapshot=last_snapshot,
+            scheduler_dict=standalone_scheduler,
         )
 
 
@@ -1036,6 +1365,69 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                 existing[key] = existing.get(key, 0) + value
             session.behavior_compass["telemetry_counters"] = existing
             save_session(session)
+
+    # Runtime state bus refresh (canonical projection for hooks/rules/MCP).
+    if session is not None:
+        _refresh_runtime_state_with_session(
+            cwd,
+            session,
+            mesh_result=mesh_result,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            trigger="lint_complete",
+        )
+        with contextlib.suppress(Exception):
+            from lintgate.controlplane.session_memory import save_session
+
+            save_session(session)
+    else:
+        scheduler_dict: dict[str, Any] | None = None
+        if cp_config.habit_mode_enabled and not cp_config.session_memory:
+            with contextlib.suppress(Exception):
+                from lintgate.habit_mode import (
+                    load_habit_state_standalone,
+                    load_standalone_extras,
+                    save_habit_state_standalone,
+                )
+
+                extras = load_standalone_extras(cwd)
+                raw_scheduler = extras.get("write_scheduler", {})
+                if isinstance(raw_scheduler, dict):
+                    scheduler_dict = raw_scheduler
+                updated = _refresh_runtime_state_lightweight(
+                    cwd,
+                    mesh_result=mesh_result,
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    trigger="lint_complete",
+                    scheduler_dict=scheduler_dict,
+                )
+                if isinstance(updated, dict):
+                    scheduler_dict = updated
+                    habit_state, action_ring = load_habit_state_standalone(cwd)
+                    save_habit_state_standalone(
+                        cwd,
+                        habit_state,
+                        action_ring,
+                        tracker_dict=extras.get("token_tracker")
+                        if isinstance(extras.get("token_tracker"), dict)
+                        else None,
+                        config_overrides=extras.get("config_overrides")
+                        if isinstance(extras.get("config_overrides"), dict)
+                        else None,
+                        last_snapshot=extras.get("habit_last_snapshot")
+                        if isinstance(extras.get("habit_last_snapshot"), dict)
+                        else None,
+                        scheduler_dict=scheduler_dict,
+                    )
+        else:
+            _refresh_runtime_state_lightweight(
+                cwd,
+                mesh_result=mesh_result,
+                tool_name=tool_name,
+                tool_input=tool_input,
+                trigger="lint_complete",
+            )
 
     # Strip internal telemetry from output (not for the agent)
     if report and "_telemetry" in report:

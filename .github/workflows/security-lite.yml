@@ -43,7 +43,7 @@ jobs:
         run: |
           bandit -q -r . \
             -x tests,.venv,venv,env,__pycache__,.git,node_modules,docs \
-            -s B101,B108,B404,B603,B607
+            -s B101,B105,B106,B108,B110,B112,B310,B311,B404,B603,B607
 
       - name: Run pip-audit (requirements if present)
         shell: bash

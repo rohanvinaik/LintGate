@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 
@@ -47,6 +48,11 @@ def register(mcp, helpers):
 
         save_fn(state, tracker)
 
+        with contextlib.suppress(Exception):
+            from lintgate.state import log_feature_usage
+
+            log_feature_usage("habit_mode", project_root, {"tool": "declare_mode"})
+
         # Log transition metric
         if transition:
             with contextlib.suppress(Exception):
@@ -81,6 +87,12 @@ def register(mcp, helpers):
         state, tracker, event_counter, _save_fn = _load_state(project_root)
 
         from lintgate.token_tracker import get_usage_summary
+
+        with contextlib.suppress(Exception):
+            from lintgate.state import log_feature_usage
+
+            log_feature_usage("habit_mode", project_root, {"tool": "habit_status"})
+            log_feature_usage("token_tracking", project_root, {"tool": "habit_status"})
 
         return json.dumps({
             "active": state.active,
@@ -149,11 +161,19 @@ def register(mcp, helpers):
         )
 
         # Update state
+        estimated_before = tracker.estimated_tokens_used
+        calls_compacted = tracker.tool_calls_since_compact
         state.compaction_count += 1
         state.last_compaction_event = event_counter
         reset_post_compaction(tracker)
 
         save_fn(state, tracker)
+
+        with contextlib.suppress(Exception):
+            from lintgate.state import log_feature_usage
+
+            log_feature_usage("habit_mode", project_root, {"tool": "habit_compact"})
+            log_feature_usage("token_tracking", project_root, {"tool": "habit_compact"})
 
         # Log metric
         with contextlib.suppress(Exception):
@@ -162,8 +182,8 @@ def register(mcp, helpers):
                 "project": project_root,
                 "compaction_number": state.compaction_count,
                 "habit_score": state.habit_score,
-                "estimated_tokens_before": tracker.estimated_tokens_used,
-                "tool_calls_compacted": tracker.tool_call_count,
+                "estimated_tokens_before": estimated_before,
+                "tool_calls_compacted": calls_compacted,
             })
 
         return json.dumps(snapshot, indent=2)
@@ -252,6 +272,11 @@ def register(mcp, helpers):
                 )
             except Exception:
                 pass
+
+        with contextlib.suppress(Exception):
+            from lintgate.state import log_feature_usage
+
+            log_feature_usage("habit_mode", project_root, {"tool": "habit_configure"})
 
         return json.dumps({
             "status": "ok",

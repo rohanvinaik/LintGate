@@ -900,6 +900,7 @@ def load_standalone_extras(project_root: str) -> dict[str, Any]:
     - token_tracker: serialized TokenTrackerState
     - config_overrides: standalone habit_configure overrides
     - habit_last_snapshot: latest auto-compaction snapshot
+    - write_scheduler: serialized WriteScheduler state
     """
     state_path = _standalone_path(project_root)
     if not state_path.exists():
@@ -911,7 +912,12 @@ def load_standalone_extras(project_root: str) -> dict[str, Any]:
         if not isinstance(data, dict):
             return {}
         extras: dict[str, Any] = {}
-        for key in ("token_tracker", "config_overrides", "habit_last_snapshot"):
+        for key in (
+            "token_tracker",
+            "config_overrides",
+            "habit_last_snapshot",
+            "write_scheduler",
+        ):
             if key in data:
                 extras[key] = data[key]
         return extras
@@ -927,6 +933,7 @@ def save_habit_state_standalone(
     tracker_dict: dict[str, Any] | None = None,
     config_overrides: dict[str, Any] | None = None,
     last_snapshot: dict[str, Any] | None = None,
+    scheduler_dict: dict[str, Any] | None = None,
 ) -> None:
     """Save standalone file-backed habit state.
 
@@ -937,6 +944,7 @@ def save_habit_state_standalone(
         tracker_dict: Optional serialized TokenTrackerState.
         config_overrides: Optional standalone config overrides.
         last_snapshot: Optional latest compaction snapshot.
+        scheduler_dict: Optional serialized WriteScheduler state.
     """
     try:
         _HABIT_STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -967,6 +975,10 @@ def save_habit_state_standalone(
             data["habit_last_snapshot"] = last_snapshot
         elif isinstance(existing.get("habit_last_snapshot"), dict):
             data["habit_last_snapshot"] = existing["habit_last_snapshot"]
+        if scheduler_dict is not None and isinstance(scheduler_dict, dict):
+            data["write_scheduler"] = scheduler_dict
+        elif isinstance(existing.get("write_scheduler"), dict):
+            data["write_scheduler"] = existing["write_scheduler"]
 
         with open(state_path, "w") as f:
             json.dump(data, f, separators=(",", ":"))
