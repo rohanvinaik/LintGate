@@ -117,23 +117,25 @@ def collect_changed_python_files(
 
     candidates: list[str] = []
 
+    # When base/head are explicitly provided, a successful diff is authoritative.
+    # An empty result means "no Python files changed" — not "scan everything."
     if base and head:
         ranged = _run_git_list(str(root), ["diff", "--name-only", base, head, "--", "*.py"])
         if ranged is not None:
-            candidates.extend(ranged)
+            return _normalize(ranged)
     elif base:
         ranged = _run_git_list(str(root), ["diff", "--name-only", base, "--", "*.py"])
         if ranged is not None:
-            candidates.extend(ranged)
+            return _normalize(ranged)
 
-    if not candidates:
-        for args in (
-            ["diff", "--name-only", "HEAD", "--", "*.py"],
-            ["diff", "--name-only", "--cached", "--", "*.py"],
-        ):
-            found = _run_git_list(str(root), args)
-            if found:
-                candidates.extend(found)
+    # No explicit base/head or git failed — try working tree + staged changes
+    for args in (
+        ["diff", "--name-only", "HEAD", "--", "*.py"],
+        ["diff", "--name-only", "--cached", "--", "*.py"],
+    ):
+        found = _run_git_list(str(root), args)
+        if found:
+            candidates.extend(found)
 
     if not candidates:
         tracked = _run_git_list(str(root), ["ls-files", "*.py"]) or []
