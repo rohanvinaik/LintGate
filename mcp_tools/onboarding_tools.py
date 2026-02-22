@@ -437,6 +437,7 @@ _STANDARD_GITIGNORE_PATTERNS: list[str] = [
 _README_NAMES = ("README.md", "readme.md", "Readme.md", "README.MD")
 
 _REQUIRED_BADGE_FINGERPRINTS = (
+    "actions/workflows/tests.yml/badge.svg",
     "actions/workflows/security-lite.yml/badge.svg",
     "metric=alert_status",
     "metric=coverage",
@@ -796,11 +797,89 @@ def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
         "        with:",
         f"          python-version: \"{python_version}\"",
         "",
+        "      - name: Install test dependencies",
+        "        if: steps.check_token.outputs.has_token == 'true'",
+        "        run: |",
+        "          python -m pip install --upgrade pip",
+        "          python -m pip install pytest pytest-cov",
+        "          # Try editable install for project deps; non-fatal if it fails",
+        '          python -m pip install -e ".[dev]" 2>/dev/null \\',
+        '            || python -m pip install -e "." 2>/dev/null \\',
+        "            || true",
+        "",
+        "      - name: Run tests with coverage",
+        "        if: steps.check_token.outputs.has_token == 'true'",
+        "        run: |",
+        "          # Detect test directory",
+        "          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi",
+        '          # Run pytest; exit 0 on "no tests collected" (code 5) so scan still runs',
+        '          python -m pytest "$TEST_DIR" --cov --cov-report=xml --tb=short -q || {',
+        "            rc=$?",
+        "            if [ $rc -eq 5 ]; then",
+        '              echo "::notice::No tests collected — coverage report will be empty."',
+        "              exit 0",
+        "            fi",
+        "            exit $rc",
+        "          }",
+        "",
         "      - name: SonarQube Cloud Scan",
         "        if: steps.check_token.outputs.has_token == 'true'",
         "        uses: SonarSource/sonarqube-scan-action@v7",
         "        env:",
         "          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _generate_tests_workflow(layout: dict[str, Any]) -> str:
+    """Generate a GitHub Actions workflow for running pytest.
+
+    Produces a dynamic badge via GitHub Actions status — always current,
+    no stale static numbers.
+    """
+    raw_version = str(layout.get("python_version", "3.11")).strip()
+    python_version = raw_version if re.fullmatch(r"\d+(?:\.\d+)?", raw_version) else "3.11"
+
+    lines = [
+        "name: Tests",
+        "",
+        "on:",
+        "  push:",
+        "  pull_request:",
+        "    types: [opened, synchronize, reopened]",
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: read",
+        "",
+        "concurrency:",
+        "  group: tests-${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+        "jobs:",
+        "  tests:",
+        "    name: Test Suite",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - uses: actions/checkout@v4",
+        "",
+        "      - name: Set up Python",
+        "        uses: actions/setup-python@v5",
+        "        with:",
+        f"          python-version: \"{python_version}\"",
+        "",
+        "      - name: Install dependencies",
+        "        run: |",
+        "          python -m pip install --upgrade pip",
+        '          python -m pip install -e ".[dev]" 2>/dev/null \\',
+        '            || python -m pip install -e "." 2>/dev/null \\',
+        "            || python -m pip install pytest",
+        "          python -m pip install pytest",
+        "",
+        "      - name: Run tests",
+        "        run: |",
+        "          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi",
+        '          python -m pytest "$TEST_DIR" --tb=short -q',
     ]
     return "\n".join(lines) + "\n"
 
@@ -1010,6 +1089,8 @@ def _generate_badge_markdown(github: dict[str, Any], layout: dict[str, Any]) -> 
     project_key = re.sub(r"[^a-zA-Z0-9_.\-]", "_", f"{owner}_{repo}")
 
     badges: list[str] = [
+        f"[![Tests](https://github.com/{owner}/{repo}/actions/workflows/tests.yml/badge.svg)]"
+        f"(https://github.com/{owner}/{repo}/actions/workflows/tests.yml)",
         f"[![Security](https://github.com/{owner}/{repo}/actions/workflows/security-lite.yml/badge.svg)]"
         f"(https://github.com/{owner}/{repo}/actions/workflows/security-lite.yml)",
         f"[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?"
@@ -1611,6 +1692,7 @@ def register(mcp, helpers):
             and os.path.exists(os.path.join(project_root, "sonar-project.properties"))
             and os.path.exists(os.path.join(project_root, ".qlty", "qlty.toml"))
             and os.path.exists(os.path.join(project_root, ".github", "workflows", "sonarcloud.yml"))
+            and os.path.exists(os.path.join(project_root, ".github", "workflows", "tests.yml"))
             and os.path.exists(os.path.join(project_root, ".github", "workflows", "qlty.yml"))
             and os.path.exists(os.path.join(project_root, ".github", "workflows", "security-lite.yml"))
             and _readme_has_quality_badges(project_root)
@@ -1632,6 +1714,7 @@ def register(mcp, helpers):
                     and os.path.exists(os.path.join(project_root, "sonar-project.properties"))
                     and os.path.exists(os.path.join(project_root, ".qlty", "qlty.toml"))
                     and os.path.exists(os.path.join(project_root, ".github", "workflows", "sonarcloud.yml"))
+                    and os.path.exists(os.path.join(project_root, ".github", "workflows", "tests.yml"))
                     and os.path.exists(os.path.join(project_root, ".github", "workflows", "qlty.yml"))
                     and os.path.exists(os.path.join(project_root, ".github", "workflows", "security-lite.yml"))
                     and _readme_has_quality_badges(project_root)
@@ -1835,6 +1918,23 @@ def register(mcp, helpers):
             workflow_result["status"] = "preview"
             workflow_result["content"] = workflow_content
 
+        # --- .github/workflows/tests.yml ---
+        tests_workflow_path = os.path.join(project_root, ".github", "workflows", "tests.yml")
+        tests_workflow_exists = os.path.exists(tests_workflow_path)
+        tests_workflow_content = _generate_tests_workflow(layout)
+        tests_workflow_result: dict[str, Any] = {"path": tests_workflow_path}
+
+        if tests_workflow_exists:
+            tests_workflow_result["status"] = "already_exists"
+        elif write:
+            os.makedirs(os.path.dirname(tests_workflow_path), exist_ok=True)
+            with open(tests_workflow_path, "w") as f:
+                f.write(tests_workflow_content)
+            tests_workflow_result["status"] = "written"
+        else:
+            tests_workflow_result["status"] = "preview"
+            tests_workflow_result["content"] = tests_workflow_content
+
         # --- .github/workflows/qlty.yml ---
         qlty_workflow_path = os.path.join(project_root, ".github", "workflows", "qlty.yml")
         qlty_workflow_exists = os.path.exists(qlty_workflow_path)
@@ -1990,6 +2090,8 @@ def register(mcp, helpers):
             files_to_stage.append("sonar-project.properties")
         if workflow_result.get("status") == "written":
             files_to_stage.append(".github/workflows/sonarcloud.yml")
+        if tests_workflow_result.get("status") == "written":
+            files_to_stage.append(".github/workflows/tests.yml")
         if qlty_workflow_result.get("status") == "written":
             files_to_stage.append(".github/workflows/qlty.yml")
         if security_workflow_result.get("status") == "written":
@@ -2052,6 +2154,7 @@ def register(mcp, helpers):
             "codeclimate": cc_result,
             "sonar": sonar_result,
             "workflow": workflow_result,
+            "tests_workflow": tests_workflow_result,
             "qlty_workflow": qlty_workflow_result,
             "security_workflow": security_workflow_result,
             "qlty": qlty_result,

@@ -1,5 +1,6 @@
 # LintGate
 
+[![Tests](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml)
 [![Security](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)

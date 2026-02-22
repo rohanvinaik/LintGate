@@ -47,6 +47,31 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install test dependencies
+        if: steps.check_token.outputs.has_token == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-cov
+          # Try editable install for project deps; non-fatal if it fails
+          python -m pip install -e ".[dev]" 2>/dev/null \
+            || python -m pip install -e "." 2>/dev/null \
+            || true
+
+      - name: Run tests with coverage
+        if: steps.check_token.outputs.has_token == 'true'
+        run: |
+          # Detect test directory
+          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi
+          # Run pytest; exit 0 on "no tests collected" (code 5) so scan still runs
+          python -m pytest "$TEST_DIR" --cov --cov-report=xml --tb=short -q || {
+            rc=$?
+            if [ $rc -eq 5 ]; then
+              echo "::notice::No tests collected — coverage report will be empty."
+              exit 0
+            fi
+            exit $rc
+          }
+
       - name: SonarQube Cloud Scan
         if: steps.check_token.outputs.has_token == 'true'
         uses: SonarSource/sonarqube-scan-action@v7

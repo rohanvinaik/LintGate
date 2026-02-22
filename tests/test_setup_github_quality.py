@@ -24,6 +24,7 @@ from mcp_tools.onboarding_tools import (
     _generate_security_workflow,
     _generate_sonar_properties,
     _generate_sonar_workflow,
+    _generate_tests_workflow,
     _inject_badges_into_readme,
     _readme_has_quality_badges,
 )
@@ -277,8 +278,68 @@ class TestGenerateSonarWorkflow:
         assert "sonarcloud_missing_token" not in content
         assert content.count("runs-on:") == 1
 
+    def test_includes_coverage_steps(self) -> None:
+        """Sonar workflow must install pytest-cov and run tests with --cov."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+        assert "pytest pytest-cov" in content
+        assert "--cov" in content
+        assert "--cov-report=xml" in content
+        assert "coverage.xml" not in content or "cov-report=xml" in content
+
+    def test_coverage_exit_code_5_handling(self) -> None:
+        """Workflow must handle exit code 5 (no tests collected) gracefully."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+        assert "rc -eq 5" in content or "rc=$?" in content
+        assert "No tests collected" in content
+
+    def test_coverage_repo_agnostic(self) -> None:
+        """Coverage step uses --cov without explicit targets for portability."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+        # --cov should appear without =<package> target
+        lines = content.splitlines()
+        cov_lines = [l for l in lines if "--cov" in l and "--cov-report" not in l]
+        for line in cov_lines:
+            assert "--cov=" not in line, f"Explicit --cov=<target> found: {line!r}"
+
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
         content = _generate_sonar_workflow({"python_version": ">=3.11"})
+        assert 'python-version: "3.11"' in content
+
+
+class TestGenerateTestsWorkflow:
+    """Tests for _generate_tests_workflow."""
+
+    def test_includes_push_pr_and_dispatch(self) -> None:
+        content = _generate_tests_workflow({"python_version": "3.12"})
+        assert "name: Tests" in content
+        assert "push:" in content
+        assert "pull_request:" in content
+        assert "workflow_dispatch:" in content
+        assert 'python-version: "3.12"' in content
+
+    def test_runs_pytest(self) -> None:
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert "python -m pytest" in content
+
+    def test_resilient_dependency_install(self) -> None:
+        """Install step tries editable install with fallback to bare pytest."""
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert '.[dev]' in content
+        assert "|| python -m pip install pytest" in content
+
+    def test_detects_test_directory(self) -> None:
+        """Workflow detects tests/ or test/ directory dynamically."""
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert "TEST_DIR=tests" in content
+        assert "TEST_DIR=test" in content
+
+    def test_job_name_is_test_suite(self) -> None:
+        """Job name must be 'Test Suite' for branch protection matching."""
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert "name: Test Suite" in content
+
+    def test_fallbacks_python_version(self) -> None:
+        content = _generate_tests_workflow({"python_version": ">=3.11"})
         assert 'python-version: "3.11"' in content
 
 
@@ -410,12 +471,14 @@ class TestGenerateBadgeMarkdown:
     """Tests for _generate_badge_markdown."""
 
     def test_generates_workflow_and_sonar_badges(self) -> None:
-        """Security workflow badge and SonarCloud badges generated."""
+        """Tests, Security workflow badges and SonarCloud badges generated."""
         github = {"owner": "alice", "repo": "myrepo"}
         layout = {"license": None}
         badges = _generate_badge_markdown(github, layout)
 
-        # Workflow status badge instead of Code Climate PLACEHOLDER
+        # Tests badge first
+        assert "actions/workflows/tests.yml/badge.svg" in badges
+        # Security workflow badge
         assert "actions/workflows/security-lite.yml/badge.svg" in badges
         assert "PLACEHOLDER" not in badges
         assert "codeclimate.com" not in badges
@@ -424,6 +487,15 @@ class TestGenerateBadgeMarkdown:
         assert "alice_myrepo" in badges
         assert "metric=coverage" in badges
         assert "metric=security_rating" in badges
+
+    def test_tests_badge_comes_first(self) -> None:
+        """Tests badge must appear before Security badge."""
+        github = {"owner": "alice", "repo": "myrepo"}
+        layout = {"license": None}
+        badges = _generate_badge_markdown(github, layout)
+        tests_pos = badges.index("tests.yml")
+        security_pos = badges.index("security-lite.yml")
+        assert tests_pos < security_pos
 
     def test_includes_license_badge(self) -> None:
         """License badge generated when license detected."""
@@ -491,8 +563,23 @@ class TestInjectBadgesIntoReadme:
         assert "metric=security_rating" in content
         assert content.count("lintgate:quality-badges:start") == 1
 
-    def test_readme_has_quality_badges_requires_security_metric(self, tmp_path: Path) -> None:
-        """README should fail quality badge check if security_rating metric is missing."""
+    def test_readme_has_quality_badges_requires_all_fingerprints(self, tmp_path: Path) -> None:
+        """README should fail quality badge check if any required fingerprint is missing."""
+        readme = tmp_path / "README.md"
+        # Missing tests.yml badge and security_rating metric
+        readme.write_text(
+            "# My Project\n\n"
+            "[![Security](https://github.com/a/b/actions/workflows/security-lite.yml/badge.svg)]"
+            "(https://github.com/a/b/actions/workflows/security-lite.yml)\n"
+            "[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?"
+            "project=a_b&metric=alert_status)](link)\n"
+            "[![Coverage](https://sonarcloud.io/api/project_badges/measure?"
+            "project=a_b&metric=coverage)](link)\n"
+        )
+        assert _readme_has_quality_badges(str(tmp_path)) is False
+
+    def test_readme_has_quality_badges_requires_tests_badge(self, tmp_path: Path) -> None:
+        """README should fail quality badge check if tests.yml badge is missing."""
         readme = tmp_path / "README.md"
         readme.write_text(
             "# My Project\n\n"
@@ -502,6 +589,8 @@ class TestInjectBadgesIntoReadme:
             "project=a_b&metric=alert_status)](link)\n"
             "[![Coverage](https://sonarcloud.io/api/project_badges/measure?"
             "project=a_b&metric=coverage)](link)\n"
+            "[![Security Rating](https://sonarcloud.io/api/project_badges/measure?"
+            "project=a_b&metric=security_rating)](link)\n"
         )
         assert _readme_has_quality_badges(str(tmp_path)) is False
 
@@ -555,17 +644,20 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "preview"
         assert result["sonar"]["status"] == "preview"
         assert result["workflow"]["status"] == "preview"
+        assert result["tests_workflow"]["status"] == "preview"
         assert result["qlty_workflow"]["status"] == "preview"
         assert result["security_workflow"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
         assert "content" in result["workflow"]
+        assert "content" in result["tests_workflow"]
         assert "content" in result["qlty_workflow"]
         assert "content" in result["security_workflow"]
         # Files should NOT exist
         assert not (tmp_path / ".codeclimate.yml").exists()
         assert not (tmp_path / "sonar-project.properties").exists()
         assert not (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
+        assert not (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
 
@@ -587,11 +679,13 @@ class TestSetupGithubQualityTool:
         assert (tmp_path / ".codeclimate.yml").exists()
         assert (tmp_path / "sonar-project.properties").exists()
         assert (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
+        assert (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
         assert result["workflow"]["status"] == "written"
+        assert result["tests_workflow"]["status"] == "written"
         assert result["qlty_workflow"]["status"] == "written"
         assert result["security_workflow"]["status"] == "written"
         # README should have badges
@@ -606,6 +700,7 @@ class TestSetupGithubQualityTool:
         workflow_dir = tmp_path / ".github" / "workflows"
         workflow_dir.mkdir(parents=True)
         (workflow_dir / "sonarcloud.yml").write_text("name: existing\n")
+        (workflow_dir / "tests.yml").write_text("name: existing tests\n")
         (workflow_dir / "qlty.yml").write_text("name: existing qlty\n")
         (workflow_dir / "security-lite.yml").write_text("name: existing security\n")
         (tmp_path / "README.md").write_text("# Test\n")
@@ -621,6 +716,7 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
+        assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
         assert result["security_workflow"]["status"] == "already_exists"
         # Original content preserved
@@ -677,6 +773,7 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
+        assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
         assert result["security_workflow"]["status"] == "already_exists"
 
