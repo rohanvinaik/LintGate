@@ -327,79 +327,127 @@ def build_target_set(
     Union of changed functions (from git diff + AST) and required_symbols.
     """
     targets: list[SymbolSpan] = []
-    unresolved_required: list[str] = []
     seen_keys: set[str] = set()
 
     mode = settings.get("mode", "changed")
     diff_base = settings.get("diff_base", "HEAD")
 
-    # Changed functions: intersect diff hunks with AST spans
     if mode in ("changed", "all"):
-        for filepath in changed_files:
-            if not filepath.endswith(".py"):
-                continue
-            if not os.path.isfile(filepath):
-                continue
+        _collect_changed_symbols(
+            changed_files, project_root, diff_base, targets, seen_keys
+        )
 
-            spans = extract_symbol_spans(filepath, project_root)
-            if not spans:
-                continue
+    unresolved = _resolve_required_symbols(
+        settings.get("required_symbols", []),
+        project_root, targets, seen_keys,
+    )
 
-            changed_ranges = get_changed_line_ranges(
-                filepath, project_root, diff_base=diff_base
-            )
+    return targets, unresolved
 
-            if changed_ranges is None or len(changed_ranges) == 0:
-                # Git failure or new/untracked file: target ALL symbols
-                for span in spans:
-                    if span.symbol_key not in seen_keys:
-                        targets.append(span)
-                        seen_keys.add(span.symbol_key)
-            else:
-                # Intersect: only symbols whose span overlaps changed lines
-                for span in spans:
-                    span_range = range(span.start_line, span.end_line + 1)
-                    for cr in changed_ranges:
-                        if _ranges_overlap(span_range, cr):
-                            if span.symbol_key not in seen_keys:
-                                targets.append(span)
-                                seen_keys.add(span.symbol_key)
-                            break
 
-    # Required symbols: always included
-    required_symbols = settings.get("required_symbols", [])
-    if isinstance(required_symbols, list):
-        for req in required_symbols:
-            if not isinstance(req, str) or "::" not in req:
-                unresolved_required.append(str(req))
-                continue
+def _collect_changed_symbols(
+    changed_files: list[str],
+    project_root: str,
+    diff_base: str,
+    targets: list[SymbolSpan],
+    seen_keys: set[str],
+) -> None:
+    """Intersect git diff hunks with AST spans to find changed symbols."""
+    for filepath in changed_files:
+        if not filepath.endswith(".py") or not os.path.isfile(filepath):
+            continue
 
-            rel_path, symbol_name = req.split("::", 1)
-            abs_path = os.path.join(project_root, rel_path)
+        spans = extract_symbol_spans(filepath, project_root)
+        if not spans:
+            continue
 
-            if not os.path.isfile(abs_path):
-                unresolved_required.append(req)
-                continue
+        changed_ranges = get_changed_line_ranges(
+            filepath, project_root, diff_base=diff_base
+        )
 
-            # Check if already targeted
-            canonical = _canonicalize_symbol_key(abs_path, symbol_name, project_root)
-            if canonical in seen_keys:
-                continue
+        if not changed_ranges:
+            # Git failure or new/untracked file: target ALL symbols
+            _add_spans(spans, targets, seen_keys)
+        else:
+            _add_overlapping_spans(spans, changed_ranges, targets, seen_keys)
 
-            # Find the symbol in AST
-            spans = extract_symbol_spans(abs_path, project_root)
-            found = False
-            for span in spans:
-                if span.symbol_key == canonical:
-                    targets.append(span)
-                    seen_keys.add(canonical)
-                    found = True
-                    break
 
-            if not found:
-                unresolved_required.append(req)
+def _add_spans(
+    spans: list[SymbolSpan],
+    targets: list[SymbolSpan],
+    seen_keys: set[str],
+) -> None:
+    """Add all spans to targets, deduplicating by symbol_key."""
+    for span in spans:
+        if span.symbol_key not in seen_keys:
+            targets.append(span)
+            seen_keys.add(span.symbol_key)
 
-    return targets, unresolved_required
+
+def _add_overlapping_spans(
+    spans: list[SymbolSpan],
+    changed_ranges: list[range],
+    targets: list[SymbolSpan],
+    seen_keys: set[str],
+) -> None:
+    """Add spans that overlap with any changed range."""
+    for span in spans:
+        if span.symbol_key in seen_keys:
+            continue
+        span_range = range(span.start_line, span.end_line + 1)
+        if any(_ranges_overlap(span_range, cr) for cr in changed_ranges):
+            targets.append(span)
+            seen_keys.add(span.symbol_key)
+
+
+def _resolve_required_symbols(
+    required_symbols: Any,
+    project_root: str,
+    targets: list[SymbolSpan],
+    seen_keys: set[str],
+) -> list[str]:
+    """Resolve required_symbols config entries to AST spans.
+
+    Returns list of symbols that could not be resolved (blocking errors).
+    """
+    if not isinstance(required_symbols, list):
+        return []
+
+    unresolved: list[str] = []
+    for req in required_symbols:
+        if not isinstance(req, str) or "::" not in req:
+            unresolved.append(str(req))
+            continue
+
+        rel_path, symbol_name = req.split("::", 1)
+        abs_path = os.path.join(project_root, rel_path)
+
+        if not os.path.isfile(abs_path):
+            unresolved.append(req)
+            continue
+
+        canonical = _canonicalize_symbol_key(abs_path, symbol_name, project_root)
+        if canonical in seen_keys:
+            continue
+
+        span = _find_span_by_key(abs_path, project_root, canonical)
+        if span:
+            targets.append(span)
+            seen_keys.add(canonical)
+        else:
+            unresolved.append(req)
+
+    return unresolved
+
+
+def _find_span_by_key(
+    filepath: str, project_root: str, canonical_key: str
+) -> SymbolSpan | None:
+    """Find a specific symbol span by its canonical key."""
+    for span in extract_symbol_spans(filepath, project_root):
+        if span.symbol_key == canonical_key:
+            return span
+    return None
 
 
 def _ranges_overlap(a: range, b: range) -> bool:

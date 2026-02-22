@@ -93,255 +93,250 @@ class TestChannel:
         # Step 1: Find impacted test files
         impacted_tests = find_impacted_tests(changed_files, project_root)
 
-        # Step 2: Check for missing tests
-        for src_file in changed_files:
-            if _is_source_file(src_file, project_root) and not _has_test(src_file, project_root):
-                findings.append(
-                    LintIssue(
-                        linter="test_channel",
-                        kind="missing_test",
-                        message=f"No test file found for {os.path.basename(src_file)}",
-                        file=src_file,
-                        severity="informational",
-                    )
-                )
-                # Propose skeleton repair
-                try:
-                    from lintgate.controlplane.test_archetype_selector import select_archetypes
+        # Step 2: Check for missing tests + propose skeletons
+        _check_missing_tests(changed_files, project_root, findings, repairs)
 
-                    archetypes = select_archetypes(src_file, project_root)
-                    if archetypes:
-                        repairs.append(
-                            RepairAction(
-                                channel="tests",
-                                kind="create_test_skeleton",
-                                summary=(
-                                    f"Create test skeleton for {os.path.basename(src_file)} "
-                                    f"({archetypes[0].name})"
-                                ),
-                                payload={
-                                    "source_file": src_file,
-                                    "archetypes": [a.name for a in archetypes],
-                                },
-                                safe=True,
-                            )
-                        )
-                except Exception:
-                    pass  # Archetype selection failure is non-fatal
-
-        # Step 3: Determine coverage measurement mode
-        # Coverage collection is MCP/CI mode ONLY — never on the hook path
+        # Step 3: Parse coverage settings
         channel_settings = config.channels.get("tests", ChannelConfig()).settings
-        raw_coverage_threshold = channel_settings.get("coverage_threshold")
-        coverage_threshold: float | None = None
-        if raw_coverage_threshold is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                coverage_threshold = float(raw_coverage_threshold)
-        raw_source_packages = channel_settings.get("source_packages")
-        source_packages: list[str] | None = None
-        if isinstance(raw_source_packages, list):
-            source_packages = [str(p).strip() for p in raw_source_packages if str(p).strip()]
-        elif isinstance(raw_source_packages, str) and raw_source_packages.strip():
-            source_packages = [raw_source_packages.strip()]
-        symbol_cov_settings = channel_settings.get("symbol_coverage", {})
-        symbol_coverage_enabled = (
-            isinstance(symbol_cov_settings, dict)
-            and symbol_cov_settings.get("enabled", False)
-        )
-        measure_coverage = event.surface in ("mcp", "ci") and (
-            coverage_threshold is not None or symbol_coverage_enabled
-        )
+        cov_cfg = _parse_coverage_settings(channel_settings, event.surface)
 
         # Step 4: Run impacted tests (if any exist)
         test_result: TestRunResult | None = None
         if impacted_tests:
             remaining_ms = self.timeout_ms - int((time.perf_counter() - start) * 1000)
-            remaining_ms = max(remaining_ms, 2000)
-
             test_result = run_tests(
-                impacted_tests,
-                project_root,
-                timeout_ms=remaining_ms,
-                measure_coverage=measure_coverage,
-                source_packages=source_packages,
+                impacted_tests, project_root,
+                timeout_ms=max(remaining_ms, 2000),
+                measure_coverage=cov_cfg["measure"],
+                source_packages=cov_cfg["source_packages"],
             )
+            _collect_test_findings(test_result, remaining_ms, findings)
 
-            if test_result.timed_out:
-                findings.append(
-                    LintIssue(
-                        linter="test_channel",
-                        kind="test_timeout",
-                        message=f"Test execution timed out ({remaining_ms}ms budget)",
-                        severity="warning",
-                    )
-                )
-
-            for failure in test_result.failures:
-                findings.append(
-                    LintIssue(
-                        linter="test_channel",
-                        kind="test_failure",
-                        message=failure.message,
-                        file=failure.file,
-                        line=failure.line,
-                        severity="warning",  # Advisory by default
-                    )
-                )
-
-            # Step 5: Check coverage threshold
-            if (
-                measure_coverage
-                and test_result.coverage_pct is not None
-                and coverage_threshold is not None
-                and test_result.coverage_pct < coverage_threshold
-            ):
-                findings.append(
-                    LintIssue(
-                        linter="test_channel",
-                        kind="coverage_below_threshold",
-                        message=(
-                            f"Code coverage {test_result.coverage_pct:.1f}% "
-                            f"is below threshold {coverage_threshold}%"
-                        ),
-                        severity="warning",
-                        evidence={
-                            "coverage_pct": test_result.coverage_pct,
-                            "threshold": coverage_threshold,
-                        },
-                    )
-                )
+        # Step 5: Check coverage threshold
+        _check_coverage_threshold(
+            test_result, cov_cfg["measure"], cov_cfg["threshold"], findings,
+        )
 
         # Step 6: Symbol coverage gate
-        gate_result = None
-        cov_json_path = None
-        if symbol_coverage_enabled:
-            cov_json_path = test_result.coverage_json_path if test_result else None
-            if cov_json_path:
-                from lintgate.channels.symbol_coverage import run_symbol_coverage_gate
-
-                gate_result = run_symbol_coverage_gate(
-                    coverage_json_path=cov_json_path,
-                    changed_files=changed_files,
-                    project_root=project_root,
-                    settings=symbol_cov_settings,
-                    surface=event.surface,
-                )
-                # Uncovered symbols → blocking findings
-                for sr in gate_result.symbol_results:
-                    if not sr.covered:
-                        missing_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
-                        msg = f"Symbol {sr.symbol.name} is not fully covered"
-                        if sr.missing_lines:
-                            msg += f" (missing lines: {missing_str})"
-                        findings.append(
-                            LintIssue(
-                                linter="test_channel",
-                                kind="symbol_uncovered",
-                                message=msg,
-                                file=sr.symbol.file,
-                                line=sr.symbol.start_line,
-                                severity="blocking",
-                                confidence=1.0,
-                                evidence={
-                                    "symbol_key": sr.symbol.symbol_key,
-                                    "symbol": sr.symbol.name,
-                                    "missing_lines": sr.missing_lines,
-                                    "missing_branches": sr.missing_branches,
-                                    "total_lines": sr.total_lines_in_span,
-                                    "executed_lines": sr.executed_lines_in_span,
-                                },
-                                suggestions=[
-                                    f"Add tests that execute lines {missing_str} in {sr.symbol.name}",
-                                    "Or add a waiver with reason in symbol_coverage.waivers",
-                                ],
-                            )
-                        )
-                # Unresolved required symbols → blocking findings
-                for unresolved in gate_result.unresolved_required:
-                    findings.append(
-                        LintIssue(
-                            linter="test_channel",
-                            kind="unresolved_required_symbol",
-                            message=f"Required symbol not found: {unresolved}",
-                            severity="blocking",
-                            confidence=1.0,
-                            evidence={"symbol": unresolved},
-                            suggestions=[
-                                "Check that the file and symbol exist",
-                                "Update required_symbols in symbol_coverage config",
-                            ],
-                        )
-                    )
-                # Expired waivers → informational
-                for waiver in gate_result.waivers_expired:
-                    findings.append(
-                        LintIssue(
-                            linter="test_channel",
-                            kind="waiver_expired",
-                            message=f"Symbol coverage waiver expired: {waiver.symbol} (expired {waiver.expires})",
-                            severity="informational",
-                            evidence={"symbol": waiver.symbol, "expires": waiver.expires},
-                        )
-                    )
-                # Skipped reasons → warning
-                for reason in gate_result.skipped_reasons:
-                    findings.append(
-                        LintIssue(
-                            linter="test_channel",
-                            kind="symbol_gate_skipped",
-                            message=f"Symbol coverage gate: {reason}",
-                            severity="warning",
-                        )
-                    )
-            elif event.surface == "ci":
-                findings.append(
-                    LintIssue(
-                        linter="test_channel",
-                        kind="symbol_gate_skipped",
-                        message="Symbol coverage gate skipped: no coverage data collected",
-                        severity="warning",
-                    )
-                )
-
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        status: Literal["pass", "fail"] = "fail" if findings else "pass"
-        severity: Literal["blocking", "warning", "informational", "none"]
-        if any(f.severity == "blocking" for f in findings):
-            severity = "blocking"
-        elif any(f.severity == "warning" for f in findings):
-            severity = "warning"
-        elif findings:
-            severity = "informational"
-        else:
-            severity = "none"
-
-        metrics: dict[str, Any] = {
-            "impacted_tests_found": len(impacted_tests),
-            "missing_test_count": sum(1 for f in findings if f.kind == "missing_test"),
-            "test_failure_count": sum(1 for f in findings if f.kind == "test_failure"),
-        }
-        if measure_coverage and test_result is not None:
-            cov = test_result.coverage_pct
-            if cov is not None:
-                metrics["coverage_pct"] = cov
-            if coverage_threshold is not None:
-                metrics["coverage_threshold"] = float(coverage_threshold)
-        if symbol_coverage_enabled and cov_json_path and gate_result is not None:
-            sym_uncovered = sum(1 for r in gate_result.symbol_results if not r.covered)
-            metrics["symbol_coverage_targets"] = len(gate_result.symbol_results)
-            metrics["symbol_coverage_passed"] = len(gate_result.symbol_results) - sym_uncovered
-            metrics["symbol_coverage_failed"] = sym_uncovered
-            metrics["symbol_coverage_waivers"] = len(gate_result.waivers_applied)
-
-        return ChannelResult(
-            channel=self.name,
-            status=status,
-            severity=severity,
-            findings=findings,
-            repairs=repairs,
-            metrics=metrics,
-            duration_ms=elapsed_ms,
+        gate_result = _run_symbol_gate_if_enabled(
+            cov_cfg, test_result, changed_files, project_root,
+            event.surface, findings,
         )
+
+        return _build_channel_result(
+            self.name, start, findings, repairs, impacted_tests,
+            test_result, cov_cfg, gate_result,
+        )
+
+
+# ── Execute Helpers ──────────────────────────────────────────────────────
+
+
+def _check_missing_tests(
+    changed_files: list[str],
+    project_root: str,
+    findings: list[LintIssue],
+    repairs: list[RepairAction],
+) -> None:
+    """Check for source files without corresponding tests and propose skeletons."""
+    for src_file in changed_files:
+        if not (_is_source_file(src_file, project_root) and not _has_test(src_file, project_root)):
+            continue
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="missing_test",
+                message=f"No test file found for {os.path.basename(src_file)}",
+                file=src_file,
+                severity="informational",
+            )
+        )
+        try:
+            from lintgate.controlplane.test_archetype_selector import select_archetypes
+
+            archetypes = select_archetypes(src_file, project_root)
+            if archetypes:
+                repairs.append(
+                    RepairAction(
+                        channel="tests",
+                        kind="create_test_skeleton",
+                        summary=(
+                            f"Create test skeleton for {os.path.basename(src_file)} "
+                            f"({archetypes[0].name})"
+                        ),
+                        payload={
+                            "source_file": src_file,
+                            "archetypes": [a.name for a in archetypes],
+                        },
+                        safe=True,
+                    )
+                )
+        except Exception:
+            pass  # Archetype selection failure is non-fatal
+
+
+def _parse_coverage_settings(
+    channel_settings: dict[str, Any], surface: str
+) -> dict[str, Any]:
+    """Parse coverage-related settings into a flat dict."""
+    raw_threshold = channel_settings.get("coverage_threshold")
+    threshold: float | None = None
+    if raw_threshold is not None:
+        with contextlib.suppress(TypeError, ValueError):
+            threshold = float(raw_threshold)
+
+    raw_pkgs = channel_settings.get("source_packages")
+    source_packages: list[str] | None = None
+    if isinstance(raw_pkgs, list):
+        source_packages = [str(p).strip() for p in raw_pkgs if str(p).strip()]
+    elif isinstance(raw_pkgs, str) and raw_pkgs.strip():
+        source_packages = [raw_pkgs.strip()]
+
+    sym_settings = channel_settings.get("symbol_coverage", {})
+    sym_enabled = isinstance(sym_settings, dict) and sym_settings.get("enabled", False)
+
+    measure = surface in ("mcp", "ci") and (threshold is not None or sym_enabled)
+
+    return {
+        "threshold": threshold,
+        "source_packages": source_packages,
+        "symbol_coverage": sym_settings,
+        "symbol_enabled": sym_enabled,
+        "measure": measure,
+    }
+
+
+def _collect_test_findings(
+    test_result: TestRunResult, remaining_ms: int, findings: list[LintIssue]
+) -> None:
+    """Convert test execution results into findings."""
+    if test_result.timed_out:
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="test_timeout",
+                message=f"Test execution timed out ({remaining_ms}ms budget)",
+                severity="warning",
+            )
+        )
+    for failure in test_result.failures:
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="test_failure",
+                message=failure.message,
+                file=failure.file,
+                line=failure.line,
+                severity="warning",
+            )
+        )
+
+
+def _check_coverage_threshold(
+    test_result: TestRunResult | None,
+    measure_coverage: bool,
+    coverage_threshold: float | None,
+    findings: list[LintIssue],
+) -> None:
+    """Emit finding if coverage is below threshold."""
+    if not (
+        measure_coverage
+        and test_result is not None
+        and test_result.coverage_pct is not None
+        and coverage_threshold is not None
+        and test_result.coverage_pct < coverage_threshold
+    ):
+        return
+    findings.append(
+        LintIssue(
+            linter="test_channel",
+            kind="coverage_below_threshold",
+            message=(
+                f"Code coverage {test_result.coverage_pct:.1f}% "
+                f"is below threshold {coverage_threshold}%"
+            ),
+            severity="warning",
+            evidence={
+                "coverage_pct": test_result.coverage_pct,
+                "threshold": coverage_threshold,
+            },
+        )
+    )
+
+
+def _run_symbol_gate_if_enabled(
+    cov_cfg: dict[str, Any],
+    test_result: TestRunResult | None,
+    changed_files: list[str],
+    project_root: str,
+    surface: str,
+    findings: list[LintIssue],
+) -> Any:
+    """Run symbol coverage gate if enabled. Returns gate result or None."""
+    if not cov_cfg["symbol_enabled"]:
+        return None
+    cov_json_path = test_result.coverage_json_path if test_result else None
+    return _run_symbol_gate(
+        cov_json_path, changed_files, project_root,
+        cov_cfg["symbol_coverage"], surface, findings,
+    )
+
+
+def _build_channel_result(
+    channel_name: str,
+    start: float,
+    findings: list[LintIssue],
+    repairs: list[RepairAction],
+    impacted_tests: list[str],
+    test_result: TestRunResult | None,
+    cov_cfg: dict[str, Any],
+    gate_result: Any,
+) -> ChannelResult:
+    """Assemble the final ChannelResult from collected findings and metrics."""
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    status: Literal["pass", "fail"] = "fail" if findings else "pass"
+    severity = _compute_severity(findings)
+
+    metrics: dict[str, Any] = {
+        "impacted_tests_found": len(impacted_tests),
+        "missing_test_count": sum(1 for f in findings if f.kind == "missing_test"),
+        "test_failure_count": sum(1 for f in findings if f.kind == "test_failure"),
+    }
+    if cov_cfg["measure"] and test_result is not None:
+        cov = test_result.coverage_pct
+        if cov is not None:
+            metrics["coverage_pct"] = cov
+        if cov_cfg["threshold"] is not None:
+            metrics["coverage_threshold"] = float(cov_cfg["threshold"])
+    if gate_result is not None:
+        sym_uncovered = sum(1 for r in gate_result.symbol_results if not r.covered)
+        metrics["symbol_coverage_targets"] = len(gate_result.symbol_results)
+        metrics["symbol_coverage_passed"] = len(gate_result.symbol_results) - sym_uncovered
+        metrics["symbol_coverage_failed"] = sym_uncovered
+        metrics["symbol_coverage_waivers"] = len(gate_result.waivers_applied)
+
+    return ChannelResult(
+        channel=channel_name,
+        status=status,
+        severity=severity,
+        findings=findings,
+        repairs=repairs,
+        metrics=metrics,
+        duration_ms=elapsed_ms,
+    )
+
+
+def _compute_severity(
+    findings: list[LintIssue],
+) -> Literal["blocking", "warning", "informational", "none"]:
+    """Determine the highest severity across all findings."""
+    if any(f.severity == "blocking" for f in findings):
+        return "blocking"
+    if any(f.severity == "warning" for f in findings):
+        return "warning"
+    if findings:
+        return "informational"
+    return "none"
 
 
 # ── Impact Detection ─────────────────────────────────────────────────────
@@ -588,6 +583,117 @@ def _parse_coverage(coverage_xml_path: str, terminal_output: str) -> float | Non
         return float(match.group(1))
 
     return None
+
+
+# ── Symbol Coverage Gate ─────────────────────────────────────────────────
+
+
+def _run_symbol_gate(
+    coverage_json_path: str | None,
+    changed_files: list[str],
+    project_root: str,
+    settings: dict[str, Any],
+    surface: str,
+    findings: list[LintIssue],
+) -> Any:
+    """Run symbol coverage gate and append findings. Returns gate result or None."""
+    if not coverage_json_path:
+        if surface == "ci":
+            findings.append(
+                LintIssue(
+                    linter="test_channel",
+                    kind="symbol_gate_skipped",
+                    message="Symbol coverage gate skipped: no coverage data collected",
+                    severity="warning",
+                )
+            )
+        return None
+
+    from lintgate.channels.symbol_coverage import run_symbol_coverage_gate
+
+    gate_result = run_symbol_coverage_gate(
+        coverage_json_path=coverage_json_path,
+        changed_files=changed_files,
+        project_root=project_root,
+        settings=settings,
+        surface=surface,
+    )
+    _emit_symbol_findings(gate_result, findings)
+    return gate_result
+
+
+def _emit_symbol_findings(gate_result: Any, findings: list[LintIssue]) -> None:
+    """Convert symbol coverage gate results into LintIssue findings."""
+    for sr in gate_result.symbol_results:
+        if sr.covered:
+            continue
+        missing_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
+        msg = f"Symbol {sr.symbol.name} is not fully covered"
+        if sr.missing_lines:
+            msg += f" (missing lines: {missing_str})"
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="symbol_uncovered",
+                message=msg,
+                file=sr.symbol.file,
+                line=sr.symbol.start_line,
+                severity="blocking",
+                confidence=1.0,
+                evidence={
+                    "symbol_key": sr.symbol.symbol_key,
+                    "symbol": sr.symbol.name,
+                    "missing_lines": sr.missing_lines,
+                    "missing_branches": sr.missing_branches,
+                    "total_lines": sr.total_lines_in_span,
+                    "executed_lines": sr.executed_lines_in_span,
+                },
+                suggestions=[
+                    f"Add tests that execute lines {missing_str} in {sr.symbol.name}",
+                    "Or add a waiver with reason in symbol_coverage.waivers",
+                ],
+            )
+        )
+
+    for unresolved in gate_result.unresolved_required:
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="unresolved_required_symbol",
+                message=f"Required symbol not found: {unresolved}",
+                severity="blocking",
+                confidence=1.0,
+                evidence={"symbol": unresolved},
+                suggestions=[
+                    "Check that the file and symbol exist",
+                    "Update required_symbols in symbol_coverage config",
+                ],
+            )
+        )
+
+    for waiver in gate_result.waivers_expired:
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="waiver_expired",
+                message=(
+                    f"Symbol coverage waiver expired: {waiver.symbol}"
+                    f" (expired {waiver.expires})"
+                ),
+                severity="informational",
+                evidence={"symbol": waiver.symbol, "expires": waiver.expires},
+            )
+        )
+
+    for reason in gate_result.skipped_reasons:
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="symbol_gate_skipped",
+                message=f"Symbol coverage gate: {reason}",
+                severity="warning",
+            )
+        )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
