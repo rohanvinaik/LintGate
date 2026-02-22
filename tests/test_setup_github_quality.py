@@ -317,7 +317,7 @@ class TestGenerateSonarWorkflow:
         """Sonar workflow must enforce quality gate after scan."""
         content = _generate_sonar_workflow({"python_version": "3.11"})
         assert "Check Quality Gate" in content
-        assert "sonarqube-quality-gate-check-action@v1" in content
+        assert "sonarqube-quality-gate-action@master" in content
 
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
         content = _generate_sonar_workflow({"python_version": ">=3.11"})
