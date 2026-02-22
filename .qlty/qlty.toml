@@ -230,6 +230,13 @@ set.ignored = true
 match.rules = ["radarlint-python:python:S6659"]
 set.ignored = true
 
+# S5655 — type mismatch in test files: tests intentionally pass wrong types
+# to verify defensive behavior (None where dict expected, etc.)
+[[triage]]
+match.rules = ["radarlint-python:python:S5655"]
+match.file_patterns = ["**/tests/**", "**/test_*.*"]
+set.ignored = true
+
 # ── shellcheck ───────────────────────────────────────────────────────
 
 # Shell scripts in this project use intentional patterns that shellcheck
