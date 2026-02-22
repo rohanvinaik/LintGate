@@ -5,6 +5,10 @@ Verifies:
 - should_run logic
 - Git checks: large changes, lockfile freshness, sensitive files
 - Graceful handling of non-git directories
+- Full channel execute in git repos
+- Check 5: quality infrastructure
+
+Utility function tests and branch coverage tests are in test_git_channel_helpers.py.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from lintgate.channels.git_channel import (
     GitChannel,
     _check_large_changes,
     _check_lockfile_freshness,
+    _check_quality_infrastructure,
     _check_sensitive_files,
     _is_git_repo,
 )
@@ -294,3 +299,80 @@ def test_execute_in_git_repo(tmp_path: Path) -> None:
     # Should not skip (we're in a git repo)
     assert result.status != "skip"
     assert result.duration_ms >= 0
+
+
+# ── Check 5: Quality infrastructure ──────────────────────────────────────
+
+
+def test_check5_no_github_remote(tmp_path: Path) -> None:
+    """No GitHub remote → no findings from Check 5."""
+    subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+    findings, repairs = _check_quality_infrastructure(str(tmp_path))
+    assert len(findings) == 0
+    assert len(repairs) == 0
+
+
+@patch("lintgate.quality_infra._has_github_remote", return_value=True)
+def test_check5_missing_artifacts(mock_remote: object, tmp_path: Path) -> None:
+    """GitHub project missing artifacts → warning finding + repair."""
+    (tmp_path / ".git").mkdir()
+    findings, repairs = _check_quality_infrastructure(str(tmp_path))
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].kind == "missing_quality_infra"
+    assert len(repairs) == 1
+    assert repairs[0].safe is True
+    assert repairs[0].channel == "git"
+
+
+@patch("lintgate.quality_infra._has_github_remote", return_value=True)
+@patch("lintgate.quality_infra.audit_quality_infrastructure")
+def test_check5_complete(mock_audit: MagicMock, mock_remote: object, tmp_path: Path) -> None:
+    """Complete quality infrastructure → no findings."""
+    from lintgate.quality_infra import QualityAuditResult
+
+    mock_audit.return_value = QualityAuditResult(
+        complete=True,
+        present=["all"],
+        missing=[],
+        has_github_remote=True,
+        badge_fingerprints_ok=True,
+    )
+    (tmp_path / ".git").mkdir()
+    findings, repairs = _check_quality_infrastructure(str(tmp_path))
+    assert len(findings) == 0
+    assert len(repairs) == 0
+
+
+def test_check5_skipped_on_hooks(tmp_path: Path) -> None:
+    """Check 5 not run during hook events (is_hook=True in execute)."""
+    subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"], capture_output=True, cwd=str(tmp_path)
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path))
+    (tmp_path / "app.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "app.py"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
+
+    classification = ChangeClassification(
+        files_changed=[str(tmp_path / "app.py")],
+        change_kind="logic",
+        risk_level="moderate",
+    )
+    event = SupervisionEvent(
+        project_root=str(tmp_path),
+        tool_name="Edit",
+        files_changed=classification.files_changed,
+        change_classification=classification,
+        surface="hook",  # Hook event → Check 5 should be skipped
+    )
+
+    channel = GitChannel()
+    result = channel.execute(event, ControlPlaneConfig())
+    # quality_infra_findings should be 0 since Check 5 is skipped on hooks
+    assert result.metrics.get("quality_infra_findings", 0) == 0
+
+
+
+

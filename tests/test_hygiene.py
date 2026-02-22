@@ -5,12 +5,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from lintgate.hygiene import (
+    _CHECK_REGISTRY,
+    _COMMAND_CLASSES,
     _check_clean_working_tree,
     _check_gitignore_coverage,
     _check_lockfile_exists,
     _check_lockfile_fresh,
     _check_no_staged_secrets,
     _check_pinned_version,
+    _check_quality_infra,
     _check_venv_active,
     _classify_command,
     classify_and_check,
@@ -310,3 +313,76 @@ class TestClassifyAndCheck:
             result = classify_and_check("pip install requests", str(tmp_path))
         # Should still return a result, just without that check
         assert result.command_class == "pip_install"
+
+
+# ── Quality infrastructure check ─────────────────────────────────────────
+
+
+class TestCheckQualityInfra:
+    def test_no_git_returns_none(self, tmp_path):
+        """Non-git project returns None (no quality infra expected)."""
+        result = _check_quality_infra("git push", str(tmp_path))
+        assert result is None
+
+    @patch("lintgate.quality_infra._has_github_remote", return_value=False)
+    def test_no_github_remote_returns_none(self, mock_remote, tmp_path):
+        """Git repo without GitHub remote returns None."""
+        (tmp_path / ".git").mkdir()
+        result = _check_quality_infra("git push", str(tmp_path))
+        assert result is None
+
+    @patch("lintgate.quality_infra._has_github_remote", return_value=True)
+    def test_missing_artifacts_returns_warning(self, mock_remote, tmp_path):
+        """GitHub project with missing artifacts returns HygieneWarning."""
+        (tmp_path / ".git").mkdir()
+        result = _check_quality_infra("git push", str(tmp_path))
+        assert result is not None
+        assert result.check == "quality_infrastructure"
+        assert result.actionability == "immediate"
+        assert result.confidence == 0.90
+        assert "missing" in result.evidence
+
+    @patch("lintgate.quality_infra._has_github_remote", return_value=True)
+    @patch("lintgate.quality_infra.audit_quality_infrastructure")
+    def test_complete_infra_returns_none(self, mock_audit, mock_remote, tmp_path):
+        """Complete quality infra returns None."""
+        from lintgate.quality_infra import QualityAuditResult
+
+        mock_audit.return_value = QualityAuditResult(
+            complete=True,
+            present=["all"],
+            missing=[],
+            has_github_remote=True,
+            badge_fingerprints_ok=True,
+        )
+        result = _check_quality_infra("git push", str(tmp_path))
+        assert result is None
+
+    def test_quality_infra_in_git_commit_class(self):
+        """quality_infrastructure is in the git_commit command class checks."""
+        checks = _COMMAND_CLASSES["git_commit"]["checks"]
+        assert "quality_infrastructure" in checks
+
+    def test_quality_infra_in_check_registry(self):
+        """quality_infrastructure is registered in the check registry."""
+        assert "quality_infrastructure" in _CHECK_REGISTRY
+        assert _CHECK_REGISTRY["quality_infrastructure"] is _check_quality_infra
+
+    def test_graceful_on_import_error(self, tmp_path):
+        """If quality_infra import fails, returns None gracefully."""
+        with patch(
+            "lintgate.hygiene._check_quality_infra",
+            side_effect=ImportError("mocked"),
+        ):
+            # Direct call should not crash classify_and_check
+            result = classify_and_check("git push origin main", str(tmp_path))
+            assert result.command_class == "git_commit"
+
+    def test_audit_crash_returns_none(self, tmp_path):
+        """audit_quality_infrastructure crash → graceful None return."""
+        with patch(
+            "lintgate.quality_infra.audit_quality_infrastructure",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = _check_quality_infra("git push", str(tmp_path))
+        assert result is None

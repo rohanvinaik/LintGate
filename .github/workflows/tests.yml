@@ -143,21 +143,54 @@ jobs:
               fh.write(f"cov_args={cov_args}\n")
           PY
 
-      - name: Run tests with coverage
+      - name: Run tests with coverage (telemetry)
         run: |
           if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi
-          echo "Coverage gate: ${{ steps.quality_policy.outputs.coverage_min }}%"
+          echo "Coverage telemetry target: ${{ steps.quality_policy.outputs.coverage_min }}%"
           echo "Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}"
           python -m pytest "$TEST_DIR" \
             ${{ steps.quality_policy.outputs.cov_args }} \
             --cov-config=.coveragerc \
-            --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }} \
+            --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term-missing \
             --junitxml=pytest-results.xml \
             --tb=short -q
 
-      - name: Diff coverage (new/changed code)
+      - name: Enforce symbol coverage gate
+        run: |
+          BASE=""
+          HEAD="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="${{ github.event.before }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="HEAD~1"
+            fi
+          fi
+
+          if [ -n "$BASE" ] && ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
+            BASE=""
+          fi
+
+          if [ -n "$BASE" ]; then
+            python -m lintgate.symbol_gate_runner \
+              --project-root . \
+              --coverage-json coverage.json \
+              --base "$BASE" \
+              --head "$HEAD" \
+              --surface ci
+          else
+            python -m lintgate.symbol_gate_runner \
+              --project-root . \
+              --coverage-json coverage.json \
+              --head "$HEAD" \
+              --surface ci
+          fi
+
+      - name: Diff coverage telemetry (non-blocking)
         if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
         run: |
           git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
           diff-cover coverage.xml \

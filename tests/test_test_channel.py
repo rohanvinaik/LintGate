@@ -1,21 +1,20 @@
 """Phase 3B: Test channel tests.
 
 Verifies:
-- Missing test detection
-- Impact detection (editing foo.py finds test_foo.py)
-- Test runner wrapper (mock pytest execution)
-- Skeleton generation (produces valid pytest skeleton)
 - Channel protocol conformance
+- should_run logic
+- Impact detection (editing foo.py finds test_foo.py)
+- Pytest output parsing
+- Test runner wrapper (mock pytest execution)
+- Channel execute integration
+
+Skeleton, fallback, filter, and edge case tests are in test_test_channel_edge.py.
 """
 
 from __future__ import annotations
 
-import textwrap
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 from lintgate.channels.test_channel import (
     TestChannel,
@@ -24,10 +23,6 @@ from lintgate.channels.test_channel import (
     run_tests,
 )
 from lintgate.controlplane.channel import Channel
-from lintgate.controlplane.skeleton_generator import (
-    generate_test_path,
-    generate_test_skeleton,
-)
 from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
@@ -254,6 +249,44 @@ def test_run_tests_timeout(mock_run: MagicMock) -> None:
     assert result.timed_out is True
 
 
+@patch("lintgate.channels.test_channel.subprocess.run")
+def test_run_tests_preserves_coverage_json_for_symbol_gate(mock_run: MagicMock) -> None:
+    """coverage.json path returned by run_tests should exist for downstream gating."""
+    import re
+
+    def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        cov_xml = None
+        cov_json = None
+        for arg in cmd:
+            if arg.startswith("--cov-report=xml:"):
+                cov_xml = arg.split(":", 1)[1]
+            if arg.startswith("--cov-report=json:"):
+                cov_json = arg.split(":", 1)[1]
+        assert cov_xml is not None
+        assert cov_json is not None
+        Path(cov_xml).write_text('<coverage line-rate="0.80"></coverage>', encoding="utf-8")
+        Path(cov_json).write_text(
+            '{"files":{"app.py":{"executed_lines":[1],"missing_lines":[],"excluded_lines":[],"missing_branches":[]}}}',
+            encoding="utf-8",
+        )
+        return MagicMock(stdout="1 passed in 0.01s", stderr="", returncode=0)
+
+    mock_run.side_effect = _fake_run
+    result = run_tests(
+        ["test_app.py"],
+        "/tmp/project",
+        measure_coverage=True,
+        source_packages=["lintgate"],
+    )
+    assert result.coverage_pct == 80.0
+    assert result.coverage_json_path is not None
+    assert Path(result.coverage_json_path).is_file()
+    assert result.coverage_json_ephemeral is True
+    # The returned path should contain coverage JSON (not an empty temp file).
+    content = Path(result.coverage_json_path).read_text(encoding="utf-8")
+    assert re.search(r'"files"\s*:', content)
+
+
 def test_run_tests_empty_list() -> None:
     result = run_tests([], "/tmp/project")
     assert result.passed == 0
@@ -346,84 +379,3 @@ def test_channel_reports_test_failures(mock_run: MagicMock, tmp_path: Path) -> N
     assert len(test_failures) >= 1
     assert result.status == "fail"
     assert result.severity == "warning"  # Advisory
-
-
-# ── Skeleton generation tests ────────────────────────────────────────────
-
-
-def test_skeleton_generates_valid_python(tmp_path: Path) -> None:
-    """Generated skeleton should be valid Python syntax."""
-    src = tmp_path / "calculator.py"
-    src.write_text(
-        textwrap.dedent("""\
-        def add(a: int, b: int) -> int:
-            return a + b
-
-        def divide(a: float, b: float) -> float:
-            if b == 0:
-                raise ValueError("Cannot divide by zero")
-            return a / b
-    """)
-    )
-
-    skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
-    assert skeleton  # Non-empty
-
-    # Should be valid Python
-    import ast
-
-    ast.parse(skeleton)
-
-
-def test_skeleton_includes_imports(tmp_path: Path) -> None:
-    src = tmp_path / "module.py"
-    src.write_text("def process(data: str) -> str:\n    return data")
-
-    skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
-    assert "import pytest" in skeleton
-
-
-def test_skeleton_includes_function_tests(tmp_path: Path) -> None:
-    src = tmp_path / "module.py"
-    src.write_text(
-        "def validate(data: str) -> str:\n    if not data:\n        raise ValueError('empty')\n    return data"
-    )
-
-    skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
-    assert "test_validate" in skeleton
-
-
-def test_skeleton_includes_class_tests(tmp_path: Path) -> None:
-    src = tmp_path / "models.py"
-    src.write_text(
-        textwrap.dedent("""\
-        from dataclasses import dataclass
-
-        @dataclass
-        class Config:
-            name: str = "default"
-            value: int = 0
-    """)
-    )
-
-    skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
-    assert "TestConfig" in skeleton or "test_" in skeleton
-
-
-def test_skeleton_for_empty_file(tmp_path: Path) -> None:
-    """Empty file should get a placeholder test."""
-    src = tmp_path / "empty.py"
-    src.write_text("")
-
-    skeleton = generate_test_skeleton(str(src), project_root=str(tmp_path))
-    assert "placeholder" in skeleton.lower() or "test_" in skeleton
-
-
-def test_generate_test_path(tmp_path: Path) -> None:
-    src = tmp_path / "lintgate" / "types.py"
-    src.parent.mkdir(parents=True, exist_ok=True)
-    src.write_text("")
-
-    path = generate_test_path(str(src), str(tmp_path))
-    assert "test_types.py" in path
-    assert "tests" in path

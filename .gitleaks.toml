@@ -13,3 +13,13 @@ description = "Intentional auth-token fixture used in behavior-compass tests."
 targetRules = ["stripe-access-token", "curl-auth-header"]
 paths = ['''tests/test_behavior_compass\.py''']
 
+[[allowlists]]
+description = "Fake GitHub PAT used to test secret-scanning detection."
+targetRules = ["generic-api-key"]
+paths = ['''tests/test_git_channel_helpers\.py''']
+
+[[allowlists]]
+description = "curl -u with env var reference, not a hardcoded secret."
+targetRules = ["curl-auth-user"]
+paths = ['''\.githooks/pre-push''', '''mcp_tools/onboarding_tools\.py''']
+

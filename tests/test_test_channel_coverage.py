@@ -109,70 +109,24 @@ class TestCoverageModeGating:
 
     def test_hook_mode_skips_coverage(self):
         """Hook-triggered events should not measure coverage."""
-        from lintgate.controlplane.types import (
-            ChannelConfig,
-            ControlPlaneConfig,
-            SupervisionEvent,
+        from lintgate.channels.test_channel import _parse_coverage_settings
+
+        cov_cfg = _parse_coverage_settings(
+            {"coverage_threshold": 80, "symbol_coverage": {"enabled": True}},
+            "hook",
         )
-
-        config = ControlPlaneConfig(enabled=True)
-        config.channels["tests"] = ChannelConfig(settings={"coverage_threshold": 80})
-
-        event = SupervisionEvent(
-            surface="hook",
-            project_root="/tmp/test",
-            files_changed=[],
-        )
-
-        # Mode gating logic from execute():
-        channel_settings = config.channels.get("tests", ChannelConfig()).settings
-        coverage_threshold = channel_settings.get("coverage_threshold")
-        measure_coverage = coverage_threshold is not None and event.surface == "mcp"
-
-        assert not measure_coverage, "Hook mode should not measure coverage"
+        assert cov_cfg["measure"] is False
 
     def test_mcp_mode_measures_coverage(self):
         """MCP-triggered events should measure coverage when threshold set."""
-        from lintgate.controlplane.types import (
-            ChannelConfig,
-            ControlPlaneConfig,
-            SupervisionEvent,
-        )
+        from lintgate.channels.test_channel import _parse_coverage_settings
 
-        config = ControlPlaneConfig(enabled=True)
-        config.channels["tests"] = ChannelConfig(settings={"coverage_threshold": 80})
-
-        event = SupervisionEvent(
-            surface="mcp",
-            project_root="/tmp/test",
-            files_changed=[],
-        )
-
-        channel_settings = config.channels.get("tests", ChannelConfig()).settings
-        coverage_threshold = channel_settings.get("coverage_threshold")
-        measure_coverage = coverage_threshold is not None and event.surface == "mcp"
-
-        assert measure_coverage, "MCP mode should measure coverage when threshold is set"
+        cov_cfg = _parse_coverage_settings({"coverage_threshold": 80}, "mcp")
+        assert cov_cfg["measure"] is True
 
     def test_mcp_mode_no_threshold_skips_coverage(self):
-        """MCP mode without threshold configured should not measure coverage."""
-        from lintgate.controlplane.types import (
-            ChannelConfig,
-            ControlPlaneConfig,
-            SupervisionEvent,
-        )
+        """MCP mode measures coverage when symbol gate is enabled."""
+        from lintgate.channels.test_channel import _parse_coverage_settings
 
-        config = ControlPlaneConfig(enabled=True)
-        config.channels["tests"] = ChannelConfig(settings={})
-
-        event = SupervisionEvent(
-            surface="mcp",
-            project_root="/tmp/test",
-            files_changed=[],
-        )
-
-        channel_settings = config.channels.get("tests", ChannelConfig()).settings
-        coverage_threshold = channel_settings.get("coverage_threshold")
-        measure_coverage = coverage_threshold is not None and event.surface == "mcp"
-
-        assert not measure_coverage, "No threshold means no coverage measurement"
+        cov_cfg = _parse_coverage_settings({"symbol_coverage": {"enabled": True}}, "mcp")
+        assert cov_cfg["measure"] is True

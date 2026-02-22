@@ -118,6 +118,48 @@ def load_compass(project_root: str):
     return _load(project_root)
 
 
+def _collect_state_failures(state: Any, qg: Any, project_root: str) -> list[str]:
+    """Validate runtime state and return a list of failure messages."""
+    failures: list[str] = []
+
+    # Staleness
+    age_s = time.time() - state.timestamp
+    if age_s > qg.staleness_threshold_s:
+        mins = int(age_s // 60)
+        threshold_mins = int(qg.staleness_threshold_s // 60)
+        failures.append(f"Last quality run is {mins}min old (threshold: {threshold_mins}min).")
+
+    # Blocking issues
+    if state.blocking_issues > 0:
+        failures.append(f"{state.blocking_issues} blocking issue(s) remain.")
+        symbol_blockers = int(getattr(state, "symbol_coverage_blockers", 0) or 0)
+        if symbol_blockers > 0:
+            failures.append(
+                f"Symbol coverage remediation loop required: "
+                f"{symbol_blockers} uncovered symbol blocker"
+                f"{'s' if symbol_blockers != 1 else ''}. "
+                "Add tests for the reported symbols and rerun `controlplane_run` "
+                "until blockers are zero."
+            )
+        else:
+            failures.append("Resolve blockers, then rerun `controlplane_run` before pushing.")
+
+    # Tests
+    if state.last_test_status == "fail":
+        failures.append("Tests are failing.")
+
+    # Secrets — fail-open on crash
+    if qg.check_secrets:
+        try:
+            secret_findings = _check_diff_secrets(project_root)
+            if secret_findings:
+                failures.append(f"{len(secret_findings)} secret(s) detected in staged diff.")
+        except Exception:
+            pass
+
+    return failures
+
+
 def _check_quality_gate(command: str, project_root: str) -> QualityGateResult:
     """Check whether a git command should be blocked or advised.
 
@@ -145,8 +187,6 @@ def _check_quality_gate(command: str, project_root: str) -> QualityGateResult:
     if git_action == "commit" and not qg.advise_commit:
         return QualityGateResult()
 
-    failures: list[str] = []
-
     # Load runtime state
     try:
         state = load_runtime_state(project_root)
@@ -154,45 +194,14 @@ def _check_quality_gate(command: str, project_root: str) -> QualityGateResult:
         state = None
 
     if state is None:
-        if git_action == "push":
-            # No quality run has ever happened — block push
-            failures.append("No quality run found. Run `controlplane_run` first.")
-        # For commit, missing state is not actionable — skip
-        if not failures:
+        if git_action != "push":
             return QualityGateResult()
         return QualityGateResult(
             should_block=True,
-            messages=[f"[QualityGate] BLOCKED: {f}" for f in failures],
+            messages=["[QualityGate] BLOCKED: No quality run found. Run `controlplane_run` first."],
         )
 
-    # Check staleness
-    age_s = time.time() - state.timestamp
-    if age_s > qg.staleness_threshold_s:
-        mins = int(age_s // 60)
-        failures.append(
-            f"Last quality run is {mins}min old"
-            f" (threshold: {int(qg.staleness_threshold_s // 60)}min)."
-        )
-
-    # Check blocking issues
-    if state.blocking_issues > 0:
-        failures.append(f"{state.blocking_issues} blocking issue(s) remain.")
-
-    # Check test status (empty is OK — means no test data yet)
-    if state.last_test_status == "fail":
-        failures.append("Tests are failing.")
-
-    # Check secrets — fail-open if crashes
-    if qg.check_secrets:
-        try:
-            secret_findings = _check_diff_secrets(project_root)
-            if secret_findings:
-                failures.append(
-                    f"{len(secret_findings)} secret(s) detected in staged diff."
-                )
-        except Exception:
-            pass  # fail-open on secrets check crash
-
+    failures = _collect_state_failures(state, qg, project_root)
     if not failures:
         return QualityGateResult()
 

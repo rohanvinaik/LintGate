@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${LINTGATE_SKIP_PRE_PUSH:-0}" = "1" ]; then
+  echo "[lintgate] skipping pre-push checks (LINTGATE_SKIP_PRE_PUSH=1)"
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+echo "[lintgate] running local quality checks before push"
+
+# Quality infrastructure gate (hard fail)
+echo "[lintgate] checking quality infrastructure completeness"
+if python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
+  echo "[lintgate] quality infrastructure: complete"
+else
+  echo "[lintgate] quality infrastructure: INCOMPLETE — run setup_github_quality to fix"
+  exit 1
+fi
+
+if command -v qlty >/dev/null 2>&1; then
+  qlty check --all
+else
+  echo "[lintgate] qlty not found; using fallback checks (ruff)"
+  if command -v ruff >/dev/null 2>&1; then
+    ruff check .
+  elif python -c 'import ruff' >/dev/null 2>&1; then
+    python -m ruff check .
+  else
+    echo "[lintgate] warning: ruff not installed; skipping lint step."
+  fi
+fi
+
+# Secrets scan (mirrors CI gitleaks check)
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "[lintgate] scanning for secrets (gitleaks)"
+  if ! gitleaks detect --source . --no-banner --redact; then
+    echo "[lintgate] BLOCKED: secrets detected — fix before pushing."
+    exit 1
+  fi
+else
+  echo "[lintgate] warning: gitleaks not installed; skipping secrets scan."
+fi
+
+if [ -d tests ] || [ -d test ]; then
+  if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi
+  echo "[lintgate] running tests with coverage + symbol gate"
+  python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
+    --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
+    --tb=short -q
+  BASE='HEAD~1'
+  if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
+    BASE=''
+  fi
+  if [ -n "$BASE" ]; then
+    python -m lintgate.symbol_gate_runner \
+      --project-root "$REPO_ROOT" \
+      --coverage-json coverage.json \
+      --base "$BASE" --head HEAD --surface ci
+  else
+    python -m lintgate.symbol_gate_runner \
+      --project-root "$REPO_ROOT" \
+      --coverage-json coverage.json \
+      --head HEAD --surface ci
+  fi
+fi
+
+if [ -n "${SONAR_TOKEN:-}" ] && [ -n "${SONAR_PROJECT_KEY:-}" ]; then
+  echo "[lintgate] checking Sonar quality gate for ${SONAR_PROJECT_KEY}"
+  SONAR_HOST="${SONAR_HOST_URL:-https://sonarcloud.io}"
+  if command -v curl >/dev/null 2>&1; then
+    if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then  # gitleaks:allow
+      SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get("projectStatus",{}).get("status",""))' 2>/dev/null || true)"
+      if [ -n "$SONAR_STATUS" ] && [ "$SONAR_STATUS" != "OK" ]; then
+        echo "[lintgate] Sonar quality gate is ${SONAR_STATUS}; blocking push."
+        exit 1
+      fi
+    else
+      echo "[lintgate] warning: could not query Sonar quality gate (continuing)."
+    fi
+  fi
+fi
+
+echo "[lintgate] pre-push checks passed"

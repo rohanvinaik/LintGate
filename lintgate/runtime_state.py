@@ -86,6 +86,7 @@ class RuntimeState:
     focus_intent: str = ""  # 1-sentence current task
     blocking_issues: int = 0
     warning_issues: int = 0
+    symbol_coverage_blockers: int = 0
     coherence_state: str = "stable"
     prediction_accuracy: float = -1.0  # -1 = no data yet
 

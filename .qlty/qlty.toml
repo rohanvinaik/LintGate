@@ -1,0 +1,252 @@
+# LintGate qlty configuration
+# Tuned for a Python linter-infrastructure project.
+#
+# qlty CLI docs: https://docs.qlty.sh/qlty-toml
+# Run: qlty check --all
+config_version = "0"
+
+exclude_patterns = [
+  "*_min.*",
+  "*-min.*",
+  "*.min.*",
+  "**/.yarn/**",
+  "**/*.d.ts",
+  "**/assets/**",
+  "**/bower_components/**",
+  "**/build/**",
+  "**/cache/**",
+  "**/db/**",
+  "**/deps/**",
+  "**/dist/**",
+  "**/extern/**",
+  "**/external/**",
+  "**/generated/**",
+  "**/node_modules/**",
+  "**/target/**",
+  "**/vendor/**",
+  "**/__pycache__/**",
+  "**/.mypy_cache/**",
+  "**/.ruff_cache/**",
+  "**/.pytest_cache/**",
+  "**/.benchmarks/**",
+]
+
+test_patterns = [
+  "**/tests/**",
+  "**/test/**",
+  "**/spec/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/*_test.*",
+  "**/*_spec.*",
+  "**/test_*.*",
+  "**/spec_*.*",
+]
+
+[smells]
+mode = "comment"
+
+[[source]]
+name = "default"
+default = true
+
+# ── Plugins ──────────────────────────────────────────────────────────
+
+[[plugin]]
+name = "bandit"
+
+[[plugin]]
+name = "radarlint-python"
+mode = "comment"
+
+[[plugin]]
+name = "ruff"
+drivers = ["lint"]
+
+[[plugin]]
+name = "shellcheck"
+
+[[plugin]]
+name = "trivy"
+drivers = ["config"]
+
+[[plugin]]
+name = "trufflehog"
+
+# ── Triage: Domain-expected patterns ─────────────────────────────────
+# LintGate is a linter-infrastructure project. Many patterns that are
+# "issues" in application code are correct-by-design here.
+
+# ── bandit ───────────────────────────────────────────────────────────
+
+# B101 — assert in test files is standard pytest usage
+[[triage]]
+match.rules = ["bandit:B101"]
+match.file_patterns = ["**/tests/**", "**/test_*.*"]
+set.ignored = true
+
+# B106 — test fixtures use fake_token/fake_password by design
+[[triage]]
+match.rules = ["bandit:B106"]
+match.file_patterns = ["**/tests/**", "**/test_*.*"]
+set.ignored = true
+
+# B108 — temp file usage in test fixtures is expected
+[[triage]]
+match.rules = ["bandit:B108"]
+match.file_patterns = ["**/tests/**", "**/test_*.*"]
+set.ignored = true
+
+# B110 — try/except/pass is the intentional graceful-degradation pattern
+# throughout LintGate (fail-open when optional tooling is unavailable)
+[[triage]]
+match.rules = ["bandit:B110"]
+set.ignored = true
+
+# B112 — try/except/continue is the same fail-open pattern in loops
+[[triage]]
+match.rules = ["bandit:B112"]
+set.ignored = true
+
+# B310 — urllib.request.urlopen for HTTPS API calls with timeout
+[[triage]]
+match.rules = ["bandit:B310"]
+set.ignored = true
+
+# B311 — random.Random for deterministic test variant selection (not crypto)
+[[triage]]
+match.rules = ["bandit:B311"]
+set.ignored = true
+
+# B404 — subprocess import is core to a linter runner
+[[triage]]
+match.rules = ["bandit:B404"]
+set.ignored = true
+
+# B603 — subprocess calls with partial paths are intentional
+# (we invoke ruff, mypy, bandit etc. by name)
+[[triage]]
+match.rules = ["bandit:B603"]
+set.ignored = true
+
+# B607 — same: invoking linters by name is the whole point
+[[triage]]
+match.rules = ["bandit:B607"]
+set.ignored = true
+
+# ── radarlint-python ─────────────────────────────────────────────────
+
+# S125 — commented-out code in config/template sections is intentional
+[[triage]]
+match.rules = ["radarlint-python:python:S125"]
+set.ignored = true
+
+# S1172 — unused function parameters for callback/protocol conformance
+# (channel.execute signatures, hook handlers, MCP tool contracts)
+[[triage]]
+match.rules = ["radarlint-python:python:S1172"]
+set.ignored = true
+
+# S1192 — duplicate string literals in test assertions and config constants
+# are clearer than extracted constants
+[[triage]]
+match.rules = ["radarlint-python:python:S1192"]
+set.ignored = true
+
+# S1244 — float equality is intentional in scoring code
+# (confidence scores, thresholds — exact comparison by design)
+[[triage]]
+match.rules = ["radarlint-python:python:S1244"]
+set.ignored = true
+
+# S1481 — unused vars from tuple unpacking are idiomatic Python
+[[triage]]
+match.rules = ["radarlint-python:python:S1481"]
+set.ignored = true
+
+# S1854 — dead stores from defensive initialization before try/except
+[[triage]]
+match.rules = ["radarlint-python:python:S1854"]
+set.ignored = true
+
+# S2638 — return type consistency in functions with multiple exit paths
+[[triage]]
+match.rules = ["radarlint-python:python:S2638"]
+set.ignored = true
+
+# S3358 — nested ternary for concise config/scoring logic
+[[triage]]
+match.rules = ["radarlint-python:python:S3358"]
+set.ignored = true
+
+# S3516 — functions that always return the same value (sentinel patterns)
+[[triage]]
+match.rules = ["radarlint-python:python:S3516"]
+set.ignored = true
+
+# S3776 — cognitive complexity is already enforced by LintGate's own
+# structure channel (CC limit 15/20); qlty duplicate is noise
+[[triage]]
+match.rules = ["radarlint-python:python:S3776"]
+set.ignored = true
+
+# S5713 — membership test with tuple vs set (micro-optimization, not a bug)
+[[triage]]
+match.rules = ["radarlint-python:python:S5713"]
+set.ignored = true
+
+# S5869 — duplicate regex alternatives in pattern-matching code
+[[triage]]
+match.rules = ["radarlint-python:python:S5869"]
+set.ignored = true
+
+# S5914 — constant boolean expression (intentional in test assertions)
+[[triage]]
+match.rules = ["radarlint-python:python:S5914"]
+set.ignored = true
+
+# S6019 — nested function suggestions (factory patterns are intentional)
+[[triage]]
+match.rules = ["radarlint-python:python:S6019"]
+set.ignored = true
+
+# S6035 — regex flag placement suggestion
+[[triage]]
+match.rules = ["radarlint-python:python:S6035"]
+set.ignored = true
+
+# S6353 — unnecessary type cast suggestions
+[[triage]]
+match.rules = ["radarlint-python:python:S6353"]
+set.ignored = true
+
+# S6395/S6397 — identity vs equality for singletons (stylistic)
+[[triage]]
+match.rules = ["radarlint-python:python:S6395", "radarlint-python:python:S6397"]
+set.ignored = true
+
+# S6659 — endswith/startswith suggestions (stylistic)
+[[triage]]
+match.rules = ["radarlint-python:python:S6659"]
+set.ignored = true
+
+# S5655 — type mismatch in test files: tests intentionally pass wrong types
+# to verify defensive behavior (None where dict expected, etc.)
+[[triage]]
+match.rules = ["radarlint-python:python:S5655"]
+match.file_patterns = ["**/tests/**", "**/test_*.*"]
+set.ignored = true
+
+# ── shellcheck ───────────────────────────────────────────────────────
+
+# Shell scripts in this project use intentional patterns that shellcheck
+# flags (ls|grep for file detection, glob in -f test, unused variables
+# in sourced scripts)
+[[triage]]
+match.rules = [
+  "shellcheck:1087",
+  "shellcheck:2010",
+  "shellcheck:2034",
+  "shellcheck:2144",
+]
+set.ignored = true

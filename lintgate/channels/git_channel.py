@@ -5,8 +5,10 @@ Checks:
 2. Lockfile-manifest mismatch (pyproject.toml newer than uv.lock)
 3. Untracked sensitive files (.env, credentials)
 4. Secrets in staged diffs (API keys, tokens, private keys, connection strings)
+5. Quality infrastructure completeness (CI, badges, configs)
 
-Advisory only — git hygiene issues are informational suggestions.
+Advisory for checks 1-4. Check 5 escalates to warning severity when
+quality infrastructure is incomplete (CI quality-infra-gate would fail).
 All checks use subprocess git commands with timeout protection.
 """
 
@@ -86,32 +88,36 @@ class GitChannel:
 
         # Check 1: Large uncommitted changes — skip on hooks (always true during dev)
         if not is_hook:
-            large_change_findings = _check_large_changes(project_root)
-            findings.extend(large_change_findings)
+            findings.extend(_check_large_changes(project_root))
 
         # Check 2: Lockfile-manifest mismatch — skip on hooks unless dep files changed
-        run_lockfile_check = not is_hook
-        if is_hook:
-            # Run if any dependency manifest/lockfile was in the changeset
-            changed_basenames = {os.path.basename(f) for f in event.files_changed}
-            if changed_basenames & _DEPENDENCY_FILES:
-                run_lockfile_check = True
+        run_lockfile_check = not is_hook or bool(
+            {os.path.basename(f) for f in event.files_changed} & _DEPENDENCY_FILES
+        )
         if run_lockfile_check:
             lockfile_findings, lockfile_repairs = _check_lockfile_freshness(project_root)
             findings.extend(lockfile_findings)
             repairs.extend(lockfile_repairs)
 
         # Check 3: Sensitive files — always run (security-relevant)
-        sensitive_findings = _check_sensitive_files(project_root)
-        findings.extend(sensitive_findings)
+        findings.extend(_check_sensitive_files(project_root))
 
         # Check 4: Secrets in staged diffs — always run (security-relevant)
-        secrets_findings = _check_diff_secrets(project_root)
-        findings.extend(secrets_findings)
+        secrets_count = len(findings)  # snapshot before secrets check
+        findings.extend(_check_diff_secrets(project_root))
+        secrets_count = len(findings) - secrets_count  # delta = secrets found
+
+        # Check 5: Quality infrastructure completeness — skip on hooks
+        qi_findings: list[LintIssue] = []
+        qi_repairs: list[RepairAction] = []
+        if not is_hook:
+            qi_findings, qi_repairs = _check_quality_infrastructure(project_root)
+            findings.extend(qi_findings)
+            repairs.extend(qi_repairs)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
         status: Literal["pass", "fail"] = "fail" if findings else "pass"
-        # Escalate severity if secrets found (warning-level)
+        # Escalate severity if secrets or quality infra issues found (warning-level)
         severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = "informational"
@@ -125,9 +131,15 @@ class GitChannel:
             findings=findings,
             repairs=repairs,
             metrics={
-                "checks_run": 2 + (0 if is_hook else 1) + (1 if run_lockfile_check else 0),
+                "checks_run": (
+                    2
+                    + (0 if is_hook else 1)
+                    + (1 if run_lockfile_check else 0)
+                    + (0 if is_hook else 1)
+                ),
                 "issue_count": len(findings),
-                "secrets_found": len(secrets_findings),
+                "secrets_found": secrets_count,
+                "quality_infra_findings": len(qi_findings),
             },
             duration_ms=elapsed_ms,
         )
@@ -155,10 +167,25 @@ def _is_git_repo(project_root: str) -> bool:
         return False
 
 
+def _parse_diff_stat_totals(stat_output: str) -> tuple[int, int]:
+    """Parse git diff --stat output for total insertions and deletions.
+
+    Returns (insertions, deletions). Returns (0, 0) if no summary line found.
+    """
+    for line in stat_output.splitlines():
+        if "insertions" not in line and "deletions" not in line:
+            continue
+        ins_match = re.search(r"(\d+) insertion", line)
+        del_match = re.search(r"(\d+) deletion", line)
+        return (
+            int(ins_match.group(1)) if ins_match else 0,
+            int(del_match.group(1)) if del_match else 0,
+        )
+    return 0, 0
+
+
 def _check_large_changes(project_root: str) -> list[LintIssue]:
     """Check for large uncommitted changes (>500 lines)."""
-    findings: list[LintIssue] = []
-
     try:
         result = subprocess.run(
             ["git", "diff", "--stat", "--cached"],
@@ -168,41 +195,27 @@ def _check_large_changes(project_root: str) -> list[LintIssue]:
             cwd=project_root,
         )
         if result.returncode != 0:
-            return findings
-
-        # Parse the summary line: " N files changed, X insertions(+), Y deletions(-)"
-        for line in result.stdout.splitlines():
-            if "insertions" in line or "deletions" in line:
-                import re
-
-                insertions = 0
-                deletions = 0
-                ins_match = re.search(r"(\d+) insertion", line)
-                if ins_match:
-                    insertions = int(ins_match.group(1))
-                del_match = re.search(r"(\d+) deletion", line)
-                if del_match:
-                    deletions = int(del_match.group(1))
-
-                total = insertions + deletions
-                if total > 500:
-                    findings.append(
-                        LintIssue(
-                            linter="git_channel",
-                            kind="large_staged_changes",
-                            message=(
-                                f"Large staged changes: {insertions} insertions, "
-                                f"{deletions} deletions ({total} total). "
-                                "Consider committing in smaller chunks."
-                            ),
-                            severity="informational",
-                        )
-                    )
-
+            return []
     except (subprocess.TimeoutExpired, OSError):
-        pass
+        return []
 
-    return findings
+    insertions, deletions = _parse_diff_stat_totals(result.stdout)
+    total = insertions + deletions
+    if total <= 500:
+        return []
+
+    return [
+        LintIssue(
+            linter="git_channel",
+            kind="large_staged_changes",
+            message=(
+                f"Large staged changes: {insertions} insertions, "
+                f"{deletions} deletions ({total} total). "
+                "Consider committing in smaller chunks."
+            ),
+            severity="informational",
+        )
+    ]
 
 
 def _check_lockfile_freshness(project_root: str) -> tuple[list[LintIssue], list[RepairAction]]:
@@ -348,9 +361,7 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     ),
     (
         "generic_api_key",
-        re.compile(
-            r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"
-        ),
+        re.compile(r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"),
         0.80,
     ),
     (
@@ -363,6 +374,80 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
 ]
 
 
+def _match_secret_pattern(
+    added_content: str,
+    current_file: str | None,
+    approx_line: int | None,
+    project_root: str,
+) -> LintIssue | None:
+    """Match a single addition line against secret patterns.
+
+    Returns the first matching LintIssue, or None.
+    """
+    for pattern_name, pattern_re, confidence in _SECRET_PATTERNS:
+        if not pattern_re.search(added_content):
+            continue
+        file_path = os.path.join(project_root, current_file) if current_file else None
+        return LintIssue(
+            linter="git_channel",
+            kind="secret_in_diff",
+            message=(
+                f"Potential secret detected in staged diff ({pattern_name}). "
+                f"Review before committing."
+            ),
+            file=file_path,
+            line=approx_line,
+            severity="warning",
+            confidence=confidence,
+            evidence={"pattern": pattern_name, "file": current_file},
+            suggestions=[
+                "Remove the secret from the file",
+                "Use environment variables instead",
+                "Add to .gitignore if it's a secrets file",
+            ],
+        )
+    return None
+
+
+def _iter_diff_additions(
+    diff_output: str,
+) -> list[tuple[str | None, str, int | None]]:
+    """Parse unified diff into addition lines with file context.
+
+    Returns list of (file_path, added_content, approx_line_number) tuples.
+    Only yields addition lines (+), skipping removals and context.
+    """
+    additions: list[tuple[str | None, str, int | None]] = []
+    current_file: str | None = None
+    hunk_start: int | None = None
+    line_offset = 0
+
+    for line in diff_output.splitlines():
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+            hunk_start = None
+            line_offset = 0
+        elif line.startswith("+++ "):
+            current_file = None
+        elif line.startswith("@@"):
+            hunk_match = re.search(r"\+(\d+)", line)
+            if hunk_match:
+                hunk_start = int(hunk_match.group(1))
+                line_offset = 0
+        elif line.startswith("+") and not line.startswith("+++"):
+            line_offset += 1
+            approx = (hunk_start or 0) + line_offset - 1
+            additions.append(
+                (
+                    current_file,
+                    line[1:],  # strip leading '+'
+                    approx if hunk_start else None,
+                )
+            )
+
+    return additions
+
+
 def _check_diff_secrets(project_root: str) -> list[LintIssue]:
     """Scan staged diff content for embedded secrets.
 
@@ -372,8 +457,6 @@ def _check_diff_secrets(project_root: str) -> list[LintIssue]:
     Only scans addition lines (+) to avoid flagging removals or context.
     Never includes actual secret values in issue messages.
     """
-    findings: list[LintIssue] = []
-
     try:
         result = subprocess.run(
             ["git", "diff", "--cached", "--unified=0"],
@@ -383,69 +466,80 @@ def _check_diff_secrets(project_root: str) -> list[LintIssue]:
             cwd=project_root,
         )
         if result.returncode != 0 or not result.stdout:
-            return findings
+            return []
     except (subprocess.TimeoutExpired, OSError):
-        return findings
+        return []
 
-    current_file: str | None = None
-    current_hunk_start: int | None = None
-    line_offset = 0
-
-    for line in result.stdout.splitlines():
-        # Track which file we're in
-        if line.startswith("+++ b/"):
-            current_file = line[6:]
-            current_hunk_start = None
-            line_offset = 0
-            continue
-
-        if line.startswith("+++ "):
-            # Handle non-standard diff headers
-            current_file = None
-            continue
-
-        # Track hunk headers for line numbers: @@ -old,count +new,count @@
-        if line.startswith("@@"):
-            hunk_match = re.search(r"\+(\d+)", line)
-            if hunk_match:
-                current_hunk_start = int(hunk_match.group(1))
-                line_offset = 0
-            continue
-
-        # Only scan addition lines (new content being staged)
-        if not line.startswith("+") or line.startswith("+++"):
-            continue
-
-        added_content = line[1:]  # Strip the leading '+'
-        line_offset += 1
-        approx_line = (current_hunk_start or 0) + line_offset - 1
-
-        for pattern_name, pattern_re, confidence in _SECRET_PATTERNS:
-            if pattern_re.search(added_content):
-                file_path = os.path.join(project_root, current_file) if current_file else None
-                findings.append(
-                    LintIssue(
-                        linter="git_channel",
-                        kind="secret_in_diff",
-                        message=(
-                            f"Potential secret detected in staged diff ({pattern_name}). "
-                            f"Review before committing."
-                        ),
-                        file=file_path,
-                        line=approx_line if current_hunk_start else None,
-                        severity="warning",
-                        confidence=confidence,
-                        evidence={
-                            "pattern": pattern_name,
-                            "file": current_file,
-                        },
-                        suggestions=[
-                            "Remove the secret from the file",
-                            "Use environment variables instead",
-                            "Add to .gitignore if it's a secrets file",
-                        ],
-                    )
-                )
-                break  # One finding per line (avoid duplicate alerts)
+    findings: list[LintIssue] = []
+    for file_path, added_content, approx_line in _iter_diff_additions(result.stdout):
+        finding = _match_secret_pattern(added_content, file_path, approx_line, project_root)
+        if finding:
+            findings.append(finding)
 
     return findings
+
+
+# ── Quality infrastructure check ─────────────────────────────────────────
+
+
+def _check_quality_infrastructure(
+    project_root: str,
+) -> tuple[list[LintIssue], list[RepairAction]]:
+    """Check quality infrastructure completeness (Check 5).
+
+    Warning-level severity: quality infrastructure gaps mean the CI
+    quality-infra-gate would fail on push.
+    """
+    findings: list[LintIssue] = []
+    repairs: list[RepairAction] = []
+
+    try:
+        from lintgate.quality_infra import audit_quality_infrastructure
+
+        result = audit_quality_infrastructure(project_root)
+    except Exception:
+        return findings, repairs  # Graceful degradation
+
+    if not result.has_github_remote:
+        return findings, repairs  # Not a GitHub project
+
+    if result.complete:
+        return findings, repairs  # All good
+
+    missing = result.missing
+    findings.append(
+        LintIssue(
+            linter="git_channel",
+            kind="missing_quality_infra",
+            message=(
+                f"Quality infrastructure incomplete: {len(missing)} artifact(s) missing. "
+                "CI quality-infra-gate will fail. "
+                "Run setup_github_quality(write=True)."
+            ),
+            severity="warning",
+            evidence={
+                "missing": missing[:5],
+                "present_count": len(result.present),
+                "badge_fingerprints_ok": result.badge_fingerprints_ok,
+            },
+            suggestions=[
+                'Run setup_github_quality(path="...", write=True) to deploy missing artifacts',
+                "Missing: " + ", ".join(missing[:5]),
+            ],
+        )
+    )
+
+    repairs.append(
+        RepairAction(
+            channel="git",
+            kind="command",
+            summary="Deploy missing quality infrastructure",
+            payload={
+                "tool": "setup_github_quality",
+                "args": {"path": project_root, "write": True},
+            },
+            safe=True,
+        )
+    )
+
+    return findings, repairs

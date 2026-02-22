@@ -445,6 +445,9 @@ _REQUIRED_BADGE_FINGERPRINTS = (
     "metric=alert_status",
     "metric=coverage",
     "metric=security_rating",
+    "metric=sqale_rating",
+    "metric=reliability_rating",
+    "securityscorecards.dev",
 )
 _BADGE_BLOCK_START = "<!-- lintgate:quality-badges:start -->"
 _BADGE_BLOCK_END = "<!-- lintgate:quality-badges:end -->"
@@ -510,98 +513,98 @@ def _detect_github_remote(project_root: str) -> dict[str, Any]:
     return {"detected": False, "reason": "no_github_remote_found"}
 
 
-def _detect_project_layout(project_root: str) -> dict[str, Any]:
-    """Detect source dirs, test dirs, Python version, and license."""
-    root = Path(project_root)
-    source_dirs: list[str] = []
-    test_dirs: list[str] = []
-    doc_dirs: list[str] = []
-    python_version: str = "3"
-    license_id: str | None = None
+def _parse_pyproject_metadata(
+    root: Path,
+) -> tuple[str, str | None, list[str], bool]:
+    """Extract python version, license, and test paths from pyproject.toml.
 
-    # --- Try pyproject.toml first ---
+    Returns (python_version, license_id, test_dirs, has_pyproject).
+    """
     pyproject = root / "pyproject.toml"
-    has_pyproject = pyproject.exists()
-    if has_pyproject:
+    if not pyproject.exists():
+        return "3", None, [], False
+    try:
         try:
-            try:
-                import tomllib
-            except ModuleNotFoundError:
-                import tomli as tomllib  # type: ignore[no-redef]
-            with open(pyproject, "rb") as f:
-                data = tomllib.load(f)
+            import tomllib  # type: ignore[import-not-found]  # noqa: PLC0415
+        except ModuleNotFoundError:
+            import tomli as tomllib  # type: ignore[no-redef]  # noqa: PLC0415
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return "3", None, [], True
 
-            # Python version
-            requires_python = data.get("project", {}).get("requires-python", "")
-            if requires_python:
-                ver_match = re.search(r"(\d+\.\d+)", requires_python)
-                if ver_match:
-                    python_version = ver_match.group(1)
+    python_version = "3"
+    requires_python = data.get("project", {}).get("requires-python", "")
+    if requires_python:
+        ver_match = re.search(r"(\d+\.\d+)", requires_python)
+        if ver_match:
+            python_version = ver_match.group(1)
 
-            # License
-            lic = data.get("project", {}).get("license", {})
-            if isinstance(lic, dict):
-                license_id = lic.get("text") or lic.get("file")
-            elif isinstance(lic, str):
-                license_id = lic
+    lic = data.get("project", {}).get("license", {})
+    if isinstance(lic, dict):
+        license_id = lic.get("text") or lic.get("file")
+    elif isinstance(lic, str):
+        license_id = lic
+    else:
+        license_id = None
 
-            # Test paths from pytest config
-            test_paths = (
-                data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
-            )
-            if test_paths:
-                test_dirs = list(test_paths)
+    test_dirs = list(
+        data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
+    )
+    return python_version, license_id, test_dirs, True
 
-        except Exception:
-            pass
 
-    # --- .python-version fallback ---
-    if python_version == "3":
-        pv_file = root / ".python-version"
-        if pv_file.exists():
-            try:
-                ver_match = re.search(r"(\d+\.\d+)", pv_file.read_text())
-                if ver_match:
-                    python_version = ver_match.group(1)
-            except OSError:
-                pass
+def _detect_python_version_fallback(root: Path) -> str | None:
+    """Try to detect Python version from .python-version file."""
+    pv_file = root / ".python-version"
+    if not pv_file.exists():
+        return None
+    try:
+        ver_match = re.search(r"(\d+\.\d+)", pv_file.read_text())
+        return ver_match.group(1) if ver_match else None
+    except OSError:
+        return None
 
-    # --- License fallback from LICENSE file ---
-    if not license_id:
-        for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE"):
-            lic_path = root / name
-            if lic_path.exists():
-                try:
-                    content = lic_path.read_text(errors="ignore")[:500]
-                    if "MIT" in content:
-                        license_id = "MIT"
-                    elif "Apache" in content:
-                        license_id = "Apache-2.0"
-                    elif "GNU GENERAL PUBLIC LICENSE" in content.upper():
-                        license_id = "GPL-3.0"
-                    elif "BSD" in content:
-                        license_id = "BSD-3-Clause"
-                except OSError:
-                    pass
-                break
 
-    # --- Directory scanning for source/test/doc ---
-    skip_dirs = {
-        ".venv",
-        "venv",
-        "env",
-        ".git",
-        "__pycache__",
-        "node_modules",
-        ".mypy_cache",
-        ".ruff_cache",
-        ".pytest_cache",
-        ".claude",
-        "dist",
-        "build",
-    }
+def _detect_license_fallback(root: Path) -> str | None:
+    """Try to detect license from LICENSE file content."""
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE"):
+        lic_path = root / name
+        if not lic_path.exists():
+            continue
+        try:
+            content = lic_path.read_text(errors="ignore")[:500]
+        except OSError:
+            break
+        if "MIT" in content:
+            return "MIT"
+        if "Apache" in content:
+            return "Apache-2.0"
+        if "GNU GENERAL PUBLIC LICENSE" in content.upper():
+            return "GPL-3.0"
+        if "BSD" in content:
+            return "BSD-3-Clause"
+        break
+    return None
+
+
+_SKIP_DIRS = frozenset({
+    ".venv", "venv", "env", ".git", "__pycache__", "node_modules",
+    ".mypy_cache", ".ruff_cache", ".pytest_cache", ".claude", "dist", "build",
+})
+
+
+def _scan_project_dirs(
+    root: Path, test_dirs: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Scan root for source, test, and doc directories.
+
+    Returns (source_dirs, test_dirs, doc_dirs).
+    """
+    source_dirs: list[str] = []
+    doc_dirs: list[str] = []
     for entry in sorted(root.iterdir()):
-        if not entry.is_dir() or entry.name.startswith(".") or entry.name in skip_dirs:
+        if not entry.is_dir() or entry.name.startswith(".") or entry.name in _SKIP_DIRS:
             continue
         if entry.name in ("tests", "test"):
             if not test_dirs:
@@ -611,16 +614,28 @@ def _detect_project_layout(project_root: str) -> dict[str, Any]:
         elif (entry / "__init__.py").exists():
             source_dirs.append(entry.name)
         elif entry.name == "src":
-            # PEP 517 src-layout: look for packages inside src/
             for sub in sorted(entry.iterdir()):
                 if sub.is_dir() and (sub / "__init__.py").exists():
                     source_dirs.append(f"src/{sub.name}")
+    return source_dirs, test_dirs, doc_dirs
 
-    # Exclude patterns for quality tools
+
+def _detect_project_layout(project_root: str) -> dict[str, Any]:
+    """Detect source dirs, test dirs, Python version, and license."""
+    root = Path(project_root)
+
+    python_version, license_id, test_dirs, has_pyproject = _parse_pyproject_metadata(root)
+
+    if python_version == "3":
+        python_version = _detect_python_version_fallback(root) or "3"
+
+    if not license_id:
+        license_id = _detect_license_fallback(root)
+
+    source_dirs, test_dirs, doc_dirs = _scan_project_dirs(root, test_dirs)
+
     exclude_patterns = ["**/__pycache__/", "*.egg-info/"]
-    for d in test_dirs:
-        exclude_patterns.append(f"{d}/")
-    for d in doc_dirs:
+    for d in test_dirs + doc_dirs:
         exclude_patterns.append(f"{d}/")
     exclude_patterns.append(".claude/")
 
@@ -784,12 +799,212 @@ def _generate_gitleaks_toml() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _generate_scorecard_workflow() -> str:
+    """Generate OpenSSF Scorecard GitHub Action workflow.
+
+    Runs weekly and on branch protection changes. Publishes results to
+    api.securityscorecards.dev to activate the Scorecard badge.
+    """
+    lines = [
+        "name: OpenSSF Scorecard",
+        "",
+        "on:",
+        "  branch_protection_rule:",
+        "  schedule:",
+        "    - cron: '30 1 * * 1'  # Weekly Monday 01:30 UTC",
+        "  push:",
+        "    branches: [main, master]",
+        "  workflow_dispatch:",
+        "",
+        "permissions: read-all",
+        "",
+        "jobs:",
+        "  analysis:",
+        "    name: Scorecard Analysis",
+        "    runs-on: ubuntu-latest",
+        "    permissions:",
+        "      security-events: write",
+        "      id-token: write",
+        "    steps:",
+        "      - name: Checkout",
+        "        uses: actions/checkout@v4",
+        "        with:",
+        "          persist-credentials: false",
+        "",
+        "      - name: Run Scorecard",
+        "        uses: ossf/scorecard-action@v2.4.0",
+        "        with:",
+        "          results_file: results.sarif",
+        "          results_format: sarif",
+        "          publish_results: true",
+        "",
+        "      - name: Upload SARIF",
+        "        uses: github/codeql-action/upload-sarif@v3",
+        "        with:",
+        "          sarif_file: results.sarif",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _generate_quality_infra_gate_workflow() -> str:
+    """Generate the quality infrastructure gate CI workflow.
+
+    Hard gate: runs on every push/PR, asserts all required quality
+    infrastructure files exist and README badge block is complete.
+    Fails the check if anything is missing.
+    """
+    # Import artifact list from shared module
+    from lintgate.quality_infra import _REQUIRED_ARTIFACTS, _REQUIRED_BADGE_FINGERPRINTS
+
+    # Build file-existence checks
+    file_checks: list[str] = []
+    for _name, rel_path in _REQUIRED_ARTIFACTS.items():
+        file_checks.append(
+            f'          if [ ! -e "{rel_path}" ]; then '
+            f'echo "MISSING: {rel_path}"; MISSING=$((MISSING+1)); fi'
+        )
+
+    # Build fingerprint checks
+    fp_checks: list[str] = []
+    for fp in _REQUIRED_BADGE_FINGERPRINTS:
+        # Escape for grep
+        escaped = fp.replace(".", "\\.").replace("/", "\\/")
+        fp_checks.append(
+            f'          if ! grep -q "{escaped}" README.md 2>/dev/null; then '
+            f'echo "BADGE MISSING: {fp}"; MISSING=$((MISSING+1)); fi'
+        )
+
+    lines = [
+        "name: Quality Infrastructure Gate",
+        "",
+        "on:",
+        "  push:",
+        "  pull_request:",
+        "    types: [opened, synchronize, reopened]",
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: read",
+        "",
+        "concurrency:",
+        "  group: quality-infra-${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+        "jobs:",
+        "  gate:",
+        "    name: Quality Infrastructure Gate",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Checkout",
+        "        uses: actions/checkout@v4",
+        "",
+        "      - name: Check quality infrastructure completeness",
+        "        run: |",
+        "          MISSING=0",
+        *file_checks,
+        *fp_checks,
+        '          if [ "$MISSING" -gt 0 ]; then',
+        '            echo ""',
+        '            echo "Quality infrastructure is incomplete ($MISSING items missing)."',
+        '            echo "Fix: run setup_github_quality(path=..., write=True)"',
+        "            exit 1",
+        "          fi",
+        '          echo "Quality infrastructure: complete"',
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _generate_dependabot_yml() -> str:
+    """Generate Dependabot configuration for automated dependency updates.
+
+    Configures weekly updates for pip (Python) and GitHub Actions ecosystems.
+    """
+    lines = [
+        "# Dependabot configuration — generated by LintGate",
+        "version: 2",
+        "updates:",
+        "  - package-ecosystem: pip",
+        "    directory: /",
+        "    schedule:",
+        "      interval: weekly",
+        "    open-pull-requests-limit: 10",
+        "    labels:",
+        "      - dependencies",
+        "",
+        "  - package-ecosystem: github-actions",
+        "    directory: /",
+        "    schedule:",
+        "      interval: weekly",
+        "    open-pull-requests-limit: 5",
+        "    labels:",
+        "      - dependencies",
+        "      - ci",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _generate_security_md(github: dict[str, Any]) -> str:
+    """Generate SECURITY.md with responsible disclosure policy.
+
+    Args:
+        github: Dict with 'owner' and 'repo' keys from _detect_github_remote.
+    """
+    owner = github.get("owner", "OWNER")
+    repo = github.get("repo", "REPO")
+
+    lines = [
+        "# Security Policy",
+        "",
+        "## Reporting a Vulnerability",
+        "",
+        "If you discover a security vulnerability in this project, please report it",
+        "responsibly. **Do not open a public issue.**",
+        "",
+        "### Preferred Method",
+        "",
+        f"Use [GitHub Security Advisories](https://github.com/{owner}/{repo}"
+        "/security/advisories/new) to report vulnerabilities privately.",
+        "",
+        "### What to Include",
+        "",
+        "- Description of the vulnerability",
+        "- Steps to reproduce",
+        "- Potential impact",
+        "- Suggested fix (if any)",
+        "",
+        "### Response Timeline",
+        "",
+        "- **Acknowledgment**: Within 48 hours",
+        "- **Assessment**: Within 7 days",
+        "- **Fix timeline**: Depends on severity; critical issues prioritized",
+        "",
+        "## Supported Versions",
+        "",
+        "Security updates are applied to the latest release on the default branch.",
+        "",
+        "## Security Tools",
+        "",
+        "This project uses automated security scanning:",
+        "- **gitleaks** — secrets detection in commits",
+        "- **Bandit** — Python SAST analysis",
+        "- **pip-audit** — supply chain vulnerability scanning",
+        "- **OpenSSF Scorecard** — project security posture assessment",
+        "",
+        "---",
+        "",
+        "*Generated by [LintGate](https://github.com/rohanvinaik/LintGate)*",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _generate_pre_push_hook() -> str:
     """Generate a project-local pre-push hook script.
 
-    The hook is intentionally lightweight:
+    The hook enforces local checks before push:
+    - Quality infrastructure completeness gate (hard fail)
     - Prefer qlty when available (closest match to CI quality scans)
-    - Fallback to ruff + pytest when qlty is not installed
+    - Fallback to ruff when qlty is not installed
+    - Run pytest with coverage and enforce symbol-level coverage gate
     - Optionally check Sonar Quality Gate when SONAR_TOKEN and
       SONAR_PROJECT_KEY are set in the shell environment
     """
@@ -807,10 +1022,19 @@ def _generate_pre_push_hook() -> str:
         "",
         'echo "[lintgate] running local quality checks before push"',
         "",
+        "# Quality infrastructure gate (hard fail)",
+        'echo "[lintgate] checking quality infrastructure completeness"',
+        'if python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then',
+        '  echo "[lintgate] quality infrastructure: complete"',
+        "else",
+        '  echo "[lintgate] quality infrastructure: INCOMPLETE — run setup_github_quality to fix"',
+        "  exit 1",
+        "fi",
+        "",
         "if command -v qlty >/dev/null 2>&1; then",
         "  qlty check --all",
         "else",
-        '  echo "[lintgate] qlty not found; using fallback checks (ruff + pytest)"',
+        '  echo "[lintgate] qlty not found; using fallback checks (ruff)"',
         "  if command -v ruff >/dev/null 2>&1; then",
         "    ruff check .",
         "  elif python -c 'import ruff' >/dev/null 2>&1; then",
@@ -818,10 +1042,28 @@ def _generate_pre_push_hook() -> str:
         "  else",
         '    echo "[lintgate] warning: ruff not installed; skipping lint step."',
         "  fi",
+        "fi",
         "",
-        "  if [ -d tests ] || [ -d test ]; then",
-        "    if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi",
-        '    python -m pytest "$TEST_DIR" --tb=short -q',
+        "if [ -d tests ] || [ -d test ]; then",
+        "  if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi",
+        '  echo "[lintgate] running tests with coverage + symbol gate"',
+        '  python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \\',
+        "    --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \\",
+        "    --tb=short -q",
+        "  BASE='HEAD~1'",
+        "  if ! git rev-parse --verify \"$BASE\" >/dev/null 2>&1; then",
+        "    BASE=''",
+        "  fi",
+        "  if [ -n \"$BASE\" ]; then",
+        "    python -m lintgate.symbol_gate_runner \\",
+        "      --project-root \"$REPO_ROOT\" \\",
+        "      --coverage-json coverage.json \\",
+        "      --base \"$BASE\" --head HEAD --surface ci",
+        "  else",
+        "    python -m lintgate.symbol_gate_runner \\",
+        "      --project-root \"$REPO_ROOT\" \\",
+        "      --coverage-json coverage.json \\",
+        "      --head HEAD --surface ci",
         "  fi",
         "fi",
         "",
@@ -844,6 +1086,57 @@ def _generate_pre_push_hook() -> str:
         'echo "[lintgate] pre-push checks passed"',
     ]
     return "\n".join(lines) + "\n"
+
+
+def _apply_managed_artifact(
+    path: str,
+    content: str,
+    exists: bool,
+    write: bool,
+) -> dict[str, Any]:
+    """Write, drift-repair, or preview a managed artifact.
+
+    For managed artifacts (workflows, configs generated by LintGate), drift
+    repair overwrites outdated files when write=True. Compares content hash
+    to detect drift.
+    """
+    import hashlib
+
+    result: dict[str, Any] = {"path": path}
+
+    if exists:
+        try:
+            with open(path) as f:
+                existing_content = f.read()
+        except OSError:
+            existing_content = ""
+
+        existing_hash = hashlib.sha256(existing_content.encode()).hexdigest()[:16]
+        expected_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
+
+        if existing_hash == expected_hash:
+            result["status"] = "already_exists"
+        elif write:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(content)
+            result["status"] = "drift_repaired"
+            result["previous_hash"] = existing_hash
+            result["new_hash"] = expected_hash
+        else:
+            result["status"] = "outdated"
+            result["current_hash"] = existing_hash
+            result["expected_hash"] = expected_hash
+    elif write:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        result["status"] = "written"
+    else:
+        result["status"] = "preview"
+        result["content"] = content
+
+    return result
 
 
 def _write_pre_push_hook(project_root: str, write: bool) -> dict[str, Any]:
@@ -1152,21 +1445,54 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "              fh.write(f'cov_args={cov_args}\\n')",
         "          PY",
         "",
-        "      - name: Run tests with coverage",
+        "      - name: Run tests with coverage (telemetry)",
         "        run: |",
         "          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi",
-        '          echo "Coverage gate: ${{ steps.quality_policy.outputs.coverage_min }}%"',
+        '          echo "Coverage telemetry target: ${{ steps.quality_policy.outputs.coverage_min }}%"',
         '          echo "Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}"',
         '          python -m pytest "$TEST_DIR" \\',
         "            ${{ steps.quality_policy.outputs.cov_args }} \\",
         "            --cov-config=.coveragerc \\",
-        "            --cov-report=xml --cov-report=term-missing \\",
-        "            --cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }} \\",
+        "            --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term-missing \\",
         "            --junitxml=pytest-results.xml \\",
         "            --tb=short -q",
         "",
-        "      - name: Diff coverage (new/changed code)",
+        "      - name: Enforce symbol coverage gate",
+        "        run: |",
+        "          BASE=''",
+        "          HEAD='${{ github.sha }}'",
+        "          if [ '${{ github.event_name }}' = 'pull_request' ]; then",
+        "            git fetch --no-tags --depth=1 origin '${{ github.base_ref }}'",
+        "            BASE='origin/${{ github.base_ref }}'",
+        "          else",
+        "            BASE='${{ github.event.before }}'",
+        "            if [ -z \"$BASE\" ] || [ \"$BASE\" = '0000000000000000000000000000000000000000' ]; then",
+        "              BASE='HEAD~1'",
+        "            fi",
+        "          fi",
+        "",
+        "          if [ -n \"$BASE\" ] && ! git rev-parse --verify \"$BASE\" >/dev/null 2>&1; then",
+        "            BASE=''",
+        "          fi",
+        "",
+        "          if [ -n \"$BASE\" ]; then",
+        "            python -m lintgate.symbol_gate_runner \\",
+        "              --project-root . \\",
+        "              --coverage-json coverage.json \\",
+        "              --base \"$BASE\" \\",
+        "              --head \"$HEAD\" \\",
+        "              --surface ci",
+        "          else",
+        "            python -m lintgate.symbol_gate_runner \\",
+        "              --project-root . \\",
+        "              --coverage-json coverage.json \\",
+        "              --head \"$HEAD\" \\",
+        "              --surface ci",
+        "          fi",
+        "",
+        "      - name: Diff coverage telemetry (non-blocking)",
         "        if: always() && github.event_name == 'pull_request'",
+        "        continue-on-error: true",
         "        run: |",
         '          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"',
         "          diff-cover coverage.xml \\",
@@ -1221,6 +1547,33 @@ def _generate_qlty_workflow() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _read_informational_bandit_codes(project_root: str) -> list[str]:
+    """Read bandit codes with severity_overrides == 'informational' from config.
+
+    Fail-open: missing/broken config returns empty list.
+    """
+    config_path = os.path.join(project_root, ".claude", "lintgate.yaml")
+    if not os.path.isfile(config_path):
+        return []
+    try:
+        import yaml  # noqa: PLC0415
+
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(cfg, dict):
+        return []
+    overrides = cfg.get("severity_overrides", {})
+    if not isinstance(overrides, dict):
+        return []
+    return [
+        str(code)
+        for code, severity in overrides.items()
+        if re.fullmatch(r"B\d+", str(code)) and str(severity).lower() == "informational"
+    ]
+
+
 def _compute_bandit_ci_skips(
     project_root: str | None,
     *,
@@ -1235,35 +1588,16 @@ def _compute_bandit_ci_skips(
     """
     base_skips = ["B101", "B108"]
 
-    # Read severity_overrides from lintgate.yaml
     if project_root:
-        config_path = os.path.join(project_root, ".claude", "lintgate.yaml")
-        if os.path.isfile(config_path):
-            try:
-                import yaml  # noqa: PLC0415
-
-                with open(config_path) as f:
-                    cfg = yaml.safe_load(f)
-                if isinstance(cfg, dict):
-                    overrides = cfg.get("severity_overrides", {})
-                    if isinstance(overrides, dict):
-                        for code, severity in overrides.items():
-                            code_str = str(code)
-                            if (
-                                re.fullmatch(r"B\d+", code_str)
-                                and str(severity).lower() == "informational"
-                                and code_str not in base_skips
-                            ):
-                                base_skips.append(code_str)
-            except Exception:  # noqa: BLE001
-                pass  # Fail-open: broken config → use defaults
+        for code in _read_informational_bandit_codes(project_root):
+            if code not in base_skips:
+                base_skips.append(code)
 
     if is_tool_runner:
         for code in ("B404", "B603", "B607"):
             if code not in base_skips:
                 base_skips.append(code)
 
-    # Sort for deterministic output (B-codes sort naturally)
     return sorted(base_skips)
 
 
@@ -1401,6 +1735,15 @@ def _generate_badge_markdown(github: dict[str, Any], layout: dict[str, Any]) -> 
         f"[![Security Rating](https://sonarcloud.io/api/project_badges/measure?"
         f"project={project_key}&metric=security_rating)]"
         f"(https://sonarcloud.io/summary/new_code?id={project_key})",
+        f"[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?"
+        f"project={project_key}&metric=sqale_rating)]"
+        f"(https://sonarcloud.io/summary/new_code?id={project_key})",
+        f"[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?"
+        f"project={project_key}&metric=reliability_rating)]"
+        f"(https://sonarcloud.io/summary/new_code?id={project_key})",
+        f"[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/"
+        f"github.com/{owner}/{repo}/badge)]"
+        f"(https://securityscorecards.dev/viewer/?uri=github.com/{owner}/{repo})",
     ]
 
     license_id = layout.get("license")
@@ -2061,18 +2404,16 @@ def register(mcp, helpers):
 
         # Auto-bootstrap GitHub quality/security infrastructure when possible.
         _gh = _detect_github_remote(project_root)
-        _has_quality_configs = (
-            os.path.exists(os.path.join(project_root, ".codeclimate.yml"))
-            and os.path.exists(os.path.join(project_root, "sonar-project.properties"))
-            and os.path.exists(os.path.join(project_root, ".qlty", "qlty.toml"))
-            and os.path.exists(os.path.join(project_root, ".github", "workflows", "sonarcloud.yml"))
-            and os.path.exists(os.path.join(project_root, ".github", "workflows", "tests.yml"))
-            and os.path.exists(os.path.join(project_root, ".github", "workflows", "qlty.yml"))
-            and os.path.exists(
-                os.path.join(project_root, ".github", "workflows", "security-lite.yml")
-            )
-            and _readme_has_quality_badges(project_root)
+        from lintgate.quality_infra import audit_quality_infrastructure
+
+        _qi_audit = audit_quality_infrastructure(project_root)
+        # Trust audit when it detected the remote (so it actually checked).
+        # When audit returned early (no .git) but _detect_github_remote saw
+        # a remote, treat configs as missing to trigger bootstrap.
+        _has_quality_configs = _qi_audit.complete and (
+            _qi_audit.has_github_remote or not _gh.get("detected")
         )
+
         quality_bootstrap_result: dict[str, Any] = {"status": "not_requested"}
         if auto_setup and _gh.get("detected") and not _has_quality_configs:
             with suppress(Exception):
@@ -2085,23 +2426,10 @@ def register(mcp, helpers):
                         "status": quality_bootstrap_result.get("status", "unknown"),
                     }
                 )
-                _has_quality_configs = (
-                    os.path.exists(os.path.join(project_root, ".codeclimate.yml"))
-                    and os.path.exists(os.path.join(project_root, "sonar-project.properties"))
-                    and os.path.exists(os.path.join(project_root, ".qlty", "qlty.toml"))
-                    and os.path.exists(
-                        os.path.join(project_root, ".github", "workflows", "sonarcloud.yml")
-                    )
-                    and os.path.exists(
-                        os.path.join(project_root, ".github", "workflows", "tests.yml")
-                    )
-                    and os.path.exists(
-                        os.path.join(project_root, ".github", "workflows", "qlty.yml")
-                    )
-                    and os.path.exists(
-                        os.path.join(project_root, ".github", "workflows", "security-lite.yml")
-                    )
-                    and _readme_has_quality_badges(project_root)
+                # Re-audit after bootstrap
+                _qi_audit = audit_quality_infrastructure(project_root)
+                _has_quality_configs = _qi_audit.complete and (
+                    _qi_audit.has_github_remote or not _gh.get("detected")
                 )
 
         # Suggest GitHub quality setup when remote detected but configs remain missing.
@@ -2235,7 +2563,7 @@ def register(mcp, helpers):
         project layout, and generates tailored configs for Code Climate,
         SonarCloud, qlty CLI, .gitignore augmentation, and README badge injection.
 
-        Generates eleven artifacts:
+        Generates fifteen artifacts:
         - .codeclimate.yml — Code Climate / qlty Cloud config
         - sonar-project.properties — SonarCloud scanner config
         - .coveragerc — shared coverage scope for CI/Sonar workflows
@@ -2243,10 +2571,14 @@ def register(mcp, helpers):
         - .github/workflows/sonarcloud.yml — SonarCloud analysis on push/PR
         - .github/workflows/qlty.yml — qlty analysis on push/PR
         - .github/workflows/security-lite.yml — secrets + SAST + supply-chain checks
+        - .github/workflows/scorecard.yml — OpenSSF Scorecard analysis
+        - .github/workflows/quality-infra-gate.yml — hard gate for infra completeness
+        - .github/dependabot.yml — automated dependency updates
+        - SECURITY.md — responsible disclosure policy
         - .qlty/qlty.toml — qlty analysis config with smart triage (commit to repo)
-        - .githooks/pre-push — local git pre-push quality gate
+        - .githooks/pre-push — local git pre-push quality gate (with infra enforcement)
         - .gitignore augmentation — standard Python patterns
-        - README badge injection — quality badges after title
+        - README badge injection — quality badges after title (8 badges + license)
 
         Default mode is non-destructive (write=false) — returns previews
         of all generated files. Set write=true to create/modify files.
@@ -2260,393 +2592,13 @@ def register(mcp, helpers):
         Example: setup_github_quality(path="/my/project", write=True,
                  sonar_token="your_token_here")
         """
-        project_root = helpers["_validate_project_root"](path)
-        github = _detect_github_remote(project_root)
-        layout = _detect_project_layout(project_root)
-
-        # Detect if project is a tool-runner (uses subprocess)
-        is_tool_runner = _detect_subprocess_usage(project_root)
-
-        # --- .codeclimate.yml ---
-        cc_path = os.path.join(project_root, ".codeclimate.yml")
-        cc_exists = os.path.exists(cc_path)
-        cc_content = _generate_codeclimate_yml(layout)
-        cc_result: dict[str, Any] = {"path": cc_path}
-
-        if cc_exists:
-            cc_result["status"] = "already_exists"
-        elif write:
-            with open(cc_path, "w") as f:
-                f.write(cc_content)
-            cc_result["status"] = "written"
-        else:
-            cc_result["status"] = "preview"
-            cc_result["content"] = cc_content
-
-        # --- sonar-project.properties ---
-        sonar_path = os.path.join(project_root, "sonar-project.properties")
-        sonar_exists = os.path.exists(sonar_path)
-        sonar_content = _generate_sonar_properties(github, layout)
-        sonar_result: dict[str, Any] = {"path": sonar_path}
-
-        if sonar_exists:
-            sonar_result["status"] = "already_exists"
-        elif write:
-            with open(sonar_path, "w") as f:
-                f.write(sonar_content)
-            sonar_result["status"] = "written"
-        else:
-            sonar_result["status"] = "preview"
-            sonar_result["content"] = sonar_content
-
-        # --- .coveragerc ---
-        coveragerc_path = os.path.join(project_root, ".coveragerc")
-        coveragerc_exists = os.path.exists(coveragerc_path)
-        coveragerc_content = _generate_coveragerc()
-        coveragerc_result: dict[str, Any] = {"path": coveragerc_path}
-
-        if coveragerc_exists:
-            coveragerc_result["status"] = "already_exists"
-        elif write:
-            with open(coveragerc_path, "w") as f:
-                f.write(coveragerc_content)
-            coveragerc_result["status"] = "written"
-        else:
-            coveragerc_result["status"] = "preview"
-            coveragerc_result["content"] = coveragerc_content
-
-        # --- .gitleaks.toml ---
-        gitleaks_path = os.path.join(project_root, ".gitleaks.toml")
-        gitleaks_exists = os.path.exists(gitleaks_path)
-        gitleaks_content = _generate_gitleaks_toml()
-        gitleaks_result: dict[str, Any] = {"path": gitleaks_path}
-
-        if gitleaks_exists:
-            gitleaks_result["status"] = "already_exists"
-        elif write:
-            with open(gitleaks_path, "w") as f:
-                f.write(gitleaks_content)
-            gitleaks_result["status"] = "written"
-        else:
-            gitleaks_result["status"] = "preview"
-            gitleaks_result["content"] = gitleaks_content
-
-        # --- .github/workflows/sonarcloud.yml ---
-        workflow_path = os.path.join(project_root, ".github", "workflows", "sonarcloud.yml")
-        workflow_exists = os.path.exists(workflow_path)
-        workflow_content = _generate_sonar_workflow(layout)
-        workflow_result: dict[str, Any] = {"path": workflow_path}
-
-        if workflow_exists:
-            workflow_result["status"] = "already_exists"
-        elif write:
-            os.makedirs(os.path.dirname(workflow_path), exist_ok=True)
-            with open(workflow_path, "w") as f:
-                f.write(workflow_content)
-            workflow_result["status"] = "written"
-        else:
-            workflow_result["status"] = "preview"
-            workflow_result["content"] = workflow_content
-
-        # --- .github/workflows/tests.yml ---
-        tests_workflow_path = os.path.join(project_root, ".github", "workflows", "tests.yml")
-        tests_workflow_exists = os.path.exists(tests_workflow_path)
-        tests_workflow_content = _generate_tests_workflow(layout)
-        tests_workflow_result: dict[str, Any] = {"path": tests_workflow_path}
-
-        if tests_workflow_exists:
-            tests_workflow_result["status"] = "already_exists"
-        elif write:
-            os.makedirs(os.path.dirname(tests_workflow_path), exist_ok=True)
-            with open(tests_workflow_path, "w") as f:
-                f.write(tests_workflow_content)
-            tests_workflow_result["status"] = "written"
-        else:
-            tests_workflow_result["status"] = "preview"
-            tests_workflow_result["content"] = tests_workflow_content
-
-        # --- .github/workflows/qlty.yml ---
-        qlty_workflow_path = os.path.join(project_root, ".github", "workflows", "qlty.yml")
-        qlty_workflow_exists = os.path.exists(qlty_workflow_path)
-        qlty_workflow_content = _generate_qlty_workflow()
-        qlty_workflow_result: dict[str, Any] = {"path": qlty_workflow_path}
-
-        if qlty_workflow_exists:
-            qlty_workflow_result["status"] = "already_exists"
-        elif write:
-            os.makedirs(os.path.dirname(qlty_workflow_path), exist_ok=True)
-            with open(qlty_workflow_path, "w") as f:
-                f.write(qlty_workflow_content)
-            qlty_workflow_result["status"] = "written"
-        else:
-            qlty_workflow_result["status"] = "preview"
-            qlty_workflow_result["content"] = qlty_workflow_content
-
-        # --- .github/workflows/security-lite.yml ---
-        security_workflow_path = os.path.join(
-            project_root, ".github", "workflows", "security-lite.yml"
+        from mcp_tools.setup_github_quality import (
+            setup_github_quality as _setup_github_quality_impl,
         )
-        security_workflow_exists = os.path.exists(security_workflow_path)
-        security_workflow_content = _generate_security_workflow(
-            layout,
-            is_tool_runner=is_tool_runner,
-            project_root=project_root,
+
+        return _setup_github_quality_impl(
+            path, write=write, sonar_token=sonar_token, _helpers=helpers,
         )
-        security_workflow_result: dict[str, Any] = {"path": security_workflow_path}
-
-        if security_workflow_exists:
-            security_workflow_result["status"] = "already_exists"
-        elif write:
-            os.makedirs(os.path.dirname(security_workflow_path), exist_ok=True)
-            with open(security_workflow_path, "w") as f:
-                f.write(security_workflow_content)
-            security_workflow_result["status"] = "written"
-        else:
-            security_workflow_result["status"] = "preview"
-            security_workflow_result["content"] = security_workflow_content
-
-        # --- .githooks/pre-push ---
-        pre_push_hook_result = _write_pre_push_hook(project_root, write=write)
-
-        # --- .qlty/qlty.toml ---
-        qlty_dir = os.path.join(project_root, ".qlty")
-        qlty_path = os.path.join(qlty_dir, "qlty.toml")
-        qlty_exists = os.path.exists(qlty_path)
-        qlty_content = _generate_qlty_toml(layout, is_tool_runner=is_tool_runner)
-        qlty_result: dict[str, Any] = {
-            "path": qlty_path,
-            "is_tool_runner": is_tool_runner,
-            "local_only": False,
-            "tracked_in_git": True,
-            "note": ".qlty/qlty.toml is intended to be committed so CI matches local triage.",
-        }
-
-        qlty_gitignore = os.path.join(qlty_dir, ".gitignore")
-        qlty_gitignore_written = False
-        if qlty_exists:
-            qlty_result["status"] = "already_exists"
-        elif write:
-            os.makedirs(qlty_dir, exist_ok=True)
-            with open(qlty_path, "w") as f:
-                f.write(qlty_content)
-            qlty_result["status"] = "written"
-        else:
-            qlty_result["status"] = "preview"
-            qlty_result["content"] = qlty_content
-
-        if write:
-            os.makedirs(qlty_dir, exist_ok=True)
-            if not os.path.exists(qlty_gitignore):
-                with open(qlty_gitignore, "w") as f:
-                    f.write("logs\nout\nplugin_cachedir\nresults\n")
-                qlty_gitignore_written = True
-        qlty_result["gitignore_path"] = qlty_gitignore
-        qlty_result["gitignore_written"] = qlty_gitignore_written
-
-        # --- .gitignore ---
-        gi_info = _compute_gitignore_additions(project_root)
-        gi_result: dict[str, Any] = {
-            "existing_pattern_count": gi_info["existing_pattern_count"],
-            "additions_count": len(gi_info["additions"]),
-            "already_present_count": len(gi_info["already_present"]),
-        }
-
-        if not gi_info["additions"]:
-            gi_result["status"] = "no_changes_needed"
-        elif write:
-            gi_path = os.path.join(project_root, ".gitignore")
-            with open(gi_path, "a") as f:
-                if gi_info["gitignore_exists"]:
-                    f.write("\n")
-                f.write("# Added by LintGate setup_github_quality\n")
-                for pat in gi_info["additions"]:
-                    f.write(f"{pat}\n")
-            gi_result["status"] = "augmented" if gi_info["gitignore_exists"] else "created"
-            gi_result["patterns_added"] = gi_info["additions"]
-        else:
-            gi_result["status"] = "preview"
-            gi_result["additions"] = gi_info["additions"]
-
-        # --- README badges ---
-        badge_result: dict[str, Any] = {}
-        if github.get("detected"):
-            badge_md = _generate_badge_markdown(github, layout)
-            readme_result = _inject_badges_into_readme(project_root, badge_md, write)
-            badge_result = readme_result
-            badge_result["markdown"] = badge_md
-            badge_result["codeclimate_note"] = (
-                "Replace PLACEHOLDER with your Code Climate badge token after "
-                "connecting your repo at https://codeclimate.com"
-            )
-        else:
-            badge_result["status"] = "skipped"
-            badge_result["reason"] = "no_github_remote_detected"
-
-        # --- SonarCloud scanner execution ---
-        scanner_result: dict[str, Any] = {"status": "not_requested"}
-        scanner_path = _detect_sonar_scanner()
-
-        if sonar_token and write:
-            if not scanner_path:
-                scanner_result = {
-                    "status": "scanner_not_found",
-                    "install": "pip install pysonar-scanner",
-                    "note": "Install sonar-scanner to push analysis to SonarCloud.",
-                }
-            elif not os.path.exists(os.path.join(project_root, "sonar-project.properties")):
-                scanner_result = {
-                    "status": "no_config",
-                    "note": "sonar-project.properties must exist before scanning.",
-                }
-            else:
-                scanner_result = _run_sonar_scanner(
-                    project_root,
-                    sonar_token,
-                    scanner_path,
-                )
-        elif sonar_token and not write:
-            scanner_result = {
-                "status": "preview",
-                "note": "Scanner will run when write=True. Token will be passed "
-                "via SONAR_TOKEN env var (never written to disk).",
-                "scanner_found": scanner_path is not None,
-            }
-
-        # --- Guidance ---
-        guidance = _build_quality_guidance(github, layout, scanner_path)
-
-        # --- Next actions ---
-        owner = github.get("owner", "OWNER")
-        repo = github.get("repo", "REPO")
-        next_actions: list[dict[str, str]] = []
-
-        files_to_stage: list[str] = []
-        if cc_result.get("status") == "written":
-            files_to_stage.append(".codeclimate.yml")
-        if sonar_result.get("status") == "written":
-            files_to_stage.append("sonar-project.properties")
-        if coveragerc_result.get("status") == "written":
-            files_to_stage.append(".coveragerc")
-        if gitleaks_result.get("status") == "written":
-            files_to_stage.append(".gitleaks.toml")
-        if workflow_result.get("status") == "written":
-            files_to_stage.append(".github/workflows/sonarcloud.yml")
-        if tests_workflow_result.get("status") == "written":
-            files_to_stage.append(".github/workflows/tests.yml")
-        if qlty_workflow_result.get("status") == "written":
-            files_to_stage.append(".github/workflows/qlty.yml")
-        if security_workflow_result.get("status") == "written":
-            files_to_stage.append(".github/workflows/security-lite.yml")
-        if pre_push_hook_result.get("status") == "written":
-            files_to_stage.append(".githooks/pre-push")
-        if qlty_result.get("status") == "written":
-            files_to_stage.append(".qlty/qlty.toml")
-        if qlty_result.get("gitignore_written"):
-            files_to_stage.append(".qlty/.gitignore")
-        if gi_result.get("status") in ("augmented", "created"):
-            files_to_stage.append(".gitignore")
-        if badge_result.get("status") in {"injected", "updated"}:
-            files_to_stage.append("README.md")
-
-        if files_to_stage:
-            next_actions.append(
-                {
-                    "tool": "Bash",
-                    "reason": "Stage and commit quality infrastructure",
-                    "example": (
-                        f"git add {' '.join(files_to_stage)} && "
-                        "git commit -m 'Add quality and security infrastructure (Code Climate + SonarCloud + qlty + security-lite)'"
-                    ),
-                }
-            )
-
-        if github.get("detected"):
-            if not sonar_token:
-                next_actions.append(
-                    {
-                        "tool": "Bash",
-                        "reason": "Configure GitHub Actions secret required by SonarCloud workflow",
-                        "example": (
-                            f"gh secret set SONAR_TOKEN --repo {owner}/{repo} --body '<your_sonar_token>'"
-                        ),
-                    }
-                )
-                next_actions.append(
-                    {
-                        "tool": "setup_github_quality",
-                        "reason": "Run sonar-scanner to push initial analysis and activate badge",
-                        "example": (
-                            f'setup_github_quality(path="{project_root}", '
-                            'write=True, sonar_token="<your_token>")'
-                        ),
-                    }
-                )
-            next_actions.append(
-                {
-                    "tool": "Bash",
-                    "reason": "Enforce required checks for everyone (including admins) on main",
-                    "example": (
-                        "gh api --method PUT "
-                        f"/repos/{owner}/{repo}/branches/main/protection "
-                        "--input - <<'JSON'\n"
-                        "{\n"
-                        '  "required_status_checks": {\n'
-                        '    "strict": true,\n'
-                        '    "contexts": [\n'
-                        '      "Test Suite",\n'
-                        '      "SonarQube Cloud Scan",\n'
-                        '      "Secrets + SAST + Supply Chain"\n'
-                        "    ]\n"
-                        "  },\n"
-                        '  "enforce_admins": true,\n'
-                        '  "required_pull_request_reviews": null,\n'
-                        '  "restrictions": null\n'
-                        "}\n"
-                        "JSON"
-                    ),
-                }
-            )
-            next_actions.append(
-                {
-                    "tool": "Bash",
-                    "reason": "Connect repo to Code Climate, then replace PLACEHOLDER in README badge",
-                    "example": f"open https://codeclimate.com/github/{owner}/{repo}",
-                }
-            )
-
-        # Suggest qlty check if qlty is available
-        qlty_path_bin = shutil.which("qlty")
-        if qlty_path_bin:
-            next_actions.append(
-                {
-                    "tool": "Bash",
-                    "reason": "Run qlty local analysis for independent code quality check",
-                    "example": f"cd {project_root} && qlty check --all",
-                }
-            )
-
-        output: dict[str, Any] = {
-            "status": "written" if write else "preview",
-            "github": github,
-            "layout": layout,
-            "codeclimate": cc_result,
-            "sonar": sonar_result,
-            "coveragerc": coveragerc_result,
-            "gitleaks": gitleaks_result,
-            "workflow": workflow_result,
-            "tests_workflow": tests_workflow_result,
-            "qlty_workflow": qlty_workflow_result,
-            "security_workflow": security_workflow_result,
-            "pre_push_hook": pre_push_hook_result,
-            "qlty": qlty_result,
-            "gitignore": gi_result,
-            "badges": badge_result,
-            "scanner": scanner_result,
-            "guidance": guidance,
-            "next_actions": next_actions,
-        }
-
-        return json.dumps(output, indent=2)
 
     return {
         "getting_started": getting_started,

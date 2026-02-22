@@ -47,6 +47,7 @@ class TestRunResult:
     timed_out: bool = False
     coverage_pct: float | None = None  # Set when measure_coverage=True
     coverage_json_path: str | None = None  # Path to coverage.json when measured
+    coverage_json_ephemeral: bool = False  # True when path should be cleaned up by caller
 
 
 @dataclass
@@ -99,34 +100,54 @@ class TestChannel:
         # Step 3: Parse coverage settings
         channel_settings = config.channels.get("tests", ChannelConfig()).settings
         cov_cfg = _parse_coverage_settings(channel_settings, event.surface)
+        tests_to_run = _select_tests_to_run(
+            impacted_tests,
+            project_root,
+            cov_cfg=cov_cfg,
+            surface=event.surface,
+            findings=findings,
+        )
 
-        # Step 4: Run impacted tests (if any exist)
         test_result: TestRunResult | None = None
-        if impacted_tests:
-            remaining_ms = self.timeout_ms - int((time.perf_counter() - start) * 1000)
-            test_result = run_tests(
-                impacted_tests, project_root,
-                timeout_ms=max(remaining_ms, 2000),
-                measure_coverage=cov_cfg["measure"],
-                source_packages=cov_cfg["source_packages"],
+        try:
+            # Step 4: Run selected tests (impacted or fallback)
+            if tests_to_run:
+                remaining_ms = self.timeout_ms - int((time.perf_counter() - start) * 1000)
+                timeout_floor_ms = 2000
+                if cov_cfg["symbol_enabled"] and event.surface in ("mcp", "ci"):
+                    # Symbol gate needs a meaningful coverage sample; avoid 10s truncation.
+                    timeout_floor_ms = 25000
+                test_result = run_tests(
+                    tests_to_run, project_root,
+                    timeout_ms=max(remaining_ms, timeout_floor_ms),
+                    measure_coverage=cov_cfg["measure"],
+                    source_packages=cov_cfg["source_packages"],
+                )
+                _collect_test_findings(test_result, remaining_ms, findings)
+
+            # Step 5: Check coverage threshold
+            _check_coverage_threshold(
+                test_result, cov_cfg["measure"], cov_cfg["threshold"], findings,
             )
-            _collect_test_findings(test_result, remaining_ms, findings)
 
-        # Step 5: Check coverage threshold
-        _check_coverage_threshold(
-            test_result, cov_cfg["measure"], cov_cfg["threshold"], findings,
-        )
+            # Step 6: Symbol coverage gate
+            gate_result = _run_symbol_gate_if_enabled(
+                cov_cfg, test_result, changed_files, project_root,
+                event.surface, findings,
+            )
 
-        # Step 6: Symbol coverage gate
-        gate_result = _run_symbol_gate_if_enabled(
-            cov_cfg, test_result, changed_files, project_root,
-            event.surface, findings,
-        )
-
-        return _build_channel_result(
-            self.name, start, findings, repairs, impacted_tests,
-            test_result, cov_cfg, gate_result,
-        )
+            return _build_channel_result(
+                self.name, start, findings, repairs, impacted_tests,
+                test_result, cov_cfg, gate_result,
+            )
+        finally:
+            if (
+                test_result
+                and test_result.coverage_json_ephemeral
+                and test_result.coverage_json_path
+            ):
+                with contextlib.suppress(OSError):
+                    os.unlink(test_result.coverage_json_path)
 
 
 # ── Execute Helpers ──────────────────────────────────────────────────────
@@ -191,6 +212,9 @@ def _parse_coverage_settings(
         source_packages = [str(p).strip() for p in raw_pkgs if str(p).strip()]
     elif isinstance(raw_pkgs, str) and raw_pkgs.strip():
         source_packages = [raw_pkgs.strip()]
+    # Fallback matches run_tests() default — keeps --cov and symbol filter consistent
+    if not source_packages:
+        source_packages = ["lintgate", "mcp_tools"]
 
     sym_settings = channel_settings.get("symbol_coverage", {})
     sym_enabled = isinstance(sym_settings, dict) and sym_settings.get("enabled", False)
@@ -264,6 +288,31 @@ def _check_coverage_threshold(
     )
 
 
+def _filter_to_source_packages(
+    changed_files: list[str],
+    source_packages: list[str],
+    project_root: str,
+) -> list[str]:
+    """Filter changed files to only those within source packages.
+
+    The symbol coverage gate should only target files that are covered by
+    --cov (source packages), not test files or other non-source files.
+    """
+    if not source_packages:
+        return changed_files
+    result = []
+    for filepath in changed_files:
+        try:
+            rel = os.path.relpath(filepath, project_root)
+        except ValueError:
+            continue
+        for pkg in source_packages:
+            if rel == pkg or rel.startswith(pkg + os.sep) or rel.startswith(pkg + "/"):
+                result.append(filepath)
+                break
+    return result
+
+
 def _run_symbol_gate_if_enabled(
     cov_cfg: dict[str, Any],
     test_result: TestRunResult | None,
@@ -276,8 +325,11 @@ def _run_symbol_gate_if_enabled(
     if not cov_cfg["symbol_enabled"]:
         return None
     cov_json_path = test_result.coverage_json_path if test_result else None
+    source_files = _filter_to_source_packages(
+        changed_files, cov_cfg["source_packages"], project_root,
+    )
     return _run_symbol_gate(
-        cov_json_path, changed_files, project_root,
+        cov_json_path, source_files, project_root,
         cov_cfg["symbol_coverage"], surface, findings,
     )
 
@@ -324,6 +376,51 @@ def _build_channel_result(
         metrics=metrics,
         duration_ms=elapsed_ms,
     )
+
+
+def _discover_fallback_test_targets(project_root: str) -> list[str]:
+    """Discover broad test targets when impacted-test mapping finds none."""
+    root = Path(project_root)
+    targets: list[str] = []
+    for dirname in ("tests", "test"):
+        candidate = root / dirname
+        if candidate.is_dir():
+            targets.append(str(candidate))
+    if targets:
+        return targets
+    # Fallback: root-level test files
+    for candidate in sorted(root.glob("test_*.py")):
+        if candidate.is_file():
+            targets.append(str(candidate))
+    return targets
+
+
+def _select_tests_to_run(
+    impacted_tests: list[str],
+    project_root: str,
+    cov_cfg: dict[str, Any] | None,
+    surface: str,
+    findings: list[LintIssue],
+) -> list[str]:
+    """Choose test targets. Symbol gate in MCP/CI falls back to broad suite."""
+    if impacted_tests:
+        return impacted_tests
+    if not isinstance(cov_cfg, dict):
+        return []
+    if not (cov_cfg.get("symbol_enabled") and surface in ("mcp", "ci")):
+        return []
+    fallback_targets = _discover_fallback_test_targets(project_root)
+    if fallback_targets:
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="symbol_gate_fallback",
+                message="No impacted tests detected; running fallback test targets for symbol gate.",
+                severity="informational",
+                evidence={"targets": fallback_targets[:4], "surface": surface},
+            )
+        )
+    return fallback_targets
 
 
 def _compute_severity(
@@ -496,7 +593,18 @@ def run_tests(
                 f"{result.stdout}\n{result.stderr}",
             )
         if measure_coverage and coverage_json_path and os.path.isfile(coverage_json_path):
-            parsed.coverage_json_path = coverage_json_path
+            # Persist JSON beyond TemporaryDirectory lifetime so symbol gate can read it.
+            import shutil
+            import tempfile
+
+            fd, copied_path = tempfile.mkstemp(
+                prefix="lintgate_cov_json_",
+                suffix=".json",
+            )
+            os.close(fd)
+            shutil.copyfile(coverage_json_path, copied_path)
+            parsed.coverage_json_path = copied_path
+            parsed.coverage_json_ephemeral = True
 
         return parsed
     except subprocess.TimeoutExpired:

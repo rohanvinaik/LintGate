@@ -4,5 +4,4 @@ source =
     mcp_tools
 omit =
     */pytest-*/*/repo/lintgate/*
-    lintgate/hook_posttooluse.py
 

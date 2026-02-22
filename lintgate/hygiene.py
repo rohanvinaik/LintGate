@@ -59,7 +59,7 @@ _COMMAND_CLASSES: dict[str, dict[str, Any]] = {
             re.compile(r"git\s+commit"),
             re.compile(r"git\s+push"),
         ],
-        "checks": ["no_staged_secrets", "lockfile_fresh"],
+        "checks": ["no_staged_secrets", "lockfile_fresh", "quality_infrastructure"],
     },
     "env_edit": {
         "patterns": [
@@ -366,6 +366,42 @@ def _check_clean_working_tree(planned_action: str, project_root: str) -> Hygiene
     return None
 
 
+def _check_quality_infra(planned_action: str, project_root: str) -> HygieneWarning | None:
+    """Check if quality infrastructure is deployed for GitHub projects.
+
+    Hard enforcement: actionability='immediate' blocks the agent from
+    pushing without quality infrastructure in place.
+    """
+    try:
+        from lintgate.quality_infra import audit_quality_infrastructure
+
+        result = audit_quality_infrastructure(project_root)
+    except Exception:
+        return None  # Graceful degradation
+
+    if not result.has_github_remote:
+        return None  # Not a GitHub project — no infra expected
+
+    if result.complete:
+        return None  # All artifacts present
+
+    missing_count = len(result.missing)
+    return HygieneWarning(
+        check="quality_infrastructure",
+        message=(
+            f"{missing_count} quality infrastructure artifact(s) missing. "
+            "Run setup_github_quality to deploy."
+        ),
+        confidence=0.90,
+        evidence={
+            "missing": result.missing[:5],
+            "present_count": len(result.present),
+            "badge_fingerprints_ok": result.badge_fingerprints_ok,
+        },
+        actionability="immediate",
+    )
+
+
 # ── Check registry ───────────────────────────────────────────────────────
 
 _CHECK_REGISTRY: dict[str, Any] = {
@@ -376,4 +412,5 @@ _CHECK_REGISTRY: dict[str, Any] = {
     "lockfile_fresh": _check_lockfile_fresh,
     "gitignore_coverage": _check_gitignore_coverage,
     "clean_working_tree": _check_clean_working_tree,
+    "quality_infrastructure": _check_quality_infra,
 }
