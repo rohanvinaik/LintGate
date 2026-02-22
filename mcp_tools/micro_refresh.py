@@ -9,9 +9,9 @@ Usage in tool modules::
 
     from mcp_tools.micro_refresh import attach_session_context
 
-    def register(mcp, helpers):
-        @mcp.tool()
-        def my_tool(...) -> str:
+    def register(server, helpers):
+        @server.tool()
+        async def my_tool(...) -> str:
             result = do_work(...)
             return helpers["_json_dumps"](
                 attach_session_context(result, project_root), "compact"

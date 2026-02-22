@@ -8,6 +8,7 @@ every session that reads it.
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 
@@ -22,21 +23,56 @@ def _read_file(relative_path: str) -> str:
         return f.read()
 
 
+def _docstring_lines(source: str) -> set[int]:
+    """Return the set of 1-indexed line numbers that belong to docstrings."""
+    lines: set[int] = set()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return lines
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
+            if (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)
+            ):
+                ds = node.body[0]
+                for ln in range(ds.lineno, (ds.end_lineno or ds.lineno) + 1):
+                    lines.add(ln)
+    return lines
+
+
 def _count_mcp_tools() -> int:
-    """Count @mcp.tool() decorators across mcp_server.py and mcp_tools/ — the source of truth."""
+    """Count @mcp.tool() decorators in actual code, excluding docstrings.
+
+    Uses AST to identify docstring line ranges, then counts regex matches
+    only on non-docstring lines. This avoids false positives from code
+    examples in module docstrings (e.g., micro_refresh.py).
+    """
     count = 0
-    # Count in main server file
-    content = _read_file("mcp_server.py")
-    count += len(re.findall(r"@mcp\.tool\(\)", content))
-    # Count in domain modules
+    tool_files = [os.path.join(PROJECT_ROOT, "mcp_server.py")]
     mcp_tools_dir = os.path.join(PROJECT_ROOT, "mcp_tools")
     if os.path.isdir(mcp_tools_dir):
-        for fname in os.listdir(mcp_tools_dir):
+        for fname in sorted(os.listdir(mcp_tools_dir)):
             if fname.endswith(".py"):
-                fpath = os.path.join(mcp_tools_dir, fname)
-                with open(fpath) as f:
-                    count += len(re.findall(r"@mcp\.tool\(\)", f.read()))
+                tool_files.append(os.path.join(mcp_tools_dir, fname))
+
+    for fpath in tool_files:
+        with open(fpath) as f:
+            source = f.read()
+        ds_lines = _docstring_lines(source)
+        for i, line in enumerate(source.splitlines(), 1):
+            if i not in ds_lines and re.search(r"@mcp\.tool\(\)", line):
+                count += 1
     return count
+
+
+def _count_reference_tool_rows() -> int:
+    """Count tool table rows in docs/reference.md (lines matching | `tool_name` |)."""
+    content = _read_file("docs/reference.md")
+    return len(re.findall(r"^\| `\w+`", content, re.MULTILINE))
 
 
 class TestLinterCount:
@@ -66,7 +102,7 @@ class TestMCPToolCount:
     """Verify MCP tool count consistency."""
 
     def test_mcp_tool_count_matches_docs(self):
-        """@mcp.tool() count in mcp_server.py should match docs."""
+        """@mcp.tool() count in code should match docs."""
         actual_count = _count_mcp_tools()
         readme = _read_file("README.md")
         agents = _read_file("AGENTS.md")
@@ -77,7 +113,7 @@ class TestMCPToolCount:
             f"{count_str} " in readme or f"({count_str})" in readme or f"{count_str} " in agents
         ), (
             f"MCP tool count is {actual_count} but docs don't match. "
-            f"Run: grep -Rho '@mcp.tool()' mcp_server.py mcp_tools | wc -l"
+            f"Run: grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l"
         )
 
     def test_skill_tool_count_matches(self):
@@ -97,7 +133,16 @@ class TestMCPToolCount:
         )
         assert "$TOOL_COUNT tools by cognitive mode" in integrate
 
-    def test_mcp_tool_count_is_50(self):
-        """Sanity check: we currently have 50 MCP tools."""
+    def test_mcp_tool_count_is_49(self):
+        """Sanity check: we currently have 49 MCP tools."""
         actual = _count_mcp_tools()
-        assert actual == 50, f"Expected 50 MCP tools, got {actual}"
+        assert actual == 49, f"Expected 49 MCP tools, got {actual}"
+
+    def test_reference_md_lists_all_tools(self):
+        """docs/reference.md tool tables should list all MCP tools."""
+        actual_code_count = _count_mcp_tools()
+        listed_count = _count_reference_tool_rows()
+        assert listed_count == actual_code_count, (
+            f"reference.md lists {listed_count} tools but code has {actual_code_count}. "
+            f"Check for missing tool table entries."
+        )

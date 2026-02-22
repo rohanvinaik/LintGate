@@ -1,5 +1,7 @@
 # LintGate Field Report: Greenfield Project Bootstrap
 
+> **Historical snapshot** — this document captures the state of LintGate as of 2026-02-17. Current metrics and tool counts may differ.
+
 **Date:** 2026-02-17
 **Agent:** Claude Opus 4.6 via Claude Code CLI
 **Project:** iphone-recovery (Python, src layout, Click CLI, pytest)

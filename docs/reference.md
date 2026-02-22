@@ -6,7 +6,7 @@ Technical reference for LintGate's 49 MCP tools, configuration, and project stru
 
 ## MCP Tools (49)
 
-> **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`
+> **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
 LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (49 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
@@ -91,6 +91,19 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `audit_tool_versions` | Compare installed versions against requirements   |
 | `telemetry_summary`   | ROI dashboard: quality improvement vs token cost  |
 
+### Compass
+
+| Tool                 | Purpose                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| `compass_status`     | Show compass axes, depths, gap report, staleness, and cognitive mode      |
+| `compass_check`      | Check an action against toward/away/forbidden directives                  |
+| `compass_update`     | Re-extract compass from project docs, optionally render context files     |
+| `compass_interview`  | Gap-filling interview — returns prioritized questions or applies answers  |
+| `compass_reset`      | Scoped state reset (compass/session/project/global), dry-run default      |
+| `theory_mode_enter`  | Enter theory exploration mode                                             |
+| `theory_mode_freeze` | Freeze compass and exit theory mode to normal                             |
+| `setup_hooks`        | Generate .claude/settings.json hook configuration for compass-aware hooks |
+
 ---
 
 ## Configuration
@@ -115,12 +128,11 @@ controlplane:
   # Habit Mode — context window management (opt-in)
   habit_mode:
     enabled: true
-    compact_threshold: 0.70        # Compact at 70% of context window
+    compact_threshold: 0.40        # Compact at 40% of context window
     enter_score: 0.70              # habitScore to enter habit mode
     exit_score: 0.40               # habitScore to exit habit mode
     sustain_calls: 5               # Must sustain enter_score for N calls
     token_api_interval: 15         # API calibration every N tool calls
-    context_window_size: 200000    # Context window size in tokens
 
   # Architecture of Inquiry (opt-in)
   inquiry:
@@ -196,7 +208,7 @@ lintgate/
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
 ├── mcp_tools/                       # 49 MCP tool definitions (incl. habit_tools.py, compass_tools.py)
-├── tests/                           # 1,770+ tests
+├── tests/                           # 2,180+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy
 │   └── reference.md                 # This file

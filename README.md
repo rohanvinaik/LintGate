@@ -123,7 +123,7 @@ For manual setup, hook/MCP configuration, and agent integration details, see [do
 
 Independent tool validation of the LintGate codebase (92 Python files, ~24K LOC). All measurements taken with standard open-source tools — no LintGate involvement in scoring.
 
-### Before/After: Autonomous Professionalization
+### Before/After: Autonomous Professionalization *(2026-02-20 session snapshot)*
 
 **Total human input to produce the "After" column: one sentence.** *"Professionalize this codebase."* No corrections. No guidance. No steering.
 

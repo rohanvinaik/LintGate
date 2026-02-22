@@ -935,9 +935,9 @@ From a single `compass.yaml`, the renderer registry produces context files tailo
 | Target | Output Path(s) | Format | Key Optimization |
 |--------|---------------|--------|------------------|
 | **Claude** | CLAUDE.md + .claude/rules/theory.md | Hierarchical MD, managed sections, epistemic checks | Imperative dispositions, LINTGATE:BEGIN/END markers |
-| **Cursor** | .cursor/rules/project.mdc | Flat MDC with YAML frontmatter | Front-loaded rules, glob-scoped, <2000 tokens |
+| **Cursor** | .cursor/rules/compass.mdc | Flat MDC with YAML frontmatter | Front-loaded rules, glob-scoped, <2000 tokens |
 | **Copilot** | .github/copilot-instructions.md | Action-focused MD | Specific, path-scoped, <1200 tokens |
-| **Windsurf** | .windsurf/rules/*.md | Per-topic .md files | Split by axis, "Always On" mode, <6000/file |
+| **Windsurf** | .windsurf/rules/compass.md + dynamic files | Per-topic .md files | Split by axis, "Always On" mode, <6000/file |
 | **Cline** | .clinerules/compass.md | MD rules (AI-editable) | Cline can modify its own rules |
 | **Aider** | CONVENTIONS.md | Convention format | Convention-focused, lint integration |
 | **AGENTS.md** | AGENTS.md | Cross-tool standard | Works with 25+ platforms |
@@ -954,10 +954,10 @@ The compass integrates with Claude Code's hook system through 6 hook handlers, e
 | Hook | Event | What It Does |
 |------|-------|-------------|
 | **session_start** | SessionStart | Loads compass, injects staleness and axis depths as `additionalContext`. Suggests `compass_update` if no compass found. |
-| **user_prompt** | UserPromptSubmit | Injects mode indicator. Classifies prompt for theory-relevance. |
+| **user_prompt** | UserPromptSubmit | Targeted pre-generation primer — injects mode, focus files, blocking alerts, and behavioral warnings as a system message before model reasoning (~120 tokens). Falls back to mode indicator if RuntimeState unavailable. |
 | **pre_tool** | PreToolUse (Write\|Edit\|Bash) | In Theory mode: advises against writing before understanding. Checks proposed actions against forbidden/away directives. |
 | **stop_gate** | Stop | Reports compass coverage and staleness. Advisory only, never blocks. |
-| **pre_compact** | PreCompact | Saves compass checkpoint. Emits compass capsule (toward/away/forbidden counts, axes brief, true_north) as `hookSpecificOutput` for compaction survival. |
+| **pre_compact** | PreCompact | Dual-write compaction shaping — builds structured capsule from RuntimeState, writes to both hook output (`additionalContext`) and dynamic rule files to ensure state survives compaction (~800 tokens). Falls back to compass-only capsule. |
 | **session_end** | SessionEnd | Re-saves compass state if modified during session. |
 
 Each hook reads JSON from stdin, loads compass and session state, performs its narrow check, and writes JSON to stdout. Hook messages report raw data — `[Compass] Loaded — staleness=85% axes={problem: 2, solution: 3, ...}` — not interpretations. The hooks are independent entry points, not a monolithic handler.
@@ -976,6 +976,18 @@ The `compass_reset` tool provides scoped state deletion with dry-run default:
 Without `confirm=True`, the tool returns a structured report of what *would* be deleted, with file sizes and types. CLAUDE.md and AGENTS.md are never auto-deleted — they may contain manual edits that are not recoverable.
 
 Implementation: `lintgate/compass.py` (data model, depth scoring, gap report), `lintgate/compass_io.py` (load/save/migrate), `lintgate/axis_extractor.py` (wraps theory_extractor + heading signals), `lintgate/gap_detector.py` (gap detection + interview templates), `lintgate/code_inference.py` (multi-signal code analysis), `lintgate/modes/mode_state.py` (cognitive mode transitions), `lintgate/modes/execution_compass.py` (frozen directive state + alignment checking), `lintgate/renderers/` (8 renderer implementations + registry), `lintgate/hooks/` (6 hook handlers), `lintgate/reset.py` (scoped state deletion), `mcp_tools/compass_tools.py` (8 MCP tools).
+
+### Runtime State & Dynamic Rendering
+
+The runtime state bus and dynamic rendering system provide session-scoped context that survives context compaction across all supported AI coding tools.
+
+**RuntimeState** (`lintgate/runtime_state.py`): A canonical projection of all rendering surfaces. Assembles from SessionMemory + HabitModeState + TokenTrackerState + CompassState into a single `RuntimeState` dataclass. Persists to `.lintgate/runtime_state.json` with a monotonic `generation` counter. All operations are fail-safe — corrupt or missing state returns None/fresh defaults. File locking uses best-effort `fcntl` with 80ms timeout and exponential backoff.
+
+**WriteScheduler** (`lintgate/write_scheduler.py`): Cadence control for dynamic rule file writes. Every rewrite changes file mtime → host re-tokenizes its system prompt → expensive. The scheduler uses dirty-flag + cooldown logic to batch writes. Immediate triggers (mode_transition, compass_violation, compaction, session_start) bypass cooldown; cadenced triggers (tool_call, lint_complete, timer) respect 30–300s intervals.
+
+**HostAdapter** (`lintgate/renderers/host_adapter.py`): Capability detection protocol for multi-host rendering. Extends the existing `Renderer` protocol with dynamic rendering methods (`render_session`, `render_focus`, `cleanup_dynamic`). Defines host presets with rules/hooks/MCP/frontmatter capabilities and token budgets (4k–12k).
+
+**Dynamic rendering** (`lintgate/renderers/dynamic.py`): Produces session-scoped files (`lg_session`, `lg_focus`) carrying runtime state that survives context compaction. Token-budgeted at 1200 + 250 tokens respectively. Files carry `LG_GEN:<N>` watermarks for fast staleness detection without full parsing. Dynamic files use the `lg_` prefix convention and inherit the host's rule directory and file extension (`.md` or `.mdc`).
 
 ---
 
@@ -1087,7 +1099,7 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 |---|---|
 | `telemetry_summary(path, period)` | ROI dashboard: runs, issues, fix rate, token cost, quality trend |
 
-> **Source of truth for tool inventory**: Run `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` to get the authoritative count. Tool tables in all documentation files should be cross-checked against this count.
+> **Source of truth for tool inventory**: Run `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` to get the authoritative count (target `*.py` to avoid pycache matches). Tool tables in all documentation files should be cross-checked against this count.
 
 ---
 
@@ -1653,9 +1665,9 @@ lintgate/
 │   │   ├── __init__.py              # RendererRegistry, Renderer protocol, auto-detection
 │   │   ├── _helpers.py              # Shared rendering utilities
 │   │   ├── claude.py                # CLAUDE.md + .claude/rules/theory.md
-│   │   ├── cursor.py                # .cursor/rules/project.mdc
+│   │   ├── cursor.py                # .cursor/rules/compass.mdc
 │   │   ├── copilot.py               # .github/copilot-instructions.md
-│   │   ├── windsurf.py              # .windsurf/rules/*.md
+│   │   ├── windsurf.py              # .windsurf/rules/compass.md + dynamic files
 │   │   ├── cline.py                 # .clinerules/compass.md
 │   │   ├── aider.py                 # CONVENTIONS.md
 │   │   ├── agents_md.py             # AGENTS.md (cross-tool standard)

@@ -60,12 +60,13 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 49 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
+LintGate provides 49 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
 | Tool | Purpose |
 |------|---------|
+| `getting_started` | First-call project orientation with startup automation (config scaffold, venv provision, missing-tool diagnostics). |
 | `build_theory_pack` | Token-efficient theory digest (~500-1500 tokens). Call first in any session. |
 | `get_theory_context` | Deep retrieval of specific theory claims by facet/keyword. |
 | `controlplane_status` | Is ControlPlane enabled? Which channels? What config? |
@@ -143,7 +144,7 @@ LintGate provides 49 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `habit_compact` | Trigger compaction NOW. Returns a structured Habit State Snapshot (~3000 tokens, hard cap 12000 chars) optimized for post-compact context injection. |
 | `habit_configure` | Runtime threshold adjustment (session-scoped). Adjusts compact_threshold, enter_score, exit_score, sustain_calls, token_api_interval, context_window_size. Values clamped to safe ranges. |
 
-**Sustain workflow**: When approaching context limits during sustained work, call `habit_status` to check token pressure and habit score. If compaction is needed, `habit_compact` produces a 10-section structured snapshot: session_summary, active_hypothesis, constraint_space, files_context, test_status, recent_errors, lint_state, behavioral_notes, theory_digest, and focus_directive. The snapshot preserves everything the agent needs to continue working after compaction — compaction is refinement, not loss. `declare_mode("habit")` forces immediate entry for sessions that begin with sustained execution; `declare_mode("standard")` exits.
+**Sustain workflow**: When approaching context limits during sustained work, call `habit_status` to check token pressure and habit score. If compaction is needed, `habit_compact` produces an 11-section structured snapshot: `mode`, `active_context`, `theory_digest`, `lint_state`, `behavioral_trajectory`, `recurring_issues`, `session_history`, `coherence_trajectory`, `token_state`, `tool_guidance`, and `focus_directive`. The snapshot preserves everything the agent needs to continue working after compaction — compaction is refinement, not loss. `declare_mode("habit")` forces immediate entry for sessions that begin with sustained execution; `declare_mode("standard")` exits.
 
 ### Compass — 4-axis project understanding
 
@@ -208,16 +209,16 @@ All findings are informational unless corroborated by other channels. The struct
 | Theory pack | ~500-1500 tokens | One-time orient cost per session |
 | Habit compaction snapshot | ~3000 tokens | On-demand via `habit_compact`, hard cap 12000 chars |
 
-Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This displaces discipline failures that consume ~64% of unsupervised token budgets at 3-4x the rate. Habit Mode's token tracker monitors this budget continuously — when context pressure exceeds the compact threshold (default 70%), compaction produces a structured snapshot that preserves working state at ~3000 tokens instead of losing it entirely.
+Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This displaces discipline failures that consume ~64% of unsupervised token budgets at 3-4x the rate. Habit Mode's token tracker monitors this budget continuously — when context pressure exceeds the compact threshold (default 40%), compaction produces a structured snapshot that preserves working state at ~3000 tokens instead of losing it entirely.
 
 ## Documentation Discipline
 
 **When you change LintGate itself**, update all affected documentation in the same action:
 
-- **Add/remove MCP tool** → update tool tables in this file, README.md, and docs/design.md. Verify count with `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l`.
+- **Add/remove MCP tool** → update tool tables in this file, README.md, and docs/design.md. Verify count with `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l`.
 - **Change tool signature or semantics** → update the tool's description in all three files.
 - **Add config option** → update YAML examples in docs/design.md and README.md.
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools | wc -l` (currently 49). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 49). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

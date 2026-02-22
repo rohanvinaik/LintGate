@@ -34,12 +34,37 @@ def _lintgate_home() -> Path:
 _PROTECTED_NAMES = {"CLAUDE.md", "AGENTS.md"}
 _THEORY_PATH = ".claude/rules/theory.md"
 
-# Pattern matching <!-- LINTGATE:BEGIN section_id vN --> ... <!-- LINTGATE:END section_id -->
-# with optional surrounding blank lines consumed to avoid leaving gaps.
-_MANAGED_SECTION_RE = re.compile(
-    r"\n*<!-- LINTGATE:BEGIN \w+ v\d+ -->\n.*?<!-- LINTGATE:END \w+ -->\n*",
-    re.DOTALL,
-)
+_MANAGED_BEGIN_RE = re.compile(r"<!-- LINTGATE:BEGIN (\w+) v\d+ -->")
+
+
+def _find_managed_sections(text: str) -> list[tuple[int, int, str]]:
+    """Find managed sections as ``(start, end, section_id)`` tuples.
+
+    Uses :func:`str.find` for END markers instead of a single DOTALL regex,
+    eliminating any backtracking risk (SonarCloud ReDoS finding).
+    Surrounding blank lines are consumed to avoid leaving gaps.
+    """
+    sections: list[tuple[int, int, str]] = []
+    for begin_m in _MANAGED_BEGIN_RE.finditer(text):
+        section_id = begin_m.group(1)
+        end_marker = f"<!-- LINTGATE:END {section_id} -->"
+        end_pos = text.find(end_marker, begin_m.end())
+        if end_pos < 0:
+            continue  # Unpaired BEGIN — skip
+
+        # Core span: from BEGIN tag start to after END tag
+        start = begin_m.start()
+        end = end_pos + len(end_marker)
+
+        # Expand: consume leading blank lines
+        while start > 0 and text[start - 1] == "\n":
+            start -= 1
+        # Expand: consume trailing newlines
+        while end < len(text) and text[end] == "\n":
+            end += 1
+
+        sections.append((start, end, section_id))
+    return sections
 
 
 # ── Data ──────────────────────────────────────────────────────────────
@@ -110,26 +135,27 @@ def _strip_managed_sections(path: Path, report: ResetReport, *, dry_run: bool) -
         report.errors.append(f"Failed to read {path}: {exc}")
         return
 
-    sections = list(_MANAGED_SECTION_RE.finditer(original))
+    sections = _find_managed_sections(original)
     if not sections:
         return
 
-    for m in sections:
-        # Extract the section_id from the BEGIN tag for reporting.
-        begin_match = re.search(r"LINTGATE:BEGIN (\w+)", m.group())
-        section_id = begin_match.group(1) if begin_match else "unknown"
+    for start, end, section_id in sections:
         report.deleted.append({
             "path": str(path),
             "type": "managed_section",
             "section_id": section_id,
-            "size_bytes": len(m.group().encode("utf-8")),
+            "size_bytes": len(original[start:end].encode("utf-8")),
             "deletable": True,
         })
 
     if dry_run:
         return
 
-    cleaned = _MANAGED_SECTION_RE.sub("\n", original).strip() + "\n"
+    # Remove sections back-to-front to preserve offsets
+    cleaned = original
+    for start, end, _ in reversed(sections):
+        cleaned = cleaned[:start] + "\n" + cleaned[end:]
+    cleaned = cleaned.strip() + "\n"
     try:
         path.write_text(cleaned, encoding="utf-8")
     except OSError as exc:
@@ -175,14 +201,12 @@ def enumerate_project_state(project_root: str) -> list[dict[str, Any]]:
     if claude_md.exists():
         try:
             content = claude_md.read_text(encoding="utf-8")
-            for m in _MANAGED_SECTION_RE.finditer(content):
-                begin_match = re.search(r"LINTGATE:BEGIN (\w+)", m.group())
-                section_id = begin_match.group(1) if begin_match else "unknown"
+            for start, end, section_id in _find_managed_sections(content):
                 entries.append({
                     "path": str(claude_md),
                     "type": "managed_section",
                     "section_id": section_id,
-                    "size_bytes": len(m.group().encode("utf-8")),
+                    "size_bytes": len(content[start:end].encode("utf-8")),
                     "deletable": True,
                 })
         except OSError:
