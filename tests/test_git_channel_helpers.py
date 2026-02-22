@@ -94,10 +94,10 @@ def test_match_secret_no_match(tmp_path: Path) -> None:
 
 def test_match_secret_none_file(tmp_path: Path) -> None:
     finding = _match_secret_pattern(
-        "token=ghp_abcdefghijklmnopqrstuvwxyz1234",
+        "token=ghp_abcdefghijklmnopqrstuvwxyz1234",  # gitleaks:allow
         None,
         None,
-        str(tmp_path),  # gitleaks:allow
+        str(tmp_path),
     )
     assert finding is not None
     assert finding.file is None
