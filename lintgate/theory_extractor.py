@@ -851,7 +851,7 @@ def _extract_claims(section: _Section, facet: str) -> list[str]:
             # Clean up for presentation
             cleaned = re.sub(r"\s+", " ", sentence).strip()
             # Skip sentences that are mostly code references
-            if cleaned.count("CODE") > 2:
+            if cleaned.count("CODE") > 1:
                 continue
             # Skip sentences that START with CODE (usually just referencing docs)
             if cleaned.startswith("CODE") or cleaned.startswith("See CODE"):
@@ -948,6 +948,11 @@ def _score_claim(sentence: str, facet: str) -> int:
             score += 1
         if re.search(r"\b(?:trying harder|premature|overfitting|scope creep)\b", s, re.I):
             score += 1
+        # Penalize tool-description sentences that aren't conceptual anti-patterns
+        sentence_lower = s.lower()
+        tool_desc_patterns = ["provides", "channel", "linter", "tier", "analysis"]
+        if sum(1 for p in tool_desc_patterns if p in sentence_lower) >= 2:
+            score -= 2
     elif facet == "abstractions":
         if re.search(r"\b(?:we (?:call|define|term)|is called|known as|refers to)\b", s, re.I):
             score += 2

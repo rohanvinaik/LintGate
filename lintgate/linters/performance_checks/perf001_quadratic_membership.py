@@ -38,6 +38,9 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                 if _is_set_or_dict_name(container_name, tree):
                     continue
 
+                if _is_string_variable(container_name, tree):
+                    continue  # Substring search, not membership test
+
                 if _is_small_constant_list(container_name, tree):
                     continue
 
@@ -70,7 +73,8 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
 def _is_set_or_dict_name(name: str, tree: ast.AST) -> bool:
     """Check if a name uses fast membership semantics (O(1)/optimized).
 
-    Includes set()/frozenset()/dict() and range(), plus set/dict literals.
+    Includes set()/frozenset()/dict() and range(), plus set/dict literals,
+    and type-annotated dicts/sets.
     """
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
@@ -91,6 +95,45 @@ def _is_set_or_dict_name(name: str, tree: ast.AST) -> bool:
                         return True
                     if isinstance(value, ast.SetComp):
                         return True
+        # Type-annotated dicts/sets: x: dict[str, int] = ...
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+            and _annotation_is_dict_or_set(node.annotation)
+        ):
+            return True
+    return False
+
+
+def _annotation_is_dict_or_set(ann: ast.expr) -> bool:
+    """Check if a type annotation refers to dict/set/frozenset."""
+    fast_names = {"dict", "set", "frozenset", "Dict", "Set", "FrozenSet"}
+    if isinstance(ann, ast.Name) and ann.id in fast_names:
+        return True
+    if isinstance(ann, ast.Subscript) and isinstance(ann.value, ast.Name):
+        return ann.value.id in fast_names
+    return False
+
+
+def _is_string_variable(name: str, tree: ast.AST) -> bool:
+    """Check if name is assigned a string (substring search, not membership test)."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == name:
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                        return True
+                    if isinstance(node.value, ast.JoinedStr):  # f-string
+                        return True
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+            and isinstance(node.annotation, ast.Name)
+            and node.annotation.id == "str"
+        ):
+            return True
     return False
 
 

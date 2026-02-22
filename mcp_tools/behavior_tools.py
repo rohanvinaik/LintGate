@@ -250,6 +250,29 @@ def register(mcp, helpers):
             "recommendation": recommendation,
         }
 
+        # Cold-start: seed from theory profile when no relevant hypotheses exist
+        if not relevant and compass.constraint_check_count_session <= 1:
+            try:
+                from lintgate.theory_extractor import extract_theory
+
+                profile = extract_theory(project_root)
+                theory_profile = profile.get("theory_profile", {})
+                anti_patterns = theory_profile.get("anti_patterns", [])
+                if anti_patterns:
+                    theory_constraints = []
+                    for entry in anti_patterns:
+                        for claim in entry.get("claims", []):
+                            if len(theory_constraints) < 5:
+                                theory_constraints.append(claim[:120])
+                    if theory_constraints:
+                        output["theory_constraints"] = theory_constraints
+                        output["hint"] = (
+                            "Seeded from project theory. "
+                            "Accuracy improves with session data."
+                        )
+            except Exception:
+                pass
+
         # First-session guidance
         if compass.constraint_check_count_session == 1:
             output["first_session_hint"] = (
@@ -618,6 +641,9 @@ def register(mcp, helpers):
         }
 
         output: dict[str, Any] = {
+            "scope": "project",
+            "scope_note": "Cross-session memory for this project (not cross-project)",
+            "project_root": project_root,
             "enabled": cp_config.global_memory_enabled,
             "profile_path": str(GLOBAL_PROFILE_PATH),
             "session_count": profile.session_count,
@@ -650,9 +676,13 @@ def register(mcp, helpers):
             save_global_profile,
         )
 
+        project_root = os.path.abspath(path)
         save_global_profile(GlobalBehaviorProfile())
         return helpers["_json_dumps"](
             {
+                "scope": "project",
+                "scope_note": "Cross-session memory for this project (not cross-project)",
+                "project_root": project_root,
                 "status": "reset",
                 "profile_path": str(GLOBAL_PROFILE_PATH),
                 "message": "Global behavior profile has been reset to empty state.",

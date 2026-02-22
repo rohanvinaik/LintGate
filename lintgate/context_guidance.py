@@ -152,6 +152,10 @@ def _parse_context_file(path: str) -> dict[str, Any]:
         stripped = raw.strip()
         if not stripped:
             continue
+        # Skip markdown table rows — they contain keywords like "DO NOT"
+        # in descriptive cells, not as actionable directives.
+        if re.match(r"^\s*\|.*\|", raw):
+            continue
         cleaned = _clean_line(stripped)
         upper = cleaned.upper()
 

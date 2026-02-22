@@ -35,6 +35,7 @@ def compute_coherence(
     channel_results: list[ChannelResult],
     *,
     severity_weighted: bool = False,
+    channel_weights: dict[str, float] | None = None,
     files_changed: list[str] | None = None,
 ) -> CoherenceResult:
     """Compute cross-channel coherence from channel results.
@@ -46,13 +47,20 @@ def compute_coherence(
             Also demotes info-only failed channels from coherence classification.
             Informational-only failures count 0.25, warning-only 0.5,
             blocking 1.0. Default True (flipped in v2).
+        channel_weights: Optional per-channel importance weights. When provided,
+            each channel's failure score is scaled by its weight (default 0.5
+            for unconfigured channels). None = all channels equal weight.
         files_changed: Files from the edit event. When provided, enables
             edit-scope classification (edit-related vs ambient channels).
 
     Returns:
         CoherenceResult with state, summary, and recommended action.
     """
-    result = _compute_base_coherence(channel_results, severity_weighted=severity_weighted)
+    result = _compute_base_coherence(
+        channel_results,
+        severity_weighted=severity_weighted,
+        channel_weights=channel_weights,
+    )
 
     # Apply edit-scope overlay when files_changed is available
     if files_changed:
@@ -65,6 +73,7 @@ def _compute_base_coherence(
     channel_results: list[ChannelResult],
     *,
     severity_weighted: bool = False,
+    channel_weights: dict[str, float] | None = None,
 ) -> CoherenceResult:
     """Compute base coherence state without edit-scope overlay."""
     # Partition results by status
@@ -152,7 +161,7 @@ def _compute_base_coherence(
 
     # Rule 4: systemic — three+ failures or cross-domain failure
     systemic = _classify_systemic_failure(
-        failed, loud, silent, demoted_notes, severity_weighted,
+        failed, loud, silent, demoted_notes, severity_weighted, channel_weights,
     )
     if systemic is not None:
         return systemic
@@ -241,6 +250,7 @@ def _classify_systemic_failure(
     silent: list[str],
     demoted_notes: list[str],
     severity_weighted: bool,
+    channel_weights: dict[str, float] | None = None,
 ) -> CoherenceResult | None:
     """Classify as systemic if 3+ failures or cross-domain failure.
 
@@ -248,7 +258,9 @@ def _classify_systemic_failure(
     to fall through to coupled classification.
     """
     effective_failure_count = (
-        _effective_failure_count(failed) if severity_weighted else float(len(failed))
+        _effective_failure_count(failed, channel_weights)
+        if severity_weighted
+        else float(len(failed))
     )
     has_cross_domain_failure = (
         _is_cross_domain_failure(failed, effective_failure_count)
@@ -361,6 +373,7 @@ def compute_coherence_with_history(
     session: SessionMemory | None = None,
     *,
     severity_weighted: bool = False,
+    channel_weights: dict[str, float] | None = None,
     files_changed: list[str] | None = None,
 ) -> CoherenceResult:
     """Compute coherence with trajectory-aware annotations from session history.
@@ -378,6 +391,7 @@ def compute_coherence_with_history(
         session: Optional session memory for history. If None, behaves
                  identically to compute_coherence().
         severity_weighted: Forward to compute_coherence().
+        channel_weights: Per-channel importance weights (None = disabled).
         files_changed: Forward to compute_coherence() for edit-scope classification.
 
     Returns:
@@ -386,6 +400,7 @@ def compute_coherence_with_history(
     base = compute_coherence(
         channel_results,
         severity_weighted=severity_weighted,
+        channel_weights=channel_weights,
         files_changed=files_changed,
     )
 
@@ -411,6 +426,14 @@ def compute_coherence_with_history(
     resolved = _detect_resolutions(session, base.silent_channels)
     for ch_name in resolved:
         annotations.append(f"RESOLVED: {ch_name} is now passing")
+
+    # 4. TRADEOFF detection: refactoring tradeoff patterns (e.g. CC down, args up)
+    tradeoffs = _detect_refactoring_tradeoffs(channel_results, session)
+    for t in tradeoffs:
+        annotations.append(
+            f"TRADEOFF: {t['improved']} improved by {abs(t['improved_delta'])}, "
+            f"but {t['regressed']} increased by {t['regressed_delta']}"
+        )
 
     if not annotations:
         return base
@@ -507,6 +530,69 @@ def _detect_resolutions(
     current_silent_set = set(current_silent)
 
     return sorted(last_loud & current_silent_set)
+
+
+# Known refactoring tradeoff pairs: (improved_kind, regressed_kind)
+_TRADEOFF_PAIRS: list[tuple[str, str]] = [
+    ("cyclomatic_complexity", "too_many_args"),
+    ("cognitive_complexity", "too_many_args"),
+    ("file_too_long", "too_many_functions"),
+]
+
+
+def _detect_refactoring_tradeoffs(
+    current_results: list[ChannelResult],
+    session: SessionMemory,
+) -> list[dict[str, object]]:
+    """Detect refactoring tradeoff patterns between current and previous findings.
+
+    Returns annotation dicts when a known tradeoff pair is detected:
+    one metric improved while a correlated metric regressed.
+
+    This is annotation only — no severity changes are made.
+    The agent sees the annotation and can make its own judgment.
+    """
+    if not session.snapshots:
+        return []
+
+    last_snapshot = session.snapshots[-1]
+    if not last_snapshot.finding_index:
+        return []
+
+    # Count current findings by kind
+    current_kinds: dict[str, int] = {}
+    for cr in current_results:
+        for f in cr.findings:
+            kind = getattr(f, "kind", "") or ""
+            if kind:
+                current_kinds[kind] = current_kinds.get(kind, 0) + 1
+
+    # Count previous findings by kind from finding_index
+    prev_kinds: dict[str, int] = {}
+    for _fp, summary in last_snapshot.finding_index.items():
+        kind = summary.get("kind", "")
+        count = int(summary.get("count", 1))
+        if kind:
+            prev_kinds[kind] = prev_kinds.get(kind, 0) + count
+
+    tradeoffs: list[dict[str, object]] = []
+    for improved_kind, regressed_kind in _TRADEOFF_PAIRS:
+        prev_improved = prev_kinds.get(improved_kind, 0)
+        curr_improved = current_kinds.get(improved_kind, 0)
+        prev_regressed = prev_kinds.get(regressed_kind, 0)
+        curr_regressed = current_kinds.get(regressed_kind, 0)
+
+        # Tradeoff: improved count decreased AND regressed count increased
+        if curr_improved < prev_improved and curr_regressed > prev_regressed:
+            tradeoffs.append({
+                "type": "refactor_tradeoff_detected",
+                "improved": improved_kind,
+                "improved_delta": curr_improved - prev_improved,
+                "regressed": regressed_kind,
+                "regressed_delta": curr_regressed - prev_regressed,
+            })
+
+    return tradeoffs
 
 
 def _has_actionable_findings(result: ChannelResult) -> bool:
@@ -805,7 +891,10 @@ def _finding_severity_counts(result: ChannelResult) -> dict[str, int]:
     return counts
 
 
-def _effective_failure_count(failed_results: list[ChannelResult]) -> float:
+def _effective_failure_count(
+    failed_results: list[ChannelResult],
+    channel_weights: dict[str, float] | None = None,
+) -> float:
     """Compute severity-weighted failure count.
 
     Each failed channel contributes a capped weighted score from its finding mix:
@@ -814,11 +903,21 @@ def _effective_failure_count(failed_results: list[ChannelResult]) -> float:
     - informational findings: 0.10 each
     - per-channel cap: 2.0
 
+    When channel_weights is provided, each channel's score is further scaled
+    by its importance weight (unconfigured channels default to 0.5).
+
     This distinguishes one-channel "debt" from broad systemic failures:
     three channels with only one warning each produce 1.05 total (coupled),
     while channels with many blockers cross systemic threshold quickly.
     """
-    return sum(_channel_failure_weight(result) for result in failed_results)
+    total = 0.0
+    for result in failed_results:
+        score = _channel_failure_weight(result)
+        if channel_weights is not None:
+            importance = channel_weights.get(result.channel, 0.5)
+            score *= importance
+        total += score
+    return total
 
 
 def _ordered_failed_channels(failed_results: list[ChannelResult]) -> list[str]:

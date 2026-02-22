@@ -82,6 +82,7 @@ def compute_telemetry_summary(
 
     # Trend: compare first half vs second half of period
     trend = _compute_trend(entries)
+    trend_evidence = _compute_trend_evidence(entries)
 
     # Token estimate: compact ~200, standard ~500, full ~1500
     token_map = {"compact": 200, "standard": 500, "full": 1500}
@@ -107,6 +108,7 @@ def compute_telemetry_summary(
         "tier_distribution": tier_dist,
         "output_mode_distribution": mode_dist,
         "trend": trend,
+        "trend_evidence": trend_evidence,
     }
     token_economics = compute_token_economics_summary(project_root, period=period)
     if token_economics.get("has_data", False):
@@ -196,6 +198,25 @@ def _compute_trend(entries: list[dict[str, Any]]) -> str:
     elif avg_second > avg_first * 1.2:
         return "degrading"
     return "stable"
+
+
+def _compute_trend_evidence(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute evidence backing the trend direction.
+
+    Returns a dict with early/recent averages and sample size so the
+    agent (and user) can see *why* the trend was classified the way it was.
+    """
+    if len(entries) < 4:
+        return {"reason": f"Insufficient data ({len(entries)} runs, need 4+)"}
+
+    mid = len(entries) // 2
+    avg_first = sum(e.get("blocking_count", 0) for e in entries[:mid]) / mid
+    avg_second = sum(e.get("blocking_count", 0) for e in entries[mid:]) / (len(entries) - mid)
+    return {
+        "avg_blockers_early": round(avg_first, 1),
+        "avg_blockers_recent": round(avg_second, 1),
+        "sample_size": len(entries),
+    }
 
 
 def compute_feature_usage_summary(

@@ -154,26 +154,17 @@ def check_contradictions(
 
     overlap = do_keywords & do_not_keywords
     noise_words = {
-        "use",
-        "create",
-        "make",
-        "add",
-        "set",
-        "get",
-        "run",
-        "check",
-        "test",
-        "write",
-        "read",
-        "file",
-        "code",
-        "the",
-        "and",
-        "for",
+        "use", "create", "make", "add", "set", "get", "run", "check", "test",
+        "write", "read", "file", "code", "the", "and", "for", "this", "that",
+        "with", "from", "have", "been", "will", "when", "each", "only",
+        "should", "must", "never", "always", "before", "after", "into",
+        "ensure", "avoid", "keep", "more", "less", "than", "also",
+        "project", "tool", "module", "system", "data", "state", "mode",
+        "path", "config", "session", "context", "theory", "snapshot",
     }
     meaningful_overlap = overlap - noise_words
 
-    if meaningful_overlap:
+    if len(meaningful_overlap) >= 2:  # Require 2+ word overlap to reduce FPs
         overlap_str = ", ".join(sorted(meaningful_overlap)[:5])
         checks.append(
             {
@@ -392,7 +383,13 @@ def check_path_references(
             "separate docs and keeping this context file concise."
         )
 
-    dead_paths = find_dead_paths(path_refs, project_root)
+    # Detect generated-artifact patterns from project structure + config
+    generated_patterns = _detect_generated_patterns(project_root)
+    extra_patterns = thresholds.get("generated_path_patterns", [])
+    if isinstance(extra_patterns, list):
+        generated_patterns.extend(str(p) for p in extra_patterns if p)
+
+    dead_paths = find_dead_paths(path_refs, project_root, generated_patterns or None)
 
     if dead_paths:
         dead_str = ", ".join(dead_paths[:5])
@@ -445,9 +442,72 @@ def extract_path_refs(text: str) -> list[str]:
     return refs
 
 
-def find_dead_paths(path_refs: list[str], project_root: str) -> list[str]:
-    """Check which path references don't exist on disk."""
+def _detect_generated_patterns(project_root: str) -> list[str]:
+    """Detect build-artifact path patterns from project structure.
+
+    Scans for build tool markers and returns glob patterns for paths
+    that are typically generated (not checked in) and may be referenced
+    in documentation but not present on disk at audit time.
+    """
+    patterns: list[str] = []
+
+    # Python packaging
+    if os.path.exists(os.path.join(project_root, "setup.py")) or os.path.exists(
+        os.path.join(project_root, "pyproject.toml")
+    ):
+        patterns.extend(["*.egg-info", "*.egg-info/*", "dist", "dist/*", "build", "build/*"])
+
+    # Makefile-based builds
+    if os.path.exists(os.path.join(project_root, "Makefile")):
+        patterns.extend(["build", "build/*", "out", "out/*"])
+
+    # Node.js / webpack / bundlers
+    if os.path.exists(os.path.join(project_root, "package.json")):
+        patterns.extend(["dist", "dist/*", "bundle", "bundle/*", "node_modules", "node_modules/*"])
+
+    # Webpack specifically
+    if os.path.exists(os.path.join(project_root, "webpack.config.js")):
+        patterns.extend(["dist", "dist/*", "bundle", "bundle/*"])
+
+    # Rust
+    if os.path.exists(os.path.join(project_root, "Cargo.toml")):
+        patterns.extend(["target", "target/*"])
+
+    # Deduplicate
+    return list(dict.fromkeys(patterns))
+
+
+def _matches_generated_pattern(ref: str, patterns: list[str]) -> bool:
+    """Check if a path reference matches any generated-artifact pattern."""
+    import fnmatch
+
+    ref_clean = ref.removeprefix("./")
+    for pattern in patterns:
+        if fnmatch.fnmatch(ref_clean, pattern):
+            return True
+        # Also check bare name against pattern
+        parts = ref_clean.split("/")
+        if parts and fnmatch.fnmatch(parts[0], pattern):
+            return True
+    return False
+
+
+def find_dead_paths(
+    path_refs: list[str],
+    project_root: str,
+    generated_patterns: list[str] | None = None,
+) -> list[str]:
+    """Check which path references don't exist on disk.
+
+    Args:
+        path_refs: Extracted path references from context files.
+        project_root: Project root directory.
+        generated_patterns: Optional glob patterns for build artifacts
+            that may not exist on disk but are valid references.
+    """
     dead: list[str] = []
+    effective_patterns = generated_patterns or []
+
     for ref in path_refs:
         if "*" in ref or "?" in ref:
             continue
@@ -456,6 +516,11 @@ def find_dead_paths(path_refs: list[str], project_root: str) -> list[str]:
             if not os.path.exists(expanded):
                 dead.append(ref)
             continue
+
+        # Skip references matching generated-artifact patterns
+        if effective_patterns and _matches_generated_pattern(ref, effective_patterns):
+            continue
+
         ref_clean = ref.removeprefix("./")
         full_path = os.path.join(project_root, ref_clean)
         if os.path.exists(full_path):

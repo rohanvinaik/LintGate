@@ -21,6 +21,7 @@ Design principles:
 
 from __future__ import annotations
 
+import ast
 import os
 import statistics
 import time
@@ -80,6 +81,20 @@ _ORPHAN_EXCLUDE_DIR_PARTS = frozenset(
         "test",
         "testing",
         "benchmarks",
+    }
+)
+
+_PLUGIN_DIR_PATTERNS = frozenset(
+    {
+        "linters",
+        "renderers",
+        "mcp_tools",
+        "plugins",
+        "extensions",
+        "handlers",
+        "backends",
+        "drivers",
+        "adapters",
     }
 )
 
@@ -185,7 +200,13 @@ class StructureChannel:
         findings.extend(size_findings)
 
         # STRUCT003: Orphan detection
-        orphan_findings = _check_orphans(py_files, import_graph, file_map, project_root)
+        # Read extra orphan exclusion dirs from channel settings
+        _structure_settings = getattr(config, "channel_settings", {}).get("structure", {})
+        _extra_orphan_dirs = _structure_settings.get("orphan_exclude_dirs", [])
+        _extra_orphan_frozen = frozenset(_extra_orphan_dirs) if _extra_orphan_dirs else None
+        orphan_findings = _check_orphans(
+            py_files, import_graph, file_map, project_root, _extra_orphan_frozen
+        )
         findings.extend(orphan_findings)
 
         # STRUCT004: Package cohesion
@@ -513,6 +534,100 @@ def _percentile(sorted_data: list[int], pct: float) -> float:
     return d0 + (d1 - d0) * (k - f)
 
 
+# ── Re-export Detection (for STRUCT003 orphan analysis) ─────────────────
+
+
+def _detect_reexports(init_file: str, project_root: str) -> dict[str, str]:
+    """Detect re-exported modules from an __init__.py file.
+
+    Parses the AST for import patterns that indicate a module is re-exported
+    as part of the package's public API.
+
+    Returns:
+        {module_stem: certainty} where certainty is "definite" or "unknown".
+        - "definite": explicit named import (from .sub import Foo) or __all__
+        - "unknown": wildcard import (from .sub import *) or dynamic patterns
+    """
+    try:
+        with open(init_file) as f:
+            source = f.read()
+    except OSError:
+        return {}
+
+    try:
+        tree = ast.parse(source, filename=init_file)
+    except SyntaxError:
+        return {}
+
+    reexports: dict[str, str] = {}
+    has_dynamic_import = False
+
+    for node in ast.walk(tree):
+        # from .sub import Foo, Bar → definite re-export of "sub"
+        if isinstance(node, ast.ImportFrom) and node.module and node.level > 0:
+            # The module being imported from (e.g., "sub" in "from .sub import Foo")
+            parts = node.module.split(".")
+            stem = parts[0]  # Top-level sub-module
+
+            if node.names and len(node.names) == 1 and node.names[0].name == "*":
+                # from .sub import * → ambiguous, mark as unknown
+                if stem not in reexports or reexports[stem] != "definite":
+                    reexports[stem] = "unknown"
+            else:
+                # from .sub import Foo, Bar → explicit named import
+                reexports[stem] = "definite"
+
+        # Check for __all__ = [...] assignments
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(
+                    node.value, (ast.List, ast.Tuple)
+                ):
+                    for elt in node.value.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            reexports[elt.value] = "definite"
+
+        # Detect dynamic import patterns (importlib, __import__)
+        if isinstance(node, ast.Call):
+            func = node.func
+            # importlib.import_module(...)
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "import_module"
+                or isinstance(func, ast.Name)
+                and func.id == "__import__"
+            ):
+                has_dynamic_import = True
+
+    # If dynamic imports found, mark all as potentially re-exported
+    if has_dynamic_import:
+        reexports.setdefault("*", "unknown")
+
+    return reexports
+
+
+def _build_reexport_map(
+    py_files: list[str], project_root: str
+) -> dict[str, dict[str, str]]:
+    """Build a map of parent_package → {module_stem: certainty} from all __init__.py.
+
+    Returns:
+        {package_dir_relpath: {module_stem: "definite"|"unknown"}}
+    """
+    reexport_map: dict[str, dict[str, str]] = {}
+
+    for filepath in py_files:
+        if os.path.basename(filepath) != "__init__.py":
+            continue
+
+        parent_dir = os.path.dirname(filepath)
+        reexports = _detect_reexports(filepath, project_root)
+        if reexports:
+            reexport_map[parent_dir] = reexports
+
+    return reexport_map
+
+
 # ── STRUCT003: Orphan Detection ──────────────────────────────────────────
 
 
@@ -521,6 +636,7 @@ def _check_orphans(
     import_graph: dict[str, set[str]],
     file_map: dict[str, str],
     project_root: str,
+    extra_exclude_dirs: frozenset[str] | None = None,
 ) -> list[LintIssue]:
     """Detect orphaned files — modules not imported by any other module.
 
@@ -532,6 +648,12 @@ def _check_orphans(
     - Plugin/discovery patterns
     - conftest.py
     - Files outside packages (top-level scripts)
+
+    Re-export awareness:
+    - Modules explicitly re-exported from __init__.py (named imports, __all__)
+      are treated as referenced ("definite") and skipped.
+    - Modules ambiguously re-exported (wildcard/dynamic imports) are still
+      reported but at lower confidence (0.3) with reexport_status evidence.
     """
     findings: list[LintIssue] = []
 
@@ -549,17 +671,73 @@ def _check_orphans(
             parent_refs.add(".".join(parts[:i]))
     all_imported.update(parent_refs)
 
+    # Pre-compute re-exports from all __init__.py files
+    reexport_map = _build_reexport_map(py_files, project_root)
+
     for module, filepath in file_map.items():
         # Skip if this module is imported by something
         if module in all_imported:
             continue
 
         # Check exclusion rules
-        if _is_orphan_excluded(filepath, module, project_root):
+        if _is_orphan_excluded(filepath, module, project_root, extra_exclude_dirs):
             continue
 
-        # This module is not imported by anything in the project
+        # Check re-export status from parent __init__.py
+        parent_dir = os.path.dirname(filepath)
+        stem = os.path.basename(filepath).replace(".py", "")
+        parent_reexports = reexport_map.get(parent_dir, {})
+
+        # Check both the file stem and the last module segment
+        module_short = module.rsplit(".", 1)[-1] if "." in module else module
+        reexport_certainty = parent_reexports.get(
+            stem, parent_reexports.get(module_short)
+        )
+
+        # Also check for wildcard dynamic marker ("*")
+        if reexport_certainty is None and "*" in parent_reexports:
+            reexport_certainty = "unknown"
+
+        if reexport_certainty == "definite":
+            # Definitively re-exported — skip orphan report
+            continue
+
         relpath = os.path.relpath(filepath, project_root)
+
+        if reexport_certainty == "unknown":
+            # Ambiguous re-export — report at lower confidence with evidence
+            findings.append(
+                LintIssue(
+                    linter="structure_channel",
+                    kind="STRUCT003",
+                    message=(
+                        f"Possibly orphaned module: {relpath} is not directly "
+                        f"imported but may be re-exported via wildcard or "
+                        f"dynamic import."
+                    ),
+                    file=filepath,
+                    severity="informational",
+                    confidence=0.3,  # Lower — ambiguous re-export detected
+                    evidence={
+                        "code": "STRUCT003",
+                        "module": module,
+                        "file": relpath,
+                        "reexport_status": "unknown",
+                        "note": (
+                            "Module may be re-exported via wildcard or "
+                            "dynamic import in parent __init__.py"
+                        ),
+                    },
+                    suggestions=[
+                        "Check parent __init__.py for wildcard or dynamic imports",
+                        "If intentionally re-exported, use explicit named imports "
+                        "in __init__.py for clarity",
+                    ],
+                )
+            )
+            continue
+
+        # No re-export detected — standard orphan finding
         findings.append(
             LintIssue(
                 linter="structure_channel",
@@ -587,7 +765,12 @@ def _check_orphans(
     return findings
 
 
-def _is_orphan_excluded(filepath: str, module: str, project_root: str) -> bool:
+def _is_orphan_excluded(
+    filepath: str,
+    module: str,
+    project_root: str,
+    extra_exclude_dirs: frozenset[str] | None = None,
+) -> bool:
     """Check whether a file should be excluded from orphan analysis."""
     basename = os.path.basename(filepath)
     stem = basename.replace(".py", "")
@@ -609,6 +792,14 @@ def _is_orphan_excluded(filepath: str, module: str, project_root: str) -> bool:
     parts = Path(relpath).parts
     for part in parts[:-1]:  # Don't check the filename itself
         if part in _ORPHAN_EXCLUDE_DIR_PARTS:
+            return True
+
+    # Exclude known plugin/dynamic-import directory patterns
+    # These directories use dynamic discovery (importlib, entry_points, etc.)
+    # and their modules won't appear in the static import graph.
+    all_exclude_dirs = _PLUGIN_DIR_PATTERNS | (extra_exclude_dirs or frozenset())
+    for part in parts[:-1]:
+        if part in all_exclude_dirs:
             return True
 
     # Exclude files that start with test_ or end with _test

@@ -20,6 +20,8 @@ This Tier 2 fast path covers:
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..types import LinterContext, LintIssue
@@ -30,6 +32,27 @@ if TYPE_CHECKING:
 
 # High-confidence, low-noise security checks
 _FAST_TESTS = "B105,B106,B107,B110,B301,B302,B303,B501,B502,B602,B603,B604,B605,B608"
+
+# Directories where B105 (hardcoded password) has low signal
+_B105_LOW_SIGNAL_DIRS = frozenset({
+    "test", "tests", "testing", "docs", "doc",
+    "examples", "fixtures", "conftest",
+})
+
+
+def _is_test_or_docs_context(filepath: str, project_root: str) -> bool:
+    """Check if file is in a test/docs directory (lower B105 signal).
+
+    B105 hardcoded-password findings in test/docs directories are almost
+    always false positives (test fixtures, example values, UI symbols).
+    Only suppress B105 in these contexts — never in production code paths.
+    """
+    try:
+        rel = os.path.relpath(filepath, project_root)
+    except ValueError:
+        return False
+    parts = Path(rel).parts
+    return any(p.lower() in _B105_LOW_SIGNAL_DIRS for p in parts[:-1])
 
 # Bandit severity → LintGate severity (same mapping as bandit_linter.py)
 _SEVERITY_MAP = {
@@ -95,12 +118,19 @@ class BanditFastLinter(BaseLinter):
             confidence_label = item.get("issue_confidence", "LOW")
             test_id = item.get("test_id", "")
             test_name = item.get("test_name", "")
+            filename = item.get("filename")
+
+            # B105 scope-aware filtering: suppress in test/docs only
+            if test_id == "B105" and filename and _is_test_or_docs_context(
+                filename, ctx.project_root
+            ):
+                continue
 
             yield LintIssue(
                 linter="bandit_fast",
                 kind=f"{test_id}/{test_name}" if test_id else test_name,
                 message=item.get("issue_text", ""),
-                file=item.get("filename"),
+                file=filename,
                 line=item.get("line_number"),
                 severity=_SEVERITY_MAP.get(severity_label, "warning"),
                 confidence=_CONFIDENCE_MAP.get(confidence_label, 0.6),

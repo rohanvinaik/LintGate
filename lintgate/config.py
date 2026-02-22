@@ -40,7 +40,13 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     Returns None if the controlplane section is absent or disabled.
     The caller can check `config.enabled` to decide whether to use it.
     """
-    from .controlplane.types import ChannelConfig, ControlPlaneConfig, InquiryConfig, TokenPolicy
+    from .controlplane.types import (
+        ChannelConfig,
+        ControlPlaneConfig,
+        InquiryConfig,
+        QualityGateConfig,
+        TokenPolicy,
+    )
 
     config_path = os.path.join(cwd, ".claude", "lintgate.yaml")
     if not os.path.exists(config_path) or not _YAML_AVAILABLE:
@@ -65,6 +71,15 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         constraint_proposal_threshold=int(cp_raw.get("constraint_proposal_threshold", 5)),
         severity_weighted_coherence=bool(cp_raw.get("severity_weighted_coherence", False)),
     )
+
+    # Parse coherence channel weights (None = disabled)
+    coherence_raw = cp_raw.get("coherence", {})
+    if isinstance(coherence_raw, dict):
+        weights = coherence_raw.get("channel_weights")
+        if isinstance(weights, dict):
+            cp_config.coherence_channel_weights = {
+                str(k): float(v) for k, v in weights.items()
+            }
 
     # Parse inquiry config (Architecture of Inquiry features)
     inquiry_raw = cp_raw.get("inquiry", {})
@@ -98,17 +113,33 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     if isinstance(habit_raw, dict):
         cp_config.habit_mode_enabled = habit_raw.get("enabled", True)
         cp_config.habit_mode_auto_detect = habit_raw.get("auto_detect", True)
-        cp_config.habit_mode_compact_threshold = float(habit_raw.get("compact_threshold", 0.40))
+        cp_config.habit_mode_compact_threshold = float(habit_raw.get("compact_threshold", 0.25))
         cp_config.habit_mode_token_api_interval = int(habit_raw.get("token_api_interval", 15))
         cp_config.habit_mode_enter_score = float(habit_raw.get("enter_score", 0.70))
         cp_config.habit_mode_exit_score = float(habit_raw.get("exit_score", 0.40))
         cp_config.habit_mode_sustain_calls = int(habit_raw.get("sustain_calls", 5))
+
+    # Parse message arbitration config
+    cp_config.hook_verbosity = str(cp_raw.get("hook_verbosity", "full"))
+    cp_config.hook_pulse_interval = int(cp_raw.get("hook_pulse_interval", 5))
+    cp_config.hook_dispositions_enabled = bool(cp_raw.get("hook_dispositions_enabled", True))
 
     # Parse compass config
     compass_raw = cp_raw.get("compass", {})
     if isinstance(compass_raw, dict):
         cp_config.compass_enabled = compass_raw.get("enabled", False)
         cp_config.compass_staleness_hours = float(compass_raw.get("staleness_hours", 24.0))
+
+    # Parse quality_gate config
+    qg_raw = cp_raw.get("quality_gate", {})
+    if isinstance(qg_raw, dict):
+        cp_config.quality_gate = QualityGateConfig(
+            enabled=bool(qg_raw.get("enabled", False)),
+            staleness_threshold_s=float(qg_raw.get("staleness_threshold_s", 1800.0)),
+            block_push=bool(qg_raw.get("block_push", True)),
+            advise_commit=bool(qg_raw.get("advise_commit", True)),
+            check_secrets=bool(qg_raw.get("check_secrets", True)),
+        )
 
     # Parse per-channel configs
     channels_raw = cp_raw.get("channels", {})

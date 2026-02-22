@@ -31,7 +31,9 @@ def format_mesh_report_compact(
 
     from lintgate.state import generate_run_id
 
-    run_id = generate_run_id()
+    # Use the event's stable ID so the compact report, saved run file,
+    # and session snapshot all share the same run_id.
+    run_id = mesh_result.event.event_id if mesh_result.event else generate_run_id()
 
     # Build current finding index
     current_index = build_finding_index(mesh_result)

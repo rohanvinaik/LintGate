@@ -102,17 +102,24 @@ def register(mcp, helpers):
 
         import time as _time
 
+        from lintgate.controlplane.model_profiles import apply_confidence_decay
+
+        # Apply decay and capture original for display
+        confidence_raw = apply_confidence_decay(profile)
+        age_days = round((_time.time() - profile.updated_at) / 86400, 1)
+
         status = (
             "usable"
             if profile.is_usable()
             else ("stale" if profile.is_stale() else "low_confidence")
         )
-        age_days = round((_time.time() - profile.updated_at) / 86400, 1)
 
         result: dict = {
             "model_key": canonical,
             "status": status,
             "confidence": profile.confidence,
+            "confidence_raw": confidence_raw,
+            "days_since_update": age_days,
             "probe_version": profile.probe_version,
             "probe_runs": profile.probe_runs,
             "telemetry_samples": profile.telemetry_samples,

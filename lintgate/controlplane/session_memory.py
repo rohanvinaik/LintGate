@@ -82,6 +82,7 @@ class SessionSnapshot:
     pattern_alerts: list[dict[str, Any]] = field(default_factory=list)
     repairs_proposed: list[str] = field(default_factory=list)  # action_ids
     repairs_applied: list[str] = field(default_factory=list)  # action_ids confirmed
+    repair_catalog: dict[str, dict[str, str]] = field(default_factory=dict)  # action_id → compact meta
     behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
     finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
 
@@ -135,6 +136,7 @@ class SessionSnapshot:
             pattern_alerts=data.get("pattern_alerts", []),
             repairs_proposed=data.get("repairs_proposed", []),
             repairs_applied=data.get("repairs_applied", []),
+            repair_catalog=data.get("repair_catalog", {}),
             behavior=behavior,
             finding_index=data.get("finding_index", {}),
         )
@@ -293,6 +295,8 @@ def record_mesh_run(
     all_repair_ids: list[str] = []
     pattern_this_run: dict[str, int] = {}
 
+    repair_catalog: dict[str, dict[str, str]] = {}
+
     for cr in mesh_result.channel_results:
         for finding in cr.findings:
             total_findings += 1
@@ -306,6 +310,13 @@ def record_mesh_run(
             all_repair_ids.append(repair.action_id)
             if repair.action_id not in session.repair_outcomes:
                 session.repair_outcomes[repair.action_id] = "pending"
+            # Compact catalog entry (no full payload — stays on disk)
+            repair_catalog[repair.action_id] = {
+                "channel": repair.channel,
+                "kind": repair.kind,
+                "summary": repair.summary,
+                "safe": str(repair.safe).lower(),
+            }
 
     # Extract pattern alerts from lint channel metrics
     pattern_alerts: list[dict[str, Any]] = []
@@ -325,6 +336,7 @@ def record_mesh_run(
         pattern_alerts=pattern_alerts,
         repairs_proposed=all_repair_ids,
         repairs_applied=[],
+        repair_catalog=repair_catalog,
         finding_index=finding_index or {},
     )
 

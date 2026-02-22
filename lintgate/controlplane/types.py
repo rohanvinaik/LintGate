@@ -200,6 +200,21 @@ class InquiryConfig:
 
 
 @dataclass
+class QualityGateConfig:
+    """Configuration for the quality gate in PreToolUse hooks.
+
+    Controls whether git push is blocked and git commit is advised
+    when quality checks haven't passed.
+    """
+
+    enabled: bool = False
+    staleness_threshold_s: float = 1800.0  # 30 min
+    block_push: bool = True
+    advise_commit: bool = True
+    check_secrets: bool = True
+
+
+@dataclass
 class ControlPlaneConfig:
     """Top-level ControlPlane configuration.
 
@@ -221,6 +236,10 @@ class ControlPlaneConfig:
     # Severity-weighted coherence: when True, informational-only channel failures
     # count less toward the "systemic" threshold (0.25 vs 1.0 for blocking).
     severity_weighted_coherence: bool = True
+    # Per-channel importance weights for coherence classification.
+    # None = disabled (all channels equal weight, current behavior).
+    # Example: {"structure": 0.4, "behavior": 0.3} — unspecified channels get 0.5.
+    coherence_channel_weights: dict[str, float] | None = None
     # Global behavior profile (cross-session learning)
     global_memory_enabled: bool = False
     global_memory_alpha: float = 0.6
@@ -229,6 +248,8 @@ class ControlPlaneConfig:
     # Compass system (cognitive mode axis tracking)
     compass_enabled: bool = False
     compass_staleness_hours: float = 24.0
+    # Quality gate (PreToolUse hook enforcement)
+    quality_gate: QualityGateConfig = field(default_factory=QualityGateConfig)
     # Habit Mode (context window management)
     habit_mode_enabled: bool = True
     habit_mode_auto_detect: bool = True
@@ -237,6 +258,10 @@ class ControlPlaneConfig:
     habit_mode_enter_score: float = 0.70
     habit_mode_exit_score: float = 0.40
     habit_mode_sustain_calls: int = 5
+    # Message arbitration (hook output control)
+    hook_verbosity: str = "full"  # "silent" | "pulse" | "full" | "auto"
+    hook_pulse_interval: int = 5  # Events between pulse emissions
+    hook_dispositions_enabled: bool = True  # Enable disposition injection
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

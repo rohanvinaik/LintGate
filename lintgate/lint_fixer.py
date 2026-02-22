@@ -24,6 +24,7 @@ class FixResult:
     files_modified: list[str] = field(default_factory=list)
     changes: list[dict[str, Any]] = field(default_factory=list)
     diff_preview: str = ""
+    file_diffs: list[dict[str, str]] = field(default_factory=list)
     dry_run: bool = True
     errors: list[str] = field(default_factory=list)
 
@@ -35,6 +36,8 @@ class FixResult:
         }
         if self.diff_preview:
             d["diff_preview"] = self.diff_preview
+        if self.file_diffs:
+            d["file_diffs"] = self.file_diffs
         if self.errors:
             d["errors"] = self.errors
         if not self.dry_run:
@@ -103,8 +106,9 @@ def run_safe_fixes(
         result.diff_preview = _preview_fixes(
             ruff, py_files, project_root, safe_only, fix_imports, env
         )
-        # Count what would change from the diff
+        # Split into per-file segments for structured output
         if result.diff_preview:
+            result.file_diffs = _split_diff_by_file(result.diff_preview)
             for line in result.diff_preview.splitlines():
                 if line.startswith("--- ") or line.startswith("Would fix:"):
                     result.changes.append({"action": "preview", "detail": line[:120]})
@@ -253,6 +257,31 @@ def _collect_modified_files(
         old_mtime = before.get(f)
         if old_mtime is not None and new_mtime > old_mtime and f not in result.files_modified:
             result.files_modified.append(f)
+
+
+def _split_diff_by_file(diff_text: str) -> list[dict[str, str]]:
+    """Split a unified diff into per-file segments for structured output."""
+    segments: list[dict[str, str]] = []
+    current_file: str | None = None
+    current_lines: list[str] = []
+
+    for line in diff_text.splitlines():
+        if line.startswith("--- "):
+            if current_file and current_lines:
+                segments.append({"file": current_file, "diff": "\n".join(current_lines)})
+            # Extract filename: strip "--- a/" or "--- " prefix
+            raw = line[4:]
+            if raw.startswith("a/"):
+                raw = raw[2:]
+            current_file = raw.split("\t")[0]  # Strip timestamp if present
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    if current_file and current_lines:
+        segments.append({"file": current_file, "diff": "\n".join(current_lines)})
+
+    return segments
 
 
 def _parse_ruff_fix_summary(

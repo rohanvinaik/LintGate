@@ -204,12 +204,25 @@ def save_profiles(store: ModelProfileStore) -> None:
 
 
 def get_profile(model_key: str) -> ModelProfile | None:
-    """Get a specific model's profile, or None if not found."""
+    """Get a specific model's profile, or None if not found.
+
+    Applies confidence decay on read. Decayed value is persisted
+    so subsequent reads don't double-decay.
+    """
     store = load_profiles()
     canonical = resolve_model_key(model_key)
     if canonical is None:
         return None
-    return store.profiles.get(canonical)
+    profile = store.profiles.get(canonical)
+    if profile is None:
+        return None
+
+    # Apply decay and persist if confidence changed
+    original = apply_confidence_decay(profile)
+    if profile.confidence != original:
+        save_profiles(store)
+
+    return profile
 
 
 def upsert_profile(profile: ModelProfile) -> None:
@@ -230,6 +243,40 @@ def reset_profile(model_key: str) -> bool:
         save_profiles(store)
         return True
     return False
+
+
+# ── Confidence Decay ────────────────────────────────────────────────
+
+# Half-life for confidence decay (days)
+_DECAY_HALF_LIFE_DAYS = 15.0
+# No decay within this grace period (hours)
+_DECAY_GRACE_HOURS = 24.0
+
+
+def apply_confidence_decay(profile: ModelProfile) -> float:
+    """Apply exponential confidence decay based on time since last update.
+
+    Decay formula: confidence *= 2^(-days / half_life)
+    - No decay within 24 hours of last update
+    - Half-life of 15 days (confidence halves every 15 days of inactivity)
+    - Floor at 0.0
+
+    Returns the original (pre-decay) confidence for display purposes.
+    Modifies profile.confidence in place.
+    """
+    original = profile.confidence
+    if original <= 0.0:
+        return original
+
+    elapsed_hours = (time.time() - profile.updated_at) / 3600
+    if elapsed_hours <= _DECAY_GRACE_HOURS:
+        return original  # Within grace period
+
+    elapsed_days = elapsed_hours / 24
+    decay_factor = 2.0 ** (-elapsed_days / _DECAY_HALF_LIFE_DAYS)
+    profile.confidence = max(0.0, round(original * decay_factor, 4))
+
+    return original
 
 
 # ── Telemetry Refinement ─────────────────────────────────────────────

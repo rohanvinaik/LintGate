@@ -698,3 +698,183 @@ class TestCoherenceContractInvariants:
             assert len(failures) == 0, (
                 f"stable state but {len(failures)} channels failed: {[r.channel for r in failures]}"
             )
+
+
+# ── Channel weighting tests ──────────────────────────────────────────
+
+
+class TestCoherenceChannelWeighting:
+    """Verify channel_weights feature flag behavior.
+
+    Key invariants:
+    - weights=None produces identical output to unweighted (feature off)
+    - Low-weight channels reduce effective failure count
+    - High-weight channels preserve classification
+    """
+
+    @pytest.mark.parametrize("scenario_name", sorted(SCENARIOS.keys()))
+    def test_none_weights_identical_to_unweighted(self, scenario_name: str):
+        """channel_weights=None must produce identical state to no weights."""
+        spec = SCENARIOS[scenario_name]
+        results = _build_scenario(spec)
+        base = compute_coherence(results)
+        weighted = compute_coherence(results, channel_weights=None)
+
+        assert base.state == weighted.state, (
+            f"Scenario '{scenario_name}': weights=None changed state "
+            f"from {base.state} to {weighted.state}"
+        )
+        assert base.confidence == weighted.confidence
+        assert sorted(base.loud_channels) == sorted(weighted.loud_channels)
+        assert sorted(base.silent_channels) == sorted(weighted.silent_channels)
+
+    def test_low_weight_demotes_systemic_to_coupled(self):
+        """3 low-weight informational failures should demote below systemic.
+
+        Channel weights only apply when severity_weighted=True (the production
+        default). With severity weighting, informational-only channels already
+        score low; adding low channel weights reduces them further.
+        """
+        results = [
+            _channel(
+                "structure", "fail", "informational",
+                [_issue(severity="informational", kind="STRUCT001")],
+            ),
+            _channel(
+                "behavior", "fail", "informational",
+                [_issue(severity="informational", kind="approach_cycling")],
+            ),
+            _channel(
+                "git", "fail", "informational",
+                [_issue(severity="informational", kind="dirty_tree")],
+            ),
+            _channel("lint", "pass"),
+            _channel("tests", "pass"),
+        ]
+        # With severity_weighted=True but no channel weights:
+        # Each informational channel scores ~0.10, total ~0.30
+        # Already below systemic (3.0) — severity weighting alone handles this
+        sw_no_weights = compute_coherence(results, severity_weighted=True)
+        # With severity_weighted=True AND low channel weights:
+        # Each: 0.10 * 0.3 = 0.03, total ~0.09
+        sw_with_weights = compute_coherence(
+            results,
+            severity_weighted=True,
+            channel_weights={"structure": 0.3, "behavior": 0.3, "git": 0.3},
+        )
+        # Both should be demoted from systemic
+        assert sw_no_weights.state != "systemic", (
+            f"severity_weighted alone should demote informational-only, got {sw_no_weights.state}"
+        )
+        assert sw_with_weights.state != "systemic", (
+            f"severity_weighted + low weights should demote, got {sw_with_weights.state}"
+        )
+
+    def test_high_weight_preserves_coupled(self):
+        """2 high-weight failures should stay coupled with severity_weighted."""
+        results = [
+            _channel(
+                "lint", "fail", "blocking",
+                [_issue(severity="blocking", kind="F821")],
+            ),
+            _channel(
+                "tests", "fail", "warning",
+                [_issue(severity="warning", kind="test_failure")],
+            ),
+            _channel("deps", "pass"),
+        ]
+        weighted = compute_coherence(
+            results,
+            severity_weighted=True,
+            channel_weights={"lint": 1.0, "tests": 1.0},
+        )
+        assert weighted.state == "coupled", (
+            f"High-weight failures should remain coupled, got {weighted.state}"
+        )
+
+    def test_mixed_weights_structure_low_lint_high(self):
+        """structure(low) + lint(high) failure: lint dominates classification."""
+        results = [
+            _channel(
+                "lint", "fail", "blocking",
+                [_issue(severity="blocking", kind="F821")],
+            ),
+            _channel(
+                "structure", "fail", "informational",
+                [_issue(severity="informational", kind="STRUCT001")],
+            ),
+            _channel("tests", "pass"),
+            _channel("deps", "pass"),
+        ]
+        weighted = compute_coherence(
+            results,
+            severity_weighted=True,
+            channel_weights={"lint": 1.0, "structure": 0.2},
+        )
+        # lint(1.0 * 1.0) + structure(0.10 * 0.2 = 0.02) = 1.02
+        # Below coupled threshold (1.5) → should be isolated
+        assert weighted.state == "isolated", (
+            f"Low-weight structure + high-weight lint should be isolated, got {weighted.state}"
+        )
+
+    def test_default_weight_for_unconfigured_channels(self):
+        """Channels not in weights dict get default weight of 0.5.
+
+        Channel weights affect the systemic-vs-coupled boundary (effective
+        failure count), not the coupled-vs-isolated boundary (raw count >= 2).
+        Two actual failures will always be at least coupled.
+        """
+        results = [
+            _channel(
+                "lint", "fail", "blocking",
+                [_issue(severity="blocking", kind="F821")],
+            ),
+            _channel(
+                "tests", "fail", "warning",
+                [_issue(severity="warning", kind="test_failure")],
+            ),
+            _channel("deps", "pass"),
+        ]
+        # Only configure lint=1.0, tests gets default 0.5
+        weighted = compute_coherence(
+            results,
+            severity_weighted=True,
+            channel_weights={"lint": 1.0},
+        )
+        # lint: 1.0 * 1.0 = 1.0, tests: 0.35 * 0.5 = 0.175 → total ~1.175
+        # Below systemic threshold (3.0) → coupled (2 raw failures)
+        assert weighted.state == "coupled", (
+            f"Two failures with weights should be coupled (not systemic), got {weighted.state}"
+        )
+
+    def test_weights_prevent_systemic_escalation(self):
+        """3 failures with low weights should stay coupled, not escalate to systemic."""
+        results = [
+            _channel(
+                "lint", "fail", "warning",
+                [_issue(severity="warning", kind="W001")],
+            ),
+            _channel(
+                "tests", "fail", "warning",
+                [_issue(severity="warning", kind="test_failure")],
+            ),
+            _channel(
+                "behavior", "fail", "informational",
+                [_issue(severity="informational", kind="approach_cycling")],
+            ),
+            _channel("deps", "pass"),
+        ]
+        # Without severity weighting: 3 raw failures → systemic
+        unweighted = compute_coherence(results)
+        assert unweighted.state == "systemic"
+        # With severity weighting + low weights: effective count drops below 3.0
+        weighted = compute_coherence(
+            results,
+            severity_weighted=True,
+            channel_weights={"lint": 0.4, "tests": 0.4, "behavior": 0.2},
+        )
+        # lint: 0.35*0.4=0.14, tests: 0.35*0.4=0.14, behavior: 0.10*0.2=0.02
+        # total ~0.30, well below 3.0 → not systemic, falls to coupled
+        assert weighted.state != "systemic", (
+            f"Low weights should prevent systemic escalation, got {weighted.state}"
+        )

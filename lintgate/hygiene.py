@@ -124,7 +124,11 @@ def classify_and_check(planned_action: str, project_root: str) -> HygieneResult:
 
     if warnings:
         parts = [w.message for w in warnings[:3]]
-        recommendation = " | ".join(parts) + ". Address before proceeding."
+        joined = " | ".join(parts)
+        if joined.endswith("."):
+            recommendation = joined + " Address before proceeding."
+        else:
+            recommendation = joined + ". Address before proceeding."
     else:
         recommendation = f"Hygiene checks passed for {command_class}."
 

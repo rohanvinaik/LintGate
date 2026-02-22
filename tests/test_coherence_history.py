@@ -249,3 +249,150 @@ class TestCombinedAnnotations:
         assert enriched.state == "isolated"
         assert enriched.loud_channels == ["lint"]
         assert "tests" in enriched.silent_channels
+
+
+class TestTradeoffDetection:
+    """Detect refactoring tradeoff patterns between runs."""
+
+    def _make_session_with_findings(
+        self, finding_index: dict[str, dict]
+    ) -> SessionMemory:
+        """Build session with one snapshot containing a finding_index."""
+        session = SessionMemory(project_root="/test")
+        session.snapshots.append(
+            SessionSnapshot(
+                run_id="prev",
+                coherence_state="isolated",
+                loud_channels=["lint"],
+                silent_channels=["tests"],
+                finding_index=finding_index,
+            )
+        )
+        session.coherence_trajectory = ["isolated"]
+        return session
+
+    def test_cc_down_args_up_detected(self):
+        """CC decrease + args increase → TRADEOFF annotation."""
+        # Previous: 3 CC issues, 0 args issues
+        prev_index = {
+            "fp1": {"kind": "cyclomatic_complexity", "severity": "warning", "count": 1},
+            "fp2": {"kind": "cyclomatic_complexity", "severity": "warning", "count": 1},
+            "fp3": {"kind": "cyclomatic_complexity", "severity": "warning", "count": 1},
+        }
+        session = self._make_session_with_findings(prev_index)
+
+        # Current: 1 CC issue, 2 args issues (decomposed functions)
+        results = [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    LintIssue(linter="ruff", kind="cyclomatic_complexity", severity="warning", message="CC=12"),
+                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="7 args"),
+                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="6 args"),
+                ],
+            ),
+            ChannelResult(channel="tests", status="pass"),
+        ]
+        enriched = compute_coherence_with_history(results, session)
+
+        assert "TRADEOFF" in enriched.summary
+        assert "cyclomatic_complexity" in enriched.summary
+        assert "too_many_args" in enriched.summary
+
+    def test_no_tradeoff_when_both_increase(self):
+        """Both CC and args increasing is not a tradeoff."""
+        prev_index = {
+            "fp1": {"kind": "cyclomatic_complexity", "severity": "warning", "count": 1},
+        }
+        session = self._make_session_with_findings(prev_index)
+
+        results = [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    LintIssue(linter="ruff", kind="cyclomatic_complexity", severity="warning", message="CC=15"),
+                    LintIssue(linter="ruff", kind="cyclomatic_complexity", severity="warning", message="CC=12"),
+                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="7 args"),
+                ],
+            ),
+            ChannelResult(channel="tests", status="pass"),
+        ]
+        enriched = compute_coherence_with_history(results, session)
+
+        assert "TRADEOFF" not in enriched.summary
+
+    def test_no_tradeoff_without_previous_findings(self):
+        """No tradeoff if previous snapshot has empty finding_index."""
+        session = self._make_session_with_findings({})
+
+        results = [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="7 args"),
+                ],
+            ),
+            ChannelResult(channel="tests", status="pass"),
+        ]
+        enriched = compute_coherence_with_history(results, session)
+
+        assert "TRADEOFF" not in enriched.summary
+
+    def test_file_too_long_vs_too_many_functions(self):
+        """file_too_long decrease + too_many_functions increase → TRADEOFF."""
+        prev_index = {
+            "fp1": {"kind": "file_too_long", "severity": "warning", "count": 2},
+        }
+        session = self._make_session_with_findings(prev_index)
+
+        results = [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    LintIssue(linter="ruff", kind="file_too_long", severity="warning", message="350 lines"),
+                    LintIssue(linter="ruff", kind="too_many_functions", severity="warning", message="15 functions"),
+                    LintIssue(linter="ruff", kind="too_many_functions", severity="warning", message="12 functions"),
+                ],
+            ),
+            ChannelResult(channel="tests", status="pass"),
+        ]
+        enriched = compute_coherence_with_history(results, session)
+
+        assert "TRADEOFF" in enriched.summary
+        assert "file_too_long" in enriched.summary
+        assert "too_many_functions" in enriched.summary
+
+    def test_tradeoff_does_not_change_severity(self):
+        """Tradeoff annotation must not change finding severity or coherence state."""
+        prev_index = {
+            "fp1": {"kind": "cyclomatic_complexity", "severity": "blocking", "count": 3},
+        }
+        session = self._make_session_with_findings(prev_index)
+
+        results = [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="blocking",
+                findings=[
+                    LintIssue(linter="ruff", kind="too_many_args", severity="blocking", message="8 args"),
+                ],
+            ),
+            ChannelResult(channel="tests", status="pass"),
+            ChannelResult(channel="deps", status="pass"),
+        ]
+        enriched = compute_coherence_with_history(results, session)
+
+        assert "TRADEOFF" in enriched.summary
+        # State remains isolated (annotation only, no state change)
+        assert enriched.state == "isolated"
+        # Severity on the finding itself is unchanged
+        assert results[0].findings[0].severity == "blocking"

@@ -14,6 +14,20 @@ import os
 
 from .types import AggregatedResult, LinterResult, LintIssue, ProjectConfig
 
+
+def _normalize_file_path(filepath: str, project_root: str) -> str:
+    """Normalize absolute paths under project_root to relative; keep others as-is."""
+    if os.path.isabs(filepath) and project_root:
+        try:
+            rel = os.path.relpath(filepath, project_root)
+            # Only use relative if it doesn't escape the project root
+            if not rel.startswith(".."):
+                return rel
+        except ValueError:
+            pass  # Different drive on Windows
+    return filepath
+
+
 _EXEMPTION_ALIASES: dict[str, tuple[str, ...]] = {
     # README/docs often use "complexity", while emitted issues come from linter "radon".
     "radon": ("complexity", "complexity_checker"),
@@ -93,8 +107,9 @@ def aggregate_results(
         "linters_errored": sum(1 for s in linter_statuses.values() if s in ("error", "timeout")),
     }
 
-    # Collect all files that were linted
-    files_linted = sorted({i.file for i in unique if i.file})
+    # Collect all files that were linted (normalize absolute paths to relative)
+    project_root = config.project_root
+    files_linted = sorted({_normalize_file_path(f, project_root) for i in unique if (f := i.file)})
 
     return AggregatedResult(
         blocking=blocking,

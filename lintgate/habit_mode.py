@@ -955,6 +955,7 @@ def load_standalone_extras(project_root: str) -> dict[str, Any]:
             "config_overrides",
             "habit_last_snapshot",
             "write_scheduler",
+            "signal_fire_counts",
         ):
             if key in data:
                 extras[key] = data[key]
@@ -997,6 +998,7 @@ def save_habit_state_standalone(
     config_overrides: dict[str, Any] | None = None,
     last_snapshot: dict[str, Any] | None = None,
     scheduler_dict: dict[str, Any] | None = None,
+    signal_fire_counts: dict[str, int] | None = None,
 ) -> None:
     """Save standalone file-backed habit state.
 
@@ -1008,6 +1010,7 @@ def save_habit_state_standalone(
         config_overrides: Optional standalone config overrides.
         last_snapshot: Optional latest compaction snapshot.
         scheduler_dict: Optional serialized WriteScheduler state.
+        signal_fire_counts: Optional telemetry signal fire accumulation.
     """
     try:
         _HABIT_STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1022,6 +1025,7 @@ def save_habit_state_standalone(
         _merge_optional_field(data, existing, "config_overrides", config_overrides)
         _merge_optional_field(data, existing, "habit_last_snapshot", last_snapshot)
         _merge_optional_field(data, existing, "write_scheduler", scheduler_dict)
+        _merge_optional_field(data, existing, "signal_fire_counts", signal_fire_counts)
 
         with open(state_path, "w") as f:
             json.dump(data, f, separators=(",", ":"))

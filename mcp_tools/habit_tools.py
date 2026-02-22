@@ -319,6 +319,11 @@ def register(mcp, helpers):
             tracker = load_tracker_state(session.behavior_compass)
             event_counter = session.behavior_compass.get("event_counter", 0)
 
+            # Guard: if session has no habit data, don't return empty state —
+            # the hook writes to a different process's session, so try standalone.
+            if state.habit_score == 0.0 and not session.behavior_compass.get("habit_mode"):
+                raise ValueError("No habit data in session")  # Falls through to Path B
+
             def save_fn(s, t):
                 save_habit_state(session.behavior_compass, s)
                 save_tracker_state(session.behavior_compass, t)
