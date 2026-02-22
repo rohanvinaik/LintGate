@@ -664,8 +664,10 @@ def _execute_single_repair(repair, project_root, session):
         return {"action_id": action_id, "status": "skipped", "reason": "empty command"}
 
     try:
+        import shlex
+
         proc = subprocess.run(
-            command.split(),
+            shlex.split(command),
             capture_output=True,
             text=True,
             timeout=60,
