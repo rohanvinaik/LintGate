@@ -78,9 +78,7 @@ class SymbolCoverageGateResult:
 
     passed: bool
     symbol_results: list[SymbolCoverageResult] = field(default_factory=list)
-    waivers_applied: list[tuple[str, SymbolCoverageWaiver]] = field(
-        default_factory=list
-    )
+    waivers_applied: list[tuple[str, SymbolCoverageWaiver]] = field(default_factory=list)
     waivers_expired: list[SymbolCoverageWaiver] = field(default_factory=list)
     skipped_reasons: list[str] = field(default_factory=list)
     unresolved_required: list[str] = field(default_factory=list)
@@ -89,9 +87,7 @@ class SymbolCoverageGateResult:
 # ── Symbol Key Canonicalization ──────────────────────────────────────────
 
 
-def _canonicalize_symbol_key(
-    filepath: str, symbol_name: str, project_root: str
-) -> str:
+def _canonicalize_symbol_key(filepath: str, symbol_name: str, project_root: str) -> str:
     """Normalize to POSIX relative path + :: + symbol name.
 
     Handles Windows paths, trailing slashes, absolute vs relative.
@@ -180,9 +176,7 @@ def _visit_node(
             )
 
             # Visit nested functions at depth+1 (they will be skipped)
-            _visit_node(
-                child, filepath, project_root, spans, current_class, depth + 1
-            )
+            _visit_node(child, filepath, project_root, spans, current_class, depth + 1)
 
 
 # ── Coverage JSON Parsing ────────────────────────────────────────────────
@@ -230,9 +224,7 @@ def parse_coverage_json(path: str) -> dict[str, FileCoverage]:
 # ── Symbol Coverage Check ────────────────────────────────────────────────
 
 
-def check_symbol_coverage(
-    symbol: SymbolSpan, file_cov: FileCoverage
-) -> SymbolCoverageResult:
+def check_symbol_coverage(symbol: SymbolSpan, file_cov: FileCoverage) -> SymbolCoverageResult:
     """Check if a symbol span is fully covered (lines + branches).
 
     Binary: covered = (missing_lines ∩ span == ∅) AND
@@ -250,11 +242,7 @@ def check_symbol_coverage(
     total_lines = len(countable_lines)
 
     # Missing branches where from_line is within the span
-    missing_branches = [
-        (f, t)
-        for f, t in file_cov.missing_branches
-        if f in span_set
-    ]
+    missing_branches = [(f, t) for f, t in file_cov.missing_branches if f in span_set]
 
     covered = len(missing_in_span) == 0 and len(missing_branches) == 0
 
@@ -333,13 +321,13 @@ def build_target_set(
     diff_base = settings.get("diff_base", "HEAD")
 
     if mode in ("changed", "all"):
-        _collect_changed_symbols(
-            changed_files, project_root, diff_base, targets, seen_keys
-        )
+        _collect_changed_symbols(changed_files, project_root, diff_base, targets, seen_keys)
 
     unresolved = _resolve_required_symbols(
         settings.get("required_symbols", []),
-        project_root, targets, seen_keys,
+        project_root,
+        targets,
+        seen_keys,
     )
 
     return targets, unresolved
@@ -357,13 +345,16 @@ def _collect_changed_symbols(
         if not filepath.endswith(".py") or not os.path.isfile(filepath):
             continue
 
+        # Skip test files — they are tests, not source requiring coverage
+        basename = os.path.basename(filepath)
+        if basename.startswith("test_") or basename.endswith("_test.py") or basename == "conftest.py":
+            continue
+
         spans = extract_symbol_spans(filepath, project_root)
         if not spans:
             continue
 
-        changed_ranges = get_changed_line_ranges(
-            filepath, project_root, diff_base=diff_base
-        )
+        changed_ranges = get_changed_line_ranges(filepath, project_root, diff_base=diff_base)
 
         if not changed_ranges:
             # Git failure or new/untracked file: target ALL symbols
@@ -440,9 +431,7 @@ def _resolve_required_symbols(
     return unresolved
 
 
-def _find_span_by_key(
-    filepath: str, project_root: str, canonical_key: str
-) -> SymbolSpan | None:
+def _find_span_by_key(filepath: str, project_root: str, canonical_key: str) -> SymbolSpan | None:
     """Find a specific symbol span by its canonical key."""
     for span in extract_symbol_spans(filepath, project_root):
         if span.symbol_key == canonical_key:
@@ -526,9 +515,7 @@ def run_symbol_coverage_gate(
     # Apply waivers
     raw_waivers = _parse_waivers(settings.get("waivers", []))
     today = date.today()
-    filtered_targets, applied_waivers, expired_waivers = apply_waivers(
-        targets, raw_waivers, today
-    )
+    filtered_targets, applied_waivers, expired_waivers = apply_waivers(targets, raw_waivers, today)
 
     # Parse coverage JSON
     coverage_data = parse_coverage_json(coverage_json_path)
@@ -536,17 +523,13 @@ def run_symbol_coverage_gate(
         if surface == "ci":
             return SymbolCoverageGateResult(
                 passed=False,
-                skipped_reasons=[
-                    f"Failed to parse coverage data from {coverage_json_path}"
-                ],
+                skipped_reasons=[f"Failed to parse coverage data from {coverage_json_path}"],
                 unresolved_required=unresolved_required,
             )
         else:
             return SymbolCoverageGateResult(
                 passed=len(unresolved_required) == 0,
-                skipped_reasons=[
-                    f"Failed to parse coverage data from {coverage_json_path}"
-                ],
+                skipped_reasons=[f"Failed to parse coverage data from {coverage_json_path}"],
                 waivers_applied=applied_waivers,
                 waivers_expired=expired_waivers,
                 unresolved_required=unresolved_required,
@@ -563,9 +546,7 @@ def run_symbol_coverage_gate(
                 SymbolCoverageResult(
                     symbol=target,
                     covered=False,
-                    missing_lines=list(
-                        range(target.start_line, target.end_line + 1)
-                    ),
+                    missing_lines=list(range(target.start_line, target.end_line + 1)),
                     missing_branches=[],
                     total_lines_in_span=target.end_line - target.start_line + 1,
                     executed_lines_in_span=0,
