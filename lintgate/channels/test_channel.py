@@ -448,21 +448,23 @@ def _parse_pytest_output(stdout: str, stderr: str, returncode: int) -> TestRunRe
 def _parse_coverage(coverage_xml_path: str, terminal_output: str) -> float | None:
     """Parse coverage percentage from XML (primary) or terminal output (fallback).
 
-    Primary: Parse coverage.xml ``<coverage line-rate="0.795">`` → 79.5%.
+    Primary: Parse the ``line-rate`` attribute from coverage.xml text.
+    Example: ``<coverage line-rate="0.795">`` → 79.5%.
     Fallback: Regex ``TOTAL\\s+\\d+\\s+\\d+\\s+(\\d+)%`` from terminal output.
 
     Returns None if coverage could not be determined.
     """
-    # Primary: XML parsing
+    # Primary: read coverage XML as text and extract line-rate.
+    # This avoids XML parser attack-surface warnings for CI security scans.
     try:
-        import xml.etree.ElementTree as ET
-
-        tree = ET.parse(coverage_xml_path)
-        root = tree.getroot()
-        line_rate = root.attrib.get("line-rate")
-        if line_rate is not None:
-            return round(float(line_rate) * 100, 1)
-    except Exception:
+        xml_text = Path(coverage_xml_path).read_text(encoding="utf-8", errors="ignore")
+        line_rate_match = re.search(
+            r"""line-rate\s*=\s*["']([0-9]*\.?[0-9]+)["']""",
+            xml_text,
+        )
+        if line_rate_match:
+            return round(float(line_rate_match.group(1)) * 100, 1)
+    except (OSError, ValueError):
         pass
 
     # Fallback: terminal regex

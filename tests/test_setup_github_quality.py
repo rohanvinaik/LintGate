@@ -368,6 +368,12 @@ class TestGenerateTestsWorkflow:
         assert "--fail-under=${{ steps.quality_policy.outputs.diff_coverage_min }}" in content
         assert "--cov-config=.coveragerc" in content
 
+    def test_validates_workflow_action_references(self) -> None:
+        """Tests workflow includes guard against invalid action repository refs."""
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert "Validate workflow action references" in content
+        assert "api.github.com/repos/" in content
+
 
 class TestGenerateQltyWorkflow:
     """Tests for _generate_qlty_workflow."""
