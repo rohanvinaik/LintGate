@@ -870,7 +870,8 @@ def _write_pre_push_hook(project_root: str, write: bool) -> dict[str, Any]:
     os.makedirs(os.path.dirname(hook_path), exist_ok=True)
     with open(hook_path, "w") as f:
         f.write(hook_content)
-    os.chmod(hook_path, 0o755)
+    # Owner-only execute/read/write avoids permissive hook permissions.
+    os.chmod(hook_path, 0o700)
 
     result["status"] = "written"
     result["executable"] = True

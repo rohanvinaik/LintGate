@@ -321,7 +321,7 @@ def register(mcp, helpers):
 
             # Guard: if session has no habit data, don't return empty state —
             # the hook writes to a different process's session, so try standalone.
-            if state.habit_score == 0.0 and not session.behavior_compass.get("habit_mode"):
+            if abs(state.habit_score) < 1e-12 and not session.behavior_compass.get("habit_mode"):
                 raise ValueError("No habit data in session")  # Falls through to Path B
 
             def save_fn(s, t):
