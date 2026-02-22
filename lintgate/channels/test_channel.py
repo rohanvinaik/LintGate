@@ -46,6 +46,7 @@ class TestRunResult:
     stdout: str = ""
     timed_out: bool = False
     coverage_pct: float | None = None  # Set when measure_coverage=True
+    coverage_json_path: str | None = None  # Path to coverage.json when measured
 
 
 @dataclass
@@ -142,8 +143,13 @@ class TestChannel:
             source_packages = [str(p).strip() for p in raw_source_packages if str(p).strip()]
         elif isinstance(raw_source_packages, str) and raw_source_packages.strip():
             source_packages = [raw_source_packages.strip()]
-        measure_coverage = (
-            coverage_threshold is not None and event.surface == "mcp"  # Not hook-triggered
+        symbol_cov_settings = channel_settings.get("symbol_coverage", {})
+        symbol_coverage_enabled = (
+            isinstance(symbol_cov_settings, dict)
+            and symbol_cov_settings.get("enabled", False)
+        )
+        measure_coverage = event.surface in ("mcp", "ci") and (
+            coverage_threshold is not None or symbol_coverage_enabled
         )
 
         # Step 4: Run impacted tests (if any exist)
@@ -205,13 +211,109 @@ class TestChannel:
                     )
                 )
 
+        # Step 6: Symbol coverage gate
+        gate_result = None
+        cov_json_path = None
+        if symbol_coverage_enabled:
+            cov_json_path = test_result.coverage_json_path if test_result else None
+            if cov_json_path:
+                from lintgate.channels.symbol_coverage import run_symbol_coverage_gate
+
+                gate_result = run_symbol_coverage_gate(
+                    coverage_json_path=cov_json_path,
+                    changed_files=changed_files,
+                    project_root=project_root,
+                    settings=symbol_cov_settings,
+                    surface=event.surface,
+                )
+                # Uncovered symbols → blocking findings
+                for sr in gate_result.symbol_results:
+                    if not sr.covered:
+                        missing_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
+                        msg = f"Symbol {sr.symbol.name} is not fully covered"
+                        if sr.missing_lines:
+                            msg += f" (missing lines: {missing_str})"
+                        findings.append(
+                            LintIssue(
+                                linter="test_channel",
+                                kind="symbol_uncovered",
+                                message=msg,
+                                file=sr.symbol.file,
+                                line=sr.symbol.start_line,
+                                severity="blocking",
+                                confidence=1.0,
+                                evidence={
+                                    "symbol_key": sr.symbol.symbol_key,
+                                    "symbol": sr.symbol.name,
+                                    "missing_lines": sr.missing_lines,
+                                    "missing_branches": sr.missing_branches,
+                                    "total_lines": sr.total_lines_in_span,
+                                    "executed_lines": sr.executed_lines_in_span,
+                                },
+                                suggestions=[
+                                    f"Add tests that execute lines {missing_str} in {sr.symbol.name}",
+                                    "Or add a waiver with reason in symbol_coverage.waivers",
+                                ],
+                            )
+                        )
+                # Unresolved required symbols → blocking findings
+                for unresolved in gate_result.unresolved_required:
+                    findings.append(
+                        LintIssue(
+                            linter="test_channel",
+                            kind="unresolved_required_symbol",
+                            message=f"Required symbol not found: {unresolved}",
+                            severity="blocking",
+                            confidence=1.0,
+                            evidence={"symbol": unresolved},
+                            suggestions=[
+                                "Check that the file and symbol exist",
+                                "Update required_symbols in symbol_coverage config",
+                            ],
+                        )
+                    )
+                # Expired waivers → informational
+                for waiver in gate_result.waivers_expired:
+                    findings.append(
+                        LintIssue(
+                            linter="test_channel",
+                            kind="waiver_expired",
+                            message=f"Symbol coverage waiver expired: {waiver.symbol} (expired {waiver.expires})",
+                            severity="informational",
+                            evidence={"symbol": waiver.symbol, "expires": waiver.expires},
+                        )
+                    )
+                # Skipped reasons → warning
+                for reason in gate_result.skipped_reasons:
+                    findings.append(
+                        LintIssue(
+                            linter="test_channel",
+                            kind="symbol_gate_skipped",
+                            message=f"Symbol coverage gate: {reason}",
+                            severity="warning",
+                        )
+                    )
+            elif event.surface == "ci":
+                findings.append(
+                    LintIssue(
+                        linter="test_channel",
+                        kind="symbol_gate_skipped",
+                        message="Symbol coverage gate skipped: no coverage data collected",
+                        severity="warning",
+                    )
+                )
+
         elapsed_ms = (time.perf_counter() - start) * 1000
         status: Literal["pass", "fail"] = "fail" if findings else "pass"
-        severity: Literal["blocking", "warning", "informational", "none"] = (
-            "warning"
-            if any(f.severity == "warning" for f in findings)
-            else ("informational" if findings else "none")
-        )
+        severity: Literal["blocking", "warning", "informational", "none"]
+        if any(f.severity == "blocking" for f in findings):
+            severity = "blocking"
+        elif any(f.severity == "warning" for f in findings):
+            severity = "warning"
+        elif findings:
+            severity = "informational"
+        else:
+            severity = "none"
 
         metrics: dict[str, Any] = {
             "impacted_tests_found": len(impacted_tests),
@@ -224,6 +326,12 @@ class TestChannel:
                 metrics["coverage_pct"] = cov
             if coverage_threshold is not None:
                 metrics["coverage_threshold"] = float(coverage_threshold)
+        if symbol_coverage_enabled and cov_json_path and gate_result is not None:
+            sym_uncovered = sum(1 for r in gate_result.symbol_results if not r.covered)
+            metrics["symbol_coverage_targets"] = len(gate_result.symbol_results)
+            metrics["symbol_coverage_passed"] = len(gate_result.symbol_results) - sym_uncovered
+            metrics["symbol_coverage_failed"] = sym_uncovered
+            metrics["symbol_coverage_waivers"] = len(gate_result.waivers_applied)
 
         return ChannelResult(
             channel=self.name,
@@ -356,19 +464,23 @@ def run_tests(
     ]
 
     coverage_xml_path: str | None = None
+    coverage_json_path: str | None = None
     coverage_tmpdir: Any | None = None
     if measure_coverage:
         import tempfile
 
         coverage_tmpdir = tempfile.TemporaryDirectory(prefix="lintgate_cov_")
         coverage_xml_path = os.path.join(coverage_tmpdir.name, "coverage.xml")
+        coverage_json_path = os.path.join(coverage_tmpdir.name, "coverage.json")
         pkgs = source_packages or ["lintgate", "mcp_tools"]
         for pkg in pkgs:
             cmd.extend([f"--cov={pkg}"])
         cmd.extend(
             [
                 f"--cov-report=xml:{coverage_xml_path}",
+                f"--cov-report=json:{coverage_json_path}",
                 "--cov-report=term:skip-covered",
+                "--cov-branch",
             ]
         )
 
@@ -388,6 +500,8 @@ def run_tests(
                 coverage_xml_path,
                 f"{result.stdout}\n{result.stderr}",
             )
+        if measure_coverage and coverage_json_path and os.path.isfile(coverage_json_path):
+            parsed.coverage_json_path = coverage_json_path
 
         return parsed
     except subprocess.TimeoutExpired:

@@ -1436,6 +1436,20 @@ controlplane:
       enabled: true
       blocking: false
       timeout_ms: 10000
+      symbol_coverage:
+        enabled: true
+        # "changed" = only functions touched in git diff (default)
+        mode: changed
+        # Diff base: "HEAD" for local MCP (default)
+        diff_base: HEAD
+        # Required symbols: always checked regardless of mode
+        required_symbols:
+          - "lintgate/hooks/pre_tool.py::handle"
+        # Waivers: explicit per-symbol exemptions
+        waivers:
+          - symbol: "lintgate/config.py::_auto_detect"
+            reason: "Environment-dependent; tested via integration tests."
+            expires: "2025-09-01"
     deps:
       enabled: true
     git:

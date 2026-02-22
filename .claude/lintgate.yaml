@@ -16,6 +16,12 @@ quality_policy:
 
 controlplane:
   enabled: true
+  channels:
+    tests:
+      symbol_coverage:
+        enabled: true
+  quality_gate:
+    enabled: true
   inquiry:
     theory_grounded_signals: true
     prediction_tracking: true
