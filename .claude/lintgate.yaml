@@ -20,7 +20,7 @@ controlplane:
   channels:
     tests:
       symbol_coverage:
-        enabled: false  # Gate infrastructure shipped; enforce after baseline coverage established
+        enabled: true
         waivers:
           - symbol: "mcp_tools/controlplane_tools.py::register"
             reason: "MCP registration closure with 20+ tool definitions; tested via helper-level unit tests."
