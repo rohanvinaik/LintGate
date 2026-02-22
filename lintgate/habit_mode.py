@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -179,13 +180,10 @@ def _compute_inter_tool_gap_median(window: list[dict[str, Any]]) -> float:
         return 0.0
     gaps = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
     recent_gaps = gaps[-10:] if len(gaps) > 10 else gaps
-    sorted_gaps = sorted(recent_gaps)
-    mid = len(sorted_gaps) // 2
-    if len(sorted_gaps) % 2 == 0 and len(sorted_gaps) >= 2:
-        return float((sorted_gaps[mid - 1] + sorted_gaps[mid]) / 2)
-    if sorted_gaps:
-        return float(sorted_gaps[mid])
-    return 0.0
+    if not recent_gaps:
+        return 0.0
+    # Keep median computation index-free to avoid accidental out-of-range access.
+    return float(statistics.median(recent_gaps))
 
 
 def _compute_edit_streak(window: list[dict[str, Any]]) -> int:

@@ -118,7 +118,7 @@ def _compute_base_coherence(
             summary=(
                 f"Channel{'s' if len(errored_names) > 1 else ''} "
                 f"{', '.join(errored_names)} "
-                f"{'errored/timed out' if len(errored_names) > 1 else 'errored/timed out'}. "
+                "errored/timed out. "
                 f"Results may be incomplete."
             ),
             recommended_action=(
@@ -394,11 +394,13 @@ def compute_coherence_with_history(
 
     annotations: list[str] = []
 
-    # 1. REGRESSION detection: state worsened from last run
+    # 1. REGRESSION / IMPROVEMENT detection: state change from last run
     if session.coherence_trajectory:
         prev_state = session.coherence_trajectory[-1]
         if _state_severity(base.state) > _state_severity(prev_state):
             annotations.append(f"REGRESSION: coherence degraded from {prev_state} → {base.state}")
+        elif _state_severity(base.state) < _state_severity(prev_state):
+            annotations.append(f"IMPROVEMENT: coherence improved from {prev_state} → {base.state}")
 
     # 2. PERSISTENT detection: same channel loud 3+ consecutive runs
     persistent_channels = _detect_persistent_loud(session, base.loud_channels)
@@ -422,6 +424,8 @@ def compute_coherence_with_history(
         enriched_action += (
             f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
         )
+    if any("IMPROVEMENT" in a for a in annotations):
+        enriched_action += " Progress detected — continue current approach."
 
     return CoherenceResult(
         state=base.state,

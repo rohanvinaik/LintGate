@@ -349,7 +349,7 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     (
         "generic_api_key",
         re.compile(
-            r"(?i)(api[_-]?key|apikey|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"
+            r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"
         ),
         0.80,
     ),

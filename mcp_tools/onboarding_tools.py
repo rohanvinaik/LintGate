@@ -784,6 +784,115 @@ def _generate_gitleaks_toml() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _generate_pre_push_hook() -> str:
+    """Generate a project-local pre-push hook script.
+
+    The hook is intentionally lightweight:
+    - Prefer qlty when available (closest match to CI quality scans)
+    - Fallback to ruff + pytest when qlty is not installed
+    - Optionally check Sonar Quality Gate when SONAR_TOKEN and
+      SONAR_PROJECT_KEY are set in the shell environment
+    """
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "",
+        'if [ "${LINTGATE_SKIP_PRE_PUSH:-0}" = "1" ]; then',
+        '  echo "[lintgate] skipping pre-push checks (LINTGATE_SKIP_PRE_PUSH=1)"',
+        "  exit 0",
+        "fi",
+        "",
+        'REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"',
+        'cd "$REPO_ROOT"',
+        "",
+        'echo "[lintgate] running local quality checks before push"',
+        "",
+        "if command -v qlty >/dev/null 2>&1; then",
+        "  qlty check --all",
+        "else",
+        '  echo "[lintgate] qlty not found; using fallback checks (ruff + pytest)"',
+        "  if command -v ruff >/dev/null 2>&1; then",
+        "    ruff check .",
+        "  elif python -c 'import ruff' >/dev/null 2>&1; then",
+        "    python -m ruff check .",
+        "  else",
+        '    echo "[lintgate] warning: ruff not installed; skipping lint step."',
+        "  fi",
+        "",
+        "  if [ -d tests ] || [ -d test ]; then",
+        "    if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi",
+        '    python -m pytest "$TEST_DIR" --tb=short -q',
+        "  fi",
+        "fi",
+        "",
+        'if [ -n "${SONAR_TOKEN:-}" ] && [ -n "${SONAR_PROJECT_KEY:-}" ]; then',
+        '  echo "[lintgate] checking Sonar quality gate for ${SONAR_PROJECT_KEY}"',
+        '  SONAR_HOST="${SONAR_HOST_URL:-https://sonarcloud.io}"',
+        "  if command -v curl >/dev/null 2>&1; then",
+        '    if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then',
+        '      SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c \'import json,sys; print(json.load(sys.stdin).get("projectStatus",{}).get("status",""))\' 2>/dev/null || true)"',
+        '      if [ -n "$SONAR_STATUS" ] && [ "$SONAR_STATUS" != "OK" ]; then',
+        '        echo "[lintgate] Sonar quality gate is ${SONAR_STATUS}; blocking push."',
+        "        exit 1",
+        "      fi",
+        "    else",
+        '      echo "[lintgate] warning: could not query Sonar quality gate (continuing)."',
+        "    fi",
+        "  fi",
+        "fi",
+        "",
+        'echo "[lintgate] pre-push checks passed"',
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _write_pre_push_hook(project_root: str, write: bool) -> dict[str, Any]:
+    """Write or preview a repo-local pre-push hook script."""
+    hook_relpath = os.path.join(".githooks", "pre-push")
+    hook_path = os.path.join(project_root, hook_relpath)
+    hook_content = _generate_pre_push_hook()
+    result: dict[str, Any] = {
+        "path": hook_path,
+        "git_hooks_path": ".githooks",
+    }
+
+    if os.path.exists(hook_path):
+        result["status"] = "already_exists"
+        if not write:
+            result["content"] = hook_content
+        return result
+
+    if not write:
+        result["status"] = "preview"
+        result["content"] = hook_content
+        return result
+
+    os.makedirs(os.path.dirname(hook_path), exist_ok=True)
+    with open(hook_path, "w") as f:
+        f.write(hook_content)
+    os.chmod(hook_path, 0o755)
+
+    result["status"] = "written"
+    result["executable"] = True
+
+    try:
+        config_result = subprocess.run(
+            ["git", "config", "core.hooksPath", ".githooks"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        result["hooks_path_configured"] = config_result.returncode == 0
+        if config_result.returncode != 0:
+            result["hooks_path_error"] = (config_result.stderr or "").strip()[-240:]
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        result["hooks_path_configured"] = False
+        result["hooks_path_error"] = str(exc)
+
+    return result
+
+
 def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
     """Generate a GitHub Actions workflow for SonarQube Cloud analysis.
 
@@ -881,7 +990,7 @@ def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
         "",
         "      - name: Check Quality Gate",
         "        if: steps.check_token.outputs.has_token == 'true'",
-        "        uses: sonarsource/sonarqube-quality-gate-action@master",
+        "        uses: SonarSource/sonarqube-quality-gate-action@master",
         "        timeout-minutes: 5",
         "        env:",
         "          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
@@ -1690,6 +1799,7 @@ def _build_quality_guidance(
                 "install": "curl -fsSL https://qlty.sh | sh",
                 "first_run": "qlty check --all",
                 "workflow_path": ".github/workflows/qlty.yml",
+                "pre_push_hook": ".githooks/pre-push",
             },
             "public_proof": {
                 "tool": "SonarCloud (via sonar-scanner)",
@@ -1752,6 +1862,52 @@ def _build_quality_guidance(
     return guidance
 
 
+def _reset_project_state(project_root: str) -> list[dict[str, str]]:
+    """Reset project state directories while preserving config.
+
+    Clears:
+    - .claude/lintgate/state/     (session state, compass, habit)
+    - .claude/lintgate/runs/      (lint run history)
+    - .claude/lintgate/sessions/  (session memory)
+
+    Does NOT touch:
+    - .claude/lintgate.yaml       (config preserved)
+    - .claude/lintgate/issue_memory.json (accumulated issue data)
+
+    Returns list of {"action": ..., "path": ...} for audit.
+    """
+    actions: list[dict[str, str]] = []
+    lintgate_dir = os.path.join(project_root, ".claude", "lintgate")
+
+    state_dirs = ["state", "runs", "sessions"]
+    for subdir in state_dirs:
+        target = os.path.join(lintgate_dir, subdir)
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+            actions.append({"action": "reset_dir", "path": target})
+
+    # Also clear project-hash-keyed habit state files under LINTGATE_HOME
+    lintgate_home = os.environ.get("LINTGATE_HOME")
+    habit_base = (
+        Path(lintgate_home) / "habit_state"
+        if lintgate_home
+        else Path.home() / ".lintgate" / "habit_state"
+    )
+    if habit_base.is_dir():
+        # Compute project hash to find matching habit state files
+        import hashlib
+
+        project_hash = hashlib.sha256(
+            os.path.abspath(project_root).encode()
+        ).hexdigest()[:12]
+        for item in habit_base.iterdir():
+            if item.is_file() and project_hash in item.name:
+                item.unlink()
+                actions.append({"action": "reset_file", "path": str(item)})
+
+    return actions
+
+
 def register(mcp, helpers):
     """Register onboarding tools on the shared MCP instance."""
 
@@ -1760,6 +1916,7 @@ def register(mcp, helpers):
         path: str,
         auto_setup: bool = True,
         auto_install_optional_linters: bool = True,
+        reset: bool = False,
     ) -> str:
         """Start here. Get oriented with LintGate on any project.
 
@@ -1780,6 +1937,11 @@ def register(mcp, helpers):
 
         config_status_before = helpers["_build_onboarding_status"](project_root)
         startup_actions: list[dict[str, Any]] = []
+
+        # Reset project state if requested (preserves config)
+        if reset:
+            reset_actions = _reset_project_state(project_root)
+            startup_actions.extend(reset_actions)
         venv_setup: dict[str, Any] = {"status": "not_requested"}
 
         if auto_setup and not os.path.exists(config_path):
@@ -1985,8 +2147,19 @@ def register(mcp, helpers):
             "startup_setup": {
                 "auto_setup_requested": auto_setup,
                 "auto_install_optional_linters_requested": auto_install_optional_linters,
+                "reset_requested": reset,
                 "config_status_before": config_status_before,
                 "config_status_after": config_status,
+                "setup_diff": {
+                    "config": (
+                        "created" if config_status_before["config_state"] != "config_enabled"
+                        and config_status["config_state"] == "config_enabled"
+                        else "already_existed" if config_status["config_state"] == "config_enabled"
+                        else "not_created"
+                    ),
+                    "venv": venv_setup.get("status", "not_requested"),
+                    "state_reset": bool(reset and startup_actions),
+                },
                 "venv_setup": venv_setup,
                 "venv_python": venv_python_after,
                 "missing_tools_before": tool_gaps_before["missing_tools"],
@@ -2061,7 +2234,7 @@ def register(mcp, helpers):
         project layout, and generates tailored configs for Code Climate,
         SonarCloud, qlty CLI, .gitignore augmentation, and README badge injection.
 
-        Generates ten artifacts:
+        Generates eleven artifacts:
         - .codeclimate.yml — Code Climate / qlty Cloud config
         - sonar-project.properties — SonarCloud scanner config
         - .coveragerc — shared coverage scope for CI/Sonar workflows
@@ -2070,6 +2243,7 @@ def register(mcp, helpers):
         - .github/workflows/qlty.yml — qlty analysis on push/PR
         - .github/workflows/security-lite.yml — secrets + SAST + supply-chain checks
         - .qlty/qlty.toml — qlty analysis config with smart triage (commit to repo)
+        - .githooks/pre-push — local git pre-push quality gate
         - .gitignore augmentation — standard Python patterns
         - README badge injection — quality badges after title
 
@@ -2230,6 +2404,9 @@ def register(mcp, helpers):
             security_workflow_result["status"] = "preview"
             security_workflow_result["content"] = security_workflow_content
 
+        # --- .githooks/pre-push ---
+        pre_push_hook_result = _write_pre_push_hook(project_root, write=write)
+
         # --- .qlty/qlty.toml ---
         qlty_dir = os.path.join(project_root, ".qlty")
         qlty_path = os.path.join(qlty_dir, "qlty.toml")
@@ -2359,6 +2536,8 @@ def register(mcp, helpers):
             files_to_stage.append(".github/workflows/qlty.yml")
         if security_workflow_result.get("status") == "written":
             files_to_stage.append(".github/workflows/security-lite.yml")
+        if pre_push_hook_result.get("status") == "written":
+            files_to_stage.append(".githooks/pre-push")
         if qlty_result.get("status") == "written":
             files_to_stage.append(".qlty/qlty.toml")
         if qlty_result.get("gitignore_written"):
@@ -2404,6 +2583,31 @@ def register(mcp, helpers):
             next_actions.append(
                 {
                     "tool": "Bash",
+                    "reason": "Enforce required checks for everyone (including admins) on main",
+                    "example": (
+                        "gh api --method PUT "
+                        f"/repos/{owner}/{repo}/branches/main/protection "
+                        "--input - <<'JSON'\n"
+                        "{\n"
+                        '  "required_status_checks": {\n'
+                        '    "strict": true,\n'
+                        '    "contexts": [\n'
+                        '      "Test Suite",\n'
+                        '      "SonarQube Cloud Scan",\n'
+                        '      "Secrets + SAST + Supply Chain"\n'
+                        "    ]\n"
+                        "  },\n"
+                        '  "enforce_admins": true,\n'
+                        '  "required_pull_request_reviews": null,\n'
+                        '  "restrictions": null\n'
+                        "}\n"
+                        "JSON"
+                    ),
+                }
+            )
+            next_actions.append(
+                {
+                    "tool": "Bash",
                     "reason": "Connect repo to Code Climate, then replace PLACEHOLDER in README badge",
                     "example": f"open https://codeclimate.com/github/{owner}/{repo}",
                 }
@@ -2432,6 +2636,7 @@ def register(mcp, helpers):
             "tests_workflow": tests_workflow_result,
             "qlty_workflow": qlty_workflow_result,
             "security_workflow": security_workflow_result,
+            "pre_push_hook": pre_push_hook_result,
             "qlty": qlty_result,
             "gitignore": gi_result,
             "badges": badge_result,

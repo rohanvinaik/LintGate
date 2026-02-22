@@ -21,6 +21,7 @@ from mcp_tools.onboarding_tools import (
     _generate_codeclimate_yml,
     _generate_coveragerc,
     _generate_gitleaks_toml,
+    _generate_pre_push_hook,
     _generate_qlty_toml,
     _generate_qlty_workflow,
     _generate_security_workflow,
@@ -342,7 +343,7 @@ class TestGenerateSonarWorkflow:
         """Sonar workflow must enforce quality gate after scan."""
         content = _generate_sonar_workflow({"python_version": "3.11"})
         assert "Check Quality Gate" in content
-        assert "sonarqube-quality-gate-action@master" in content
+        assert "SonarSource/sonarqube-quality-gate-action@master" in content
 
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
         content = _generate_sonar_workflow({"python_version": ">=3.11"})
@@ -485,6 +486,22 @@ class TestGenerateSecurityWorkflow:
         """Without a config file, only B101 and B108 are skipped."""
         skips = _compute_bandit_ci_skips(None)
         assert skips == ["B101", "B108"]
+
+
+class TestGeneratePrePushHook:
+    """Tests for _generate_pre_push_hook."""
+
+    def test_contains_primary_and_fallback_checks(self) -> None:
+        content = _generate_pre_push_hook()
+        assert "qlty check --all" in content
+        assert "ruff check ." in content
+        assert "python -m pytest" in content
+
+    def test_contains_optional_sonar_gate_check(self) -> None:
+        content = _generate_pre_push_hook()
+        assert "SONAR_PROJECT_KEY" in content
+        assert "qualitygates/project_status" in content
+        assert "Sonar quality gate is" in content
 
     def test_invalid_config_degrades_gracefully(self, tmp_path: Path) -> None:
         """Broken YAML doesn't crash — falls back to defaults."""
@@ -710,6 +727,7 @@ class TestSetupGithubQualityTool:
         assert result["tests_workflow"]["status"] == "preview"
         assert result["qlty_workflow"]["status"] == "preview"
         assert result["security_workflow"]["status"] == "preview"
+        assert result["pre_push_hook"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
         assert "content" in result["coveragerc"]
@@ -718,6 +736,7 @@ class TestSetupGithubQualityTool:
         assert "content" in result["tests_workflow"]
         assert "content" in result["qlty_workflow"]
         assert "content" in result["security_workflow"]
+        assert "content" in result["pre_push_hook"]
         # Files should NOT exist
         assert not (tmp_path / ".codeclimate.yml").exists()
         assert not (tmp_path / "sonar-project.properties").exists()
@@ -727,6 +746,7 @@ class TestSetupGithubQualityTool:
         assert not (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
+        assert not (tmp_path / ".githooks" / "pre-push").exists()
 
     def test_write_mode_creates_files(self, tmp_path: Path) -> None:
         """Write mode creates config files and injects badges."""
@@ -751,6 +771,7 @@ class TestSetupGithubQualityTool:
         assert (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
+        assert (tmp_path / ".githooks" / "pre-push").exists()
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
         assert result["coveragerc"]["status"] == "written"
@@ -759,6 +780,8 @@ class TestSetupGithubQualityTool:
         assert result["tests_workflow"]["status"] == "written"
         assert result["qlty_workflow"]["status"] == "written"
         assert result["security_workflow"]["status"] == "written"
+        assert result["pre_push_hook"]["status"] == "written"
+        assert "hooks_path_configured" in result["pre_push_hook"]
         # README should have badges
         readme_content = (tmp_path / "README.md").read_text()
         assert "sonarcloud.io" in readme_content
@@ -776,6 +799,9 @@ class TestSetupGithubQualityTool:
         (workflow_dir / "tests.yml").write_text("name: existing tests\n")
         (workflow_dir / "qlty.yml").write_text("name: existing qlty\n")
         (workflow_dir / "security-lite.yml").write_text("name: existing security\n")
+        hooks_dir = tmp_path / ".githooks"
+        hooks_dir.mkdir()
+        (hooks_dir / "pre-push").write_text("#!/usr/bin/env bash\n")
         (tmp_path / "README.md").write_text("# Test\n")
 
         from mcp_server import setup_github_quality
@@ -794,6 +820,7 @@ class TestSetupGithubQualityTool:
         assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
         assert result["security_workflow"]["status"] == "already_exists"
+        assert result["pre_push_hook"]["status"] == "already_exists"
         # Original content preserved
         assert (tmp_path / ".codeclimate.yml").read_text() == "existing: true\n"
 
@@ -853,6 +880,7 @@ class TestSetupGithubQualityTool:
         assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
         assert result["security_workflow"]["status"] == "already_exists"
+        assert result["pre_push_hook"]["status"] == "already_exists"
 
     def test_qlty_toml_created(self, tmp_path: Path) -> None:
         """Write mode creates .qlty/qlty.toml."""
