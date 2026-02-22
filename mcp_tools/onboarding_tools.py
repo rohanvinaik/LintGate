@@ -917,6 +917,12 @@ def _generate_qlty_workflow() -> str:
         "      - name: Install qlty",
         "        uses: qltysh/qlty-action/install@main",
         "",
+        "      - name: Initialize qlty (if needed)",
+        "        run: |",
+        "          if ! qlty check --all --dry-run >/dev/null 2>&1; then",
+        "            qlty init --skip-plugins 2>/dev/null || true",
+        "          fi",
+        "",
         "      - name: Run qlty checks",
         "        run: qlty check --all",
     ]
