@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import textwrap
 from unittest.mock import MagicMock, patch
 
 from lintgate.linters.dead_code_checker import (
@@ -21,7 +20,6 @@ from lintgate.linters.dead_code_checker import (
     _suggestions_for_kind,
 )
 from lintgate.types import LinterContext
-
 
 # ── _classify_vulture_finding ────────────────────────────────────────
 
@@ -104,8 +102,7 @@ def test_parse_vulture_output_basic():
 
 def test_parse_vulture_output_multiple():
     output = (
-        "a.py:1: unused import 'os' (90% confidence)\n"
-        "b.py:5: unused class 'Foo' (60% confidence)\n"
+        "a.py:1: unused import 'os' (90% confidence)\nb.py:5: unused class 'Foo' (60% confidence)\n"
     )
     issues = list(_parse_vulture_output(output, "warning"))
     assert len(issues) == 2
@@ -274,9 +271,11 @@ def test_checker_vulture_path(tmp_path):
         config={},
     )
     checker = DeadCodeChecker()
-    with patch.object(checker, "_vulture_available", return_value=True):
-        with patch.object(checker, "_run_vulture", return_value=iter([])):
-            list(checker.run(ctx))
+    with (
+        patch.object(checker, "_vulture_available", return_value=True),
+        patch.object(checker, "_run_vulture", return_value=iter([])),
+    ):
+        list(checker.run(ctx))
 
 
 def test_checker_ast_fallback(tmp_path):
@@ -325,7 +324,10 @@ def test_checker_run_vulture_with_output(tmp_path):
 
 def test_checker_run_vulture_no_output(tmp_path):
     ctx = LinterContext(
-        files=[], project_root=str(tmp_path), strictness="normal", config={},
+        files=[],
+        project_root=str(tmp_path),
+        strictness="normal",
+        config={},
     )
     checker = DeadCodeChecker()
     mock_result = MagicMock()

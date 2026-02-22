@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
 from lintgate.habit_mode import (
-    DEFAULT_ENTER_SCORE,
-    DEFAULT_EXIT_SCORE,
     DEFAULT_SUSTAIN_CALLS,
+    MAX_ACTIVE_FILES,
     SNAPSHOT_MAX_CHARS,
     WINDOW_SIZE,
-    MAX_ACTIVE_FILES,
     HabitModeState,
     HabitSignals,
     _add_to_mru,
@@ -41,7 +41,6 @@ from lintgate.habit_mode import (
     update_signals,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -59,13 +58,13 @@ def _make_high_habit_state() -> HabitModeState:
     """Return a HabitModeState whose signals will yield a high habit score."""
     st = HabitModeState()
     sig = st.signals
-    sig.read_edit_ratio = 1.0       # < 2.0 -> full weight
-    sig.execute_pct = 0.6           # > 0.5 -> full weight
-    sig.edit_streak = 4             # >= 3 -> full weight
-    sig.sub_agent_freq = 0.0        # < 0.05 -> full weight
-    sig.inter_tool_gap_median = 2.0 # > 0 and < 3.0 -> full weight
-    sig.same_file_ratio = 0.7       # > 0.6 -> full weight
-    st.declared = True              # -> full weight
+    sig.read_edit_ratio = 1.0  # < 2.0 -> full weight
+    sig.execute_pct = 0.6  # > 0.5 -> full weight
+    sig.edit_streak = 4  # >= 3 -> full weight
+    sig.sub_agent_freq = 0.0  # < 0.05 -> full weight
+    sig.inter_tool_gap_median = 2.0  # > 0 and < 3.0 -> full weight
+    sig.same_file_ratio = 0.7  # > 0.6 -> full weight
+    st.declared = True  # -> full weight
     return st
 
 
@@ -451,12 +450,12 @@ class TestComputeHabitScore:
     def test_half_contributions(self) -> None:
         st = HabitModeState()
         sig = st.signals
-        sig.read_edit_ratio = 2.5   # half (0.25*0.5)
-        sig.execute_pct = 0.4       # half (0.20*0.5)
-        sig.edit_streak = 2         # half (0.15*0.5)
-        sig.sub_agent_freq = 0.10   # half (0.10*0.5)
+        sig.read_edit_ratio = 2.5  # half (0.25*0.5)
+        sig.execute_pct = 0.4  # half (0.20*0.5)
+        sig.edit_streak = 2  # half (0.15*0.5)
+        sig.sub_agent_freq = 0.10  # half (0.10*0.5)
         sig.inter_tool_gap_median = 4.0  # half (0.10*0.5)
-        sig.same_file_ratio = 0.5   # half (0.10*0.5)
+        sig.same_file_ratio = 0.5  # half (0.10*0.5)
         score = compute_habit_score(st)
         expected = 0.5 * (0.25 + 0.20 + 0.15 + 0.10 + 0.10 + 0.10)
         assert score == pytest.approx(expected, abs=0.01)
@@ -965,9 +964,7 @@ class TestStandaloneLoadSave:
         extras = load_standalone_extras("/nonexistent")
         assert extras == {}
 
-    def test_load_corrupted_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_load_corrupted_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         project = "/corrupt/project"
         # Write corrupted JSON
@@ -995,9 +992,7 @@ class TestStandaloneLoadSave:
         extras = load_standalone_extras(project)
         assert extras == {}
 
-    def test_load_non_dict_json(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_load_non_dict_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         project = "/listjson/project"
         from lintgate.habit_mode import _standalone_path
@@ -1010,9 +1005,7 @@ class TestStandaloneLoadSave:
         assert state.active is False
         assert ring == []
 
-    def test_extras_non_dict_json(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_extras_non_dict_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         project = "/listjson2/project"
         from lintgate.habit_mode import _standalone_path
@@ -1033,9 +1026,7 @@ class TestStandaloneLoadSave:
         st = HabitModeState()
 
         # First save with optional fields
-        save_habit_state_standalone(
-            project, st, [], tracker_dict={"tokens": 999}
-        )
+        save_habit_state_standalone(project, st, [], tracker_dict={"tokens": 999})
 
         # Second save without tracker_dict — should preserve it
         save_habit_state_standalone(project, HabitModeState(active=True), [])
@@ -1043,9 +1034,7 @@ class TestStandaloneLoadSave:
         extras = load_standalone_extras(project)
         assert extras.get("token_tracker") == {"tokens": 999}
 
-    def test_action_ring_capped(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_action_ring_capped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         project = "/ringcap/project"
         big_ring = [_make_event(ts=float(i)) for i in range(100)]
@@ -1115,9 +1104,7 @@ class TestEdgeCases:
 
     def test_issue_memory_capped(self) -> None:
         st = HabitModeState()
-        issue_memory = {
-            "recurrent_issues": ["issue1", "issue2", "issue3", "issue4", "issue5"]
-        }
+        issue_memory = {"recurrent_issues": ["issue1", "issue2", "issue3", "issue4", "issue5"]}
         snap = build_compaction_snapshot(st, "/project", issue_memory=issue_memory)
         assert len(snap["recurring_issues"]) == 3
 

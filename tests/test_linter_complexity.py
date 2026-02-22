@@ -11,7 +11,6 @@ from lintgate.linters.complexity_checker import (
 )
 from lintgate.types import LinterContext
 
-
 # ── _cc_suggestions ──────────────────────────────────────────────────
 
 
@@ -53,11 +52,19 @@ def _make_ctx(tmp_path, config=None):
 def test_checker_cc_above_threshold(tmp_path):
     ctx = _make_ctx(tmp_path)
     checker = ComplexityChecker()
-    cc_data = json.dumps({
-        str(tmp_path / "mod.py"): [
-            {"name": "complex_fn", "complexity": 25, "rank": "E", "lineno": 1, "type": "function"}
-        ]
-    })
+    cc_data = json.dumps(
+        {
+            str(tmp_path / "mod.py"): [
+                {
+                    "name": "complex_fn",
+                    "complexity": 25,
+                    "rank": "E",
+                    "lineno": 1,
+                    "type": "function",
+                }
+            ]
+        }
+    )
     mock_result = MagicMock(stdout=cc_data)
     with patch.object(checker, "run_command", return_value=mock_result):
         issues = list(checker._check_cc(ctx))
@@ -69,9 +76,9 @@ def test_checker_cc_above_threshold(tmp_path):
 def test_checker_cc_extreme_is_blocking(tmp_path):
     ctx = _make_ctx(tmp_path)
     checker = ComplexityChecker()
-    cc_data = json.dumps({
-        "mod.py": [{"name": "fn", "complexity": 35, "rank": "F", "lineno": 1, "type": "function"}]
-    })
+    cc_data = json.dumps(
+        {"mod.py": [{"name": "fn", "complexity": 35, "rank": "F", "lineno": 1, "type": "function"}]}
+    )
     mock_result = MagicMock(stdout=cc_data)
     with patch.object(checker, "run_command", return_value=mock_result):
         issues = list(checker._check_cc(ctx))
@@ -82,9 +89,9 @@ def test_checker_cc_extreme_is_blocking(tmp_path):
 def test_checker_cc_below_threshold(tmp_path):
     ctx = _make_ctx(tmp_path)
     checker = ComplexityChecker()
-    cc_data = json.dumps({
-        "mod.py": [{"name": "fn", "complexity": 5, "rank": "A", "lineno": 1, "type": "function"}]
-    })
+    cc_data = json.dumps(
+        {"mod.py": [{"name": "fn", "complexity": 5, "rank": "A", "lineno": 1, "type": "function"}]}
+    )
     mock_result = MagicMock(stdout=cc_data)
     with patch.object(checker, "run_command", return_value=mock_result):
         issues = list(checker._check_cc(ctx))
@@ -162,17 +169,19 @@ def test_checker_mi_bad_json(tmp_path):
 def test_checker_run_dispatches_both(tmp_path):
     ctx = _make_ctx(tmp_path)
     checker = ComplexityChecker()
-    with patch.object(checker, "_check_cc", return_value=iter([])):
-        with patch.object(checker, "_check_mi", return_value=iter([])):
-            list(checker.run(ctx))
+    with (
+        patch.object(checker, "_check_cc", return_value=iter([])),
+        patch.object(checker, "_check_mi", return_value=iter([])),
+    ):
+        list(checker.run(ctx))
 
 
 def test_checker_cc_custom_threshold(tmp_path):
     ctx = _make_ctx(tmp_path, config={"cc_threshold": 5})
     checker = ComplexityChecker()
-    cc_data = json.dumps({
-        "mod.py": [{"name": "fn", "complexity": 8, "rank": "B", "lineno": 1, "type": "function"}]
-    })
+    cc_data = json.dumps(
+        {"mod.py": [{"name": "fn", "complexity": 8, "rank": "B", "lineno": 1, "type": "function"}]}
+    )
     mock_result = MagicMock(stdout=cc_data)
     with patch.object(checker, "run_command", return_value=mock_result):
         issues = list(checker._check_cc(ctx))

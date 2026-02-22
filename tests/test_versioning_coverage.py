@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 import pytest
 
 from lintgate.versioning import (
+    _TRACKED_TOOLS,
     ToolSpec,
     _attempt_repairs,
     _canonical_tool_name,
@@ -32,7 +32,6 @@ from lintgate.versioning import (
     _suggest_fix_command,
     _tail,
     _tool_from_package,
-    _TRACKED_TOOLS,
     _verify_environment,
     _version_satisfies,
     _which,
@@ -41,7 +40,6 @@ from lintgate.versioning import (
     inspect_tool_versions,
     run_version_audit,
 )
-
 
 # ── ToolSpec and _TRACKED_TOOLS ──────────────────────────────────────
 
@@ -383,18 +381,14 @@ class TestCollectFromPyproject:
             assert reqs[tool]["specifiers"] == []
 
     def test_requires_python(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.10"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.10"\n')
         reqs = self._empty_reqs()
         _collect_from_pyproject(tmp_path, reqs)
         assert ">=3.10" in reqs["python"]["specifiers"]
         assert any("pyproject.toml" in s for s in reqs["python"]["sources"])
 
     def test_project_dependencies(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\ndependencies = ["ruff>=0.4"]\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["ruff>=0.4"]\n')
         reqs = self._empty_reqs()
         _collect_from_pyproject(tmp_path, reqs)
         assert any(">=0.4" in s for s in reqs["ruff"]["specifiers"])
@@ -488,12 +482,8 @@ class TestInspectToolVersions:
             for tool in _TRACKED_TOOLS
         }
         with (
-            mock.patch(
-                "lintgate.versioning._installed_version", return_value="1.0.0"
-            ),
-            mock.patch(
-                "lintgate.versioning._which", return_value="/usr/bin/tool"
-            ),
+            mock.patch("lintgate.versioning._installed_version", return_value="1.0.0"),
+            mock.patch("lintgate.versioning._which", return_value="/usr/bin/tool"),
         ):
             observations = inspect_tool_versions(reqs)
         assert all(o["status"] == "ok" for o in observations)
@@ -556,9 +546,7 @@ class TestInspectToolVersions:
 
 class TestAttemptRepairs:
     def test_successful_repair(self):
-        issues = [
-            {"tool": "ruff", "status": "missing", "required_specifier": ">=0.4"}
-        ]
+        issues = [{"tool": "ruff", "status": "missing", "required_specifier": ">=0.4"}]
         fake_proc = SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
         with mock.patch("subprocess.run", return_value=fake_proc):
             fixes = _attempt_repairs(issues, "/usr/bin/python")
@@ -566,18 +554,14 @@ class TestAttemptRepairs:
         assert fixes[0]["success"] is True
 
     def test_failed_repair(self):
-        issues = [
-            {"tool": "ruff", "status": "mismatch", "required_specifier": ">=0.6"}
-        ]
+        issues = [{"tool": "ruff", "status": "mismatch", "required_specifier": ">=0.6"}]
         fake_proc = SimpleNamespace(returncode=1, stdout="", stderr="error\n")
         with mock.patch("subprocess.run", return_value=fake_proc):
             fixes = _attempt_repairs(issues, "/usr/bin/python")
         assert fixes[0]["success"] is False
 
     def test_timeout_repair(self):
-        issues = [
-            {"tool": "ruff", "status": "missing", "required_specifier": ">=0.4"}
-        ]
+        issues = [{"tool": "ruff", "status": "missing", "required_specifier": ">=0.4"}]
         with mock.patch(
             "subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="pip", timeout=300),
@@ -616,9 +600,7 @@ class TestVerifyEnvironment:
         assert result["ok"] is True
 
     def test_failed_check(self):
-        fake_proc = SimpleNamespace(
-            returncode=1, stdout="broken dep\n", stderr="warning\n"
-        )
+        fake_proc = SimpleNamespace(returncode=1, stdout="broken dep\n", stderr="warning\n")
         with mock.patch("subprocess.run", return_value=fake_proc):
             result = _verify_environment("/usr/bin/python")
         assert result["ok"] is False
@@ -654,7 +636,6 @@ class TestRunVersionAudit:
         assert result["issue_count"] == 0
 
     def test_with_auto_fix(self, tmp_path):
-        issues = [{"status": "missing", "tool": "ruff"}]
         with (
             mock.patch(
                 "lintgate.versioning.collect_required_version_specs",
@@ -698,9 +679,7 @@ class TestRunVersionAudit:
                 return_value=[],
             ),
         ):
-            result = run_version_audit(
-                str(tmp_path), auto_fix=True, verify_after_fix=False
-            )
+            result = run_version_audit(str(tmp_path), auto_fix=True, verify_after_fix=False)
         assert result["verification"] is None
 
 

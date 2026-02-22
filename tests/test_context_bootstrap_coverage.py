@@ -1,30 +1,32 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest import mock
-from pathlib import Path
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
+from lintgate.bootstrap_defaults import ZERO_STATE_ANTI_PATTERNS, ZERO_STATE_FACET_FALLBACKS
 from lintgate.context_bootstrap import (
-    ReviewItem,
-    bootstrap_context_files,
-    _collect_machine_rule_lines,
-    _rule_to_line,
-    _project_metadata,
-    _read_readme_description,
-    _select_actionable_anti_patterns,
-    _recommended_commands,
-    _build_quick_wins,
-    _collect_review_items,
-    _collect_directive_review_items,
-    _collect_dead_path_review_items,
-    _collect_facet_fallback_items,
     _NEGATIVE_CUE_RE,
     _NO_THEORY,
     _PERF_ANTI_PATTERN_CUE,
+    ReviewItem,
+    _build_quick_wins,
+    _collect_dead_path_review_items,
+    _collect_directive_review_items,
+    _collect_facet_fallback_items,
+    _collect_machine_rule_lines,
+    _collect_review_items,
+    _project_metadata,
+    _read_readme_description,
+    _recommended_commands,
+    _rule_to_line,
+    _select_actionable_anti_patterns,
+    bootstrap_context_files,
 )
-from lintgate.bootstrap_defaults import ZERO_STATE_ANTI_PATTERNS, ZERO_STATE_FACET_FALLBACKS
-
 
 # ── ReviewItem ────────────────────────────────────────────────────────
 
@@ -119,9 +121,7 @@ class TestCollectMachineRuleLines:
         assert "subprocess.call" in result[0]
 
     def test_deduplication(self) -> None:
-        guidance = {
-            "rules": [{"kind": "forbid_regex", "pattern": "eval\\("}]
-        }
+        guidance = {"rules": [{"kind": "forbid_regex", "pattern": "eval\\("}]}
         theory = {
             "enforceable_rules": {
                 "proposed_rules": [
@@ -129,18 +129,11 @@ class TestCollectMachineRuleLines:
                 ]
             }
         }
-        result = _collect_machine_rule_lines(
-            guidance=guidance, theory=theory, max_machine_rules=10
-        )
+        result = _collect_machine_rule_lines(guidance=guidance, theory=theory, max_machine_rules=10)
         assert len(result) == 1
 
     def test_max_cap(self) -> None:
-        guidance = {
-            "rules": [
-                {"kind": "forbid_regex", "pattern": f"pat{i}"}
-                for i in range(20)
-            ]
-        }
+        guidance = {"rules": [{"kind": "forbid_regex", "pattern": f"pat{i}"} for i in range(20)]}
         result = _collect_machine_rule_lines(guidance=guidance, theory={}, max_machine_rules=3)
         assert len(result) == 3
 
@@ -214,9 +207,7 @@ class TestReadReadmeDescription:
 
     def test_skips_badges_and_links(self, tmp_path: Path) -> None:
         (tmp_path / "README.md").write_text(
-            "# Title\n"
-            "[badge](https://shields.io/badge)\n"
-            "Actual description.\n"
+            "# Title\n[badge](https://shields.io/badge)\nActual description.\n"
         )
         result = _read_readme_description(tmp_path)
         assert "Actual description" in result
@@ -396,9 +387,7 @@ class TestBuildQuickWins:
 
     def test_proposed_rules_surfaced(self, tmp_path: Path) -> None:
         theory = {
-            "enforceable_rules": {
-                "proposed_rules": [{"add_line": "LINTGATE_FORBID_REGEX: eval"}]
-            }
+            "enforceable_rules": {"proposed_rules": [{"add_line": "LINTGATE_FORBID_REGEX: eval"}]}
         }
         wins = _build_quick_wins(tmp_path, {}, theory)
         assert any("1 rule(s) proposed" in w for w in wins)
@@ -619,7 +608,7 @@ class TestCollectFacetFallbackItems:
 
     def test_real_content_suppresses_fallback(self) -> None:
         items: list[ReviewItem] = []
-        facets = {key: "Real project-specific content." for key in ZERO_STATE_FACET_FALLBACKS}
+        facets = dict.fromkeys(ZERO_STATE_FACET_FALLBACKS, "Real project-specific content.")
         _collect_facet_fallback_items(items, facets)
         assert len(items) == 0
 
@@ -733,19 +722,19 @@ class TestBootstrapContextFiles:
 
     def test_model_profile_import_error_handled(self, tmp_path: Path) -> None:
         (tmp_path / "README.md").write_text("# Repo\n")
-        with mock.patch(
-            "lintgate.context_bootstrap.bootstrap_context_files.__module__",
-            "lintgate.context_bootstrap",
-        ):
+        with (
+            mock.patch(
+                "lintgate.context_bootstrap.bootstrap_context_files.__module__",
+                "lintgate.context_bootstrap",
+            ),
             # Simulate import failure in the model profile resolution block
-            with mock.patch.dict(
+            mock.patch.dict(
                 "sys.modules",
                 {"lintgate.controlplane.model_profiles": None},
-            ):
+            ),
+        ):
                 # The try/except in bootstrap_context_files handles ImportError
-                payload = bootstrap_context_files(
-                    str(tmp_path), write=False, model_id="test-model"
-                )
+                payload = bootstrap_context_files(str(tmp_path), write=False, model_id="test-model")
                 assert payload["source_signals"]["model_profile_applied"] is False
 
     def test_write_with_review_items_adds_instruction(self, tmp_path: Path) -> None:

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import textwrap
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from lintgate.code_inference import (
     _BADGE_PATTERNS,
@@ -31,8 +31,6 @@ from lintgate.code_inference import (
     _scan_test_dir,
     infer_from_code,
 )
-from lintgate.compass import CompassClaim
-
 
 # ── _claim helper ───────────────────────────────────────────────────
 
@@ -147,17 +145,13 @@ class TestInferFromPyproject:
         assert _infer_from_pyproject(str(tmp_path)) == []
 
     def test_description_extracted(self, tmp_path: Path) -> None:
-        (tmp_path / "pyproject.toml").write_text(
-            'description = "A cool tool"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('description = "A cool tool"\n')
         claims = _infer_from_pyproject(str(tmp_path))
         assert any("A cool tool" in c.text for c in claims)
         assert claims[0].origin_facet == "core_theory"
 
     def test_requires_python(self, tmp_path: Path) -> None:
-        (tmp_path / "pyproject.toml").write_text(
-            'requires-python = ">=3.10"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('requires-python = ">=3.10"\n')
         claims = _infer_from_pyproject(str(tmp_path))
         assert any(">=3.10" in c.text for c in claims)
 
@@ -480,7 +474,6 @@ class TestExtractDocstringClaims:
         f2.write_text(doc)
         claims = _extract_docstring_claims([f1, f2])
         # The first-line text is the same, so dedup should prevent a second entry
-        first_lines = [c.text for c in claims]
         # Both share the same first-line so only one should appear
         assert len(claims) == 1
 
@@ -577,7 +570,7 @@ class TestConstants:
     def test_framework_map_entries(self) -> None:
         assert "fastapi" in _FRAMEWORK_MAP
         assert "pytest" in _FRAMEWORK_MAP
-        for key, (text, category) in _FRAMEWORK_MAP.items():
+        for _key, (text, category) in _FRAMEWORK_MAP.items():
             assert isinstance(text, str)
             assert isinstance(category, str)
 
@@ -588,7 +581,7 @@ class TestConstants:
     def test_badge_patterns_compile(self) -> None:
         import re
 
-        for pattern, label in _BADGE_PATTERNS:
+        for pattern, _label in _BADGE_PATTERNS:
             compiled = re.compile(pattern, re.IGNORECASE)
             assert compiled is not None
 

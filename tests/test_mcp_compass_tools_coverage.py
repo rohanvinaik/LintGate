@@ -15,8 +15,6 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from mcp_tools.compass_tools import (
     _apply_answers,
     _build_hooks_config,
@@ -74,16 +72,22 @@ def _make_compass_state(
     )
 
 
-def _make_axis(name: str, depth: int = 0, claims: list | None = None, summary: str = "") -> SimpleNamespace:
+def _make_axis(
+    name: str, depth: int = 0, claims: list | None = None, summary: str = ""
+) -> SimpleNamespace:
     return SimpleNamespace(name=name, depth=depth, claims=claims or [], summary=summary)
 
 
-def _make_claim(text: str = "test claim", confidence: float = 1.0, origin_facet: str = "") -> SimpleNamespace:
+def _make_claim(
+    text: str = "test claim", confidence: float = 1.0, origin_facet: str = ""
+) -> SimpleNamespace:
     return SimpleNamespace(text=text, confidence=confidence, origin_facet=origin_facet)
 
 
 def _make_session(behavior_compass: dict | None = None) -> SimpleNamespace:
-    return SimpleNamespace(behavior_compass=behavior_compass if behavior_compass is not None else {})
+    return SimpleNamespace(
+        behavior_compass=behavior_compass if behavior_compass is not None else {}
+    )
 
 
 def _make_mode_state(current: str = "normal") -> SimpleNamespace:
@@ -182,7 +186,9 @@ class TestSaveMode:
         session = _make_session(behavior_compass={})
         mode_state = SimpleNamespace(to_dict=lambda: {"current": "theory"})
         with (
-            patch("lintgate.controlplane.session_memory.get_or_create_session", return_value=session),
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session", return_value=session
+            ),
             patch("lintgate.controlplane.session_memory.save_session") as mock_save,
         ):
             _save_mode("/fake", mode_state)
@@ -205,7 +211,14 @@ class TestSaveMode:
 class TestBuildHooksConfig:
     def test_returns_all_hook_keys(self) -> None:
         config = _build_hooks_config()
-        expected = {"SessionStart", "UserPromptSubmit", "PreToolUse", "PreCompact", "Stop", "SessionEnd"}
+        expected = {
+            "SessionStart",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PreCompact",
+            "Stop",
+            "SessionEnd",
+        }
         assert set(config.keys()) == expected
 
     def test_session_start_has_matcher(self) -> None:
@@ -414,7 +427,9 @@ class TestImplCheck:
     def test_forbidden_directive_triggers_violation(self) -> None:
         from lintgate.compass import CompassDirective, CompassState
 
-        compass = CompassState(directives=[CompassDirective(kind="forbidden", text="Never disable linting")])
+        compass = CompassState(
+            directives=[CompassDirective(kind="forbidden", text="Never disable linting")]
+        )
         with patch("lintgate.compass_io.load_compass", return_value=compass):
             result = _impl_check("/fake", "disable linting globally")
         assert result["aligned"] is False
@@ -464,7 +479,15 @@ class TestImplUpdate:
 
     def test_basic_no_write(self) -> None:
         patches = self._patch_update_deps()
-        with patches[0], patches[1], patches[2], patches[3] as save_mock, patches[4], patches[5], patches[6]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as save_mock,
+            patches[4],
+            patches[5],
+            patches[6],
+        ):
             result = _impl_update("/fake", None, write=False)
         assert result["compass_hash"] == "abc123"
         assert result["inferred_claims"] == 0
@@ -473,7 +496,15 @@ class TestImplUpdate:
 
     def test_with_write(self) -> None:
         patches = self._patch_update_deps()
-        with patches[0], patches[1], patches[2], patches[3] as save_mock, patches[4], patches[5], patches[6]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as save_mock,
+            patches[4],
+            patches[5],
+            patches[6],
+        ):
             result = _impl_update("/fake", None, write=True)
         assert result["written"] is True
         save_mock.assert_called_once()
@@ -744,10 +775,12 @@ class TestImplTheoryFreeze:
         from lintgate.compass import CompassAxis, CompassState
 
         ms = _make_mode_state("theory")
-        compass = CompassState(axes={
-            "problem": CompassAxis(name="problem", depth=2),
-            "solution": CompassAxis(name="solution", depth=1),
-        })
+        compass = CompassState(
+            axes={
+                "problem": CompassAxis(name="problem", depth=2),
+                "solution": CompassAxis(name="solution", depth=1),
+            }
+        )
         with (
             patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=compass),
@@ -791,10 +824,12 @@ class TestImplTheoryFreeze:
         from lintgate.compass import CompassAxis, CompassState
 
         ms = _make_mode_state("theory")
-        compass = CompassState(axes={
-            "problem": CompassAxis(name="problem", depth=0),
-            "solution": CompassAxis(name="solution", depth=2),
-        })
+        compass = CompassState(
+            axes={
+                "problem": CompassAxis(name="problem", depth=0),
+                "solution": CompassAxis(name="solution", depth=2),
+            }
+        )
         with (
             patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=compass),
@@ -833,10 +868,13 @@ class TestImplSetupHooks:
     def test_merges_with_existing_settings(self, tmp_path: Any) -> None:
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
-        existing = {"customSetting": True, "hooks": {"ExistingHook": [{"hooks": [{"type": "custom"}]}]}}
+        existing = {
+            "customSetting": True,
+            "hooks": {"ExistingHook": [{"hooks": [{"type": "custom"}]}]},
+        }
         (claude_dir / "settings.json").write_text(json.dumps(existing))
 
-        result = _impl_setup_hooks(str(tmp_path), write=True)
+        _impl_setup_hooks(str(tmp_path), write=True)
         content = json.loads((claude_dir / "settings.json").read_text())
         assert content["customSetting"] is True
         assert "ExistingHook" in content["hooks"]
@@ -869,9 +907,14 @@ class TestRegister:
     def test_registers_all_eight_tools(self) -> None:
         tools, mcp = self._register()
         expected = {
-            "compass_status", "compass_check", "compass_update",
-            "compass_interview", "compass_reset",
-            "theory_mode_enter", "theory_mode_freeze", "setup_hooks",
+            "compass_status",
+            "compass_check",
+            "compass_update",
+            "compass_interview",
+            "compass_reset",
+            "theory_mode_enter",
+            "theory_mode_freeze",
+            "setup_hooks",
         }
         assert set(tools.keys()) == expected
         assert mcp.tool.call_count == 8
@@ -892,7 +935,8 @@ class TestRegister:
     def test_compass_update_adds_next_actions_interview(self) -> None:
         tools, _ = self._register()
         update_result = {
-            "compass_hash": "x", "axes": {},
+            "compass_hash": "x",
+            "axes": {},
             "gap_report": {"interview_recommended": True},
             "inferred_claims": 0,
         }
@@ -905,9 +949,11 @@ class TestRegister:
     def test_compass_update_no_interview_when_not_recommended(self) -> None:
         tools, _ = self._register()
         update_result = {
-            "compass_hash": "x", "axes": {},
+            "compass_hash": "x",
+            "axes": {},
             "gap_report": {"interview_recommended": False},
-            "inferred_claims": 0, "written": True,
+            "inferred_claims": 0,
+            "written": True,
         }
         with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
             result = json.loads(tools["compass_update"](path="/p", write=True))
@@ -917,18 +963,24 @@ class TestRegister:
 
     def test_setup_hooks_delegates(self) -> None:
         tools, _ = self._register()
-        with patch("mcp_tools.compass_tools._impl_setup_hooks", return_value={"status": "preview"}) as m:
+        with patch(
+            "mcp_tools.compass_tools._impl_setup_hooks", return_value={"status": "preview"}
+        ) as m:
             tools["setup_hooks"](path="/p", write=False)
         m.assert_called_once_with("/p", False)
 
     def test_theory_mode_enter_delegates(self) -> None:
         tools, _ = self._register()
-        with patch("mcp_tools.compass_tools._impl_theory_enter", return_value={"status": "entered"}) as m:
+        with patch(
+            "mcp_tools.compass_tools._impl_theory_enter", return_value={"status": "entered"}
+        ) as m:
             tools["theory_mode_enter"](path="/p")
         m.assert_called_once_with("/p")
 
     def test_theory_mode_freeze_delegates(self) -> None:
         tools, _ = self._register()
-        with patch("mcp_tools.compass_tools._impl_theory_freeze", return_value={"status": "frozen"}) as m:
+        with patch(
+            "mcp_tools.compass_tools._impl_theory_freeze", return_value={"status": "frozen"}
+        ) as m:
             tools["theory_mode_freeze"](path="/p")
         m.assert_called_once_with("/p")

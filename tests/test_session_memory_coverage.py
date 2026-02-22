@@ -9,14 +9,14 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
-from unittest.mock import patch
+from typing import TYPE_CHECKING, Any
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 from lintgate.controlplane.session_memory import (
-    SESSION_DIR,
     BehaviorEventData,
     SessionMemory,
     SessionSnapshot,
@@ -39,7 +39,6 @@ from lintgate.controlplane.types import (
     RepairAction,
     SupervisionEvent,
 )
-
 
 # ── Helpers to build minimal mock objects ────────────────────────────────
 
@@ -164,7 +163,9 @@ class TestSessionSnapshotRoundTrip:
             pattern_alerts=[{"name": "repeat"}],
             repairs_proposed=["r1"],
             repairs_applied=["r2"],
-            repair_catalog={"r1": {"channel": "lint", "kind": "command", "summary": "fix", "safe": "true"}},
+            repair_catalog={
+                "r1": {"channel": "lint", "kind": "command", "summary": "fix", "safe": "true"}
+            },
             behavior=bed,
             finding_index={"fp1": {"linter": "ruff"}},
         )
@@ -336,7 +337,9 @@ class TestSaveSession:
         assert loaded is not None
         assert loaded.session_id == "save1"
 
-    def test_save_updates_last_active(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_save_updates_last_active(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path)
         session = SessionMemory(project_root="/tmp/ts_test", last_active=0.0)
         before = time.time()
@@ -355,7 +358,9 @@ class TestSaveSession:
 
 
 class TestGetOrCreateSession:
-    def test_creates_new_when_none_exists(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_creates_new_when_none_exists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path)
         session = get_or_create_session("/tmp/brand_new")
         assert session.project_root == "/tmp/brand_new"
@@ -617,7 +622,9 @@ class TestRecordMeshRun:
         session = SessionMemory()
         repairs = [
             RepairAction(action_id="fix1", channel="lint", kind="command", summary="s1", safe=True),
-            RepairAction(action_id="fix2", channel="lint", kind="command", summary="s2", safe=False),
+            RepairAction(
+                action_id="fix2", channel="lint", kind="command", summary="s2", safe=False
+            ),
         ]
         mesh = _make_mesh_result(repairs=repairs)
         snapshot = record_mesh_run(session, mesh)

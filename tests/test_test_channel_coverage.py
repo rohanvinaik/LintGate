@@ -27,9 +27,11 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from lintgate.channels.test_channel import (
     TestChannel,
