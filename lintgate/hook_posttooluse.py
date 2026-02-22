@@ -973,6 +973,20 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
 
         finding_index = build_finding_index(mesh_result)
 
+    # Extract previous + baseline finding indexes BEFORE record_mesh_run
+    # (which appends a new snapshot — must capture state before mutation)
+    previous_finding_index: dict | None = None
+    baseline_finding_index: dict | None = None
+    snapshot_count = 0
+    if session is not None:
+        with contextlib.suppress(Exception):
+            if session.snapshots:
+                snapshot_count = len(session.snapshots)
+                # Previous = most recent snapshot's finding index
+                previous_finding_index = session.snapshots[-1].finding_index
+                # Baseline = first snapshot in session (debt baseline)
+                baseline_finding_index = session.snapshots[0].finding_index
+
     # Post-process session: behavior delta, snapshot, constraints
     proposed_constraints: list[dict] = []
     if session is not None:
@@ -1000,18 +1014,46 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
 
     _save_run_details(mesh_result, finding_index)
 
-    report = format_mesh_report(mesh_result, cp_config, proposed_constraints=proposed_constraints)
+    report = format_mesh_report(
+        mesh_result,
+        cp_config,
+        proposed_constraints=proposed_constraints,
+        previous_finding_index=previous_finding_index,
+        baseline_finding_index=baseline_finding_index,
+        snapshot_count=snapshot_count,
+    )
+
+    # Accumulate telemetry counters into session memory
+    telemetry = report.get("_telemetry", {}) if report else {}
+    if telemetry and session is not None:
+        with contextlib.suppress(Exception):
+            from lintgate.controlplane.session_memory import save_session
+
+            existing = session.behavior_compass.get("telemetry_counters", {})
+            if not isinstance(existing, dict):
+                existing = {}
+            for key, value in telemetry.items():
+                existing[key] = existing.get(key, 0) + value
+            session.behavior_compass["telemetry_counters"] = existing
+            save_session(session)
+
+    # Strip internal telemetry from output (not for the agent)
+    if report and "_telemetry" in report:
+        del report["_telemetry"]
 
     with contextlib.suppress(Exception):
         elapsed_ms = (time.perf_counter() - start) * 1000
-        log_metric({
+        metric_data: dict[str, Any] = {
             "event": "controlplane_run", "project": cwd, "tool_name": tool_name,
             "change_kind": classification.change_kind, "risk_level": classification.risk_level,
             "coherence_state": mesh_result.coherence.state,
             "channels_run": len([r for r in mesh_result.channel_results if r.status != "skip"]),
             "partial": mesh_result.partial, "duration_ms": round(elapsed_ms, 1),
             "session_active": session is not None,
-        })
+        }
+        if telemetry:
+            metric_data["telemetry"] = telemetry
+        log_metric(metric_data)
 
     if advisory and report:
         existing_msg = report.get("systemMessage", "")

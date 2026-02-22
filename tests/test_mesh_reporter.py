@@ -145,7 +145,7 @@ def test_blocking_in_hook_specific_output() -> None:
     assert "hookSpecificOutput" in report
     assert report["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     ctx = report["hookSpecificOutput"].get("additionalContext", "")
-    assert "blocking_count=1" in ctx
+    assert "blocking=1" in ctx
 
 
 # ── Warning findings ─────────────────────────────────────────────────────
@@ -365,7 +365,7 @@ def test_posttooluse_context_includes_coherence_and_counts() -> None:
     ctx = hs["additionalContext"]
     assert "coherence=stable" in ctx
     assert "channels_run=1" in ctx
-    assert "warning_count=1" in ctx
+    assert "warnings=1" in ctx
 
 
 def test_posttooluse_context_includes_channel_statuses() -> None:
@@ -381,10 +381,72 @@ def test_posttooluse_context_includes_channel_statuses() -> None:
     report = format_mesh_report(mesh)
 
     ctx = report["hookSpecificOutput"]["additionalContext"]
-    assert "channel_statuses=" in ctx
+    # New compact format uses "loud" for failing channels only
+    assert "loud=" in ctx
     assert "lint:fail" in ctx
-    assert "tests:pass" in ctx
     assert "deps" not in ctx  # Skip channels excluded
+
+
+def test_delta_report_limits_repeated_finding_display_to_delta_count() -> None:
+    """Delta mode should show only the new/escalated count for repeated fingerprints."""
+    previous_mesh = _make_mesh(
+        [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    _make_issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="foo.py",
+                    )
+                ],
+            ),
+        ]
+    )
+    previous_index = build_finding_index(previous_mesh)
+
+    current_mesh = _make_mesh(
+        [
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    _make_issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="foo.py",
+                    ),
+                    _make_issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="foo.py",
+                    ),
+                    _make_issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="foo.py",
+                    ),
+                ],
+            ),
+        ]
+    )
+
+    report = format_mesh_report(current_mesh, previous_finding_index=previous_index, snapshot_count=1)
+    msg = report["systemMessage"]
+    assert "DELTA: 2 new" in msg
+    assert "WARNINGS (2):" in msg
+    assert msg.count("Repeated warning") == 2
 
 
 # ── Repair suggestions ───────────────────────────────────────────────────

@@ -12,7 +12,7 @@ It fires every time an LLM coding agent writes, edits, or executes a command tha
 
 But LintGate is more than a linter. It is an attempt to solve the fundamental reliability problem of LLM-native coding: **drift** — the slow, invisible divergence between what the developer intended and what the agent is actually building.
 
-LintGate attacks drift at two levels. **Code drift** is the familiar problem: broken imports, type errors, complexity creep, architecture violations — the code diverging from what it should be. **Behavioral drift** is the harder, upstream problem: the agent's *problem-solving strategy* diverging from effective reasoning. An agent that tries the same failed approach three times, ignores error messages it saw ten minutes ago, or acts faster than it understands is exhibiting behavioral drift — and behavioral drift is what *causes* code drift. Catch the reasoning failure early enough and you never write the bad code.
+LintGate attacks drift at three levels. **Code drift** is the familiar problem: broken imports, type errors, complexity creep, architecture violations — the code diverging from what it should be. **Behavioral drift** is the harder, upstream problem: the agent's *problem-solving strategy* diverging from effective reasoning. An agent that tries the same failed approach three times, ignores error messages it saw ten minutes ago, or acts faster than it understands is exhibiting behavioral drift — and behavioral drift is what *causes* code drift. **Understanding drift** is the deepest problem: the agent never understood the project's constraints, conventions, or purpose, so it writes syntactically correct, lint-clean, test-passing code that is architecturally wrong. Catch each failure at its own level — code, strategy, understanding — and you never write the bad code.
 
 The economic consequence is unintuitive: **the monitoring does not save tokens by catching bugs. It saves tokens by ensuring the agent never spends its intelligence budget on problems that are not intelligence problems.** Approach cycling, failure amnesia, formatting drift — these are discipline problems, and discipline is exactly what LLMs are worst at and deterministic systems are best at. An unsupervised agent spends a substantial fraction of its token budget on predictable, preventable failures. LintGate acts as a prefrontal cortex for the agent — not doing the thinking, but deciding what is worth thinking about, and interrupting when the thinking has gone off the rails. The result is not "fewer bugs" but "the agent spends its entire capacity on novel reasoning about your actual problem instead of re-discovering constraints it already encountered an hour ago."
 
@@ -44,9 +44,11 @@ LintGate operates at two levels, selectable per-project:
 
 **Level 1: The 5-Phase Pipeline** (default) — A PostToolUse hook that fires after every Write, Edit, MultiEdit, or Bash tool use. Classifies the change, selects linters by tier, runs them in parallel with timeouts, aggregates results, and reports back to the agent. Lightweight, fast (sub-8-second budget), and zero-config.
 
-**Level 2: The ControlPlane** (opt-in) — A supervision mesh that replaces the pipeline with five independent analysis channels (lint, tests, dependencies, git, behavior) running in parallel, a cross-channel coherence engine that diagnoses system state from multi-signal agreement/disagreement, session memory that tracks coherence trajectories across runs, a behavioral compass that monitors the agent's problem-solving strategy for drift with an intent bias layer that classifies every tool use into a 6-category intent taxonomy and uses that structure to adjust signal confidence, a constraint proposer that translates recurring patterns into enforceable rules, and an optional global behavior profile that aggregates behavioral patterns across sessions over days/weeks to provide warm-start priors for the bias layer. This is the heavy machinery — for projects where the cost of drift justifies real-time multi-domain supervision.
+**Level 2: The ControlPlane** (opt-in) — A supervision mesh that replaces the pipeline with six independent analysis channels (lint, tests, dependencies, git, behavior, structure) running in parallel, a cross-channel coherence engine that diagnoses system state from multi-signal agreement/disagreement, session memory that tracks coherence trajectories across runs, a behavioral compass that monitors the agent's problem-solving strategy for drift with an intent bias layer that classifies every tool use into a 6-category intent taxonomy and uses that structure to adjust signal confidence, a constraint proposer that translates recurring patterns into enforceable rules, and an optional global behavior profile that aggregates behavioral patterns across sessions over days/weeks to provide warm-start priors for the bias layer. This is the heavy machinery — for projects where the cost of drift justifies real-time multi-domain supervision.
 
 Both levels share the same change classifier, linter registry, and reporting infrastructure. The ControlPlane is a strict superset.
+
+**Cross-cutting: The Project Compass** — A 4-axis understanding model (Problem / Solution / Implementation / World) that extracts project knowledge from documentation and code, detects where understanding is thin, and renders the result into context files for any AI coding tool. The compass operates through three cognitive modes — Theory (understand before you write), Normal (monitor for staleness), and Habit (execute with frozen understanding) — and integrates via Claude Code hooks. It addresses the class of failures that neither code-level nor strategy-level supervision can catch: architecturally wrong code produced by an agent that never understood the project's constraints.
 
 ---
 
@@ -191,7 +193,7 @@ linters:
 
 The core problem LintGate was built to solve is not "find syntax errors." Ruff does that fine on its own. The problem is **drift** — the slow, invisible divergence between what the developer intended and what the agent is actually building.
 
-LintGate attacks code drift at three levels (with a fourth — [behavioral drift](#behavioral-drift-detection) — handled by the ControlPlane's behavior channel):
+LintGate attacks code drift at three levels (with behavioral drift handled by the [behavior channel](#behavioral-drift-detection) and understanding drift by the [project compass](#project-compass-4-axis-understanding)):
 
 ### Issue Memory
 
@@ -804,6 +806,179 @@ Implementation: `context_auditor.py` (`SessionReadiness`, `check_session_readine
 
 ---
 
+## Project Compass: 4-Axis Understanding
+
+The theory extractor produces a 6-facet profile of a project's conceptual space. The project compass maps that output to a 4-axis model — **Problem**, **Solution**, **Implementation**, **World** — detects where understanding is thin, fills gaps through interview or code inference, and renders the result into context files for any AI coding tool.
+
+The compass addresses a specific failure mode that code-level and strategy-level supervision cannot catch: an agent that writes syntactically correct, lint-clean, test-passing code that is architecturally wrong because it never understood the project's constraints. The lint hook catches bad code. The behavioral compass catches bad strategy. The project compass catches bad *understanding* — before it produces either.
+
+### The 4-Axis Model
+
+The compass collapses the theory extractor's 7 facets into 4 orthogonal axes:
+
+| Axis | Source Facets | What It Captures |
+|------|--------------|------------------|
+| **Problem** | core_theory, alignment | What the project solves, success criteria, non-goals |
+| **Solution** | problem_solving, architecture, anti_patterns | Why this approach, tradeoffs, rejected alternatives |
+| **Implementation** | abstractions, enforceable_rules | Naming conventions, tools, idioms, machine-enforceable rules |
+| **World** | (inferred from code/infra) | Runtime constraints, dependencies, platform assumptions |
+
+Each axis carries a depth score (0–3):
+
+| Depth | Meaning | Evidence |
+|-------|---------|----------|
+| 0 | Empty | No claims |
+| 1 | Surface | 1–3 definitional claims |
+| 2 | Structural | 4–8 claims, or any claim with causal/contrastive reasoning |
+| 3 | Deep | 9+ claims, or ≥3 claims with causal/contrastive reasoning |
+
+Depth is scored from claim text, not claim count alone. A single claim that explains *why* a tradeoff was made ("because X, we chose Y instead of Z") signals structural understanding — it carries more weight than three claims that merely name things. The depth scorer checks for causal markers (because, therefore, since, in order to) and contrastive markers (however, instead, rather than, unlike).
+
+Three data types compose the compass state:
+
+- **CompassClaim** — a knowledge claim with text, source reference, confidence (0.0–1.0), and provenance (parsed/inferred/interviewed)
+- **CompassDirective** — a behavioral directive derived from claims: `toward` (what correct work looks like), `away` (patterns that indicate drift), `forbidden` (hard constraints from enforceable rules)
+- **GapReport** — arithmetic on axis depths: spikiness (stdev of normalized required-axis depths), sparse axes (depth ≤ 1), interview recommendation
+
+The compass file lives at `.claude/compass.yaml` (committed, persists across sessions). It is project understanding, not session state.
+
+### Axis Extraction
+
+The axis extractor wraps the existing theory extractor — it does not replace the 1,275-line parser with its 70+ heading patterns and 40+ paragraph patterns. Instead, it calls `extract_theory()`, receives the 7-facet profile, and maps each facet's claims to the appropriate compass axis via the `FACET_TO_AXIS` table. It then supplements the mapping with axis-specific heading signals (regex patterns targeting axis-relevant headings) to improve discrimination — for example, headings containing "trade-off" or "rejected" strengthen the solution axis even if the claim was originally classified as `architecture`.
+
+The extractor also runs code inference (see below) to populate the world axis, which has no direct facet source.
+
+Both the theory pipeline and compass pipeline can coexist. When compass.yaml exists, tools like `build_theory_pack` and `get_theory_context` read from it. When it does not, they fall back to the existing theory pipeline. No breaking changes.
+
+### Code Inference
+
+The world axis — runtime constraints, dependencies, platform assumptions — has no direct facet source because most projects do not document their infrastructure in prose. Instead, the code inference engine derives claims from code artifacts, all in pure Python:
+
+| Signal Source | What It Produces | Axis |
+|---------------|-----------------|------|
+| pyproject.toml | Python version, dependencies, project description | world, problem |
+| README | First non-heading paragraph, badge analysis | problem, solution |
+| Import graph | Framework detection, architectural layers, dependency clusters | solution, implementation |
+| Directory structure | src layout, package hierarchy, naming conventions | implementation |
+| Test patterns | pytest vs unittest, fixture patterns, test-to-source ratio | implementation |
+| Commit messages | Conventional commit themes, refactoring frequency | solution |
+| Docstrings | Module/class descriptions | problem, solution |
+
+All inferred claims carry provenance `"inferred"` and confidence capped at 0.6. Framework detection uses a mapping table (e.g., FastAPI → "Uses FastAPI for HTTP API layer" on the solution axis, boto3 → "Uses AWS SDK" on the world axis). Import graph analysis uses `ast.parse` on up to 50 Python files to build a dependency DAG and identify core vs utility modules.
+
+Code inference runs automatically during compass extraction. It can also be triggered explicitly during the interview (see below) as an alternative to answering questions manually.
+
+### Gap Detection
+
+Codebases have predictable documentation profiles — and those profiles create predictable blind spots. A systems-thinker documents Problem and Solution heavily but leaves Implementation sparse, so the agent understands *what* and *why* but invents its own conventions. A performance engineer documents Implementation but forgets to explain what the project *does*, so the agent follows patterns flawlessly while building the wrong thing.
+
+The gap detector turns documentation profiles into arithmetic:
+
+1. Compute depth for each axis from its claims
+2. Compute **spikiness**: stdev of normalized required-axis (Problem, Solution) depths. Spikiness > 0.3 means lopsided understanding
+3. Identify **sparse axes**: any axis at depth ≤ 1
+4. Recommend interview when spikiness exceeds threshold or any required axis is empty
+
+The interview system provides 12 questions (3 per axis), each targeting a specific class of mistake:
+
+| Axis | Questions | What Mistakes They Prevent |
+|------|-----------|---------------------------|
+| Problem | "What does this solve?" / "Non-goals?" / "Success criteria?" | Scope creep, building the wrong thing |
+| Solution | "Why this approach?" / "Tradeoffs?" / "Prior work?" | Re-imagining the architecture, ignoring constraints |
+| Implementation | "Naming conventions?" / "Standard tools?" / "Well-written module example?" | Convention drift, style inconsistency |
+| World | "Runtime constraints?" / "Infrastructure assumptions?" / "Dependency constraints?" | Infrastructure-level errors no amount of testing catches |
+
+Questions are prioritized by axis sparseness. Every question has four response paths:
+1. **Type an answer** → becomes a claim on the axis (provenance `"interviewed"`)
+2. **Skip this question** → moves to next
+3. **Skip all remaining** → marks interview complete
+4. **Figure it out from the code** → triggers code inference for that axis
+
+All gap detection and interview logic is pure Python, zero LLM tokens.
+
+### Cognitive Modes
+
+The compass defines three cognitive modes that shape how the system behaves during a session:
+
+| Mode | Purpose | Transition In | Transition Out |
+|------|---------|---------------|----------------|
+| **Normal** | Default. Monitor compass staleness, serve queries. | Session start, or exit from Theory/Habit | Enter Theory or Habit |
+| **Theory** | Understand before you write. Explore docs, fill gaps, build compass. | Agent calls `theory_mode_enter` | Agent calls `theory_mode_freeze` (lock compass) |
+| **Habit** | Sustained execution with frozen project understanding. | Habit score threshold (existing hysteresis) | Habit score decay or user directive |
+
+Two transitions are **blocked**:
+- Theory → Habit: cannot start sustained execution without first freezing understanding
+- Habit → Theory: cannot re-examine understanding while in sustained execution mode
+
+The blocking rules enforce sequencing. `theory_mode_freeze` validates that at least 2 axes have depth ≥ 1 (minimum viable understanding), computes a compass hash for drift detection, and transitions to Normal. From Normal, the existing habit mode hysteresis can detect and enter Habit mode.
+
+Mode state is session-scoped (stored in session memory, not compass.yaml). Every new session starts in Normal.
+
+### Execution Compass
+
+When habit mode activates, the compass state is frozen into an **ExecutionCompass** — a compact, immutable structure containing:
+
+- `toward`: what correct work looks like in this project (from solution claims)
+- `away`: patterns indicating drift from project intent (from anti-pattern claims)
+- `forbidden`: hard constraints (from enforceable rules)
+- `true_north`: the problem this project solves (from problem axis summary)
+- `compass_hash`: integrity check against drift during execution
+
+The ExecutionCompass is checked against recent actions during habit mode. Alignment checking is mechanical: case-insensitive keyword matching of forbidden/away directives against action descriptions. Violations produce structured warnings (`AlignmentWarning`) with the matched directive and severity. This is a cheap, narrow check — it catches only the most obvious contradictions between what the agent claimed to understand and what it is doing.
+
+The ExecutionCompass serializes to ~800 tokens for compaction snapshots, ensuring project understanding survives context window compaction.
+
+### Multi-Model Renderers
+
+From a single `compass.yaml`, the renderer registry produces context files tailored to each AI coding tool's native format:
+
+| Target | Output Path(s) | Format | Key Optimization |
+|--------|---------------|--------|------------------|
+| **Claude** | CLAUDE.md + .claude/rules/theory.md | Hierarchical MD, managed sections, epistemic checks | Imperative dispositions, LINTGATE:BEGIN/END markers |
+| **Cursor** | .cursor/rules/project.mdc | Flat MDC with YAML frontmatter | Front-loaded rules, glob-scoped, <2000 tokens |
+| **Copilot** | .github/copilot-instructions.md | Action-focused MD | Specific, path-scoped, <1200 tokens |
+| **Windsurf** | .windsurf/rules/*.md | Per-topic .md files | Split by axis, "Always On" mode, <6000/file |
+| **Cline** | .clinerules/compass.md | MD rules (AI-editable) | Cline can modify its own rules |
+| **Aider** | CONVENTIONS.md | Convention format | Convention-focused, lint integration |
+| **AGENTS.md** | AGENTS.md | Cross-tool standard | Works with 25+ platforms |
+| **Generic** | CONTEXT.md | Simple structured MD | Universal fallback, ~2000 tokens |
+
+Each renderer implements a common protocol: `render(compass, metadata) → {relative_path: content}`. The registry auto-detects AI tools present in the project directory (`.cursor/` → Cursor, `.github/` → Copilot, `.windsurf/` → Windsurf, `.clinerules` → Cline) and can render for all detected targets with `compass_update(path, targets=["all"], write=True)`.
+
+The renderers map compass state to each tool's native language. The Claude renderer uses True North, Architecture Philosophy, DO/DO NOT sections, and machine rules. The Cursor renderer uses flat, front-loaded rules under Mission/Architecture/Do/Avoid/Forbidden headings. Each renderer speaks its own tool's idiom while conveying the same project understanding.
+
+### Compass Hooks
+
+The compass integrates with Claude Code's hook system through 6 hook handlers, each enforcing a narrow concern:
+
+| Hook | Event | What It Does |
+|------|-------|-------------|
+| **session_start** | SessionStart | Loads compass, injects staleness and axis depths as `additionalContext`. Suggests `compass_update` if no compass found. |
+| **user_prompt** | UserPromptSubmit | Injects mode indicator. Classifies prompt for theory-relevance. |
+| **pre_tool** | PreToolUse (Write\|Edit\|Bash) | In Theory mode: advises against writing before understanding. Checks proposed actions against forbidden/away directives. |
+| **stop_gate** | Stop | Reports compass coverage and staleness. Advisory only, never blocks. |
+| **pre_compact** | PreCompact | Saves compass checkpoint. Emits compass capsule (toward/away/forbidden counts, axes brief, true_north) as `hookSpecificOutput` for compaction survival. |
+| **session_end** | SessionEnd | Re-saves compass state if modified during session. |
+
+Each hook reads JSON from stdin, loads compass and session state, performs its narrow check, and writes JSON to stdout. Hook messages report raw data — `[Compass] Loaded — staleness=85% axes={problem: 2, solution: 3, ...}` — not interpretations. The hooks are independent entry points, not a monolithic handler.
+
+### State Reset
+
+The `compass_reset` tool provides scoped state deletion with dry-run default:
+
+| Scope | What It Deletes | What It Preserves |
+|-------|----------------|-------------------|
+| `compass` | compass.yaml, rules/theory.md | Session memory, config, issue memory, everything else |
+| `session` | Session memory, habit state | Compass, config, issue memory |
+| `project` | All LintGate state for the project | CLAUDE.md, AGENTS.md (user may have manual edits), global profile |
+| `global` | All LintGate state for all projects | CLAUDE.md, AGENTS.md per project |
+
+Without `confirm=True`, the tool returns a structured report of what *would* be deleted, with file sizes and types. CLAUDE.md and AGENTS.md are never auto-deleted — they may contain manual edits that are not recoverable.
+
+Implementation: `lintgate/compass.py` (data model, depth scoring, gap report), `lintgate/compass_io.py` (load/save/migrate), `lintgate/axis_extractor.py` (wraps theory_extractor + heading signals), `lintgate/gap_detector.py` (gap detection + interview templates), `lintgate/code_inference.py` (multi-signal code analysis), `lintgate/modes/mode_state.py` (cognitive mode transitions), `lintgate/modes/execution_compass.py` (frozen directive state + alignment checking), `lintgate/renderers/` (8 renderer implementations + registry), `lintgate/hooks/` (6 hook handlers), `lintgate/reset.py` (scoped state deletion), `mcp_tools/compass_tools.py` (8 MCP tools).
+
+---
+
 ## Dependency Health Monitoring
 
 LLM coding agents frequently install packages, modify manifests, and alter dependency graphs — often without considering environment hygiene. LintGate monitors dependency health at two speeds:
@@ -892,6 +1067,19 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `habit_configure(path, ...)` | Runtime threshold adjustment: compact_threshold, enter_score, exit_score, sustain_calls, token_api_interval, context_window_size (session-scoped, safe-clamped) |
 
 `habit_compact` gathers all available context (session memory, compass, last lint run, theory pack, issue memory, token state) and produces a structured 10-section snapshot for post-compact injection. `habit_configure` overrides are session-scoped and clamped to safe ranges.
+
+### Project Compass
+
+| Tool | Purpose |
+|---|---|
+| `compass_status(path)` | Show axis depths, gap report, staleness, cognitive mode, and next actions |
+| `compass_update(path, targets, write)` | Re-extract compass from project docs. Optionally render context files for specified targets. |
+| `compass_interview(path, answers, skip)` | Gap-filling interview — returns prioritized questions or applies answers to fill sparse axes |
+| `compass_check(path, action)` | Check a planned action against toward/away/forbidden directives |
+| `compass_reset(path, scope, confirm)` | Scoped state reset with dry-run default. Scopes: compass, session, project, global. |
+| `theory_mode_enter(path)` | Enter theory exploration mode (Normal→Theory). Runs extraction and gap detection. |
+| `theory_mode_freeze(path)` | Freeze compass and exit theory mode to Normal. Validates minimum axis depth. |
+| `setup_hooks(path, write)` | Generate `.claude/settings.json` hook configuration for compass hooks. Preview by default. |
 
 ### Telemetry
 
@@ -1420,6 +1608,12 @@ lintgate/
 │   ├── bootstrap_defaults.py        # Battle-tested zero-state anti-patterns + facet fallbacks
 │   ├── context_bootstrap.py         # Context file generation + managed sections + patches + model-aware bootstrap
 │   ├── theory_extractor.py          # Project theory profiling (6 facets + enforceable rules)
+│   ├── compass.py                   # 4-axis compass data model, depth scoring, gap report
+│   ├── compass_io.py                # Compass load/save/migrate (YAML persistence)
+│   ├── axis_extractor.py            # Theory → compass axis mapping + heading signals
+│   ├── gap_detector.py              # Gap detection + interview templates (12 questions)
+│   ├── code_inference.py            # Multi-signal code inference (pyproject, imports, AST, git)
+│   ├── reset.py                     # Scoped state deletion (compass/session/project/global)
 │   ├── versioning.py                # Tool version auditing
 │   ├── dependency_health.py         # Dependency health monitoring + manifest quality
 │   ├── hygiene.py                   # Command-class hygiene prechecks
@@ -1444,6 +1638,28 @@ lintgate/
 │   │   ├── version_checker.py       # Tool version validation
 │   │   ├── redefinition_checker.py  # Duplicate definitions
 │   │   └── custom_linter.py         # User-defined lint commands
+│   ├── modes/                       # Cognitive mode system
+│   │   ├── mode_state.py            # CognitiveMode enum, ModeState, transition rules
+│   │   └── execution_compass.py     # Frozen directive state + alignment checking
+│   ├── hooks/                       # Claude Code hook handlers (6 events)
+│   │   ├── __init__.py              # Shared utilities (load compass, load session, JSON I/O)
+│   │   ├── session_start.py         # SessionStart: inject compass + staleness
+│   │   ├── user_prompt.py           # UserPromptSubmit: mode indicator + theory-relevance
+│   │   ├── pre_tool.py              # PreToolUse: theory-mode advisory + alignment checks
+│   │   ├── stop_gate.py             # Stop: compass coverage report (advisory only)
+│   │   ├── pre_compact.py           # PreCompact: checkpoint + compass capsule emission
+│   │   └── session_end.py           # SessionEnd: persist compass if modified
+│   ├── renderers/                   # Multi-model context file renderers
+│   │   ├── __init__.py              # RendererRegistry, Renderer protocol, auto-detection
+│   │   ├── _helpers.py              # Shared rendering utilities
+│   │   ├── claude.py                # CLAUDE.md + .claude/rules/theory.md
+│   │   ├── cursor.py                # .cursor/rules/project.mdc
+│   │   ├── copilot.py               # .github/copilot-instructions.md
+│   │   ├── windsurf.py              # .windsurf/rules/*.md
+│   │   ├── cline.py                 # .clinerules/compass.md
+│   │   ├── aider.py                 # CONVENTIONS.md
+│   │   ├── agents_md.py             # AGENTS.md (cross-tool standard)
+│   │   └── generic.py               # CONTEXT.md (universal fallback)
 │   ├── controlplane/                # ControlPlane supervision mesh
 │   │   ├── types.py                 # SupervisionEvent, MeshResult, CoherenceResult
 │   │   ├── channel.py               # Channel protocol (ABC)
@@ -1468,9 +1684,17 @@ lintgate/
 │       └── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
 ├── mcp_tools/                       # MCP domain modules (49 tool definitions)
+│   ├── compass_tools.py             # compass_status, compass_update, compass_interview, compass_check,
+│   │                                #   compass_reset, theory_mode_enter, theory_mode_freeze, setup_hooks
 │   ├── habit_tools.py               # declare_mode, habit_status, habit_compact, habit_configure
-│   └── ...                          # lint_tools, controlplane_tools, behavior_tools, etc.
-├── tests/                           # 47+ test files, 1770+ tests
+│   └── ...                          # lint_tools, controlplane_tools, behavior_tools, context_tools, etc.
+├── tests/                           # 55+ test files
+│   ├── test_compass.py              # Compass data model, depth scoring, gap report
+│   ├── test_compass_hooks.py        # Compass hook handlers
+│   ├── test_axis_extractor.py       # Axis extraction + facet mapping
+│   ├── test_gap_detector.py         # Gap detection + interview
+│   ├── test_renderers.py            # Multi-model renderer output
+│   ├── test_modes.py                # Cognitive mode transitions
 │   ├── test_habit_mode.py           # Habit mode core logic (51 tests)
 │   ├── test_token_tracker.py        # Token tracker logic (30 tests)
 │   ├── test_module_contracts.py     # Interface parity gates

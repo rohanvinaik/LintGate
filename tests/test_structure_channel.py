@@ -80,11 +80,14 @@ class TestChannelProtocol:
         assert channel.should_run(mcp_event, config) is True
 
     def test_should_run_hook_with_changes(self, channel, config, tmp_path):
+        # Structure channel only runs on hooks for structural triggers:
+        # __init__.py, config files, structural risk, import changes
         event = SupervisionEvent(
             surface="hook",
             project_root=str(tmp_path),
+            files_changed=["pkg/__init__.py"],
             change_classification=ChangeClassification(
-                files_changed=["foo.py"],
+                files_changed=["pkg/__init__.py"],
                 change_kind="logic",
                 risk_level="moderate",
             ),

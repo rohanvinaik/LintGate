@@ -2,7 +2,7 @@
 
 Safety invariants:
 - dry_run=True by default — returns what WOULD be deleted.
-- NEVER auto-deletes CLAUDE.md or AGENTS.md.
+- NEVER auto-deletes CLAUDE.md or AGENTS.md (but CAN strip managed sections).
 - Errors are caught and collected, never raised.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,14 @@ def _lintgate_home() -> Path:
 
 
 _PROTECTED_NAMES = {"CLAUDE.md", "AGENTS.md"}
+_THEORY_PATH = ".claude/rules/theory.md"
+
+# Pattern matching <!-- LINTGATE:BEGIN section_id vN --> ... <!-- LINTGATE:END section_id -->
+# with optional surrounding blank lines consumed to avoid leaving gaps.
+_MANAGED_SECTION_RE = re.compile(
+    r"\n*<!-- LINTGATE:BEGIN \w+ v\d+ -->\n.*?<!-- LINTGATE:END \w+ -->\n*",
+    re.DOTALL,
+)
 
 
 # ── Data ──────────────────────────────────────────────────────────────
@@ -87,6 +96,46 @@ def _add_protected(project_root: str, report: ResetReport) -> None:
             report.preserved.append({"path": str(candidate), "reason": "protected — never auto-deleted"})
 
 
+def _strip_managed_sections(path: Path, report: ResetReport, *, dry_run: bool) -> None:
+    """Remove <!-- LINTGATE:BEGIN --> ... <!-- LINTGATE:END --> blocks from a file.
+
+    The file itself is preserved; only managed sections are removed.
+    Reports each stripped section as a separate entry with type 'managed_section'.
+    """
+    if not path.exists():
+        return
+    try:
+        original = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        report.errors.append(f"Failed to read {path}: {exc}")
+        return
+
+    sections = list(_MANAGED_SECTION_RE.finditer(original))
+    if not sections:
+        return
+
+    for m in sections:
+        # Extract the section_id from the BEGIN tag for reporting.
+        begin_match = re.search(r"LINTGATE:BEGIN (\w+)", m.group())
+        section_id = begin_match.group(1) if begin_match else "unknown"
+        report.deleted.append({
+            "path": str(path),
+            "type": "managed_section",
+            "section_id": section_id,
+            "size_bytes": len(m.group().encode("utf-8")),
+            "deletable": True,
+        })
+
+    if dry_run:
+        return
+
+    cleaned = _MANAGED_SECTION_RE.sub("\n", original).strip() + "\n"
+    try:
+        path.write_text(cleaned, encoding="utf-8")
+    except OSError as exc:
+        report.errors.append(f"Failed to write {path}: {exc}")
+
+
 # ── Public API ────────────────────────────────────────────────────────
 
 
@@ -115,6 +164,29 @@ def enumerate_project_state(project_root: str) -> list[dict[str, Any]]:
     habit_file = _HABIT_STATE_DIR / f"{phash}.json"
     if habit_file.exists():
         entries.append(_file_entry(habit_file, "habit_state"))
+
+    # Theory extractions
+    theory_file = root / _THEORY_PATH
+    if theory_file.exists():
+        entries.append(_file_entry(theory_file, "theory"))
+
+    # Managed sections in CLAUDE.md (reported individually)
+    claude_md = root / ".claude" / "CLAUDE.md"
+    if claude_md.exists():
+        try:
+            content = claude_md.read_text(encoding="utf-8")
+            for m in _MANAGED_SECTION_RE.finditer(content):
+                begin_match = re.search(r"LINTGATE:BEGIN (\w+)", m.group())
+                section_id = begin_match.group(1) if begin_match else "unknown"
+                entries.append({
+                    "path": str(claude_md),
+                    "type": "managed_section",
+                    "section_id": section_id,
+                    "size_bytes": len(m.group().encode("utf-8")),
+                    "deletable": True,
+                })
+        except OSError:
+            pass
 
     # Protected files (listed but not deletable)
     for name in sorted(_PROTECTED_NAMES):
@@ -145,9 +217,10 @@ def reset_session_only(project_root: str, dry_run: bool = True) -> ResetReport:
 
 
 def reset_project(project_root: str, dry_run: bool = True) -> ResetReport:
-    """Delete compass + session + habit mode state for this project.
+    """Delete compass + session + habit + theory state for this project.
 
-    NEVER auto-deletes CLAUDE.md or AGENTS.md.
+    Also strips LintGate-managed sections from CLAUDE.md.
+    NEVER deletes CLAUDE.md or AGENTS.md themselves.
     """
     report = ResetReport()
     root = Path(project_root)
@@ -161,6 +234,12 @@ def reset_project(project_root: str, dry_run: bool = True) -> ResetReport:
 
     # Habit mode state
     _safe_delete(_HABIT_STATE_DIR / f"{phash}.json", "habit_state", report, dry_run=dry_run)
+
+    # Theory extractions
+    _safe_delete(root / _THEORY_PATH, "theory", report, dry_run=dry_run)
+
+    # Managed sections in CLAUDE.md (file preserved, injected blocks stripped)
+    _strip_managed_sections(root / ".claude" / "CLAUDE.md", report, dry_run=dry_run)
 
     _add_protected(project_root, report)
     return report

@@ -83,6 +83,23 @@ _ORPHAN_EXCLUDE_DIR_PARTS = frozenset(
     }
 )
 
+# Config/build files that indicate structural changes when edited
+_STRUCTURAL_CONFIG_FILES = frozenset(
+    {
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "mypy.ini",
+        ".mypy.ini",
+        ".ruff.toml",
+        "ruff.toml",
+        "tox.ini",
+        ".flake8",
+        ".pylintrc",
+        "MANIFEST.in",
+    }
+)
+
 
 class StructureChannel:
     """Supervision channel for codebase structural analysis.
@@ -97,13 +114,48 @@ class StructureChannel:
     blocking_capable = False  # Advisory
 
     def should_run(self, event: SupervisionEvent, config: ControlPlaneConfig) -> bool:
-        """Run on MCP invocations and structural/logic changes."""
+        """Run on MCP invocations; on hooks, only for structurally relevant changes.
+
+        Hook gating: full project structural scans are expensive and noisy for
+        routine edits. Only run when the change is likely to affect structure:
+        - risk_level is "structural" or "architectural"
+        - Package boundary files (__init__.py) changed
+        - Config/build files changed (pyproject.toml, mypy.ini, etc.)
+        - Import-only changes (may affect import graph)
+        - Module moves/renames (class_structure_changed)
+        """
         if event.surface == "mcp":
             return True
         classification = event.change_classification
         if classification is None:
             return False
-        return classification.risk_level not in ("none",)
+        if classification.risk_level in ("none", "cosmetic"):
+            return False
+
+        # Always run for structural/architectural risk levels
+        if classification.risk_level in ("structural", "architectural"):
+            return True
+
+        # Check for structurally relevant files in the changeset
+        for filepath in event.files_changed:
+            basename = os.path.basename(filepath)
+            # Package boundary files
+            if basename == "__init__.py":
+                return True
+            # Config/build files
+            if basename in _STRUCTURAL_CONFIG_FILES:
+                return True
+
+        # Import-only changes affect the import graph
+        if classification.import_only:
+            return True
+
+        # Class structure changes may indicate module reorganization
+        if classification.class_structure_changed:
+            return True
+
+        # Moderate/logic-only changes: skip structure scan
+        return False
 
     def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute structural analysis checks."""

@@ -124,6 +124,11 @@ class CoherenceResult:
     loud_channels: list[str] = field(default_factory=list)
     confidence: float = 1.0
     classification_notes: list[str] = field(default_factory=list)
+    # Edit-scope classification (Phase 2)
+    edit_scoped: bool = False
+    edit_related_channels: list[str] = field(default_factory=list)
+    ambient_channels: list[str] = field(default_factory=list)
+    unknown_scope_channels: list[str] = field(default_factory=list)
 
 
 # ── Mesh Result ───────────────────────────────────────────────────────
@@ -215,7 +220,7 @@ class ControlPlaneConfig:
     inquiry: InquiryConfig = field(default_factory=InquiryConfig)
     # Severity-weighted coherence: when True, informational-only channel failures
     # count less toward the "systemic" threshold (0.25 vs 1.0 for blocking).
-    severity_weighted_coherence: bool = False
+    severity_weighted_coherence: bool = True
     # Global behavior profile (cross-session learning)
     global_memory_enabled: bool = False
     global_memory_alpha: float = 0.6

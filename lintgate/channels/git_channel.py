@@ -27,6 +27,24 @@ from lintgate.controlplane.types import (
 from lintgate.types import LintIssue
 
 
+# Dependency manifest/lockfile basenames — when these are in files_changed,
+# the lockfile freshness check should still run even on hooks.
+_DEPENDENCY_FILES = frozenset(
+    {
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements-test.txt",
+        "uv.lock",
+        "poetry.lock",
+        "Pipfile",
+        "Pipfile.lock",
+    }
+)
+
+
 class GitChannel:
     """Supervision channel for git hygiene.
 
@@ -64,20 +82,30 @@ class GitChannel:
                 metrics={"reason": "not_a_git_repo"},
             )
 
-        # Check 1: Large uncommitted changes
-        large_change_findings = _check_large_changes(project_root)
-        findings.extend(large_change_findings)
+        is_hook = event.surface == "hook"
 
-        # Check 2: Lockfile-manifest mismatch
-        lockfile_findings, lockfile_repairs = _check_lockfile_freshness(project_root)
-        findings.extend(lockfile_findings)
-        repairs.extend(lockfile_repairs)
+        # Check 1: Large uncommitted changes — skip on hooks (always true during dev)
+        if not is_hook:
+            large_change_findings = _check_large_changes(project_root)
+            findings.extend(large_change_findings)
 
-        # Check 3: Sensitive files
+        # Check 2: Lockfile-manifest mismatch — skip on hooks unless dep files changed
+        run_lockfile_check = not is_hook
+        if is_hook:
+            # Run if any dependency manifest/lockfile was in the changeset
+            changed_basenames = {os.path.basename(f) for f in event.files_changed}
+            if changed_basenames & _DEPENDENCY_FILES:
+                run_lockfile_check = True
+        if run_lockfile_check:
+            lockfile_findings, lockfile_repairs = _check_lockfile_freshness(project_root)
+            findings.extend(lockfile_findings)
+            repairs.extend(lockfile_repairs)
+
+        # Check 3: Sensitive files — always run (security-relevant)
         sensitive_findings = _check_sensitive_files(project_root)
         findings.extend(sensitive_findings)
 
-        # Check 4: Secrets in staged diffs
+        # Check 4: Secrets in staged diffs — always run (security-relevant)
         secrets_findings = _check_diff_secrets(project_root)
         findings.extend(secrets_findings)
 
@@ -97,7 +125,7 @@ class GitChannel:
             findings=findings,
             repairs=repairs,
             metrics={
-                "checks_run": 4,
+                "checks_run": 2 + (0 if is_hook else 1) + (1 if run_lockfile_check else 0),
                 "issue_count": len(findings),
                 "secrets_found": len(secrets_findings),
             },

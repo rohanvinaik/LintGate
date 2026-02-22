@@ -121,12 +121,13 @@ def run_mesh(
     from .coherence import compute_coherence, compute_coherence_with_history
 
     sw = config.severity_weighted_coherence
+    fc = list(event.files_changed) if event.files_changed else None
     if session is not None:
         coherence = compute_coherence_with_history(
-            channel_results, session, severity_weighted=sw,
+            channel_results, session, severity_weighted=sw, files_changed=fc,
         )
     else:
-        coherence = compute_coherence(channel_results, severity_weighted=sw)
+        coherence = compute_coherence(channel_results, severity_weighted=sw, files_changed=fc)
 
     elapsed_ms = (time.perf_counter() - start) * 1000
     return MeshResult(

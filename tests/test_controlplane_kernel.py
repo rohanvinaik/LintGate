@@ -366,9 +366,10 @@ def test_coherence_weighted_coupled_shared_files_three_channels_plural_wording()
         ),
     ]
     coherence = compute_coherence(results, severity_weighted=True)
-    assert coherence.state == "coupled"
-    assert "both report" not in coherence.summary
-    assert "overlapping issues" in coherence.summary
+    # All three channels have only informational findings — with severity_weighted=True,
+    # they are demoted from coherence classification, resulting in "stable"
+    assert coherence.state == "stable"
+    assert any("demoted" in n for n in coherence.classification_notes)
 
 
 def test_coherence_weighted_coupled_independent_three_channels_lists_all_actions() -> None:
@@ -414,10 +415,9 @@ def test_coherence_weighted_coupled_independent_three_channels_lists_all_actions
         ),
     ]
     coherence = compute_coherence(results, severity_weighted=True)
-    assert coherence.state == "coupled"
-    assert "independent issues" in coherence.summary
-    for ch_name in ("lint", "tests", "structure"):
-        assert ch_name in coherence.recommended_action
+    # All three channels have only informational findings — demoted to stable
+    assert coherence.state == "stable"
+    assert any("demoted" in n for n in coherence.classification_notes)
 
 
 def test_coherence_weighted_cross_domain_low_signal_is_not_systemic() -> None:
@@ -451,7 +451,9 @@ def test_coherence_weighted_cross_domain_low_signal_is_not_systemic() -> None:
         ChannelResult(channel="tests", status="pass"),
     ]
     coherence = compute_coherence(results, severity_weighted=True)
-    assert coherence.state == "coupled"
+    # deps has only informational findings → demoted, leaving only lint failing → isolated
+    assert coherence.state == "isolated"
+    assert any("deps demoted" in n for n in coherence.classification_notes)
 
 
 def test_coherence_weighted_orders_channels_by_failure_volume() -> None:
@@ -570,6 +572,32 @@ def test_coherence_all_skipped() -> None:
     ]
     coherence = compute_coherence(results)
     assert coherence.state == "stable"
+
+
+def test_edit_scope_stable_downgrade_clears_loud_channels() -> None:
+    """Ambient-only failures can downgrade to stable without loud channels."""
+    results = [
+        ChannelResult(
+            channel="lint",
+            status="fail",
+            findings=[
+                LintIssue(
+                    linter="ruff",
+                    kind="E501",
+                    message="line too long",
+                    severity="warning",
+                    file="/tmp/test/legacy.py",
+                ),
+            ],
+        ),
+        ChannelResult(channel="tests", status="pass"),
+    ]
+    coherence = compute_coherence(results, files_changed=["/tmp/test/app.py"])
+    assert coherence.state == "stable"
+    assert coherence.edit_scoped is True
+    assert coherence.ambient_channels == ["lint"]
+    assert coherence.edit_related_channels == []
+    assert coherence.loud_channels == []
 
 
 # ── Mesh result assembly ──────────────────────────────────────────────

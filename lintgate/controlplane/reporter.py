@@ -83,6 +83,9 @@ def format_mesh_report(
     mesh_result: MeshResult,
     config: ControlPlaneConfig | None = None,
     proposed_constraints: list[dict] | None = None,
+    previous_finding_index: dict[str, dict[str, Any]] | None = None,
+    baseline_finding_index: dict[str, dict[str, Any]] | None = None,
+    snapshot_count: int = 0,
 ) -> dict[str, Any]:
     """Format MeshResult as JSON for Claude Code systemMessage.
 
@@ -90,6 +93,9 @@ def format_mesh_report(
         mesh_result: Complete mesh execution result.
         config: ControlPlane config (for token budget policy).
         proposed_constraints: Optional constraint proposals from session memory.
+        previous_finding_index: Finding index from previous run (for delta).
+        baseline_finding_index: Finding index from first run in session (debt baseline).
+        snapshot_count: Number of snapshots in session (for resurfacing cadence).
 
     Returns:
         JSON dict with systemMessage key. Empty dict {} if no issues.
@@ -105,6 +111,61 @@ def format_mesh_report(
             active_channels.append(cr)
         if cr.findings:
             all_findings.extend(cr.findings)
+
+    # Compute delta if previous finding index is available
+    delta: dict[str, Any] | None = None
+    baseline_delta: dict[str, Any] | None = None
+    current_index: dict[str, dict[str, Any]] | None = None
+    if previous_finding_index is not None:
+        current_index = build_finding_index(mesh_result)
+        delta = compute_finding_delta(current_index, previous_finding_index)
+    if baseline_finding_index is not None:
+        if current_index is None:
+            current_index = build_finding_index(mesh_result)
+        baseline_delta = compute_finding_delta(current_index, baseline_finding_index)
+
+    # When delta is available, filter to new/escalated findings + resurfaced blockers
+    display_findings = all_findings
+    resurfaced_count = 0
+    if delta is not None:
+        # Build per-fingerprint display quota. This avoids over-reporting when
+        # one fingerprint appears many times but only a subset is truly "new".
+        quota_by_fp: dict[str, int] = {}
+        for item in delta.get("new", []):
+            fp = item.get("fingerprint", "")
+            if fp:
+                quota_by_fp[fp] = quota_by_fp.get(fp, 0) + max(1, int(item.get("count", 1)))
+        for item in delta.get("escalated", []):
+            fp = item.get("fingerprint", "")
+            if fp:
+                quota_by_fp[fp] = quota_by_fp.get(fp, 0) + max(1, int(item.get("count", 1)))
+
+        # Resurfacing cadence: persistent blocking findings resurface every 10 runs
+        if snapshot_count > 0 and snapshot_count % 10 == 0 and previous_finding_index:
+            for fp, info in (current_index or {}).items():
+                if info.get("severity") == "blocking" and fp in previous_finding_index:
+                    # Resurface one representative occurrence per fingerprint.
+                    if quota_by_fp.get(fp, 0) == 0:
+                        quota_by_fp[fp] = 1
+                        resurfaced_count += 1
+
+        # Filter findings by per-fingerprint quota.
+        if quota_by_fp:
+            display_findings = []
+            used_by_fp: dict[str, int] = {}
+            for cr in mesh_result.channel_results:
+                for f in cr.findings:
+                    fp = compute_finding_fingerprint(f, cr.channel)
+                    allowed = quota_by_fp.get(fp, 0)
+                    if allowed <= 0:
+                        continue
+                    used = used_by_fp.get(fp, 0)
+                    if used < allowed:
+                        display_findings.append(f)
+                        used_by_fp[fp] = used + 1
+        else:
+            # No new/escalated findings — show nothing
+            display_findings = []
 
     # Quick exit: nothing to report
     if not all_findings and not mesh_result.partial:
@@ -128,8 +189,33 @@ def format_mesh_report(
         parts.append(f'<controlplane-report coherence="{mesh_result.coherence.state}">')
         token_estimate += 10
 
+    # Delta summary line (when delta is available)
+    if delta is not None:
+        new_count = sum(f.get("count", 1) for f in delta.get("new", []))
+        escalated_count = sum(f.get("count", 1) for f in delta.get("escalated", []))
+        resolved = delta.get("resolved_count", 0)
+        unchanged = delta.get("still_active_count", 0)
+        delta_parts = []
+        if new_count:
+            delta_parts.append(f"{new_count} new")
+        if escalated_count:
+            delta_parts.append(f"{escalated_count} escalated")
+        if resolved:
+            delta_parts.append(f"{resolved} resolved")
+        if unchanged:
+            delta_parts.append(f"{unchanged} unchanged (suppressed)")
+        if resurfaced_count:
+            delta_parts.append(f"{resurfaced_count} resurfaced")
+        if delta_parts:
+            section = f"DELTA: {', '.join(delta_parts)}"
+            section_tokens = _estimate_tokens(section)
+            if token_estimate + section_tokens <= max_tokens:
+                parts.append(section)
+                token_estimate += section_tokens
+
     # Section 2: Blocking findings (with per-finding granularity)
-    blocking = [f for f in all_findings if f.severity == "blocking"]
+    # Use display_findings (delta-filtered) for what to show
+    blocking = [f for f in display_findings if f.severity == "blocking"]
     if blocking:
         section = _format_blocking(blocking)
         section_tokens = _estimate_tokens(section)
@@ -159,7 +245,7 @@ def format_mesh_report(
             token_estimate += section_tokens
 
     # Section 4: Channel warnings (non-blocking findings)
-    warnings = [f for f in all_findings if f.severity == "warning"]
+    warnings = [f for f in display_findings if f.severity == "warning"]
     if warnings:
         section = _format_warnings(warnings)
         section_tokens = _estimate_tokens(section)
@@ -204,10 +290,13 @@ def format_mesh_report(
             parts.append(section)
             token_estimate += section_tokens
 
-    # Informational count
-    informational = [f for f in all_findings if f.severity == "informational"]
-    if informational:
-        section = f"INFO: {len(informational)} informational finding{'s' if len(informational) != 1 else ''}"
+    # Informational count — show display_findings count when delta is active,
+    # but note the total for context
+    display_informational = [f for f in display_findings if f.severity == "informational"]
+    total_informational = [f for f in all_findings if f.severity == "informational"]
+    if display_informational or (total_informational and delta is None):
+        shown = display_informational if delta is not None else total_informational
+        section = f"INFO: {len(shown)} informational finding{'s' if len(shown) != 1 else ''}"
         section_tokens = _estimate_tokens(section)
         if token_estimate + section_tokens <= max_tokens:
             parts.append(section)
@@ -227,10 +316,15 @@ def format_mesh_report(
     parts.append("</controlplane-report>")
 
     # Count findings not shown in the systemMessage text.
-    # Blocking: up to 5 shown inline; warnings: up to 3; informational: count only.
+    # When delta is active, hidden = total - displayed (not just truncation).
     shown_blocking = min(len(blocking), 5)
     shown_warnings = min(len(warnings), 3)
-    hidden_findings = len(all_findings) - shown_blocking - shown_warnings
+    if delta is not None:
+        # Delta mode: suppressed findings are the difference between total and displayed
+        suppressed = len(all_findings) - len(display_findings)
+        hidden_findings = suppressed + max(0, len(blocking) - shown_blocking) + max(0, len(warnings) - shown_warnings)
+    else:
+        hidden_findings = len(all_findings) - shown_blocking - shown_warnings
 
     if hidden_findings > 0:
         parts.insert(
@@ -242,18 +336,34 @@ def format_mesh_report(
     output: dict[str, Any] = {"systemMessage": message}
 
     # Claude PostToolUse hook schema: hookEventName + optional additionalContext.
+    informational_count = len(display_informational) if delta is not None else len(total_informational)
     additional_context = _build_posttooluse_context(
         mesh_result=mesh_result,
         blocking_count=len(blocking),
         warning_count=len(warnings),
-        informational_count=len(informational),
+        informational_count=informational_count,
         hidden_findings=hidden_findings,
         channels_run=len(active_channels),
+        delta=delta,
+        baseline_delta=baseline_delta,
+        resurfaced_count=resurfaced_count,
     )
     output["hookSpecificOutput"] = {
         "hookEventName": "PostToolUse",
         "additionalContext": additional_context,
     }
+
+    # Telemetry counters — lightweight increment-only for threshold tuning
+    telemetry = _build_telemetry_counters(
+        mesh_result=mesh_result,
+        delta=delta,
+        baseline_delta=baseline_delta,
+        display_findings=display_findings,
+        all_findings=all_findings,
+        resurfaced_count=resurfaced_count,
+    )
+    if telemetry:
+        output["_telemetry"] = telemetry
 
     return output
 
@@ -405,28 +515,130 @@ def _build_posttooluse_context(
     informational_count: int,
     hidden_findings: int,
     channels_run: int,
+    delta: dict[str, Any] | None = None,
+    baseline_delta: dict[str, Any] | None = None,
+    resurfaced_count: int = 0,
 ) -> str:
-    """Build compact additional context for Claude PostToolUse hooks."""
-    statuses = ",".join(
+    """Build compact additional context for Claude PostToolUse hooks.
+
+    Fixed key order, compact format. Keys with zero/empty values are omitted.
+    Max 300 chars — drops least-critical fields from bottom up if exceeded.
+    """
+    coherence = mesh_result.coherence
+
+    # Build ordered key-value pairs (fixed order per plan)
+    pairs: list[tuple[str, str]] = []
+
+    # 1. coherence (always)
+    pairs.append(("coherence", coherence.state))
+    # 2. channels_run (always)
+    pairs.append(("channels_run", str(channels_run)))
+    # 3. blocking (only > 0)
+    if blocking_count > 0:
+        pairs.append(("blocking", str(blocking_count)))
+    # 4. warnings (only > 0)
+    if warning_count > 0:
+        pairs.append(("warnings", str(warning_count)))
+    # 5. edit_related (when edit_scoped)
+    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "edit_related_channels", None):
+        pairs.append(("edit_related", ",".join(coherence.edit_related_channels)))
+    # 6. ambient_debt (when ambient channels exist)
+    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "ambient_channels", None):
+        pairs.append(("ambient_debt", ",".join(coherence.ambient_channels)))
+    # 7. new_findings (from delta, > 0)
+    if delta is not None:
+        new_count = sum(f.get("count", 1) for f in delta.get("new", []))
+        if new_count > 0:
+            pairs.append(("new_findings", str(new_count)))
+    # 8. resolved (from delta, > 0)
+    if delta is not None:
+        resolved = delta.get("resolved_count", 0)
+        if resolved > 0:
+            pairs.append(("resolved", str(resolved)))
+    # 9. known_debt (from delta, > 0)
+    if delta is not None:
+        known = delta.get("still_active_count", 0)
+        if known > 0:
+            pairs.append(("known_debt", str(known)))
+    # 10. session_regressions (from baseline delta, > 0)
+    if baseline_delta is not None:
+        session_new = sum(f.get("count", 1) for f in baseline_delta.get("new", []))
+        if session_new > 0:
+            pairs.append(("session_regressions", str(session_new)))
+    # 11. loud (only failing channels)
+    loud = ",".join(
         f"{cr.channel}:{cr.status}"
         for cr in mesh_result.channel_results
-        if cr.status != "skip"
+        if cr.status in ("fail", "error", "timeout")
     )
-    incomplete = ",".join(mesh_result.incomplete_channels) if mesh_result.partial else ""
-    parts = [
-        f"coherence={mesh_result.coherence.state}",
-        f"channels_run={channels_run}",
-        f"blocking_count={blocking_count}",
-        f"warning_count={warning_count}",
-        f"informational_count={informational_count}",
-    ]
-    if hidden_findings > 0:
-        parts.append(f"hidden_findings={hidden_findings}")
-    if incomplete:
-        parts.append(f"incomplete_channels={incomplete}")
-    if statuses:
-        parts.append(f"channel_statuses={statuses}")
-    return "; ".join(parts)
+    if loud:
+        pairs.append(("loud", loud))
+    # 12. resurface (> 0)
+    if resurfaced_count > 0:
+        pairs.append(("resurface", str(resurfaced_count)))
+
+    # Serialize with max length enforcement (300 chars)
+    _MAX_CONTEXT_LEN = 300
+    result = "; ".join(f"{k}={v}" for k, v in pairs)
+    while len(result) > _MAX_CONTEXT_LEN and len(pairs) > 2:
+        pairs.pop()  # Drop least-critical (bottom) fields
+        result = "; ".join(f"{k}={v}" for k, v in pairs)
+
+    return result
+
+
+def _build_telemetry_counters(
+    *,
+    mesh_result: MeshResult,
+    delta: dict[str, Any] | None,
+    baseline_delta: dict[str, Any] | None,
+    display_findings: list,
+    all_findings: list,
+    resurfaced_count: int,
+) -> dict[str, int]:
+    """Build lightweight telemetry counters for threshold tuning.
+
+    Increment-only counters, no complex aggregation. Stored in session
+    memory and exposed via controlplane_status.
+    """
+    counters: dict[str, int] = {}
+
+    coherence = mesh_result.coherence
+
+    # edit_scope_downgrades: coherence was downgraded by edit-scope logic
+    if getattr(coherence, "edit_scoped", False) and coherence.classification_notes:
+        if any("downgraded to stable" in n for n in coherence.classification_notes):
+            counters["edit_scope_downgrades"] = 1
+        elif any("downgraded to isolated" in n for n in coherence.classification_notes):
+            counters["edit_scope_downgrades"] = 1
+
+    # edit_scope_preserved: edit-related findings preserved original state
+    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "edit_related_channels", None):
+        counters["edit_scope_preserved"] = 1
+
+    # suppressed_known_debt: findings suppressed via delta filtering
+    if delta is not None:
+        suppressed = len(all_findings) - len(display_findings)
+        if suppressed > 0:
+            counters["suppressed_known_debt"] = suppressed
+
+    # resurfaced_blockers: persistent blockers resurfaced by cadence rule
+    if resurfaced_count > 0:
+        counters["resurfaced_blockers"] = resurfaced_count
+
+    # new_finding_precision: ratio of new findings to total (as percentage 0-100)
+    if delta is not None and all_findings:
+        new_count = len(display_findings)
+        total = len(all_findings)
+        counters["new_finding_precision"] = round(100 * new_count / total) if total > 0 else 100
+
+    # session_regressions from baseline
+    if baseline_delta is not None:
+        session_new = sum(f.get("count", 1) for f in baseline_delta.get("new", []))
+        if session_new > 0:
+            counters["session_regressions"] = session_new
+
+    return counters
 
 
 # ── Finding Fingerprint & Delta ──────────────────────────────────────────
