@@ -286,8 +286,8 @@ def build_runtime_state(
     compass: CompassState | None = None,
     exec_compass: ExecutionCompass | None = None,
     last_coherence_state: str = "",
-    last_blocking: int = 0,
-    last_warnings: int = 0,
+    last_blocking: int | None = None,
+    last_warnings: int | None = None,
 ) -> RuntimeState:
     """Assemble a RuntimeState from all available source objects.
 
@@ -338,9 +338,10 @@ def build_runtime_state(
     elif session is not None and session.coherence_trajectory:
         state.coherence_state = session.coherence_trajectory[-1]
 
-    # Finding counts
-    if last_blocking > 0 or last_warnings > 0:
+    # Finding counts — None means "no data", 0 means "zero issues"
+    if last_blocking is not None:
         state.blocking_issues = last_blocking
+    if last_warnings is not None:
         state.warning_issues = last_warnings
 
     # Prediction accuracy from session

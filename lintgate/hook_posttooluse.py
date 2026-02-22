@@ -457,8 +457,8 @@ def _refresh_runtime_state_with_session(
         )
 
         coherence_state = ""
-        blocking = 0
-        warnings = 0
+        blocking: int | None = None
+        warnings: int | None = None
         if mesh_result is not None:
             coherence_state = str(mesh_result.coherence.state or "")
             blocking, warnings = _mesh_finding_counts(mesh_result)
@@ -835,6 +835,24 @@ def _update_habit_mode_path_a(
 
         save_habit_state(session.behavior_compass, habit_state)
         save_tracker_state(session.behavior_compass, tracker)
+
+        # Write-through to standalone file so MCP tools (separate process)
+        # can read habit state even when session_memory is enabled.
+        with contextlib.suppress(Exception):
+            from lintgate.habit_mode import save_habit_state_standalone
+
+            action_ring = [
+                a for a in (compass.action_history or [])[-20:]
+            ]
+            save_habit_state_standalone(
+                cwd,
+                habit_state,
+                action_ring,
+                tracker_dict=tracker.to_dict(),
+                config_overrides=overrides,
+                last_snapshot=session.behavior_compass.get("habit_last_snapshot"),
+            )
+
         _refresh_runtime_state_with_session(
             cwd,
             session,
