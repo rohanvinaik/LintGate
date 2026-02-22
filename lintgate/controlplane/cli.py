@@ -14,8 +14,12 @@ import argparse
 import json
 import os
 import sys
+from typing import TYPE_CHECKING
 
 from .types import ControlPlaneConfig, SupervisionEvent
+
+if TYPE_CHECKING:
+    from .channel import Channel
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -75,7 +79,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     requested_channels = [c.strip() for c in args.channels.split(",")]
 
     # Build channel registry
-    channel_registry = {
+    channel_registry: dict[str, Channel] = {
         "lint": LintChannel(),
         "tests": TestChannel(),
         "deps": DependencyChannel(),
@@ -83,7 +87,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     }
 
     # Select requested channels
-    channels = []
+    channels: list[Channel] = []
     for name in requested_channels:
         if name in channel_registry:
             channels.append(channel_registry[name])

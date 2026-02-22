@@ -18,8 +18,8 @@ from mcp_tools.onboarding_tools import (
     _detect_project_layout,
     _detect_subprocess_usage,
     _generate_badge_markdown,
-    _generate_coveragerc,
     _generate_codeclimate_yml,
+    _generate_coveragerc,
     _generate_gitleaks_toml,
     _generate_qlty_toml,
     _generate_qlty_workflow,
@@ -129,9 +129,7 @@ class TestDetectProjectLayout:
 
     def test_detects_python_version_from_pyproject(self, tmp_path: Path) -> None:
         """Extract Python version from pyproject.toml."""
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.11"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
         result = _detect_project_layout(str(tmp_path))
         assert result["python_version"] == "3.11"
 
@@ -205,8 +203,12 @@ class TestGenerateSonarProperties:
     def test_uses_github_info(self) -> None:
         """Properties use detected GitHub owner/repo."""
         github = {"detected": True, "owner": "alice", "repo": "myrepo"}
-        layout = {"source_dirs": ["src"], "test_dirs": ["tests"], "python_version": "3.12",
-                  "exclude_patterns": ["tests/", "docs/"]}
+        layout = {
+            "source_dirs": ["src"],
+            "test_dirs": ["tests"],
+            "python_version": "3.12",
+            "exclude_patterns": ["tests/", "docs/"],
+        }
         content = _generate_sonar_properties(github, layout)
 
         assert "sonar.projectKey=alice_myrepo" in content
@@ -220,8 +222,12 @@ class TestGenerateSonarProperties:
     def test_placeholder_without_github(self) -> None:
         """Falls back to OWNER/REPO when no GitHub detected."""
         github = {"detected": False}
-        layout = {"source_dirs": ["."], "test_dirs": [], "python_version": "3",
-                  "exclude_patterns": []}
+        layout = {
+            "source_dirs": ["."],
+            "test_dirs": [],
+            "python_version": "3",
+            "exclude_patterns": [],
+        }
         content = _generate_sonar_properties(github, layout)
 
         assert "sonar.projectKey=OWNER_REPO" in content
@@ -229,16 +235,24 @@ class TestGenerateSonarProperties:
     def test_excludes_shell_scripts(self) -> None:
         """Shell scripts must be excluded from SonarCloud Python analysis."""
         github = {"detected": True, "owner": "alice", "repo": "myrepo"}
-        layout = {"source_dirs": ["src"], "test_dirs": ["tests"],
-                  "python_version": "3.12", "exclude_patterns": ["tests/", "docs/"]}
+        layout = {
+            "source_dirs": ["src"],
+            "test_dirs": ["tests"],
+            "python_version": "3.12",
+            "exclude_patterns": ["tests/", "docs/"],
+        }
         content = _generate_sonar_properties(github, layout)
         assert "*.sh" in content
 
     def test_file_glob_patterns_not_corrupted(self) -> None:
         """File-extension globs like *.sh must not become *.sh** in exclusions."""
         github = {"detected": True, "owner": "alice", "repo": "myrepo"}
-        layout = {"source_dirs": ["src"], "test_dirs": ["tests"],
-                  "python_version": "3.12", "exclude_patterns": ["tests/", "*.sh"]}
+        layout = {
+            "source_dirs": ["src"],
+            "test_dirs": ["tests"],
+            "python_version": "3.12",
+            "exclude_patterns": ["tests/", "*.sh"],
+        }
         content = _generate_sonar_properties(github, layout)
         assert "*.sh" in content
         assert "*.sh**" not in content
@@ -353,7 +367,7 @@ class TestGenerateTestsWorkflow:
     def test_resilient_dependency_install(self) -> None:
         """Install step tries editable install with fallback to bare pytest."""
         content = _generate_tests_workflow({"python_version": "3.11"})
-        assert '.[dev]' in content
+        assert ".[dev]" in content
         assert "|| python -m pip install pytest" in content
 
     def test_detects_test_directory(self) -> None:
@@ -429,7 +443,8 @@ class TestGenerateSecurityWorkflow:
 
     def test_tool_runner_skips_subprocess_codes(self) -> None:
         content = _generate_security_workflow(
-            {"python_version": "3.11"}, is_tool_runner=True,
+            {"python_version": "3.11"},
+            is_tool_runner=True,
         )
         # Base codes + subprocess codes; sorted
         assert "B404" in content
@@ -440,7 +455,8 @@ class TestGenerateSecurityWorkflow:
 
     def test_non_tool_runner_keeps_subprocess_checks(self) -> None:
         content = _generate_security_workflow(
-            {"python_version": "3.11"}, is_tool_runner=False,
+            {"python_version": "3.11"},
+            is_tool_runner=False,
         )
         assert "B101" in content
         assert "B108" in content
@@ -458,7 +474,8 @@ class TestGenerateSecurityWorkflow:
             "  B105: informational\n"
         )
         content = _generate_security_workflow(
-            {"python_version": "3.11"}, project_root=str(tmp_path),
+            {"python_version": "3.11"},
+            project_root=str(tmp_path),
         )
         assert "B110" in content
         assert "B112" in content
@@ -894,9 +911,13 @@ class TestSetupGithubQualityTool:
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
         with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock):
-            result = json.loads(setup_github_quality(
-                str(tmp_path), write=False, sonar_token="fake_token",
-            ))
+            result = json.loads(
+                setup_github_quality(
+                    str(tmp_path),
+                    write=False,
+                    sonar_token="fake_token",
+                )
+            )
 
         assert result["scanner"]["status"] == "preview"
         assert "never written to disk" in result["scanner"]["note"]
@@ -909,11 +930,17 @@ class TestSetupGithubQualityTool:
         from mcp_server import setup_github_quality
 
         gh_mock = {"detected": True, "owner": "a", "repo": "b"}
-        with patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock), \
-             patch("mcp_tools.onboarding_tools._detect_sonar_scanner", return_value=None):
-            result = json.loads(setup_github_quality(
-                str(tmp_path), write=True, sonar_token="fake_token",
-            ))
+        with (
+            patch("mcp_tools.onboarding_tools._detect_github_remote", return_value=gh_mock),
+            patch("mcp_tools.onboarding_tools._detect_sonar_scanner", return_value=None),
+        ):
+            result = json.loads(
+                setup_github_quality(
+                    str(tmp_path),
+                    write=True,
+                    sonar_token="fake_token",
+                )
+            )
 
         assert result["scanner"]["status"] == "scanner_not_found"
 

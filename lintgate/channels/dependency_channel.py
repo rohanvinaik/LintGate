@@ -10,7 +10,7 @@ not blocking errors.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -62,7 +62,7 @@ class DependencyChannel:
             findings, repairs = self._full_check(project_root)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
-        status = "fail" if findings else "pass"
+        status: Literal["pass", "fail"] = "fail" if findings else "pass"
         severity = _max_severity(findings)
 
         return ChannelResult(
@@ -179,10 +179,15 @@ class DependencyChannel:
         return findings, repairs
 
 
-def _max_severity(findings: list[LintIssue]) -> str:
+def _max_severity(
+    findings: list[LintIssue],
+) -> Literal["blocking", "warning", "informational", "none"]:
     """Get the highest severity from a list of findings."""
     if not findings:
         return "none"
     severity_order = {"blocking": 3, "warning": 2, "informational": 1, "none": 0}
     max_sev = max(findings, key=lambda f: severity_order.get(f.severity, 0))
-    return max_sev.severity
+    sev = max_sev.severity
+    if sev in ("blocking", "warning", "informational"):
+        return sev  # type: ignore[return-value]
+    return "none"

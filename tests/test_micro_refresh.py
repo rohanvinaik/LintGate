@@ -55,9 +55,7 @@ class TestAttachSessionContext:
         assert augmented["details"] == [1, 2, 3]
 
     def test_focus_capped_at_3(self, tmp_path):
-        state = RuntimeState(
-            active_files=[f"/src/{i}.py" for i in range(10)]
-        )
+        state = RuntimeState(active_files=[f"/src/{i}.py" for i in range(10)])
         save_runtime_state(str(tmp_path), state)
 
         result = {}
@@ -65,9 +63,7 @@ class TestAttachSessionContext:
         assert len(augmented["session_context"]["focus"]) == 3
 
     def test_focus_basenames_extracted(self, tmp_path):
-        state = RuntimeState(
-            active_files=["/very/deep/path/to/file.py"]
-        )
+        state = RuntimeState(active_files=["/very/deep/path/to/file.py"])
         save_runtime_state(str(tmp_path), state)
 
         result = {}
@@ -98,6 +94,7 @@ class TestAttachSessionContext:
         result = {}
         augmented = attach_session_context(result, str(tmp_path))
         import json
+
         ctx_str = json.dumps(augmented["session_context"])
         # Should be well under 300 chars (~75 tokens)
         assert len(ctx_str) < 300

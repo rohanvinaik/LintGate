@@ -21,10 +21,20 @@ from .compass import CompassClaim
 _MAX_CONFIDENCE = 0.6
 _MAX_PY_FILES = 50
 
-_SKIP_DIRS = frozenset({
-    ".git", "node_modules", ".venv", "venv", "__pycache__",
-    ".tox", "dist", "build", ".eggs", ".mypy_cache",
-})
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".tox",
+        "dist",
+        "build",
+        ".eggs",
+        ".mypy_cache",
+    }
+)
 
 _FRAMEWORK_MAP: dict[str, tuple[str, str]] = {
     "fastapi": ("Uses FastAPI for HTTP API layer", "solution"),
@@ -111,22 +121,37 @@ def _infer_from_pyproject(project_root: str) -> list[CompassClaim]:
     claims: list[CompassClaim] = []
     desc = re.search(r'^description\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if desc:
-        claims.append(_claim(f"Project purpose: {desc.group(1)}", "pyproject.toml",
-                              confidence=0.5, origin_facet="core_theory"))
+        claims.append(
+            _claim(
+                f"Project purpose: {desc.group(1)}",
+                "pyproject.toml",
+                confidence=0.5,
+                origin_facet="core_theory",
+            )
+        )
 
     py_req = re.search(r'^requires-python\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if py_req:
         claims.append(_claim(f"Python version: {py_req.group(1)}", "pyproject.toml"))
 
     if re.search(r"\[tool\.ruff\]", text):
-        claims.append(_claim("Ruff linter configured", "pyproject.toml",
-                              origin_facet="enforceable_rules"))
+        claims.append(
+            _claim("Ruff linter configured", "pyproject.toml", origin_facet="enforceable_rules")
+        )
     if re.search(r"\[tool\.mypy\]", text):
-        claims.append(_claim("mypy type checking configured", "pyproject.toml",
-                              origin_facet="enforceable_rules"))
+        claims.append(
+            _claim(
+                "mypy type checking configured", "pyproject.toml", origin_facet="enforceable_rules"
+            )
+        )
     if re.search(r"\[tool\.pytest", text):
-        claims.append(_claim("pytest configured in pyproject.toml", "pyproject.toml",
-                              origin_facet="enforceable_rules"))
+        claims.append(
+            _claim(
+                "pytest configured in pyproject.toml",
+                "pyproject.toml",
+                origin_facet="enforceable_rules",
+            )
+        )
     return claims
 
 
@@ -199,12 +224,17 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
     claims: list[CompassClaim] = []
 
     if (root / "src").is_dir():
-        claims.append(_claim("Uses src/ layout", "directory_structure", origin_facet="abstractions"))
+        claims.append(
+            _claim("Uses src/ layout", "directory_structure", origin_facet="abstractions")
+        )
 
     for test_dir in ("tests", "test"):
         if (root / test_dir).is_dir():
-            claims.append(_claim(f"Tests in {test_dir}/", "directory_structure",
-                                  origin_facet="enforceable_rules"))
+            claims.append(
+                _claim(
+                    f"Tests in {test_dir}/", "directory_structure", origin_facet="enforceable_rules"
+                )
+            )
             break
 
     if (root / "docs").is_dir():
@@ -212,8 +242,14 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
 
     for entry in root.iterdir():
         if entry.is_dir() and entry.name in _LAYER_MAP:
-            claims.append(_claim(_LAYER_MAP[entry.name], "directory_structure",
-                                  confidence=0.45, origin_facet="architecture"))
+            claims.append(
+                _claim(
+                    _LAYER_MAP[entry.name],
+                    "directory_structure",
+                    confidence=0.45,
+                    origin_facet="architecture",
+                )
+            )
 
     return claims
 
@@ -221,8 +257,11 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
 def _scan_test_dir(test_dir: Path) -> dict[str, bool | int]:
     """Scan a test directory for framework signals. Returns detection flags."""
     flags: dict[str, bool | int] = {
-        "conftest": False, "pytest": False, "unittest": False,
-        "fixtures": False, "count": 0,
+        "conftest": False,
+        "pytest": False,
+        "unittest": False,
+        "fixtures": False,
+        "count": 0,
     }
     for dirpath, dirnames, filenames in os.walk(test_dir):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
@@ -247,8 +286,11 @@ def _infer_from_test_patterns(project_root: str) -> list[CompassClaim]:
     """Detect testing framework and patterns."""
     root = Path(project_root)
     merged: dict[str, bool | int] = {
-        "conftest": False, "pytest": False, "unittest": False,
-        "fixtures": False, "count": 0,
+        "conftest": False,
+        "pytest": False,
+        "unittest": False,
+        "fixtures": False,
+        "count": 0,
     }
     for name in ("tests", "test"):
         if (root / name).is_dir():
@@ -264,8 +306,9 @@ def _infer_from_test_patterns(project_root: str) -> list[CompassClaim]:
     elif merged["unittest"]:
         claims.append(_claim("Uses unittest", "test_patterns", confidence=0.55, origin_facet=facet))
     if merged["conftest"]:
-        claims.append(_claim("Uses conftest.py for shared fixtures", "test_patterns",
-                              origin_facet=facet))
+        claims.append(
+            _claim("Uses conftest.py for shared fixtures", "test_patterns", origin_facet=facet)
+        )
     if merged["fixtures"]:
         claims.append(_claim("Uses pytest fixtures", "test_patterns", origin_facet=facet))
     count = int(merged["count"])
@@ -279,7 +322,10 @@ def _infer_from_commit_messages(project_root: str) -> list[CompassClaim]:
     try:
         result = subprocess.run(
             ["git", "log", "--oneline", "-50"],
-            capture_output=True, text=True, cwd=project_root, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+            timeout=10,
         )
         if result.returncode != 0:
             return []
@@ -294,13 +340,15 @@ def _infer_from_commit_messages(project_root: str) -> list[CompassClaim]:
     for line in lines:
         parts = line.split(" ", 1)
         if len(parts) >= 2 and re.match(
-            r"^(feat|fix|docs|style|refactor|test|chore|ci|perf|build)\b", parts[1],
+            r"^(feat|fix|docs|style|refactor|test|chore|ci|perf|build)\b",
+            parts[1],
         ):
             conv_count += 1
 
     if len(lines) > 0 and conv_count / len(lines) > 0.4:
-        return [_claim("Uses conventional commit format", "commits",
-                        origin_facet="enforceable_rules")]
+        return [
+            _claim("Uses conventional commit format", "commits", origin_facet="enforceable_rules")
+        ]
     return []
 
 
@@ -320,8 +368,14 @@ def _extract_docstring_claims(py_files: list[Path]) -> list[CompassClaim]:
             first = module_doc.split("\n")[0].strip()[:150]
             if len(first) > 15 and first not in seen:
                 seen.add(first)
-                claims.append(_claim(f"{py_file.name}: {first}", f"docstring:{py_file.name}",
-                                      confidence=0.4, origin_facet="core_theory"))
+                claims.append(
+                    _claim(
+                        f"{py_file.name}: {first}",
+                        f"docstring:{py_file.name}",
+                        confidence=0.4,
+                        origin_facet="core_theory",
+                    )
+                )
 
         for node in ast.iter_child_nodes(tree):
             if not isinstance(node, ast.ClassDef):
@@ -332,9 +386,14 @@ def _extract_docstring_claims(py_files: list[Path]) -> list[CompassClaim]:
             first = class_doc.split("\n")[0].strip()[:150]
             if len(first) > 15 and first not in seen:
                 seen.add(first)
-                claims.append(_claim(f"{py_file.name}:{node.name}: {first}",
-                                      f"docstring:{py_file.name}", confidence=0.35,
-                                      origin_facet="abstractions"))
+                claims.append(
+                    _claim(
+                        f"{py_file.name}:{node.name}: {first}",
+                        f"docstring:{py_file.name}",
+                        confidence=0.35,
+                        origin_facet="abstractions",
+                    )
+                )
 
     return claims
 
@@ -351,9 +410,13 @@ def _infer_from_docstrings(project_root: str) -> list[CompassClaim]:
 def infer_from_code(project_root: str) -> list[CompassClaim]:
     """Combine all inference sources and deduplicate by claim text."""
     sources = [
-        _infer_from_pyproject, _infer_from_readme, _infer_from_imports,
-        _infer_from_directory_structure, _infer_from_test_patterns,
-        _infer_from_commit_messages, _infer_from_docstrings,
+        _infer_from_pyproject,
+        _infer_from_readme,
+        _infer_from_imports,
+        _infer_from_directory_structure,
+        _infer_from_test_patterns,
+        _infer_from_commit_messages,
+        _infer_from_docstrings,
     ]
 
     all_claims: list[CompassClaim] = []

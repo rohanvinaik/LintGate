@@ -120,9 +120,7 @@ class HostAdapter(Protocol):
     output_paths: list[str]
     capabilities: HostCapabilities
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         """Static compass rendering (existing contract)."""
         ...
 

@@ -32,29 +32,38 @@ def check_length(
     error = thresholds["max_lines_error"]
 
     if line_count > error:
-        checks.append({
-            "check": "length", "status": "error",
-            "detail": f"{line_count} lines (max recommended: {warn}, hard limit: {error})",
-        })
+        checks.append(
+            {
+                "check": "length",
+                "status": "error",
+                "detail": f"{line_count} lines (max recommended: {warn}, hard limit: {error})",
+            }
+        )
         suggestions.append(
             f"Context file is {line_count} lines — well beyond the {warn}-line recommendation. "
             f"Move detailed docs to .claude/rules/*.md with paths frontmatter, "
             f"keep the main file as a concise index."
         )
     elif line_count > warn:
-        checks.append({
-            "check": "length", "status": "warn",
-            "detail": f"{line_count} lines (recommend <{warn})",
-        })
+        checks.append(
+            {
+                "check": "length",
+                "status": "warn",
+                "detail": f"{line_count} lines (recommend <{warn})",
+            }
+        )
         suggestions.append(
             f"Consider splitting into .claude/rules/ files — "
             f"current length ({line_count}) exceeds the {warn}-line guideline."
         )
     else:
-        checks.append({
-            "check": "length", "status": "pass",
-            "detail": f"{line_count} lines (within {warn}-line guideline)",
-        })
+        checks.append(
+            {
+                "check": "length",
+                "status": "pass",
+                "detail": f"{line_count} lines (within {warn}-line guideline)",
+            }
+        )
 
 
 def check_structure(
@@ -69,10 +78,13 @@ def check_structure(
     has_tables = "|" in text and "---" in text
 
     if not has_sections:
-        checks.append({
-            "check": "structure", "status": "warn",
-            "detail": f"Only {len(headers)} section header(s) found — file lacks structure",
-        })
+        checks.append(
+            {
+                "check": "structure",
+                "status": "warn",
+                "detail": f"Only {len(headers)} section header(s) found — file lacks structure",
+            }
+        )
         suggestions.append(
             "Add markdown headers (## Section) to organize content. "
             "LLM agents navigate context files by scanning headers first."
@@ -97,26 +109,35 @@ def check_staleness(
         mtime = Path(file_path).stat().st_mtime
         age_days = (time.time() - mtime) / 86400
     except OSError:
-        checks.append({
-            "check": "staleness", "status": "warn",
-            "detail": "Could not determine file modification time",
-        })
+        checks.append(
+            {
+                "check": "staleness",
+                "status": "warn",
+                "detail": "Could not determine file modification time",
+            }
+        )
         return
 
     if age_days > staleness_days:
-        checks.append({
-            "check": "staleness", "status": "warn",
-            "detail": f"Last modified {int(age_days)} days ago (threshold: {staleness_days} days)",
-        })
+        checks.append(
+            {
+                "check": "staleness",
+                "status": "warn",
+                "detail": f"Last modified {int(age_days)} days ago (threshold: {staleness_days} days)",
+            }
+        )
         suggestions.append(
             f"Context file hasn't been updated in {int(age_days)} days. "
             f"Review and update to ensure it reflects current project state."
         )
     else:
-        checks.append({
-            "check": "staleness", "status": "pass",
-            "detail": f"Last modified {int(age_days)} days ago",
-        })
+        checks.append(
+            {
+                "check": "staleness",
+                "status": "pass",
+                "detail": f"Last modified {int(age_days)} days ago",
+            }
+        )
 
 
 def check_contradictions(
@@ -133,26 +154,46 @@ def check_contradictions(
 
     overlap = do_keywords & do_not_keywords
     noise_words = {
-        "use", "create", "make", "add", "set", "get", "run", "check",
-        "test", "write", "read", "file", "code", "the", "and", "for",
+        "use",
+        "create",
+        "make",
+        "add",
+        "set",
+        "get",
+        "run",
+        "check",
+        "test",
+        "write",
+        "read",
+        "file",
+        "code",
+        "the",
+        "and",
+        "for",
     }
     meaningful_overlap = overlap - noise_words
 
     if meaningful_overlap:
         overlap_str = ", ".join(sorted(meaningful_overlap)[:5])
-        checks.append({
-            "check": "contradictions", "status": "warn",
-            "detail": f"DO and DO NOT directives reference overlapping concepts: {overlap_str}",
-        })
+        checks.append(
+            {
+                "check": "contradictions",
+                "status": "warn",
+                "detail": f"DO and DO NOT directives reference overlapping concepts: {overlap_str}",
+            }
+        )
         suggestions.append(
             f"Review potentially contradictory directives involving: {overlap_str}. "
             f"Ensure DO and DO NOT sections don't give conflicting guidance."
         )
     else:
-        checks.append({
-            "check": "contradictions", "status": "pass",
-            "detail": "No obvious contradictions detected between DO and DO NOT directives",
-        })
+        checks.append(
+            {
+                "check": "contradictions",
+                "status": "pass",
+                "detail": "No obvious contradictions detected between DO and DO NOT directives",
+            }
+        )
 
 
 def check_rule_coverage(
@@ -167,10 +208,13 @@ def check_rule_coverage(
     min_coverage_pct = thresholds["min_rule_coverage_pct"]
 
     if total_do_not == 0:
-        checks.append({
-            "check": "machine_rules", "status": "pass",
-            "detail": "No DO NOT directives found (nothing to enforce)",
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "pass",
+                "detail": "No DO NOT directives found (nothing to enforce)",
+            }
+        )
         return
 
     enforceable: list[str] = []
@@ -193,7 +237,9 @@ def check_rule_coverage(
         directive_words = _coverage_tokens(directive_lower) - _COVERAGE_STOPWORDS
 
         has_rule = _directive_has_matching_rule(
-            directive_lower, directive_words, all_matching_rules,
+            directive_lower,
+            directive_words,
+            all_matching_rules,
         )
         if has_rule:
             covered += 1
@@ -206,34 +252,43 @@ def check_rule_coverage(
         arch_note = (
             f" ({len(architectural)} architectural directive(s) noted)" if architectural else ""
         )
-        checks.append({
-            "check": "machine_rules", "status": "pass",
-            "detail": f"No regex-enforceable DO NOT directives found{arch_note}",
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "pass",
+                "detail": f"No regex-enforceable DO NOT directives found{arch_note}",
+            }
+        )
         return
 
     coverage_pct = (covered / total_enforceable) * 100
     arch_note = f" ({len(architectural)} architectural)" if architectural else ""
 
     if coverage_pct < min_coverage_pct:
-        checks.append({
-            "check": "machine_rules", "status": "warn",
-            "detail": (
-                f"{covered}/{total_enforceable} enforceable DO NOT directives have rules "
-                f"({coverage_pct:.0f}%, threshold: {min_coverage_pct}%){arch_note}"
-            ),
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "warn",
+                "detail": (
+                    f"{covered}/{total_enforceable} enforceable DO NOT directives have rules "
+                    f"({coverage_pct:.0f}%, threshold: {min_coverage_pct}%){arch_note}"
+                ),
+            }
+        )
         for directive in uncovered_directives[:3]:
             truncated = directive[:100] + "..." if len(directive) > 100 else directive
             suggestions.append(f"Add LINTGATE_FORBID_REGEX for: '{truncated}'")
     else:
-        checks.append({
-            "check": "machine_rules", "status": "pass",
-            "detail": (
-                f"{covered}/{total_enforceable} enforceable DO NOT directives have rules "
-                f"({coverage_pct:.0f}%){arch_note}"
-            ),
-        })
+        checks.append(
+            {
+                "check": "machine_rules",
+                "status": "pass",
+                "detail": (
+                    f"{covered}/{total_enforceable} enforceable DO NOT directives have rules "
+                    f"({coverage_pct:.0f}%){arch_note}"
+                ),
+            }
+        )
 
 
 def _directive_has_matching_rule(
@@ -243,11 +298,13 @@ def _directive_has_matching_rule(
 ) -> bool:
     """Check if a directive has a matching rule via text or keyword overlap."""
     for r in all_matching_rules:
-        rule_text = " ".join([
-            str(r.get("message", "")),
-            str(r.get("source", "")),
-            str(r.get("pattern", "")),
-        ]).lower()
+        rule_text = " ".join(
+            [
+                str(r.get("message", "")),
+                str(r.get("source", "")),
+                str(r.get("pattern", "")),
+            ]
+        ).lower()
 
         if directive_lower in rule_text:
             return True
@@ -267,10 +324,36 @@ _PATH_EXTENSIONS = (".py", ".md", ".yaml", ".yml", ".toml", ".json")
 _URL_PREFIXES = ("http://", "https://", "ftp://")
 
 _SHELL_CMD_PREFIXES = (
-    "uv ", "uv run ", "pip ", "python ", "python3 ", "npm ", "npx ",
-    "cargo ", "go ", "git ", "docker ", "make ", "brew ", "curl ",
-    "wget ", "grep ", "rg ", "find ", "cat ", "ls ", "cd ", "mkdir ",
-    "rm ", "cp ", "mv ", "chmod ", "chown ", "sudo ", "apt ", "yum ",
+    "uv ",
+    "uv run ",
+    "pip ",
+    "python ",
+    "python3 ",
+    "npm ",
+    "npx ",
+    "cargo ",
+    "go ",
+    "git ",
+    "docker ",
+    "make ",
+    "brew ",
+    "curl ",
+    "wget ",
+    "grep ",
+    "rg ",
+    "find ",
+    "cat ",
+    "ls ",
+    "cd ",
+    "mkdir ",
+    "rm ",
+    "cp ",
+    "mv ",
+    "chmod ",
+    "chown ",
+    "sudo ",
+    "apt ",
+    "yum ",
 )
 
 _HF_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9_-]+/[A-Za-z0-9._-]+$")
@@ -287,17 +370,23 @@ def check_path_references(
     max_refs = int(thresholds.get("max_path_references", 50))
 
     if not path_refs:
-        checks.append({
-            "check": "path_references", "status": "pass",
-            "detail": "No path references found in backticks",
-        })
+        checks.append(
+            {
+                "check": "path_references",
+                "status": "pass",
+                "detail": "No path references found in backticks",
+            }
+        )
         return
 
     if len(path_refs) > max_refs:
-        checks.append({
-            "check": "path_reference_volume", "status": "warn",
-            "detail": f"{len(path_refs)} path references found (threshold: {max_refs}).",
-        })
+        checks.append(
+            {
+                "check": "path_reference_volume",
+                "status": "warn",
+                "detail": f"{len(path_refs)} path references found (threshold: {max_refs}).",
+            }
+        )
         suggestions.append(
             "Reduce path-reference density by moving exhaustive file lists to "
             "separate docs and keeping this context file concise."
@@ -308,17 +397,23 @@ def check_path_references(
     if dead_paths:
         dead_str = ", ".join(dead_paths[:5])
         more = f" (+{len(dead_paths) - 5} more)" if len(dead_paths) > 5 else ""
-        checks.append({
-            "check": "path_references", "status": "warn",
-            "detail": f"{len(dead_paths)} referenced path(s) don't exist: {dead_str}{more}",
-        })
+        checks.append(
+            {
+                "check": "path_references",
+                "status": "warn",
+                "detail": f"{len(dead_paths)} referenced path(s) don't exist: {dead_str}{more}",
+            }
+        )
         for p in dead_paths[:3]:
             suggestions.append(f"Remove or update dead path reference: `{p}`")
     else:
-        checks.append({
-            "check": "path_references", "status": "pass",
-            "detail": f"All {len(path_refs)} path references verified",
-        })
+        checks.append(
+            {
+                "check": "path_references",
+                "status": "pass",
+                "detail": f"All {len(path_refs)} path references verified",
+            }
+        )
 
 
 def extract_path_refs(text: str) -> list[str]:
@@ -385,7 +480,7 @@ def _find_bare_name_in_project(name: str, project_root: str) -> bool:
 
     for root in search_roots:
         for dirpath, _dirnames, filenames in os.walk(root):
-            depth = dirpath[len(root):].count(os.sep)
+            depth = dirpath[len(root) :].count(os.sep)
             if depth > 3:
                 continue
             if name in filenames:
@@ -420,9 +515,24 @@ def _coverage_tokens(text: str) -> set[str]:
 
 
 _COVERAGE_STOPWORDS = {
-    "that", "which", "with", "from", "this", "have", "does", "will",
-    "should", "must", "into", "them", "than", "been", "each", "only",
-    "also", "just",
+    "that",
+    "which",
+    "with",
+    "from",
+    "this",
+    "have",
+    "does",
+    "will",
+    "should",
+    "must",
+    "into",
+    "them",
+    "than",
+    "been",
+    "each",
+    "only",
+    "also",
+    "just",
 }
 
 
@@ -478,7 +588,8 @@ def classify_directive_enforceability(directive: str) -> DirectiveClassification
 
     if has_syntactic and not has_architectural:
         return DirectiveClassification(
-            classification="enforceable", confidence=0.95,
+            classification="enforceable",
+            confidence=0.95,
             reason="Contains syntactic identifier with no architectural cues.",
         )
 
@@ -487,27 +598,32 @@ def classify_directive_enforceability(directive: str) -> DirectiveClassification
         arch_count = len(_ARCHITECTURAL_CUE_RE.findall(text))
         if syn_count > arch_count:
             return DirectiveClassification(
-                classification="enforceable", confidence=0.7,
+                classification="enforceable",
+                confidence=0.7,
                 reason=f"Syntactic signals ({syn_count}) outweigh architectural ({arch_count}).",
             )
         if arch_count > syn_count:
             return DirectiveClassification(
-                classification="architectural", confidence=0.7,
+                classification="architectural",
+                confidence=0.7,
                 reason=f"Architectural cues ({arch_count}) outweigh syntactic ({syn_count}).",
             )
         return DirectiveClassification(
-            classification="uncertain", confidence=0.4,
+            classification="uncertain",
+            confidence=0.4,
             reason=f"Equal syntactic ({syn_count}) and architectural ({arch_count}) signals.",
         )
 
     if has_architectural and not has_syntactic:
         return DirectiveClassification(
-            classification="architectural", confidence=0.9,
+            classification="architectural",
+            confidence=0.9,
             reason="Architectural/process cues with no syntactic identifiers.",
         )
 
     return DirectiveClassification(
-        classification="uncertain", confidence=0.3,
+        classification="uncertain",
+        confidence=0.3,
         reason="No syntactic or architectural signals detected.",
     )
 

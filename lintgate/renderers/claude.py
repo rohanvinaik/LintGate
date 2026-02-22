@@ -29,17 +29,13 @@ class ClaudeRenderer:
     output_paths = [".claude/CLAUDE.md", ".claude/rules/theory.md"]
     capabilities: HostCapabilities = CLAUDE_CAPABILITIES
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         return {
             ".claude/CLAUDE.md": self._render_claude_md(compass, metadata),
             ".claude/rules/theory.md": self._render_theory_md(compass, metadata),
         }
 
-    def _render_claude_md(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> str:
+    def _render_claude_md(self, compass: CompassState, metadata: dict[str, str]) -> str:
         name = project_name(metadata)
         mission = axis_summary(compass, "problem") or "Write correct, maintainable code."
         architecture = axis_summary(compass, "solution")
@@ -78,9 +74,7 @@ class ClaudeRenderer:
 
         return "\n".join(truncate_lines(lines, 3000))
 
-    def _render_theory_md(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> str:
+    def _render_theory_md(self, compass: CompassState, metadata: dict[str, str]) -> str:
         name = project_name(metadata)
         lines = [
             "---",

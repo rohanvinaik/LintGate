@@ -253,13 +253,13 @@ def _parse_rule_line(
         key, value = part.split("=", 1)
         attrs[key.strip().lower()] = value.strip()
 
-    pattern = attrs.get("forbid_regex") or attrs.get("require_regex")
-    if not pattern:
+    rule_pattern: str | None = attrs.get("forbid_regex") or attrs.get("require_regex")
+    if not rule_pattern:
         return None
     kind = "forbid_regex" if "forbid_regex" in attrs else "require_regex"
     return {
         "kind": kind,
-        "pattern": pattern,
+        "pattern": rule_pattern,
         "severity": attrs.get("severity", "warning"),
         "message": attrs.get(
             "message",

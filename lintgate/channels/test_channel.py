@@ -20,7 +20,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from lintgate.controlplane.types import (
     ChannelConfig,
@@ -143,8 +143,7 @@ class TestChannel:
         elif isinstance(raw_source_packages, str) and raw_source_packages.strip():
             source_packages = [raw_source_packages.strip()]
         measure_coverage = (
-            coverage_threshold is not None
-            and event.surface == "mcp"  # Not hook-triggered
+            coverage_threshold is not None and event.surface == "mcp"  # Not hook-triggered
         )
 
         # Step 4: Run impacted tests (if any exist)
@@ -207,8 +206,8 @@ class TestChannel:
                 )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
-        status = "fail" if findings else "pass"
-        severity = (
+        status: Literal["pass", "fail"] = "fail" if findings else "pass"
+        severity: Literal["blocking", "warning", "informational", "none"] = (
             "warning"
             if any(f.severity == "warning" for f in findings)
             else ("informational" if findings else "none")
@@ -366,10 +365,12 @@ def run_tests(
         pkgs = source_packages or ["lintgate", "mcp_tools"]
         for pkg in pkgs:
             cmd.extend([f"--cov={pkg}"])
-        cmd.extend([
-            f"--cov-report=xml:{coverage_xml_path}",
-            "--cov-report=term:skip-covered",
-        ])
+        cmd.extend(
+            [
+                f"--cov-report=xml:{coverage_xml_path}",
+                "--cov-report=term:skip-covered",
+            ]
+        )
 
     try:
         result = subprocess.run(

@@ -17,7 +17,6 @@ import json
 import os
 from typing import Any
 
-
 # ── Mode state helpers ───────────────────────────────────────────────
 
 
@@ -219,7 +218,10 @@ def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> d
 
 
 def _render_targets(
-    project_root: str, state: Any, targets: list[str] | None, write: bool,
+    project_root: str,
+    state: Any,
+    targets: list[str] | None,
+    write: bool,
 ) -> dict[str, Any] | None:
     """Render context files for specified targets."""
     if not targets:
@@ -247,11 +249,14 @@ def _render_targets(
 
 
 def _impl_interview(
-    project_root: str, path: str, answers: dict[str, str] | None, skip: bool,
+    project_root: str,
+    path: str,
+    answers: dict[str, str] | None,
+    skip: bool,
 ) -> dict[str, Any]:
     """Implementation for compass_interview."""
     from lintgate.compass_io import load_compass, save_compass
-    from lintgate.gap_detector import apply_answer, build_interview, detect_gaps, skip_interview
+    from lintgate.gap_detector import build_interview, detect_gaps, skip_interview
 
     compass = load_compass(project_root)
     if compass is None:
@@ -275,7 +280,9 @@ def _impl_interview(
 
 
 def _apply_answers(
-    project_root: str, compass: Any, answers: dict[str, str],
+    project_root: str,
+    compass: Any,
+    answers: dict[str, str],
 ) -> list[dict[str, Any]]:
     """Apply interview answers to compass and persist."""
     from lintgate.compass_io import save_compass
@@ -406,7 +413,9 @@ def register(mcp, helpers):
 
     @mcp.tool()
     def compass_update(
-        path: str, targets: list[str] | None = None, write: bool = False,
+        path: str,
+        targets: list[str] | None = None,
+        write: bool = False,
     ) -> str:
         """Re-extract compass from project docs and optionally render context files.
 
@@ -429,7 +438,9 @@ def register(mcp, helpers):
 
     @mcp.tool()
     def compass_interview(
-        path: str, answers: dict[str, str] | None = None, skip: bool = False,
+        path: str,
+        answers: dict[str, str] | None = None,
+        skip: bool = False,
     ) -> str:
         """Gap-filling interview — returns questions or applies answers.
 

@@ -118,7 +118,9 @@ def _add_protected(project_root: str, report: ResetReport) -> None:
     for name in sorted(_PROTECTED_NAMES):
         candidate = root / ".claude" / name
         if candidate.exists():
-            report.preserved.append({"path": str(candidate), "reason": "protected — never auto-deleted"})
+            report.preserved.append(
+                {"path": str(candidate), "reason": "protected — never auto-deleted"}
+            )
 
 
 def _strip_managed_sections(path: Path, report: ResetReport, *, dry_run: bool) -> None:
@@ -140,13 +142,15 @@ def _strip_managed_sections(path: Path, report: ResetReport, *, dry_run: bool) -
         return
 
     for start, end, section_id in sections:
-        report.deleted.append({
-            "path": str(path),
-            "type": "managed_section",
-            "section_id": section_id,
-            "size_bytes": len(original[start:end].encode("utf-8")),
-            "deletable": True,
-        })
+        report.deleted.append(
+            {
+                "path": str(path),
+                "type": "managed_section",
+                "section_id": section_id,
+                "size_bytes": len(original[start:end].encode("utf-8")),
+                "deletable": True,
+            }
+        )
 
     if dry_run:
         return
@@ -202,13 +206,15 @@ def enumerate_project_state(project_root: str) -> list[dict[str, Any]]:
         try:
             content = claude_md.read_text(encoding="utf-8")
             for start, end, section_id in _find_managed_sections(content):
-                entries.append({
-                    "path": str(claude_md),
-                    "type": "managed_section",
-                    "section_id": section_id,
-                    "size_bytes": len(content[start:end].encode("utf-8")),
-                    "deletable": True,
-                })
+                entries.append(
+                    {
+                        "path": str(claude_md),
+                        "type": "managed_section",
+                        "section_id": section_id,
+                        "size_bytes": len(content[start:end].encode("utf-8")),
+                        "deletable": True,
+                    }
+                )
         except OSError:
             pass
 

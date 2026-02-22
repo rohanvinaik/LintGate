@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from lintgate.channels.test_channel import (
     TestRunResult as ChannelTestRunResult,
+)
+from lintgate.channels.test_channel import (
     _parse_coverage,
 )
 
@@ -48,8 +50,7 @@ class TestParseCoverage:
     def test_fallback_to_terminal_regex(self):
         """Fallback: parse TOTAL line from terminal output."""
         terminal = (
-            "Name                 Stmts   Miss  Cover\n"
-            "TOTAL                  500    100    80%\n"
+            "Name                 Stmts   Miss  Cover\nTOTAL                  500    100    80%\n"
         )
         result = _parse_coverage("/nonexistent/coverage.xml", terminal)
         assert result == 80.0
@@ -115,9 +116,7 @@ class TestCoverageModeGating:
         )
 
         config = ControlPlaneConfig(enabled=True)
-        config.channels["tests"] = ChannelConfig(
-            settings={"coverage_threshold": 80}
-        )
+        config.channels["tests"] = ChannelConfig(settings={"coverage_threshold": 80})
 
         event = SupervisionEvent(
             surface="hook",
@@ -128,10 +127,7 @@ class TestCoverageModeGating:
         # Mode gating logic from execute():
         channel_settings = config.channels.get("tests", ChannelConfig()).settings
         coverage_threshold = channel_settings.get("coverage_threshold")
-        measure_coverage = (
-            coverage_threshold is not None
-            and event.surface == "mcp"
-        )
+        measure_coverage = coverage_threshold is not None and event.surface == "mcp"
 
         assert not measure_coverage, "Hook mode should not measure coverage"
 
@@ -144,9 +140,7 @@ class TestCoverageModeGating:
         )
 
         config = ControlPlaneConfig(enabled=True)
-        config.channels["tests"] = ChannelConfig(
-            settings={"coverage_threshold": 80}
-        )
+        config.channels["tests"] = ChannelConfig(settings={"coverage_threshold": 80})
 
         event = SupervisionEvent(
             surface="mcp",
@@ -156,10 +150,7 @@ class TestCoverageModeGating:
 
         channel_settings = config.channels.get("tests", ChannelConfig()).settings
         coverage_threshold = channel_settings.get("coverage_threshold")
-        measure_coverage = (
-            coverage_threshold is not None
-            and event.surface == "mcp"
-        )
+        measure_coverage = coverage_threshold is not None and event.surface == "mcp"
 
         assert measure_coverage, "MCP mode should measure coverage when threshold is set"
 
@@ -182,9 +173,6 @@ class TestCoverageModeGating:
 
         channel_settings = config.channels.get("tests", ChannelConfig()).settings
         coverage_threshold = channel_settings.get("coverage_threshold")
-        measure_coverage = (
-            coverage_threshold is not None
-            and event.surface == "mcp"
-        )
+        measure_coverage = coverage_threshold is not None and event.surface == "mcp"
 
         assert not measure_coverage, "No threshold means no coverage measurement"

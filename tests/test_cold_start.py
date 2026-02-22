@@ -300,10 +300,7 @@ class TestGettingStarted:
         ):
             result = json.loads(getting_started(str(tmp_path)))
 
-        assert any(
-            action.get("example") == "uv venv .venv"
-            for action in result["next_actions"]
-        )
+        assert any(action.get("example") == "uv venv .venv" for action in result["next_actions"])
 
     def test_missing_tool_reasons_are_reported_without_manual_probe(self, tmp_path: Path) -> None:
         import json
@@ -338,12 +335,11 @@ class TestGettingStarted:
 
         assert result["startup_setup"]["missing_tools_after"]
         assert result["startup_setup"]["missing_tools_after"][0]["tool"] == "ty"
-        assert any(
-            action.get("example") == "pip install ty"
-            for action in result["next_actions"]
-        )
+        assert any(action.get("example") == "pip install ty" for action in result["next_actions"])
 
-    def test_auto_setup_bootstraps_github_quality_when_remote_detected(self, tmp_path: Path) -> None:
+    def test_auto_setup_bootstraps_github_quality_when_remote_detected(
+        self, tmp_path: Path
+    ) -> None:
         import json
 
         from mcp_server import getting_started
@@ -403,7 +399,9 @@ class TestScaffoldConfig:
         assert "yaml" in result
         assert "controlplane:" in result["yaml"]
 
-    def test_preview_existing_config_still_returns_yaml_without_writing(self, tmp_path: Path) -> None:
+    def test_preview_existing_config_still_returns_yaml_without_writing(
+        self, tmp_path: Path
+    ) -> None:
         import json
 
         from mcp_server import scaffold_config

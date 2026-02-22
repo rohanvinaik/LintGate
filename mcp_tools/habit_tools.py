@@ -56,22 +56,26 @@ def register(mcp, helpers):
         # Log transition metric
         if transition:
             with contextlib.suppress(Exception):
-                log_metric({
-                    "event": "habit_mode_transition",
-                    "project": project_root,
-                    "transition": transition,
-                    "habit_score": state.habit_score,
-                    "trigger": "declaration",
-                    "event_counter": event_counter,
-                })
+                log_metric(
+                    {
+                        "event": "habit_mode_transition",
+                        "project": project_root,
+                        "transition": transition,
+                        "habit_score": state.habit_score,
+                        "trigger": "declaration",
+                        "event_counter": event_counter,
+                    }
+                )
 
-        return json.dumps({
-            "status": "ok",
-            "mode": mode,
-            "habit_score": round(state.habit_score, 3),
-            "active": state.active,
-            "message": f"Habit mode {'activated' if state.active else 'deactivated'}.",
-        })
+        return json.dumps(
+            {
+                "status": "ok",
+                "mode": mode,
+                "habit_score": round(state.habit_score, 3),
+                "active": state.active,
+                "message": f"Habit mode {'activated' if state.active else 'deactivated'}.",
+            }
+        )
 
     @mcp.tool()
     def habit_status(
@@ -94,17 +98,20 @@ def register(mcp, helpers):
             log_feature_usage("habit_mode", project_root, {"tool": "habit_status"})
             log_feature_usage("token_tracking", project_root, {"tool": "habit_status"})
 
-        return json.dumps({
-            "active": state.active,
-            "habit_score": round(state.habit_score, 3),
-            "declared": state.declared,
-            "signals": state.signals.to_dict(),
-            "active_files": state.active_files[:5],
-            "last_test_status": state.last_test_status,
-            "compaction_count": state.compaction_count,
-            "events_in_habit": state.total_events_in_habit,
-            "token_economics": get_usage_summary(tracker),
-        }, indent=2)
+        return json.dumps(
+            {
+                "active": state.active,
+                "habit_score": round(state.habit_score, 3),
+                "declared": state.declared,
+                "signals": state.signals.to_dict(),
+                "active_files": state.active_files[:5],
+                "last_test_status": state.last_test_status,
+                "compaction_count": state.compaction_count,
+                "events_in_habit": state.total_events_in_habit,
+                "token_economics": get_usage_summary(tracker),
+            },
+            indent=2,
+        )
 
     @mcp.tool()
     def habit_compact(
@@ -140,12 +147,14 @@ def register(mcp, helpers):
 
         with contextlib.suppress(Exception):
             from lintgate.state import load_last_run
+
             last_lint_data = load_last_run(project_root)
             if last_lint_data:
                 last_lint_run = last_lint_data
 
         with contextlib.suppress(Exception):
             from lintgate.theory_extractor import build_theory_pack
+
             theory_pack = build_theory_pack(project_root)
 
         # Build the snapshot
@@ -177,14 +186,16 @@ def register(mcp, helpers):
 
         # Log metric
         with contextlib.suppress(Exception):
-            log_metric({
-                "event": "habit_compact",
-                "project": project_root,
-                "compaction_number": state.compaction_count,
-                "habit_score": state.habit_score,
-                "estimated_tokens_before": estimated_before,
-                "tool_calls_compacted": calls_compacted,
-            })
+            log_metric(
+                {
+                    "event": "habit_compact",
+                    "project": project_root,
+                    "compaction_number": state.compaction_count,
+                    "habit_score": state.habit_score,
+                    "estimated_tokens_before": estimated_before,
+                    "tool_calls_compacted": calls_compacted,
+                }
+            )
 
         return json.dumps(snapshot, indent=2)
 
@@ -278,11 +289,13 @@ def register(mcp, helpers):
 
             log_feature_usage("habit_mode", project_root, {"tool": "habit_configure"})
 
-        return json.dumps({
-            "status": "ok",
-            "overrides_applied": overrides,
-            "message": f"Applied {len(overrides)} configuration override(s) for this session.",
-        })
+        return json.dumps(
+            {
+                "status": "ok",
+                "overrides_applied": overrides,
+                "message": f"Applied {len(overrides)} configuration override(s) for this session.",
+            }
+        )
 
     # ── Internal helpers ─────────────────────────────────────────────
 

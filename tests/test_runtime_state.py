@@ -388,9 +388,7 @@ class TestBuildRuntimeState:
         session.snapshots = []
         session.coherence_trajectory = ["stable", "isolated"]
 
-        state = build_runtime_state(
-            str(tmp_path), session=session, last_coherence_state="systemic"
-        )
+        state = build_runtime_state(str(tmp_path), session=session, last_coherence_state="systemic")
         assert state.coherence_state == "systemic"
 
     def test_coherence_from_trajectory_when_no_override(self, tmp_path):
@@ -404,9 +402,7 @@ class TestBuildRuntimeState:
         assert state.coherence_state == "coupled"
 
     def test_finding_counts_from_params(self, tmp_path):
-        state = build_runtime_state(
-            str(tmp_path), last_blocking=3, last_warnings=7
-        )
+        state = build_runtime_state(str(tmp_path), last_blocking=3, last_warnings=7)
         assert state.blocking_issues == 3
         assert state.warning_issues == 7
 

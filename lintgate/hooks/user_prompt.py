@@ -82,8 +82,7 @@ def _build_primer(project_root: str) -> str | None:
     # 4. Behavioral warning (~30 tokens)
     if runtime.approach_failures >= 2:
         parts.append(
-            f"WARNING: {runtime.approach_failures} failed approaches"
-            " \u2014 run constraint_check"
+            f"WARNING: {runtime.approach_failures} failed approaches \u2014 run constraint_check"
         )
     elif runtime.prediction_accuracy >= 0 and runtime.prediction_accuracy < 0.5:
         parts.append(f"Prediction accuracy: {runtime.prediction_accuracy:.0%}")
@@ -96,7 +95,7 @@ def _build_primer(project_root: str) -> str | None:
 
     # Hard-cap at budget
     if len(primer) > _PRIMER_MAX_CHARS:
-        primer = primer[:_PRIMER_MAX_CHARS - 3] + "..."
+        primer = primer[: _PRIMER_MAX_CHARS - 3] + "..."
 
     return primer
 

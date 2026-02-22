@@ -26,7 +26,7 @@ import statistics
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -151,11 +151,7 @@ class StructureChannel:
             return True
 
         # Class structure changes may indicate module reorganization
-        if classification.class_structure_changed:
-            return True
-
-        # Moderate/logic-only changes: skip structure scan
-        return False
+        return classification.class_structure_changed
 
     def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute structural analysis checks."""
@@ -211,8 +207,8 @@ class StructureChannel:
             project_root,
         )
 
-        status = "fail" if findings else "pass"
-        severity = "none"
+        status: Literal["pass", "fail"] = "fail" if findings else "pass"
+        severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = "informational"
             if any(f.severity == "warning" for f in findings):
@@ -255,9 +251,7 @@ def _discover_python_files(project_root: str) -> list[str]:
         dirnames[:] = [
             d
             for d in dirnames
-            if d not in exclude_dirs
-            and not d.startswith(".")
-            and not is_backup_like_directory(d)
+            if d not in exclude_dirs and not d.startswith(".") and not is_backup_like_directory(d)
         ]
         for fn in filenames:
             if fn.endswith(".py"):

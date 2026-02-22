@@ -155,6 +155,60 @@ class HabitModeState:
 # ── Signal Collector ─────────────────────────────────────────────────
 
 
+def _compute_same_file_ratio(window: list[dict[str, Any]]) -> float:
+    """Proportion of file ops targeting already-seen files."""
+    seen_files: set[str] = set()
+    file_ops = 0
+    repeat_ops = 0
+    for e in window:
+        tool = e.get("tool", "")
+        if tool in _INSPECT_TOOLS or tool in _MODIFY_TOOLS:
+            file_ops += 1
+            sig_str = e.get("sig", "")
+            if sig_str:
+                if sig_str in seen_files:
+                    repeat_ops += 1
+                seen_files.add(sig_str)
+    return repeat_ops / max(file_ops, 1)
+
+
+def _compute_inter_tool_gap_median(window: list[dict[str, Any]]) -> float:
+    """Median of last 10 inter-tool time gaps."""
+    timestamps = [e.get("ts", 0.0) for e in window if e.get("ts")]
+    if len(timestamps) < 2:
+        return 0.0
+    gaps = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
+    recent_gaps = gaps[-10:] if len(gaps) > 10 else gaps
+    sorted_gaps = sorted(recent_gaps)
+    mid = len(sorted_gaps) // 2
+    if len(sorted_gaps) % 2 == 0 and len(sorted_gaps) >= 2:
+        return float((sorted_gaps[mid - 1] + sorted_gaps[mid]) / 2)
+    if sorted_gaps:
+        return float(sorted_gaps[mid])
+    return 0.0
+
+
+def _compute_edit_streak(window: list[dict[str, Any]]) -> int:
+    """Consecutive Edit/Write/MultiEdit at end of window."""
+    streak = 0
+    for e in reversed(window):
+        if e.get("tool") in _MODIFY_TOOLS:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def _detect_test_in_window(window: list[dict[str, Any]]) -> bool:
+    """Check for pytest/test in recent Bash calls."""
+    for e in window:
+        if e.get("tool") == "Bash":
+            cmd_sig = e.get("sig", "")
+            if any(kw in cmd_sig.lower() for kw in ("pytest", "test")):
+                return True
+    return False
+
+
 def update_signals(state: HabitModeState, action_history: list[dict[str, Any]]) -> None:
     """Compute all HabitSignals from the sliding window of tool events.
 
@@ -168,14 +222,13 @@ def update_signals(state: HabitModeState, action_history: list[dict[str, Any]]) 
         return
 
     sig = state.signals
+    n = len(window)
 
     # Count tool categories
     read_count = sum(1 for e in window if e.get("tool") in _INSPECT_TOOLS)
     edit_count = sum(1 for e in window if e.get("tool") in _MODIFY_TOOLS)
     task_count = sum(1 for e in window if e.get("tool") == "Task")
-    n = len(window)
 
-    # Read:Edit ratio
     sig.read_edit_ratio = read_count / max(edit_count, 1)
 
     # Intent percentages
@@ -184,57 +237,11 @@ def update_signals(state: HabitModeState, action_history: list[dict[str, Any]]) 
     sig.gather_pct = gather_count / n
     sig.execute_pct = execute_count / n
 
-    # Sub-agent frequency
     sig.sub_agent_freq = task_count / n
-
-    # Same-file ratio: proportion of file ops targeting already-seen files
-    seen_files: set[str] = set()
-    file_ops = 0
-    repeat_ops = 0
-    for e in window:
-        tool = e.get("tool", "")
-        if tool in _INSPECT_TOOLS or tool in _MODIFY_TOOLS:
-            # We don't have file_path in minimal action ring, so use sig or skip
-            file_ops += 1
-            sig_str = e.get("sig", "")
-            if sig_str:
-                if sig_str in seen_files:
-                    repeat_ops += 1
-                seen_files.add(sig_str)
-    sig.same_file_ratio = repeat_ops / max(file_ops, 1)
-
-    # Inter-tool gap median (last 10 gaps)
-    timestamps = [e.get("ts", 0.0) for e in window if e.get("ts")]
-    if len(timestamps) >= 2:
-        gaps = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
-        # Take last 10 gaps
-        recent_gaps = gaps[-10:] if len(gaps) > 10 else gaps
-        sorted_gaps = sorted(recent_gaps)
-        mid = len(sorted_gaps) // 2
-        if len(sorted_gaps) % 2 == 0 and len(sorted_gaps) >= 2:
-            sig.inter_tool_gap_median = (sorted_gaps[mid - 1] + sorted_gaps[mid]) / 2
-        elif sorted_gaps:
-            sig.inter_tool_gap_median = sorted_gaps[mid]
-    else:
-        sig.inter_tool_gap_median = 0.0
-
-    # Edit streak: consecutive Edit/Write/MultiEdit at end of window
-    streak = 0
-    for e in reversed(window):
-        if e.get("tool") in _MODIFY_TOOLS:
-            streak += 1
-        else:
-            break
-    sig.edit_streak = streak
-
-    # Test in last N: check for pytest/test in recent Bash calls
-    sig.test_in_last_n = False
-    for e in window:
-        if e.get("tool") == "Bash":
-            cmd_sig = e.get("sig", "")
-            if any(kw in cmd_sig.lower() for kw in ("pytest", "test")):
-                sig.test_in_last_n = True
-                break
+    sig.same_file_ratio = _compute_same_file_ratio(window)
+    sig.inter_tool_gap_median = _compute_inter_tool_gap_median(window)
+    sig.edit_streak = _compute_edit_streak(window)
+    sig.test_in_last_n = _detect_test_in_window(window)
 
 
 def track_active_files(
@@ -423,16 +430,40 @@ def update_mode(
 # ── User Message Handling ────────────────────────────────────────────
 
 # Continuation keywords — these DON'T collapse habit mode
-_CONTINUATION_KEYWORDS = frozenset({
-    "yes", "ok", "okay", "continue", "go", "go ahead", "proceed",
-    "sure", "yep", "yeah", "confirmed", "do it", "y", "k",
-})
+_CONTINUATION_KEYWORDS = frozenset(
+    {
+        "yes",
+        "ok",
+        "okay",
+        "continue",
+        "go",
+        "go ahead",
+        "proceed",
+        "sure",
+        "yep",
+        "yeah",
+        "confirmed",
+        "do it",
+        "y",
+        "k",
+    }
+)
 
 # Directive keywords — these ALWAYS collapse habit mode
-_DIRECTIVE_KEYWORDS = frozenset({
-    "stop", "wait", "hold", "cancel", "abort", "undo",
-    "instead", "actually", "never mind", "scratch that",
-})
+_DIRECTIVE_KEYWORDS = frozenset(
+    {
+        "stop",
+        "wait",
+        "hold",
+        "cancel",
+        "abort",
+        "undo",
+        "instead",
+        "actually",
+        "never mind",
+        "scratch that",
+    }
+)
 
 
 def _classify_user_message(text: str) -> str:
@@ -652,12 +683,14 @@ def build_compaction_snapshot(
         blocking_issues = []
         for issue in last_lint_run.get("issues", [])[:5]:
             msg = str(issue.get("message", ""))[:80]
-            blocking_issues.append({
-                "file": issue.get("file", ""),
-                "line": issue.get("line"),
-                "kind": issue.get("kind", ""),
-                "message": msg,
-            })
+            blocking_issues.append(
+                {
+                    "file": issue.get("file", ""),
+                    "line": issue.get("line"),
+                    "kind": issue.get("kind", ""),
+                    "message": msg,
+                }
+            )
         snapshot["lint_state"] = {
             "blocking_count": last_lint_run.get("blocking_count", 0),
             "warning_count": last_lint_run.get("warning_count", 0),
@@ -742,9 +775,7 @@ def build_compaction_snapshot(
     # Focus directive
     focus_files = ", ".join(state.active_files[:3]) if state.active_files else "none"
     test_str = f"Test: {state.last_test_status}." if state.last_test_status else ""
-    snapshot["focus_directive"] = (
-        f"You are in Habit Mode. Focus: [{focus_files}]. {test_str}"
-    )
+    snapshot["focus_directive"] = f"You are in Habit Mode. Focus: [{focus_files}]. {test_str}"
 
     # Enforce hard cap
     _enforce_snapshot_cap(snapshot)
@@ -782,53 +813,62 @@ def _build_tool_injections(
 
     # Priority 1: edit_streak > 5 AND no test → suggest prediction_register
     if state.signals.edit_streak > 5 and not state.signals.test_in_last_n:
-        injections.append({
-            "tool": "prediction_register",
-            "priority": 1,
-            "reason": "5+ edits without test. Register a prediction before running tests."[:80],
-        })
+        injections.append(
+            {
+                "tool": "prediction_register",
+                "priority": 1,
+                "reason": "5+ edits without test. Register a prediction before running tests."[:80],
+            }
+        )
 
     # Priority 1: blocking lint issues > 3 → suggest lint_fix
     if last_lint_run:
         blocking = last_lint_run.get("blocking_count", 0)
         if blocking > 3:
-            injections.append({
-                "tool": "lint_fix",
-                "priority": 1,
-                "reason": f"{blocking} blocking lint issues. Auto-fix safe issues."[:80],
-            })
+            injections.append(
+                {
+                    "tool": "lint_fix",
+                    "priority": 1,
+                    "reason": f"{blocking} blocking lint issues. Auto-fix safe issues."[:80],
+                }
+            )
 
     # Priority 2: recent coherence = "systemic" → suggest controlplane_run
     if session_memory:
         trajectory = session_memory.get("coherence_trajectory", [])
         if trajectory and trajectory[-1] == "systemic":
-            injections.append({
-                "tool": "controlplane_run",
-                "priority": 2,
-                "reason": "Systemic coherence state detected. Run full analysis."[:80],
-            })
+            injections.append(
+                {
+                    "tool": "controlplane_run",
+                    "priority": 2,
+                    "reason": "Systemic coherence state detected. Run full analysis."[:80],
+                }
+            )
 
     # Priority 1: 2+ recent failed approaches → suggest constraint_check
     if compass:
         approaches = compass.get("approaches", [])
         recent_failed = sum(
-            1 for a in approaches[-5:]
-            if isinstance(a, dict) and a.get("outcome") == "failed"
+            1 for a in approaches[-5:] if isinstance(a, dict) and a.get("outcome") == "failed"
         )
         if recent_failed >= 2:
-            injections.append({
-                "tool": "constraint_check",
-                "priority": 1,
-                "reason": f"{recent_failed} recent failed approaches. Check constraints."[:80],
-            })
+            injections.append(
+                {
+                    "tool": "constraint_check",
+                    "priority": 1,
+                    "reason": f"{recent_failed} recent failed approaches. Check constraints."[:80],
+                }
+            )
 
     # Priority 3: always include habit_status reference
     if len(injections) < 4:
-        injections.append({
-            "tool": "habit_status",
-            "priority": 3,
-            "reason": "Check habit mode state and token economics."[:80],
-        })
+        injections.append(
+            {
+                "tool": "habit_status",
+                "priority": 3,
+                "reason": "Check habit mode state and token economics."[:80],
+            }
+        )
 
     # Cap at 4
     injections.sort(key=lambda x: x.get("priority", 3))
@@ -925,6 +965,31 @@ def load_standalone_extras(project_root: str) -> dict[str, Any]:
         return {}
 
 
+def _load_existing_standalone(state_path: Path) -> dict[str, Any]:
+    """Load existing standalone state file, returning empty dict on failure."""
+    if not state_path.exists():
+        return {}
+    try:
+        with open(state_path) as f:
+            loaded = json.load(f)
+        return loaded if isinstance(loaded, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _merge_optional_field(
+    data: dict[str, Any],
+    existing: dict[str, Any],
+    key: str,
+    new_value: dict[str, Any] | None,
+) -> None:
+    """Merge an optional dict field: prefer new_value, fall back to existing."""
+    if new_value is not None and isinstance(new_value, dict):
+        data[key] = new_value
+    elif isinstance(existing.get(key), dict):
+        data[key] = existing[key]
+
+
 def save_habit_state_standalone(
     project_root: str,
     state: HabitModeState,
@@ -949,36 +1014,16 @@ def save_habit_state_standalone(
     try:
         _HABIT_STATE_DIR.mkdir(parents=True, exist_ok=True)
         state_path = _standalone_path(project_root)
-        existing: dict[str, Any] = {}
-        if state_path.exists():
-            try:
-                with open(state_path) as f:
-                    loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    existing = loaded
-            except (json.JSONDecodeError, OSError):
-                existing = {}
+        existing = _load_existing_standalone(state_path)
 
         data: dict[str, Any] = {
             "habit_state": state.to_dict(),
             "action_ring": action_ring[-MAX_ACTION_RING:],
         }
-        if tracker_dict is not None and isinstance(tracker_dict, dict):
-            data["token_tracker"] = tracker_dict
-        elif isinstance(existing.get("token_tracker"), dict):
-            data["token_tracker"] = existing["token_tracker"]
-        if config_overrides is not None and isinstance(config_overrides, dict):
-            data["config_overrides"] = config_overrides
-        elif isinstance(existing.get("config_overrides"), dict):
-            data["config_overrides"] = existing["config_overrides"]
-        if last_snapshot is not None and isinstance(last_snapshot, dict):
-            data["habit_last_snapshot"] = last_snapshot
-        elif isinstance(existing.get("habit_last_snapshot"), dict):
-            data["habit_last_snapshot"] = existing["habit_last_snapshot"]
-        if scheduler_dict is not None and isinstance(scheduler_dict, dict):
-            data["write_scheduler"] = scheduler_dict
-        elif isinstance(existing.get("write_scheduler"), dict):
-            data["write_scheduler"] = existing["write_scheduler"]
+        _merge_optional_field(data, existing, "token_tracker", tracker_dict)
+        _merge_optional_field(data, existing, "config_overrides", config_overrides)
+        _merge_optional_field(data, existing, "habit_last_snapshot", last_snapshot)
+        _merge_optional_field(data, existing, "write_scheduler", scheduler_dict)
 
         with open(state_path, "w") as f:
             json.dump(data, f, separators=(",", ":"))

@@ -9,9 +9,9 @@ for known vulnerabilities before shipping."
 
 from __future__ import annotations
 
-from glob import glob
 import json
 import os
+from glob import glob
 from typing import TYPE_CHECKING
 
 from ..types import LinterContext, LintIssue

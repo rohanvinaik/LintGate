@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from lintgate.compass import (
     AXIS_NAMES,
-    OPTIONAL_AXES,
     REQUIRED_AXES,
     CompassAxis,
     CompassClaim,
@@ -94,18 +93,17 @@ def build_interview(gap_report: GapReport, max_questions: int = 6) -> list[dict]
             continue  # axis is already structural or deep
 
         is_required = axis_name in REQUIRED_AXES
-        if depth == 0:
-            priority = 1 if is_required else 3
-        else:
-            priority = 2 if is_required else 4
+        priority = (1 if is_required else 3) if depth == 0 else (2 if is_required else 4)
 
         questions = INTERVIEW_QUESTIONS.get(axis_name, [])
         for question in questions:
-            entries.append({
-                "axis": axis_name,
-                "question": question,
-                "priority": priority,
-            })
+            entries.append(
+                {
+                    "axis": axis_name,
+                    "question": question,
+                    "priority": priority,
+                }
+            )
 
     # Sort by priority (lower = more urgent), then by axis order
     axis_order = {name: idx for idx, name in enumerate(AXIS_NAMES)}
@@ -117,9 +115,7 @@ def build_interview(gap_report: GapReport, max_questions: int = 6) -> list[dict]
 # ── Answer Application ───────────────────────────────────────────────
 
 
-def apply_answer(
-    state: CompassState, axis: str, question_idx: int, answer: str
-) -> CompassClaim:
+def apply_answer(state: CompassState, axis: str, question_idx: int, answer: str) -> CompassClaim:
     """Create a claim from an interview answer and add it to the axis.
 
     The claim is created with ``provenance="interviewed"`` and

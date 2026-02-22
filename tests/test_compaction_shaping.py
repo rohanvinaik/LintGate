@@ -175,9 +175,7 @@ class TestHandleWithRuntimeState:
         assert capsule["session_state"]["focus_files"] == ["main.py", "utils.py"]
 
     def test_focus_files_capped_at_5(self, tmp_path):
-        state = RuntimeState(
-            active_files=[f"/src/{i}.py" for i in range(10)]
-        )
+        state = RuntimeState(active_files=[f"/src/{i}.py" for i in range(10)])
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
@@ -185,9 +183,7 @@ class TestHandleWithRuntimeState:
         assert len(capsule["session_state"]["focus_files"]) == 5
 
     def test_toward_capped_at_6(self, tmp_path):
-        state = RuntimeState(
-            toward=[f"directive_{i}" for i in range(10)]
-        )
+        state = RuntimeState(toward=[f"directive_{i}" for i in range(10)])
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})

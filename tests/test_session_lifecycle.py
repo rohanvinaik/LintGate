@@ -89,13 +89,12 @@ class TestSessionStartInitialization:
 
     def test_initialization_fail_open(self, tmp_path, monkeypatch):
         """RuntimeState init failure should not break the hook."""
+
         # Make save_runtime_state raise
         def failing_save(*args, **kwargs):
             raise OSError("disk full")
 
-        monkeypatch.setattr(
-            "lintgate.runtime_state.save_runtime_state", failing_save
-        )
+        monkeypatch.setattr("lintgate.runtime_state.save_runtime_state", failing_save)
 
         from lintgate.hooks.session_start import handle
 
@@ -204,9 +203,7 @@ class TestSessionEndCleanup:
         def failing_delete(*args, **kwargs):
             raise OSError("permission denied")
 
-        monkeypatch.setattr(
-            "lintgate.runtime_state.delete_runtime_state", failing_delete
-        )
+        monkeypatch.setattr("lintgate.runtime_state.delete_runtime_state", failing_delete)
 
         result = handle({"cwd": str(tmp_path)})
         assert result["continue"] is True

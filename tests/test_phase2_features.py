@@ -274,7 +274,8 @@ class TestTelemetryWithData:
         assert summary["token_economics"]["total_tokens_compacted"] == 42000
 
     def test_token_economics_includes_calibration_and_runtime_write_metrics(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         project = "/tmp/runtime_metrics_proj"
         self._write_metrics(

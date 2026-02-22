@@ -124,7 +124,10 @@ def run_mesh(
     fc = list(event.files_changed) if event.files_changed else None
     if session is not None:
         coherence = compute_coherence_with_history(
-            channel_results, session, severity_weighted=sw, files_changed=fc,
+            channel_results,
+            session,
+            severity_weighted=sw,
+            files_changed=fc,
         )
     else:
         coherence = compute_coherence(channel_results, severity_weighted=sw, files_changed=fc)

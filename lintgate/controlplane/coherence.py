@@ -110,7 +110,7 @@ def _compute_base_coherence(
     # Any channel error/timeout is a system health concern
     if errored:
         errored_names = [r.channel for r in errored]
-        notes = demoted_notes + [f"{len(errored_names)} channel(s) errored/timed out"]
+        notes: list[str] = demoted_notes + [f"{len(errored_names)} channel(s) errored/timed out"]
         if failed:
             notes.append(f"also {len(failed)} channel(s) failed — failures may be masked by errors")
         return CoherenceResult(
@@ -146,12 +146,51 @@ def _compute_base_coherence(
             classification_notes=demoted_notes,
         )
 
-    # Rule 2: isolated — exactly one failure, >=2 passes
-    # This is the Monty Hall state: silence in other channels
-    # concentrates attention on the single failing one
-    if len(failed) == 1 and len(passed) >= 2:
-        failing_channel = failed[0].channel
-        # More passing channels = higher confidence in isolation
+    # Rule 2: isolated — exactly one failure
+    if len(failed) == 1:
+        return _classify_isolated_failure(failed, passed, demoted_notes, loud, silent)
+
+    # Rule 4: systemic — three+ failures or cross-domain failure
+    systemic = _classify_systemic_failure(
+        failed, loud, silent, demoted_notes, severity_weighted,
+    )
+    if systemic is not None:
+        return systemic
+
+    # Rule 3: coupled — two+ failures, check for file overlap
+    if len(failed) >= 2:
+        return _classify_coupled_failure(failed, loud, silent, demoted_notes)
+
+    # Fallback (shouldn't reach here, but defensive)
+    return CoherenceResult(
+        state="coupled",
+        summary=f"Channels reporting issues: {', '.join(loud)}.",
+        recommended_action="Address blocking issues first.",
+        silent_channels=silent,
+        loud_channels=loud,
+        confidence=0.5,
+        classification_notes=demoted_notes
+        + ["fallback classification — rule matching was inconclusive"],
+    )
+
+
+def _classify_isolated_failure(
+    failed: list[ChannelResult],
+    passed: list[ChannelResult],
+    demoted_notes: list[str],
+    loud: list[str],
+    silent: list[str],
+) -> CoherenceResult:
+    """Classify single-channel failure as isolated (high or low confidence).
+
+    High confidence: 1 failure with >=2 passes (Monty Hall state — silence
+    in other channels concentrates attention on the single failing one).
+    Low confidence: 1 failure with <2 passes (limited corroboration).
+    """
+    failing_channel = failed[0].channel
+
+    # High confidence: >=2 passing channels corroborate isolation
+    if len(passed) >= 2:
         conf = min(1.0, 0.7 + 0.1 * len(passed))
         ch_summary = _channel_finding_summary(failed[0])
         return CoherenceResult(
@@ -167,40 +206,47 @@ def _compute_base_coherence(
             classification_notes=demoted_notes,
         )
 
-    # Single-channel failure with limited corroboration:
-    # still isolated, but with lower confidence because we don't have
-    # enough passing channels to strongly exclude other domains.
-    if len(failed) == 1:
-        failing_channel = failed[0].channel
-        notes: list[str] = list(demoted_notes)
-        if passed:
-            conf = 0.5 + 0.1 * len(passed)
-            summary = (
-                f"Issue isolated to {failing_channel}, but only "
-                f"{', '.join(silent)} passed; confidence is limited."
-            )
-            notes.append(f"only {len(passed)} corroborating pass(es)")
-        else:
-            conf = 0.3
-            summary = (
-                f"Issue reported by {failing_channel}. "
-                "No channels passed, so exclusion confidence is limited."
-            )
-            notes.append("no corroborating passes — isolation is assumed, not confirmed")
-        return CoherenceResult(
-            state="isolated",
-            summary=summary,
-            recommended_action=(
-                f"Focus on {failing_channel} findings first, then rerun to gather corroborating pass signals."
-            ),
-            silent_channels=silent,
-            loud_channels=loud,
-            confidence=round(min(conf, 1.0), 2),
-            classification_notes=notes,
+    # Low confidence: <2 passing channels
+    low_confidence_notes: list[str] = list(demoted_notes)
+    if passed:
+        conf = 0.5 + 0.1 * len(passed)
+        summary = (
+            f"Issue isolated to {failing_channel}, but only "
+            f"{', '.join(silent)} passed; confidence is limited."
         )
+        low_confidence_notes.append(f"only {len(passed)} corroborating pass(es)")
+    else:
+        conf = 0.3
+        summary = (
+            f"Issue reported by {failing_channel}. "
+            "No channels passed, so exclusion confidence is limited."
+        )
+        low_confidence_notes.append("no corroborating passes — isolation is assumed, not confirmed")
+    return CoherenceResult(
+        state="isolated",
+        summary=summary,
+        recommended_action=(
+            f"Focus on {failing_channel} findings first, then rerun to gather corroborating pass signals."
+        ),
+        silent_channels=silent,
+        loud_channels=loud,
+        confidence=round(min(conf, 1.0), 2),
+        classification_notes=low_confidence_notes,
+    )
 
-    # Rule 4: systemic — three+ failures or cross-domain failure.
-    # When severity_weighted, severity + volume determine channel contribution.
+
+def _classify_systemic_failure(
+    failed: list[ChannelResult],
+    loud: list[str],
+    silent: list[str],
+    demoted_notes: list[str],
+    severity_weighted: bool,
+) -> CoherenceResult | None:
+    """Classify as systemic if 3+ failures or cross-domain failure.
+
+    Returns None if the systemic rule does not apply, allowing the caller
+    to fall through to coupled classification.
+    """
     effective_failure_count = (
         _effective_failure_count(failed) if severity_weighted else float(len(failed))
     )
@@ -209,107 +255,103 @@ def _compute_base_coherence(
         if severity_weighted
         else _is_cross_domain_failure(failed)
     )
-    if effective_failure_count >= 3.0 or has_cross_domain_failure:
-        notes = list(demoted_notes)
-        if effective_failure_count >= 3.0:
-            conf = 0.9
-            if severity_weighted:
-                notes.append(
-                    f"severity-weighted failure score={effective_failure_count:.2f} (>=3.0)"
-                )
-        else:
-            # Cross-domain with only 2 failures — less certain it's truly systemic
-            conf = 0.7
-            notes.append(
-                "cross-domain failure (infra + code) with only 2 channels — could be coincidental"
+    if not (effective_failure_count >= 3.0 or has_cross_domain_failure):
+        return None
+
+    systemic_notes: list[str] = list(demoted_notes)
+    if effective_failure_count >= 3.0:
+        conf = 0.9
+        if severity_weighted:
+            systemic_notes.append(
+                f"severity-weighted failure score={effective_failure_count:.2f} (>=3.0)"
             )
-            if severity_weighted:
-                notes.append(f"severity-weighted failure score={effective_failure_count:.2f}")
-        # Build per-channel summaries for actionable guidance
-        channel_details = []
-        for r in failed:
-            channel_details.append(f"{r.channel}: {_channel_finding_summary(r)}")
-        details_str = "; ".join(channel_details)
-        return CoherenceResult(
-            state="systemic",
-            summary=(
-                f"Multiple system failures: {', '.join(loud)}. "
-                f"This suggests a structural problem, not isolated issues."
-            ),
-            recommended_action=f"Review overall approach. Failing channels: {details_str}.",
-            silent_channels=silent,
-            loud_channels=loud,
-            confidence=round(conf, 2),
-            classification_notes=notes,
+    else:
+        # Cross-domain with only 2 failures — less certain it's truly systemic
+        conf = 0.7
+        systemic_notes.append(
+            "cross-domain failure (infra + code) with only 2 channels — could be coincidental"
         )
+        if severity_weighted:
+            systemic_notes.append(f"severity-weighted failure score={effective_failure_count:.2f}")
+    # Build per-channel summaries for actionable guidance
+    channel_details = []
+    for r in failed:
+        channel_details.append(f"{r.channel}: {_channel_finding_summary(r)}")
+    details_str = "; ".join(channel_details)
+    return CoherenceResult(
+        state="systemic",
+        summary=(
+            f"Multiple system failures: {', '.join(loud)}. "
+            f"This suggests a structural problem, not isolated issues."
+        ),
+        recommended_action=f"Review overall approach. Failing channels: {details_str}.",
+        silent_channels=silent,
+        loud_channels=loud,
+        confidence=round(conf, 2),
+        classification_notes=systemic_notes,
+    )
 
-    # Rule 3: coupled — two+ failures, check for file overlap
-    if len(failed) >= 2:
-        shared_files = _find_shared_files(failed)
-        if shared_files:
-            file_list = ", ".join(sorted(shared_files)[:3])
-            channel_counts = {r.channel: len(r.findings) for r in failed}
-            counts_str = ", ".join(f"{ch}:{n}" for ch, n in channel_counts.items())
-            if len(loud) == 2:
-                summary = (
-                    f"{', '.join(loud)} both report issues in {file_list}. "
-                    f"These failures are likely related."
-                )
-                action = f"Address shared files first: {file_list}. Finding counts: {counts_str}."
-            else:
-                ordered = _ordered_failed_channels(failed)
-                summary = (
-                    f"{', '.join(loud)} report overlapping issues in {file_list}. "
-                    f"These failures are likely related."
-                )
-                action = (
-                    f"Address shared files first: {file_list} ({counts_str}), "
-                    f"then resolve channel-specific findings in {', '.join(ordered)}."
-                )
-            return CoherenceResult(
-                state="coupled",
-                summary=summary,
-                recommended_action=action,
-                silent_channels=silent,
-                loud_channels=loud,
-                confidence=0.85,
-                classification_notes=demoted_notes,
-            )
 
-        # Two failures, no file overlap — still coupled but independent
-        ordered = _ordered_failed_channels(failed)
+def _classify_coupled_failure(
+    failed: list[ChannelResult],
+    loud: list[str],
+    silent: list[str],
+    demoted_notes: list[str],
+) -> CoherenceResult:
+    """Classify 2+ channel failures as coupled (with or without shared files)."""
+    shared_files = _find_shared_files(failed)
+    if shared_files:
+        file_list = ", ".join(sorted(shared_files)[:3])
         channel_counts = {r.channel: len(r.findings) for r in failed}
-        if len(ordered) == 2:
-            action = (
-                f"Address {ordered[0]} first ({channel_counts.get(ordered[0], 0)} findings), "
-                f"then {ordered[1]} ({channel_counts.get(ordered[1], 0)} findings)."
+        counts_str = ", ".join(f"{ch}:{n}" for ch, n in channel_counts.items())
+        if len(loud) == 2:
+            summary = (
+                f"{', '.join(loud)} both report issues in {file_list}. "
+                f"These failures are likely related."
             )
+            action = f"Address shared files first: {file_list}. Finding counts: {counts_str}."
         else:
-            parts = [f"{ch} ({channel_counts.get(ch, 0)})" for ch in ordered]
-            action = f"Address channels in order: {', '.join(parts)}."
+            ordered = _ordered_failed_channels(failed)
+            summary = (
+                f"{', '.join(loud)} report overlapping issues in {file_list}. "
+                f"These failures are likely related."
+            )
+            action = (
+                f"Address shared files first: {file_list} ({counts_str}), "
+                f"then resolve channel-specific findings in {', '.join(ordered)}."
+            )
         return CoherenceResult(
             state="coupled",
-            summary=f"{', '.join(loud)} report independent issues.",
+            summary=summary,
             recommended_action=action,
             silent_channels=silent,
             loud_channels=loud,
-            confidence=0.7,
-            classification_notes=demoted_notes + [
-                "no shared files between failing channels — "
-                "classified as coupled but failures may be independent"
-            ],
+            confidence=0.85,
+            classification_notes=demoted_notes,
         )
 
-    # Fallback (shouldn't reach here, but defensive)
+    # Two failures, no file overlap — still coupled but independent
+    ordered = _ordered_failed_channels(failed)
+    channel_counts = {r.channel: len(r.findings) for r in failed}
+    if len(ordered) == 2:
+        action = (
+            f"Address {ordered[0]} first ({channel_counts.get(ordered[0], 0)} findings), "
+            f"then {ordered[1]} ({channel_counts.get(ordered[1], 0)} findings)."
+        )
+    else:
+        parts = [f"{ch} ({channel_counts.get(ch, 0)})" for ch in ordered]
+        action = f"Address channels in order: {', '.join(parts)}."
     return CoherenceResult(
         state="coupled",
-        summary=f"Channels reporting issues: {', '.join(loud)}.",
-        recommended_action="Address blocking issues first.",
+        summary=f"{', '.join(loud)} report independent issues.",
+        recommended_action=action,
         silent_channels=silent,
         loud_channels=loud,
-        confidence=0.5,
-        classification_notes=demoted_notes + [
-            "fallback classification — rule matching was inconclusive"
+        confidence=0.7,
+        classification_notes=demoted_notes
+        + [
+            "no shared files between failing channels — "
+            "classified as coupled but failures may be independent"
         ],
     )
 
@@ -342,7 +384,9 @@ def compute_coherence_with_history(
         CoherenceResult with enriched summary/action if history available.
     """
     base = compute_coherence(
-        channel_results, severity_weighted=severity_weighted, files_changed=files_changed,
+        channel_results,
+        severity_weighted=severity_weighted,
+        files_changed=files_changed,
     )
 
     if session is None or not session.snapshots:
@@ -472,9 +516,7 @@ def _has_actionable_findings(result: ChannelResult) -> bool:
         if getattr(finding, "severity", "") in ("blocking", "warning"):
             return True
     # Also check channel-level severity as fallback
-    if result.severity in ("blocking", "warning"):
-        return True
-    return False
+    return result.severity in ("blocking", "warning")
 
 
 # ── Edit-scope classification ───────────────────────────────────────
@@ -507,23 +549,15 @@ def _apply_edit_scope(
 
     # Get the actual failing channel results
     failing_results = [
-        cr for cr in channel_results
-        if cr.channel in result.loud_channels and cr.status == "fail"
+        cr for cr in channel_results if cr.channel in result.loud_channels and cr.status == "fail"
     ]
     if not failing_results:
         return result
 
     edit_related, ambient, unknown_scope = _classify_edit_scope(
-        failing_results, files_changed,
+        failing_results,
+        files_changed,
     )
-
-    # Populate edit-scope fields
-    result_kwargs = {
-        "edit_scoped": True,
-        "edit_related_channels": edit_related,
-        "ambient_channels": ambient,
-        "unknown_scope_channels": unknown_scope,
-    }
 
     # Determine if we should downgrade
     # unknown_scope counts as edit-related for conservative downgrade decisions
@@ -546,10 +580,14 @@ def _apply_edit_scope(
                 silent_channels=result.silent_channels,
                 loud_channels=result.loud_channels,
                 confidence=round(min(result.confidence, 0.8), 2),
-                classification_notes=result.classification_notes + [
+                classification_notes=result.classification_notes
+                + [
                     "all failures ambient but contain blocking/security findings — downgraded to isolated, not stable"
                 ],
-                **result_kwargs,
+                edit_scoped=True,
+                edit_related_channels=edit_related,
+                ambient_channels=ambient,
+                unknown_scope_channels=unknown_scope,
             )
         else:
             # Safe to downgrade to stable
@@ -564,15 +602,19 @@ def _apply_edit_scope(
                 # Stable state should not carry loud channels.
                 loud_channels=[],
                 confidence=round(min(result.confidence, 0.85), 2),
-                classification_notes=result.classification_notes + [
-                    f"all {len(ambient)} failing channel(s) are ambient — downgraded to stable"
-                ],
-                **result_kwargs,
+                classification_notes=result.classification_notes
+                + [f"all {len(ambient)} failing channel(s) are ambient — downgraded to stable"],
+                edit_scoped=True,
+                edit_related_channels=edit_related,
+                ambient_channels=ambient,
+                unknown_scope_channels=unknown_scope,
             )
 
     # Mixed: some edit-related, some ambient — keep original state but annotate
     if ambient:
-        ambient_note = f"Note: {', '.join(ambient)} findings are pre-existing and unrelated to your edit."
+        ambient_note = (
+            f"Note: {', '.join(ambient)} findings are pre-existing and unrelated to your edit."
+        )
         return CoherenceResult(
             state=result.state,
             summary=result.summary,
@@ -581,7 +623,10 @@ def _apply_edit_scope(
             loud_channels=result.loud_channels,
             confidence=result.confidence,
             classification_notes=result.classification_notes,
-            **result_kwargs,
+            edit_scoped=True,
+            edit_related_channels=edit_related,
+            ambient_channels=ambient,
+            unknown_scope_channels=unknown_scope,
         )
 
     # All edit-related or unknown — return with scope annotations only
@@ -593,7 +638,10 @@ def _apply_edit_scope(
         loud_channels=result.loud_channels,
         confidence=result.confidence,
         classification_notes=result.classification_notes,
-        **result_kwargs,
+        edit_scoped=True,
+        edit_related_channels=edit_related,
+        ambient_channels=ambient,
+        unknown_scope_channels=unknown_scope,
     )
 
 
@@ -703,7 +751,11 @@ def _channel_finding_summary(result: ChannelResult) -> str:
     if count == 0:
         return "0 findings"
     top = _top_finding_kind(result)
-    return f"{count} finding{'s' if count != 1 else ''} (top: {top})" if top else f"{count} finding{'s' if count != 1 else ''}"
+    return (
+        f"{count} finding{'s' if count != 1 else ''} (top: {top})"
+        if top
+        else f"{count} finding{'s' if count != 1 else ''}"
+    )
 
 
 _SEVERITY_WEIGHT = {"blocking": 1.0, "warning": 0.55, "informational": 0.25, "none": 0.0}

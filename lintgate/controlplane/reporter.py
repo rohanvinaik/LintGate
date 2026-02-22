@@ -25,26 +25,48 @@ Section priority order (highest → lowest):
 Protocol note:
 - PostToolUse hookSpecificOutput must match Claude's schema:
   {"hookEventName": "PostToolUse", "additionalContext": "..."}
+
+Sub-modules:
+- reporter_delta: Finding fingerprint, index, and delta computation
+- reporter_hook: PostToolUse context and telemetry counters
+- reporter_compact: Compact MCP tool response formatting
 """
 
 from __future__ import annotations
 
-import hashlib
 import os
 from typing import Any
 
-from .types import ChannelResult, ControlPlaneConfig, MeshResult
+from .reporter_compact import (  # noqa: F401 — re-exports for backward compat
+    _build_cp_next_actions,
+    format_mesh_report_compact,
+)
 
+# ── Re-exports from sub-modules (backward compatibility) ─────────────────
+# All public symbols that were previously defined here are imported and
+# re-exported so that existing ``from lintgate.controlplane.reporter import X``
+# statements continue to work without modification.
+from .reporter_delta import (  # noqa: F401 — re-exports for backward compat
+    _SEVERITY_ORDER,
+    build_finding_index,
+    compute_finding_delta,
+    compute_finding_fingerprint,
+)
+from .reporter_hook import (  # noqa: F401 — re-exports for backward compat
+    _build_posttooluse_context,
+    _build_telemetry_counters,
+)
+from .types import ChannelResult, ControlPlaneConfig, MeshResult
 
 # ── Dynamic token budget ────────────────────────────────────────────────
 
 # Per-section token costs (empirical from typical output)
-_BUDGET_BASE = 300          # header + coherence + channel summary + close tag
-_BUDGET_PER_BLOCKING = 75   # each blocking finding with evidence
-_BUDGET_PER_WARNING = 50    # each warning finding
-_BUDGET_PER_INFO = 20       # each informational finding (channel summary line)
-_BUDGET_PER_REPAIR = 40     # each repair suggestion
-_BUDGET_HARD_CAP = 12000    # common-sense upper bound for dynamic growth
+_BUDGET_BASE = 300  # header + coherence + channel summary + close tag
+_BUDGET_PER_BLOCKING = 75  # each blocking finding with evidence
+_BUDGET_PER_WARNING = 50  # each warning finding
+_BUDGET_PER_INFO = 20  # each informational finding (channel summary line)
+_BUDGET_PER_REPAIR = 40  # each repair suggestion
+_BUDGET_HARD_CAP = 12000  # common-sense upper bound for dynamic growth
 
 
 def _compute_dynamic_budget(
@@ -143,11 +165,10 @@ def format_mesh_report(
         # Resurfacing cadence: persistent blocking findings resurface every 10 runs
         if snapshot_count > 0 and snapshot_count % 10 == 0 and previous_finding_index:
             for fp, info in (current_index or {}).items():
-                if info.get("severity") == "blocking" and fp in previous_finding_index:
+                if info.get("severity") == "blocking" and fp in previous_finding_index and quota_by_fp.get(fp, 0) == 0:
                     # Resurface one representative occurrence per fingerprint.
-                    if quota_by_fp.get(fp, 0) == 0:
-                        quota_by_fp[fp] = 1
-                        resurfaced_count += 1
+                    quota_by_fp[fp] = 1
+                    resurfaced_count += 1
 
         # Filter findings by per-fingerprint quota.
         if quota_by_fp:
@@ -322,7 +343,11 @@ def format_mesh_report(
     if delta is not None:
         # Delta mode: suppressed findings are the difference between total and displayed
         suppressed = len(all_findings) - len(display_findings)
-        hidden_findings = suppressed + max(0, len(blocking) - shown_blocking) + max(0, len(warnings) - shown_warnings)
+        hidden_findings = (
+            suppressed
+            + max(0, len(blocking) - shown_blocking)
+            + max(0, len(warnings) - shown_warnings)
+        )
     else:
         hidden_findings = len(all_findings) - shown_blocking - shown_warnings
 
@@ -336,7 +361,9 @@ def format_mesh_report(
     output: dict[str, Any] = {"systemMessage": message}
 
     # Claude PostToolUse hook schema: hookEventName + optional additionalContext.
-    informational_count = len(display_informational) if delta is not None else len(total_informational)
+    informational_count = (
+        len(display_informational) if delta is not None else len(total_informational)
+    )
     additional_context = _build_posttooluse_context(
         mesh_result=mesh_result,
         blocking_count=len(blocking),
@@ -442,7 +469,7 @@ def _format_channel_summary(active_channels: list[ChannelResult]) -> str:
     """Format channel status summary."""
     parts = ["Channels:"]
     for cr in active_channels:
-        icon = {"pass": "✓", "fail": "✗", "error": "⚠", "timeout": "⏱"}.get(cr.status, "?")
+        icon = {"pass": "\u2713", "fail": "\u2717", "error": "\u26a0", "timeout": "\u23f1"}.get(cr.status, "?")
         detail = ""
         if cr.findings:
             detail = f" ({len(cr.findings)} findings)"
@@ -473,7 +500,7 @@ def _format_repairs(repairs: list) -> str:
     parts = [f"SUGGESTED REPAIRS ({len(repairs)}):"]
     for r in repairs[:5]:
         safe_tag = " [safe]" if r.safe else " [review]"
-        parts.append(f"  • {r.summary}{safe_tag}")
+        parts.append(f"  \u2022 {r.summary}{safe_tag}")
     if len(repairs) > 5:
         parts.append(f"  ... and {len(repairs) - 5} more repair actions")
     return "\n".join(parts)
@@ -505,401 +532,6 @@ def _format_proposed_constraints(proposals: list[dict]) -> str:
         parts.append(f"  ... and {len(proposals) - 3} more proposals")
     parts.append("  Use controlplane_agent_feedback to accept or reject.")
     return "\n".join(parts)
-
-
-def _build_posttooluse_context(
-    *,
-    mesh_result: MeshResult,
-    blocking_count: int,
-    warning_count: int,
-    informational_count: int,
-    hidden_findings: int,
-    channels_run: int,
-    delta: dict[str, Any] | None = None,
-    baseline_delta: dict[str, Any] | None = None,
-    resurfaced_count: int = 0,
-) -> str:
-    """Build compact additional context for Claude PostToolUse hooks.
-
-    Fixed key order, compact format. Keys with zero/empty values are omitted.
-    Max 300 chars — drops least-critical fields from bottom up if exceeded.
-    """
-    coherence = mesh_result.coherence
-
-    # Build ordered key-value pairs (fixed order per plan)
-    pairs: list[tuple[str, str]] = []
-
-    # 1. coherence (always)
-    pairs.append(("coherence", coherence.state))
-    # 2. channels_run (always)
-    pairs.append(("channels_run", str(channels_run)))
-    # 3. blocking (only > 0)
-    if blocking_count > 0:
-        pairs.append(("blocking", str(blocking_count)))
-    # 4. warnings (only > 0)
-    if warning_count > 0:
-        pairs.append(("warnings", str(warning_count)))
-    # 5. edit_related (when edit_scoped)
-    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "edit_related_channels", None):
-        pairs.append(("edit_related", ",".join(coherence.edit_related_channels)))
-    # 6. ambient_debt (when ambient channels exist)
-    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "ambient_channels", None):
-        pairs.append(("ambient_debt", ",".join(coherence.ambient_channels)))
-    # 7. new_findings (from delta, > 0)
-    if delta is not None:
-        new_count = sum(f.get("count", 1) for f in delta.get("new", []))
-        if new_count > 0:
-            pairs.append(("new_findings", str(new_count)))
-    # 8. resolved (from delta, > 0)
-    if delta is not None:
-        resolved = delta.get("resolved_count", 0)
-        if resolved > 0:
-            pairs.append(("resolved", str(resolved)))
-    # 9. known_debt (from delta, > 0)
-    if delta is not None:
-        known = delta.get("still_active_count", 0)
-        if known > 0:
-            pairs.append(("known_debt", str(known)))
-    # 10. session_regressions (from baseline delta, > 0)
-    if baseline_delta is not None:
-        session_new = sum(f.get("count", 1) for f in baseline_delta.get("new", []))
-        if session_new > 0:
-            pairs.append(("session_regressions", str(session_new)))
-    # 11. loud (only failing channels)
-    loud = ",".join(
-        f"{cr.channel}:{cr.status}"
-        for cr in mesh_result.channel_results
-        if cr.status in ("fail", "error", "timeout")
-    )
-    if loud:
-        pairs.append(("loud", loud))
-    # 12. resurface (> 0)
-    if resurfaced_count > 0:
-        pairs.append(("resurface", str(resurfaced_count)))
-
-    # Serialize with max length enforcement (300 chars)
-    _MAX_CONTEXT_LEN = 300
-    result = "; ".join(f"{k}={v}" for k, v in pairs)
-    while len(result) > _MAX_CONTEXT_LEN and len(pairs) > 2:
-        pairs.pop()  # Drop least-critical (bottom) fields
-        result = "; ".join(f"{k}={v}" for k, v in pairs)
-
-    return result
-
-
-def _build_telemetry_counters(
-    *,
-    mesh_result: MeshResult,
-    delta: dict[str, Any] | None,
-    baseline_delta: dict[str, Any] | None,
-    display_findings: list,
-    all_findings: list,
-    resurfaced_count: int,
-) -> dict[str, int]:
-    """Build lightweight telemetry counters for threshold tuning.
-
-    Increment-only counters, no complex aggregation. Stored in session
-    memory and exposed via controlplane_status.
-    """
-    counters: dict[str, int] = {}
-
-    coherence = mesh_result.coherence
-
-    # edit_scope_downgrades: coherence was downgraded by edit-scope logic
-    if getattr(coherence, "edit_scoped", False) and coherence.classification_notes:
-        if any("downgraded to stable" in n for n in coherence.classification_notes):
-            counters["edit_scope_downgrades"] = 1
-        elif any("downgraded to isolated" in n for n in coherence.classification_notes):
-            counters["edit_scope_downgrades"] = 1
-
-    # edit_scope_preserved: edit-related findings preserved original state
-    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "edit_related_channels", None):
-        counters["edit_scope_preserved"] = 1
-
-    # suppressed_known_debt: findings suppressed via delta filtering
-    if delta is not None:
-        suppressed = len(all_findings) - len(display_findings)
-        if suppressed > 0:
-            counters["suppressed_known_debt"] = suppressed
-
-    # resurfaced_blockers: persistent blockers resurfaced by cadence rule
-    if resurfaced_count > 0:
-        counters["resurfaced_blockers"] = resurfaced_count
-
-    # new_finding_precision: ratio of new findings to total (as percentage 0-100)
-    if delta is not None and all_findings:
-        new_count = len(display_findings)
-        total = len(all_findings)
-        counters["new_finding_precision"] = round(100 * new_count / total) if total > 0 else 100
-
-    # session_regressions from baseline
-    if baseline_delta is not None:
-        session_new = sum(f.get("count", 1) for f in baseline_delta.get("new", []))
-        if session_new > 0:
-            counters["session_regressions"] = session_new
-
-    return counters
-
-
-# ── Finding Fingerprint & Delta ──────────────────────────────────────────
-
-_SEVERITY_ORDER = {"informational": 0, "warning": 1, "blocking": 2}
-
-
-def compute_finding_fingerprint(finding: Any, channel: str) -> str:
-    """Stable fingerprint: channel|kind|normalized_file_path|msg_hash.
-
-    Excludes line number — survives edits that shift lines.
-    """
-    file_path = (getattr(finding, "file", None) or "").replace("\\", "/")
-    msg = getattr(finding, "message", "") or ""
-    # Hash the full message to avoid prefix collisions when messages share a start.
-    msg_hash = hashlib.sha256(msg.encode()).hexdigest()[:8]
-    raw = f"{channel}|{getattr(finding, 'kind', '')}|{file_path}|{msg_hash}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
-
-
-def build_finding_index(mesh_result: MeshResult) -> dict[str, dict[str, Any]]:
-    """Build fingerprint → finding-summary dict from a MeshResult."""
-    index: dict[str, dict[str, Any]] = {}
-    for cr in mesh_result.channel_results:
-        for f in cr.findings:
-            fp = compute_finding_fingerprint(f, cr.channel)
-            existing = index.get(fp)
-            if existing is None:
-                index[fp] = {
-                    "channel": cr.channel,
-                    "kind": getattr(f, "kind", ""),
-                    "severity": getattr(f, "severity", ""),
-                    "confidence": getattr(f, "confidence", None),
-                    "file": f.short_location() if hasattr(f, "short_location") else "",
-                    "message": (getattr(f, "message", "") or "")[:80],
-                    "line": getattr(f, "line", None),
-                    "count": 1,
-                }
-            else:
-                existing["count"] = int(existing.get("count", 1)) + 1
-                # Keep the highest-severity label for this fingerprint bucket.
-                cur_rank = _SEVERITY_ORDER.get(str(existing.get("severity", "")), 0)
-                new_sev = str(getattr(f, "severity", ""))
-                new_rank = _SEVERITY_ORDER.get(new_sev, 0)
-                if new_rank > cur_rank:
-                    existing["severity"] = new_sev
-    return index
-
-
-def compute_finding_delta(
-    current_index: dict[str, dict[str, Any]],
-    previous_index: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    """Compute new/escalated/resolved/still_active from two finding indexes."""
-    current_fps = set(current_index)
-    previous_fps = set(previous_index)
-
-    new_fps = current_fps - previous_fps
-    resolved_fps = previous_fps - current_fps
-    common_fps = current_fps & previous_fps
-
-    new_findings = []
-    escalated = []
-    still_active_count = 0
-    resolved_count = 0
-
-    for fp in common_fps:
-        current = current_index[fp]
-        previous = previous_index[fp]
-        cur_count = int(current.get("count", 1))
-        prev_count = int(previous.get("count", 1))
-        shared = min(cur_count, prev_count)
-
-        cur_sev = _SEVERITY_ORDER.get(str(current.get("severity", "")), 0)
-        prev_sev = _SEVERITY_ORDER.get(str(previous.get("severity", "")), 0)
-        if cur_sev > prev_sev and shared > 0:
-            escalated.append(
-                {
-                    **current,
-                    "fingerprint": fp,
-                    "previous_severity": previous.get("severity", ""),
-                    "count": shared,
-                }
-            )
-        else:
-            still_active_count += shared
-
-        if cur_count > prev_count:
-            extra = cur_count - prev_count
-            new_findings.append({**current, "fingerprint": fp, "count": extra})
-        elif prev_count > cur_count:
-            resolved_count += prev_count - cur_count
-
-    for fp in sorted(new_fps):
-        current = current_index[fp]
-        new_findings.append({**current, "fingerprint": fp, "count": int(current.get("count", 1))})
-
-    for fp in resolved_fps:
-        previous = previous_index[fp]
-        resolved_count += int(previous.get("count", 1))
-
-    return {
-        "new": new_findings,
-        "escalated": escalated,
-        "resolved_count": resolved_count,
-        "still_active_count": still_active_count,
-    }
-
-
-# ── Compact ControlPlane Reporter ────────────────────────────────────────
-
-
-def format_mesh_report_compact(
-    mesh_result: MeshResult,
-    config: ControlPlaneConfig | None = None,
-    previous_finding_index: dict[str, dict[str, Any]] | None = None,
-    proposed_constraints: list[dict] | None = None,
-) -> dict[str, Any]:
-    """Format MeshResult as compact JSON for MCP tool responses.
-
-    If previous_finding_index is provided, emits delta-first output.
-    Otherwise emits full compact output with inline blocking issues.
-
-    Returns a dict suitable for json.dumps().
-    """
-    if config is None:
-        config = ControlPlaneConfig()
-
-    from lintgate.state import generate_run_id
-
-    run_id = generate_run_id()
-
-    # Build current finding index
-    current_index = build_finding_index(mesh_result)
-
-    # Count findings by severity (account for aggregated duplicate counts).
-    blocking_count = 0
-    warning_count = 0
-    informational_count = 0
-    for _fp, info in current_index.items():
-        sev = info.get("severity", "")
-        count = int(info.get("count", 1))
-        if sev == "blocking":
-            blocking_count += count
-        elif sev == "warning":
-            warning_count += count
-        elif sev == "informational":
-            informational_count += count
-
-    # Count repairs
-    repairs_available = sum(len(cr.repairs) for cr in mesh_result.channel_results)
-
-    # Coherence
-    coherence = mesh_result.coherence
-    coherence_dict: dict[str, Any] = {
-        "state": coherence.state,
-        "summary": coherence.summary,
-    }
-    if coherence.recommended_action:
-        coherence_dict["action"] = coherence.recommended_action
-    if coherence.confidence < 1.0:
-        coherence_dict["confidence"] = coherence.confidence
-    if coherence.classification_notes:
-        coherence_dict["classification_notes"] = coherence.classification_notes
-
-    # Counts
-    channels_run = sum(1 for cr in mesh_result.channel_results if cr.status != "skip")
-    counts = {
-        "blocking": blocking_count,
-        "warning": warning_count,
-        "informational": informational_count,
-        "channels_run": channels_run,
-        "repairs_available": repairs_available,
-    }
-
-    # Channel summary
-    channel_summary: dict[str, str] = {}
-    for cr in mesh_result.channel_results:
-        if cr.status == "skip":
-            continue
-        if cr.status == "pass":
-            channel_summary[cr.channel] = "pass"
-        elif cr.status == "fail":
-            parts = []
-            b = sum(1 for f in cr.findings if f.severity == "blocking")
-            w = sum(1 for f in cr.findings if f.severity == "warning")
-            i = sum(1 for f in cr.findings if f.severity == "informational")
-            if b:
-                parts.append(f"{b} blocking")
-            if w:
-                parts.append(f"{w} warning")
-            if i:
-                parts.append(f"{i} info")
-            channel_summary[cr.channel] = f"fail({', '.join(parts)})" if parts else "fail"
-        else:
-            channel_summary[cr.channel] = cr.status
-
-    # Build compact output
-    compact: dict[str, Any] = {
-        "run_id": run_id,
-        "duration_ms": round(mesh_result.duration_ms, 1),
-        "coherence": coherence_dict,
-        "counts": counts,
-    }
-
-    if previous_finding_index is not None:
-        # Delta mode
-        delta = compute_finding_delta(current_index, previous_finding_index)
-        compact["delta"] = delta
-    else:
-        # First-run mode: inline blocking issues
-        blocking_issues = [
-            {**info, "fingerprint": fp}
-            for fp, info in sorted(current_index.items())
-            if info.get("severity") == "blocking"
-        ]
-        if blocking_issues:
-            compact["blocking_issues"] = blocking_issues
-
-    compact["channels"] = channel_summary
-
-    # Next actions
-    compact["next_actions"] = _build_cp_next_actions(run_id, counts)
-
-    # Finding index for storage (used by session memory)
-    compact["finding_index"] = current_index
-
-    return compact
-
-
-def _build_cp_next_actions(run_id: str, counts: dict[str, int]) -> list[dict[str, Any]]:
-    """Build next_actions for ControlPlane compact output."""
-    actions: list[dict[str, Any]] = []
-    if counts.get("blocking", 0) > 0:
-        actions.append(
-            {
-                "tool": "controlplane_get_details",
-                "args": {"run_id": run_id, "severity": "blocking"},
-                "reason": f"View {counts['blocking']} blocking finding{'s' if counts['blocking'] != 1 else ''}",
-                "priority": 1,
-            }
-        )
-    if counts.get("repairs_available", 0) > 0:
-        actions.append(
-            {
-                "tool": "controlplane_apply_repairs",
-                "args": {"path": ".", "safe_only": True},
-                "reason": f"{counts['repairs_available']} safe repair{'s' if counts['repairs_available'] != 1 else ''} available",
-                "priority": 2,
-            }
-        )
-    if counts.get("warning", 0) > 0 and run_id:
-        actions.append(
-            {
-                "tool": "controlplane_get_details",
-                "args": {"run_id": run_id, "severity": "warning"},
-                "reason": f"View {counts['warning']} warning{'s' if counts['warning'] != 1 else ''}",
-                "priority": 3,
-            }
-        )
-    return actions
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

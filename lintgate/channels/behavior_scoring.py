@@ -184,7 +184,7 @@ class IntentBiasScorer:
         project = self.weights.get(config_key, default)
         global_adj = self._global_adjustments.get(signal_name, 0.0)
         effective = project + self._alpha * global_adj
-        return max(0.0, min(_BIAS_CAP, effective))
+        return float(max(0.0, min(_BIAS_CAP, effective)))
 
     def verification_debt_bias(self) -> tuple[float, list[str]]:
         """+ bias when execute streak >= threshold and verify_count == 0."""
@@ -328,7 +328,7 @@ class SignalCoordinator:
         if last is None:
             return True
         cooldown = self.thresholds.get("signal_cooldown", 10)
-        return (self.compass.event_counter - last) >= cooldown
+        return bool((self.compass.event_counter - last) >= cooldown)
 
     def record_firing(self, signal_name: str) -> None:
         self.compass.last_fired[signal_name] = self.compass.event_counter

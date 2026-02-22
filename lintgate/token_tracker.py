@@ -15,8 +15,7 @@ All operations are fail-safe. API failures degrade to char-count heuristic.
 from __future__ import annotations
 
 import json
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 # ── Constants ────────────────────────────────────────────────────────
@@ -32,11 +31,30 @@ MAX_BACKOFF_EXPONENT = 3
 
 # LintGate tool name prefixes
 _LINTGATE_TOOL_PREFIXES = (
-    "lint_", "controlplane_", "behavior_", "constraint_", "prediction_",
-    "hygiene_", "scaffold_", "getting_started", "setup_github",
-    "context_", "audit_", "bootstrap_", "extract_", "build_theory",
-    "get_theory", "dep_", "model_profile", "telemetry_", "global_memory",
-    "habit_", "declare_mode", "habit_status", "habit_compact", "habit_configure",
+    "lint_",
+    "controlplane_",
+    "behavior_",
+    "constraint_",
+    "prediction_",
+    "hygiene_",
+    "scaffold_",
+    "getting_started",
+    "setup_github",
+    "context_",
+    "audit_",
+    "bootstrap_",
+    "extract_",
+    "build_theory",
+    "get_theory",
+    "dep_",
+    "model_profile",
+    "telemetry_",
+    "global_memory",
+    "habit_",
+    "declare_mode",
+    "habit_status",
+    "habit_compact",
+    "habit_configure",
 )
 
 
@@ -218,10 +236,7 @@ def should_compact(
         return False
 
     token_delta = tracker.estimated_tokens_used - tracker.last_compact_tokens
-    if token_delta < min_token_delta:
-        return False
-
-    return True
+    return token_delta >= min_token_delta
 
 
 # ── API calibration ──────────────────────────────────────────────────
@@ -241,10 +256,12 @@ def should_api_check(
         return False
 
     # Apply exponential backoff on consecutive failures
-    effective_interval = interval * (2 ** min(tracker.consecutive_api_failures, MAX_BACKOFF_EXPONENT))
+    effective_interval = interval * (
+        2 ** min(tracker.consecutive_api_failures, MAX_BACKOFF_EXPONENT)
+    )
 
     calls_since_check = tracker.tool_call_count - tracker.last_api_check_event
-    return calls_since_check >= effective_interval
+    return bool(calls_since_check >= effective_interval)
 
 
 def apply_api_calibration(
@@ -330,10 +347,12 @@ def do_api_calibration(
     # Build a minimal messages payload for token counting
     # We use a small representative prompt to get the tokenizer ratio
     sample_text = f"Token calibration probe at {tracker.tool_call_count} calls."
-    payload = json.dumps({
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": sample_text}],
-    }).encode()
+    payload = json.dumps(
+        {
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": sample_text}],
+        }
+    ).encode()
 
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages/count_tokens",

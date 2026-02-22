@@ -354,14 +354,10 @@ def _analyze_diff(tool_name: str, tool_input: dict[str, Any]) -> DiffAnalysis:
         if not isinstance(edits, list):
             edits = []
         old_text = "\n".join(
-            _as_text(e.get("old_string", ""))
-            for e in edits
-            if isinstance(e, dict)
+            _as_text(e.get("old_string", "")) for e in edits if isinstance(e, dict)
         )
         new_text = "\n".join(
-            _as_text(e.get("new_string", ""))
-            for e in edits
-            if isinstance(e, dict)
+            _as_text(e.get("new_string", "")) for e in edits if isinstance(e, dict)
         )
         is_new = False
     elif tool_name == "Bash":

@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 
 from lintgate.habit_mode import (
-    DEFAULT_ENTER_SCORE,
-    DEFAULT_EXIT_SCORE,
     DEFAULT_SUSTAIN_CALLS,
     SNAPSHOT_MAX_CHARS,
     HabitModeState,
@@ -29,7 +26,6 @@ from lintgate.habit_mode import (
     update_mode,
     update_signals,
 )
-
 
 # ── HabitSignals serialization ───────────────────────────────────────
 
@@ -100,12 +96,14 @@ class TestUpdateSignals:
         events = []
         for i, tool in enumerate(tools):
             intent = quick_intent(tool)
-            events.append({
-                "tool": tool,
-                "ts": ts_start + i * gap,
-                "intent": intent,
-                "sig": f"file_{i}.py",
-            })
+            events.append(
+                {
+                    "tool": tool,
+                    "ts": ts_start + i * gap,
+                    "intent": intent,
+                    "sig": f"file_{i}.py",
+                }
+            )
         return events
 
     def test_pure_edit_session(self):
@@ -473,6 +471,7 @@ class TestStandalonePersistence:
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         # Write corrupt data
         from lintgate.habit_mode import _standalone_path
+
         path = _standalone_path("/corrupt/project")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("not valid json{{{")
@@ -508,10 +507,14 @@ class TestBuildCompactionSnapshot:
             state,
             "/project",
             theory_pack={"summary": "x" * 2000},
-            last_lint_run={"blocking_count": 5, "warning_count": 10, "issues": [
-                {"file": f"/f{i}.py", "line": i, "kind": "E", "message": "m" * 100}
-                for i in range(10)
-            ]},
+            last_lint_run={
+                "blocking_count": 5,
+                "warning_count": 10,
+                "issues": [
+                    {"file": f"/f{i}.py", "line": i, "kind": "E", "message": "m" * 100}
+                    for i in range(10)
+                ],
+            },
             compass={"hypotheses": [{"claim": "c" * 100, "confidence": 0.8}] * 10},
         )
         serialized = json.dumps(snapshot, separators=(",", ":"))
@@ -527,9 +530,7 @@ class TestBuildCompactionSnapshot:
             "/project",
             last_lint_run={"blocking_count": 5, "issues": []},
             session_memory={"coherence_trajectory": ["systemic"]},
-            compass={"approaches": [
-                {"outcome": "failed"} for _ in range(5)
-            ]},
+            compass={"approaches": [{"outcome": "failed"} for _ in range(5)]},
         )
         assert len(snapshot["tool_guidance"]) <= 4
 

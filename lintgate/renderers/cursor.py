@@ -25,9 +25,7 @@ class CursorRenderer:
     output_paths = [".cursor/rules/compass.mdc"]
     capabilities: HostCapabilities = CURSOR_CAPABILITIES
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         name = project_name(metadata)
         mission = axis_summary(compass, "problem") or "Write correct code."
         architecture = axis_summary(compass, "solution")

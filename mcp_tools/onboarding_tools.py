@@ -216,7 +216,9 @@ def _collect_external_tool_gaps(project_root: str) -> dict[str, Any]:
                 "package": package,
                 "required_by": entry["required_by"],
                 "reason": "executable_not_found",
-                "install_command": _format_cmd(install_cmd) if install_cmd else f"pip install {package}",
+                "install_command": _format_cmd(install_cmd)
+                if install_cmd
+                else f"pip install {package}",
                 "auto_installable": install_cmd is not None and tool in _OPTIONAL_STARTUP_PACKAGES,
             }
         )
@@ -324,7 +326,8 @@ def _scaffold_config_yaml(project_root: str, helpers: dict) -> str:
     py_files = sorted(glob_mod.glob(os.path.join(project_root, "**", "*.py"), recursive=True))
     # Exclude venv, __pycache__, .git
     py_files = [
-        f for f in py_files
+        f
+        for f in py_files
         if not any(seg in f for seg in ("/.venv/", "/__pycache__/", "/.git/", "/node_modules/"))
     ]
 
@@ -457,7 +460,9 @@ _LICENSE_BADGE_MAP: dict[str, str] = {
     "MPL-2.0": "MPL_2.0",
 }
 
-_VENV_SEGMENTS = frozenset({"/.venv/", "/venv/", "/env/", "/__pycache__/", "/.git/", "/node_modules/"})
+_VENV_SEGMENTS = frozenset(
+    {"/.venv/", "/venv/", "/env/", "/__pycache__/", "/.git/", "/node_modules/"}
+)
 
 # ── qlty (Code Climate CLI) triage patterns ─────────────────────────────
 
@@ -581,8 +586,20 @@ def _detect_project_layout(project_root: str) -> dict[str, Any]:
                 break
 
     # --- Directory scanning for source/test/doc ---
-    skip_dirs = {".venv", "venv", "env", ".git", "__pycache__", "node_modules",
-                 ".mypy_cache", ".ruff_cache", ".pytest_cache", ".claude", "dist", "build"}
+    skip_dirs = {
+        ".venv",
+        "venv",
+        "env",
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".claude",
+        "dist",
+        "build",
+    }
     for entry in sorted(root.iterdir()):
         if not entry.is_dir() or entry.name.startswith(".") or entry.name in skip_dirs:
             continue
@@ -710,8 +727,7 @@ def _generate_sonar_properties(github: dict[str, Any], layout: dict[str, Any]) -
     if "*.sh" not in exclude_parts:
         exclude_parts.append("*.sh")
     exclusions = ",\\\n  ".join(
-        p if (p.endswith("**") or p.endswith("**/*") or p.startswith("*."))
-        else f"{p}**"
+        p if (p.endswith("**") or p.endswith("**/*") or p.startswith("*.")) else f"{p}**"
         for p in exclude_parts
     )
 
@@ -827,7 +843,7 @@ def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
         "        if: steps.check_token.outputs.has_token == 'true'",
         "        uses: actions/setup-python@v5",
         "        with:",
-        f"          python-version: \"{python_version}\"",
+        f'          python-version: "{python_version}"',
         "",
         "      - name: Install test dependencies",
         "        if: steps.check_token.outputs.has_token == 'true'",
@@ -910,7 +926,7 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "      - name: Set up Python",
         "        uses: actions/setup-python@v5",
         "        with:",
-        f"          python-version: \"{python_version}\"",
+        f'          python-version: "{python_version}"',
         "",
         "      - name: Validate workflow action references",
         "        env:",
@@ -931,7 +947,7 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "                  match = pattern.match(line)",
         "                  if not match:",
         "                      continue",
-        "                  ref = match.group(1).strip().strip(\"\\\"'\")",
+        '                  ref = match.group(1).strip().strip("\\"\'")',
         "                  references.setdefault(ref, []).append(str(wf))",
         "",
         "          checked_repos = {}",
@@ -977,7 +993,7 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "                  print(f'  - {failure}')",
         "              sys.exit(1)",
         "",
-        "          print(f\"Validated {len(references)} action refs across {len(workflow_files)} workflows.\")",
+        '          print(f"Validated {len(references)} action refs across {len(workflow_files)} workflows.")',
         "          PY",
         "",
         "      - name: Install dependencies",
@@ -1029,8 +1045,8 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "      - name: Run tests with coverage",
         "        run: |",
         "          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi",
-        "          echo \"Coverage gate: ${{ steps.quality_policy.outputs.coverage_min }}%\"",
-        "          echo \"Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}\"",
+        '          echo "Coverage gate: ${{ steps.quality_policy.outputs.coverage_min }}%"',
+        '          echo "Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}"',
         '          python -m pytest "$TEST_DIR" \\',
         "            ${{ steps.quality_policy.outputs.cov_args }} \\",
         "            --cov-config=.coveragerc \\",
@@ -1042,7 +1058,7 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "      - name: Diff coverage (new/changed code)",
         "        if: always() && github.event_name == 'pull_request'",
         "        run: |",
-        "          git fetch --no-tags --depth=1 origin \"${{ github.base_ref }}\"",
+        '          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"',
         "          diff-cover coverage.xml \\",
         "            --compare-branch=origin/${{ github.base_ref }} \\",
         "            --fail-under=${{ steps.quality_policy.outputs.diff_coverage_min }}",
@@ -1190,7 +1206,7 @@ def _generate_security_workflow(
         "      - name: Set up Python",
         "        uses: actions/setup-python@v5",
         "        with:",
-        f"          python-version: \"{python_version}\"",
+        f'          python-version: "{python_version}"',
         "",
         "      - name: Install security linters",
         "        run: |",
@@ -1209,12 +1225,12 @@ def _generate_security_workflow(
         "          shopt -s nullglob",
         "          reqs=(requirements*.txt)",
         "          if [ ${#reqs[@]} -eq 0 ]; then",
-        "            echo \"No requirements*.txt found; skipping pip-audit.\"",
+        '            echo "No requirements*.txt found; skipping pip-audit."',
         "            exit 0",
         "          fi",
-        "          for f in \"${reqs[@]}\"; do",
-        "            echo \"Auditing $f\"",
-        "            pip-audit -r \"$f\"",
+        '          for f in "${reqs[@]}"; do',
+        '            echo "Auditing $f"',
+        '            pip-audit -r "$f"',
         "          done",
     ]
     return "\n".join(lines) + "\n"
@@ -1397,7 +1413,7 @@ def _readme_has_quality_badges(project_root: str) -> bool:
         end = content.find(_BADGE_BLOCK_END, start)
         if end == -1:
             return False
-        managed_block = content[start:end + len(_BADGE_BLOCK_END)]
+        managed_block = content[start : end + len(_BADGE_BLOCK_END)]
         return all(fp in managed_block for fp in _REQUIRED_BADGE_FINGERPRINTS)
 
     return all(fp in content for fp in _REQUIRED_BADGE_FINGERPRINTS)
@@ -1417,10 +1433,17 @@ def _generate_qlty_toml(layout: dict[str, Any], *, is_tool_runner: bool = False)
 
     # Add standard qlty exclude patterns
     qlty_excludes = [
-        "*_min.*", "*-min.*", "*.min.*",
-        "**/__pycache__/**", "**/.mypy_cache/**", "**/.ruff_cache/**",
-        "**/.pytest_cache/**", "**/node_modules/**", "**/dist/**",
-        "**/build/**", "**/vendor/**",
+        "*_min.*",
+        "*-min.*",
+        "*.min.*",
+        "**/__pycache__/**",
+        "**/.mypy_cache/**",
+        "**/.ruff_cache/**",
+        "**/.pytest_cache/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/vendor/**",
     ]
     # Merge project-specific excludes (de-duplicate)
     seen: set[str] = set()
@@ -1437,10 +1460,16 @@ def _generate_qlty_toml(layout: dict[str, Any], *, is_tool_runner: bool = False)
     test_patterns = []
     for td in test_dirs:
         test_patterns.append(f"**/{td}/**")
-    test_patterns.extend([
-        "**/*.test.*", "**/*.spec.*", "**/*_test.*",
-        "**/*_spec.*", "**/test_*.*", "**/spec_*.*",
-    ])
+    test_patterns.extend(
+        [
+            "**/*.test.*",
+            "**/*.spec.*",
+            "**/*_test.*",
+            "**/*_spec.*",
+            "**/test_*.*",
+            "**/spec_*.*",
+        ]
+    )
 
     lines = [
         "# qlty configuration — generated by LintGate setup_github_quality",
@@ -1460,31 +1489,33 @@ def _generate_qlty_toml(layout: dict[str, Any], *, is_tool_runner: bool = False)
     lines.append("]")
     lines.append("")
 
-    lines.extend([
-        "[smells]",
-        'mode = "comment"',
-        "",
-        "[[source]]",
-        'name = "default"',
-        "default = true",
-        "",
-        "# ── Plugins ────────────────────────────────────────────────────",
-        "",
-        "[[plugin]]",
-        'name = "bandit"',
-        "",
-        "[[plugin]]",
-        'name = "radarlint-python"',
-        'mode = "comment"',
-        "",
-        "[[plugin]]",
-        'name = "ruff"',
-        'drivers = ["lint"]',
-        "",
-        "# Keep default plugin set intentionally lean to reduce false positives in CI.",
-        "# ── Triage: Silence domain-expected false positives ────────────",
-        "",
-    ])
+    lines.extend(
+        [
+            "[smells]",
+            'mode = "comment"',
+            "",
+            "[[source]]",
+            'name = "default"',
+            "default = true",
+            "",
+            "# ── Plugins ────────────────────────────────────────────────────",
+            "",
+            "[[plugin]]",
+            'name = "bandit"',
+            "",
+            "[[plugin]]",
+            'name = "radarlint-python"',
+            'mode = "comment"',
+            "",
+            "[[plugin]]",
+            'name = "ruff"',
+            'drivers = ["lint"]',
+            "",
+            "# Keep default plugin set intentionally lean to reduce false positives in CI.",
+            "# ── Triage: Silence domain-expected false positives ────────────",
+            "",
+        ]
+    )
 
     # Test-file triage rules
     test_file_patterns = []
@@ -1493,8 +1524,11 @@ def _generate_qlty_toml(layout: dict[str, Any], *, is_tool_runner: bool = False)
     test_file_patterns.append("**/test_*.*")
 
     for rule in _QLTY_TEST_TRIAGE_RULES:
-        label = "assert in test files is standard pytest usage" if "B101" in rule else \
-                "temp file usage in test fixtures is expected"
+        label = (
+            "assert in test files is standard pytest usage"
+            if "B101" in rule
+            else "temp file usage in test fixtures is expected"
+        )
         lines.append(f"# {rule} — {label}")
         lines.append("[[triage]]")
         lines.append(f'match.rules = ["{rule}"]')
@@ -1578,14 +1612,18 @@ def _run_sonar_scanner(
     """Execute sonar-scanner to push results to SonarCloud."""
     cmd = [scanner_path]
     if "pysonar-scanner" in scanner_path:
-        cmd.extend([
-            f"-Dproject.home={project_root}",
-            "-read.project.config",
-        ])
+        cmd.extend(
+            [
+                f"-Dproject.home={project_root}",
+                "-read.project.config",
+            ]
+        )
     else:
-        cmd.extend([
-            f"-Dsonar.projectBaseDir={project_root}",
-        ])
+        cmd.extend(
+            [
+                f"-Dsonar.projectBaseDir={project_root}",
+            ]
+        )
 
     env = os.environ.copy()
     env["SONAR_TOKEN"] = sonar_token
@@ -1610,6 +1648,7 @@ def _run_sonar_scanner(
             if "ceTaskUrl" in line or "dashboard/index" in line:
                 # Try to extract URL
                 import re as _re
+
                 url_match = _re.search(r"(https?://\S+)", line)
                 if url_match:
                     analysis_url = url_match.group(1)
@@ -1677,7 +1716,7 @@ def _build_quality_guidance(
             },
             "sonarcloud": {
                 "method": "Mark issues as 'Won't Fix' in SonarCloud dashboard, "
-                          "or configure quality profiles",
+                "or configure quality profiles",
                 "setup_url": f"https://sonarcloud.io/project/configuration?id={project_key}",
             },
             "lintgate": {
@@ -1691,8 +1730,7 @@ def _build_quality_guidance(
     if scanner_path:
         guidance["sonar_scanner"] = {
             "local_run": (
-                f"SONAR_TOKEN=<token> {scanner_path} "
-                f"-Dproject.home=. -read.project.config"
+                f"SONAR_TOKEN=<token> {scanner_path} -Dproject.home=. -read.project.config"
             ),
             "workflow_path": ".github/workflows/sonarcloud.yml",
             "github_actions": (
@@ -1867,7 +1905,9 @@ def register(mcp, helpers):
             and os.path.exists(os.path.join(project_root, ".github", "workflows", "sonarcloud.yml"))
             and os.path.exists(os.path.join(project_root, ".github", "workflows", "tests.yml"))
             and os.path.exists(os.path.join(project_root, ".github", "workflows", "qlty.yml"))
-            and os.path.exists(os.path.join(project_root, ".github", "workflows", "security-lite.yml"))
+            and os.path.exists(
+                os.path.join(project_root, ".github", "workflows", "security-lite.yml")
+            )
             and _readme_has_quality_badges(project_root)
         )
         quality_bootstrap_result: dict[str, Any] = {"status": "not_requested"}
@@ -1886,10 +1926,18 @@ def register(mcp, helpers):
                     os.path.exists(os.path.join(project_root, ".codeclimate.yml"))
                     and os.path.exists(os.path.join(project_root, "sonar-project.properties"))
                     and os.path.exists(os.path.join(project_root, ".qlty", "qlty.toml"))
-                    and os.path.exists(os.path.join(project_root, ".github", "workflows", "sonarcloud.yml"))
-                    and os.path.exists(os.path.join(project_root, ".github", "workflows", "tests.yml"))
-                    and os.path.exists(os.path.join(project_root, ".github", "workflows", "qlty.yml"))
-                    and os.path.exists(os.path.join(project_root, ".github", "workflows", "security-lite.yml"))
+                    and os.path.exists(
+                        os.path.join(project_root, ".github", "workflows", "sonarcloud.yml")
+                    )
+                    and os.path.exists(
+                        os.path.join(project_root, ".github", "workflows", "tests.yml")
+                    )
+                    and os.path.exists(
+                        os.path.join(project_root, ".github", "workflows", "qlty.yml")
+                    )
+                    and os.path.exists(
+                        os.path.join(project_root, ".github", "workflows", "security-lite.yml")
+                    )
                     and _readme_has_quality_badges(project_root)
                 )
 
@@ -2160,10 +2208,14 @@ def register(mcp, helpers):
             qlty_workflow_result["content"] = qlty_workflow_content
 
         # --- .github/workflows/security-lite.yml ---
-        security_workflow_path = os.path.join(project_root, ".github", "workflows", "security-lite.yml")
+        security_workflow_path = os.path.join(
+            project_root, ".github", "workflows", "security-lite.yml"
+        )
         security_workflow_exists = os.path.exists(security_workflow_path)
         security_workflow_content = _generate_security_workflow(
-            layout, is_tool_runner=is_tool_runner, project_root=project_root,
+            layout,
+            is_tool_runner=is_tool_runner,
+            project_root=project_root,
         )
         security_workflow_result: dict[str, Any] = {"path": security_workflow_path}
 
@@ -2263,22 +2315,22 @@ def register(mcp, helpers):
                     "install": "pip install pysonar-scanner",
                     "note": "Install sonar-scanner to push analysis to SonarCloud.",
                 }
-            elif not os.path.exists(
-                os.path.join(project_root, "sonar-project.properties")
-            ):
+            elif not os.path.exists(os.path.join(project_root, "sonar-project.properties")):
                 scanner_result = {
                     "status": "no_config",
                     "note": "sonar-project.properties must exist before scanning.",
                 }
             else:
                 scanner_result = _run_sonar_scanner(
-                    project_root, sonar_token, scanner_path,
+                    project_root,
+                    sonar_token,
+                    scanner_path,
                 )
         elif sonar_token and not write:
             scanner_result = {
                 "status": "preview",
                 "note": "Scanner will run when write=True. Token will be passed "
-                        "via SONAR_TOKEN env var (never written to disk).",
+                "via SONAR_TOKEN env var (never written to disk).",
                 "scanner_found": scanner_path is not None,
             }
 
@@ -2317,46 +2369,56 @@ def register(mcp, helpers):
             files_to_stage.append("README.md")
 
         if files_to_stage:
-            next_actions.append({
-                "tool": "Bash",
-                "reason": "Stage and commit quality infrastructure",
-                "example": (
-                    f"git add {' '.join(files_to_stage)} && "
-                    "git commit -m 'Add quality and security infrastructure (Code Climate + SonarCloud + qlty + security-lite)'"
-                ),
-            })
+            next_actions.append(
+                {
+                    "tool": "Bash",
+                    "reason": "Stage and commit quality infrastructure",
+                    "example": (
+                        f"git add {' '.join(files_to_stage)} && "
+                        "git commit -m 'Add quality and security infrastructure (Code Climate + SonarCloud + qlty + security-lite)'"
+                    ),
+                }
+            )
 
         if github.get("detected"):
             if not sonar_token:
-                next_actions.append({
+                next_actions.append(
+                    {
+                        "tool": "Bash",
+                        "reason": "Configure GitHub Actions secret required by SonarCloud workflow",
+                        "example": (
+                            f"gh secret set SONAR_TOKEN --repo {owner}/{repo} --body '<your_sonar_token>'"
+                        ),
+                    }
+                )
+                next_actions.append(
+                    {
+                        "tool": "setup_github_quality",
+                        "reason": "Run sonar-scanner to push initial analysis and activate badge",
+                        "example": (
+                            f'setup_github_quality(path="{project_root}", '
+                            'write=True, sonar_token="<your_token>")'
+                        ),
+                    }
+                )
+            next_actions.append(
+                {
                     "tool": "Bash",
-                    "reason": "Configure GitHub Actions secret required by SonarCloud workflow",
-                    "example": (
-                        f"gh secret set SONAR_TOKEN --repo {owner}/{repo} --body '<your_sonar_token>'"
-                    ),
-                })
-                next_actions.append({
-                    "tool": "setup_github_quality",
-                    "reason": "Run sonar-scanner to push initial analysis and activate badge",
-                    "example": (
-                        f'setup_github_quality(path="{project_root}", '
-                        'write=True, sonar_token="<your_token>")'
-                    ),
-                })
-            next_actions.append({
-                "tool": "Bash",
-                "reason": "Connect repo to Code Climate, then replace PLACEHOLDER in README badge",
-                "example": f"open https://codeclimate.com/github/{owner}/{repo}",
-            })
+                    "reason": "Connect repo to Code Climate, then replace PLACEHOLDER in README badge",
+                    "example": f"open https://codeclimate.com/github/{owner}/{repo}",
+                }
+            )
 
         # Suggest qlty check if qlty is available
         qlty_path_bin = shutil.which("qlty")
         if qlty_path_bin:
-            next_actions.append({
-                "tool": "Bash",
-                "reason": "Run qlty local analysis for independent code quality check",
-                "example": f"cd {project_root} && qlty check --all",
-            })
+            next_actions.append(
+                {
+                    "tool": "Bash",
+                    "reason": "Run qlty local analysis for independent code quality check",
+                    "example": f"cd {project_root} && qlty check --all",
+                }
+            )
 
         output: dict[str, Any] = {
             "status": "written" if write else "preview",

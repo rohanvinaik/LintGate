@@ -326,9 +326,7 @@ def compute_quality_economics_summary(
 
     # Coverage stats
     coverages = [
-        float(e["coverage_pct"])
-        for e in entries
-        if isinstance(e.get("coverage_pct"), (int, float))
+        float(e["coverage_pct"]) for e in entries if isinstance(e.get("coverage_pct"), (int, float))
     ]
     avg_coverage = round(sum(coverages) / len(coverages), 1) if coverages else 0.0
     coverage_trend = _compute_coverage_trend(coverages)
@@ -450,9 +448,7 @@ def compute_token_economics_summary(
         if isinstance(c.get("tool_calls_compacted"), (int, float))
     ]
     avg_calls_per_compaction = (
-        sum(compaction_calls) / len(compaction_calls)
-        if compaction_calls
-        else 0.0
+        sum(compaction_calls) / len(compaction_calls) if compaction_calls else 0.0
     )
 
     deltas = [
@@ -467,18 +463,10 @@ def compute_token_economics_summary(
     ]
     api_calibration_events = sum(1 for e in token_estimates if e.get("source") == "api")
 
-    runtime_successes = sum(
-        int(bool(e.get("success", 0)))
-        for e in runtime_writes
-    )
-    runtime_write_success_rate = (
-        runtime_successes / len(runtime_writes)
-        if runtime_writes
-        else 0.0
-    )
+    runtime_successes = sum(int(bool(e.get("success", 0))) for e in runtime_writes)
+    runtime_write_success_rate = runtime_successes / len(runtime_writes) if runtime_writes else 0.0
     runtime_write_cadence_skips = sum(
-        int(bool(e.get("skipped_by_cadence", 0)))
-        for e in runtime_writes
+        int(bool(e.get("skipped_by_cadence", 0))) for e in runtime_writes
     )
     lock_contention_values = [
         int(e.get("lock_contention_count", 0))
@@ -506,14 +494,10 @@ def compute_token_economics_summary(
         "api_calibration_events": api_calibration_events,
         "avg_calibration_delta": round(sum(deltas) / len(deltas), 1) if deltas else 0.0,
         "avg_abs_calibration_delta": (
-            round(sum(abs(d) for d in deltas) / len(deltas), 1)
-            if deltas
-            else 0.0
+            round(sum(abs(d) for d in deltas) / len(deltas), 1) if deltas else 0.0
         ),
         "avg_calibration_factor": (
-            round(sum(new_factors) / len(new_factors), 6)
-            if new_factors
-            else 0.0
+            round(sum(new_factors) / len(new_factors), 6) if new_factors else 0.0
         ),
         "runtime_state_writes": len(runtime_writes),
         "runtime_write_success_rate": round(runtime_write_success_rate, 3),

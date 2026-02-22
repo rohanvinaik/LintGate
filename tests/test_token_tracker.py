@@ -19,7 +19,6 @@ from lintgate.token_tracker import (
     should_compact,
 )
 
-
 # ── TokenTrackerState serialization ──────────────────────────────────
 
 
@@ -190,7 +189,7 @@ class TestApplyApiCalibration:
             char_count_total=20000,
             calibration_factor=0.25,
         )
-        result = apply_api_calibration(tracker, 6000, 50)
+        apply_api_calibration(tracker, 6000, 50)
         assert tracker.estimated_tokens_used == 6000  # Reset to actual
         assert tracker.calibration_count == 1
         assert tracker.consecutive_api_failures == 0

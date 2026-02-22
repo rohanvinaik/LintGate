@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
-from ..compass import CompassDirective, CompassState
+if TYPE_CHECKING:
+    from ..compass import CompassDirective, CompassState
 
 
 def format_directives(directives: list[CompassDirective], kind: str) -> list[str]:

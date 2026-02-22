@@ -78,7 +78,9 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
         msg
         for msg in [
             _check_theory_mode(mode, tool_name),
-            _check_bash_alignment(data, exec_compass) if tool_name == "Bash" and exec_compass else "",
+            _check_bash_alignment(data, exec_compass)
+            if tool_name == "Bash" and exec_compass
+            else "",
         ]
         if msg
     ]

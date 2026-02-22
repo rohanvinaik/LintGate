@@ -17,6 +17,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Literal
 
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -25,7 +26,6 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import LintIssue
-
 
 # Dependency manifest/lockfile basenames — when these are in files_changed,
 # the lockfile freshness check should still run even on hooks.
@@ -110,9 +110,9 @@ class GitChannel:
         findings.extend(secrets_findings)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
-        status = "fail" if findings else "pass"
+        status: Literal["pass", "fail"] = "fail" if findings else "pass"
         # Escalate severity if secrets found (warning-level)
-        severity = "none"
+        severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = "informational"
             if any(f.severity == "warning" for f in findings):

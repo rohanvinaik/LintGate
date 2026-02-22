@@ -10,12 +10,9 @@ Covers:
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from lintgate.reset import (
     ResetReport,
@@ -29,7 +26,6 @@ from lintgate.reset import (
     reset_project,
     reset_session_only,
 )
-
 
 # ── _find_managed_sections ───────────────────────────────────────────
 
@@ -73,10 +69,7 @@ class TestFindManagedSections:
         assert sections[1][2] == "CONSTRAINTS"
 
     def test_unpaired_begin_is_skipped(self):
-        text = (
-            "<!-- LINTGATE:BEGIN ORPHAN v1 -->\n"
-            "No end marker\n"
-        )
+        text = "<!-- LINTGATE:BEGIN ORPHAN v1 -->\nNo end marker\n"
         sections = _find_managed_sections(text)
         assert len(sections) == 0
 
@@ -150,9 +143,7 @@ class TestStripManagedSections:
     def test_strip_removes_section(self, tmp_path):
         f = tmp_path / "test.md"
         f.write_text(
-            "Header\n\n"
-            "<!-- LINTGATE:BEGIN X v1 -->\nContent\n<!-- LINTGATE:END X -->\n\n"
-            "Footer\n"
+            "Header\n\n<!-- LINTGATE:BEGIN X v1 -->\nContent\n<!-- LINTGATE:END X -->\n\nFooter\n"
         )
         report = ResetReport()
         _strip_managed_sections(f, report, dry_run=False)
@@ -168,9 +159,7 @@ class TestStripManagedSections:
 
     def test_strip_dry_run_does_not_modify(self, tmp_path):
         content = (
-            "Header\n\n"
-            "<!-- LINTGATE:BEGIN Y v1 -->\nContent\n<!-- LINTGATE:END Y -->\n\n"
-            "Footer\n"
+            "Header\n\n<!-- LINTGATE:BEGIN Y v1 -->\nContent\n<!-- LINTGATE:END Y -->\n\nFooter\n"
         )
         f = tmp_path / "test.md"
         f.write_text(content)
@@ -352,8 +341,7 @@ class TestResetFunctions:
     def test_reset_project_dry_run(self, tmp_path):
         (tmp_path / ".claude").mkdir()
         (tmp_path / ".claude" / "CLAUDE.md").write_text(
-            "# Claude\n\n"
-            "<!-- LINTGATE:BEGIN X v1 -->\nStuff\n<!-- LINTGATE:END X -->\n\n"
+            "# Claude\n\n<!-- LINTGATE:BEGIN X v1 -->\nStuff\n<!-- LINTGATE:END X -->\n\n"
         )
         report = reset_project(str(tmp_path), dry_run=True)
         # Should report the managed section
@@ -365,11 +353,9 @@ class TestResetFunctions:
     def test_reset_project_real(self, tmp_path):
         (tmp_path / ".claude").mkdir()
         (tmp_path / ".claude" / "CLAUDE.md").write_text(
-            "# Claude\n\n"
-            "<!-- LINTGATE:BEGIN X v1 -->\nStuff\n<!-- LINTGATE:END X -->\n\n"
-            "Footer\n"
+            "# Claude\n\n<!-- LINTGATE:BEGIN X v1 -->\nStuff\n<!-- LINTGATE:END X -->\n\nFooter\n"
         )
-        report = reset_project(str(tmp_path), dry_run=False)
+        reset_project(str(tmp_path), dry_run=False)
         content = (tmp_path / ".claude" / "CLAUDE.md").read_text()
         assert "LINTGATE:BEGIN" not in content
         assert "Footer" in content

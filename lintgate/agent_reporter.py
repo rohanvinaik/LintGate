@@ -75,8 +75,7 @@ def _build_posttooluse_context(result: AggregatedResult) -> str:
     warnings = len(result.warnings)
     informational = len(result.informational)
     top = ", ".join(
-        f"{issue.linter}/{issue.kind}:{issue.short_location()}"
-        for issue in result.blocking[:3]
+        f"{issue.linter}/{issue.kind}:{issue.short_location()}" for issue in result.blocking[:3]
     )
     parts = [
         f"blocking_count={blocking}",

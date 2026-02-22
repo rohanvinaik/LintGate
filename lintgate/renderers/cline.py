@@ -23,9 +23,7 @@ class ClineRenderer:
     output_paths = [".clinerules/compass.md"]
     capabilities: HostCapabilities = CLINE_CAPABILITIES
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         name = project_name(metadata)
         mission = axis_summary(compass, "problem") or "Write correct code."
         architecture = axis_summary(compass, "solution")

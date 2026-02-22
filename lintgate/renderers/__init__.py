@@ -24,9 +24,7 @@ class Renderer(Protocol):
     name: str
     output_paths: list[str]  # relative paths from project root
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         """Return {relative_path: rendered_content}."""
         ...
 

@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from ..compass import CompassState
+from typing import TYPE_CHECKING
+
 from ._helpers import axis_summary, format_directives, project_name, truncate_lines
+
+if TYPE_CHECKING:
+    from ..compass import CompassState
 
 
 class CopilotRenderer:
     name = "copilot"
     output_paths = [".github/copilot-instructions.md"]
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         name = project_name(metadata)
         mission = axis_summary(compass, "problem") or "Write correct code."
         architecture = axis_summary(compass, "solution")
@@ -36,8 +38,4 @@ class CopilotRenderer:
             lines += [f"- {a}" for a in away]
             lines.append("")
 
-        return {
-            ".github/copilot-instructions.md": "\n".join(
-                truncate_lines(lines, 1200)
-            )
-        }
+        return {".github/copilot-instructions.md": "\n".join(truncate_lines(lines, 1200))}

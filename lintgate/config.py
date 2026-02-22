@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from .controlplane.types import ControlPlaneConfig
 
 try:
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 
     _YAML_AVAILABLE = True
 except ImportError:
@@ -290,7 +290,7 @@ def _parse_quality_policy(raw: dict) -> QualityPolicy:
 def _coerce_int(value: object, default: int) -> int:
     """Best-effort int coercion used for config parsing."""
     try:
-        return int(value)
+        return int(value)  # type: ignore[arg-type,call-overload,no-any-return]
     except (TypeError, ValueError):
         return default
 

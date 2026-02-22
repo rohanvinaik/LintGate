@@ -217,9 +217,7 @@ def save_runtime_state_with_meta(
         state.timestamp = time.time()
 
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(state_dir), suffix=".tmp", prefix="rs_"
-            )
+            fd, tmp_path = tempfile.mkstemp(dir=str(state_dir), suffix=".tmp", prefix="rs_")
             try:
                 with os.fdopen(fd, "w") as f:
                     json.dump(state.to_dict(), f, separators=(",", ":"))
@@ -353,9 +351,7 @@ def build_runtime_state(
             if s.behavior.prediction_accuracy is not None
         ]
         if recent_predictions:
-            state.prediction_accuracy = round(
-                sum(recent_predictions) / len(recent_predictions), 2
-            )
+            state.prediction_accuracy = round(sum(recent_predictions) / len(recent_predictions), 2)
 
     # Token economics
     if tracker is not None:
@@ -390,6 +386,6 @@ def _populate_from_compass(state: RuntimeState, compass: CompassState) -> None:
 
     state.toward = [d.text for d in compass.directives if d.kind == "toward"][:_MAX_DIRECTIVES]
     state.away = [d.text for d in compass.directives if d.kind == "away"][:_MAX_DIRECTIVES]
-    state.forbidden = [
-        d.text for d in compass.directives if d.kind == "forbidden"
-    ][:_MAX_DIRECTIVES]
+    state.forbidden = [d.text for d in compass.directives if d.kind == "forbidden"][
+        :_MAX_DIRECTIVES
+    ]

@@ -44,9 +44,7 @@ def _build_capsule_from_runtime(project_root: str) -> dict[str, Any] | None:
             },
             "session_state": {
                 "mode": runtime.mode,
-                "focus_files": [
-                    f.rsplit("/", 1)[-1] for f in runtime.active_files[:5]
-                ],
+                "focus_files": [f.rsplit("/", 1)[-1] for f in runtime.active_files[:5]],
                 "test_status": runtime.last_test_status,
                 "blocking": runtime.blocking_issues,
                 "coherence": runtime.coherence_state,
@@ -89,6 +87,7 @@ def _write_dynamic_files(project_root: str) -> None:
 
         files = registry.render_dynamic_for_targets(targets, runtime)
         from lintgate.renderers.dynamic import write_dynamic_file
+
         for rel_path, content in files.items():
             write_dynamic_file(project_root, rel_path, content)
     except Exception:
@@ -163,7 +162,9 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
     compass_capsule = legacy.get("compass_capsule", {})
     n_toward = len(compass_capsule.get("toward", [])) if isinstance(compass_capsule, dict) else 0
     n_away = len(compass_capsule.get("away", [])) if isinstance(compass_capsule, dict) else 0
-    n_forbidden = len(compass_capsule.get("forbidden", [])) if isinstance(compass_capsule, dict) else 0
+    n_forbidden = (
+        len(compass_capsule.get("forbidden", [])) if isinstance(compass_capsule, dict) else 0
+    )
 
     return {
         "continue": True,

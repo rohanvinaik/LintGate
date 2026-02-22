@@ -254,7 +254,7 @@ def main() -> None:
             recurrence = update_issue_memory(cwd, all_issues)
 
         # Phase 3.5: Update pattern bank (categorical anti-tail-chasing)
-        pattern_report = {"alerted_patterns": [], "top_categories": []}
+        pattern_report: dict[str, list[str]] = {"alerted_patterns": [], "top_categories": []}
         with contextlib.suppress(Exception):
             from lintgate.pattern_bank import update_pattern_bank
 
@@ -618,7 +618,13 @@ def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool
         # Path A: Habit mode tracking piggybacking on compass/session
         if cp_config.habit_mode_enabled:
             _update_habit_mode_path_a(
-                cp_config, session, compass, cwd, tool_name, tool_input, tool_output,
+                cp_config,
+                session,
+                compass,
+                cwd,
+                tool_name,
+                tool_input,
+                tool_output,
             )
         else:
             _refresh_runtime_state_with_session(
@@ -633,8 +639,98 @@ def _record_behavior_event(cp_config, cwd: str, tool_name: str, tool_input, tool
         save_session(session)
 
 
+def _check_habit_api_calibration(
+    tracker,
+    event_counter: int,
+    cwd: str,
+    overrides: dict,
+    cp_config,
+) -> None:
+    """Run token API calibration if interval has elapsed."""
+    from lintgate.state import log_metric
+    from lintgate.token_tracker import do_api_calibration, should_api_check
+
+    api_interval = overrides.get("token_api_interval", cp_config.habit_mode_token_api_interval)
+    if should_api_check(tracker, event_counter, interval=api_interval):
+        with contextlib.suppress(Exception):
+            result = do_api_calibration(tracker, event_counter, cwd)
+            if result:
+                log_metric(
+                    {
+                        "event": "token_estimate",
+                        "project": cwd,
+                        "source": "api",
+                        **result,
+                    }
+                )
+
+
+def _try_habit_compaction(
+    tracker,
+    habit_state,
+    overrides: dict,
+    cp_config,
+    cwd: str,
+    event_counter: int,
+    *,
+    session_memory: dict | None = None,
+    compass_dict: dict | None = None,
+    last_lint_run: dict | None = None,
+) -> tuple[bool, dict | None]:
+    """Check compaction trigger and build snapshot if needed.
+
+    Returns (did_compact, snapshot_or_None).
+    """
+    from lintgate.habit_mode import build_compaction_snapshot
+    from lintgate.state import log_metric
+    from lintgate.token_tracker import get_usage_summary, reset_post_compaction, should_compact
+
+    compact_threshold = float(
+        overrides.get("compact_threshold", cp_config.habit_mode_compact_threshold)
+    )
+    if not should_compact(tracker, habit_state.active, threshold=compact_threshold):
+        return False, None
+
+    snapshot = None
+    with contextlib.suppress(Exception):
+        token_summary = get_usage_summary(tracker)
+        snapshot = build_compaction_snapshot(
+            habit_state,
+            cwd,
+            session_memory=session_memory,
+            compass=compass_dict,
+            last_lint_run=last_lint_run,
+            token_estimate=token_summary,
+        )
+        habit_state.compaction_count += 1
+        habit_state.last_compaction_event = event_counter
+        estimated_before = tracker.estimated_tokens_used
+        calls_compacted = tracker.tool_calls_since_compact
+        sections_included = sum(1 for v in snapshot.values() if v is not None)
+        reset_post_compaction(tracker)
+        log_metric(
+            {
+                "event": "habit_compact",
+                "project": cwd,
+                "compaction_number": habit_state.compaction_count,
+                "habit_score": habit_state.habit_score,
+                "estimated_tokens_before": estimated_before,
+                "tool_calls_compacted": calls_compacted,
+                "sections_included": sections_included,
+                "trigger": "auto",
+            }
+        )
+    return snapshot is not None, snapshot
+
+
 def _update_habit_mode_path_a(
-    cp_config, session, compass, cwd, tool_name, tool_input, tool_output,
+    cp_config,
+    session,
+    compass,
+    cwd,
+    tool_name,
+    tool_input,
+    tool_output,
 ) -> None:
     """Path A: Habit mode tracking with full session/compass context.
 
@@ -643,7 +739,6 @@ def _update_habit_mode_path_a(
     """
     with contextlib.suppress(Exception):
         from lintgate.habit_mode import (
-            build_compaction_snapshot,
             detect_test_result,
             load_habit_state,
             save_habit_state,
@@ -653,14 +748,9 @@ def _update_habit_mode_path_a(
         )
         from lintgate.state import load_last_run, log_feature_usage, log_metric
         from lintgate.token_tracker import (
-            do_api_calibration,
             estimate_tool_tokens,
-            get_usage_summary,
             load_tracker_state,
-            reset_post_compaction,
             save_tracker_state,
-            should_api_check,
-            should_compact,
         )
 
         habit_state = load_habit_state(session.behavior_compass)
@@ -713,65 +803,35 @@ def _update_habit_mode_path_a(
             # Declaration-driven mode still tracks event volume while active.
             habit_state.total_events_in_habit += 1
 
-        # Token API calibration (every N calls, with timeout + backoff)
-        api_interval = overrides.get("token_api_interval", cp_config.habit_mode_token_api_interval)
-        if should_api_check(tracker, compass.event_counter, interval=api_interval):
-            with contextlib.suppress(Exception):
-                result = do_api_calibration(tracker, compass.event_counter, cwd)
-                if result:
-                    log_metric({
-                        "event": "token_estimate",
-                        "project": cwd,
-                        "source": "api",
-                        **result,
-                    })
+        _check_habit_api_calibration(tracker, compass.event_counter, cwd, overrides, cp_config)
 
         if transition:
             with contextlib.suppress(Exception):
-                log_metric({
-                    "event": "habit_mode_transition",
-                    "project": cwd,
-                    "transition": transition,
-                    "habit_score": habit_state.habit_score,
-                    "trigger": "auto_detect",
-                    "event_counter": compass.event_counter,
-                })
+                log_metric(
+                    {
+                        "event": "habit_mode_transition",
+                        "project": cwd,
+                        "transition": transition,
+                        "habit_score": habit_state.habit_score,
+                        "trigger": "auto_detect",
+                        "event_counter": compass.event_counter,
+                    }
+                )
 
         # Auto-compaction trigger in active habit mode.
-        did_compact = False
-        compact_threshold = float(overrides.get(
-            "compact_threshold",
-            cp_config.habit_mode_compact_threshold,
-        ))
-        if should_compact(tracker, habit_state.active, threshold=compact_threshold):
-            with contextlib.suppress(Exception):
-                token_summary = get_usage_summary(tracker)
-                snapshot = build_compaction_snapshot(
-                    habit_state,
-                    cwd,
-                    session_memory=session.to_dict(),
-                    compass=compass.to_dict(),
-                    last_lint_run=load_last_run(cwd),
-                    token_estimate=token_summary,
-                )
-                habit_state.compaction_count += 1
-                habit_state.last_compaction_event = compass.event_counter
-                session.behavior_compass["habit_last_snapshot"] = snapshot
-                estimated_before = tracker.estimated_tokens_used
-                calls_compacted = tracker.tool_calls_since_compact
-                sections_included = sum(1 for v in snapshot.values() if v is not None)
-                reset_post_compaction(tracker)
-                did_compact = True
-                log_metric({
-                    "event": "habit_compact",
-                    "project": cwd,
-                    "compaction_number": habit_state.compaction_count,
-                    "habit_score": habit_state.habit_score,
-                    "estimated_tokens_before": estimated_before,
-                    "tool_calls_compacted": calls_compacted,
-                    "sections_included": sections_included,
-                    "trigger": "auto",
-                })
+        did_compact, snapshot = _try_habit_compaction(
+            tracker,
+            habit_state,
+            overrides,
+            cp_config,
+            cwd,
+            compass.event_counter,
+            session_memory=session.to_dict(),
+            compass_dict=compass.to_dict(),
+            last_lint_run=load_last_run(cwd),
+        )
+        if did_compact and snapshot:
+            session.behavior_compass["habit_last_snapshot"] = snapshot
 
         save_habit_state(session.behavior_compass, habit_state)
         save_tracker_state(session.behavior_compass, tracker)
@@ -789,7 +849,11 @@ def _update_habit_mode_path_a(
 
 
 def _record_habit_event_lightweight(
-    cp_config, cwd: str, tool_name: str, tool_input, tool_output,
+    cp_config,
+    cwd: str,
+    tool_name: str,
+    tool_input,
+    tool_output,
 ) -> None:
     """Path B: Lightweight habit mode tracking when session_memory is off.
 
@@ -808,7 +872,6 @@ def _record_habit_event_lightweight(
 
         from lintgate.habit_mode import (
             MAX_ACTION_RING,
-            build_compaction_snapshot,
             detect_test_result,
             load_habit_state_standalone,
             load_standalone_extras,
@@ -821,12 +884,7 @@ def _record_habit_event_lightweight(
         from lintgate.state import log_metric
         from lintgate.token_tracker import (
             TokenTrackerState,
-            do_api_calibration,
             estimate_tool_tokens,
-            get_usage_summary,
-            reset_post_compaction,
-            should_api_check,
-            should_compact,
         )
 
         habit_state, action_ring = load_habit_state_standalone(cwd)
@@ -859,12 +917,14 @@ def _record_habit_event_lightweight(
             command_text = tool_input
         if tool_name == "Bash":
             sig = command_text
-        action_ring.append({
-            "tool": tool_name,
-            "ts": time.time(),
-            "intent": quick_intent(tool_name),
-            "sig": sig,
-        })
+        action_ring.append(
+            {
+                "tool": tool_name,
+                "ts": time.time(),
+                "intent": quick_intent(tool_name),
+                "sig": sig,
+            }
+        )
         if len(action_ring) > MAX_ACTION_RING:
             action_ring = action_ring[-MAX_ACTION_RING:]
 
@@ -879,16 +939,20 @@ def _record_habit_event_lightweight(
                 detect_test_result(habit_state, out_str, command_text)
 
         event_counter = tracker.tool_call_count
-        auto_detect_enabled = bool(standalone_overrides.get(
-            "auto_detect",
-            cp_config.habit_mode_auto_detect,
-        ))
+        auto_detect_enabled = bool(
+            standalone_overrides.get(
+                "auto_detect",
+                cp_config.habit_mode_auto_detect,
+            )
+        )
         transition = None
         if auto_detect_enabled:
             transition = update_mode(
                 habit_state,
                 event_counter,
-                enter_score=standalone_overrides.get("enter_score", cp_config.habit_mode_enter_score),
+                enter_score=standalone_overrides.get(
+                    "enter_score", cp_config.habit_mode_enter_score
+                ),
                 exit_score=standalone_overrides.get("exit_score", cp_config.habit_mode_exit_score),
                 sustain_calls=standalone_overrides.get(
                     "sustain_calls",
@@ -898,64 +962,31 @@ def _record_habit_event_lightweight(
         elif habit_state.active:
             habit_state.total_events_in_habit += 1
 
-        # Token API calibration
-        api_interval = standalone_overrides.get(
-            "token_api_interval",
-            cp_config.habit_mode_token_api_interval,
-        )
-        if should_api_check(tracker, event_counter, interval=api_interval):
-            with contextlib.suppress(Exception):
-                result = do_api_calibration(tracker, event_counter, cwd)
-                if result:
-                    log_metric({
-                        "event": "token_estimate",
-                        "project": cwd,
-                        "source": "api",
-                        **result,
-                    })
+        _check_habit_api_calibration(tracker, event_counter, cwd, standalone_overrides, cp_config)
 
         if transition:
             with contextlib.suppress(Exception):
-                log_metric({
-                    "event": "habit_mode_transition",
-                    "project": cwd,
-                    "transition": transition,
-                    "habit_score": habit_state.habit_score,
-                    "trigger": "auto_detect_lightweight",
-                    "event_counter": event_counter,
-                })
-
-        did_compact = False
-        compact_threshold = float(standalone_overrides.get(
-            "compact_threshold",
-            cp_config.habit_mode_compact_threshold,
-        ))
-        if should_compact(tracker, habit_state.active, threshold=compact_threshold):
-            with contextlib.suppress(Exception):
-                token_summary = get_usage_summary(tracker)
-                snapshot = build_compaction_snapshot(
-                    habit_state,
-                    cwd,
-                    token_estimate=token_summary,
+                log_metric(
+                    {
+                        "event": "habit_mode_transition",
+                        "project": cwd,
+                        "transition": transition,
+                        "habit_score": habit_state.habit_score,
+                        "trigger": "auto_detect_lightweight",
+                        "event_counter": event_counter,
+                    }
                 )
-                habit_state.compaction_count += 1
-                habit_state.last_compaction_event = event_counter
-                estimated_before = tracker.estimated_tokens_used
-                calls_compacted = tracker.tool_calls_since_compact
-                sections_included = sum(1 for v in snapshot.values() if v is not None)
-                last_snapshot = snapshot
-                reset_post_compaction(tracker)
-                did_compact = True
-                log_metric({
-                    "event": "habit_compact",
-                    "project": cwd,
-                    "compaction_number": habit_state.compaction_count,
-                    "habit_score": habit_state.habit_score,
-                    "estimated_tokens_before": estimated_before,
-                    "tool_calls_compacted": calls_compacted,
-                    "sections_included": sections_included,
-                    "trigger": "auto_lightweight",
-                })
+
+        did_compact, compact_snapshot = _try_habit_compaction(
+            tracker,
+            habit_state,
+            standalone_overrides,
+            cp_config,
+            cwd,
+            event_counter,
+        )
+        if did_compact and compact_snapshot:
+            last_snapshot = compact_snapshot
 
         updated_scheduler = _refresh_runtime_state_lightweight(
             cwd,
@@ -1059,7 +1090,7 @@ def _setup_session_and_gate(
     return session, advisory
 
 
-def _apply_behavior_delta(session, cr, cp_config, input_data: dict) -> None:
+def _apply_behavior_delta(session, cr, cp_config, input_data: dict) -> list[str]:
     """Apply behavior compass delta, global profile delta, and model telemetry from a channel result."""
     snapshot_alerts = [f.kind for f in cr.findings]
 
@@ -1073,9 +1104,14 @@ def _apply_behavior_delta(session, cr, cp_config, input_data: dict) -> None:
         delta = cr.metrics["behavior_compass_delta"]
         existing_telem = _session_telemetry_updates_used(session)
         bc = load_behavior_compass(session)
-        for key in ("last_fired", "signal_fire_counts", "early_nudge_emitted",
-                     "pending_nudge_signals", "pending_nudge_constraint_check_count",
-                     "nudge_outcomes"):
+        for key in (
+            "last_fired",
+            "signal_fire_counts",
+            "early_nudge_emitted",
+            "pending_nudge_signals",
+            "pending_nudge_constraint_check_count",
+            "nudge_outcomes",
+        ):
             if key in delta:
                 setattr(bc, key, delta[key])
         save_behavior_compass(session, bc)
@@ -1098,7 +1134,8 @@ def _apply_behavior_delta(session, cr, cp_config, input_data: dict) -> None:
 
             gp = load_global_profile(ttl_days=cp_config.global_memory_ttl_days)
             apply_session_delta(
-                gp, cr.metrics["global_profile_delta"],
+                gp,
+                cr.metrics["global_profile_delta"],
                 session_id=session.session_id if session else "",
             )
             save_global_profile(gp)
@@ -1141,8 +1178,10 @@ def _record_snapshot_behavior(snapshot, tool_name: str, tool_input, tool_output)
 
     from lintgate.controlplane.behavior_compass import extract_error_sig, normalize_command_sig
 
-    cmd = tool_input.get("command", "") if isinstance(tool_input, dict) else (
-        tool_input if isinstance(tool_input, str) else ""
+    cmd = (
+        tool_input.get("command", "")
+        if isinstance(tool_input, dict)
+        else (tool_input if isinstance(tool_input, str) else "")
     )
     snapshot.behavior.command_signature = normalize_command_sig(cmd)
     snapshot.behavior.error_signature = extract_error_sig(
@@ -1151,7 +1190,8 @@ def _record_snapshot_behavior(snapshot, tool_name: str, tool_input, tool_output)
     output_str = tool_output if isinstance(tool_output, str) else str(tool_output)
     exit_match = re.search(
         r"(?:exit[_ ]code|exit[_ ]status|exitstatus)[: =]+(\d+)",
-        output_str, re.IGNORECASE,
+        output_str,
+        re.IGNORECASE,
     )
     if exit_match:
         snapshot.behavior.exit_code = int(exit_match.group(1))
@@ -1186,11 +1226,14 @@ def _run_constraint_proposer(session, mesh_result, cp_config) -> list[dict]:
             recent = counts[-5:]
             recent_run_count = sum(1 for c in recent if c > 0)
             if recent_run_count > 0:
-                pattern_alerts.append({
-                    "linter": linter, "kind": kind,
-                    "alert_reason": "recurring_across_runs",
-                    "recent_run_count": recent_run_count,
-                })
+                pattern_alerts.append(
+                    {
+                        "linter": linter,
+                        "kind": kind,
+                        "alert_reason": "recurring_across_runs",
+                        "recent_run_count": recent_run_count,
+                    }
+                )
 
         if pattern_alerts:
             proposals = propose_constraints_from_patterns(
@@ -1237,8 +1280,13 @@ def _save_run_details(mesh_result, finding_index: dict) -> None:
                 "error": cr.error_message,
                 "findings": [f.to_dict() for f in cr.findings],
                 "repairs": [
-                    {"action_id": r.action_id, "kind": r.kind, "summary": r.summary,
-                     "safe": r.safe, "payload": r.payload}
+                    {
+                        "action_id": r.action_id,
+                        "kind": r.kind,
+                        "summary": r.summary,
+                        "safe": r.safe,
+                        "payload": r.payload,
+                    }
                     for r in cr.repairs
                 ],
                 "metrics": cr.metrics,
@@ -1248,62 +1296,10 @@ def _save_run_details(mesh_result, finding_index: dict) -> None:
             save_controlplane_run(run_id, details)
 
 
-def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: float) -> None:
-    """Run the ControlPlane supervision mesh."""
-    from lintgate.channels.dependency_channel import DependencyChannel
-    from lintgate.channels.git_channel import GitChannel
-    from lintgate.channels.lint_channel import LintChannel
-    from lintgate.channels.structure_channel import StructureChannel
-    from lintgate.channels.test_channel import TestChannel
-    from lintgate.controlplane.reporter import format_mesh_report
-    from lintgate.controlplane.runtime import run_mesh
-    from lintgate.controlplane.types import SupervisionEvent
-
-    tool_name = input_data.get("tool_name", "")
-    tool_input = input_data.get("tool_input", {})
-    tool_output = input_data.get("tool_output", "")
-
-    classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
-
-    _record_behavior_event(cp_config, cwd, tool_name, tool_input, tool_output)
-    _record_habit_event_lightweight(cp_config, cwd, tool_name, tool_input, tool_output)
-    global_priors = _load_global_priors(cp_config)
-
-    if classification.risk_level == "none":
-        _exit_clean()
-
-    event = SupervisionEvent(
-        surface="hook",
-        project_root=cwd,
-        tool_name=tool_name,
-        files_changed=classification.files_changed,
-        change_classification=classification,
-        raw_input=input_data,
-    )
-
-    channels: list[Channel] = [LintChannel(), TestChannel(), DependencyChannel(), GitChannel()]
-    if cp_config.channel_enabled("structure"):
-        channels.append(StructureChannel())
-    if cp_config.channel_enabled("behavior"):
-        from lintgate.channels.behavior_channel import BehaviorChannel
-
-        channels.append(BehaviorChannel())
-
-    session, advisory = _setup_session_and_gate(
-        cp_config, cwd, tool_name, event, channels, global_priors,
-    )
-
-    mesh_result = run_mesh(event, cp_config, channels, session=session)
-
-    # Build finding index for session delta tracking
-    finding_index: dict = {}
-    with contextlib.suppress(Exception):
-        from lintgate.controlplane.reporter import build_finding_index
-
-        finding_index = build_finding_index(mesh_result)
-
-    # Extract previous + baseline finding indexes BEFORE record_mesh_run
-    # (which appends a new snapshot — must capture state before mutation)
+def _extract_finding_indexes(
+    session: Any,
+) -> tuple[dict | None, dict | None, int]:
+    """Extract previous and baseline finding indexes from session snapshots."""
     previous_finding_index: dict | None = None
     baseline_finding_index: dict | None = None
     snapshot_count = 0
@@ -1311,62 +1307,80 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
         with contextlib.suppress(Exception):
             if session.snapshots:
                 snapshot_count = len(session.snapshots)
-                # Previous = most recent snapshot's finding index
                 previous_finding_index = session.snapshots[-1].finding_index
-                # Baseline = first snapshot in session (debt baseline)
                 baseline_finding_index = session.snapshots[0].finding_index
+    return previous_finding_index, baseline_finding_index, snapshot_count
 
-    # Post-process session: behavior delta, snapshot, constraints
+
+def _post_process_session(
+    session: Any,
+    mesh_result: Any,
+    finding_index: dict,
+    cp_config: Any,
+    input_data: dict,
+    tool_name: str,
+    tool_input: Any,
+    tool_output: str,
+) -> list[dict]:
+    """Post-process session after mesh run: record, apply deltas, propose constraints."""
     proposed_constraints: list[dict] = []
-    if session is not None:
-        with contextlib.suppress(Exception):
-            from lintgate.controlplane.session_memory import record_mesh_run, save_session
+    if session is None:
+        return proposed_constraints
 
-            snapshot = record_mesh_run(session, mesh_result, finding_index=finding_index)
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.session_memory import record_mesh_run
 
-            for cr in mesh_result.channel_results:
-                if cr.channel == "behavior":
-                    snapshot.behavior.behavior_alerts = _apply_behavior_delta(
-                        session, cr, cp_config, input_data,
-                    )
-                    break
+        snapshot = record_mesh_run(session, mesh_result, finding_index=finding_index)
 
-            _record_snapshot_behavior(snapshot, tool_name, tool_input, tool_output)
+        for cr in mesh_result.channel_results:
+            if cr.channel == "behavior":
+                snapshot.behavior.behavior_alerts = _apply_behavior_delta(
+                    session,
+                    cr,
+                    cp_config,
+                    input_data,
+                )
+                break
 
-        proposed_constraints = _run_constraint_proposer(session, mesh_result, cp_config)
+        _record_snapshot_behavior(snapshot, tool_name, tool_input, tool_output)
 
-        with contextlib.suppress(Exception):
-            from lintgate.controlplane.session_memory import save_session
+    proposed_constraints = _run_constraint_proposer(session, mesh_result, cp_config)
 
-            save_session(session)
-        session.theory_profile_cache = None
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.session_memory import save_session
 
-    _save_run_details(mesh_result, finding_index)
+        save_session(session)
+    session.theory_profile_cache = None
 
-    report = format_mesh_report(
-        mesh_result,
-        cp_config,
-        proposed_constraints=proposed_constraints,
-        previous_finding_index=previous_finding_index,
-        baseline_finding_index=baseline_finding_index,
-        snapshot_count=snapshot_count,
-    )
+    return proposed_constraints
 
-    # Accumulate telemetry counters into session memory
+
+def _accumulate_session_telemetry(report: dict | None, session: Any) -> None:
+    """Merge telemetry counters from report into session memory."""
     telemetry = report.get("_telemetry", {}) if report else {}
-    if telemetry and session is not None:
-        with contextlib.suppress(Exception):
-            from lintgate.controlplane.session_memory import save_session
+    if not telemetry or session is None:
+        return
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.session_memory import save_session
 
-            existing = session.behavior_compass.get("telemetry_counters", {})
-            if not isinstance(existing, dict):
-                existing = {}
-            for key, value in telemetry.items():
-                existing[key] = existing.get(key, 0) + value
-            session.behavior_compass["telemetry_counters"] = existing
-            save_session(session)
+        existing = session.behavior_compass.get("telemetry_counters", {})
+        if not isinstance(existing, dict):
+            existing = {}
+        for key, value in telemetry.items():
+            existing[key] = existing.get(key, 0) + value
+        session.behavior_compass["telemetry_counters"] = existing
+        save_session(session)
 
-    # Runtime state bus refresh (canonical projection for hooks/rules/MCP).
+
+def _refresh_runtime_after_run(
+    cwd: str,
+    session: Any,
+    cp_config: Any,
+    mesh_result: Any,
+    tool_name: str,
+    tool_input: Any,
+) -> None:
+    """Refresh runtime state after a controlplane run."""
     if session is not None:
         _refresh_runtime_state_with_session(
             cwd,
@@ -1429,18 +1443,112 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
                 trigger="lint_complete",
             )
 
+
+def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: float) -> None:
+    """Run the ControlPlane supervision mesh."""
+    from lintgate.channels.dependency_channel import DependencyChannel
+    from lintgate.channels.git_channel import GitChannel
+    from lintgate.channels.lint_channel import LintChannel
+    from lintgate.channels.structure_channel import StructureChannel
+    from lintgate.channels.test_channel import TestChannel
+    from lintgate.controlplane.reporter import format_mesh_report
+    from lintgate.controlplane.runtime import run_mesh
+    from lintgate.controlplane.types import SupervisionEvent
+
+    tool_name = input_data.get("tool_name", "")
+    tool_input = input_data.get("tool_input", {})
+    tool_output = input_data.get("tool_output", "")
+
+    classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
+
+    _record_behavior_event(cp_config, cwd, tool_name, tool_input, tool_output)
+    _record_habit_event_lightweight(cp_config, cwd, tool_name, tool_input, tool_output)
+    global_priors = _load_global_priors(cp_config)
+
+    if classification.risk_level == "none":
+        _exit_clean()
+
+    event = SupervisionEvent(
+        surface="hook",
+        project_root=cwd,
+        tool_name=tool_name,
+        files_changed=classification.files_changed,
+        change_classification=classification,
+        raw_input=input_data,
+    )
+
+    channels: list[Channel] = [LintChannel(), TestChannel(), DependencyChannel(), GitChannel()]
+    if cp_config.channel_enabled("structure"):
+        channels.append(StructureChannel())
+    if cp_config.channel_enabled("behavior"):
+        from lintgate.channels.behavior_channel import BehaviorChannel
+
+        channels.append(BehaviorChannel())
+
+    session, advisory = _setup_session_and_gate(
+        cp_config,
+        cwd,
+        tool_name,
+        event,
+        channels,
+        global_priors,
+    )
+
+    mesh_result = run_mesh(event, cp_config, channels, session=session)
+
+    # Build finding index for session delta tracking
+    finding_index: dict = {}
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.reporter import build_finding_index
+
+        finding_index = build_finding_index(mesh_result)
+
+    previous_finding_index, baseline_finding_index, snapshot_count = _extract_finding_indexes(
+        session
+    )
+
+    proposed_constraints = _post_process_session(
+        session,
+        mesh_result,
+        finding_index,
+        cp_config,
+        input_data,
+        tool_name,
+        tool_input,
+        tool_output,
+    )
+
+    _save_run_details(mesh_result, finding_index)
+
+    report = format_mesh_report(
+        mesh_result,
+        cp_config,
+        proposed_constraints=proposed_constraints,
+        previous_finding_index=previous_finding_index,
+        baseline_finding_index=baseline_finding_index,
+        snapshot_count=snapshot_count,
+    )
+
+    _accumulate_session_telemetry(report, session)
+    _refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
+
     # Strip internal telemetry from output (not for the agent)
+    telemetry = report.get("_telemetry", {}) if report else {}
     if report and "_telemetry" in report:
         del report["_telemetry"]
 
     with contextlib.suppress(Exception):
         elapsed_ms = (time.perf_counter() - start) * 1000
         metric_data: dict[str, Any] = {
-            "event": "controlplane_run", "project": cwd, "tool_name": tool_name,
-            "change_kind": classification.change_kind, "risk_level": classification.risk_level,
+            "event": "controlplane_run",
+            "project": cwd,
+            "tool_name": tool_name,
+            "change_kind": classification.change_kind,
+            "risk_level": classification.risk_level,
             "coherence_state": mesh_result.coherence.state,
             "channels_run": len([r for r in mesh_result.channel_results if r.status != "skip"]),
-            "partial": mesh_result.partial, "duration_ms": round(elapsed_ms, 1),
+            "partial": mesh_result.partial,
+            "duration_ms": round(elapsed_ms, 1),
             "session_active": session is not None,
         }
         if telemetry:
@@ -1449,9 +1557,7 @@ def _run_controlplane(input_data: dict, config, cp_config, cwd: str, start: floa
 
     if advisory and report:
         existing_msg = report.get("systemMessage", "")
-        report["systemMessage"] = (
-            (advisory + "\n\n" + existing_msg) if existing_msg else advisory
-        )
+        report["systemMessage"] = (advisory + "\n\n" + existing_msg) if existing_msg else advisory
 
     print(json.dumps(report if report else {}))
     sys.exit(0)

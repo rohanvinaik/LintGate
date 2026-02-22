@@ -442,7 +442,9 @@ def test_delta_report_limits_repeated_finding_display_to_delta_count() -> None:
         ]
     )
 
-    report = format_mesh_report(current_mesh, previous_finding_index=previous_index, snapshot_count=1)
+    report = format_mesh_report(
+        current_mesh, previous_finding_index=previous_index, snapshot_count=1
+    )
     msg = report["systemMessage"]
     assert "DELTA: 2 new" in msg
     assert "WARNINGS (2):" in msg

@@ -22,19 +22,23 @@ from typing import Any
 
 # Immediate triggers bypass cooldown — used for state transitions that
 # the model must see on its very next turn.
-_IMMEDIATE_TRIGGERS = frozenset({
-    "mode_transition",
-    "compass_violation",
-    "compaction",
-    "session_start",
-})
+_IMMEDIATE_TRIGGERS = frozenset(
+    {
+        "mode_transition",
+        "compass_violation",
+        "compaction",
+        "session_start",
+    }
+)
 
 # Cadenced triggers respect cooldown — used for incremental state updates.
-_CADENCED_TRIGGERS = frozenset({
-    "tool_call",
-    "lint_complete",
-    "timer",
-})
+_CADENCED_TRIGGERS = frozenset(
+    {
+        "tool_call",
+        "lint_complete",
+        "timer",
+    }
+)
 
 
 # ── Data Model ───────────────────────────────────────────────────────

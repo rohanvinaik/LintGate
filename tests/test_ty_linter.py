@@ -185,9 +185,7 @@ class TestTyLinterParsing:
         linter = TyLinter()
         target = tmp_path / "script.py"
         target.write_text(
-            "import sys\n"
-            "sys.path.insert(0, 'vendor')\n"
-            "import missing_pkg\n",
+            "import sys\nsys.path.insert(0, 'vendor')\nimport missing_pkg\n",
         )
         ctx = self._make_ctx(tmp_path, files=[str(target)])
 

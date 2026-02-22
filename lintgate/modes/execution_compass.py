@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..compass import CompassState
+if TYPE_CHECKING:
+    from ..compass import CompassState
 
 
 @dataclass

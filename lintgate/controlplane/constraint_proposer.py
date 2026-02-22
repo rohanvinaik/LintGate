@@ -404,7 +404,7 @@ def _compute_proposal_confidence(template_data: dict[str, Any], recent_count: in
     """Compute confidence scaling with recurrence count."""
     base_conf = template_data.get("base_confidence", 0.5)
     recurrence_bonus = min((recent_count - 3) * 0.075, 0.15) if recent_count > 3 else 0.0
-    return min(base_conf + recurrence_bonus, 1.0)
+    return float(min(base_conf + recurrence_bonus, 1.0))
 
 
 def _apply_coherence_check(

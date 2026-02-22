@@ -57,4 +57,3 @@ def test_ignores_placeholder_values(tmp_path) -> None:
 
     issues = list(SecretChecker().run(ctx))
     assert issues == []
-

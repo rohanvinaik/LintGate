@@ -23,9 +23,7 @@ class WindsurfRenderer:
     output_paths = [".windsurf/rules/compass.md"]
     capabilities: HostCapabilities = WINDSURF_CAPABILITIES
 
-    def render(
-        self, compass: CompassState, metadata: dict[str, str]
-    ) -> dict[str, str]:
+    def render(self, compass: CompassState, metadata: dict[str, str]) -> dict[str, str]:
         name = project_name(metadata)
         mission = axis_summary(compass, "problem") or "Write correct code."
         architecture = axis_summary(compass, "solution")
@@ -64,9 +62,7 @@ class WindsurfRenderer:
                     lines.append(f"- {claim.text}")
                 lines.append("")
 
-        return {
-            ".windsurf/rules/compass.md": "\n".join(truncate_lines(lines, 6000))
-        }
+        return {".windsurf/rules/compass.md": "\n".join(truncate_lines(lines, 6000))}
 
     # ── Dynamic rule files ───────────────────────────────────────────
 

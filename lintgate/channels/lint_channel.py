@@ -17,7 +17,7 @@ from __future__ import annotations
 import contextlib
 import os
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from lintgate.controlplane.types import ChannelResult, ControlPlaneConfig, SupervisionEvent
 from lintgate.types import LintTier
@@ -238,6 +238,8 @@ class LintChannel:
         """
         all_findings = [*aggregated.blocking, *aggregated.warnings, *aggregated.informational]
 
+        status: Literal["pass", "fail"]
+        severity: Literal["blocking", "warning", "informational", "none"]
         if aggregated.blocking:
             status = "fail"
             severity = "blocking"

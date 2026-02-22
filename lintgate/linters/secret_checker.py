@@ -7,9 +7,9 @@ pattern checks that run in normal lint tiers.
 
 from __future__ import annotations
 
-from contextlib import suppress
 import os
 import re
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,7 +37,12 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float, str]] = [
     ("github_token", re.compile(r"(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]{20,}"), 0.98, "warning"),
     ("slack_token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{20,}"), 0.95, "warning"),
     ("stripe_secret", re.compile(r"sk_live_[A-Za-z0-9]{16,}"), 0.98, "warning"),
-    ("generic_secret_assignment", re.compile(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"), 0.80, "informational"),
+    (
+        "generic_secret_assignment",
+        re.compile(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"),
+        0.80,
+        "informational",
+    ),
 ]
 
 

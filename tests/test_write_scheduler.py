@@ -55,22 +55,28 @@ class TestWriteSchedulerDataclass:
 class TestImmediateTriggers:
     """Immediate triggers bypass cooldown and always write when generation changed."""
 
-    @pytest.mark.parametrize("trigger", [
-        "mode_transition",
-        "compass_violation",
-        "compaction",
-        "session_start",
-    ])
+    @pytest.mark.parametrize(
+        "trigger",
+        [
+            "mode_transition",
+            "compass_violation",
+            "compaction",
+            "session_start",
+        ],
+    )
     def test_immediate_trigger_writes(self, trigger):
         ws = WriteScheduler(last_write_generation=1, last_write_time=100.0)
         assert should_write(ws, current_generation=2, trigger=trigger, now=100.1) is True
 
-    @pytest.mark.parametrize("trigger", [
-        "mode_transition",
-        "compass_violation",
-        "compaction",
-        "session_start",
-    ])
+    @pytest.mark.parametrize(
+        "trigger",
+        [
+            "mode_transition",
+            "compass_violation",
+            "compaction",
+            "session_start",
+        ],
+    )
     def test_immediate_trigger_skips_when_same_generation(self, trigger):
         ws = WriteScheduler(last_write_generation=5)
         assert should_write(ws, current_generation=5, trigger=trigger) is False
@@ -190,7 +196,9 @@ class TestSkipConditions:
 
     def test_unknown_trigger_skips(self):
         ws = WriteScheduler(last_write_generation=1, dirty=True)
-        assert should_write(ws, current_generation=2, trigger="unknown_trigger", now=1000.0) is False
+        assert (
+            should_write(ws, current_generation=2, trigger="unknown_trigger", now=1000.0) is False
+        )
 
 
 # ── State mutation helpers ───────────────────────────────────────────

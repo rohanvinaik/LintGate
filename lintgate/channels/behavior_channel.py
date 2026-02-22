@@ -30,7 +30,7 @@ This channel is ADVISORY and read-only for session state:
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from lintgate.controlplane.behavior_compass import (
     DEFAULT_THRESHOLDS,
@@ -175,9 +175,10 @@ def _build_channel_result(
     elapsed_ms: float,
 ) -> ChannelResult:
     """Build the final ChannelResult for the behavior channel."""
-    status = "fail" if findings else "pass"
+    status: Literal["pass", "fail"] = "fail" if findings else "pass"
 
     has_hard = any(f.severity == "warning" for f in findings)
+    severity: Literal["blocking", "warning", "informational", "none"]
     if has_hard:
         severity = "warning"
     elif findings:
