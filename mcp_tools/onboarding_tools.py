@@ -751,6 +751,23 @@ def _generate_coveragerc() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _generate_gitleaks_toml() -> str:
+    """Generate a baseline gitleaks config (extends defaults)."""
+    lines = [
+        'title = "Gitleaks baseline configuration"',
+        "",
+        "[extend]",
+        "useDefault = true",
+        "",
+        "# Add project-specific allowlists as needed, for example:",
+        "# [[allowlists]]",
+        '# description = "Intentional fixture in tests"',
+        '# targetRules = ["generic-api-key"]',
+        "# paths = ['''tests/test_secret_fixture\\.py''']",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
     """Generate a GitHub Actions workflow for SonarQube Cloud analysis.
 
@@ -1168,6 +1185,7 @@ def _generate_security_workflow(
         "        uses: gitleaks/gitleaks-action@v2",
         "        env:",
         "          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+        "          GITLEAKS_CONFIG: .gitleaks.toml",
         "",
         "      - name: Set up Python",
         "        uses: actions/setup-python@v5",
@@ -1995,10 +2013,11 @@ def register(mcp, helpers):
         project layout, and generates tailored configs for Code Climate,
         SonarCloud, qlty CLI, .gitignore augmentation, and README badge injection.
 
-        Generates nine artifacts:
+        Generates ten artifacts:
         - .codeclimate.yml — Code Climate / qlty Cloud config
         - sonar-project.properties — SonarCloud scanner config
         - .coveragerc — shared coverage scope for CI/Sonar workflows
+        - .gitleaks.toml — gitleaks baseline config (extends defaults)
         - .github/workflows/sonarcloud.yml — SonarCloud analysis on push/PR
         - .github/workflows/qlty.yml — qlty analysis on push/PR
         - .github/workflows/security-lite.yml — secrets + SAST + supply-chain checks
@@ -2072,6 +2091,22 @@ def register(mcp, helpers):
         else:
             coveragerc_result["status"] = "preview"
             coveragerc_result["content"] = coveragerc_content
+
+        # --- .gitleaks.toml ---
+        gitleaks_path = os.path.join(project_root, ".gitleaks.toml")
+        gitleaks_exists = os.path.exists(gitleaks_path)
+        gitleaks_content = _generate_gitleaks_toml()
+        gitleaks_result: dict[str, Any] = {"path": gitleaks_path}
+
+        if gitleaks_exists:
+            gitleaks_result["status"] = "already_exists"
+        elif write:
+            with open(gitleaks_path, "w") as f:
+                f.write(gitleaks_content)
+            gitleaks_result["status"] = "written"
+        else:
+            gitleaks_result["status"] = "preview"
+            gitleaks_result["content"] = gitleaks_content
 
         # --- .github/workflows/sonarcloud.yml ---
         workflow_path = os.path.join(project_root, ".github", "workflows", "sonarcloud.yml")
@@ -2262,6 +2297,8 @@ def register(mcp, helpers):
             files_to_stage.append("sonar-project.properties")
         if coveragerc_result.get("status") == "written":
             files_to_stage.append(".coveragerc")
+        if gitleaks_result.get("status") == "written":
+            files_to_stage.append(".gitleaks.toml")
         if workflow_result.get("status") == "written":
             files_to_stage.append(".github/workflows/sonarcloud.yml")
         if tests_workflow_result.get("status") == "written":
@@ -2328,6 +2365,7 @@ def register(mcp, helpers):
             "codeclimate": cc_result,
             "sonar": sonar_result,
             "coveragerc": coveragerc_result,
+            "gitleaks": gitleaks_result,
             "workflow": workflow_result,
             "tests_workflow": tests_workflow_result,
             "qlty_workflow": qlty_workflow_result,

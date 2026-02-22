@@ -20,6 +20,7 @@ from mcp_tools.onboarding_tools import (
     _generate_badge_markdown,
     _generate_coveragerc,
     _generate_codeclimate_yml,
+    _generate_gitleaks_toml,
     _generate_qlty_toml,
     _generate_qlty_workflow,
     _generate_security_workflow,
@@ -255,6 +256,16 @@ class TestGenerateCoveragerc:
         assert "lintgate/hook_posttooluse.py" in content
 
 
+class TestGenerateGitleaksToml:
+    """Tests for _generate_gitleaks_toml."""
+
+    def test_extends_default_configuration(self) -> None:
+        content = _generate_gitleaks_toml()
+        assert "[extend]" in content
+        assert "useDefault = true" in content
+        assert "[[allowlists]]" in content
+
+
 class TestGenerateSonarWorkflow:
     """Tests for _generate_sonar_workflow."""
 
@@ -407,6 +418,7 @@ class TestGenerateSecurityWorkflow:
         assert "pull_request:" in content
         assert "workflow_dispatch:" in content
         assert "gitleaks/gitleaks-action@v2" in content
+        assert "GITLEAKS_CONFIG: .gitleaks.toml" in content
         assert "bandit -q -r ." in content
         assert "pip-audit -r" in content
         assert 'python-version: "3.12"' in content
@@ -676,6 +688,7 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "preview"
         assert result["sonar"]["status"] == "preview"
         assert result["coveragerc"]["status"] == "preview"
+        assert result["gitleaks"]["status"] == "preview"
         assert result["workflow"]["status"] == "preview"
         assert result["tests_workflow"]["status"] == "preview"
         assert result["qlty_workflow"]["status"] == "preview"
@@ -683,6 +696,7 @@ class TestSetupGithubQualityTool:
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
         assert "content" in result["coveragerc"]
+        assert "content" in result["gitleaks"]
         assert "content" in result["workflow"]
         assert "content" in result["tests_workflow"]
         assert "content" in result["qlty_workflow"]
@@ -691,6 +705,7 @@ class TestSetupGithubQualityTool:
         assert not (tmp_path / ".codeclimate.yml").exists()
         assert not (tmp_path / "sonar-project.properties").exists()
         assert not (tmp_path / ".coveragerc").exists()
+        assert not (tmp_path / ".gitleaks.toml").exists()
         assert not (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
@@ -714,6 +729,7 @@ class TestSetupGithubQualityTool:
         assert (tmp_path / ".codeclimate.yml").exists()
         assert (tmp_path / "sonar-project.properties").exists()
         assert (tmp_path / ".coveragerc").exists()
+        assert (tmp_path / ".gitleaks.toml").exists()
         assert (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
@@ -721,6 +737,7 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
         assert result["coveragerc"]["status"] == "written"
+        assert result["gitleaks"]["status"] == "written"
         assert result["workflow"]["status"] == "written"
         assert result["tests_workflow"]["status"] == "written"
         assert result["qlty_workflow"]["status"] == "written"
@@ -735,6 +752,7 @@ class TestSetupGithubQualityTool:
         (tmp_path / ".codeclimate.yml").write_text("existing: true\n")
         (tmp_path / "sonar-project.properties").write_text("existing=true\n")
         (tmp_path / ".coveragerc").write_text("[run]\nsource=lintgate\n")
+        (tmp_path / ".gitleaks.toml").write_text("[extend]\nuseDefault=true\n")
         workflow_dir = tmp_path / ".github" / "workflows"
         workflow_dir.mkdir(parents=True)
         (workflow_dir / "sonarcloud.yml").write_text("name: existing\n")
@@ -754,6 +772,7 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
         assert result["coveragerc"]["status"] == "already_exists"
+        assert result["gitleaks"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
         assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
@@ -812,6 +831,7 @@ class TestSetupGithubQualityTool:
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
         assert result["coveragerc"]["status"] == "already_exists"
+        assert result["gitleaks"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
         assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"

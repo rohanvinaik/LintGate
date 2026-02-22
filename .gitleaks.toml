@@ -1,0 +1,15 @@
+title = "LintGate gitleaks overrides"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Intentional secret-like fixtures for secret-scanning tests."
+targetRules = ["generic-api-key", "private-key", "gitlab-pat"]
+paths = ['''tests/test_secrets_scanning\.py''']
+
+[[allowlists]]
+description = "Intentional auth-token fixture used in behavior-compass tests."
+targetRules = ["stripe-access-token", "curl-auth-header"]
+paths = ['''tests/test_behavior_compass\.py''']
+
