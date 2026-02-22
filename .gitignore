@@ -15,6 +15,10 @@ build/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # External quality tools (local analysis artifacts)
 .qlty/

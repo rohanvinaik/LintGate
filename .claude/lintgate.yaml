@@ -1,6 +1,6 @@
 quality_policy:
   coverage:
-    global_threshold: 78
+    global_threshold: 80
     diff_threshold: 80
     source_packages:
       - lintgate

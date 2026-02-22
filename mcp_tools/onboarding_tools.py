@@ -732,6 +732,21 @@ def _generate_sonar_properties(github: dict[str, Any], layout: dict[str, Any]) -
         "",
         "# Coverage (generate with: pytest --cov --cov-report=xml)",
         "sonar.python.coverage.reportPaths=coverage.xml",
+        "sonar.coverage.exclusions=lintgate/hook_posttooluse.py",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _generate_coveragerc() -> str:
+    """Generate a baseline .coveragerc aligned with CI coverage workflows."""
+    lines = [
+        "[run]",
+        "source =",
+        "    lintgate",
+        "    mcp_tools",
+        "omit =",
+        "    */pytest-*/*/repo/lintgate/*",
+        "    lintgate/hook_posttooluse.py",
     ]
     return "\n".join(lines) + "\n"
 
@@ -812,8 +827,11 @@ def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
         "        run: |",
         "          # Detect test directory",
         "          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi",
-        '          # Run pytest; exit 0 on "no tests collected" (code 5) so scan still runs',
-        '          python -m pytest "$TEST_DIR" --cov --cov-report=xml --tb=short -q || {',
+        "          # Scoped coverage: measure code only, not tests/docs",
+        '          python -m pytest "$TEST_DIR" \\',
+        "            --cov=lintgate --cov=mcp_tools \\",
+        "            --cov-config=.coveragerc \\",
+        "            --cov-report=xml --tb=short -q || {",
         "            rc=$?",
         "            if [ $rc -eq 5 ]; then",
         '              echo "::notice::No tests collected — coverage report will be empty."',
@@ -930,6 +948,7 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "          echo \"Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}\"",
         '          python -m pytest "$TEST_DIR" \\',
         "            ${{ steps.quality_policy.outputs.cov_args }} \\",
+        "            --cov-config=.coveragerc \\",
         "            --cov-report=xml --cov-report=term-missing \\",
         "            --cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }} \\",
         "            --junitxml=pytest-results.xml \\",
@@ -1908,9 +1927,10 @@ def register(mcp, helpers):
         project layout, and generates tailored configs for Code Climate,
         SonarCloud, qlty CLI, .gitignore augmentation, and README badge injection.
 
-        Generates eight artifacts:
+        Generates nine artifacts:
         - .codeclimate.yml — Code Climate / qlty Cloud config
         - sonar-project.properties — SonarCloud scanner config
+        - .coveragerc — shared coverage scope for CI/Sonar workflows
         - .github/workflows/sonarcloud.yml — SonarCloud analysis on push/PR
         - .github/workflows/qlty.yml — qlty analysis on push/PR
         - .github/workflows/security-lite.yml — secrets + SAST + supply-chain checks
@@ -1968,6 +1988,22 @@ def register(mcp, helpers):
         else:
             sonar_result["status"] = "preview"
             sonar_result["content"] = sonar_content
+
+        # --- .coveragerc ---
+        coveragerc_path = os.path.join(project_root, ".coveragerc")
+        coveragerc_exists = os.path.exists(coveragerc_path)
+        coveragerc_content = _generate_coveragerc()
+        coveragerc_result: dict[str, Any] = {"path": coveragerc_path}
+
+        if coveragerc_exists:
+            coveragerc_result["status"] = "already_exists"
+        elif write:
+            with open(coveragerc_path, "w") as f:
+                f.write(coveragerc_content)
+            coveragerc_result["status"] = "written"
+        else:
+            coveragerc_result["status"] = "preview"
+            coveragerc_result["content"] = coveragerc_content
 
         # --- .github/workflows/sonarcloud.yml ---
         workflow_path = os.path.join(project_root, ".github", "workflows", "sonarcloud.yml")
@@ -2156,6 +2192,8 @@ def register(mcp, helpers):
             files_to_stage.append(".codeclimate.yml")
         if sonar_result.get("status") == "written":
             files_to_stage.append("sonar-project.properties")
+        if coveragerc_result.get("status") == "written":
+            files_to_stage.append(".coveragerc")
         if workflow_result.get("status") == "written":
             files_to_stage.append(".github/workflows/sonarcloud.yml")
         if tests_workflow_result.get("status") == "written":
@@ -2221,6 +2259,7 @@ def register(mcp, helpers):
             "layout": layout,
             "codeclimate": cc_result,
             "sonar": sonar_result,
+            "coveragerc": coveragerc_result,
             "workflow": workflow_result,
             "tests_workflow": tests_workflow_result,
             "qlty_workflow": qlty_workflow_result,

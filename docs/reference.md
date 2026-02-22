@@ -125,6 +125,9 @@ quality_policy:
         file: "lintgate/reset.py"
         reason: "Read-modify-writeback of same local file"
 
+# Optional: align CI coverage scope with integration-heavy repos
+# via .coveragerc (for example, omit generated test fixture packages).
+
 # Tier escalation for critical paths
 pipeline_critical_paths:
   - "src/control/pipeline.py"

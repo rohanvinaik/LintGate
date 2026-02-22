@@ -80,6 +80,7 @@ jobs:
           echo "Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}"
           python -m pytest "$TEST_DIR" \
             ${{ steps.quality_policy.outputs.cov_args }} \
+            --cov-config=.coveragerc \
             --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }} \
             --junitxml=pytest-results.xml \

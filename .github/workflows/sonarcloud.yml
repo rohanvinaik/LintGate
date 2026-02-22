@@ -65,6 +65,7 @@ jobs:
           # Scoped coverage: measure code only, not tests/docs
           python -m pytest "$TEST_DIR" \
             --cov=lintgate --cov=mcp_tools \
+            --cov-config=.coveragerc \
             --cov-report=xml --tb=short -q || {
             rc=$?
             if [ $rc -eq 5 ]; then

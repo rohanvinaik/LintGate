@@ -18,6 +18,7 @@ from mcp_tools.onboarding_tools import (
     _detect_project_layout,
     _detect_subprocess_usage,
     _generate_badge_markdown,
+    _generate_coveragerc,
     _generate_codeclimate_yml,
     _generate_qlty_toml,
     _generate_qlty_workflow,
@@ -213,6 +214,7 @@ class TestGenerateSonarProperties:
         assert "sonar.sources=src" in content
         assert "sonar.tests=tests" in content
         assert "sonar.python.version=3.12" in content
+        assert "sonar.coverage.exclusions=lintgate/hook_posttooluse.py" in content
 
     def test_placeholder_without_github(self) -> None:
         """Falls back to OWNER/REPO when no GitHub detected."""
@@ -239,6 +241,18 @@ class TestGenerateSonarProperties:
         content = _generate_sonar_properties(github, layout)
         assert "*.sh" in content
         assert "*.sh**" not in content
+
+
+class TestGenerateCoveragerc:
+    """Tests for _generate_coveragerc."""
+
+    def test_includes_source_and_omit_rules(self) -> None:
+        content = _generate_coveragerc()
+        assert "[run]" in content
+        assert "source =" in content
+        assert "lintgate" in content
+        assert "mcp_tools" in content
+        assert "lintgate/hook_posttooluse.py" in content
 
 
 class TestGenerateSonarWorkflow:
@@ -292,14 +306,12 @@ class TestGenerateSonarWorkflow:
         assert "rc -eq 5" in content or "rc=$?" in content
         assert "No tests collected" in content
 
-    def test_coverage_repo_agnostic(self) -> None:
-        """Coverage step uses --cov without explicit targets for portability."""
+    def test_coverage_is_scoped_and_uses_coveragerc(self) -> None:
+        """Coverage step scopes to code packages and uses shared config."""
         content = _generate_sonar_workflow({"python_version": "3.11"})
-        # --cov should appear without =<package> target
-        lines = content.splitlines()
-        cov_lines = [l for l in lines if "--cov" in l and "--cov-report" not in l]
-        for line in cov_lines:
-            assert "--cov=" not in line, f"Explicit --cov=<target> found: {line!r}"
+        assert "--cov=lintgate" in content
+        assert "--cov=mcp_tools" in content
+        assert "--cov-config=.coveragerc" in content
 
     def test_includes_quality_gate_check(self) -> None:
         """Sonar workflow must enforce quality gate after scan."""
@@ -354,6 +366,7 @@ class TestGenerateTestsWorkflow:
         assert "--cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }}" in content
         assert "diff-cover coverage.xml" in content
         assert "--fail-under=${{ steps.quality_policy.outputs.diff_coverage_min }}" in content
+        assert "--cov-config=.coveragerc" in content
 
 
 class TestGenerateQltyWorkflow:
@@ -656,12 +669,14 @@ class TestSetupGithubQualityTool:
         assert result["status"] == "preview"
         assert result["codeclimate"]["status"] == "preview"
         assert result["sonar"]["status"] == "preview"
+        assert result["coveragerc"]["status"] == "preview"
         assert result["workflow"]["status"] == "preview"
         assert result["tests_workflow"]["status"] == "preview"
         assert result["qlty_workflow"]["status"] == "preview"
         assert result["security_workflow"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
+        assert "content" in result["coveragerc"]
         assert "content" in result["workflow"]
         assert "content" in result["tests_workflow"]
         assert "content" in result["qlty_workflow"]
@@ -669,6 +684,7 @@ class TestSetupGithubQualityTool:
         # Files should NOT exist
         assert not (tmp_path / ".codeclimate.yml").exists()
         assert not (tmp_path / "sonar-project.properties").exists()
+        assert not (tmp_path / ".coveragerc").exists()
         assert not (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
@@ -691,12 +707,14 @@ class TestSetupGithubQualityTool:
         assert result["status"] == "written"
         assert (tmp_path / ".codeclimate.yml").exists()
         assert (tmp_path / "sonar-project.properties").exists()
+        assert (tmp_path / ".coveragerc").exists()
         assert (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "tests.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
+        assert result["coveragerc"]["status"] == "written"
         assert result["workflow"]["status"] == "written"
         assert result["tests_workflow"]["status"] == "written"
         assert result["qlty_workflow"]["status"] == "written"
@@ -710,6 +728,7 @@ class TestSetupGithubQualityTool:
         """Does not overwrite existing config files."""
         (tmp_path / ".codeclimate.yml").write_text("existing: true\n")
         (tmp_path / "sonar-project.properties").write_text("existing=true\n")
+        (tmp_path / ".coveragerc").write_text("[run]\nsource=lintgate\n")
         workflow_dir = tmp_path / ".github" / "workflows"
         workflow_dir.mkdir(parents=True)
         (workflow_dir / "sonarcloud.yml").write_text("name: existing\n")
@@ -728,6 +747,7 @@ class TestSetupGithubQualityTool:
 
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
+        assert result["coveragerc"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
         assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
@@ -785,6 +805,7 @@ class TestSetupGithubQualityTool:
         assert result["badges"]["status"] == "badges_already_present"
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
+        assert result["coveragerc"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
         assert result["tests_workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
