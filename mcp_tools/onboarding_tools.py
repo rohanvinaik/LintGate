@@ -720,6 +720,117 @@ def _generate_sonar_properties(github: dict[str, Any], layout: dict[str, Any]) -
     return "\n".join(lines) + "\n"
 
 
+def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
+    """Generate a GitHub Actions workflow for SonarQube Cloud analysis."""
+    raw_version = str(layout.get("python_version", "3.11")).strip()
+    # Keep workflow robust even if detection returns an unexpected version string.
+    python_version = raw_version if re.fullmatch(r"\d+(?:\.\d+)?", raw_version) else "3.11"
+
+    lines = [
+        "name: SonarQube Cloud Analysis",
+        "",
+        "on:",
+        "  push:",
+        "  pull_request:",
+        "    types: [opened, synchronize, reopened]",
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: read",
+        "  pull-requests: read",
+        "",
+        "concurrency:",
+        "  group: sonarcloud-${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+        "jobs:",
+        "  sonarcloud:",
+        "    name: SonarQube Cloud Scan",
+        "    runs-on: ubuntu-latest",
+        "    if: >",
+        "      secrets.SONAR_TOKEN != '' &&",
+        "      (github.event_name != 'pull_request' ||",
+        "      github.event.pull_request.head.repo.full_name == github.repository)",
+        "    steps:",
+        "      - name: Checkout full history",
+        "        uses: actions/checkout@v4",
+        "        with:",
+        "          fetch-depth: 0",
+        "",
+        "      - name: Set up Python",
+        "        uses: actions/setup-python@v5",
+        "        with:",
+        f"          python-version: \"{python_version}\"",
+        "",
+        "      - name: SonarQube Cloud Scan",
+        "        uses: SonarSource/sonarqube-scan-action@v7",
+        "        env:",
+        "          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+        "",
+        "  sonarcloud_missing_token:",
+        "    name: SonarQube Cloud Setup Notice",
+        "    runs-on: ubuntu-latest",
+        "    if: secrets.SONAR_TOKEN == ''",
+        "    steps:",
+        "      - name: Explain required secret",
+        "        run: |",
+        "          echo \"SONAR_TOKEN secret is not configured; skipping SonarQube Cloud scan.\"",
+        "          echo \"Add SONAR_TOKEN at: https://github.com/${{ github.repository }}/settings/secrets/actions\"",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _generate_qlty_workflow() -> str:
+    """Generate a GitHub Actions workflow for qlty checks on push/PR."""
+    lines = [
+        "name: Qlty Analysis",
+        "",
+        "on:",
+        "  push:",
+        "  pull_request:",
+        "    types: [opened, synchronize, reopened]",
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: read",
+        "",
+        "concurrency:",
+        "  group: qlty-${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+        "jobs:",
+        "  qlty:",
+        "    name: Qlty Check",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Checkout",
+        "        uses: actions/checkout@v4",
+        "",
+        "      - name: Install qlty",
+        "        run: curl -fsSL https://qlty.sh | sh",
+        "",
+        "      - name: Resolve qlty binary",
+        "        shell: bash",
+        "        run: |",
+        "          for candidate in qlty \"$HOME/.qlty/bin/qlty\" \"./qlty\" \"./bin/qlty\"; do",
+        "            if command -v \"$candidate\" >/dev/null 2>&1; then",
+        "              echo \"QLTY_BIN=$(command -v \"$candidate\")\" >> \"$GITHUB_ENV\"",
+        "              exit 0",
+        "            fi",
+        "            if [ -x \"$candidate\" ]; then",
+        "              echo \"QLTY_BIN=$candidate\" >> \"$GITHUB_ENV\"",
+        "              exit 0",
+        "            fi",
+        "          done",
+        "          echo \"qlty binary not found after install\" >&2",
+        "          exit 1",
+        "",
+        "      - name: Run qlty checks",
+        "        run: \"$QLTY_BIN\" check --all",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _compute_gitignore_additions(project_root: str) -> dict[str, Any]:
     """Compare standard patterns against existing .gitignore, return delta."""
     gitignore_path = os.path.join(project_root, ".gitignore")
@@ -756,7 +867,7 @@ def _compute_gitignore_additions(project_root: str) -> dict[str, Any]:
 
 
 def _generate_badge_markdown(github: dict[str, Any], layout: dict[str, Any]) -> str:
-    """Generate badge markdown for Code Climate, SonarCloud, and License."""
+    """Generate badge markdown for Code Climate, SonarCloud metrics, and License."""
     owner = github.get("owner", "OWNER")
     repo = github.get("repo", "REPO")
     project_key = re.sub(r"[^a-zA-Z0-9_.\-]", "_", f"{owner}_{repo}")
@@ -766,6 +877,9 @@ def _generate_badge_markdown(github: dict[str, Any], layout: dict[str, Any]) -> 
         f"(https://codeclimate.com/github/{owner}/{repo}/maintainability)",
         f"[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?"
         f"project={project_key}&metric=alert_status)]"
+        f"(https://sonarcloud.io/summary/new_code?id={project_key})",
+        f"[![Coverage](https://sonarcloud.io/api/project_badges/measure?"
+        f"project={project_key}&metric=coverage)]"
         f"(https://sonarcloud.io/summary/new_code?id={project_key})",
     ]
 
@@ -1098,12 +1212,14 @@ def _build_quality_guidance(
                 "purpose": "Code smells, security scanning, duplication detection",
                 "install": "curl -fsSL https://qlty.sh | sh",
                 "first_run": "qlty init && qlty check --all",
+                "workflow_path": ".github/workflows/qlty.yml",
             },
             "public_proof": {
                 "tool": "SonarCloud (via sonar-scanner)",
                 "when": "CI push — generates badges and quality gate",
                 "purpose": "Public dashboard, quality gate, badges in README",
                 "setup_url": f"https://sonarcloud.io/project/create?id={project_key}",
+                "workflow_path": ".github/workflows/sonarcloud.yml",
             },
         },
         "silencing_invalid_issues": {
@@ -1134,6 +1250,7 @@ def _build_quality_guidance(
                 f"SONAR_TOKEN=<token> {scanner_path} "
                 f"-Dproject.home=. -read.project.config"
             ),
+            "workflow_path": ".github/workflows/sonarcloud.yml",
             "github_actions": (
                 "Add SONAR_TOKEN as repository secret at:\n"
                 f"https://github.com/{owner}/{repo}/settings/secrets/actions"
@@ -1147,6 +1264,7 @@ def _build_quality_guidance(
         guidance["sonar_scanner"] = {
             "install": "pip install pysonar-scanner",
             "note": "sonar-scanner not found on PATH. Install to enable local analysis.",
+            "workflow_path": ".github/workflows/sonarcloud.yml",
         }
 
     return guidance
@@ -1421,9 +1539,11 @@ def register(mcp, helpers):
         project layout, and generates tailored configs for Code Climate,
         SonarCloud, qlty CLI, .gitignore augmentation, and README badge injection.
 
-        Generates five artifacts:
+        Generates seven artifacts:
         - .codeclimate.yml — Code Climate / qlty Cloud config
         - sonar-project.properties — SonarCloud scanner config
+        - .github/workflows/sonarcloud.yml — SonarCloud analysis on push/PR
+        - .github/workflows/qlty.yml — qlty analysis on push/PR
         - .qlty/qlty.toml — qlty CLI local analysis config with smart triage (local-only)
         - .gitignore augmentation — standard Python patterns
         - README badge injection — quality badges after title
@@ -1478,6 +1598,40 @@ def register(mcp, helpers):
         else:
             sonar_result["status"] = "preview"
             sonar_result["content"] = sonar_content
+
+        # --- .github/workflows/sonarcloud.yml ---
+        workflow_path = os.path.join(project_root, ".github", "workflows", "sonarcloud.yml")
+        workflow_exists = os.path.exists(workflow_path)
+        workflow_content = _generate_sonar_workflow(layout)
+        workflow_result: dict[str, Any] = {"path": workflow_path}
+
+        if workflow_exists:
+            workflow_result["status"] = "already_exists"
+        elif write:
+            os.makedirs(os.path.dirname(workflow_path), exist_ok=True)
+            with open(workflow_path, "w") as f:
+                f.write(workflow_content)
+            workflow_result["status"] = "written"
+        else:
+            workflow_result["status"] = "preview"
+            workflow_result["content"] = workflow_content
+
+        # --- .github/workflows/qlty.yml ---
+        qlty_workflow_path = os.path.join(project_root, ".github", "workflows", "qlty.yml")
+        qlty_workflow_exists = os.path.exists(qlty_workflow_path)
+        qlty_workflow_content = _generate_qlty_workflow()
+        qlty_workflow_result: dict[str, Any] = {"path": qlty_workflow_path}
+
+        if qlty_workflow_exists:
+            qlty_workflow_result["status"] = "already_exists"
+        elif write:
+            os.makedirs(os.path.dirname(qlty_workflow_path), exist_ok=True)
+            with open(qlty_workflow_path, "w") as f:
+                f.write(qlty_workflow_content)
+            qlty_workflow_result["status"] = "written"
+        else:
+            qlty_workflow_result["status"] = "preview"
+            qlty_workflow_result["content"] = qlty_workflow_content
 
         # --- .qlty/qlty.toml ---
         qlty_dir = os.path.join(project_root, ".qlty")
@@ -1590,6 +1744,10 @@ def register(mcp, helpers):
             files_to_stage.append(".codeclimate.yml")
         if sonar_result.get("status") == "written":
             files_to_stage.append("sonar-project.properties")
+        if workflow_result.get("status") == "written":
+            files_to_stage.append(".github/workflows/sonarcloud.yml")
+        if qlty_workflow_result.get("status") == "written":
+            files_to_stage.append(".github/workflows/qlty.yml")
         if gi_result.get("status") in ("augmented", "created"):
             files_to_stage.append(".gitignore")
         if badge_result.get("status") == "injected":
@@ -1602,12 +1760,19 @@ def register(mcp, helpers):
                 "reason": "Stage and commit quality infrastructure",
                 "example": (
                     f"git add {' '.join(files_to_stage)} && "
-                    "git commit -m 'Add code quality infrastructure (Code Climate + SonarCloud)'"
+                    "git commit -m 'Add code quality infrastructure (Code Climate + SonarCloud + qlty)'"
                 ),
             })
 
         if github.get("detected"):
             if not sonar_token:
+                next_actions.append({
+                    "tool": "Bash",
+                    "reason": "Configure GitHub Actions secret required by SonarCloud workflow",
+                    "example": (
+                        f"gh secret set SONAR_TOKEN --repo {owner}/{repo} --body '<your_sonar_token>'"
+                    ),
+                })
                 next_actions.append({
                     "tool": "setup_github_quality",
                     "reason": "Run sonar-scanner to push initial analysis and activate badge",
@@ -1637,6 +1802,8 @@ def register(mcp, helpers):
             "layout": layout,
             "codeclimate": cc_result,
             "sonar": sonar_result,
+            "workflow": workflow_result,
+            "qlty_workflow": qlty_workflow_result,
             "qlty": qlty_result,
             "gitignore": gi_result,
             "badges": badge_result,

@@ -1,0 +1,44 @@
+name: Qlty Analysis
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qlty-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qlty:
+    name: Qlty Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install qlty
+        run: curl -fsSL https://qlty.sh | sh
+
+      - name: Resolve qlty binary
+        shell: bash
+        run: |
+          for candidate in qlty "$HOME/.qlty/bin/qlty" "./qlty" "./bin/qlty"; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              echo "QLTY_BIN=$(command -v "$candidate")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            if [ -x "$candidate" ]; then
+              echo "QLTY_BIN=$candidate" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "qlty binary not found after install" >&2
+          exit 1
+
+      - name: Run qlty checks
+        run: "$QLTY_BIN" check --all

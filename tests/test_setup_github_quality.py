@@ -18,8 +18,10 @@ from mcp_tools.onboarding_tools import (
     _detect_subprocess_usage,
     _generate_badge_markdown,
     _generate_codeclimate_yml,
+    _generate_qlty_workflow,
     _generate_qlty_toml,
     _generate_sonar_properties,
+    _generate_sonar_workflow,
     _inject_badges_into_readme,
 )
 
@@ -218,6 +220,40 @@ class TestGenerateSonarProperties:
         assert "sonar.projectKey=OWNER_REPO" in content
 
 
+class TestGenerateSonarWorkflow:
+    """Tests for _generate_sonar_workflow."""
+
+    def test_includes_push_pr_and_dispatch(self) -> None:
+        layout = {"python_version": "3.12"}
+        content = _generate_sonar_workflow(layout)
+
+        assert "on:" in content
+        assert "push:" in content
+        assert "pull_request:" in content
+        assert "workflow_dispatch:" in content
+        assert "SonarSource/sonarqube-scan-action@v7" in content
+        assert 'python-version: "3.12"' in content
+        assert "SONAR_TOKEN" in content
+
+    def test_fallbacks_python_version_for_unexpected_input(self) -> None:
+        content = _generate_sonar_workflow({"python_version": ">=3.11"})
+        assert 'python-version: "3.11"' in content
+
+
+class TestGenerateQltyWorkflow:
+    """Tests for _generate_qlty_workflow."""
+
+    def test_includes_push_pr_and_dispatch(self) -> None:
+        content = _generate_qlty_workflow()
+
+        assert "on:" in content
+        assert "push:" in content
+        assert "pull_request:" in content
+        assert "workflow_dispatch:" in content
+        assert "curl -fsSL https://qlty.sh | sh" in content
+        assert "check --all" in content
+
+
 # ── Gitignore Additions ──────────────────────────────────────────────────
 
 
@@ -263,6 +299,7 @@ class TestGenerateBadgeMarkdown:
         assert "PLACEHOLDER" in badges
         assert "sonarcloud.io" in badges
         assert "alice_myrepo" in badges
+        assert "metric=coverage" in badges
 
     def test_includes_license_badge(self) -> None:
         """License badge generated when license detected."""
@@ -359,11 +396,17 @@ class TestSetupGithubQualityTool:
         assert result["status"] == "preview"
         assert result["codeclimate"]["status"] == "preview"
         assert result["sonar"]["status"] == "preview"
+        assert result["workflow"]["status"] == "preview"
+        assert result["qlty_workflow"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
+        assert "content" in result["workflow"]
+        assert "content" in result["qlty_workflow"]
         # Files should NOT exist
         assert not (tmp_path / ".codeclimate.yml").exists()
         assert not (tmp_path / "sonar-project.properties").exists()
+        assert not (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
+        assert not (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
 
     def test_write_mode_creates_files(self, tmp_path: Path) -> None:
         """Write mode creates config files and injects badges."""
@@ -382,8 +425,12 @@ class TestSetupGithubQualityTool:
         assert result["status"] == "written"
         assert (tmp_path / ".codeclimate.yml").exists()
         assert (tmp_path / "sonar-project.properties").exists()
+        assert (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
+        assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
+        assert result["workflow"]["status"] == "written"
+        assert result["qlty_workflow"]["status"] == "written"
         # README should have badges
         readme_content = (tmp_path / "README.md").read_text()
         assert "sonarcloud.io" in readme_content
@@ -392,6 +439,10 @@ class TestSetupGithubQualityTool:
         """Does not overwrite existing config files."""
         (tmp_path / ".codeclimate.yml").write_text("existing: true\n")
         (tmp_path / "sonar-project.properties").write_text("existing=true\n")
+        workflow_dir = tmp_path / ".github" / "workflows"
+        workflow_dir.mkdir(parents=True)
+        (workflow_dir / "sonarcloud.yml").write_text("name: existing\n")
+        (workflow_dir / "qlty.yml").write_text("name: existing qlty\n")
         (tmp_path / "README.md").write_text("# Test\n")
 
         from mcp_server import setup_github_quality
@@ -404,6 +455,8 @@ class TestSetupGithubQualityTool:
 
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
+        assert result["workflow"]["status"] == "already_exists"
+        assert result["qlty_workflow"]["status"] == "already_exists"
         # Original content preserved
         assert (tmp_path / ".codeclimate.yml").read_text() == "existing: true\n"
 
@@ -457,6 +510,8 @@ class TestSetupGithubQualityTool:
         assert result["badges"]["status"] == "badges_already_present"
         assert result["codeclimate"]["status"] == "already_exists"
         assert result["sonar"]["status"] == "already_exists"
+        assert result["workflow"]["status"] == "already_exists"
+        assert result["qlty_workflow"]["status"] == "already_exists"
 
     def test_qlty_toml_created(self, tmp_path: Path) -> None:
         """Write mode creates .qlty/qlty.toml."""
@@ -656,6 +711,14 @@ class TestBuildQualityGuidance:
         assert "development" in guidance["three_layer_stack"]
         assert "local_validation" in guidance["three_layer_stack"]
         assert "public_proof" in guidance["three_layer_stack"]
+        assert (
+            guidance["three_layer_stack"]["local_validation"]["workflow_path"]
+            == ".github/workflows/qlty.yml"
+        )
+        assert (
+            guidance["three_layer_stack"]["public_proof"]["workflow_path"]
+            == ".github/workflows/sonarcloud.yml"
+        )
 
     def test_silencing_guidance(self) -> None:
         """Guidance includes how to silence issues in each tool."""
@@ -676,6 +739,7 @@ class TestBuildQualityGuidance:
 
         assert "local_run" in guidance["sonar_scanner"]
         assert "github_actions" in guidance["sonar_scanner"]
+        assert guidance["sonar_scanner"]["workflow_path"] == ".github/workflows/sonarcloud.yml"
 
     def test_scanner_not_found(self) -> None:
         """When scanner not found, guidance includes install instructions."""
@@ -684,3 +748,4 @@ class TestBuildQualityGuidance:
         guidance = _build_quality_guidance(github, layout, scanner_path=None)
 
         assert "install" in guidance["sonar_scanner"]
+        assert guidance["sonar_scanner"]["workflow_path"] == ".github/workflows/sonarcloud.yml"

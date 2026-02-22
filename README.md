@@ -1,5 +1,8 @@
 # LintGate
 
+[![Maintainability](https://api.codeclimate.com/v1/badges/PLACEHOLDER/maintainability)](https://codeclimate.com/github/rohanvinaik/LintGate/maintainability)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 **Three words. Zero debugging.**
