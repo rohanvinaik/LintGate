@@ -283,6 +283,111 @@ def _load_feature_entries(
     return _load_jsonl_entries(days, project_root, "feature_usage")
 
 
+def compute_quality_economics_summary(
+    project_root: str | None = None,
+    period: str = "7d",
+) -> dict[str, Any]:
+    """Aggregate quality gate telemetry for economics tracking.
+
+    Reads quality_gate events from JSONL metric files to produce:
+    - Coverage trend over time (improving/stable/degrading)
+    - QG pass rate per period
+    - Security issue trend
+    - Time-to-green (from first failure to passing QG)
+
+    Args:
+        project_root: Filter to a specific project (None = all projects).
+        period: Time window — "1d", "7d", "30d", or "all".
+
+    Returns:
+        Dict with quality gate economics summary.
+    """
+    days = _PERIOD_MAP.get(period, 7)
+    entries = _load_jsonl_entries(days, project_root, "quality_gate")
+
+    if not entries:
+        return {
+            "period": period,
+            "has_data": False,
+            "total_qg_runs": 0,
+            "qg_pass_count": 0,
+            "qg_fail_count": 0,
+            "qg_pass_rate": 0.0,
+            "avg_coverage_pct": 0.0,
+            "coverage_trend": "no_data",
+            "total_security_issues": 0,
+            "common_fail_reasons": {},
+            "time_to_green_ms": None,
+        }
+
+    total = len(entries)
+    passes = sum(1 for e in entries if e.get("qg_pass"))
+    fails = total - passes
+
+    # Coverage stats
+    coverages = [
+        float(e["coverage_pct"])
+        for e in entries
+        if isinstance(e.get("coverage_pct"), (int, float))
+    ]
+    avg_coverage = round(sum(coverages) / len(coverages), 1) if coverages else 0.0
+    coverage_trend = _compute_coverage_trend(coverages)
+
+    # Security issues
+    total_security = sum(int(e.get("security_issues", 0)) for e in entries)
+
+    # Fail reason frequency
+    fail_reasons: dict[str, int] = {}
+    for e in entries:
+        for reason in e.get("qg_fail_reasons", []):
+            fail_reasons[reason] = fail_reasons.get(reason, 0) + 1
+
+    # Time to green: from first failure to first subsequent pass
+    time_to_green_ms = _compute_time_to_green(entries)
+
+    return {
+        "period": period,
+        "has_data": True,
+        "total_qg_runs": total,
+        "qg_pass_count": passes,
+        "qg_fail_count": fails,
+        "qg_pass_rate": round(passes / max(total, 1), 3),
+        "avg_coverage_pct": avg_coverage,
+        "coverage_trend": coverage_trend,
+        "total_security_issues": total_security,
+        "common_fail_reasons": fail_reasons,
+        "time_to_green_ms": time_to_green_ms,
+    }
+
+
+def _compute_coverage_trend(coverages: list[float]) -> str:
+    """Compute trend from coverage values: improving/stable/degrading/no_data."""
+    if len(coverages) < 4:
+        return "no_data"
+    mid = len(coverages) // 2
+    avg_first = sum(coverages[:mid]) / mid
+    avg_second = sum(coverages[mid:]) / (len(coverages) - mid)
+    if avg_second > avg_first + 1.0:
+        return "improving"
+    elif avg_second < avg_first - 1.0:
+        return "degrading"
+    return "stable"
+
+
+def _compute_time_to_green(entries: list[dict[str, Any]]) -> int | None:
+    """Compute ms from first failure to first subsequent pass. None if N/A."""
+    first_fail_ts: float | None = None
+    for e in entries:
+        ts = e.get("timestamp", 0.0)
+        if not e.get("qg_pass"):
+            if first_fail_ts is None:
+                first_fail_ts = float(ts)
+        elif first_fail_ts is not None:
+            # Found a pass after a failure
+            return int((float(ts) - first_fail_ts) * 1000)
+    return None
+
+
 def compute_token_economics_summary(
     project_root: str | None = None,
     period: str = "7d",

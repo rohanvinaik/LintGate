@@ -1,3 +1,19 @@
+quality_policy:
+  coverage:
+    global_threshold: 78
+    diff_threshold: 80
+    source_packages:
+      - lintgate
+      - mcp_tools
+  security:
+    tolerated_false_positives:
+      - rule: "pythonsecurity:S2083"
+        file: "lintgate/reset.py"
+        reason: "Read-modify-writeback of same local file; no HTTP input path"
+      - rule: "python:S5852"
+        scope: "**/*.py"
+        reason: "Local dev tool — all regex inputs from local files/tool output"
+
 controlplane:
   enabled: true
   inquiry:

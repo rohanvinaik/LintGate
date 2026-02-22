@@ -13,14 +13,17 @@ should address them but can continue.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from lintgate.controlplane.types import (
+    ChannelConfig,
     ChannelResult,
     ControlPlaneConfig,
     RepairAction,
@@ -42,6 +45,7 @@ class TestRunResult:
     failures: list[TestFailure] = field(default_factory=list)
     stdout: str = ""
     timed_out: bool = False
+    coverage_pct: float | None = None  # Set when measure_coverage=True
 
 
 @dataclass
@@ -124,12 +128,38 @@ class TestChannel:
                 except Exception:
                     pass  # Archetype selection failure is non-fatal
 
-        # Step 3: Run impacted tests (if any exist)
+        # Step 3: Determine coverage measurement mode
+        # Coverage collection is MCP/CI mode ONLY — never on the hook path
+        channel_settings = config.channels.get("tests", ChannelConfig()).settings
+        raw_coverage_threshold = channel_settings.get("coverage_threshold")
+        coverage_threshold: float | None = None
+        if raw_coverage_threshold is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                coverage_threshold = float(raw_coverage_threshold)
+        raw_source_packages = channel_settings.get("source_packages")
+        source_packages: list[str] | None = None
+        if isinstance(raw_source_packages, list):
+            source_packages = [str(p).strip() for p in raw_source_packages if str(p).strip()]
+        elif isinstance(raw_source_packages, str) and raw_source_packages.strip():
+            source_packages = [raw_source_packages.strip()]
+        measure_coverage = (
+            coverage_threshold is not None
+            and event.surface == "mcp"  # Not hook-triggered
+        )
+
+        # Step 4: Run impacted tests (if any exist)
+        test_result: TestRunResult | None = None
         if impacted_tests:
             remaining_ms = self.timeout_ms - int((time.perf_counter() - start) * 1000)
             remaining_ms = max(remaining_ms, 2000)
 
-            test_result = run_tests(impacted_tests, project_root, timeout_ms=remaining_ms)
+            test_result = run_tests(
+                impacted_tests,
+                project_root,
+                timeout_ms=remaining_ms,
+                measure_coverage=measure_coverage,
+                source_packages=source_packages,
+            )
 
             if test_result.timed_out:
                 findings.append(
@@ -153,6 +183,29 @@ class TestChannel:
                     )
                 )
 
+            # Step 5: Check coverage threshold
+            if (
+                measure_coverage
+                and test_result.coverage_pct is not None
+                and coverage_threshold is not None
+                and test_result.coverage_pct < coverage_threshold
+            ):
+                findings.append(
+                    LintIssue(
+                        linter="test_channel",
+                        kind="coverage_below_threshold",
+                        message=(
+                            f"Code coverage {test_result.coverage_pct:.1f}% "
+                            f"is below threshold {coverage_threshold}%"
+                        ),
+                        severity="warning",
+                        evidence={
+                            "coverage_pct": test_result.coverage_pct,
+                            "threshold": coverage_threshold,
+                        },
+                    )
+                )
+
         elapsed_ms = (time.perf_counter() - start) * 1000
         status = "fail" if findings else "pass"
         severity = (
@@ -161,17 +214,25 @@ class TestChannel:
             else ("informational" if findings else "none")
         )
 
+        metrics: dict[str, Any] = {
+            "impacted_tests_found": len(impacted_tests),
+            "missing_test_count": sum(1 for f in findings if f.kind == "missing_test"),
+            "test_failure_count": sum(1 for f in findings if f.kind == "test_failure"),
+        }
+        if measure_coverage and test_result is not None:
+            cov = test_result.coverage_pct
+            if cov is not None:
+                metrics["coverage_pct"] = cov
+            if coverage_threshold is not None:
+                metrics["coverage_threshold"] = float(coverage_threshold)
+
         return ChannelResult(
             channel=self.name,
             status=status,
             severity=severity,
             findings=findings,
             repairs=repairs,
-            metrics={
-                "impacted_tests_found": len(impacted_tests),
-                "missing_test_count": sum(1 for f in findings if f.kind == "missing_test"),
-                "test_failure_count": sum(1 for f in findings if f.kind == "test_failure"),
-            },
+            metrics=metrics,
             duration_ms=elapsed_ms,
         )
 
@@ -266,11 +327,21 @@ def run_tests(
     test_files: list[str],
     project_root: str,
     timeout_ms: int = 10000,
+    measure_coverage: bool = False,
+    source_packages: list[str] | None = None,
 ) -> TestRunResult:
     """Run pytest on specified test files and parse results.
 
     Uses `python -m pytest <files> -q --tb=line --no-header` with
     subprocess timeout protection.
+
+    Args:
+        test_files: Test files to run.
+        project_root: Project root directory.
+        timeout_ms: Timeout in milliseconds.
+        measure_coverage: If True, add --cov flags and parse coverage.
+            Only used in MCP/CI mode, never on hook path.
+        source_packages: Packages to measure coverage for (e.g. ["lintgate", "mcp_tools"]).
     """
     if not test_files:
         return TestRunResult()
@@ -285,6 +356,21 @@ def run_tests(
         "--no-header",
     ]
 
+    coverage_xml_path: str | None = None
+    coverage_tmpdir: Any | None = None
+    if measure_coverage:
+        import tempfile
+
+        coverage_tmpdir = tempfile.TemporaryDirectory(prefix="lintgate_cov_")
+        coverage_xml_path = os.path.join(coverage_tmpdir.name, "coverage.xml")
+        pkgs = source_packages or ["lintgate", "mcp_tools"]
+        for pkg in pkgs:
+            cmd.extend([f"--cov={pkg}"])
+        cmd.extend([
+            f"--cov-report=xml:{coverage_xml_path}",
+            "--cov-report=term:skip-covered",
+        ])
+
     try:
         result = subprocess.run(
             cmd,
@@ -293,11 +379,24 @@ def run_tests(
             timeout=timeout_ms / 1000.0,
             cwd=project_root,
         )
-        return _parse_pytest_output(result.stdout, result.stderr, result.returncode)
+        parsed = _parse_pytest_output(result.stdout, result.stderr, result.returncode)
+
+        # Parse coverage if measured
+        if measure_coverage and coverage_xml_path:
+            parsed.coverage_pct = _parse_coverage(
+                coverage_xml_path,
+                f"{result.stdout}\n{result.stderr}",
+            )
+
+        return parsed
     except subprocess.TimeoutExpired:
         return TestRunResult(timed_out=True)
     except (OSError, subprocess.SubprocessError):
         return TestRunResult()
+    finally:
+        if coverage_tmpdir is not None:
+            with contextlib.suppress(Exception):
+                coverage_tmpdir.cleanup()
 
 
 def _parse_pytest_output(stdout: str, stderr: str, returncode: int) -> TestRunResult:
@@ -344,6 +443,34 @@ def _parse_pytest_output(stdout: str, stderr: str, returncode: int) -> TestRunRe
             )
 
     return result
+
+
+def _parse_coverage(coverage_xml_path: str, terminal_output: str) -> float | None:
+    """Parse coverage percentage from XML (primary) or terminal output (fallback).
+
+    Primary: Parse coverage.xml ``<coverage line-rate="0.795">`` → 79.5%.
+    Fallback: Regex ``TOTAL\\s+\\d+\\s+\\d+\\s+(\\d+)%`` from terminal output.
+
+    Returns None if coverage could not be determined.
+    """
+    # Primary: XML parsing
+    try:
+        import xml.etree.ElementTree as ET
+
+        tree = ET.parse(coverage_xml_path)
+        root = tree.getroot()
+        line_rate = root.attrib.get("line-rate")
+        if line_rate is not None:
+            return round(float(line_rate) * 100, 1)
+    except Exception:
+        pass
+
+    # Fallback: terminal regex
+    match = re.search(r"TOTAL\s+\d+\s+\d+\s+(\d+)%", terminal_output)
+    if match:
+        return float(match.group(1))
+
+    return None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

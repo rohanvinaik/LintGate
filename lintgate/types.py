@@ -210,6 +210,47 @@ class AggregatedResult:
     files_linted: list[str] = field(default_factory=list)
 
 
+# ─── Quality Policy ──────────────────────────────────────────────────────
+
+
+@dataclass
+class CoveragePolicy:
+    """Coverage enforcement thresholds."""
+
+    global_threshold: int = 80  # --cov-fail-under
+    diff_threshold: int = 80  # diff-cover --fail-under
+    source_packages: list[str] = field(default_factory=lambda: ["lintgate", "mcp_tools"])
+
+
+@dataclass
+class ToleratedFalsePositive:
+    """A security finding known to be a false positive."""
+
+    rule: str = ""  # e.g. "pythonsecurity:S2083"
+    file: str = ""  # e.g. "lintgate/reset.py"
+    scope: str = ""  # e.g. "**/*.py" (alternative to file)
+    reason: str = ""
+
+
+@dataclass
+class SecurityPolicy:
+    """Security gate policy."""
+
+    tolerated_false_positives: list[ToleratedFalsePositive] = field(default_factory=list)
+
+
+@dataclass
+class QualityPolicy:
+    """Single source of truth for quality gate thresholds.
+
+    Loaded from .claude/lintgate.yaml quality_policy section.
+    Consumed by CI workflows, test channel, and telemetry.
+    """
+
+    coverage: CoveragePolicy = field(default_factory=CoveragePolicy)
+    security: SecurityPolicy = field(default_factory=SecurityPolicy)
+
+
 # ─── Project Configuration ───────────────────────────────────────────────
 
 
@@ -236,3 +277,4 @@ class ProjectConfig:
         }
     )
     total_timeout_ms: int = 8000
+    quality_policy: QualityPolicy = field(default_factory=QualityPolicy)

@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for diff-cover
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,9 +33,129 @@ jobs:
           python -m pip install -e ".[dev]" 2>/dev/null \
             || python -m pip install -e "." 2>/dev/null \
             || python -m pip install pytest
-          python -m pip install pytest
+          python -m pip install pytest-cov diff-cover
 
-      - name: Run tests
+      - name: Resolve quality policy thresholds
+        id: quality_policy
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          coverage_min = 80
+          diff_coverage_min = 80
+          source_packages = ["lintgate", "mcp_tools"]
+
+          cfg = Path(".claude/lintgate.yaml")
+          if cfg.exists():
+              try:
+                  import yaml
+
+                  raw = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
+                  qp = raw.get("quality_policy", {})
+                  cov = qp.get("coverage", {})
+                  coverage_min = int(cov.get("global_threshold", coverage_min))
+                  diff_coverage_min = int(cov.get("diff_threshold", diff_coverage_min))
+                  source_packages = cov.get("source_packages", source_packages)
+                  if not isinstance(source_packages, list):
+                      source_packages = ["lintgate", "mcp_tools"]
+                  source_packages = [str(p) for p in source_packages if str(p).strip()]
+                  if not source_packages:
+                      source_packages = ["lintgate", "mcp_tools"]
+              except Exception:
+                  pass
+
+          cov_args = " ".join(f"--cov={pkg}" for pkg in source_packages)
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"coverage_min={coverage_min}\n")
+              fh.write(f"diff_coverage_min={diff_coverage_min}\n")
+              fh.write(f"cov_args={cov_args}\n")
+          PY
+
+      - name: Run tests with coverage
         run: |
           if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi
-          python -m pytest "$TEST_DIR" --tb=short -q
+          echo "Coverage gate: ${{ steps.quality_policy.outputs.coverage_min }}%"
+          echo "Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}"
+          python -m pytest "$TEST_DIR" \
+            ${{ steps.quality_policy.outputs.cov_args }} \
+            --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }} \
+            --junitxml=pytest-results.xml \
+            --tb=short -q
+
+      - name: Diff coverage (new/changed code)
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          diff-cover coverage.xml \
+            --compare-branch=origin/${{ github.base_ref }} \
+            --fail-under=${{ steps.quality_policy.outputs.diff_coverage_min }}
+
+      - name: Generate quality status artifact
+        if: always()
+        run: |
+          python -c "
+          import datetime, json, xml.etree.ElementTree as ET
+
+          status = {
+              'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'coverage_pct': 0.0,
+              'tests_collected': 0,
+              'tests_passed': 0,
+              'tests_failed': 0,
+              'tests_errors': 0,
+              'tests_skipped': 0,
+              'security_issues': 0,
+          }
+
+          # Parse coverage from coverage.xml
+          try:
+              tree = ET.parse('coverage.xml')
+              root = tree.getroot()
+              rate = float(root.attrib.get('line-rate', 0))
+              status['coverage_pct'] = round(rate * 100, 1)
+          except Exception:
+              pass
+
+          # Parse test counts from pytest JUnit report
+          try:
+              tree = ET.parse('pytest-results.xml')
+              root = tree.getroot()
+              status['tests_collected'] = int(root.attrib.get('tests', 0))
+              status['tests_failed'] = int(root.attrib.get('failures', 0))
+              status['tests_errors'] = int(root.attrib.get('errors', 0))
+              status['tests_skipped'] = int(root.attrib.get('skipped', 0))
+              status['tests_passed'] = max(
+                  0,
+                  status['tests_collected']
+                  - status['tests_failed']
+                  - status['tests_errors']
+                  - status['tests_skipped'],
+              )
+          except Exception:
+              pass
+
+          with open('quality-status.json', 'w') as f:
+              json.dump(status, f, indent=2)
+          print(json.dumps(status, indent=2))
+          "
+
+      - name: Upload quality status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-status
+          path: quality-status.json
+          retention-days: 30
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            pytest-results.xml
+          retention-days: 30

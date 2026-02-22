@@ -38,6 +38,14 @@ def register(mcp, helpers):
             if feature_usage.get("total_invocations", 0) > 0:
                 summary["feature_usage"] = feature_usage
 
+        # Extend with quality economics if available
+        with contextlib.suppress(Exception):
+            from lintgate.telemetry import compute_quality_economics_summary
+
+            quality_economics = compute_quality_economics_summary(project_root, period=period)
+            if quality_economics.get("has_data", False):
+                summary["quality_economics"] = quality_economics
+
         return json.dumps(summary, indent=2)
 
     return {"telemetry_summary": telemetry_summary}

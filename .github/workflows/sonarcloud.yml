@@ -62,8 +62,10 @@ jobs:
         run: |
           # Detect test directory
           if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi
-          # Run pytest; exit 0 on "no tests collected" (code 5) so scan still runs
-          python -m pytest "$TEST_DIR" --cov --cov-report=xml --tb=short -q || {
+          # Scoped coverage: measure code only, not tests/docs
+          python -m pytest "$TEST_DIR" \
+            --cov=lintgate --cov=mcp_tools \
+            --cov-report=xml --tb=short -q || {
             rc=$?
             if [ $rc -eq 5 ]; then
               echo "::notice::No tests collected — coverage report will be empty."
@@ -75,5 +77,12 @@ jobs:
       - name: SonarQube Cloud Scan
         if: steps.check_token.outputs.has_token == 'true'
         uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Check Quality Gate
+        if: steps.check_token.outputs.has_token == 'true'
+        uses: SonarSource/sonarqube-quality-gate-check-action@v1
+        timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

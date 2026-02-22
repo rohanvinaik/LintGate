@@ -301,6 +301,12 @@ class TestGenerateSonarWorkflow:
         for line in cov_lines:
             assert "--cov=" not in line, f"Explicit --cov=<target> found: {line!r}"
 
+    def test_includes_quality_gate_check(self) -> None:
+        """Sonar workflow must enforce quality gate after scan."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+        assert "Check Quality Gate" in content
+        assert "sonarqube-quality-gate-check-action@v1" in content
+
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
         content = _generate_sonar_workflow({"python_version": ">=3.11"})
         assert 'python-version: "3.11"' in content
@@ -341,6 +347,13 @@ class TestGenerateTestsWorkflow:
     def test_fallbacks_python_version(self) -> None:
         content = _generate_tests_workflow({"python_version": ">=3.11"})
         assert 'python-version: "3.11"' in content
+
+    def test_enforces_coverage_and_diff_coverage(self) -> None:
+        """Tests workflow enforces global and PR diff coverage gates."""
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert "--cov-fail-under=${{ steps.quality_policy.outputs.coverage_min }}" in content
+        assert "diff-cover coverage.xml" in content
+        assert "--fail-under=${{ steps.quality_policy.outputs.diff_coverage_min }}" in content
 
 
 class TestGenerateQltyWorkflow:

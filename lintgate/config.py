@@ -15,7 +15,13 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .types import ProjectConfig
+from .types import (
+    CoveragePolicy,
+    ProjectConfig,
+    QualityPolicy,
+    SecurityPolicy,
+    ToleratedFalsePositive,
+)
 
 if TYPE_CHECKING:
     from .controlplane.types import ControlPlaneConfig
@@ -202,6 +208,11 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
     # Timeout
     config.total_timeout_ms = raw.get("total_timeout_ms", 8000)
 
+    # Quality policy
+    qp_raw = raw.get("quality_policy", {})
+    if isinstance(qp_raw, dict):
+        config.quality_policy = _parse_quality_policy(qp_raw)
+
     # Languages
     config.languages = raw.get("languages", [])
     if not config.languages:
@@ -233,6 +244,55 @@ def _auto_detect(cwd: str) -> ProjectConfig:
             config.enabled_linters["bandit"] = True
 
     return config
+
+
+def _parse_quality_policy(raw: dict) -> QualityPolicy:
+    """Parse quality_policy section from lintgate.yaml."""
+    policy = QualityPolicy()
+
+    cov_raw = raw.get("coverage", {})
+    if isinstance(cov_raw, dict):
+        source_packages_raw = cov_raw.get("source_packages", ["lintgate", "mcp_tools"])
+        source_packages = ["lintgate", "mcp_tools"]
+        if isinstance(source_packages_raw, list):
+            cleaned = [str(pkg).strip() for pkg in source_packages_raw if str(pkg).strip()]
+            if cleaned:
+                source_packages = cleaned
+        elif isinstance(source_packages_raw, str) and source_packages_raw.strip():
+            source_packages = [source_packages_raw.strip()]
+
+        global_threshold = _coerce_int(cov_raw.get("global_threshold", 80), default=80)
+        diff_threshold = _coerce_int(cov_raw.get("diff_threshold", 80), default=80)
+        policy.coverage = CoveragePolicy(
+            global_threshold=max(0, min(100, global_threshold)),
+            diff_threshold=max(0, min(100, diff_threshold)),
+            source_packages=source_packages,
+        )
+
+    sec_raw = raw.get("security", {})
+    if isinstance(sec_raw, dict):
+        fps: list[ToleratedFalsePositive] = []
+        for fp_entry in sec_raw.get("tolerated_false_positives", []):
+            if isinstance(fp_entry, dict):
+                fps.append(
+                    ToleratedFalsePositive(
+                        rule=str(fp_entry.get("rule", "")),
+                        file=str(fp_entry.get("file", "")),
+                        scope=str(fp_entry.get("scope", "")),
+                        reason=str(fp_entry.get("reason", "")),
+                    )
+                )
+        policy.security = SecurityPolicy(tolerated_false_positives=fps)
+
+    return policy
+
+
+def _coerce_int(value: object, default: int) -> int:
+    """Best-effort int coercion used for config parsing."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _detect_languages(cwd: str) -> list[str]:

@@ -111,6 +111,20 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 LintGate works with **zero config** for any Python project with ruff installed. For project-specific tuning, create `.claude/lintgate.yaml`:
 
 ```yaml
+# Quality policy — single source of truth for CI and LintGate gates
+quality_policy:
+  coverage:
+    global_threshold: 80          # --cov-fail-under (CI + test channel)
+    diff_threshold: 80            # diff-cover --fail-under (CI PRs)
+    source_packages:              # --cov=<pkg> (measure code, not tests)
+      - lintgate
+      - mcp_tools
+  security:
+    tolerated_false_positives:    # Encoded in sonar-project.properties too
+      - rule: "pythonsecurity:S2083"
+        file: "lintgate/reset.py"
+        reason: "Read-modify-writeback of same local file"
+
 # Tier escalation for critical paths
 pipeline_critical_paths:
   - "src/control/pipeline.py"
