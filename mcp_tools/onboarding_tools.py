@@ -990,7 +990,7 @@ def _generate_sonar_workflow(layout: dict[str, Any]) -> str:
         "          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
         "",
         "      - name: Check Quality Gate",
-        "        if: steps.check_token.outputs.has_token == 'true'",
+        "        if: steps.check_token.outputs.has_token == 'true' && github.ref == 'refs/heads/main'",
         "        uses: SonarSource/sonarqube-quality-gate-action@master",
         "        timeout-minutes: 5",
         "        env:",

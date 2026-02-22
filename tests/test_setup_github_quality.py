@@ -344,6 +344,7 @@ class TestGenerateSonarWorkflow:
         content = _generate_sonar_workflow({"python_version": "3.11"})
         assert "Check Quality Gate" in content
         assert "SonarSource/sonarqube-quality-gate-action@master" in content
+        assert "github.ref == 'refs/heads/main'" in content
 
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
         content = _generate_sonar_workflow({"python_version": ">=3.11"})
