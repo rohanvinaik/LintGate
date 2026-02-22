@@ -165,7 +165,11 @@ def format_mesh_report(
         # Resurfacing cadence: persistent blocking findings resurface every 10 runs
         if snapshot_count > 0 and snapshot_count % 10 == 0 and previous_finding_index:
             for fp, info in (current_index or {}).items():
-                if info.get("severity") == "blocking" and fp in previous_finding_index and quota_by_fp.get(fp, 0) == 0:
+                if (
+                    info.get("severity") == "blocking"
+                    and fp in previous_finding_index
+                    and quota_by_fp.get(fp, 0) == 0
+                ):
                     # Resurface one representative occurrence per fingerprint.
                     quota_by_fp[fp] = 1
                     resurfaced_count += 1
@@ -469,7 +473,9 @@ def _format_channel_summary(active_channels: list[ChannelResult]) -> str:
     """Format channel status summary."""
     parts = ["Channels:"]
     for cr in active_channels:
-        icon = {"pass": "\u2713", "fail": "\u2717", "error": "\u26a0", "timeout": "\u23f1"}.get(cr.status, "?")
+        icon = {"pass": "\u2713", "fail": "\u2717", "error": "\u26a0", "timeout": "\u23f1"}.get(
+            cr.status, "?"
+        )
         detail = ""
         if cr.findings:
             detail = f" ({len(cr.findings)} findings)"

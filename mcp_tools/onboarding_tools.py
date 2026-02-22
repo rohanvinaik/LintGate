@@ -588,14 +588,27 @@ def _detect_license_fallback(root: Path) -> str | None:
     return None
 
 
-_SKIP_DIRS = frozenset({
-    ".venv", "venv", "env", ".git", "__pycache__", "node_modules",
-    ".mypy_cache", ".ruff_cache", ".pytest_cache", ".claude", "dist", "build",
-})
+_SKIP_DIRS = frozenset(
+    {
+        ".venv",
+        "venv",
+        "env",
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".claude",
+        "dist",
+        "build",
+    }
+)
 
 
 def _scan_project_dirs(
-    root: Path, test_dirs: list[str],
+    root: Path,
+    test_dirs: list[str],
 ) -> tuple[list[str], list[str], list[str]]:
     """Scan root for source, test, and doc directories.
 
@@ -1051,17 +1064,17 @@ def _generate_pre_push_hook() -> str:
         "    --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \\",
         "    --tb=short -q",
         "  BASE='HEAD~1'",
-        "  if ! git rev-parse --verify \"$BASE\" >/dev/null 2>&1; then",
+        '  if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then',
         "    BASE=''",
         "  fi",
-        "  if [ -n \"$BASE\" ]; then",
+        '  if [ -n "$BASE" ]; then',
         "    python -m lintgate.symbol_gate_runner \\",
-        "      --project-root \"$REPO_ROOT\" \\",
+        '      --project-root "$REPO_ROOT" \\',
         "      --coverage-json coverage.json \\",
-        "      --base \"$BASE\" --head HEAD --surface ci",
+        '      --base "$BASE" --head HEAD --surface ci',
         "  else",
         "    python -m lintgate.symbol_gate_runner \\",
-        "      --project-root \"$REPO_ROOT\" \\",
+        '      --project-root "$REPO_ROOT" \\',
         "      --coverage-json coverage.json \\",
         "      --head HEAD --surface ci",
         "  fi",
@@ -1466,27 +1479,27 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "            BASE='origin/${{ github.base_ref }}'",
         "          else",
         "            BASE='${{ github.event.before }}'",
-        "            if [ -z \"$BASE\" ] || [ \"$BASE\" = '0000000000000000000000000000000000000000' ]; then",
+        '            if [ -z "$BASE" ] || [ "$BASE" = \'0000000000000000000000000000000000000000\' ]; then',
         "              BASE='HEAD~1'",
         "            fi",
         "          fi",
         "",
-        "          if [ -n \"$BASE\" ] && ! git rev-parse --verify \"$BASE\" >/dev/null 2>&1; then",
+        '          if [ -n "$BASE" ] && ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then',
         "            BASE=''",
         "          fi",
         "",
-        "          if [ -n \"$BASE\" ]; then",
+        '          if [ -n "$BASE" ]; then',
         "            python -m lintgate.symbol_gate_runner \\",
         "              --project-root . \\",
         "              --coverage-json coverage.json \\",
-        "              --base \"$BASE\" \\",
-        "              --head \"$HEAD\" \\",
+        '              --base "$BASE" \\',
+        '              --head "$HEAD" \\',
         "              --surface ci",
         "          else",
         "            python -m lintgate.symbol_gate_runner \\",
         "              --project-root . \\",
         "              --coverage-json coverage.json \\",
-        "              --head \"$HEAD\" \\",
+        '              --head "$HEAD" \\',
         "              --surface ci",
         "          fi",
         "",
@@ -2241,9 +2254,7 @@ def _reset_project_state(project_root: str) -> list[dict[str, str]]:
         # Compute project hash to find matching habit state files
         import hashlib
 
-        project_hash = hashlib.sha256(
-            os.path.abspath(project_root).encode()
-        ).hexdigest()[:12]
+        project_hash = hashlib.sha256(os.path.abspath(project_root).encode()).hexdigest()[:12]
         for item in habit_base.iterdir():
             if item.is_file() and project_hash in item.name:
                 item.unlink()
@@ -2481,9 +2492,11 @@ def register(mcp, helpers):
                 "config_status_after": config_status,
                 "setup_diff": {
                     "config": (
-                        "created" if config_status_before["config_state"] != "config_enabled"
+                        "created"
+                        if config_status_before["config_state"] != "config_enabled"
                         and config_status["config_state"] == "config_enabled"
-                        else "already_existed" if config_status["config_state"] == "config_enabled"
+                        else "already_existed"
+                        if config_status["config_state"] == "config_enabled"
                         else "not_created"
                     ),
                     "venv": venv_setup.get("status", "not_requested"),
@@ -2597,7 +2610,10 @@ def register(mcp, helpers):
         )
 
         return _setup_github_quality_impl(
-            path, write=write, sonar_token=sonar_token, _helpers=helpers,
+            path,
+            write=write,
+            sonar_token=sonar_token,
+            _helpers=helpers,
         )
 
     return {

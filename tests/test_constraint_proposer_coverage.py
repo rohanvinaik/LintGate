@@ -9,22 +9,20 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from lintgate.controlplane.constraint_proposer import (
+    _BEHAVIOR_CONSTRAINT_MAP,
+    _COHERENCE_STOPWORDS,
+    _DEFAULT_PROPOSAL_THRESHOLD,
+    _NEGATIVE_POLARITY,
+    _PATTERN_CONSTRAINT_MAP,
+    _POSITIVE_POLARITY,
     ProposedConstraint,
     TheoryCoherenceResult,
     _apply_coherence_check,
     _build_generic_template,
-    _BEHAVIOR_CONSTRAINT_MAP,
-    _COHERENCE_STOPWORDS,
     _compute_proposal_confidence,
-    _DEFAULT_PROPOSAL_THRESHOLD,
     _extract_coherence_keywords,
     _is_contradicting,
-    _NEGATIVE_POLARITY,
-    _PATTERN_CONSTRAINT_MAP,
-    _POSITIVE_POLARITY,
     _resolve_constraint_template,
     check_theory_coherence,
     propose_constraints_from_patterns,
@@ -33,7 +31,6 @@ from lintgate.controlplane.constraint_proposer import (
 )
 from lintgate.controlplane.session_memory import SessionMemory
 from lintgate.controlplane.types import ControlPlaneConfig, InquiryConfig
-
 
 # ── TheoryCoherenceResult ──────────────────────────────────────────
 
@@ -253,31 +250,43 @@ class TestIsContradicting:
 
     def test_same_polarity_returns_false(self) -> None:
         # Both negative polarity with overlapping nouns
-        assert _is_contradicting(
-            "avoid complexity always",
-            "never create complexity",
-        ) is False
+        assert (
+            _is_contradicting(
+                "avoid complexity always",
+                "never create complexity",
+            )
+            is False
+        )
 
     def test_opposite_polarity_with_overlap_returns_true(self) -> None:
         # Proposal: negative polarity, Claim: positive polarity, overlap on "complexity"
-        assert _is_contradicting(
-            "avoid complexity patterns",
-            "prefer complexity patterns always",
-        ) is True
+        assert (
+            _is_contradicting(
+                "avoid complexity patterns",
+                "prefer complexity patterns always",
+            )
+            is True
+        )
 
     def test_neutral_polarity_returns_false(self) -> None:
         # No polarity words means neutral, so no contradiction
-        assert _is_contradicting(
-            "complexity patterns here",
-            "complexity patterns there",
-        ) is False
+        assert (
+            _is_contradicting(
+                "complexity patterns here",
+                "complexity patterns there",
+            )
+            is False
+        )
 
     def test_proposal_neutral_returns_false(self) -> None:
         # Proposal has no polarity words
-        assert _is_contradicting(
-            "complexity patterns here",
-            "avoid complexity patterns",
-        ) is False
+        assert (
+            _is_contradicting(
+                "complexity patterns here",
+                "avoid complexity patterns",
+            )
+            is False
+        )
 
 
 # ── _build_generic_template ────────────────────────────────────────
@@ -647,7 +656,10 @@ class TestProposeConstraintsFromPatterns:
         proposals = propose_constraints_from_patterns(report)
         assert len(proposals) == 1
         assert proposals[0].rule_type == "theory_note"
-        assert "constraint_check" in proposals[0].proposed_rule.lower() or "constraint" in proposals[0].proposed_rule.lower()
+        assert (
+            "constraint_check" in proposals[0].proposed_rule.lower()
+            or "constraint" in proposals[0].proposed_rule.lower()
+        )
 
     def test_dedup_within_single_run(self) -> None:
         """Two alerts with same pattern_key in one report should produce only one proposal."""
@@ -689,9 +701,7 @@ class TestStoreProposalsInSession:
 
     def test_does_not_overwrite_existing(self) -> None:
         session = SessionMemory()
-        session.proposed_constraints = [
-            {"pattern_key": "ruff|F821", "status": "accepted"}
-        ]
+        session.proposed_constraints = [{"pattern_key": "ruff|F821", "status": "accepted"}]
         proposals = [
             ProposedConstraint(pattern_key="ruff|F821", proposed_rule="new rule"),
         ]
@@ -701,9 +711,7 @@ class TestStoreProposalsInSession:
 
     def test_appends_only_new_keys(self) -> None:
         session = SessionMemory()
-        session.proposed_constraints = [
-            {"pattern_key": "ruff|F821"}
-        ]
+        session.proposed_constraints = [{"pattern_key": "ruff|F821"}]
         proposals = [
             ProposedConstraint(pattern_key="ruff|F821"),
             ProposedConstraint(pattern_key="ruff|F401"),
@@ -723,18 +731,14 @@ class TestStoreProposalsInSession:
 class TestUpdateConstraintStatus:
     def test_updates_existing_constraint(self) -> None:
         session = SessionMemory()
-        session.proposed_constraints = [
-            {"pattern_key": "ruff|F821", "status": "proposed"}
-        ]
+        session.proposed_constraints = [{"pattern_key": "ruff|F821", "status": "proposed"}]
         result = update_constraint_status(session, "ruff|F821", "accepted")
         assert result is True
         assert session.proposed_constraints[0]["status"] == "accepted"
 
     def test_returns_false_when_not_found(self) -> None:
         session = SessionMemory()
-        session.proposed_constraints = [
-            {"pattern_key": "ruff|F401", "status": "proposed"}
-        ]
+        session.proposed_constraints = [{"pattern_key": "ruff|F401", "status": "proposed"}]
         result = update_constraint_status(session, "ruff|F821", "rejected")
         assert result is False
 
@@ -745,9 +749,7 @@ class TestUpdateConstraintStatus:
 
     def test_updates_to_rejected(self) -> None:
         session = SessionMemory()
-        session.proposed_constraints = [
-            {"pattern_key": "ruff|F821", "status": "proposed"}
-        ]
+        session.proposed_constraints = [{"pattern_key": "ruff|F821", "status": "proposed"}]
         result = update_constraint_status(session, "ruff|F821", "rejected")
         assert result is True
         assert session.proposed_constraints[0]["status"] == "rejected"

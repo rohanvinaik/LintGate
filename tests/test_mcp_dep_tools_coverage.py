@@ -11,13 +11,10 @@ import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
 
 from mcp_tools.dep_tools import register
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -101,13 +98,14 @@ class TestDepSync:
         """When uv is not in PATH, returns error message."""
         tools = _register_tools(tmp_path)
         mock_health = {"summary": {"score": 50}}
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value=None):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), create_venv=True)
-            )
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value=None),
+        ):
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         assert "error" in result
         assert "uv not found" in result["error"]
 
@@ -116,13 +114,14 @@ class TestDepSync:
         tools = _register_tools(tmp_path)
         (tmp_path / ".venv").mkdir()
         mock_health = {"summary": {"score": 80}}
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), create_venv=True)
-            )
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+        ):
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert len(venv_action) == 1
         assert venv_action[0]["status"] == "skipped"
@@ -135,15 +134,18 @@ class TestDepSync:
         mock_proc = MagicMock()
         mock_proc.returncode = 0
         mock_proc.stderr = ""
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run", return_value=mock_proc,
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                return_value=mock_proc,
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), create_venv=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert venv_action[0]["status"] == "ok"
         assert "health_after" in result
@@ -155,15 +157,18 @@ class TestDepSync:
         mock_proc = MagicMock()
         mock_proc.returncode = 1
         mock_proc.stderr = "some error occurred"
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run", return_value=mock_proc,
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                return_value=mock_proc,
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), create_venv=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert venv_action[0]["status"] == "error"
         assert venv_action[0]["returncode"] == 1
@@ -172,16 +177,18 @@ class TestDepSync:
         """Timeout during venv creation returns timeout status."""
         tools = _register_tools(tmp_path)
         mock_health = {"summary": {"score": 80}}
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="uv venv", timeout=60),
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="uv venv", timeout=60),
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), create_venv=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert venv_action[0]["status"] == "timeout"
 
@@ -192,15 +199,18 @@ class TestDepSync:
         mock_proc = MagicMock()
         mock_proc.returncode = 0
         mock_proc.stderr = ""
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run", return_value=mock_proc,
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                return_value=mock_proc,
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), lock=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert len(lock_action) == 1
         assert lock_action[0]["status"] == "ok"
@@ -213,15 +223,18 @@ class TestDepSync:
         mock_proc = MagicMock()
         mock_proc.returncode = 1
         mock_proc.stderr = "lock failed"
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run", return_value=mock_proc,
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                return_value=mock_proc,
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), lock=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert lock_action[0]["status"] == "error"
 
@@ -229,16 +242,18 @@ class TestDepSync:
         """Timeout during lock returns timeout status."""
         tools = _register_tools(tmp_path)
         mock_health = {"summary": {"score": 80}}
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="uv lock", timeout=120),
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="uv lock", timeout=120),
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), lock=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert lock_action[0]["status"] == "timeout"
 
@@ -249,17 +264,18 @@ class TestDepSync:
         mock_proc = MagicMock()
         mock_proc.returncode = 0
         mock_proc.stderr = ""
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run", return_value=mock_proc,
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                return_value=mock_proc,
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](
-                    path=str(tmp_path), create_venv=True, lock=True
-                )
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True))
         action_types = [a["action"] for a in result["actions"]]
         assert "create_venv" in action_types
         assert "lock" in action_types
@@ -272,14 +288,17 @@ class TestDepSync:
         mock_proc = MagicMock()
         mock_proc.returncode = 1
         mock_proc.stderr = "x" * 1000
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ), patch("shutil.which", return_value="/usr/bin/uv"), patch(
-            "subprocess.run", return_value=mock_proc,
+        with (
+            patch(
+                "lintgate.dependency_health.full_dependency_health",
+                return_value=mock_health,
+            ),
+            patch("shutil.which", return_value="/usr/bin/uv"),
+            patch(
+                "subprocess.run",
+                return_value=mock_proc,
+            ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), lock=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert len(lock_action[0]["stderr"]) <= 500

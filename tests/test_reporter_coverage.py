@@ -52,7 +52,6 @@ from lintgate.controlplane.types import (
 )
 from lintgate.types import LintIssue
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -299,7 +298,7 @@ def test_format_coherence_with_classification_notes() -> None:
 
 def test_format_incomplete_single_channel() -> None:
     result = _format_incomplete(["tests"])
-    assert "PARTIAL: Channels timed out: tests. Results may be incomplete." == result
+    assert result == "PARTIAL: Channels timed out: tests. Results may be incomplete."
 
 
 def test_format_incomplete_multiple_channels() -> None:
@@ -356,7 +355,12 @@ def test_format_channel_summary_timeout() -> None:
 
 def test_format_pattern_alerts_recurring() -> None:
     alerts = [
-        {"linter": "ruff", "kind": "F821", "alert_reason": "recurring_across_runs", "recent_run_count": 5},
+        {
+            "linter": "ruff",
+            "kind": "F821",
+            "alert_reason": "recurring_across_runs",
+            "recent_run_count": 5,
+        },
     ]
     result = _format_pattern_alerts(alerts)
     assert "PATTERN ALERT: [ruff/F821] recurring across 5 recent runs" in result
@@ -364,7 +368,12 @@ def test_format_pattern_alerts_recurring() -> None:
 
 def test_format_pattern_alerts_single_run_volume() -> None:
     alerts = [
-        {"linter": "mypy", "kind": "error", "alert_reason": "single_run_volume", "count_this_run": 42},
+        {
+            "linter": "mypy",
+            "kind": "error",
+            "alert_reason": "single_run_volume",
+            "count_this_run": 42,
+        },
     ]
     result = _format_pattern_alerts(alerts)
     assert "PATTERN NOTE: [mypy/error] appeared 42 times this run" in result
@@ -378,7 +387,12 @@ def test_format_pattern_alerts_unknown_reason_ignored() -> None:
 
 def test_format_pattern_alerts_truncates_at_three() -> None:
     alerts = [
-        {"linter": f"l{i}", "kind": "k", "alert_reason": "recurring_across_runs", "recent_run_count": i}
+        {
+            "linter": f"l{i}",
+            "kind": "k",
+            "alert_reason": "recurring_across_runs",
+            "recent_run_count": i,
+        }
         for i in range(5)
     ]
     result = _format_pattern_alerts(alerts)
@@ -525,7 +539,9 @@ def test_dynamic_budget_with_mixed_findings() -> None:
     )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
     budget = _compute_dynamic_budget(all_findings, mesh, config)
-    expected = _BUDGET_BASE + 2 * _BUDGET_PER_BLOCKING + 3 * _BUDGET_PER_WARNING + 4 * _BUDGET_PER_INFO
+    expected = (
+        _BUDGET_BASE + 2 * _BUDGET_PER_BLOCKING + 3 * _BUDGET_PER_WARNING + 4 * _BUDGET_PER_INFO
+    )
     assert budget == expected
 
 
@@ -844,7 +860,9 @@ def test_format_mesh_report_telemetry_when_delta() -> None:
 
 def test_format_mesh_report_delta_new_findings() -> None:
     """Delta mode shows only new findings."""
-    issue_a = _issue("warning", linter="ruff", kind="F821", message="Undefined foo", file="/tmp/foo.py")
+    issue_a = _issue(
+        "warning", linter="ruff", kind="F821", message="Undefined foo", file="/tmp/foo.py"
+    )
     mesh = _mesh(
         channel_results=[
             ChannelResult(channel="lint", status="fail", findings=[issue_a]),
@@ -858,9 +876,11 @@ def test_format_mesh_report_delta_new_findings() -> None:
 
 def test_format_mesh_report_delta_resolved() -> None:
     """Delta shows resolved count when findings disappear."""
-    from lintgate.controlplane.reporter import build_finding_index, compute_finding_fingerprint
+    from lintgate.controlplane.reporter import build_finding_index
 
-    issue_a = _issue("warning", linter="ruff", kind="F821", message="Undefined foo", file="/tmp/foo.py")
+    issue_a = _issue(
+        "warning", linter="ruff", kind="F821", message="Undefined foo", file="/tmp/foo.py"
+    )
     prev_mesh = _mesh(
         channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
@@ -882,7 +902,9 @@ def test_format_mesh_report_delta_suppresses_unchanged() -> None:
     """Delta mode suppresses unchanged findings."""
     from lintgate.controlplane.reporter import build_finding_index
 
-    issue_a = _issue("warning", linter="ruff", kind="F821", message="Undefined foo", file="/tmp/foo.py")
+    issue_a = _issue(
+        "warning", linter="ruff", kind="F821", message="Undefined foo", file="/tmp/foo.py"
+    )
     prev_mesh = _mesh(
         channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
@@ -902,7 +924,9 @@ def test_format_mesh_report_resurfacing_cadence() -> None:
     """Persistent blocking findings resurface every 10 snapshots."""
     from lintgate.controlplane.reporter import build_finding_index
 
-    issue_a = _issue("blocking", linter="ruff", kind="F821", message="Critical bug", file="/tmp/foo.py")
+    issue_a = _issue(
+        "blocking", linter="ruff", kind="F821", message="Critical bug", file="/tmp/foo.py"
+    )
     prev_mesh = _mesh(
         channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
@@ -924,7 +948,9 @@ def test_format_mesh_report_baseline_delta() -> None:
     """Baseline delta is computed when baseline_finding_index is provided."""
     mesh = _mesh(
         channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=[_issue("warning", message="New issue")]),
+            ChannelResult(
+                channel="lint", status="fail", findings=[_issue("warning", message="New issue")]
+            ),
         ],
     )
     report = format_mesh_report(mesh, baseline_finding_index={})

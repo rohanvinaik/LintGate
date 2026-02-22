@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import textwrap
-
-import pytest
-import yaml
 
 from lintgate.config import (
     _auto_detect,
@@ -17,8 +13,7 @@ from lintgate.config import (
     load_config,
     load_controlplane_config,
 )
-from lintgate.types import CoveragePolicy, QualityPolicy
-
+from lintgate.types import QualityPolicy
 
 # ── _coerce_int ──────────────────────────────────────────────────────────
 

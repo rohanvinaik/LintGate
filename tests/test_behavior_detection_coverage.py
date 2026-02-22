@@ -1,9 +1,8 @@
 """Tests for lintgate/channels/behavior_detection.py — all 9 signal detectors."""
+
 from __future__ import annotations
 
 import time
-
-import pytest
 
 from lintgate.channels.behavior_detection import (
     _detect_amnesia_from_action_history,
@@ -27,7 +26,6 @@ from lintgate.controlplane.behavior_types import (
     BehaviorHypothesis,
     CoverageMetrics,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -261,9 +259,7 @@ class TestDetectAmnesiaFromHypotheses:
         compass = _fresh_compass(hypotheses=[hyp])
         coord = _make_coord(compass)
         evidence = {}
-        _detect_amnesia_from_hypotheses(
-            compass, "connection refused timeout", evidence, coord
-        )
+        _detect_amnesia_from_hypotheses(compass, "connection refused timeout", evidence, coord)
         findings, _, _ = coord.finalize()
         assert len(findings) == 1
         assert findings[0].kind == "failure_amnesia"
@@ -492,9 +488,7 @@ class TestDetectVerificationDebt:
         compass.intent_history = ["execute"] * 5
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_verification_debt(
-            compass, {"verification_debt_streak": 8}, coord, scorer
-        )
+        detect_verification_debt(compass, {"verification_debt_streak": 8}, coord, scorer)
         findings, _, _ = coord.finalize()
         assert findings == []
 
@@ -503,9 +497,7 @@ class TestDetectVerificationDebt:
         compass.intent_history = ["execute"] * 10
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_verification_debt(
-            compass, {"verification_debt_streak": 8}, coord, scorer
-        )
+        detect_verification_debt(compass, {"verification_debt_streak": 8}, coord, scorer)
         findings, actions, _ = coord.finalize()
         assert len(findings) == 1
         assert findings[0].kind == "verification_debt"
@@ -516,9 +508,7 @@ class TestDetectVerificationDebt:
         compass.intent_history = ["execute"] * 5 + ["verify"] + ["execute"] * 5
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_verification_debt(
-            compass, {"verification_debt_streak": 8}, coord, scorer
-        )
+        detect_verification_debt(compass, {"verification_debt_streak": 8}, coord, scorer)
         findings, _, _ = coord.finalize()
         assert findings == []
 
@@ -548,9 +538,7 @@ class TestDetectStaleModel:
         compass = _fresh_compass(approaches=approaches)
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_stale_model(
-            compass, {"stale_model_approach_changes": 2}, coord, scorer
-        )
+        detect_stale_model(compass, {"stale_model_approach_changes": 2}, coord, scorer)
         findings, _, _ = coord.finalize()
         assert len(findings) == 1
         assert findings[0].kind == "stale_model"
@@ -568,8 +556,6 @@ class TestDetectStaleModel:
         compass = _fresh_compass(approaches=approaches)
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_stale_model(
-            compass, {"stale_model_approach_changes": 4}, coord, scorer
-        )
+        detect_stale_model(compass, {"stale_model_approach_changes": 4}, coord, scorer)
         findings, _, _ = coord.finalize()
         assert findings == []

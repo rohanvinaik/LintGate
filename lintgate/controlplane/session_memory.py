@@ -82,7 +82,9 @@ class SessionSnapshot:
     pattern_alerts: list[dict[str, Any]] = field(default_factory=list)
     repairs_proposed: list[str] = field(default_factory=list)  # action_ids
     repairs_applied: list[str] = field(default_factory=list)  # action_ids confirmed
-    repair_catalog: dict[str, dict[str, str]] = field(default_factory=dict)  # action_id → compact meta
+    repair_catalog: dict[str, dict[str, str]] = field(
+        default_factory=dict
+    )  # action_id → compact meta
     behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
     finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
 

@@ -1,4 +1,5 @@
 """Tests for lintgate/compass_io.py — persistence, migration, and helpers."""
+
 from __future__ import annotations
 
 import time
@@ -24,7 +25,6 @@ from lintgate.compass_io import (
     reset_compass,
     save_compass,
 )
-
 
 # ── load_compass ────────────────────────────────────────────────────
 

@@ -10,13 +10,10 @@ import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
 
 from mcp_tools.telemetry_tools import register
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -87,9 +84,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ) as mock_fn:
-            result = json.loads(
-                tools["telemetry_summary"](path=str(tmp_path), period="30d")
-            )
+            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="30d"))
         mock_fn.assert_called_once_with(str(tmp_path), period="30d")
         assert result["period"] == "30d"
 
@@ -100,9 +95,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(
-                tools["telemetry_summary"](path=str(tmp_path), period="1d")
-            )
+            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="1d"))
         assert result["period"] == "1d"
 
     def test_period_all(self, tmp_path: Path) -> None:
@@ -112,9 +105,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(
-                tools["telemetry_summary"](path=str(tmp_path), period="all")
-            )
+            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="all"))
         assert result["total_runs"] == 100
 
 
@@ -126,12 +117,15 @@ class TestTelemetrySummaryFeatureUsage:
         tools = _register_tools(tmp_path)
         mock_summary = {"period": "7d", "total_runs": 10}
         mock_feature = {"total_invocations": 5, "features": {"bootstrap": 3}}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_feature_usage_summary",
-            return_value=mock_feature,
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_feature_usage_summary",
+                return_value=mock_feature,
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         assert "feature_usage" in result
@@ -141,12 +135,15 @@ class TestTelemetrySummaryFeatureUsage:
         tools = _register_tools(tmp_path)
         mock_summary = {"period": "7d", "total_runs": 10}
         mock_feature = {"total_invocations": 0, "features": {}}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_feature_usage_summary",
-            return_value=mock_feature,
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_feature_usage_summary",
+                return_value=mock_feature,
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         assert "feature_usage" not in result
@@ -154,12 +151,15 @@ class TestTelemetrySummaryFeatureUsage:
     def test_feature_usage_exception_suppressed(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_summary = {"period": "7d", "total_runs": 10}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_feature_usage_summary",
-            side_effect=RuntimeError("broken"),
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_feature_usage_summary",
+                side_effect=RuntimeError("broken"),
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         # Should still return base summary without feature_usage
@@ -175,12 +175,15 @@ class TestTelemetrySummaryQualityEconomics:
         tools = _register_tools(tmp_path)
         mock_summary = {"period": "7d", "total_runs": 10}
         mock_qe = {"has_data": True, "qg_pass_rate": 0.85}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_quality_economics_summary",
-            return_value=mock_qe,
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_quality_economics_summary",
+                return_value=mock_qe,
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         assert "quality_economics" in result
@@ -190,12 +193,15 @@ class TestTelemetrySummaryQualityEconomics:
         tools = _register_tools(tmp_path)
         mock_summary = {"period": "7d", "total_runs": 10}
         mock_qe = {"has_data": False, "total_qg_runs": 0}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_quality_economics_summary",
-            return_value=mock_qe,
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_quality_economics_summary",
+                return_value=mock_qe,
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         assert "quality_economics" not in result
@@ -203,12 +209,15 @@ class TestTelemetrySummaryQualityEconomics:
     def test_quality_economics_exception_suppressed(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_summary = {"period": "7d", "total_runs": 10}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_quality_economics_summary",
-            side_effect=ImportError("missing"),
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_quality_economics_summary",
+                side_effect=ImportError("missing"),
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         assert "quality_economics" not in result
@@ -224,15 +233,19 @@ class TestTelemetrySummaryCombined:
         mock_summary = {"period": "7d", "total_runs": 20}
         mock_feature = {"total_invocations": 8, "features": {"bootstrap": 5}}
         mock_qe = {"has_data": True, "qg_pass_rate": 0.9}
-        with patch(
-            "lintgate.telemetry.compute_telemetry_summary",
-            return_value=mock_summary,
-        ), patch(
-            "lintgate.telemetry.compute_feature_usage_summary",
-            return_value=mock_feature,
-        ), patch(
-            "lintgate.telemetry.compute_quality_economics_summary",
-            return_value=mock_qe,
+        with (
+            patch(
+                "lintgate.telemetry.compute_telemetry_summary",
+                return_value=mock_summary,
+            ),
+            patch(
+                "lintgate.telemetry.compute_feature_usage_summary",
+                return_value=mock_feature,
+            ),
+            patch(
+                "lintgate.telemetry.compute_quality_economics_summary",
+                return_value=mock_qe,
+            ),
         ):
             result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
         assert "feature_usage" in result

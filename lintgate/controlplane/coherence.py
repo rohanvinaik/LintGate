@@ -161,7 +161,12 @@ def _compute_base_coherence(
 
     # Rule 4: systemic — three+ failures or cross-domain failure
     systemic = _classify_systemic_failure(
-        failed, loud, silent, demoted_notes, severity_weighted, channel_weights,
+        failed,
+        loud,
+        silent,
+        demoted_notes,
+        severity_weighted,
+        channel_weights,
     )
     if systemic is not None:
         return systemic
@@ -584,13 +589,15 @@ def _detect_refactoring_tradeoffs(
 
         # Tradeoff: improved count decreased AND regressed count increased
         if curr_improved < prev_improved and curr_regressed > prev_regressed:
-            tradeoffs.append({
-                "type": "refactor_tradeoff_detected",
-                "improved": improved_kind,
-                "improved_delta": curr_improved - prev_improved,
-                "regressed": regressed_kind,
-                "regressed_delta": curr_regressed - prev_regressed,
-            })
+            tradeoffs.append(
+                {
+                    "type": "refactor_tradeoff_detected",
+                    "improved": improved_kind,
+                    "improved_delta": curr_improved - prev_improved,
+                    "regressed": regressed_kind,
+                    "regressed_delta": curr_regressed - prev_regressed,
+                }
+            )
 
     return tradeoffs
 

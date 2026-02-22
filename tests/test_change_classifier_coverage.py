@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-import os
-
 from lintgate.change_classifier import (
     _classify_no_file_change,
     _is_build_command,
-    _is_config_file,
     _is_dependency_file,
-    _is_docs_file,
     _is_readonly_bash,
     _is_test_file,
     _matches_pipeline_path,
     classify_change,
 )
-
 
 # ── _is_dependency_file ──────────────────────────────────────────────
 
@@ -141,7 +136,6 @@ def test_no_file_other_tool():
 
 
 def test_classify_edit(tmp_path):
-    from lintgate.types import ProjectConfig
     f = tmp_path / "app.py"
     f.write_text("print('hello')\n")
     r = classify_change(
@@ -213,6 +207,7 @@ def test_classify_test_file(tmp_path):
 
 def test_classify_pipeline_critical(tmp_path):
     from lintgate.types import ProjectConfig
+
     f = tmp_path / "lintgate" / "hook.py"
     f.parent.mkdir()
     f.write_text("x=1\n")

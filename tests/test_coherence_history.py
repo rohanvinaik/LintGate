@@ -254,9 +254,7 @@ class TestCombinedAnnotations:
 class TestTradeoffDetection:
     """Detect refactoring tradeoff patterns between runs."""
 
-    def _make_session_with_findings(
-        self, finding_index: dict[str, dict]
-    ) -> SessionMemory:
+    def _make_session_with_findings(self, finding_index: dict[str, dict]) -> SessionMemory:
         """Build session with one snapshot containing a finding_index."""
         session = SessionMemory(project_root="/test")
         session.snapshots.append(
@@ -288,9 +286,18 @@ class TestTradeoffDetection:
                 status="fail",
                 severity="warning",
                 findings=[
-                    LintIssue(linter="ruff", kind="cyclomatic_complexity", severity="warning", message="CC=12"),
-                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="7 args"),
-                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="6 args"),
+                    LintIssue(
+                        linter="ruff",
+                        kind="cyclomatic_complexity",
+                        severity="warning",
+                        message="CC=12",
+                    ),
+                    LintIssue(
+                        linter="ruff", kind="too_many_args", severity="warning", message="7 args"
+                    ),
+                    LintIssue(
+                        linter="ruff", kind="too_many_args", severity="warning", message="6 args"
+                    ),
                 ],
             ),
             ChannelResult(channel="tests", status="pass"),
@@ -314,9 +321,21 @@ class TestTradeoffDetection:
                 status="fail",
                 severity="warning",
                 findings=[
-                    LintIssue(linter="ruff", kind="cyclomatic_complexity", severity="warning", message="CC=15"),
-                    LintIssue(linter="ruff", kind="cyclomatic_complexity", severity="warning", message="CC=12"),
-                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="7 args"),
+                    LintIssue(
+                        linter="ruff",
+                        kind="cyclomatic_complexity",
+                        severity="warning",
+                        message="CC=15",
+                    ),
+                    LintIssue(
+                        linter="ruff",
+                        kind="cyclomatic_complexity",
+                        severity="warning",
+                        message="CC=12",
+                    ),
+                    LintIssue(
+                        linter="ruff", kind="too_many_args", severity="warning", message="7 args"
+                    ),
                 ],
             ),
             ChannelResult(channel="tests", status="pass"),
@@ -335,7 +354,9 @@ class TestTradeoffDetection:
                 status="fail",
                 severity="warning",
                 findings=[
-                    LintIssue(linter="ruff", kind="too_many_args", severity="warning", message="7 args"),
+                    LintIssue(
+                        linter="ruff", kind="too_many_args", severity="warning", message="7 args"
+                    ),
                 ],
             ),
             ChannelResult(channel="tests", status="pass"),
@@ -357,9 +378,21 @@ class TestTradeoffDetection:
                 status="fail",
                 severity="warning",
                 findings=[
-                    LintIssue(linter="ruff", kind="file_too_long", severity="warning", message="350 lines"),
-                    LintIssue(linter="ruff", kind="too_many_functions", severity="warning", message="15 functions"),
-                    LintIssue(linter="ruff", kind="too_many_functions", severity="warning", message="12 functions"),
+                    LintIssue(
+                        linter="ruff", kind="file_too_long", severity="warning", message="350 lines"
+                    ),
+                    LintIssue(
+                        linter="ruff",
+                        kind="too_many_functions",
+                        severity="warning",
+                        message="15 functions",
+                    ),
+                    LintIssue(
+                        linter="ruff",
+                        kind="too_many_functions",
+                        severity="warning",
+                        message="12 functions",
+                    ),
                 ],
             ),
             ChannelResult(channel="tests", status="pass"),
@@ -383,7 +416,9 @@ class TestTradeoffDetection:
                 status="fail",
                 severity="blocking",
                 findings=[
-                    LintIssue(linter="ruff", kind="too_many_args", severity="blocking", message="8 args"),
+                    LintIssue(
+                        linter="ruff", kind="too_many_args", severity="blocking", message="8 args"
+                    ),
                 ],
             ),
             ChannelResult(channel="tests", status="pass"),

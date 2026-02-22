@@ -167,7 +167,10 @@ def _impl_check(project_root: str, action: str) -> dict[str, Any]:
 
     compass = load_compass(project_root)
     if compass is None:
-        return {"aligned": None, "message": "Cannot evaluate — no compass loaded. Run compass_update first."}
+        return {
+            "aligned": None,
+            "message": "Cannot evaluate — no compass loaded. Run compass_update first.",
+        }
 
     ec = ExecutionCompass.from_compass_state(compass)
     result = ec.check_alignment(action)

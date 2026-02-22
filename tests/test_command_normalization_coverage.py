@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-
 from lintgate.controlplane.command_normalization import (
-    DEFAULT_INTENT_MAP,
-    DEFAULT_INTENT_SIG_MAP,
-    INTENT_CATEGORIES,
     _ABS_PATH_PATTERN,
     _EXIT_CODE_LINE,
     _SECRET_PATTERN,
     _TOOL_TYPE_DEFAULTS,
     _WRAPPER_PREFIXES,
+    DEFAULT_INTENT_MAP,
+    DEFAULT_INTENT_SIG_MAP,
+    INTENT_CATEGORIES,
     _extract_first_positional_arg,
     _strip_wrapper_prefixes,
     error_memory_key,
@@ -20,7 +18,6 @@ from lintgate.controlplane.command_normalization import (
     normalize_command_sig,
     resolve_intent,
 )
-
 
 # ── Constants sanity checks ─────────────────────────────────────────────
 

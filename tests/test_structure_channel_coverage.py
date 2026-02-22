@@ -25,7 +25,6 @@ import pytest
 
 from lintgate.channels.structure_channel import (
     StructureChannel,
-    _build_import_graph,
     _build_reexport_map,
     _build_structure_snapshot,
     _check_import_cycles,
@@ -41,7 +40,6 @@ from lintgate.channels.structure_channel import (
 )
 from lintgate.controlplane.types import ControlPlaneConfig, SupervisionEvent
 from lintgate.types import ChangeClassification, LintIssue
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -212,8 +210,14 @@ class TestBuildStructureSnapshot:
         file_loc = {str(tmp_path / "a.py"): 100, str(tmp_path / "b.py"): 50}
 
         snapshot = _build_structure_snapshot(
-            py_files, import_graph, file_map, file_loc,
-            [], [], [], [],
+            py_files,
+            import_graph,
+            file_map,
+            file_loc,
+            [],
+            [],
+            [],
+            [],
             str(tmp_path),
         )
 
@@ -242,8 +246,14 @@ class TestBuildStructureSnapshot:
             "d": str(tmp_path / "d.py"),
         }
         snapshot = _build_structure_snapshot(
-            list(file_loc.keys()), {}, file_map, file_loc,
-            [], [], [], [],
+            list(file_loc.keys()),
+            {},
+            file_map,
+            file_loc,
+            [],
+            [],
+            [],
+            [],
             str(tmp_path),
         )
         largest = snapshot["largest_modules"]
@@ -261,8 +271,14 @@ class TestBuildStructureSnapshot:
         ]
         cohesion_f = [LintIssue(linter="x", kind="STRUCT004", message="h")]
         snapshot = _build_structure_snapshot(
-            [], {}, {}, {},
-            cycle_f, [], orphan_f, cohesion_f,
+            [],
+            {},
+            {},
+            {},
+            cycle_f,
+            [],
+            orphan_f,
+            cohesion_f,
             str(tmp_path),
         )
         assert snapshot["import_cycle_count"] == 1
@@ -274,8 +290,14 @@ class TestBuildStructureSnapshot:
         file_map = {"standalone": str(tmp_path / "standalone.py")}
         file_loc = {str(tmp_path / "standalone.py"): 10}
         snapshot = _build_structure_snapshot(
-            [str(tmp_path / "standalone.py")], {}, file_map, file_loc,
-            [], [], [], [],
+            [str(tmp_path / "standalone.py")],
+            {},
+            file_map,
+            file_loc,
+            [],
+            [],
+            [],
+            [],
             str(tmp_path),
         )
         assert "<top-level>" in snapshot["packages"]
@@ -284,8 +306,14 @@ class TestBuildStructureSnapshot:
     def test_snapshot_empty_loc_zero_median(self, tmp_path):
         """When no files have LOC > 0, median is 0."""
         snapshot = _build_structure_snapshot(
-            [], {}, {}, {},
-            [], [], [], [],
+            [],
+            {},
+            {},
+            {},
+            [],
+            [],
+            [],
+            [],
             str(tmp_path),
         )
         assert snapshot["median_module_loc"] == 0
@@ -537,7 +565,10 @@ class TestCheckOrphansReexports:
 
         # With extra_exclude_dirs
         findings_with = _check_orphans(
-            py_files, graph, file_map, str(tmp_path),
+            py_files,
+            graph,
+            file_map,
+            str(tmp_path),
             extra_exclude_dirs=frozenset({"custom_generated"}),
         )
         orphan_modules_with = {f.evidence.get("module") for f in findings_with}
@@ -558,7 +589,15 @@ class TestIsOrphanExcludedEdge:
 
     def test_plugin_dirs_excluded(self, tmp_path):
         """Files under plugin-like directories (linters, renderers, etc.) are excluded."""
-        for dirname in ("linters", "renderers", "extensions", "handlers", "backends", "drivers", "adapters"):
+        for dirname in (
+            "linters",
+            "renderers",
+            "extensions",
+            "handlers",
+            "backends",
+            "drivers",
+            "adapters",
+        ):
             assert _is_orphan_excluded(
                 str(tmp_path / dirname / "my_plugin.py"),
                 f"{dirname}.my_plugin",

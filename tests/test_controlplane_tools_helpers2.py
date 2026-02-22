@@ -247,9 +247,7 @@ class TestImplAgentFeedback:
             mock.patch("mcp_tools.controlplane_tools._process_rejected_constraints"),
             mock.patch("mcp_tools.controlplane_tools._generate_living_context_patches"),
         ):
-            raw = _impl_controlplane_agent_feedback(
-                "/tmp", None, None, None, None, _stub_helpers()
-            )
+            raw = _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
         parsed = json.loads(raw)
         assert parsed["session_id"] == "s2"
         rec.assert_not_called()
@@ -299,13 +297,17 @@ class TestPersistSessionAfterMeshBehaviorBranch:
         mesh_result = mock.MagicMock()
         mesh_result.channel_results = [lint_cr, tests_cr]
 
-        with mock.patch(
-            "lintgate.controlplane.session_memory.record_mesh_run",
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ), mock.patch(
-            "mcp_tools.controlplane_tools._persist_behavior_compass_delta",
-        ) as persist_bc:
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.record_mesh_run",
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ),
+            mock.patch(
+                "mcp_tools.controlplane_tools._persist_behavior_compass_delta",
+            ) as persist_bc,
+        ):
             from mcp_tools.controlplane_tools import _persist_session_after_mesh
 
             _persist_session_after_mesh(session, mesh_result, {}, mock.MagicMock())
@@ -334,7 +336,8 @@ class TestCollectPendingRepairs:
             {"action_id": "a2", "safe": True},
         ]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs", return_value=repairs,
+            "mcp_tools.controlplane_tools._load_all_repairs",
+            return_value=repairs,
         ):
             result = _collect_pending_repairs(session, ["a1"], False)
         assert len(result) == 1
@@ -347,7 +350,8 @@ class TestCollectPendingRepairs:
             {"action_id": "a2", "safe": False},
         ]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs", return_value=repairs,
+            "mcp_tools.controlplane_tools._load_all_repairs",
+            return_value=repairs,
         ):
             result = _collect_pending_repairs(session, None, True)
         assert len(result) == 1
@@ -357,7 +361,8 @@ class TestCollectPendingRepairs:
         session = self._make_session(["a1"], repair_outcomes={"a1": "applied"})
         repairs = [{"action_id": "a1", "safe": True}]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs", return_value=repairs,
+            "mcp_tools.controlplane_tools._load_all_repairs",
+            return_value=repairs,
         ):
             result = _collect_pending_repairs(session, None, False)
         assert result == []
@@ -370,7 +375,8 @@ class TestCollectPendingRepairs:
             {"action_id": "a_unknown", "safe": True},  # NOT in proposed_ids
         ]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs", return_value=repairs,
+            "mcp_tools.controlplane_tools._load_all_repairs",
+            return_value=repairs,
         ):
             result = _collect_pending_repairs(session, None, False)
         assert len(result) == 1
@@ -449,7 +455,8 @@ class TestExecuteSingleRepair:
             "payload": {"command": "sleep 999"},
         }
         with mock.patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 60),
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired("cmd", 60),
         ):
             result = _execute_single_repair(repair, "/tmp", mock.MagicMock())
         assert result["status"] == "timeout"

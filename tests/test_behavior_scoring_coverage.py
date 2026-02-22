@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from lintgate.channels.behavior_scoring import (
-    SIGNAL_THEORY_MAP,
-    IntentBiasScorer,
-    SignalCoordinator,
     _BIAS_CAP,
     _ERROR_EVIDENCE_PREFIXES,
     _ERROR_STOPWORDS,
     _THEORY_CODA_MAX_CHARS,
+    SIGNAL_THEORY_MAP,
+    IntentBiasScorer,
+    SignalCoordinator,
     _error_like_match,
     _error_tokens,
     _extract_hypothesis_error_candidates,
@@ -27,7 +25,6 @@ from lintgate.controlplane.behavior_types import (
     new_compass,
 )
 from lintgate.types import LintIssue
-
 
 # ── _normalize_error_text ────────────────────────────────────────────────
 
@@ -281,7 +278,9 @@ class TestIntentBiasScorer:
             event_counter=10,
         )
         compass.hypotheses = [
-            BehaviorHypothesis(id="h1", claim="t", confidence=0.3, source="command_failure", status="active")
+            BehaviorHypothesis(
+                id="h1", claim="t", confidence=0.3, source="command_failure", status="active"
+            )
         ]
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.serial_discovery_bias()
@@ -435,7 +434,9 @@ class TestSignalCoordinator:
             compass=compass,
             thresholds={"signal_cooldown": 10, "escalation_threshold": 3},
         )
-        finding = LintIssue(linter="behavior", kind="debt", message="debt", severity="informational")
+        finding = LintIssue(
+            linter="behavior", kind="debt", message="debt", severity="informational"
+        )
         coord.add_finding("verification_debt", finding, is_hard=False)
         assert coord.findings[0].severity == "warning"
 
@@ -498,7 +499,11 @@ class TestSignalCoordinator:
         coord = SignalCoordinator(
             compass=compass,
             thresholds={"signal_cooldown": 10, "escalation_threshold": 3},
-            theory_profile={"facets": {"problem_solving": {"claims": [{"claim": "some claim", "relevance_score": 1.0}]}}},
+            theory_profile={
+                "facets": {
+                    "problem_solving": {"claims": [{"claim": "some claim", "relevance_score": 1.0}]}
+                }
+            },
             recent_codas=recent_codas,
         )
         finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
@@ -528,9 +533,15 @@ class TestGroundFindingInTheory:
 
     def test_grounding_applied(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
-        theory = {"facets": {"problem_solving": {"claims": [
-            {"claim": "decompose before solving", "relevance_score": 0.9},
-        ]}}}
+        theory = {
+            "facets": {
+                "problem_solving": {
+                    "claims": [
+                        {"claim": "decompose before solving", "relevance_score": 0.9},
+                    ]
+                }
+            }
+        }
         with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
             mock_ctx.return_value = {
                 "claims": [{"claim": "decompose before solving", "relevance_score": 0.9}]
@@ -551,9 +562,7 @@ class TestGroundFindingInTheory:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         long_claim = "x" * 100
         with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
-            mock_ctx.return_value = {
-                "claims": [{"claim": long_claim, "relevance_score": 1.0}]
-            }
+            mock_ctx.return_value = {"claims": [{"claim": long_claim, "relevance_score": 1.0}]}
             coda = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
         assert coda is not None
         # The claim should have been truncated to 77 + "..."

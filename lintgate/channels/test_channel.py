@@ -118,7 +118,8 @@ class TestChannel:
                     # Symbol gate needs a meaningful coverage sample; avoid 10s truncation.
                     timeout_floor_ms = 25000
                 test_result = run_tests(
-                    tests_to_run, project_root,
+                    tests_to_run,
+                    project_root,
                     timeout_ms=max(remaining_ms, timeout_floor_ms),
                     measure_coverage=cov_cfg["measure"],
                     source_packages=cov_cfg["source_packages"],
@@ -127,18 +128,31 @@ class TestChannel:
 
             # Step 5: Check coverage threshold
             _check_coverage_threshold(
-                test_result, cov_cfg["measure"], cov_cfg["threshold"], findings,
+                test_result,
+                cov_cfg["measure"],
+                cov_cfg["threshold"],
+                findings,
             )
 
             # Step 6: Symbol coverage gate
             gate_result = _run_symbol_gate_if_enabled(
-                cov_cfg, test_result, changed_files, project_root,
-                event.surface, findings,
+                cov_cfg,
+                test_result,
+                changed_files,
+                project_root,
+                event.surface,
+                findings,
             )
 
             return _build_channel_result(
-                self.name, start, findings, repairs, impacted_tests,
-                test_result, cov_cfg, gate_result,
+                self.name,
+                start,
+                findings,
+                repairs,
+                impacted_tests,
+                test_result,
+                cov_cfg,
+                gate_result,
             )
         finally:
             if (
@@ -196,9 +210,7 @@ def _check_missing_tests(
             pass  # Archetype selection failure is non-fatal
 
 
-def _parse_coverage_settings(
-    channel_settings: dict[str, Any], surface: str
-) -> dict[str, Any]:
+def _parse_coverage_settings(channel_settings: dict[str, Any], surface: str) -> dict[str, Any]:
     """Parse coverage-related settings into a flat dict."""
     raw_threshold = channel_settings.get("coverage_threshold")
     threshold: float | None = None
@@ -326,11 +338,17 @@ def _run_symbol_gate_if_enabled(
         return None
     cov_json_path = test_result.coverage_json_path if test_result else None
     source_files = _filter_to_source_packages(
-        changed_files, cov_cfg["source_packages"], project_root,
+        changed_files,
+        cov_cfg["source_packages"],
+        project_root,
     )
     return _run_symbol_gate(
-        cov_json_path, source_files, project_root,
-        cov_cfg["symbol_coverage"], surface, findings,
+        cov_json_path,
+        source_files,
+        project_root,
+        cov_cfg["symbol_coverage"],
+        surface,
+        findings,
     )
 
 
@@ -785,8 +803,7 @@ def _emit_symbol_findings(gate_result: Any, findings: list[LintIssue]) -> None:
                 linter="test_channel",
                 kind="waiver_expired",
                 message=(
-                    f"Symbol coverage waiver expired: {waiver.symbol}"
-                    f" (expired {waiver.expires})"
+                    f"Symbol coverage waiver expired: {waiver.symbol} (expired {waiver.expires})"
                 ),
                 severity="informational",
                 evidence={"symbol": waiver.symbol, "expires": waiver.expires},

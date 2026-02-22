@@ -6,8 +6,6 @@ by the scenario-based integration tests.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 from lintgate.controlplane.coherence import (
     _apply_edit_scope,
     _channel_failure_weight,
@@ -71,8 +69,12 @@ def test_compute_coherence_with_files_changed():
 def test_compute_coherence_severity_weighted():
     # Two info-only failures get demoted, leaving zero actionable → stable
     results = [
-        _channel("lint", "fail", severity="informational", findings=[_issue(severity="informational")]),
-        _channel("tests", "fail", severity="informational", findings=[_issue(severity="informational")]),
+        _channel(
+            "lint", "fail", severity="informational", findings=[_issue(severity="informational")]
+        ),
+        _channel(
+            "tests", "fail", severity="informational", findings=[_issue(severity="informational")]
+        ),
         _channel("deps", "pass"),
     ]
     r = compute_coherence(results, severity_weighted=True)
@@ -123,8 +125,12 @@ def test_base_coherence_timeout_channel():
 def test_base_coherence_severity_weighted_demotes_info():
     # Two info-only failures get demoted → stable with "actionable" note
     results = [
-        _channel("lint", "fail", severity="informational", findings=[_issue(severity="informational")]),
-        _channel("tests", "fail", severity="informational", findings=[_issue(severity="informational")]),
+        _channel(
+            "lint", "fail", severity="informational", findings=[_issue(severity="informational")]
+        ),
+        _channel(
+            "tests", "fail", severity="informational", findings=[_issue(severity="informational")]
+        ),
         _channel("deps", "pass"),
     ]
     r = _compute_base_coherence(results, severity_weighted=True)
@@ -227,7 +233,11 @@ def test_systemic_returns_none_when_not_systemic():
 def test_systemic_cross_domain_low_weight():
     failed = [_channel("lint"), _channel("deps")]
     r = _classify_systemic_failure(
-        failed, ["lint", "deps"], [], [], True,
+        failed,
+        ["lint", "deps"],
+        [],
+        [],
+        True,
         channel_weights={"lint": 0.1, "deps": 0.1},
     )
     # Low weights mean effective failure count is low — may not trigger systemic
@@ -267,7 +277,10 @@ def test_coupled_shared_files_three_channels():
         _channel("structure", "fail", findings=findings),
     ]
     r = _classify_coupled_failure(
-        failed, ["lint", "tests", "structure"], ["deps"], [],
+        failed,
+        ["lint", "tests", "structure"],
+        ["deps"],
+        [],
     )
     assert r.state == "coupled"
 
@@ -289,7 +302,10 @@ def test_coupled_no_shared_three_channels():
         _channel("structure", "fail", findings=[_issue(file="c.py")]),
     ]
     r = _classify_coupled_failure(
-        failed, ["lint", "tests", "structure"], [], [],
+        failed,
+        ["lint", "tests", "structure"],
+        [],
+        [],
     )
     assert r.state == "coupled"
     assert "order" in r.recommended_action.lower()
@@ -331,11 +347,14 @@ def test_find_shared_files_no_files():
 
 
 def test_severity_counts_mixed():
-    r = _channel("lint", findings=[
-        _issue(severity="blocking"),
-        _issue(severity="warning"),
-        _issue(severity="informational"),
-    ])
+    r = _channel(
+        "lint",
+        findings=[
+            _issue(severity="blocking"),
+            _issue(severity="warning"),
+            _issue(severity="informational"),
+        ],
+    )
     counts = _finding_severity_counts(r)
     assert counts["blocking"] == 1
     assert counts["warning"] == 1
@@ -414,7 +433,9 @@ def test_has_actionable_info_only():
 def test_has_actionable_channel_severity_fallback():
     # Channel severity=warning is checked as fallback after findings
     r = ChannelResult(
-        channel="lint", status="fail", severity="warning",
+        channel="lint",
+        status="fail",
+        severity="warning",
         findings=[_issue(severity="informational")],
     )
     # Finding is info but channel severity is warning → True (channel fallback)
@@ -435,9 +456,14 @@ def test_top_finding_kind_empty():
 
 
 def test_top_finding_kind_most_common():
-    r = _channel("lint", findings=[
-        _issue(kind="E001"), _issue(kind="E001"), _issue(kind="E002"),
-    ])
+    r = _channel(
+        "lint",
+        findings=[
+            _issue(kind="E001"),
+            _issue(kind="E001"),
+            _issue(kind="E002"),
+        ],
+    )
     assert _top_finding_kind(r) == "E001"
 
 
@@ -538,24 +564,37 @@ def test_classify_edit_scope_basename_match(tmp_path):
 
 def test_apply_edit_scope_stable_passthrough():
     from lintgate.controlplane.types import CoherenceResult
-    base = CoherenceResult(state="stable", summary="ok", recommended_action="ok",
-                           silent_channels=[], loud_channels=[], confidence=1.0)
+
+    base = CoherenceResult(
+        state="stable",
+        summary="ok",
+        recommended_action="ok",
+        silent_channels=[],
+        loud_channels=[],
+        confidence=1.0,
+    )
     r = _apply_edit_scope(base, [], [])
     assert r.state == "stable"
 
 
 def test_apply_edit_scope_all_ambient_downgrade(tmp_path):
     from lintgate.controlplane.types import CoherenceResult
+
     other = tmp_path / "other.py"
     other.write_text("")
     changed = tmp_path / "changed.py"
     changed.write_text("")
     base = CoherenceResult(
-        state="isolated", summary="Issue in lint",
-        recommended_action="Fix lint", silent_channels=["tests"],
-        loud_channels=["lint"], confidence=0.8,
+        state="isolated",
+        summary="Issue in lint",
+        recommended_action="Fix lint",
+        silent_channels=["tests"],
+        loud_channels=["lint"],
+        confidence=0.8,
     )
-    channel_results = [_channel("lint", findings=[_issue(file=str(other), severity="informational")])]
+    channel_results = [
+        _channel("lint", findings=[_issue(file=str(other), severity="informational")])
+    ]
     r = _apply_edit_scope(base, channel_results, [str(changed)])
     assert r.edit_scoped is True
     assert r.state == "stable"  # downgraded because all ambient + non-critical
@@ -563,14 +602,18 @@ def test_apply_edit_scope_all_ambient_downgrade(tmp_path):
 
 def test_apply_edit_scope_ambient_critical_stays_isolated(tmp_path):
     from lintgate.controlplane.types import CoherenceResult
+
     other = tmp_path / "other.py"
     other.write_text("")
     changed = tmp_path / "changed.py"
     changed.write_text("")
     base = CoherenceResult(
-        state="isolated", summary="Issue in lint",
-        recommended_action="Fix lint", silent_channels=["tests"],
-        loud_channels=["lint"], confidence=0.8,
+        state="isolated",
+        summary="Issue in lint",
+        recommended_action="Fix lint",
+        silent_channels=["tests"],
+        loud_channels=["lint"],
+        confidence=0.8,
     )
     channel_results = [_channel("lint", findings=[_issue(file=str(other), severity="blocking")])]
     r = _apply_edit_scope(base, channel_results, [str(changed)])
@@ -580,9 +623,14 @@ def test_apply_edit_scope_ambient_critical_stays_isolated(tmp_path):
 
 def test_apply_edit_scope_mixed():
     from lintgate.controlplane.types import CoherenceResult
+
     base = CoherenceResult(
-        state="coupled", summary="Issues", recommended_action="Fix",
-        silent_channels=[], loud_channels=["lint", "tests"], confidence=0.8,
+        state="coupled",
+        summary="Issues",
+        recommended_action="Fix",
+        silent_channels=[],
+        loud_channels=["lint", "tests"],
+        confidence=0.8,
     )
     channel_results = [
         _channel("lint", findings=[_issue(file="a.py")]),
@@ -686,8 +734,10 @@ def test_history_tradeoff():
     ]
     # Current has fewer CC but more too_many_args
     results = [
-        _channel("lint", "fail", findings=[
-            _issue(kind="cognitive_complexity")] * 2 + [_issue(kind="too_many_args")] * 3,
+        _channel(
+            "lint",
+            "fail",
+            findings=[_issue(kind="cognitive_complexity")] * 2 + [_issue(kind="too_many_args")] * 3,
         ),
         _channel("tests", "pass"),
         _channel("deps", "pass"),
@@ -765,8 +815,10 @@ def test_tradeoff_detected():
         ),
     ]
     current = [
-        _channel("lint", "fail", findings=[
-            _issue(kind="cognitive_complexity")] * 2 + [_issue(kind="too_many_args")] * 3,
+        _channel(
+            "lint",
+            "fail",
+            findings=[_issue(kind="cognitive_complexity")] * 2 + [_issue(kind="too_many_args")] * 3,
         ),
     ]
     result = _detect_refactoring_tradeoffs(current, session)

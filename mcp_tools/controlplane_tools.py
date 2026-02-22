@@ -21,8 +21,7 @@ _AVAILABLE_CHANNEL_DESCRIPTIONS = {
     "deps": "Dependency health (lockfile, venv, manifest)",
     "git": "Git hygiene (large changes, lockfile freshness, sensitive files)",
     "behavior": (
-        "Behavioral drift signals "
-        "(approach cycling, failure amnesia, brute force escalation)"
+        "Behavioral drift signals (approach cycling, failure amnesia, brute force escalation)"
     ),
     "structure": (
         "Codebase structure lens "
@@ -153,12 +152,8 @@ def _persist_behavior_compass_delta(cr, session, cp_config):
 
     compass = load_behavior_compass(session)
     compass.last_fired = delta.get("last_fired", compass.last_fired)
-    compass.signal_fire_counts = delta.get(
-        "signal_fire_counts", compass.signal_fire_counts
-    )
-    compass.early_nudge_emitted = delta.get(
-        "early_nudge_emitted", compass.early_nudge_emitted
-    )
+    compass.signal_fire_counts = delta.get("signal_fire_counts", compass.signal_fire_counts)
+    compass.early_nudge_emitted = delta.get("early_nudge_emitted", compass.early_nudge_emitted)
     compass.pending_nudge_signals = delta.get(
         "pending_nudge_signals", compass.pending_nudge_signals
     )
@@ -219,16 +214,10 @@ def _persist_runtime_state(mesh_result, project_root, session):
         from lintgate.runtime_state import build_runtime_state, save_runtime_state
 
         blocking = sum(
-            1
-            for cr in mesh_result.channel_results
-            for f in cr.findings
-            if f.severity == "blocking"
+            1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "blocking"
         )
         warnings = sum(
-            1
-            for cr in mesh_result.channel_results
-            for f in cr.findings
-            if f.severity == "warning"
+            1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "warning"
         )
         symbol_blockers = sum(
             1
@@ -465,9 +454,7 @@ def _get_session_status(project_root):
                 ),
                 "proposed_constraints": len(session.proposed_constraints),
                 "active_proposals": sum(
-                    1
-                    for c in session.proposed_constraints
-                    if c.get("status") == "proposed"
+                    1 for c in session.proposed_constraints if c.get("status") == "proposed"
                 ),
             }
     return None
@@ -485,9 +472,7 @@ def _impl_controlplane_status(path, helpers):
         status.update(_build_config_status(cp_config, project_root, helpers))
     else:
         status["controlplane_enabled"] = False
-        status["note"] = (
-            "Add 'controlplane: enabled: true' to .claude/lintgate.yaml to enable"
-        )
+        status["note"] = "Add 'controlplane: enabled: true' to .claude/lintgate.yaml to enable"
         status["onboarding"] = helpers["_build_onboarding_status"](project_root)
 
     status["available_channels"] = _AVAILABLE_CHANNEL_DESCRIPTIONS
@@ -674,9 +659,7 @@ def _execute_single_repair(repair, project_root, session):
             cwd=cwd,
         )
         status = "ok" if proc.returncode == 0 else "error"
-        report_repair_outcome(
-            session, action_id or "", "applied" if status == "ok" else "ignored"
-        )
+        report_repair_outcome(session, action_id or "", "applied" if status == "ok" else "ignored")
         return {
             "action_id": action_id,
             "command": command,
@@ -699,9 +682,7 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
 
     pending_repairs = _collect_pending_repairs(session, action_ids, safe_only)
 
-    results = [
-        _execute_single_repair(repair, project_root, session) for repair in pending_repairs
-    ]
+    results = [_execute_single_repair(repair, project_root, session) for repair in pending_repairs]
 
     save_session(session)
 
@@ -709,9 +690,7 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
         {
             "repairs_executed": len(results),
             "results": results,
-            "pending_remaining": sum(
-                1 for v in session.repair_outcomes.values() if v == "pending"
-            ),
+            "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
         },
         indent=2,
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from lintgate.controlplane.behavior_compass import (
+    DEFAULT_HYPOTHESIS_CONFIG,
     BehaviorCompass,
     BehaviorHypothesis,
     CoverageMetrics,
@@ -21,7 +22,6 @@ from lintgate.controlplane.behavior_compass import (
     find_relevant_hypotheses,
     record_tool_event,
     update_hypothesis,
-    DEFAULT_HYPOTHESIS_CONFIG,
 )
 
 
@@ -30,7 +30,10 @@ def _make_compass():
 
 
 def _make_hypothesis(
-    hyp_id="h1", claim="test claim", confidence=0.5, status="active",
+    hyp_id="h1",
+    claim="test claim",
+    confidence=0.5,
+    status="active",
     applies_to=None,
 ):
     h = BehaviorHypothesis(

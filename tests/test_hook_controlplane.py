@@ -84,7 +84,10 @@ class TestMarkSessionTelemetryApplied:
 
 class TestResolveEventModelKey:
     def test_model_field(self):
-        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value="anthropic:claude-3"):
+        with patch(
+            "lintgate.controlplane.model_profiles.resolve_model_key",
+            return_value="anthropic:claude-3",
+        ):
             result = resolve_event_model_key({"model": "claude-3"})
         assert result == "anthropic:claude-3"
 
@@ -166,7 +169,13 @@ class TestLoadGlobalPriors:
         cfg.global_memory_ttl_days = 90
         fake_gp = MagicMock()
         fake_gp.session_count = 1
-        with patch("lintgate.controlplane.global_behavior_profile.load_global_profile", return_value=fake_gp),              patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5):
+        with (
+            patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=fake_gp,
+            ),
+            patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5),
+        ):
             assert load_global_priors(cfg) is None
 
     def test_sufficient_data(self):
@@ -179,7 +188,13 @@ class TestLoadGlobalPriors:
         fake_gp = MagicMock()
         fake_gp.session_count = 10
         fake_gp.computed_bias_adjustments = {"sig": 0.1}
-        with patch("lintgate.controlplane.global_behavior_profile.load_global_profile", return_value=fake_gp),              patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3):
+        with (
+            patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=fake_gp,
+            ),
+            patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
+        ):
             result = load_global_priors(cfg)
         assert result["enabled"] is True
 
@@ -188,7 +203,10 @@ class TestLoadGlobalPriors:
         cfg.global_memory_enabled = True
         cfg.channel_enabled = MagicMock(return_value=True)
         cfg.global_memory_ttl_days = 90
-        with patch("lintgate.controlplane.global_behavior_profile.load_global_profile", side_effect=ImportError("boom")):
+        with patch(
+            "lintgate.controlplane.global_behavior_profile.load_global_profile",
+            side_effect=ImportError("boom"),
+        ):
             assert load_global_priors(cfg) is None
 
 
@@ -212,7 +230,9 @@ class TestSetupSessionAndGate:
         fake_session.behavior_compass = {}
         event = MagicMock()
         event.raw_input = {}
-        with patch("lintgate.controlplane.session_memory.get_or_create_session", return_value=fake_session):
+        with patch(
+            "lintgate.controlplane.session_memory.get_or_create_session", return_value=fake_session
+        ):
             session, _ = setup_session_and_gate(cfg, "/tmp", "Edit", event, [], None)
         assert session is fake_session
 
@@ -248,7 +268,12 @@ class TestApplyBehaviorDelta:
         cfg = MagicMock()
         cfg.global_memory_enabled = False
         fake_bc = MagicMock()
-        with patch("lintgate.controlplane.session_memory.load_behavior_compass", return_value=fake_bc),              patch("lintgate.controlplane.session_memory.save_behavior_compass"):
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.load_behavior_compass", return_value=fake_bc
+            ),
+            patch("lintgate.controlplane.session_memory.save_behavior_compass"),
+        ):
             apply_behavior_delta(session, cr, cfg, {})
         assert fake_bc.last_fired == "sig1"
 
@@ -262,7 +287,14 @@ class TestApplyBehaviorDelta:
         cfg = MagicMock()
         cfg.global_memory_enabled = True
         cfg.global_memory_ttl_days = 90
-        with patch("lintgate.controlplane.global_behavior_profile.load_global_profile", return_value=MagicMock()),              patch("lintgate.controlplane.global_behavior_profile.apply_session_delta") as apply_fn,              patch("lintgate.controlplane.global_behavior_profile.save_global_profile"):
+        with (
+            patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=MagicMock(),
+            ),
+            patch("lintgate.controlplane.global_behavior_profile.apply_session_delta") as apply_fn,
+            patch("lintgate.controlplane.global_behavior_profile.save_global_profile"),
+        ):
             apply_behavior_delta(session, cr, cfg, {})
         apply_fn.assert_called_once()
 
@@ -316,7 +348,13 @@ class TestRunConstraintProposer:
         mesh.channel_results = [lint_cr]
         cfg = MagicMock()
         cfg.constraint_proposal_threshold = 0.5
-        with patch("lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns", return_value=[{"id": "p1"}]),              patch("lintgate.controlplane.constraint_proposer.store_proposals_in_session"):
+        with (
+            patch(
+                "lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns",
+                return_value=[{"id": "p1"}],
+            ),
+            patch("lintgate.controlplane.constraint_proposer.store_proposals_in_session"),
+        ):
             result = run_constraint_proposer(session, mesh, cfg)
         assert result == [{"id": "c1"}]
 
@@ -329,7 +367,10 @@ class TestRunConstraintProposer:
         mesh = MagicMock()
         mesh.channel_results = [other_cr]
         cfg = MagicMock()
-        with patch("lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns"),              patch("lintgate.controlplane.constraint_proposer.store_proposals_in_session"):
+        with (
+            patch("lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns"),
+            patch("lintgate.controlplane.constraint_proposer.store_proposals_in_session"),
+        ):
             result = run_constraint_proposer(session, mesh, cfg)
         assert result == []
 
@@ -340,7 +381,10 @@ class TestRunConstraintProposer:
         mesh = MagicMock()
         mesh.channel_results = []
         cfg = MagicMock()
-        with patch("lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns", side_effect=ImportError("boom")):
+        with patch(
+            "lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns",
+            side_effect=ImportError("boom"),
+        ):
             result = run_constraint_proposer(session, mesh, cfg)
         assert result == []
 
@@ -417,7 +461,11 @@ class TestPostProcessSession:
         other_cr.channel = "lint"
         mesh = MagicMock()
         mesh.channel_results = [other_cr]
-        with patch("lintgate.controlplane.session_memory.record_mesh_run", return_value=MagicMock()),              patch("lintgate.controlplane.session_memory.save_session"),              patch("lintgate.hook_controlplane.run_constraint_proposer", return_value=[]):
+        with (
+            patch("lintgate.controlplane.session_memory.record_mesh_run", return_value=MagicMock()),
+            patch("lintgate.controlplane.session_memory.save_session"),
+            patch("lintgate.hook_controlplane.run_constraint_proposer", return_value=[]),
+        ):
             result = post_process_session(session, mesh, {}, MagicMock(), {}, "E", {}, "")
         assert result == []
 
@@ -453,7 +501,10 @@ class TestAccumulateSessionTelemetry:
 
 class TestRefreshRuntimeAfterRun:
     def test_session_present(self):
-        with patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session") as fn,              patch("lintgate.controlplane.session_memory.save_session"):
+        with (
+            patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session") as fn,
+            patch("lintgate.controlplane.session_memory.save_session"),
+        ):
             refresh_runtime_after_run("/tmp", MagicMock(), MagicMock(), MagicMock(), "Edit", {})
         fn.assert_called_once()
 
@@ -469,7 +520,20 @@ class TestRefreshRuntimeAfterRun:
         cfg = MagicMock()
         cfg.habit_mode_enabled = True
         cfg.session_memory = False
-        with patch("lintgate.hook_runtime_state.refresh_runtime_state_lightweight", return_value={"k": "v"}),              patch("lintgate.habit_mode.load_standalone_extras", return_value={"write_scheduler": {"s": 1}}),              patch("lintgate.habit_mode.load_habit_state_standalone", return_value=(MagicMock(), [])),              patch("lintgate.habit_mode.save_habit_state_standalone") as save_fn:
+        with (
+            patch(
+                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                return_value={"k": "v"},
+            ),
+            patch(
+                "lintgate.habit_mode.load_standalone_extras",
+                return_value={"write_scheduler": {"s": 1}},
+            ),
+            patch(
+                "lintgate.habit_mode.load_habit_state_standalone", return_value=(MagicMock(), [])
+            ),
+            patch("lintgate.habit_mode.save_habit_state_standalone") as save_fn,
+        ):
             refresh_runtime_after_run("/tmp", None, cfg, MagicMock(), "Edit", {})
         save_fn.assert_called_once()
 
@@ -477,6 +541,16 @@ class TestRefreshRuntimeAfterRun:
         cfg = MagicMock()
         cfg.habit_mode_enabled = True
         cfg.session_memory = False
-        with patch("lintgate.hook_runtime_state.refresh_runtime_state_lightweight", return_value="not-dict"),              patch("lintgate.habit_mode.load_standalone_extras", return_value={"write_scheduler": {"s": 1}}),              patch("lintgate.habit_mode.load_habit_state_standalone") as load_fn:
+        with (
+            patch(
+                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                return_value="not-dict",
+            ),
+            patch(
+                "lintgate.habit_mode.load_standalone_extras",
+                return_value={"write_scheduler": {"s": 1}},
+            ),
+            patch("lintgate.habit_mode.load_habit_state_standalone") as load_fn,
+        ):
             refresh_runtime_after_run("/tmp", None, cfg, MagicMock(), "Edit", {})
         load_fn.assert_not_called()

@@ -50,14 +50,18 @@ def test_strict_mode_unused():
 def test_ruff_basic(tmp_path):
     ctx = _make_ctx(tmp_path, files=["a.py"])
     linter = RuffLinter()
-    data = json.dumps([{
-        "code": "F401",
-        "message": "os imported but unused",
-        "filename": "a.py",
-        "location": {"row": 1, "column": 1},
-        "end_location": {"row": 1, "column": 10},
-        "fix": {"message": "Remove unused import"},
-    }])
+    data = json.dumps(
+        [
+            {
+                "code": "F401",
+                "message": "os imported but unused",
+                "filename": "a.py",
+                "location": {"row": 1, "column": 1},
+                "end_location": {"row": 1, "column": 10},
+                "fix": {"message": "Remove unused import"},
+            }
+        ]
+    )
     mock_result = MagicMock(stdout=data)
     with patch.object(linter, "run_command", return_value=mock_result):
         issues = list(linter.run(ctx))
@@ -70,14 +74,18 @@ def test_ruff_basic(tmp_path):
 def test_ruff_no_fix(tmp_path):
     ctx = _make_ctx(tmp_path, files=["a.py"])
     linter = RuffLinter()
-    data = json.dumps([{
-        "code": "E501",
-        "message": "Line too long",
-        "filename": "a.py",
-        "location": {"row": 1, "column": 1},
-        "end_location": {"row": 1, "column": 100},
-        "fix": None,
-    }])
+    data = json.dumps(
+        [
+            {
+                "code": "E501",
+                "message": "Line too long",
+                "filename": "a.py",
+                "location": {"row": 1, "column": 1},
+                "end_location": {"row": 1, "column": 100},
+                "fix": None,
+            }
+        ]
+    )
     mock_result = MagicMock(stdout=data)
     with patch.object(linter, "run_command", return_value=mock_result):
         issues = list(linter.run(ctx))

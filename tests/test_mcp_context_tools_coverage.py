@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 from mcp_tools.context_tools import register
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -71,12 +70,15 @@ class TestContextGuidance:
     def test_returns_valid_json(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_guidance = {"directives": {"critical": []}, "rules": []}
-        with patch(
-            "lintgate.context_guidance.build_context_guidance",
-            return_value=mock_guidance,
-        ), patch(
-            "lintgate.context_guidance.summarize_context_guidance",
-            return_value="All good",
+        with (
+            patch(
+                "lintgate.context_guidance.build_context_guidance",
+                return_value=mock_guidance,
+            ),
+            patch(
+                "lintgate.context_guidance.summarize_context_guidance",
+                return_value="All good",
+            ),
         ):
             result = json.loads(tools["context_guidance"](path=str(tmp_path)))
         assert result["summary"] == "All good"
@@ -84,16 +86,17 @@ class TestContextGuidance:
     def test_with_files_argument(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_guidance = {"directives": {"critical": []}, "rules": []}
-        with patch(
-            "lintgate.context_guidance.build_context_guidance",
-            return_value=mock_guidance,
-        ) as mock_build, patch(
-            "lintgate.context_guidance.summarize_context_guidance",
-            return_value="Summary",
+        with (
+            patch(
+                "lintgate.context_guidance.build_context_guidance",
+                return_value=mock_guidance,
+            ) as mock_build,
+            patch(
+                "lintgate.context_guidance.summarize_context_guidance",
+                return_value="Summary",
+            ),
         ):
-            result = json.loads(
-                tools["context_guidance"](path=str(tmp_path), files=["foo.py"])
-            )
+            result = json.loads(tools["context_guidance"](path=str(tmp_path), files=["foo.py"]))
         mock_build.assert_called_once_with(str(tmp_path), files=["foo.py"])
         assert isinstance(result, dict)
 
@@ -120,22 +123,26 @@ class TestBootstrapContextFiles:
     def test_returns_valid_json_defaults(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_result = {"claude_md": "# Project", "agents_md": "# Agents"}
-        with patch(
-            "lintgate.context_bootstrap.bootstrap_context_files",
-            return_value=mock_result,
-        ), patch("lintgate.state.log_feature_usage"):
-            result = json.loads(
-                tools["bootstrap_context_files"](path=str(tmp_path))
-            )
+        with (
+            patch(
+                "lintgate.context_bootstrap.bootstrap_context_files",
+                return_value=mock_result,
+            ),
+            patch("lintgate.state.log_feature_usage"),
+        ):
+            result = json.loads(tools["bootstrap_context_files"](path=str(tmp_path)))
         assert "claude_md" in result
 
     def test_write_mode_passes_through(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_result = {"written": True}
-        with patch(
-            "lintgate.context_bootstrap.bootstrap_context_files",
-            return_value=mock_result,
-        ) as mock_bs, patch("lintgate.state.log_feature_usage"):
+        with (
+            patch(
+                "lintgate.context_bootstrap.bootstrap_context_files",
+                return_value=mock_result,
+            ) as mock_bs,
+            patch("lintgate.state.log_feature_usage"),
+        ):
             tools["bootstrap_context_files"](path=str(tmp_path), write=True)
         mock_bs.assert_called_once()
         call_kwargs = mock_bs.call_args
@@ -144,29 +151,31 @@ class TestBootstrapContextFiles:
     def test_telemetry_failure_suppressed(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_result = {"ok": True}
-        with patch(
-            "lintgate.context_bootstrap.bootstrap_context_files",
-            return_value=mock_result,
-        ), patch(
-            "lintgate.state.log_feature_usage",
-            side_effect=RuntimeError("telemetry broken"),
+        with (
+            patch(
+                "lintgate.context_bootstrap.bootstrap_context_files",
+                return_value=mock_result,
+            ),
+            patch(
+                "lintgate.state.log_feature_usage",
+                side_effect=RuntimeError("telemetry broken"),
+            ),
         ):
             # Should not raise despite telemetry failure
-            result = json.loads(
-                tools["bootstrap_context_files"](path=str(tmp_path))
-            )
+            result = json.loads(tools["bootstrap_context_files"](path=str(tmp_path)))
         assert result["ok"] is True
 
     def test_model_id_passes_through(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_result = {"ok": True}
-        with patch(
-            "lintgate.context_bootstrap.bootstrap_context_files",
-            return_value=mock_result,
-        ) as mock_bs, patch("lintgate.state.log_feature_usage"):
-            tools["bootstrap_context_files"](
-                path=str(tmp_path), model_id="anthropic:claude-opus-4"
-            )
+        with (
+            patch(
+                "lintgate.context_bootstrap.bootstrap_context_files",
+                return_value=mock_result,
+            ) as mock_bs,
+            patch("lintgate.state.log_feature_usage"),
+        ):
+            tools["bootstrap_context_files"](path=str(tmp_path), model_id="anthropic:claude-opus-4")
         assert mock_bs.call_args[1]["model_id"] == "anthropic:claude-opus-4"
 
 
@@ -208,15 +217,19 @@ class TestContextPatchReview:
         mock_refreshed_patch.trigger = "constraint_accepted"
         mock_refreshed_patch.rationale = "test"
 
-        with patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=mock_session,
-        ), patch(
-            "lintgate.context_bootstrap.generate_context_patch",
-            return_value=mock_refreshed_patch,
-        ), patch(
-            "lintgate.context_bootstrap.apply_context_patch",
-            return_value={"diff_preview": "--- old\n+++ new"},
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=mock_session,
+            ),
+            patch(
+                "lintgate.context_bootstrap.generate_context_patch",
+                return_value=mock_refreshed_patch,
+            ),
+            patch(
+                "lintgate.context_bootstrap.apply_context_patch",
+                return_value={"diff_preview": "--- old\n+++ new"},
+            ),
         ):
             result = json.loads(tools["context_patch_review"](path=str(tmp_path)))
         assert result["pending_count"] == 1
@@ -240,12 +253,15 @@ class TestContextPatchReview:
                 "created_at": 0.0,
             }
         ]
-        with patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=mock_session,
-        ), patch(
-            "lintgate.context_bootstrap.generate_context_patch",
-            return_value=None,
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=mock_session,
+            ),
+            patch(
+                "lintgate.context_bootstrap.generate_context_patch",
+                return_value=None,
+            ),
         ):
             result = json.loads(tools["context_patch_review"](path=str(tmp_path)))
         assert result["patches"][0]["status"] == "no_op"
@@ -288,18 +304,24 @@ class TestContextPatchApply:
         mock_refreshed.patch_id = "p1"
         mock_refreshed.section_id = "machine_rules"
 
-        with patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=mock_session,
-        ), patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ), patch(
-            "lintgate.context_bootstrap.generate_context_patch",
-            return_value=mock_refreshed,
-        ), patch(
-            "lintgate.context_bootstrap.apply_context_patch",
-            return_value={"applied": True, "diff_preview": "+rule"},
-        ), patch("lintgate.state.log_feature_usage"):
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=mock_session,
+            ),
+            patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ),
+            patch(
+                "lintgate.context_bootstrap.generate_context_patch",
+                return_value=mock_refreshed,
+            ),
+            patch(
+                "lintgate.context_bootstrap.apply_context_patch",
+                return_value={"applied": True, "diff_preview": "+rule"},
+            ),
+            patch("lintgate.state.log_feature_usage"),
+        ):
             result = json.loads(tools["context_patch_apply"](path=str(tmp_path)))
         assert result["applied"] == 1
         assert result["dry_run"] is False
@@ -308,14 +330,26 @@ class TestContextPatchApply:
         tools = _register_tools(tmp_path)
         mock_session = MagicMock()
         p1 = {
-            "status": "pending", "patch_id": "p1", "section_id": "s1",
-            "trigger": "t", "old_content": "", "new_content": "x",
-            "rationale": "r", "evidence": {}, "created_at": 0.0,
+            "status": "pending",
+            "patch_id": "p1",
+            "section_id": "s1",
+            "trigger": "t",
+            "old_content": "",
+            "new_content": "x",
+            "rationale": "r",
+            "evidence": {},
+            "created_at": 0.0,
         }
         p2 = {
-            "status": "pending", "patch_id": "p2", "section_id": "s2",
-            "trigger": "t", "old_content": "", "new_content": "y",
-            "rationale": "r", "evidence": {}, "created_at": 0.0,
+            "status": "pending",
+            "patch_id": "p2",
+            "section_id": "s2",
+            "trigger": "t",
+            "old_content": "",
+            "new_content": "y",
+            "rationale": "r",
+            "evidence": {},
+            "created_at": 0.0,
         }
         mock_session.pending_patches = [p1, p2]
 
@@ -323,23 +357,25 @@ class TestContextPatchApply:
         mock_refreshed.patch_id = "p2"
         mock_refreshed.section_id = "s2"
 
-        with patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=mock_session,
-        ), patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ), patch(
-            "lintgate.context_bootstrap.generate_context_patch",
-            return_value=mock_refreshed,
-        ), patch(
-            "lintgate.context_bootstrap.apply_context_patch",
-            return_value={"applied": True, "diff_preview": "+y"},
-        ), patch("lintgate.state.log_feature_usage"):
-            result = json.loads(
-                tools["context_patch_apply"](
-                    path=str(tmp_path), patch_ids=["p2"]
-                )
-            )
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=mock_session,
+            ),
+            patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ),
+            patch(
+                "lintgate.context_bootstrap.generate_context_patch",
+                return_value=mock_refreshed,
+            ),
+            patch(
+                "lintgate.context_bootstrap.apply_context_patch",
+                return_value={"applied": True, "diff_preview": "+y"},
+            ),
+            patch("lintgate.state.log_feature_usage"),
+        ):
+            result = json.loads(tools["context_patch_apply"](path=str(tmp_path), patch_ids=["p2"]))
         # Only p2 should be processed
         assert result["applied"] == 1
         assert len(result["results"]) == 1
@@ -348,9 +384,15 @@ class TestContextPatchApply:
         tools = _register_tools(tmp_path)
         mock_session = MagicMock()
         patch_dict = {
-            "status": "pending", "patch_id": "p1", "section_id": "s1",
-            "trigger": "t", "old_content": "", "new_content": "x",
-            "rationale": "r", "evidence": {}, "created_at": 0.0,
+            "status": "pending",
+            "patch_id": "p1",
+            "section_id": "s1",
+            "trigger": "t",
+            "old_content": "",
+            "new_content": "x",
+            "rationale": "r",
+            "evidence": {},
+            "created_at": 0.0,
         }
         mock_session.pending_patches = [patch_dict]
 
@@ -358,23 +400,24 @@ class TestContextPatchApply:
         mock_refreshed.patch_id = "p1"
         mock_refreshed.section_id = "s1"
 
-        with patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=mock_session,
-        ), patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ) as mock_save, patch(
-            "lintgate.context_bootstrap.generate_context_patch",
-            return_value=mock_refreshed,
-        ), patch(
-            "lintgate.context_bootstrap.apply_context_patch",
-            return_value={"applied": False, "diff_preview": "+x"},
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=mock_session,
+            ),
+            patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ) as mock_save,
+            patch(
+                "lintgate.context_bootstrap.generate_context_patch",
+                return_value=mock_refreshed,
+            ),
+            patch(
+                "lintgate.context_bootstrap.apply_context_patch",
+                return_value={"applied": False, "diff_preview": "+x"},
+            ),
         ):
-            result = json.loads(
-                tools["context_patch_apply"](
-                    path=str(tmp_path), dry_run=True
-                )
-            )
+            result = json.loads(tools["context_patch_apply"](path=str(tmp_path), dry_run=True))
         assert result["dry_run"] is True
         mock_save.assert_not_called()
 
@@ -383,21 +426,32 @@ class TestContextPatchApply:
         tools = _register_tools(tmp_path)
         mock_session = MagicMock()
         patch_dict = {
-            "status": "pending", "patch_id": "p1", "section_id": "s1",
-            "trigger": "t", "old_content": "", "new_content": "x",
-            "rationale": "r", "evidence": {}, "created_at": 0.0,
+            "status": "pending",
+            "patch_id": "p1",
+            "section_id": "s1",
+            "trigger": "t",
+            "old_content": "",
+            "new_content": "x",
+            "rationale": "r",
+            "evidence": {},
+            "created_at": 0.0,
         }
         mock_session.pending_patches = [patch_dict]
 
-        with patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=mock_session,
-        ), patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ), patch(
-            "lintgate.context_bootstrap.generate_context_patch",
-            return_value=None,
-        ), patch("lintgate.state.log_feature_usage"):
+        with (
+            patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=mock_session,
+            ),
+            patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ),
+            patch(
+                "lintgate.context_bootstrap.generate_context_patch",
+                return_value=None,
+            ),
+            patch("lintgate.state.log_feature_usage"),
+        ):
             result = json.loads(tools["context_patch_apply"](path=str(tmp_path)))
         assert result["results"][0]["status"] == "no_op"
         assert result["results"][0]["applied"] is False
@@ -419,9 +473,7 @@ class TestExtractTheoryConstraints:
             "lintgate.theory_extractor.extract_theory",
             return_value=mock_result,
         ):
-            result = json.loads(
-                tools["extract_theory_constraints"](path=str(tmp_path))
-            )
+            result = json.loads(tools["extract_theory_constraints"](path=str(tmp_path)))
         assert isinstance(result, list)
         assert result[0]["type"] == "LINTGATE_FORBID_REGEX"
 
@@ -436,22 +488,26 @@ class TestExtractProjectTheory:
             "profile": {"core_theory": []},
             "enforceable_rules": [],
         }
-        with patch(
-            "lintgate.theory_extractor.extract_theory",
-            return_value=mock_result,
-        ), patch("lintgate.state.log_feature_usage"):
-            result = json.loads(
-                tools["extract_project_theory"](path=str(tmp_path))
-            )
+        with (
+            patch(
+                "lintgate.theory_extractor.extract_theory",
+                return_value=mock_result,
+            ),
+            patch("lintgate.state.log_feature_usage"),
+        ):
+            result = json.loads(tools["extract_project_theory"](path=str(tmp_path)))
         assert "profile" in result
 
     def test_telemetry_logged(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_result = {"profile": {}, "enforceable_rules": []}
-        with patch(
-            "lintgate.theory_extractor.extract_theory",
-            return_value=mock_result,
-        ), patch("lintgate.state.log_feature_usage") as mock_log:
+        with (
+            patch(
+                "lintgate.theory_extractor.extract_theory",
+                return_value=mock_result,
+            ),
+            patch("lintgate.state.log_feature_usage") as mock_log,
+        ):
             tools["extract_project_theory"](path=str(tmp_path))
         mock_log.assert_called_once_with("theory_extraction", str(tmp_path))
 
@@ -463,25 +519,27 @@ class TestBuildTheoryPack:
     def test_returns_packed_summary(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_pack = {"summary": "Project uses X", "rules": []}
-        with patch(
-            "lintgate.theory_extractor.build_theory_pack",
-            return_value=mock_pack,
-        ), patch("lintgate.state.log_feature_usage"):
-            result = json.loads(
-                tools["build_theory_pack"](path=str(tmp_path))
-            )
+        with (
+            patch(
+                "lintgate.theory_extractor.build_theory_pack",
+                return_value=mock_pack,
+            ),
+            patch("lintgate.state.log_feature_usage"),
+        ):
+            result = json.loads(tools["build_theory_pack"](path=str(tmp_path)))
         assert result["summary"] == "Project uses X"
 
     def test_include_full_profile_passed(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
         mock_pack = {"summary": "X", "full_profile": {"a": 1}}
-        with patch(
-            "lintgate.theory_extractor.build_theory_pack",
-            return_value=mock_pack,
-        ) as mock_build, patch("lintgate.state.log_feature_usage"):
-            tools["build_theory_pack"](
-                path=str(tmp_path), include_full_profile=True
-            )
+        with (
+            patch(
+                "lintgate.theory_extractor.build_theory_pack",
+                return_value=mock_pack,
+            ) as mock_build,
+            patch("lintgate.state.log_feature_usage"),
+        ):
+            tools["build_theory_pack"](path=str(tmp_path), include_full_profile=True)
         assert mock_build.call_args[1]["include_full_profile"] is True
 
 
@@ -496,9 +554,7 @@ class TestGetTheoryContext:
             "lintgate.theory_extractor.get_theory_context",
             return_value=mock_ctx,
         ):
-            result = json.loads(
-                tools["get_theory_context"](path=str(tmp_path))
-            )
+            result = json.loads(tools["get_theory_context"](path=str(tmp_path)))
         assert "claims" in result
 
     def test_max_claims_zero_raises(self, tmp_path: Path) -> None:

@@ -13,9 +13,6 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import patch
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Minimal MCP stub so register() can attach @mcp.tool() callables
@@ -99,7 +96,9 @@ class TestDeclareMode:
         state_dict = HabitModeState(habit_score=0.5, active=False).to_dict()
         tracker_dict = TokenTrackerState().to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=10,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=10,
             token_tracker_dict=tracker_dict,
         )
 
@@ -114,7 +113,7 @@ class TestDeclareMode:
         # Mock declare_mode to simulate activation
         monkeypatch.setattr(
             "lintgate.habit_mode.declare_mode",
-            lambda s, mode, ec: ("enter" if mode == "habit" else None),
+            lambda s, mode, ec: "enter" if mode == "habit" else None,
         )
         monkeypatch.setattr("lintgate.state.log_metric", lambda *a, **kw: None)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
@@ -132,7 +131,9 @@ class TestDeclareMode:
         state_dict = HabitModeState(habit_score=0.7, active=True).to_dict()
         tracker_dict = TokenTrackerState().to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=20,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=20,
             token_tracker_dict=tracker_dict,
         )
 
@@ -164,7 +165,9 @@ class TestDeclareMode:
         state_dict = HabitModeState(habit_score=0.6, active=True).to_dict()
         tracker_dict = TokenTrackerState().to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=5,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=5,
             token_tracker_dict=tracker_dict,
         )
 
@@ -265,10 +268,13 @@ class TestHabitStatus:
             active_files=["a.py", "b.py"],
         ).to_dict()
         tracker_dict = TokenTrackerState(
-            estimated_tokens_used=50000, context_window_size=200000,
+            estimated_tokens_used=50000,
+            context_window_size=200000,
         ).to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=20,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=20,
             token_tracker_dict=tracker_dict,
         )
 
@@ -305,7 +311,9 @@ class TestHabitStatus:
         ).to_dict()
         tracker_dict = TokenTrackerState().to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=5,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=5,
             token_tracker_dict=tracker_dict,
         )
 
@@ -365,10 +373,13 @@ class TestHabitCompact:
 
         state_dict = HabitModeState(active=True, habit_score=0.8, compaction_count=1).to_dict()
         tracker_dict = TokenTrackerState(
-            estimated_tokens_used=80000, tool_calls_since_compact=25,
+            estimated_tokens_used=80000,
+            tool_calls_since_compact=25,
         ).to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=30,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=30,
             token_tracker_dict=tracker_dict,
         )
 
@@ -400,7 +411,9 @@ class TestHabitCompact:
         state_dict = HabitModeState(habit_score=0.6, active=True).to_dict()
         tracker_dict = TokenTrackerState().to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=10,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=10,
             token_tracker_dict=tracker_dict,
         )
 
@@ -432,7 +445,9 @@ class TestHabitCompact:
         state_dict = HabitModeState(habit_score=0.9, active=True).to_dict()
         tracker_dict = TokenTrackerState(estimated_tokens_used=100000).to_dict()
         session = _make_session(
-            tmp_path, habit_state_dict=state_dict, event_counter=50,
+            tmp_path,
+            habit_state_dict=state_dict,
+            event_counter=50,
             token_tracker_dict=tracker_dict,
         )
 
@@ -494,18 +509,14 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), compact_threshold=0.01)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), compact_threshold=0.01))
         assert result["overrides_applied"]["compact_threshold"] == 0.1
 
     def test_compact_threshold_clamped_high(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), compact_threshold=1.5)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), compact_threshold=1.5))
         assert result["overrides_applied"]["compact_threshold"] == 0.9
 
     def test_enter_exit_score_clamped(self, tmp_path, monkeypatch):
@@ -522,32 +533,24 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), sustain_calls=0)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), sustain_calls=0))
         assert result["overrides_applied"]["sustain_calls"] == 1
 
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), sustain_calls=100)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), sustain_calls=100))
         assert result["overrides_applied"]["sustain_calls"] == 20
 
     def test_token_api_interval_clamped(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), token_api_interval=1)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), token_api_interval=1))
         assert result["overrides_applied"]["token_api_interval"] == 5
 
     def test_context_window_size_clamped_low(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), context_window_size=100)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), context_window_size=100))
         assert result["overrides_applied"]["context_window_size"] == 10000
 
     def test_context_window_size_clamped_high(self, tmp_path, monkeypatch):
@@ -577,9 +580,7 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), compact_threshold=0.5)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), compact_threshold=0.5))
         assert result["status"] == "ok"
         assert result["overrides_applied"]["compact_threshold"] == 0.5
         assert len(saved_sessions) == 1
@@ -610,9 +611,7 @@ class TestHabitConfigure:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), enter_score=0.7)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), enter_score=0.7))
         assert result["status"] == "ok"
         assert len(standalone_saved) == 1
 
@@ -666,9 +665,7 @@ class TestHabitConfigure:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), exit_score=0.3)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), exit_score=0.3))
         assert result["status"] == "ok"
         # Should have merged: enter_score from existing + exit_score from new
         assert len(captured_overrides) == 1

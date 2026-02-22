@@ -11,7 +11,10 @@ from lintgate.types import LinterContext
 
 def _make_ctx(tmp_path, config=None):
     return LinterContext(
-        files=[], project_root=str(tmp_path), strictness="normal", config=config or {},
+        files=[],
+        project_root=str(tmp_path),
+        strictness="normal",
+        config=config or {},
     )
 
 
@@ -135,11 +138,18 @@ def test_parse_jsonl_skips_blank():
 
 def test_parse_jsonl_with_all_fields():
     c = CustomLinter("x", "x", parse_mode="jsonl")
-    row = json.dumps({
-        "kind": "err", "message": "msg", "file": "f.py", "line": 1,
-        "column": 5, "severity": "blocking", "confidence": 0.95,
-        "suggestions": ["fix it"],
-    })
+    row = json.dumps(
+        {
+            "kind": "err",
+            "message": "msg",
+            "file": "f.py",
+            "line": 1,
+            "column": 5,
+            "severity": "blocking",
+            "confidence": 0.95,
+            "suggestions": ["fix it"],
+        }
+    )
     issues = list(c._parse_jsonl(row + "\n"))
     assert issues[0].severity == "blocking"
     assert issues[0].confidence == 0.95

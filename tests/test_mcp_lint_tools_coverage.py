@@ -9,8 +9,6 @@ audit_tool_versions, lint_fix).
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -24,7 +22,6 @@ from mcp_tools.lint_tools import (
     _tool_package_name,
     register,
 )
-
 
 # ── _FakeMCP for registering tools ──────────────────────────────────
 
@@ -325,9 +322,7 @@ class TestLintGetDetails:
     def test_filter_blocking(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(
-                tools["lint_get_details"](run_id="r1", severity="blocking")
-            )
+            result = json.loads(tools["lint_get_details"](run_id="r1", severity="blocking"))
             assert result["total_matching"] == 1
             assert result["issues"][0]["severity"] == "blocking"
         finally:
@@ -336,9 +331,7 @@ class TestLintGetDetails:
     def test_filter_warning(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(
-                tools["lint_get_details"](run_id="r1", severity="warning")
-            )
+            result = json.loads(tools["lint_get_details"](run_id="r1", severity="warning"))
             assert result["total_matching"] == 1
         finally:
             p.stop()
@@ -346,9 +339,7 @@ class TestLintGetDetails:
     def test_filter_informational(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(
-                tools["lint_get_details"](run_id="r1", severity="informational")
-            )
+            result = json.loads(tools["lint_get_details"](run_id="r1", severity="informational"))
             assert result["total_matching"] == 1
         finally:
             p.stop()
@@ -362,9 +353,7 @@ class TestLintGetDetails:
             p.stop()
 
     def test_run_id_not_found(self):
-        with mock.patch(
-            "lintgate.state.load_run_details", return_value=None
-        ):
+        with mock.patch("lintgate.state.load_run_details", return_value=None):
             tools = _register()
             with pytest.raises(ValueError, match="No lint run found"):
                 tools["lint_get_details"](run_id="nonexistent")
@@ -382,9 +371,7 @@ class TestLintGetDetails:
             }
         )
         try:
-            result = json.loads(
-                tools["lint_get_details"](run_id="r1", max_issues=5)
-            )
+            result = json.loads(tools["lint_get_details"](run_id="r1", max_issues=5))
             assert result["total_matching"] == 20
             assert len(result["issues"]) == 5
             assert result["truncated"] == 15
@@ -394,9 +381,7 @@ class TestLintGetDetails:
     def test_include_recurrence(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(
-                tools["lint_get_details"](run_id="r1", include_recurrence=True)
-            )
+            result = json.loads(tools["lint_get_details"](run_id="r1", include_recurrence=True))
             assert result["recurrence"] == {"E1": 3}
         finally:
             p.stop()
@@ -474,9 +459,7 @@ class TestAuditToolVersions:
 
         with (
             mock.patch("lintgate.config.load_config", return_value=fake_config),
-            mock.patch(
-                "lintgate.versioning.run_version_audit", return_value=fake_audit
-            ),
+            mock.patch("lintgate.versioning.run_version_audit", return_value=fake_audit),
             mock.patch(
                 "lintgate.versioning.format_version_audit_summary",
                 return_value={"issue_count": 0},
@@ -503,9 +486,7 @@ class TestLintFix:
                 "dry_run": True,
             }
         )
-        with mock.patch(
-            "lintgate.lint_fixer.run_safe_fixes", return_value=fix_result
-        ):
+        with mock.patch("lintgate.lint_fixer.run_safe_fixes", return_value=fix_result):
             tools = _register()
             result = json.loads(tools["lint_fix"](path=str(tmp_path)))
         assert result["dry_run"] is True
@@ -516,13 +497,9 @@ class TestLintFix:
         fix_result = SimpleNamespace(
             to_dict=lambda: {"files_modified": 1, "changes": [], "dry_run": False}
         )
-        with mock.patch(
-            "lintgate.lint_fixer.run_safe_fixes", return_value=fix_result
-        ):
+        with mock.patch("lintgate.lint_fixer.run_safe_fixes", return_value=fix_result):
             tools = _register()
-            result = json.loads(
-                tools["lint_fix"](files=[str(f)], dry_run=False)
-            )
+            result = json.loads(tools["lint_fix"](files=[str(f)], dry_run=False))
         assert result["dry_run"] is False
 
     def test_fix_no_files_no_path_raises(self):

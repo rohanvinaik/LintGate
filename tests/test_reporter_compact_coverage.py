@@ -12,17 +12,13 @@ Targets uncovered branches and functions not exercised by existing test files:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 from lintgate.controlplane.reporter_compact import (
     _attach_delta_or_blocking,
-    _build_channel_summary,
     _build_coherence_dict,
     _build_counts,
     _build_cp_next_actions,
     _build_remediation_loop,
-    _collect_symbol_coverage_blockers,
-    _count_findings_by_severity,
     _format_fail_status,
     format_mesh_report_compact,
 )
@@ -35,7 +31,6 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 from lintgate.types import LintIssue
-
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -113,11 +108,17 @@ class TestFormatMeshReportCompact:
     def test_blocking_issues_in_report_when_no_previous_index(self) -> None:
         """When no previous index, blocking findings appear inline."""
         finding = LintIssue(
-            linter="ruff", kind="E501", message="line too long",
-            severity="blocking", file="/tmp/test/foo.py", line=10,
+            linter="ruff",
+            kind="E501",
+            message="line too long",
+            severity="blocking",
+            file="/tmp/test/foo.py",
+            line=10,
         )
         cr = ChannelResult(
-            channel="lint", status="fail", severity="blocking",
+            channel="lint",
+            status="fail",
+            severity="blocking",
             findings=[finding],
         )
         mesh = _make_mesh(channel_results=[cr])
@@ -138,12 +139,16 @@ class TestFormatMeshReportCompact:
     def test_symbol_blockers_add_remediation_loop(self) -> None:
         """When symbol coverage blockers exist, remediation_loop appears."""
         finding = LintIssue(
-            linter="test_channel", kind="symbol_uncovered",
-            message="func uncovered", severity="blocking",
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="func uncovered",
+            severity="blocking",
             evidence={"symbol_key": "mod::func"},
         )
         cr = ChannelResult(
-            channel="tests", status="fail", severity="blocking",
+            channel="tests",
+            status="fail",
+            severity="blocking",
             findings=[finding],
         )
         mesh = _make_mesh(channel_results=[cr])
@@ -173,7 +178,8 @@ class TestBuildCoherenceDict:
 
     def test_recommended_action_included(self) -> None:
         coh = CoherenceResult(
-            state="isolated", summary="lint fails",
+            state="isolated",
+            summary="lint fails",
             recommended_action="Fix lint errors",
         )
         d = _build_coherence_dict(coh)
@@ -181,7 +187,8 @@ class TestBuildCoherenceDict:
 
     def test_confidence_below_1_included(self) -> None:
         coh = CoherenceResult(
-            state="coupled", summary="multi-fail",
+            state="coupled",
+            summary="multi-fail",
             confidence=0.65,
         )
         d = _build_coherence_dict(coh)
@@ -194,7 +201,8 @@ class TestBuildCoherenceDict:
 
     def test_classification_notes_included(self) -> None:
         coh = CoherenceResult(
-            state="systemic", summary="many failures",
+            state="systemic",
+            summary="many failures",
             classification_notes=["edge case: boundary coupled/systemic"],
         )
         d = _build_coherence_dict(coh)
@@ -202,7 +210,8 @@ class TestBuildCoherenceDict:
 
     def test_empty_classification_notes_excluded(self) -> None:
         coh = CoherenceResult(
-            state="stable", summary="ok",
+            state="stable",
+            summary="ok",
             classification_notes=[],
         )
         d = _build_coherence_dict(coh)
@@ -276,21 +285,30 @@ class TestBuildCounts:
 class TestFormatFailStatus:
     def test_blocking_only(self) -> None:
         finding = LintIssue(
-            linter="ruff", kind="E501", message="m", severity="blocking",
+            linter="ruff",
+            kind="E501",
+            message="m",
+            severity="blocking",
         )
         cr = ChannelResult(channel="lint", status="fail", findings=[finding])
         assert _format_fail_status(cr) == "fail(1 blocking)"
 
     def test_warning_only(self) -> None:
         finding = LintIssue(
-            linter="ruff", kind="W001", message="m", severity="warning",
+            linter="ruff",
+            kind="W001",
+            message="m",
+            severity="warning",
         )
         cr = ChannelResult(channel="lint", status="fail", findings=[finding])
         assert _format_fail_status(cr) == "fail(1 warning)"
 
     def test_informational_only(self) -> None:
         finding = LintIssue(
-            linter="ruff", kind="I001", message="m", severity="informational",
+            linter="ruff",
+            kind="I001",
+            message="m",
+            severity="informational",
         )
         cr = ChannelResult(channel="lint", status="fail", findings=[finding])
         assert _format_fail_status(cr) == "fail(1 info)"
@@ -421,7 +439,8 @@ class TestBuildCpNextActionsCoverage:
         assert actions[1]["tool"] == "controlplane_run"
         # General blocking detail (no channel key) is priority 3
         general_blocking = [
-            a for a in actions
+            a
+            for a in actions
             if a.get("args", {}).get("severity") == "blocking"
             and "channel" not in a.get("args", {})
         ]

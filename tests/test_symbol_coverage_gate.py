@@ -26,18 +26,24 @@ class TestRunSymbolCoverageGate:
         return str(p)
 
     def test_all_pass(self, tmp_path):
-        src = self._write_source(tmp_path, """\
+        src = self._write_source(
+            tmp_path,
+            """\
             def func():
                 return 1
-        """)
-        cov_path = self._write_coverage(tmp_path, {
-            src: {
-                "executed_lines": [1, 2],
-                "missing_lines": [],
-                "excluded_lines": [],
-                "missing_branches": [],
-            }
-        })
+        """,
+        )
+        cov_path = self._write_coverage(
+            tmp_path,
+            {
+                src: {
+                    "executed_lines": [1, 2],
+                    "missing_lines": [],
+                    "excluded_lines": [],
+                    "missing_branches": [],
+                }
+            },
+        )
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
@@ -47,21 +53,27 @@ class TestRunSymbolCoverageGate:
         assert all(r.covered for r in result.symbol_results)
 
     def test_partial_fail(self, tmp_path):
-        src = self._write_source(tmp_path, """\
+        src = self._write_source(
+            tmp_path,
+            """\
             def covered_func():
                 return 1
 
             def uncovered_func():
                 return 2
-        """)
-        cov_path = self._write_coverage(tmp_path, {
-            src: {
-                "executed_lines": [1, 2],
-                "missing_lines": [4, 5],
-                "excluded_lines": [],
-                "missing_branches": [],
-            }
-        })
+        """,
+        )
+        cov_path = self._write_coverage(
+            tmp_path,
+            {
+                src: {
+                    "executed_lines": [1, 2],
+                    "missing_lines": [4, 5],
+                    "excluded_lines": [],
+                    "missing_branches": [],
+                }
+            },
+        )
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 6)]
             result = run_symbol_coverage_gate(
@@ -73,24 +85,33 @@ class TestRunSymbolCoverageGate:
         assert uncovered[0].symbol.name == "uncovered_func"
 
     def test_waivers_applied(self, tmp_path):
-        src = self._write_source(tmp_path, """\
+        src = self._write_source(
+            tmp_path,
+            """\
             def waived_func():
                 return 1
-        """)
-        cov_path = self._write_coverage(tmp_path, {
-            src: {
-                "executed_lines": [],
-                "missing_lines": [1, 2],
-                "excluded_lines": [],
-                "missing_branches": [],
-            }
-        })
+        """,
+        )
+        cov_path = self._write_coverage(
+            tmp_path,
+            {
+                src: {
+                    "executed_lines": [],
+                    "missing_lines": [1, 2],
+                    "excluded_lines": [],
+                    "missing_branches": [],
+                }
+            },
+        )
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
-                cov_path, [src], str(tmp_path),
+                cov_path,
+                [src],
+                str(tmp_path),
                 {
-                    "enabled": True, "mode": "changed",
+                    "enabled": True,
+                    "mode": "changed",
                     "waivers": [{"symbol": "mod.py::waived_func", "reason": "Tested elsewhere"}],
                 },
             )
@@ -112,7 +133,8 @@ class TestRunSymbolCoverageGate:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 str(tmp_path / "nonexistent.json"),
-                [src], str(tmp_path),
+                [src],
+                str(tmp_path),
                 {"enabled": True, "mode": "changed"},
                 surface="mcp",
             )
@@ -125,7 +147,8 @@ class TestRunSymbolCoverageGate:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 str(tmp_path / "nonexistent.json"),
-                [src], str(tmp_path),
+                [src],
+                str(tmp_path),
                 {"enabled": True, "mode": "changed"},
                 surface="ci",
             )
@@ -134,32 +157,49 @@ class TestRunSymbolCoverageGate:
     def test_unresolved_required_blocks(self, tmp_path):
         cov_path = self._write_coverage(tmp_path, {})
         result = run_symbol_coverage_gate(
-            cov_path, [], str(tmp_path),
+            cov_path,
+            [],
+            str(tmp_path),
             {"enabled": True, "mode": "changed", "required_symbols": ["ghost.py::func"]},
         )
         assert result.passed is False
         assert "ghost.py::func" in result.unresolved_required
 
     def test_expired_waivers_reported(self, tmp_path):
-        src = self._write_source(tmp_path, """\
+        src = self._write_source(
+            tmp_path,
+            """\
             def func():
                 return 1
-        """)
-        cov_path = self._write_coverage(tmp_path, {
-            src: {
-                "executed_lines": [1, 2],
-                "missing_lines": [],
-                "excluded_lines": [],
-                "missing_branches": [],
-            }
-        })
+        """,
+        )
+        cov_path = self._write_coverage(
+            tmp_path,
+            {
+                src: {
+                    "executed_lines": [1, 2],
+                    "missing_lines": [],
+                    "excluded_lines": [],
+                    "missing_branches": [],
+                }
+            },
+        )
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
-                cov_path, [src], str(tmp_path),
+                cov_path,
+                [src],
+                str(tmp_path),
                 {
-                    "enabled": True, "mode": "changed",
-                    "waivers": [{"symbol": "mod.py::func", "reason": "Old exemption", "expires": "2020-01-01"}],
+                    "enabled": True,
+                    "mode": "changed",
+                    "waivers": [
+                        {
+                            "symbol": "mod.py::func",
+                            "reason": "Old exemption",
+                            "expires": "2020-01-01",
+                        }
+                    ],
                 },
             )
         assert len(result.waivers_expired) == 1
@@ -175,6 +215,7 @@ class TestTestChannelIntegration:
             ControlPlaneConfig,
             SupervisionEvent,
         )
+
         event = SupervisionEvent(
             surface=surface,
             project_root=project_root,
@@ -198,12 +239,19 @@ class TestTestChannelIntegration:
             symbol_results=[
                 SymbolCoverageResult(
                     symbol=SymbolSpan(
-                        file="/src/mod.py", symbol_key="mod.py::uncovered",
-                        name="uncovered", start_line=1, end_line=5,
-                        is_method=False, class_name=None,
+                        file="/src/mod.py",
+                        symbol_key="mod.py::uncovered",
+                        name="uncovered",
+                        start_line=1,
+                        end_line=5,
+                        is_method=False,
+                        class_name=None,
                     ),
-                    covered=False, missing_lines=[3, 4], missing_branches=[],
-                    total_lines_in_span=5, executed_lines_in_span=3,
+                    covered=False,
+                    missing_lines=[3, 4],
+                    missing_branches=[],
+                    total_lines_in_span=5,
+                    executed_lines_in_span=3,
                 ),
             ],
         )
@@ -212,7 +260,10 @@ class TestTestChannelIntegration:
         channel = TestChannel()
         with (
             patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]),
-            patch("lintgate.channels.symbol_coverage.run_symbol_coverage_gate", return_value=gate_result),
+            patch(
+                "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
+                return_value=gate_result,
+            ),
         ):
             result = channel.execute(event, config)
 
@@ -242,25 +293,40 @@ class TestTestChannelIntegration:
             symbol_results=[
                 SymbolCoverageResult(
                     symbol=SymbolSpan(
-                        file="/tmp/test/mod.py", symbol_key="mod.py::untested",
-                        name="untested", start_line=10, end_line=15,
-                        is_method=False, class_name=None,
+                        file="/tmp/test/mod.py",
+                        symbol_key="mod.py::untested",
+                        name="untested",
+                        start_line=10,
+                        end_line=15,
+                        is_method=False,
+                        class_name=None,
                     ),
-                    covered=False, missing_lines=[12, 13], missing_branches=[],
-                    total_lines_in_span=6, executed_lines_in_span=4,
+                    covered=False,
+                    missing_lines=[12, 13],
+                    missing_branches=[],
+                    total_lines_in_span=6,
+                    executed_lines_in_span=4,
                 ),
             ],
             unresolved_required=["missing.py::gone"],
         )
         fake_test_result = TestRunResult(
-            passed=3, failed=0, coverage_pct=85.0, coverage_json_path="/tmp/cov.json",
+            passed=3,
+            failed=0,
+            coverage_pct=85.0,
+            coverage_json_path="/tmp/cov.json",
         )
 
         channel = TestChannel()
         with (
-            patch("lintgate.channels.test_channel.find_impacted_tests", return_value=["test_mod.py"]),
+            patch(
+                "lintgate.channels.test_channel.find_impacted_tests", return_value=["test_mod.py"]
+            ),
             patch("lintgate.channels.test_channel.run_tests", return_value=fake_test_result),
-            patch("lintgate.channels.symbol_coverage.run_symbol_coverage_gate", return_value=gate_result),
+            patch(
+                "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
+                return_value=gate_result,
+            ),
         ):
             result = channel.execute(event, config)
 
@@ -283,10 +349,14 @@ class TestTestChannelIntegration:
         src.write_text("def f():\n    return 1\n")
 
         event, config = self._make_config(
-            project_root=str(tmp_path), files=[str(src)],
+            project_root=str(tmp_path),
+            files=[str(src)],
         )
         fake_result = TestRunResult(
-            passed=1, failed=0, coverage_pct=100.0, coverage_json_path="/tmp/cov.json",
+            passed=1,
+            failed=0,
+            coverage_pct=100.0,
+            coverage_json_path="/tmp/cov.json",
         )
         gate_result = SymbolCoverageGateResult(passed=True, symbol_results=[])
 
@@ -294,7 +364,10 @@ class TestTestChannelIntegration:
         with (
             patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]),
             patch("lintgate.channels.test_channel.run_tests", return_value=fake_result) as mock_run,
-            patch("lintgate.channels.symbol_coverage.run_symbol_coverage_gate", return_value=gate_result),
+            patch(
+                "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
+                return_value=gate_result,
+            ),
         ):
             result = channel.execute(event, config)
 

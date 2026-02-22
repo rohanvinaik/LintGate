@@ -580,8 +580,10 @@ def _detect_reexports(init_file: str, project_root: str) -> dict[str, str]:
         # Check for __all__ = [...] assignments
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(
-                    node.value, (ast.List, ast.Tuple)
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == "__all__"
+                    and isinstance(node.value, (ast.List, ast.Tuple))
                 ):
                     for elt in node.value.elts:
                         if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
@@ -606,9 +608,7 @@ def _detect_reexports(init_file: str, project_root: str) -> dict[str, str]:
     return reexports
 
 
-def _build_reexport_map(
-    py_files: list[str], project_root: str
-) -> dict[str, dict[str, str]]:
+def _build_reexport_map(py_files: list[str], project_root: str) -> dict[str, dict[str, str]]:
     """Build a map of parent_package → {module_stem: certainty} from all __init__.py.
 
     Returns:
@@ -690,9 +690,7 @@ def _check_orphans(
 
         # Check both the file stem and the last module segment
         module_short = module.rsplit(".", 1)[-1] if "." in module else module
-        reexport_certainty = parent_reexports.get(
-            stem, parent_reexports.get(module_short)
-        )
+        reexport_certainty = parent_reexports.get(stem, parent_reexports.get(module_short))
 
         # Also check for wildcard dynamic marker ("*")
         if reexport_certainty is None and "*" in parent_reexports:

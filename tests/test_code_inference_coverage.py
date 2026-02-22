@@ -583,7 +583,7 @@ class TestConstants:
 
         for pattern, _label in _BADGE_PATTERNS:
             compiled = re.compile(pattern, re.IGNORECASE)
-            assert compiled is not None
+            assert compiled.pattern == pattern
 
     def test_max_py_files_positive(self) -> None:
         assert _MAX_PY_FILES > 0

@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
-
-import pytest
 
 from lintgate.context_bootstrap_patches import (
     MANAGED_SECTION_IDS,
     ContextPatch,
-    ManagedSection,
     apply_context_patch,
     generate_context_patch,
     migrate_to_managed_sections,
     parse_managed_sections,
     summarize_audit,
 )
-
 
 # ── ContextPatch dataclass ───────────────────────────────────────────────
 
@@ -133,9 +128,7 @@ class TestParseManagedSections:
 
     def test_version_parsed_correctly(self) -> None:
         text = (
-            "<!-- LINTGATE:BEGIN context_map v15 -->\n"
-            "map data\n"
-            "<!-- LINTGATE:END context_map -->\n"
+            "<!-- LINTGATE:BEGIN context_map v15 -->\nmap data\n<!-- LINTGATE:END context_map -->\n"
         )
         sections = parse_managed_sections(text)
         assert sections["context_map"].version == 15
@@ -187,15 +180,7 @@ class TestMigrateToManagedSections:
         assert "context_map" in ids
 
     def test_multiple_sections_migrated(self) -> None:
-        text = (
-            "# Proj\n"
-            "## Machine Rules\n"
-            "r1\n"
-            "## Do / Do Not\n"
-            "d1\n"
-            "## Other\n"
-            "stuff\n"
-        )
+        text = "# Proj\n## Machine Rules\nr1\n## Do / Do Not\nd1\n## Other\nstuff\n"
         result, ids = migrate_to_managed_sections(text)
         assert "machine_rules" in ids
         assert "do_dont" in ids
@@ -310,19 +295,14 @@ class TestGenerateContextPatch:
             "<!-- LINTGATE:END do_dont -->\n"
         )
         root = self._write_claude_md(tmp_path, content)
-        patch_obj = generate_context_patch(
-            root, "prediction_confirmed", {"entry": "bar after baz"}
-        )
+        patch_obj = generate_context_patch(root, "prediction_confirmed", {"entry": "bar after baz"})
         assert patch_obj is not None
         assert patch_obj.section_id == "do_dont"
         assert "DO NOT: bar after baz" in patch_obj.new_content
 
     def test_recurring_behavioral_signal(self, tmp_path: object) -> None:
         content = (
-            "# Proj\n"
-            "<!-- LINTGATE:BEGIN do_dont v1 -->\n"
-            "stuff\n"
-            "<!-- LINTGATE:END do_dont -->\n"
+            "# Proj\n<!-- LINTGATE:BEGIN do_dont v1 -->\nstuff\n<!-- LINTGATE:END do_dont -->\n"
         )
         root = self._write_claude_md(tmp_path, content)
         patch_obj = generate_context_patch(
@@ -375,12 +355,7 @@ class TestGenerateContextPatch:
         assert patch_obj is not None
 
     def test_prediction_confirmed_empty_entry(self, tmp_path: object) -> None:
-        content = (
-            "# Proj\n"
-            "<!-- LINTGATE:BEGIN do_dont v1 -->\n"
-            "x\n"
-            "<!-- LINTGATE:END do_dont -->\n"
-        )
+        content = "# Proj\n<!-- LINTGATE:BEGIN do_dont v1 -->\nx\n<!-- LINTGATE:END do_dont -->\n"
         root = self._write_claude_md(tmp_path, content)
         assert generate_context_patch(root, "prediction_confirmed", {"entry": ""}) is None
 
@@ -445,15 +420,14 @@ class TestApplyContextPatch:
     def test_actual_apply(self, tmp_path: object) -> None:
         root, patch_obj = self._setup(tmp_path)
         with patch("lintgate.context_auditor.audit_context_health") as mock_audit:
-            mock_audit.return_value = {
-                "audit": [{"file": "CLAUDE.md", "status": "pass"}]
-            }
+            mock_audit.return_value = {"audit": [{"file": "CLAUDE.md", "status": "pass"}]}
             result = apply_context_patch(root, patch_obj, dry_run=False)
         assert result["applied"] is True
         assert result["diff_preview"]["new_version"] == 2
         assert patch_obj.status == "applied"
         # Verify file was written
         import pathlib
+
         written = (pathlib.Path(root) / "CLAUDE.md").read_text()
         assert "v2" in written
         assert "rule2" in written
@@ -466,11 +440,7 @@ class TestApplyContextPatch:
 
     def test_missing_section(self, tmp_path: object) -> None:
         p = tmp_path  # type: ignore[assignment]
-        content = (
-            "<!-- LINTGATE:BEGIN context_map v1 -->\n"
-            "map\n"
-            "<!-- LINTGATE:END context_map -->\n"
-        )
+        content = "<!-- LINTGATE:BEGIN context_map v1 -->\nmap\n<!-- LINTGATE:END context_map -->\n"
         (p / "CLAUDE.md").write_text(content)
         patch_obj = ContextPatch(section_id="machine_rules", new_content="x")
         result = apply_context_patch(str(p), patch_obj, dry_run=False)

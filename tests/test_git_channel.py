@@ -372,7 +372,3 @@ def test_check5_skipped_on_hooks(tmp_path: Path) -> None:
     result = channel.execute(event, ControlPlaneConfig())
     # quality_infra_findings should be 0 since Check 5 is skipped on hooks
     assert result.metrics.get("quality_infra_findings", 0) == 0
-
-
-
-

@@ -9,11 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Minimal MCP stub so register() can attach @mcp.tool() callables
@@ -81,9 +77,7 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="echo hello")
-        )
+        result = json.loads(tools["hygiene_check"](path=str(tmp_path), planned_action="echo hello"))
         assert result["status"] == "no_checks_applicable"
         assert result["next_actions"] == []
 
@@ -205,9 +199,7 @@ class TestConstraintCheck:
         # Create a minimal config file so load_controlplane_config works
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         result = json.loads(
             tools["constraint_check"](
@@ -225,9 +217,7 @@ class TestConstraintCheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -245,9 +235,7 @@ class TestConstraintCheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -262,7 +250,6 @@ class TestConstraintCheck:
         """When compass has failed approaches matching the command, similar_failures appear."""
         from lintgate.controlplane.behavior_compass import (
             BehaviorCompass,
-            normalize_command_sig,
         )
         from lintgate.controlplane.behavior_types import ApproachAttempt
         from lintgate.controlplane.session_memory import SessionMemory
@@ -271,9 +258,7 @@ class TestConstraintCheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         # Build a compass with a failed approach matching "pytest"
         compass = BehaviorCompass()
@@ -318,9 +303,7 @@ class TestConstraintCheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         # Build compass with an active hypothesis
         compass = BehaviorCompass()
@@ -373,9 +356,7 @@ class TestPredictionRegister:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -396,9 +377,7 @@ class TestPredictionRegister:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -418,9 +397,7 @@ class TestPredictionRegister:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -444,9 +421,7 @@ class TestPredictionRegister:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -468,9 +443,7 @@ class TestPredictionRegister:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -503,9 +476,7 @@ class TestBehaviorPrecheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -527,9 +498,7 @@ class TestBehaviorPrecheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -556,9 +525,7 @@ class TestBehaviorPrecheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -582,9 +549,7 @@ class TestBehaviorPrecheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(
@@ -621,9 +586,7 @@ class TestBehaviorPrecheck:
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
         result = json.loads(

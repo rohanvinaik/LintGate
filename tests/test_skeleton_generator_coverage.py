@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 import textwrap
 
-import pytest
-
 from lintgate.controlplane.skeleton_generator import (
     _build_imports,
     _compute_import_path,
@@ -21,7 +19,6 @@ from lintgate.controlplane.test_archetype_selector import (
     FunctionInfo,
     SourceSignals,
 )
-
 
 # ── _compute_import_path ────────────────────────────────────────────────
 
@@ -38,15 +35,11 @@ class TestComputeImportPath:
         assert result == "lintgate.types"
 
     def test_nested_package_path(self) -> None:
-        result = _compute_import_path(
-            "/project/lintgate/controlplane/tools.py", "/project"
-        )
+        result = _compute_import_path("/project/lintgate/controlplane/tools.py", "/project")
         assert result == "lintgate.controlplane.tools"
 
     def test_init_file_excluded(self) -> None:
-        result = _compute_import_path(
-            "/project/lintgate/__init__.py", "/project"
-        )
+        result = _compute_import_path("/project/lintgate/__init__.py", "/project")
         assert result == "lintgate"
 
     def test_value_error_fallback(self) -> None:

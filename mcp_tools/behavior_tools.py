@@ -267,8 +267,7 @@ def register(mcp, helpers):
                     if theory_constraints:
                         output["theory_constraints"] = theory_constraints
                         output["hint"] = (
-                            "Seeded from project theory. "
-                            "Accuracy improves with session data."
+                            "Seeded from project theory. Accuracy improves with session data."
                         )
             except Exception:
                 pass

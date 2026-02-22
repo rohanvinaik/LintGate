@@ -15,11 +15,8 @@ Covers:
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from lintgate.channels.lint_channel import (
     LintChannel,
@@ -39,7 +36,6 @@ from lintgate.types import (
     LintIssue,
     LintTier,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -217,9 +213,7 @@ class TestToChannelResult:
         agg = _make_aggregated(metrics={"custom_key": 42})
         recurrence = {"repeated_issue_count": 3, "unique_signatures_tracked": 5}
         pattern_report = {"alerted_patterns": ["pattern_a"], "top_categories": []}
-        result = ch._to_channel_result(
-            agg, recurrence, pattern_report, 150.0, "strict", 10000
-        )
+        result = ch._to_channel_result(agg, recurrence, pattern_report, 150.0, "strict", 10000)
         assert result.metrics["custom_key"] == 42
         assert result.metrics["recurrence"] == recurrence
         assert result.metrics["pattern_alerts"] == ["pattern_a"]

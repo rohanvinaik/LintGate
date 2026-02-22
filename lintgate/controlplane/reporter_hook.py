@@ -114,9 +114,12 @@ def _build_telemetry_counters(
     coherence = mesh_result.coherence
 
     # edit_scope_downgrades: coherence was downgraded by edit-scope logic
-    if getattr(coherence, "edit_scoped", False) and coherence.classification_notes and (
-        any("downgraded to stable" in n for n in coherence.classification_notes) or any(
-            "downgraded to isolated" in n for n in coherence.classification_notes
+    if (
+        getattr(coherence, "edit_scoped", False)
+        and coherence.classification_notes
+        and (
+            any("downgraded to stable" in n for n in coherence.classification_notes)
+            or any("downgraded to isolated" in n for n in coherence.classification_notes)
         )
     ):
         counters["edit_scope_downgrades"] = 1

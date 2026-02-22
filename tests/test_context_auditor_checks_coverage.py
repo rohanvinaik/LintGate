@@ -9,13 +9,13 @@ import pytest
 
 from lintgate.context_auditor_checks import (
     DirectiveClassification,
+    _count_syntactic_ids,
     _coverage_tokens,
     _detect_generated_patterns,
     _directive_has_matching_rule,
     _extract_keywords,
     _find_bare_name_in_project,
     _has_syntactic_id,
-    _count_syntactic_ids,
     _is_regex_enforceable,
     _matches_generated_pattern,
     check_contradictions,
@@ -28,7 +28,6 @@ from lintgate.context_auditor_checks import (
     extract_path_refs,
     find_dead_paths,
 )
-
 
 # ── check_length ────────────────────────────────────────────────────
 
@@ -234,7 +233,12 @@ class TestCheckRuleCoverage:
             }
         }
         rules = [
-            {"kind": "forbid_regex", "message": "console.log", "source": "", "pattern": "console\\.log"}
+            {
+                "kind": "forbid_regex",
+                "message": "console.log",
+                "source": "",
+                "pattern": "console\\.log",
+            }
         ]
         checks: list = []
         suggestions: list = []
@@ -252,7 +256,12 @@ class TestCheckRuleCoverage:
         }
         # Only one rule covers the first directive
         rules = [
-            {"kind": "forbid_regex", "message": "console.log", "source": "", "pattern": "console\\.log"}
+            {
+                "kind": "forbid_regex",
+                "message": "console.log",
+                "source": "",
+                "pattern": "console\\.log",
+            }
         ]
         checks: list = []
         suggestions: list = []
@@ -271,7 +280,12 @@ class TestCheckRuleCoverage:
         }
         # Only one rule
         rules = [
-            {"kind": "forbid_regex", "message": "console.log", "source": "", "pattern": "console\\.log"}
+            {
+                "kind": "forbid_regex",
+                "message": "console.log",
+                "source": "",
+                "pattern": "console\\.log",
+            }
         ]
         checks: list = []
         suggestions: list = []
@@ -523,7 +537,10 @@ class TestIsRegexEnforceable:
         assert _is_regex_enforceable("Do not use console.log() in code") is True
 
     def test_false_for_architectural(self):
-        assert _is_regex_enforceable("Do not bypass the review approach without understanding") is False
+        assert (
+            _is_regex_enforceable("Do not bypass the review approach without understanding")
+            is False
+        )
 
 
 # ── _has_syntactic_id and _count_syntactic_ids ──────────────────────

@@ -132,8 +132,7 @@ class TestCoherenceContractInvariants:
             enabled = [r for r in results if r.status != "skip"]
             failures = [r for r in enabled if r.status == "fail"]
             assert len(failures) == 0, (
-                f"stable state but {len(failures)} channels failed: "
-                f"{[r.channel for r in failures]}"
+                f"stable state but {len(failures)} channels failed: {[r.channel for r in failures]}"
             )
 
 
@@ -173,15 +172,21 @@ class TestCoherenceChannelWeighting:
         """
         results = [
             _channel(
-                "structure", "fail", "informational",
+                "structure",
+                "fail",
+                "informational",
                 [_issue(severity="informational", kind="STRUCT001")],
             ),
             _channel(
-                "behavior", "fail", "informational",
+                "behavior",
+                "fail",
+                "informational",
                 [_issue(severity="informational", kind="approach_cycling")],
             ),
             _channel(
-                "git", "fail", "informational",
+                "git",
+                "fail",
+                "informational",
                 [_issue(severity="informational", kind="dirty_tree")],
             ),
             _channel("lint", "pass"),
@@ -200,23 +205,25 @@ class TestCoherenceChannelWeighting:
         )
         # Both should be demoted from systemic
         assert sw_no_weights.state != "systemic", (
-            f"severity_weighted alone should demote informational-only, "
-            f"got {sw_no_weights.state}"
+            f"severity_weighted alone should demote informational-only, got {sw_no_weights.state}"
         )
         assert sw_with_weights.state != "systemic", (
-            f"severity_weighted + low weights should demote, "
-            f"got {sw_with_weights.state}"
+            f"severity_weighted + low weights should demote, got {sw_with_weights.state}"
         )
 
     def test_high_weight_preserves_coupled(self):
         """2 high-weight failures should stay coupled with severity_weighted."""
         results = [
             _channel(
-                "lint", "fail", "blocking",
+                "lint",
+                "fail",
+                "blocking",
                 [_issue(severity="blocking", kind="F821")],
             ),
             _channel(
-                "tests", "fail", "warning",
+                "tests",
+                "fail",
+                "warning",
                 [_issue(severity="warning", kind="test_failure")],
             ),
             _channel("deps", "pass"),
@@ -234,11 +241,15 @@ class TestCoherenceChannelWeighting:
         """structure(low) + lint(high) failure: lint dominates classification."""
         results = [
             _channel(
-                "lint", "fail", "blocking",
+                "lint",
+                "fail",
+                "blocking",
                 [_issue(severity="blocking", kind="F821")],
             ),
             _channel(
-                "structure", "fail", "informational",
+                "structure",
+                "fail",
+                "informational",
                 [_issue(severity="informational", kind="STRUCT001")],
             ),
             _channel("tests", "pass"),
@@ -252,8 +263,7 @@ class TestCoherenceChannelWeighting:
         # lint(1.0 * 1.0) + structure(0.10 * 0.2 = 0.02) = 1.02
         # Below coupled threshold (1.5) -> should be isolated
         assert weighted.state == "isolated", (
-            f"Low-weight structure + high-weight lint should be isolated, "
-            f"got {weighted.state}"
+            f"Low-weight structure + high-weight lint should be isolated, got {weighted.state}"
         )
 
     def test_default_weight_for_unconfigured_channels(self):
@@ -265,11 +275,15 @@ class TestCoherenceChannelWeighting:
         """
         results = [
             _channel(
-                "lint", "fail", "blocking",
+                "lint",
+                "fail",
+                "blocking",
                 [_issue(severity="blocking", kind="F821")],
             ),
             _channel(
-                "tests", "fail", "warning",
+                "tests",
+                "fail",
+                "warning",
                 [_issue(severity="warning", kind="test_failure")],
             ),
             _channel("deps", "pass"),
@@ -283,23 +297,28 @@ class TestCoherenceChannelWeighting:
         # lint: 1.0 * 1.0 = 1.0, tests: 0.35 * 0.5 = 0.175 -> total ~1.175
         # Below systemic threshold (3.0) -> coupled (2 raw failures)
         assert weighted.state == "coupled", (
-            f"Two failures with weights should be coupled (not systemic), "
-            f"got {weighted.state}"
+            f"Two failures with weights should be coupled (not systemic), got {weighted.state}"
         )
 
     def test_weights_prevent_systemic_escalation(self):
         """3 failures with low weights should stay coupled, not escalate."""
         results = [
             _channel(
-                "lint", "fail", "warning",
+                "lint",
+                "fail",
+                "warning",
                 [_issue(severity="warning", kind="W001")],
             ),
             _channel(
-                "tests", "fail", "warning",
+                "tests",
+                "fail",
+                "warning",
                 [_issue(severity="warning", kind="test_failure")],
             ),
             _channel(
-                "behavior", "fail", "informational",
+                "behavior",
+                "fail",
+                "informational",
                 [_issue(severity="informational", kind="approach_cycling")],
             ),
             _channel("deps", "pass"),
@@ -316,6 +335,5 @@ class TestCoherenceChannelWeighting:
         # lint: 0.35*0.4=0.14, tests: 0.35*0.4=0.14, behavior: 0.10*0.2=0.02
         # total ~0.30, well below 3.0 -> not systemic, falls to coupled
         assert weighted.state != "systemic", (
-            f"Low weights should prevent systemic escalation, "
-            f"got {weighted.state}"
+            f"Low weights should prevent systemic escalation, got {weighted.state}"
         )

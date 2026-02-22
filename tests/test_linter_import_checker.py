@@ -11,7 +11,6 @@ from lintgate.linters.import_checker import (
 )
 from lintgate.types import LinterContext
 
-
 # ── _collect_guarded_import_lines ────────────────────────────────────
 
 

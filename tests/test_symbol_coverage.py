@@ -53,13 +53,16 @@ class TestExtractSymbolSpans:
         return str(p)
 
     def test_functions(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             def foo():
                 pass
 
             def bar():
                 return 1
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         names = [s.name for s in spans]
         assert "foo" in names
@@ -67,14 +70,17 @@ class TestExtractSymbolSpans:
         assert all(not s.is_method for s in spans)
 
     def test_methods(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             class MyClass:
                 def method_a(self):
                     pass
 
                 def method_b(self):
                     return 1
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         names = [s.name for s in spans]
         assert "MyClass.method_a" in names
@@ -83,22 +89,28 @@ class TestExtractSymbolSpans:
         assert all(s.class_name == "MyClass" for s in spans)
 
     def test_async_function(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             async def fetch():
                 pass
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         assert len(spans) == 1
         assert spans[0].name == "fetch"
 
     def test_decorated_function_start_line(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             import functools
 
             @functools.lru_cache
             def cached():
                 return 42
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         assert len(spans) == 1
         # start_line should be the decorator line, not the def line
@@ -106,22 +118,28 @@ class TestExtractSymbolSpans:
         assert spans[0].name == "cached"
 
     def test_nested_functions_skipped(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             def outer():
                 def inner():
                     pass
                 return inner()
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         names = [s.name for s in spans]
         assert "outer" in names
         assert "inner" not in names
 
     def test_syntax_error_returns_empty(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             def broken(
                 # missing closing paren
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         assert spans == []
 
@@ -131,20 +149,26 @@ class TestExtractSymbolSpans:
         assert spans == []
 
     def test_symbol_key_format(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             def hello():
                 pass
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         assert spans[0].symbol_key == "mod.py::hello"
 
     def test_nested_class_methods(self, tmp_path):
-        fp = self._write_py(tmp_path, """\
+        fp = self._write_py(
+            tmp_path,
+            """\
             class Outer:
                 class Inner:
                     def method(self):
                         pass
-        """)
+        """,
+        )
         spans = extract_symbol_spans(fp, str(tmp_path))
         # Inner.method should be found (Inner is the class context)
         names = [s.name for s in spans]

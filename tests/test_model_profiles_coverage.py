@@ -17,7 +17,6 @@ Targets uncovered branches and functions not exercised by existing test files:
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Any
@@ -29,7 +28,6 @@ from lintgate.controlplane.model_profiles import (
     PROFILE_FORMAT_VERSION,
     ModelProfile,
     ModelProfileStore,
-    _EMA_ALPHA,
     _lintgate_home,
     apply_confidence_decay,
     apply_telemetry_update,
@@ -40,7 +38,6 @@ from lintgate.controlplane.model_profiles import (
     save_profiles,
     upsert_profile,
 )
-
 
 # ── _lintgate_home ───────────────────────────────────────────────────
 
@@ -189,15 +186,17 @@ class TestModelProfileStoreExtended:
         assert len(store.profiles) == 0
 
     def test_from_dict_skips_non_dict_entries(self) -> None:
-        store = ModelProfileStore.from_dict({
-            "format_version": 1,
-            "profiles": {
-                "good": {"model_key": "test:good", "confidence": 0.9},
-                "bad_string": "not-a-dict",
-                "bad_int": 42,
-                "bad_list": [1, 2, 3],
-            },
-        })
+        store = ModelProfileStore.from_dict(
+            {
+                "format_version": 1,
+                "profiles": {
+                    "good": {"model_key": "test:good", "confidence": 0.9},
+                    "bad_string": "not-a-dict",
+                    "bad_int": 42,
+                    "bad_list": [1, 2, 3],
+                },
+            }
+        )
         assert "good" in store.profiles
         assert "bad_string" not in store.profiles
         assert "bad_int" not in store.profiles
@@ -252,13 +251,15 @@ class TestPersistenceExtended:
 
     def test_save_profiles_oserror_nonfatal(self, tmp_path: Path) -> None:
         """OSError during write is silently swallowed."""
-        with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
-            return_value=tmp_path,
+        with (
+            mock.patch(
+                "lintgate.controlplane.model_profiles._lintgate_home",
+                return_value=tmp_path,
+            ),
+            mock.patch("builtins.open", side_effect=OSError("disk full")),
         ):
-            with mock.patch("builtins.open", side_effect=OSError("disk full")):
-                # Should not raise
-                save_profiles(ModelProfileStore())
+            # Should not raise
+            save_profiles(ModelProfileStore())
 
     def test_get_profile_decay_persisted(self, tmp_path: Path) -> None:
         """get_profile applies decay and persists if confidence changed."""

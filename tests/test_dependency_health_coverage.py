@@ -2,33 +2,24 @@
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 from lintgate.dependency_health import (
     HealthCheck,
     _build_summary,
     _check_conflicting_managers,
-    _check_dep_churn,
     _check_lockfile_freshness,
     _check_lockfiles,
     _check_manifest_health,
     _check_python_version_file,
     _check_venv,
-    _find_venv,
     _format_duration,
-    _has_ci_config,
-    _has_python_project,
     _is_global_install,
     _load_dep_history,
-    _missing_lockfiles,
-    _stale_lockfiles,
     full_dependency_health,
     quick_dependency_check,
 )
-
 
 # ── HealthCheck ──────────────────────────────────────────────────────
 
@@ -103,6 +94,7 @@ def test_lockfile_fresh(tmp_path):
     (tmp_path / "uv.lock").write_text("")
     # Make lock newer than manifest
     import os
+
     manifest = tmp_path / "pyproject.toml"
     lock = tmp_path / "uv.lock"
     os.utime(manifest, (time.time() - 100, time.time() - 100))
@@ -115,6 +107,7 @@ def test_lockfile_stale(tmp_path):
     (tmp_path / "pyproject.toml").write_text("")
     (tmp_path / "uv.lock").write_text("")
     import os
+
     manifest = tmp_path / "pyproject.toml"
     lock = tmp_path / "uv.lock"
     os.utime(lock, (time.time() - 100, time.time() - 100))
@@ -323,6 +316,8 @@ def test_quick_healthy(tmp_path):
 def test_quick_pip_install_no_venv(tmp_path):
     (tmp_path / "pyproject.toml").write_text("")
     warnings = quick_dependency_check(
-        str(tmp_path), "Bash", {"command": "pip install requests"},
+        str(tmp_path),
+        "Bash",
+        {"command": "pip install requests"},
     )
     assert any("global" in w.lower() or "venv" in w.lower() for w in warnings)

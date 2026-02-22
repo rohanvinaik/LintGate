@@ -320,11 +320,13 @@ class TestQualityGateIntegration:
             patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=_make_config()),
             patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=None),
         ):
-            result = handle({
-                "tool_name": "Bash",
-                "tool_input": {"command": "git push"},
-                "cwd": str(tmp_path),
-            })
+            result = handle(
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "git push"},
+                    "cwd": str(tmp_path),
+                }
+            )
         assert result["continue"] is False
         assert "BLOCKED" in result["systemMessage"]
 
@@ -337,11 +339,13 @@ class TestQualityGateIntegration:
             patch("lintgate.hooks.pre_tool._load_mode", return_value="normal"),
             patch("lintgate.hooks.pre_tool.load_compass", return_value=None),
         ):
-            result = handle({
-                "tool_name": "Bash",
-                "tool_input": {"command": "git commit -m 'test'"},
-                "cwd": str(tmp_path),
-            })
+            result = handle(
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "git commit -m 'test'"},
+                    "cwd": str(tmp_path),
+                }
+            )
         assert result["continue"] is True
         assert "Advisory" in result["systemMessage"]
 
@@ -354,11 +358,13 @@ class TestQualityGateIntegration:
             patch("lintgate.hooks.pre_tool._load_mode", return_value="normal"),
             patch("lintgate.hooks.pre_tool.load_compass", return_value=None),
         ):
-            result = handle({
-                "tool_name": "Bash",
-                "tool_input": {"command": "git push"},
-                "cwd": str(tmp_path),
-            })
+            result = handle(
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "git push"},
+                    "cwd": str(tmp_path),
+                }
+            )
         assert result["continue"] is True
 
     def test_handle_non_bash_unaffected(self) -> None:
