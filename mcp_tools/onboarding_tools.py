@@ -1013,13 +1013,13 @@ def _generate_security_md(github: dict[str, Any]) -> str:
 def _generate_pre_push_hook() -> str:
     """Generate a project-local pre-push hook script.
 
-    The hook enforces local checks before push:
+    The hook mirrors CI checks locally before push:
     - Quality infrastructure completeness gate (hard fail)
-    - Prefer qlty when available (closest match to CI quality scans)
-    - Fallback to ruff when qlty is not installed
-    - Run pytest with coverage and enforce symbol-level coverage gate
-    - Optionally check Sonar Quality Gate when SONAR_TOKEN and
-      SONAR_PROJECT_KEY are set in the shell environment
+    - qlty check --all (mirrors CI qlty.yml — no fallback)
+    - gitleaks secrets scan (mirrors CI gitleaks check)
+    - pytest with coverage + symbol-level coverage gate (mirrors CI tests.yml)
+    - pip-audit supply-chain scan (mirrors CI security-lite.yml, optional)
+    - Sonar Quality Gate (optional, when SONAR_TOKEN set)
     """
     lines = [
         "#!/usr/bin/env bash",
@@ -1044,17 +1044,14 @@ def _generate_pre_push_hook() -> str:
         "  exit 1",
         "fi",
         "",
-        "if command -v qlty >/dev/null 2>&1; then",
-        "  qlty check --all",
-        "else",
-        '  echo "[lintgate] qlty not found; using fallback checks (ruff)"',
-        "  if command -v ruff >/dev/null 2>&1; then",
-        "    ruff check .",
-        "  elif python -c 'import ruff' >/dev/null 2>&1; then",
-        "    python -m ruff check .",
-        "  else",
-        '    echo "[lintgate] warning: ruff not installed; skipping lint step."',
-        "  fi",
+        "# qlty analysis (mirrors CI qlty.yml)",
+        "qlty check --all",
+        "",
+        "# Secrets scan (mirrors CI gitleaks check)",
+        'echo "[lintgate] scanning for secrets (gitleaks)"',
+        "if ! gitleaks detect --source . --no-banner --redact; then",
+        '  echo "[lintgate] BLOCKED: secrets detected — fix before pushing."',
+        "  exit 1",
         "fi",
         "",
         "if [ -d tests ] || [ -d test ]; then",
@@ -1077,6 +1074,14 @@ def _generate_pre_push_hook() -> str:
         '      --project-root "$REPO_ROOT" \\',
         "      --coverage-json coverage.json \\",
         "      --head HEAD --surface ci",
+        "  fi",
+        "fi",
+        "",
+        "# pip-audit (mirrors CI security-lite.yml)",
+        "if command -v pip-audit >/dev/null 2>&1; then",
+        "  if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then",
+        '    echo "[lintgate] running pip-audit (supply-chain scan)"',
+        "    pip-audit",
         "  fi",
         "fi",
         "",
