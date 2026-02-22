@@ -225,6 +225,30 @@ def register(mcp, helpers):
             previous_finding_index=previous_finding_index,
         )
 
+        # Persist blocking/warning counts to RuntimeState so the quality gate can enforce them
+        with contextlib.suppress(Exception):
+            from lintgate.runtime_state import (
+                build_runtime_state,
+                save_runtime_state,
+            )
+
+            blocking = sum(
+                1 for cr in mesh_result.channel_results
+                for f in cr.findings if f.severity == "blocking"
+            )
+            warnings = sum(
+                1 for cr in mesh_result.channel_results
+                for f in cr.findings if f.severity == "warning"
+            )
+            runtime = build_runtime_state(
+                project_root,
+                session=session,
+                last_coherence_state=str(mesh_result.coherence.state or ""),
+                last_blocking=blocking,
+                last_warnings=warnings,
+            )
+            save_runtime_state(project_root, runtime)
+
         # Save full details for drill-down
         with contextlib.suppress(Exception):
             from lintgate.state import save_controlplane_run
@@ -635,6 +659,21 @@ def register(mcp, helpers):
             if run_details:
                 for ch_data in run_details.get("channels", {}).values():
                     all_repairs.extend(ch_data.get("repairs", []))
+            else:
+                # Fallback: reconstruct from snapshot's compact repair catalog
+                # (payload unavailable — command repairs won't execute, but
+                # non-command repairs like create_test_skeleton can still be surfaced)
+                for aid, meta in getattr(latest, "repair_catalog", {}).items():
+                    all_repairs.append(
+                        {
+                            "action_id": aid,
+                            "kind": meta.get("kind", "command"),
+                            "summary": meta.get("summary", ""),
+                            "safe": meta.get("safe", "true") == "true",
+                            "channel": meta.get("channel", ""),
+                            "payload": {},
+                        }
+                    )
             # Filter to only repairs proposed in this snapshot
             proposed_ids = set(latest.repairs_proposed)
             for repair in all_repairs:
