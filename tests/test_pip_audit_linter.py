@@ -220,6 +220,23 @@ class TestPipAuditParsing:
         # Message should be truncated, not the full 200 chars
         assert "..." in issues[0].message
 
+    def test_prefers_requirements_file_when_present(self, tmp_path):
+        linter = PipAuditLinter()
+        ctx = self._make_ctx(tmp_path)
+        req = tmp_path / "requirements.txt"
+        req.write_text("requests==2.31.0\n")
+
+        data = {"dependencies": []}
+        mock_result = MagicMock()
+        mock_result.stdout = json.dumps(data)
+
+        with patch.object(linter, "run_command", return_value=mock_result) as mock_cmd:
+            list(linter.run(ctx))
+
+        cmd = mock_cmd.call_args[0][0]
+        assert "-r" in cmd
+        assert str(req) in cmd
+
 
 class TestPipAuditSeverityClassification:
     def test_cve_is_warning(self):

@@ -19,10 +19,12 @@ from mcp_tools.onboarding_tools import (
     _generate_badge_markdown,
     _generate_codeclimate_yml,
     _generate_qlty_workflow,
+    _generate_security_workflow,
     _generate_qlty_toml,
     _generate_sonar_properties,
     _generate_sonar_workflow,
     _inject_badges_into_readme,
+    _readme_has_quality_badges,
 )
 
 # ── GitHub Remote Detection ──────────────────────────────────────────────
@@ -254,6 +256,36 @@ class TestGenerateQltyWorkflow:
         assert "check --all" in content
 
 
+class TestGenerateSecurityWorkflow:
+    """Tests for _generate_security_workflow."""
+
+    def test_includes_push_pr_and_dispatch(self) -> None:
+        layout = {"python_version": "3.12"}
+        content = _generate_security_workflow(layout)
+
+        assert "on:" in content
+        assert "push:" in content
+        assert "pull_request:" in content
+        assert "workflow_dispatch:" in content
+        assert "gitleaks/gitleaks-action@v2" in content
+        assert "bandit -q -r ." in content
+        assert "pip-audit -r" in content
+        assert 'python-version: "3.12"' in content
+
+    def test_fallback_python_version_for_unexpected_input(self) -> None:
+        content = _generate_security_workflow({"python_version": ">=3.11"})
+        assert 'python-version: "3.11"' in content
+
+    def test_tool_runner_skips_subprocess_codes(self) -> None:
+        content = _generate_security_workflow({"python_version": "3.11"}, is_tool_runner=True)
+        assert "-s B101,B108,B404,B603,B607" in content
+
+    def test_non_tool_runner_keeps_subprocess_checks(self) -> None:
+        content = _generate_security_workflow({"python_version": "3.11"}, is_tool_runner=False)
+        assert "-s B101,B108" in content
+        assert "B603" not in content
+
+
 # ── Gitignore Additions ──────────────────────────────────────────────────
 
 
@@ -300,6 +332,7 @@ class TestGenerateBadgeMarkdown:
         assert "sonarcloud.io" in badges
         assert "alice_myrepo" in badges
         assert "metric=coverage" in badges
+        assert "metric=security_rating" in badges
 
     def test_includes_license_badge(self) -> None:
         """License badge generated when license detected."""
@@ -340,12 +373,45 @@ class TestInjectBadgesIntoReadme:
     def test_skips_existing_badges(self, tmp_path: Path) -> None:
         """Does not inject if badges already present."""
         readme = tmp_path / "README.md"
-        readme.write_text(
-            "# My Project\n\n"
-            "[![X](https://api.codeclimate.com/v1/badges/abc/maintainability)](link)\n"
+        badge_block = _generate_badge_markdown(
+            {"owner": "alice", "repo": "myrepo"},
+            {"license": None},
         )
+        readme.write_text(f"# My Project\n\n{badge_block}\n")
         result = _inject_badges_into_readme(str(tmp_path), "new badges", write=True)
         assert result["status"] == "badges_already_present"
+
+    def test_updates_managed_badge_block(self, tmp_path: Path) -> None:
+        """Managed badge block is replaced in-place when content changes."""
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# My Project\n\n"
+            "<!-- lintgate:quality-badges:start -->\n"
+            "old\n"
+            "<!-- lintgate:quality-badges:end -->\n",
+        )
+        new_badges = _generate_badge_markdown(
+            {"owner": "alice", "repo": "myrepo"},
+            {"license": None},
+        )
+        result = _inject_badges_into_readme(str(tmp_path), new_badges, write=True)
+        assert result["status"] == "updated"
+        content = readme.read_text()
+        assert "metric=security_rating" in content
+        assert content.count("lintgate:quality-badges:start") == 1
+
+    def test_readme_has_quality_badges_requires_security_metric(self, tmp_path: Path) -> None:
+        """README should fail quality badge check if security badge is missing."""
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "# My Project\n\n"
+            "[![Maintainability](https://api.codeclimate.com/v1/badges/abc/maintainability)](link)\n"
+            "[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?"
+            "project=a_b&metric=alert_status)](link)\n"
+            "[![Coverage](https://sonarcloud.io/api/project_badges/measure?"
+            "project=a_b&metric=coverage)](link)\n"
+        )
+        assert _readme_has_quality_badges(str(tmp_path)) is False
 
     def test_preview_mode_no_write(self, tmp_path: Path) -> None:
         """Preview mode does not modify the file."""
@@ -398,15 +464,18 @@ class TestSetupGithubQualityTool:
         assert result["sonar"]["status"] == "preview"
         assert result["workflow"]["status"] == "preview"
         assert result["qlty_workflow"]["status"] == "preview"
+        assert result["security_workflow"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
         assert "content" in result["workflow"]
         assert "content" in result["qlty_workflow"]
+        assert "content" in result["security_workflow"]
         # Files should NOT exist
         assert not (tmp_path / ".codeclimate.yml").exists()
         assert not (tmp_path / "sonar-project.properties").exists()
         assert not (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
         assert not (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
+        assert not (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
 
     def test_write_mode_creates_files(self, tmp_path: Path) -> None:
         """Write mode creates config files and injects badges."""
@@ -427,13 +496,16 @@ class TestSetupGithubQualityTool:
         assert (tmp_path / "sonar-project.properties").exists()
         assert (tmp_path / ".github" / "workflows" / "sonarcloud.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
+        assert (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
         assert result["workflow"]["status"] == "written"
         assert result["qlty_workflow"]["status"] == "written"
+        assert result["security_workflow"]["status"] == "written"
         # README should have badges
         readme_content = (tmp_path / "README.md").read_text()
         assert "sonarcloud.io" in readme_content
+        assert "metric=security_rating" in readme_content
 
     def test_preserves_existing_configs(self, tmp_path: Path) -> None:
         """Does not overwrite existing config files."""
@@ -443,6 +515,7 @@ class TestSetupGithubQualityTool:
         workflow_dir.mkdir(parents=True)
         (workflow_dir / "sonarcloud.yml").write_text("name: existing\n")
         (workflow_dir / "qlty.yml").write_text("name: existing qlty\n")
+        (workflow_dir / "security-lite.yml").write_text("name: existing security\n")
         (tmp_path / "README.md").write_text("# Test\n")
 
         from mcp_server import setup_github_quality
@@ -457,6 +530,7 @@ class TestSetupGithubQualityTool:
         assert result["sonar"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
+        assert result["security_workflow"]["status"] == "already_exists"
         # Original content preserved
         assert (tmp_path / ".codeclimate.yml").read_text() == "existing: true\n"
 
@@ -512,6 +586,7 @@ class TestSetupGithubQualityTool:
         assert result["sonar"]["status"] == "already_exists"
         assert result["workflow"]["status"] == "already_exists"
         assert result["qlty_workflow"]["status"] == "already_exists"
+        assert result["security_workflow"]["status"] == "already_exists"
 
     def test_qlty_toml_created(self, tmp_path: Path) -> None:
         """Write mode creates .qlty/qlty.toml."""
@@ -524,9 +599,10 @@ class TestSetupGithubQualityTool:
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         assert result["qlty"]["status"] == "written"
-        assert result["qlty"]["local_only"] is True
-        assert result["qlty"]["tracked_in_git"] is False
+        assert result["qlty"]["local_only"] is False
+        assert result["qlty"]["tracked_in_git"] is True
         assert (tmp_path / ".qlty" / "qlty.toml").exists()
+        assert (tmp_path / ".qlty" / ".gitignore").exists()
         toml_content = (tmp_path / ".qlty" / "qlty.toml").read_text()
         assert 'config_version = "0"' in toml_content
         assert "[[triage]]" in toml_content

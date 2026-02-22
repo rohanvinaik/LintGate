@@ -217,6 +217,7 @@ class TestGettingStarted:
         assert "missing_tools_before" in startup
         assert "missing_tools_after" in startup
         assert "actions_applied" in startup
+        assert "github_quality" in startup
 
     def test_auto_setup_scaffolds_missing_config(self, tmp_path: Path) -> None:
         import json
@@ -341,6 +342,45 @@ class TestGettingStarted:
             action.get("example") == "pip install ty"
             for action in result["next_actions"]
         )
+
+    def test_auto_setup_bootstraps_github_quality_when_remote_detected(self, tmp_path: Path) -> None:
+        import json
+
+        from mcp_server import getting_started
+
+        (tmp_path / "README.md").write_text("# Demo\n")
+        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_python = str(tmp_path / ".venv" / "bin" / "python")
+
+        with (
+            mock.patch(
+                "mcp_tools.onboarding_tools._ensure_project_venv",
+                return_value={"status": "present", "venv_python": fake_python},
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._project_venv_python",
+                return_value=fake_python,
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._collect_external_tool_gaps",
+                side_effect=[fake_gaps, fake_gaps],
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._detect_github_remote",
+                return_value={"detected": True, "owner": "alice", "repo": "demo"},
+            ),
+        ):
+            result = json.loads(getting_started(str(tmp_path), auto_setup=True))
+
+        startup = result["startup_setup"]
+        assert startup["github_quality"]["status"] in {"written", "already_exists"}
+        assert any(
+            action.get("action") == "github_quality_bootstrapped"
+            for action in startup["actions_applied"]
+        )
+        assert (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
+        readme_content = (tmp_path / "README.md").read_text()
+        assert "metric=security_rating" in readme_content
 
 
 class TestScaffoldConfig:

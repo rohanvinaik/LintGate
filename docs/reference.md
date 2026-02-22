@@ -16,7 +16,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | ----------------- | ---------------------------------------------------------------------- |
 | `getting_started` | First-call orientation with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics + next actions) |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
-| `setup_github_quality` | Generate Code Climate/SonarCloud configs, SonarCloud + qlty GitHub workflows, README badges, .gitignore augmentation |
+| `setup_github_quality` | Generate Code Climate/SonarCloud configs, SonarCloud + qlty + security-lite workflows, README badges, .gitignore augmentation |
 
 ### Lint Pipeline
 

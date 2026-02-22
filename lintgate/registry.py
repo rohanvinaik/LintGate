@@ -95,6 +95,13 @@ def build_registry(config: ProjectConfig) -> dict[str, BaseLinter]:
     except ImportError:
         pass
 
+    try:
+        from .linters.secret_checker import SecretChecker
+
+        _register(registry, SecretChecker(), config)
+    except ImportError:
+        pass
+
     # ── Clean code linters (no external deps, always available) ────
 
     try:
