@@ -1,1 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="146" height="20" role="img" aria-label="Pure Functions: pending"><title>Pure Functions: pending</title><linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient><clipPath id="r"><rect width="146" height="20" rx="3" fill="#fff"/></clipPath><g clip-path="url(#r)"><rect width="91" height="20" fill="#555"/><rect x="91" width="55" height="20" fill="#9f9f9f"/><rect width="146" height="20" fill="url(#s)"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110"><text aria-hidden="true" x="465" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="810">Pure Functions</text><text x="465" y="140" transform="scale(.1)" fill="#fff" textLength="810">Pure Functions</text><text aria-hidden="true" x="1175" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="450">pending</text><text x="1175" y="140" transform="scale(.1)" fill="#fff" textLength="450">pending</text></g></svg>
+<svg width="122.5" height="20" viewBox="0 0 1225 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pure Functions: 507">
+  <title>Pure Functions: 507</title>
+  <linearGradient id="a" x2="0" y2="100%">
+    <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <mask id="m"><rect width="1225" height="200" rx="30" fill="#FFF"/></mask>
+  <g mask="url(#m)">
+    <rect width="915" height="200" fill="#555"/>
+    <rect width="310" height="200" fill="#success" x="915"/>
+    <rect width="1225" height="200" fill="url(#a)"/>
+  </g>
+  <g aria-hidden="true" fill="#fff" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
+    <text x="60" y="148" textLength="815" fill="#000" opacity="0.25">Pure Functions</text>
+    <text x="50" y="138" textLength="815">Pure Functions</text>
+    <text x="970" y="148" textLength="210" fill="#000" opacity="0.25">507</text>
+    <text x="960" y="138" textLength="210">507</text>
+  </g>
+  
+</svg>
