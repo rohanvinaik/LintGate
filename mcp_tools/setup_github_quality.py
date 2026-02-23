@@ -23,6 +23,7 @@ from mcp_tools.onboarding_tools import (
     _detect_subprocess_usage,
     _generate_badge_markdown,
     _generate_codeclimate_yml,
+    _generate_codeql_workflow,
     _generate_coveragerc,
     _generate_dependabot_yml,
     _generate_gitleaks_toml,
@@ -215,6 +216,17 @@ def setup_github_quality(
         write,
     )
 
+    # --- .github/workflows/codeql.yml ---
+    codeql_path = os.path.join(project_root, ".github", "workflows", "codeql.yml")
+    codeql_exists = os.path.exists(codeql_path)
+    codeql_content = _generate_codeql_workflow()
+    codeql_result = _apply_managed_artifact(
+        codeql_path,
+        codeql_content,
+        codeql_exists,
+        write,
+    )
+
     # --- .github/workflows/quality-infra-gate.yml ---
     qi_gate_path = os.path.join(project_root, ".github", "workflows", "quality-infra-gate.yml")
     qi_gate_exists = os.path.exists(qi_gate_path)
@@ -388,6 +400,8 @@ def setup_github_quality(
         files_to_stage.append(".github/workflows/security-lite.yml")
     if scorecard_result.get("status") in ("written", "drift_repaired"):
         files_to_stage.append(".github/workflows/scorecard.yml")
+    if codeql_result.get("status") in ("written", "drift_repaired"):
+        files_to_stage.append(".github/workflows/codeql.yml")
     if qi_gate_result.get("status") in ("written", "drift_repaired"):
         files_to_stage.append(".github/workflows/quality-infra-gate.yml")
     if dependabot_result.get("status") in ("written", "drift_repaired"):
@@ -496,6 +510,7 @@ def setup_github_quality(
         "qlty_workflow": qlty_workflow_result,
         "security_workflow": security_workflow_result,
         "scorecard_workflow": scorecard_result,
+        "codeql_workflow": codeql_result,
         "quality_infra_gate_workflow": qi_gate_result,
         "dependabot": dependabot_result,
         "security_md": security_md_result,

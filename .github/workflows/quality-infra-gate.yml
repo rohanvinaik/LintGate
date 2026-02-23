@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Check quality infrastructure completeness
         run: |
@@ -33,6 +33,7 @@ jobs:
           if [ ! -e ".github/workflows/qlty.yml" ]; then echo "MISSING: .github/workflows/qlty.yml"; MISSING=$((MISSING+1)); fi
           if [ ! -e ".github/workflows/security-lite.yml" ]; then echo "MISSING: .github/workflows/security-lite.yml"; MISSING=$((MISSING+1)); fi
           if [ ! -e ".github/workflows/scorecard.yml" ]; then echo "MISSING: .github/workflows/scorecard.yml"; MISSING=$((MISSING+1)); fi
+          if [ ! -e ".github/workflows/codeql.yml" ]; then echo "MISSING: .github/workflows/codeql.yml"; MISSING=$((MISSING+1)); fi
           if [ ! -e ".github/workflows/quality-infra-gate.yml" ]; then echo "MISSING: .github/workflows/quality-infra-gate.yml"; MISSING=$((MISSING+1)); fi
           if [ ! -e ".githooks/pre-push" ]; then echo "MISSING: .githooks/pre-push"; MISSING=$((MISSING+1)); fi
           if [ ! -e ".qlty/qlty.toml" ]; then echo "MISSING: .qlty/qlty.toml"; MISSING=$((MISSING+1)); fi
