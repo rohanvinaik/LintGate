@@ -123,8 +123,9 @@ def _check_keyword_args_invariant(keywords: list[ast.keyword], loop_targets: set
 
 def _check_all_args_invariant(node: ast.Call, loop_targets: set[str]) -> bool:
     """Return True if all positional and keyword args are loop-invariant."""
-    return _check_positional_args_invariant(node.args, loop_targets) and \
-           _check_keyword_args_invariant(node.keywords, loop_targets)
+    return _check_positional_args_invariant(
+        node.args, loop_targets
+    ) and _check_keyword_args_invariant(node.keywords, loop_targets)
 
 
 def _check_call_in_loop(
@@ -208,7 +209,7 @@ def check_pure_uncached_in_loop(tree: ast.AST, file_path: str) -> Iterable[LintI
 
     for loop_node, body in find_loop_bodies(tree):
         loop_targets_list = _get_loop_targets(loop_node) | _collect_loop_assignments(body)
-        loop_targets = set(loop_targets_list) # Convert to set for O(1) average lookup
+        loop_targets = set(loop_targets_list)  # Convert to set for O(1) average lookup
         yield from _analyze_loop_body_for_uncached_calls(
             body, loop_targets, file_path, local_pure_names
         )

@@ -834,8 +834,8 @@ def _extract_claims(section: _Section, facet: str) -> list[str]:
     claims: list[str] = []
     # Strip code blocks to avoid extracting code as theory
     text = re.sub(r"```[\s\S]*?```", "", section.body)
-    # Strip inline code
-    text = re.sub(r"`[^`]+`", "CODE", text)
+    # Strip inline code markers but preserve the content inside them
+    text = re.sub(r"`([^`]+)`", r"\1", text)
     # Strip markdown tables
     text = re.sub(r"^\|.*\|$", "", text, flags=re.M)
 
@@ -850,11 +850,8 @@ def _extract_claims(section: _Section, facet: str) -> list[str]:
         if score > 0:
             # Clean up for presentation
             cleaned = re.sub(r"\s+", " ", sentence).strip()
-            # Skip sentences that are mostly code references
-            if cleaned.count("CODE") > 1:
-                continue
-            # Skip sentences that START with CODE (usually just referencing docs)
-            if cleaned.startswith("CODE") or cleaned.startswith("See CODE"):
+            # Skip sentences that are mostly code references (CamelCase/path-heavy)
+            if len(re.findall(r"\b[A-Z][a-z]+[A-Z]\w+\b", cleaned)) > 3:
                 continue
             # Skip list-of-files or path-heavy sentences
             if cleaned.count("/") > 3:
@@ -951,8 +948,11 @@ def _score_claim(sentence: str, facet: str) -> int:
         # Penalize tool-description sentences that aren't conceptual anti-patterns
         sentence_lower = s.lower()
         tool_desc_patterns = ["provides", "channel", "linter", "tier", "analysis"]
-        if sum(1 for p in tool_desc_patterns if p in sentence_lower) >= 2:
+        if sum(1 for p in tool_desc_patterns if p in sentence_lower) >= 1:
             score -= 2
+        # Penalize descriptive-verb sentences (documentation, not theory)
+        if re.search(r"\b(?:provides|returns|supports|contains|includes)\b", sentence_lower):
+            score -= 1
     elif facet == "abstractions":
         if re.search(r"\b(?:we (?:call|define|term)|is called|known as|refers to)\b", s, re.I):
             score += 2

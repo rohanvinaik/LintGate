@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 51 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 53 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 51 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 53 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
@@ -86,6 +86,8 @@ LintGate provides 51 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `controlplane_run` | Full supervision mesh: lint + tests + deps + git + behavior + structure in parallel. |
 | `controlplane_get_details` | Drill into a previous ControlPlane run. Filter by channel/severity. |
 | `controlplane_apply_repairs` | Execute proposed repair actions (command-type, safe-only by default). |
+| `analyze_test_strength` | Test assertion quality: vulnerability scores, semantic ratios, upgrade suggestions. |
+| `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind and strength. |
 
 ### Reflect — check yourself before acting
 

@@ -120,6 +120,7 @@ class CoherenceResult:
     state: Literal["stable", "isolated", "coupled", "systemic", "degraded"] = "stable"
     summary: str = ""
     recommended_action: str = ""
+    classification_reason: str = ""  # Why this state was chosen
     silent_channels: list[str] = field(default_factory=list)
     loud_channels: list[str] = field(default_factory=list)
     confidence: float = 1.0

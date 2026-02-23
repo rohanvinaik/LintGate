@@ -59,9 +59,7 @@ def _build_test_manifest() -> PropertyManifest:
     m.functions["pure_parallel"] = _make_func(
         "pure_parallel", is_pure=True, source="/a.py", hints=("parallelizable",)
     )
-    m.functions["impure_fn"] = _make_func(
-        "impure_fn", is_pure=False, source="/b.py"
-    )
+    m.functions["impure_fn"] = _make_func("impure_fn", is_pure=False, source="/b.py")
     m.update_metrics()
     return m
 
@@ -183,9 +181,7 @@ class TestFilterManifest:
 
 class TestSelectPropertyCandidates:
     def _manifest_with_properties(self) -> PropertyManifest:
-        bounded = AlgebraicProperty(
-            kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp"
-        )
+        bounded = AlgebraicProperty(kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp")
         commutative = AlgebraicProperty(
             kind=PropertyKind.COMMUTATIVE, confidence=0.7, evidence="arg swap"
         )
@@ -194,7 +190,11 @@ class TestSelectPropertyCandidates:
         m.functions["two_props"] = _make_func("two_props", props=(bounded, commutative))
         m.functions["pure_only"] = _make_func(
             "pure_only",
-            props=(AlgebraicProperty(kind=PropertyKind.PURE, confidence=0.9, evidence="no side effects"),),
+            props=(
+                AlgebraicProperty(
+                    kind=PropertyKind.PURE, confidence=0.9, evidence="no side effects"
+                ),
+            ),
         )
         m.functions["impure"] = _make_func("impure", is_pure=False)
         return m
@@ -245,6 +245,7 @@ class _FakeMCP:
     def tool(self):
         def _decorator(fn):
             return fn
+
         return _decorator
 
 
@@ -288,9 +289,7 @@ class TestBuildManifestForProject:
 
 class TestBuildTestEntry:
     def test_basic_entry(self):
-        bounded = AlgebraicProperty(
-            kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp"
-        )
+        bounded = AlgebraicProperty(kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp")
         func = _make_func("score", props=(bounded,), source="/a.py")
         entry = _build_test_entry("score", func)
         assert entry["function"] == "score"
@@ -390,8 +389,8 @@ class TestGeneratePropertyTests:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["generate_property_tests"](
-            path=str(tmp_path), function="nonexistent"
-        ))
+        result = json.loads(
+            tools["generate_property_tests"](path=str(tmp_path), function="nonexistent")
+        )
         assert "note" in result
         assert "nonexistent" in result["note"]

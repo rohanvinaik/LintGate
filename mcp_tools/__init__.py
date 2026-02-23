@@ -15,6 +15,7 @@ Domain modules:
                       controlplane_test_skeleton, controlplane_report_repair,
                       controlplane_agent_feedback, controlplane_apply_repairs
 - performance_tools: inspect_algebra, generate_property_tests
+- test_effectiveness_tools: analyze_test_strength, inspect_test_assertions
 - behavior_tools: hygiene_check, constraint_check, prediction_register,
                   behavior_precheck (deprecated), global_memory_status, global_memory_reset
 - model_tools: model_profile_status, model_profile_probe_start, model_profile_probe_submit
@@ -36,6 +37,7 @@ from . import (
     onboarding_tools,
     performance_tools,
     telemetry_tools,
+    test_effectiveness_tools,
 )
 
 ALL_MODULES = [
@@ -45,6 +47,7 @@ ALL_MODULES = [
     dep_tools,
     controlplane_tools,
     performance_tools,
+    test_effectiveness_tools,
     behavior_tools,
     model_tools,
     telemetry_tools,

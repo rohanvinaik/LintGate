@@ -201,7 +201,8 @@ class StructureChannel:
 
         # STRUCT003: Orphan detection
         # Read extra orphan exclusion dirs from channel settings
-        _structure_settings = getattr(config, "channel_settings", {}).get("structure", {})
+        _ch_config = config.channels.get("structure")
+        _structure_settings = _ch_config.settings if _ch_config else {}
         _extra_orphan_dirs = _structure_settings.get("orphan_exclude_dirs", [])
         _extra_orphan_frozen = frozenset(_extra_orphan_dirs) if _extra_orphan_dirs else None
         orphan_findings = _check_orphans(

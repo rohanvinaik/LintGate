@@ -46,6 +46,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | ------------------------- | -------------------------------------------------------------------- |
 | `inspect_algebra`         | Inspect algebraic property manifest (purity, cacheability, parallelism) |
 | `generate_property_tests` | Generate Hypothesis + icontract templates from algebraic properties  |
+| `analyze_test_strength`   | Test assertion quality: vulnerability scores, semantic ratios, upgrades |
+| `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind/strength |
 
 ### Behavioral Supervision
 

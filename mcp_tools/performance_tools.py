@@ -48,7 +48,9 @@ _FILTER_CHECKS: dict[str, Any] = {
 }
 
 
-def _matches_filter(entry: dict[str, Any], filter_type: str | None, func_filter: str | None) -> bool:
+def _matches_filter(
+    entry: dict[str, Any], filter_type: str | None, func_filter: str | None
+) -> bool:
     """Check if a single function entry passes the requested filters."""
     if filter_type and filter_type in _FILTER_CHECKS and not _FILTER_CHECKS[filter_type](entry):
         return False

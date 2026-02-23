@@ -35,7 +35,9 @@ def _make_purity(name: str, *, is_pure: bool = True) -> PurityResult:
     )
 
 
-def _make_func_props(name: str, *, is_pure: bool = True, source: str | None = None) -> FunctionProperties:
+def _make_func_props(
+    name: str, *, is_pure: bool = True, source: str | None = None
+) -> FunctionProperties:
     return FunctionProperties(
         purity=_make_purity(name, is_pure=is_pure),
         properties=(),

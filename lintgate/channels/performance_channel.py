@@ -85,7 +85,7 @@ def _analyze_optimization_opportunities(
 
     for func_name, hints_list in manifest.optimization_potential:
         source = _resolve_file(manifest, func_name, project_root)
-        hints = set(hints_list) # Convert to set for O(1) average lookup
+        hints = set(hints_list)  # Convert to set for O(1) average lookup
 
         # PERFCH003 — Parallelization / MapReduce (top-N only)
         if "parallelizable" in hints or "map-reduce-compatible" in hints:

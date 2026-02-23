@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   qlty:
-    name: Qlty Check
+    name: Qlty
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

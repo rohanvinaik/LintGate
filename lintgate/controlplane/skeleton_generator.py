@@ -181,8 +181,23 @@ def _generate_function_tests(
             lines.append(f"    result = {fn}({args_placeholder})")
         else:
             lines.append(f"    result = {fn}()")
-        lines.append("    assert result is not None")
+        lines.append(
+            "    assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value"
+        )
         lines.append("")
+
+        # Boundary test stubs for functions with arguments
+        if func.args:
+            lines.append(f"def test_{fn}_boundary_values() -> None:")
+            lines.append(f'    """Test {fn} with edge cases that mutation testing targets."""')
+            for arg in func.args[:3]:
+                lines.append(f"    # Boundary: {arg}")
+            lines.append("    # TODO: Test with boundary inputs (0, -1, empty string, None)")
+            lines.append(f"    result = {fn}({', '.join('...' for _ in func.args)})")
+            lines.append(
+                "    assert result == EXPECTED  # TODO: Replace with actual expected value"
+            )
+            lines.append("")
 
         if func.raises:
             for exc_type in func.raises[:2]:
@@ -221,15 +236,18 @@ def _generate_class_tests(
         lines.append("    def test_default_creation(self) -> None:")
         lines.append(f'        """Test {cn} can be created with defaults."""')
         lines.append(f"        obj = {cn}()")
-        lines.append("        assert obj is not None")
+        lines.append("        # TODO: Assert specific field values, not just existence")
+        lines.append(
+            "        assert obj == EXPECTED  # TODO: Replace with expected instance or field checks"
+        )
         lines.append("")
 
         if cls.init_defaults > 0:
             lines.append("    def test_override_defaults(self) -> None:")
             lines.append(f'        """Test {cn} with overridden defaults."""')
-            lines.append("        # TODO: Provide override values")
+            lines.append("        # TODO: Provide override values and assert exact field values")
             lines.append(f"        obj = {cn}()")
-            lines.append("        assert obj is not None")
+            lines.append("        assert obj == EXPECTED  # TODO: Replace with expected instance")
             lines.append("")
 
     # State invariant tests
@@ -240,8 +258,10 @@ def _generate_class_tests(
         lines.append("    def test_initial_state(self) -> None:")
         lines.append(f'        """Test {cn} initial state after creation."""')
         lines.append(f"        obj = {cn}()")
-        lines.append("        # TODO: Assert initial field values")
-        lines.append("        assert obj is not None")
+        lines.append("        # TODO: Assert exact initial field values")
+        lines.append(
+            "        assert obj.field == EXPECTED  # TODO: Replace with actual field checks"
+        )
         lines.append("")
 
         # Generate tests for methods that likely modify state
