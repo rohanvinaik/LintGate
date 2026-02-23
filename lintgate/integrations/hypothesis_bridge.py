@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from lintgate.linters.performance_checks.algebra_types import (
     AlgebraicProperty,
     FunctionProperties,

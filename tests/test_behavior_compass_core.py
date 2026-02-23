@@ -55,10 +55,10 @@ class TestNormalizeCommandSig:
 
     def test_secret_redacted(self):
         result = normalize_command_sig(
-            "curl -H 'Authorization: sk_test_abc123defghijklmnop' https://api.example.com"
+            "curl -H 'Authorization: tok_fake_placeholder_value' https://api.example.com"
         )
         # The secret token should NOT appear in the result
-        assert "sk_test" not in result
+        assert "tok_fake" not in result
         assert result.startswith("curl:")
 
     def test_empty_command(self):

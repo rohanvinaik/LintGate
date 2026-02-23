@@ -104,8 +104,10 @@ def _check_bounded(node: ast.FunctionDef | ast.AsyncFunctionDef) -> AlgebraicPro
     lo, hi = _extract_bounds(expr)
     if lo is not None or hi is not None:
         evidence = []
-        if lo is not None: evidence.append(f"lower={lo}")
-        if hi is not None: evidence.append(f"upper={hi}")
+        if lo is not None:
+            evidence.append(f"lower={lo}")
+        if hi is not None:
+            evidence.append(f"upper={hi}")
         return AlgebraicProperty(
             kind=PropertyKind.BOUNDED,
             confidence=0.8,
