@@ -26,8 +26,10 @@ from lintgate.linters.bandit_linter import (
 )
 from lintgate.types import LinterContext
 from mcp_tools.onboarding_tools import (
+    _collect_external_tool_gaps,
     _ensure_project_venv,
     _generate_qlty_toml,
+    _install_command_for_package,
     _readme_has_quality_badges,
     _scaffold_config_yaml,
 )
@@ -472,3 +474,95 @@ def test_generate_qlty_toml_empty_exclude_pattern():
     assert "valid_dir/**" in result
     # The toml output should be well-formed
     assert "[config]" in result or "exclude_patterns" in result
+
+
+# ===================================================================
+# onboarding_tools: _ensure_project_venv — ensurepip completes (149)
+# ===================================================================
+
+
+def test_ensure_venv_ensurepip_completes():
+    """Line 149: ensurepip runs and returns (non-timeout)."""
+    create_result = subprocess.CompletedProcess([], 0)
+    pip_fail = subprocess.CompletedProcess([], 1)
+    ensurepip_ok = subprocess.CompletedProcess(
+        [], 0, stderr="",
+    )
+
+    with (
+        patch(
+            "mcp_tools.onboarding_tools._project_venv_python",
+            side_effect=[None, "/venv/bin/python"],
+        ),
+        patch(
+            "mcp_tools.onboarding_tools._venv_create_command",
+            return_value=(["python", "-m", "venv", ".venv"], "python_venv"),
+        ),
+        patch(
+            "subprocess.run",
+            side_effect=[create_result, pip_fail, ensurepip_ok],
+        ),
+    ):
+        result = _ensure_project_venv("/tmp/proj")
+    assert result["status"] == "created"
+    assert result["pip_bootstrap_returncode"] == 0
+    assert result["pip_ready"] is True
+
+
+# ===================================================================
+# onboarding_tools: _install_command_for_package (lines 177-178)
+# ===================================================================
+
+
+def test_install_command_for_package_returns_first():
+    """Lines 177-178: returns first command from plural helper."""
+    with patch(
+        "mcp_tools.onboarding_tools._project_venv_python",
+        return_value="/venv/bin/python",
+    ):
+        cmd = _install_command_for_package("/tmp/proj", "ruff")
+    assert cmd is not None
+    assert "ruff" in cmd
+
+
+def test_install_command_for_package_no_venv():
+    """Lines 177-178: returns None when no venv exists."""
+    with patch(
+        "mcp_tools.onboarding_tools._project_venv_python",
+        return_value=None,
+    ):
+        cmd = _install_command_for_package("/tmp/proj", "ruff")
+    assert cmd is None
+
+
+# ===================================================================
+# onboarding_tools: _collect_external_tool_gaps (lines 211-213)
+# ===================================================================
+
+
+def test_collect_external_tool_gaps_missing_tool():
+    """Lines 211-213: missing tool builds install command."""
+    mock_linter = MagicMock()
+    mock_linter.required_tool = "ruff"
+
+    registry = {"ruff_linter": mock_linter}
+
+    with (
+        patch("lintgate.config.load_config"),
+        patch(
+            "lintgate.registry.build_registry",
+            return_value=registry,
+        ),
+        patch(
+            "mcp_tools.onboarding_tools._linter_available",
+            return_value=False,
+        ),
+        patch(
+            "mcp_tools.onboarding_tools._install_command_for_package",
+            return_value=["/venv/bin/python", "-m", "pip", "install", "ruff"],
+        ),
+    ):
+        result = _collect_external_tool_gaps("/tmp/proj")
+    assert len(result["missing_tools"]) == 1
+    assert result["missing_tools"][0]["tool"] == "ruff"
+    assert "pip install" in result["missing_tools"][0]["install_command"]
