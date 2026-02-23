@@ -60,11 +60,17 @@ jobs:
           
       - name: Push badges to badges branch
         run: |
+          # Save generated SVGs before switching branches
+          cp .github/badges/purity.svg /tmp/purity.svg
+          cp .github/badges/properties.svg /tmp/properties.svg
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin badges:badges
-          git checkout badges -- .github/badges/ 2>/dev/null || true
-          git checkout -B badges
+          git fetch origin badges
+          git checkout badges
+          mkdir -p .github/badges
+          cp /tmp/purity.svg .github/badges/purity.svg
+          cp /tmp/properties.svg .github/badges/properties.svg
           git add .github/badges/purity.svg .github/badges/properties.svg
           git commit -m "Update algebra badges (Pure: ${{ env.PURE_FUNCTIONS }}, Properties: ${{ env.PROPERTIES_PROVEN }})" || echo "No changes"
           git push origin badges
