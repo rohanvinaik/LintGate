@@ -1,5 +1,15 @@
 name: Mutation Testing
 
+# Mutation testing injects small code changes (mutants) into LintGate's
+# architectural core and checks whether the test suite catches them.
+# A killed mutant = the tests detected the change. A survived mutant =
+# a gap in test effectiveness (not coverage — you can have 100% line
+# coverage and still miss mutations).
+#
+# Targets: controlplane/ + channels/ (the decision-making core).
+# Tool: mutmut (Python-native mutation testing).
+# Schedule: weekly + on push to main.
+
 on:
   push:
     branches: [main]
@@ -37,7 +47,6 @@ jobs:
           from pathlib import Path
 
           # Target the architectural core: controlplane + channels
-          # Exclude WIP files with 0% coverage
           EXCLUDE = {
               "lintgate/controlplane/cli.py",
               "lintgate/channels/performance_channel.py",
@@ -60,6 +69,12 @@ jobs:
 
       - name: Run mutation testing
         run: |
+          echo "## What this measures"
+          echo ""
+          echo "Mutation testing checks whether the test suite detects small code"
+          echo "changes (e.g., flipping a comparison, removing a return statement)."
+          echo "High mutation score = tests catch real bugs, not just execute lines."
+          echo ""
           mutmut run \
             --paths-to-mutate="${{ steps.targets.outputs.paths }}" \
             --runner="python -m pytest tests/ -x -q --timeout=30 --tb=no" \
@@ -116,12 +131,14 @@ jobs:
               fh.write(f"survived={survived}\n")
               fh.write(f"total={total}\n")
 
+          print(f"## Results")
+          print(f"")
           print(f"Mutation score: {score}%")
-          print(f"  killed:     {killed}")
-          print(f"  survived:   {survived}")
-          print(f"  timeout:    {timeout}")
-          print(f"  suspicious: {suspicious}")
-          print(f"  total:      {total}")
+          print(f"  Killed (detected):   {killed}")
+          print(f"  Survived (missed):   {survived}")
+          print(f"  Timeout:             {timeout}")
+          print(f"  Suspicious:          {suspicious}")
+          print(f"  Total mutants:       {total}")
           PY
 
       - name: Generate mutation badge

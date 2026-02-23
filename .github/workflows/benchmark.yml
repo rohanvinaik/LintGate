@@ -1,5 +1,15 @@
 name: Performance Benchmark
 
+# Measures wall-clock time of LintGate's hot paths:
+#   - Ruff lint on a single file (the PostToolUse:Edit critical path)
+#   - Agent report formatting (runs after every lint pass)
+#   - Purity analysis via AST (foundation of the algebraic pipeline)
+#   - Algebraic property classification (feeds Hypothesis/icontract)
+#   - Manifest building (orchestrates purity + properties across files)
+#
+# Alerts on >200% regression. Results tracked over time via
+# benchmark-action/github-action-benchmark.
+
 on:
   push:
     branches: [ main ]
@@ -16,24 +26,29 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
-          
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip==25.0.1
           pip install pytest-benchmark
           pip install -e .[dev,algebra]
-          
+
       - name: Run benchmarks
         id: run_benchmarks
         continue-on-error: true
         run: |
-          pytest tests/ --benchmark-only --benchmark-json output.json
-          # Verify output is valid JSON (empty file = no benchmark tests found)
+          echo "## What this measures"
+          echo ""
+          echo "These benchmarks track the performance of LintGate's core"
+          echo "operations — the code that runs on every AI tool-use event."
+          echo "A regression here means slower feedback loops for supervised agents."
+          echo ""
+          pytest tests/test_benchmarks.py --benchmark-only --benchmark-json output.json -v
           if [ ! -s output.json ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "No benchmark tests found — skipping store step."
@@ -42,15 +57,14 @@ jobs:
           fi
 
       - name: Store benchmark results
-        if: steps.run_benchmarks.outputs.skip != 'true'
+        if: steps.run_benchmarks.outputs.skip != 'true' && github.ref == 'refs/heads/main'
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1
         with:
-          name: Python Benchmark with pytest-benchmark
+          name: LintGate Hot Path Benchmarks
           tool: 'pytest'
           output-file-path: output.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
-          # Show alert with commit comment on detecting possible performance regression
           alert-threshold: '200%'
           comment-on-alert: true
           fail-on-alert: true
