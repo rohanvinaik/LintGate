@@ -50,6 +50,8 @@ This might look like a linter suite. It's not. A linter catches syntax errors af
 
 The core mechanism, borrowed from how good instruments work: **multiple cheap, lossy lenses whose errors are uncorrelated compose into something that looks like intelligence.** Ruff can't judge architecture. Tests can't judge code quality. The dependency checker knows nothing about syntax. But when the type checker, the import analyzer, and the test runner all disagree in a *specific pattern*, that disagreement is diagnostic. Three silent channels and one loud one concentrates your attention. Two failures on overlapping files reveals coupling. No single tool is smart. The agreement pattern is the signal.
 
+The downstream consequence is stranger than the mechanism: **when discipline is infrastructure, the conceptual burden of hard engineering problems drops below the burden of typing.** Structured deterministic findings — file paths, line numbers, severity codes, check IDs — shift the task from "understand code + reason + write code" to "read structured findings + propose actions." That means the bottleneck for using these tools is not intelligence. It's dexterity.
+
 ---
 
 ## How It Works
@@ -126,6 +128,35 @@ Three things stand out:
 
 Full session data: [ModelAtlas build](docs/retrospectives/hf-model-search-2026-02-22-tier2-build.md) · [LintGate self-audit](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge audit](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md)
 
+### The Capability Inversion: 0.77B Parameters Did Performance Engineering
+
+We pointed LintGate's performance tools at its own codebase and told the smallest model we could find to optimize it. Gemini 2.5 Flash Lite — **0.77 billion parameters**, half the size of GPT-2 — running against a professional Python codebase with the full ControlPlane stack.
+
+It received 2,639 structured PERFCH005 findings and correctly identified:
+
+- Signal-to-noise problem: per-function findings should be collapsed into top-N summaries
+- The manifest-to-lint bridge gap: purity analysis results weren't flowing to the lint checkers
+- Six monolithic functions that should be decomposed into focused helpers
+- A `set` vs `tuple` optimization for O(1) membership checks
+
+Every diagnosis was correct. Every proposed decomposition was architecturally sound. Claude Opus 4.6 — a model with 1,000x+ the parameters — reviewed the architectural proposals and kept them: *"The manifest decomposition is genuinely good — I want to keep the helper extraction."*
+
+Flash Lite produced **zero bytes of working code**. It couldn't construct valid Edit tool calls — the exact-string-matching requirement exceeded its 0.77B working memory. It entered a behavioral loop, restating its plan 9 times, each restatement coherent and slightly rephrased. It eventually pivoted to providing code snippets for "manual application" — the correct degradation strategy for a model that knows its hands don't work.
+
+Gemini 2.5 Flash (7B parameters) then executed Flash Lite's designs. The composite system — 0.77B for diagnosis, 7B for execution, deterministic infrastructure for validation — produced performance engineering that would challenge senior developers.
+
+| Model | Parameters | Diagnosis | Architecture | Execution | Behavioral Control |
+| --- | --- | --- | --- | --- | --- |
+| Flash Lite | 0.77B | Correct | Correct | Failed (0 bytes) | Looped |
+| Flash | 7B | Correct | Correct | Succeeded | Stable |
+| Opus 4.6 | 1T+ | Reviewed and validated | Kept the designs | Restored gutted files | Full editorial control |
+
+**Why this happened**: Flash Lite scores 34% on LiveCodeBench (code generation) but **0.84 on tool selection quality** — in the same range as models 100x its size. LintGate's structured findings shifted the task from code generation (Flash Lite's weakness) to structured interpretation and action proposal (its strength). The conceptual burden of performance engineering was lower than the burden of typing.
+
+This is not a parlor trick. It's the design thesis in action: when you offload discipline to deterministic infrastructure, the intelligence required for hard problems drops dramatically. The bottleneck was never reasoning. It was discipline. And discipline is infrastructure, not cognition.
+
+Full session data: [Small model experiment](docs/retrospectives/lintgate-2026-02-23-tier2-refactoring-debugging.md)
+
 ---
 
 ## The Bootstrap Progression
@@ -186,7 +217,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*49 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*51 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
 
