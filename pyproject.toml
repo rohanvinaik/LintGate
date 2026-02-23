@@ -56,6 +56,7 @@ algebra = [
 dev = [
     "lintgate[full,mcp]",
     "pytest>=8.0",
+    "pytest-benchmark>=5.0",
 ]
 
 [project.scripts]
