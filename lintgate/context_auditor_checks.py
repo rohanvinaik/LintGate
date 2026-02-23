@@ -210,15 +210,29 @@ def check_contradictions(
     }
     meaningful_overlap = overlap - noise_words
 
-    if len(meaningful_overlap) >= 2:  # Require 2+ word overlap to reduce FPs
-        overlap_str = ", ".join(sorted(meaningful_overlap)[:5])
+    # Detect explicit "always X" vs "never X" negation pairs
+    negation_pairs = _detect_negation_pairs(do_directives, do_not_directives)
+
+    # Lower threshold when negation pairs provide strong contradiction evidence
+    threshold = 1 if negation_pairs else 2
+
+    if len(meaningful_overlap) >= threshold or negation_pairs:
+        evidence_parts: list[str] = []
+        if meaningful_overlap:
+            evidence_parts.append(
+                f"overlapping concepts: {', '.join(sorted(meaningful_overlap)[:5])}"
+            )
+        if negation_pairs:
+            evidence_parts.append(f"always/never conflicts: {', '.join(negation_pairs[:3])}")
+        evidence_str = "; ".join(evidence_parts)
         checks.append(
             {
                 "check": "contradictions",
                 "status": "warn",
-                "detail": f"DO and DO NOT directives reference overlapping concepts: {overlap_str}",
+                "detail": f"DO and DO NOT directives conflict — {evidence_str}",
             }
         )
+        overlap_str = ", ".join(sorted(meaningful_overlap | set(negation_pairs))[:5])
         suggestions.append(
             f"Review potentially contradictory directives involving: {overlap_str}. "
             f"Ensure DO and DO NOT sections don't give conflicting guidance."
@@ -603,12 +617,37 @@ def _find_bare_name_in_project(name: str, project_root: str) -> bool:
 
 
 def _extract_keywords(directives: set[str]) -> set[str]:
-    """Extract significant keywords from directive text for overlap detection."""
+    """Extract significant keywords from directive text for overlap detection.
+
+    Extracts both unigrams (4+ chars) and bigrams for richer overlap detection.
+    """
     keywords: set[str] = set()
     for d in directives:
         words = re.findall(r"\b[a-z]{4,}\b", d)
         keywords.update(words)
+        # Add bigrams for multi-word concept matching
+        for i in range(len(words) - 1):
+            keywords.add(f"{words[i]} {words[i + 1]}")
     return keywords
+
+
+def _detect_negation_pairs(do_directives: set[str], do_not_directives: set[str]) -> list[str]:
+    """Detect "always X" vs "never X" contradictions between directive sets.
+
+    Returns list of contradicting terms (e.g., "caching" if DO says
+    "always use caching" and DO NOT says "never use caching").
+    """
+    always_terms: set[str] = set()
+    never_terms: set[str] = set()
+
+    for d in do_directives:
+        for m in re.finditer(r"\balways\s+(?:use\s+)?(\w{4,})", d):
+            always_terms.add(m.group(1))
+    for d in do_not_directives:
+        for m in re.finditer(r"\bnever\s+(?:use\s+)?(\w{4,})", d):
+            never_terms.add(m.group(1))
+
+    return sorted(always_terms & never_terms)
 
 
 def _coverage_tokens(text: str) -> set[str]:

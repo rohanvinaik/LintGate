@@ -113,13 +113,17 @@ class FunctionProperties:
     purity: PurityResult
     properties: tuple[AlgebraicProperty, ...]
     optimization_hints: tuple[str, ...]  # e.g., "cacheable", "parallelizable", "foldable"
+    source_file: str | None = None  # File path where this function was found
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "purity": self.purity.to_dict(),
             "properties": [p.to_dict() for p in self.properties],
             "optimization_hints": list(self.optimization_hints),
         }
+        if self.source_file is not None:
+            d["source_file"] = self.source_file
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FunctionProperties:
@@ -129,4 +133,5 @@ class FunctionProperties:
             purity=purity,
             properties=properties,
             optimization_hints=tuple(data.get("optimization_hints", [])),
+            source_file=data.get("source_file"),
         )

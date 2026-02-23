@@ -44,7 +44,7 @@ LintGate operates at two levels, selectable per-project:
 
 **Level 1: The 5-Phase Pipeline** (default) — A PostToolUse hook that fires after every Write, Edit, MultiEdit, or Bash tool use. Classifies the change, selects linters by tier, runs them in parallel with timeouts, aggregates results, and reports back to the agent. Lightweight, fast (sub-8-second budget), and zero-config.
 
-**Level 2: The ControlPlane** (opt-in) — A supervision mesh that replaces the pipeline with six independent analysis channels (lint, tests, dependencies, git, behavior, structure) running in parallel, a cross-channel coherence engine that diagnoses system state from multi-signal agreement/disagreement, session memory that tracks coherence trajectories across runs, a behavioral compass that monitors the agent's problem-solving strategy for drift with an intent bias layer that classifies every tool use into a 6-category intent taxonomy and uses that structure to adjust signal confidence, a constraint proposer that translates recurring patterns into enforceable rules, and an optional global behavior profile that aggregates behavioral patterns across sessions over days/weeks to provide warm-start priors for the bias layer. This is the heavy machinery — for projects where the cost of drift justifies real-time multi-domain supervision.
+**Level 2: The ControlPlane** (opt-in) — A supervision mesh that replaces the pipeline with seven independent analysis channels (lint, tests, dependencies, git, behavior, structure, test_effectiveness) running in parallel, a cross-channel coherence engine that diagnoses system state from multi-signal agreement/disagreement, session memory that tracks coherence trajectories across runs, a behavioral compass that monitors the agent's problem-solving strategy for drift with an intent bias layer that classifies every tool use into a 6-category intent taxonomy and uses that structure to adjust signal confidence, a constraint proposer that translates recurring patterns into enforceable rules, and an optional global behavior profile that aggregates behavioral patterns across sessions over days/weeks to provide warm-start priors for the bias layer. This is the heavy machinery — for projects where the cost of drift justifies real-time multi-domain supervision.
 
 Both levels share the same change classifier, linter registry, and reporting infrastructure. The ControlPlane is a strict superset.
 
@@ -200,6 +200,62 @@ linters:
     enabled: true
     disabled_checks: ["PERF007"]  # stable IDs, not prose names
 ```
+
+### Test Effectiveness Channel
+
+Coverage measures *execution* — did the test runner touch this line? Mutation testing measures *effectiveness* — did the assertions actually verify the behavior? LintGate's mutation testing data revealed the gap: 59.1% kill rate (7,845 killed / 13,272 total mutants) despite 92% line coverage. The surviving mutants reveal a systematic pattern: tests execute code paths but assert on structure (existence, type) rather than semantics (exact values, boundary conditions).
+
+Three survivor classes drove the assertion taxonomy:
+
+1. **Positional semantics survivors**: `find` → `rfind` mutations survive because tests call the function and check `is not None` instead of checking the exact index. The assertion proves the function returns *something*, not the *right thing*.
+2. **Sentinel value survivors**: `-1` → `+1` mutations survive because assertions check truthiness (`assert result`) instead of exact values (`assert result == -1`). Any non-zero value passes.
+3. **Key identity survivors**: Dict key mutations survive because tests check `"key" in result` for structural shape instead of asserting specific key names.
+
+The test effectiveness channel quantifies this gap through AST-based assertion classification. Every assertion in test files is classified into a 16-kind taxonomy with mutation-killing power scores:
+
+| Category | Kinds | Strength | Mutation-Killing Power |
+|---|---|---|---|
+| **Structural** (weak) | `is_none`, `is_not_none`, `is_true`, `is_false`, `isinstance_check` | 0.2–0.3 | Low — lets value-altering mutants survive |
+| **Semantic** (strong) | `equality`, `inequality`, `comparison`, `string_contains`, `collection_membership`, `dict_key_check`, `regex_match` | 0.7–1.0 | High — catches value-altering mutants |
+| **Boundary** | `raises`, `length_check`, `range_check` | 0.6–0.9 | Medium-high — catches off-by-one and error-path mutations |
+| **Property-based** | `hypothesis_property` | 0.8 | High — catches broad mutation classes via invariants |
+
+Seven finding codes (TEFF001–TEFF007):
+
+| Code | Trigger | Severity | Signal |
+|---|---|---|---|
+| TEFF001 | Project-level semantic ratio < 0.4 | informational | Assertion portfolio is structurally biased toward weak patterns |
+| TEFF002 | Public function with 0 mapped tests | informational | Coverage blind spot — no test exercises this function at all |
+| TEFF003 | Function tested with only structural assertions | warning | Tests execute but don't verify — maximum false confidence |
+| TEFF004 | Function mutation vulnerability > 0.7 | warning | Most mutants would survive the current test suite |
+| TEFF005 | Pure function (from PropertyManifest) AND effectiveness < 0.5 | warning | **Holographic**: composes purity + effectiveness. Maximum wasted opportunity |
+| TEFF006 | Covered (from SymbolCoverage) AND vulnerability > 0.6 | informational | Coverage ≠ effectiveness — the classic gap |
+| TEFF007 | Cyclomatic complexity > 10 AND semantic ratio < 0.5 | warning | Complex code needs strong assertions to catch mutation paths |
+
+TEFF005 is the key holographic signal — the first cross-channel finding that composes the performance channel's purity analysis with this channel's effectiveness analysis. Pure functions are deterministic (same input → same output), which makes them the *easiest* functions to test with exact-value assertions. Weak tests on pure functions represent maximum wasted opportunity because the difficulty barrier is zero — you just need to compute the expected output once.
+
+The channel's error profile is genuinely uncorrelated with existing channels:
+- **Lint** catches syntax/style violations → test effectiveness catches assertion *quality*
+- **Tests** report pass/fail → test effectiveness explains *why* passing tests still let mutants survive
+- **Performance** detects purity/algebraic properties → test effectiveness *consumes* purity data to find wasted testing opportunity
+- **Structure** detects architectural issues → test effectiveness is orthogonal to module structure
+
+This is the "lossy lenses" admission criterion satisfied: the errors this channel catches (weak assertions on tested code) are invisible to every other channel, and the coherence engine gains a new independent signal for triangulation.
+
+Configuration:
+```yaml
+controlplane:
+  channels:
+    test_effectiveness:
+      enabled: true
+      timeout_ms: 12000
+  coherence_channel_weights:
+    test_effectiveness: 0.6  # Higher than structure (0.4), lower than lint (1.0)
+```
+
+MCP tools:
+- `analyze_test_strength(path)` — project-wide effectiveness report with top vulnerable functions and assertion upgrade suggestions
+- `inspect_test_assertions(path, test_file)` — per-assertion drill-down into a single test file
 
 ---
 
@@ -1721,9 +1777,10 @@ lintgate/
 │       ├── dependency_channel.py    # Dependency health checks
 │       ├── git_channel.py           # Git state analysis + secrets-in-diff scanning
 │       ├── behavior_channel.py      # Agent behavioral drift detection (9 rules, intent bias, signal coordination)
-│       └── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
+│       ├── structure_channel.py     # Codebase structural analysis (STRUCT001-004: cycles, size, orphans, cohesion)
+│       └── test_effectiveness_channel.py  # Test assertion quality analysis (TEFF001-007: mutation-informed)
 ├── mcp_server.py                    # MCP bootstrap + shared helpers
-├── mcp_tools/                       # MCP domain modules (49 tool definitions)
+├── mcp_tools/                       # MCP domain modules (51 tool definitions)
 │   ├── compass_tools.py             # compass_status, compass_update, compass_interview, compass_check,
 │   │                                #   compass_reset, theory_mode_enter, theory_mode_freeze, setup_hooks
 │   ├── habit_tools.py               # declare_mode, habit_status, habit_compact, habit_configure

@@ -798,6 +798,8 @@ def test_format_mesh_report_informational_count() -> None:
             ),
         ],
     )
+
+
 # ── Delta Escalations & Resolutions ──────────────────────────────────────
 
 
@@ -838,10 +840,14 @@ def test_format_mesh_report_delta_escalated_and_resolved() -> None:
 def test_format_mesh_report_tight_budget_truncation() -> None:
     """Verify truncation logic when budget is extremely limited."""
     # Patch multipliers to ensure max_tokens relies on the floor config
-    with patch("lintgate.controlplane.reporter._BUDGET_BASE", 0), \
-         patch("lintgate.controlplane.reporter._BUDGET_PER_BLOCKING", 0):
+    with (
+        patch("lintgate.controlplane.reporter._BUDGET_BASE", 0),
+        patch("lintgate.controlplane.reporter._BUDGET_PER_BLOCKING", 0),
+    ):
         findings = [_issue("blocking", message=f"Issue {i}") for i in range(10)]
-        mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
+        mesh = _mesh(
+            channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)]
+        )
 
         # Budget of 38 tokens is tight enough to force cap=1.
         # Header (10) + Blocking List cap=3 (~50) -> FAIL.
@@ -870,7 +876,7 @@ def test_format_mesh_report_minimal_header() -> None:
         msg = report["systemMessage"]
         # minimal header logic should trigger
         assert 'coherence="stable"' in msg
-        assert 'channels=' not in msg
+        assert "channels=" not in msg
 
 
 def test_format_mesh_report_informational_plural() -> None:

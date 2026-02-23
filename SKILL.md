@@ -1,11 +1,11 @@
 # LintGate
 
-Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 49 MCP tools for on-demand analysis.
+Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 53 MCP tools for on-demand analysis.
 
 ## First Steps
 
 1. **Orient**: `build_theory_pack` — get the project's theory digest (~500-1500 tokens)
-2. **Check**: `controlplane_run` — 6-channel supervision mesh (lint + tests + deps + git + behavior + structure)
+2. **Check**: `controlplane_run` — 7-channel supervision mesh (lint + tests + deps + git + behavior + structure + test_effectiveness)
 3. **Reflect**: `constraint_check` — state your constraints before acting; `prediction_register` — register falsifiable predictions
 
 ## Key Concept

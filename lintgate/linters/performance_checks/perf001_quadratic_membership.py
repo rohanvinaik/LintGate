@@ -47,6 +47,13 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                 if _is_mutated_in_body(container_name, body):
                     continue
 
+                # Check if container is a function parameter — type annotation
+                # determines whether to flag, skip, or reduce confidence.
+                param_type = _classify_function_parameter(container_name, tree)
+                if param_type == "typed_fast":
+                    continue  # dict/set/frozenset/str param — already O(1)
+                confidence = 0.40 if param_type == "untyped" else 0.60
+
                 yield LintIssue(
                     linter="performance_checker",
                     kind="PERF001",
@@ -58,7 +65,7 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                     file=file_path,
                     line=node.lineno,
                     severity="warning",
-                    confidence=0.60,
+                    confidence=confidence,
                     evidence={
                         "container": container_name,
                         "check": "PERF001",
@@ -232,3 +239,49 @@ def _is_augassign_mutation(node: ast.AST, name: str) -> bool:
         and isinstance(node.target, ast.Name)
         and node.target.id == name
     )
+
+
+# Fast-membership type names (O(1) lookup — skip PERF001 entirely)
+_FAST_TYPE_NAMES = {"dict", "set", "frozenset", "str", "Dict", "Set", "FrozenSet"}
+# Slow-membership type names (O(n) lookup — flag at full confidence)
+_SLOW_TYPE_NAMES = {"list", "tuple", "List", "Tuple"}
+
+
+def _classify_function_parameter(name: str, tree: ast.AST) -> str | None:
+    """Classify a name as a function parameter and check its type annotation.
+
+    Returns:
+        ``"typed_fast"``  — annotated as dict/set/frozenset/str (skip PERF001)
+        ``"typed_slow"``  — annotated as list/tuple (flag at full confidence)
+        ``"untyped"``     — parameter with no annotation (reduce confidence)
+        ``None``          — not a function parameter (no effect)
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+            if arg.arg != name:
+                continue
+            # Found the parameter — check annotation
+            if arg.annotation is None:
+                return "untyped"
+            return _classify_annotation(arg.annotation)
+    return None
+
+
+def _classify_annotation(ann: ast.expr) -> str:
+    """Classify a type annotation as fast or slow for membership tests."""
+    # Simple name: `items: set`
+    if isinstance(ann, ast.Name):
+        if ann.id in _FAST_TYPE_NAMES:
+            return "typed_fast"
+        if ann.id in _SLOW_TYPE_NAMES:
+            return "typed_slow"
+    # Subscript: `items: dict[str, int]` or `items: list[str]`
+    if isinstance(ann, ast.Subscript) and isinstance(ann.value, ast.Name):
+        if ann.value.id in _FAST_TYPE_NAMES:
+            return "typed_fast"
+        if ann.value.id in _SLOW_TYPE_NAMES:
+            return "typed_slow"
+    # Union or other complex annotation — can't determine, treat as untyped
+    return "untyped"

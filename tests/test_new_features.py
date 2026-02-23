@@ -226,4 +226,3 @@ def test_line_number_caching() -> None:
     cache_info_after_new = _line_number.cache_info()
     assert cache_info_after_new.hits == 1
     assert cache_info_after_new.misses == 2
-

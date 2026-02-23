@@ -72,6 +72,7 @@ def project_python_files():
 # Lint pipeline benchmarks
 # ---------------------------------------------------------------------------
 
+
 def test_bench_lint_single_file(benchmark, sample_file, tmp_path):
     """Lint a single Python file through the ruff linter.
 
@@ -121,6 +122,7 @@ def test_bench_format_report(benchmark):
 # ---------------------------------------------------------------------------
 # Algebraic analysis benchmarks
 # ---------------------------------------------------------------------------
+
 
 def test_bench_purity_analysis(benchmark, sample_tree):
     """Detect pure vs impure functions via AST analysis."""
