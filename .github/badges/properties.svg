@@ -1,20 +1,20 @@
-<svg width="138.8" height="20" viewBox="0 0 1388 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Properties Proven: 527">
-  <title>Properties Proven: 527</title>
+<svg width="203.4" height="20" viewBox="0 0 2034 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Algebraic Properties: 527 detected">
+  <title>Algebraic Properties: 527 detected</title>
   <linearGradient id="a" x2="0" y2="100%">
     <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
     <stop offset="1" stop-opacity=".1"/>
   </linearGradient>
-  <mask id="m"><rect width="1388" height="200" rx="30" fill="#FFF"/></mask>
+  <mask id="m"><rect width="2034" height="200" rx="30" fill="#FFF"/></mask>
   <g mask="url(#m)">
-    <rect width="1078" height="200" fill="#555"/>
-    <rect width="310" height="200" fill="#08C" x="1078"/>
-    <rect width="1388" height="200" fill="url(#a)"/>
+    <rect width="1206" height="200" fill="#555"/>
+    <rect width="828" height="200" fill="#08C" x="1206"/>
+    <rect width="2034" height="200" fill="url(#a)"/>
   </g>
   <g aria-hidden="true" fill="#fff" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
-    <text x="60" y="148" textLength="978" fill="#000" opacity="0.25">Properties Proven</text>
-    <text x="50" y="138" textLength="978">Properties Proven</text>
-    <text x="1133" y="148" textLength="210" fill="#000" opacity="0.25">527</text>
-    <text x="1123" y="138" textLength="210">527</text>
+    <text x="60" y="148" textLength="1106" fill="#000" opacity="0.25">Algebraic Properties</text>
+    <text x="50" y="138" textLength="1106">Algebraic Properties</text>
+    <text x="1261" y="148" textLength="728" fill="#000" opacity="0.25">527 detected</text>
+    <text x="1251" y="138" textLength="728">527 detected</text>
   </g>
   
 </svg>
