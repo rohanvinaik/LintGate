@@ -316,6 +316,9 @@ class TestOrphanExclusions:
     def test_test_file_excluded(self, tmp_path):
         assert _is_orphan_excluded(str(tmp_path / "test_foo.py"), "test_foo", str(tmp_path))
 
+    def test_test_suffix_file_excluded(self, tmp_path):
+        assert _is_orphan_excluded(str(tmp_path / "foo_test.py"), "foo_test", str(tmp_path))
+
     def test_test_dir_excluded(self, tmp_path):
         assert _is_orphan_excluded(
             str(tmp_path / "tests" / "helpers.py"), "tests.helpers", str(tmp_path)
