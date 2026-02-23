@@ -145,7 +145,7 @@ def _build_issue(
     )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _line_number(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
