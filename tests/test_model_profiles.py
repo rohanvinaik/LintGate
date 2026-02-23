@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from unittest import mock
 
 from lintgate.controlplane.model_profiles import (
+    DEFAULT_MIN_CONFIDENCE,
     ModelProfile,
     ModelProfileStore,
+    _lintgate_home,
+    apply_confidence_decay,
     apply_telemetry_update,
     get_profile,
     load_profiles,
     reset_profile,
     resolve_model_key,
+    save_profiles,
     upsert_profile,
 )
 
@@ -265,3 +270,72 @@ class TestTelemetryUpdate:
         apply_telemetry_update(p, {"x": 5}, event_count=20)
         assert p.telemetry_samples == 11
         assert p.signal_risk["x"] != original
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestLintgateHome:
+    def test_default_path(self, monkeypatch) -> None:
+        monkeypatch.delenv("LINTGATE_HOME", raising=False)
+        assert _lintgate_home() == Path.home() / ".lintgate"
+
+
+class TestResolveModelKeyExtended:
+    def test_o1_prefix(self) -> None:
+        assert resolve_model_key("o1-preview") == "openai:o1-preview"
+
+    def test_llama_prefix(self) -> None:
+        assert resolve_model_key("llama-3.1-70b") == "meta:llama-3.1-70b"
+
+
+class TestModelProfileExtended:
+    def test_from_dict_missing_keys_use_defaults(self) -> None:
+        p = ModelProfile.from_dict({})
+        assert p.model_key == ""
+        assert p.probe_version == 1
+
+    def test_is_usable_at_exact_min_confidence(self) -> None:
+        p = ModelProfile(
+            confidence=DEFAULT_MIN_CONFIDENCE,
+            updated_at=time.time(),
+        )
+        assert p.is_usable()
+
+
+class TestModelProfileStoreExtended:
+    def test_from_dict_missing_profiles_key(self) -> None:
+        store = ModelProfileStore.from_dict({"format_version": 1})
+        assert len(store.profiles) == 0
+
+
+class TestPersistenceExtended:
+    def test_save_profiles_creates_parent_dirs(self, tmp_path) -> None:
+        nested = tmp_path / "a" / "b" / "c"
+        with mock.patch(
+            "lintgate.controlplane.model_profiles._lintgate_home",
+            return_value=nested,
+        ):
+            store = ModelProfileStore()
+            store.profiles["test:m"] = ModelProfile(model_key="test:m")
+            save_profiles(store)
+            assert (nested / "model_profiles.json").exists()
+
+
+class TestApplyConfidenceDecay:
+    def test_no_decay_within_grace_period(self) -> None:
+        p = ModelProfile(
+            confidence=0.8,
+            updated_at=time.time() - (12 * 3600),
+        )
+        original = apply_confidence_decay(p)
+        assert original == 0.8
+        assert p.confidence == 0.8
+
+    def test_decay_at_half_life(self) -> None:
+        p = ModelProfile(
+            confidence=1.0,
+            updated_at=time.time() - (15 * 86400),
+        )
+        apply_confidence_decay(p)
+        assert abs(p.confidence - 0.5) < 0.01

@@ -27,7 +27,7 @@ def test_mcp_validation_rejects_invalid_tier(tmp_path) -> None:
     file_path.write_text("x = 1\n")
 
     with pytest.raises(ValueError, match="Invalid tier"):
-        mcp_server.lint_files(
+        mcp_server.lint_files(  # type: ignore[attr-defined]
             files=[str(file_path)],
             tier=9,  # type: ignore[arg-type]
         )
@@ -38,7 +38,7 @@ def test_mcp_validation_rejects_invalid_strictness(tmp_path) -> None:
     file_path.write_text("x = 1\n")
 
     with pytest.raises(ValueError, match="Invalid strictness"):
-        mcp_server.lint_files(
+        mcp_server.lint_files(  # type: ignore[attr-defined]
             files=[str(file_path)],
             strictness="very_strict",  # type: ignore[arg-type]
         )
@@ -143,7 +143,7 @@ def test_audit_tool_versions_persists_and_returns_summary(tmp_path, monkeypatch)
     monkeypatch.setattr("lintgate.state.save_version_audit", fake_save_version_audit)
     monkeypatch.setattr("lintgate.state.log_version_event", fake_log_version_event)
 
-    out = mcp_server.audit_tool_versions(path=str(tmp_path), auto_fix=True)
+    out = mcp_server.audit_tool_versions(path=str(tmp_path), auto_fix=True)  # type: ignore[attr-defined]
     payload = json.loads(out)
 
     assert payload["summary"]["issue_count"] == 1
@@ -196,3 +196,34 @@ def test_report_includes_recurrence_section() -> None:
 
     assert "RECURRING" in report["systemMessage"]
     assert "example.py:3" in report["systemMessage"]
+
+
+def test_line_number_caching() -> None:
+    from lintgate.linters.context_rule_checker import _line_number
+
+    test_text = "line1\nline2\nline3"
+
+    # Clear the cache before testing to ensure a fresh start
+    _line_number.cache_clear()
+
+    # First call - uncached
+    line = _line_number(test_text, 7)
+    assert line == 2
+
+    # Second call with same arguments - should be cached
+    line_cached = _line_number(test_text, 7)
+    assert line_cached == 2
+
+    # Verify cache info (hits and misses)
+    cache_info = _line_number.cache_info()
+    assert cache_info.hits == 1
+    assert cache_info.misses == 1
+
+    # Call with different arguments
+    line_new = _line_number(test_text, 0)
+    assert line_new == 1
+
+    cache_info_after_new = _line_number.cache_info()
+    assert cache_info_after_new.hits == 1
+    assert cache_info_after_new.misses == 2
+

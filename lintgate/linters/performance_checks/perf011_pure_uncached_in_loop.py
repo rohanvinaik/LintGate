@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from lintgate.linters.performance_checks._helpers import find_loop_bodies, get_name
 from lintgate.linters.performance_checks.purity import _KNOWN_PURE_BUILTINS
 
+from ...types import LintIssue
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -31,7 +33,7 @@ def _get_loop_targets(loop_node: ast.AST) -> set[str]:
     if isinstance(loop_node, ast.For):
         target_nodes = [loop_node.target]
     elif isinstance(loop_node, ast.While):
-        target_nodes = [] # While doesn't have iteration targets, body mutations matter
+        target_nodes = []  # While doesn't have iteration targets, body mutations matter
     else:
         return targets
 
@@ -41,7 +43,7 @@ def _get_loop_targets(loop_node: ast.AST) -> set[str]:
         elif isinstance(target, (ast.Tuple, ast.List)):
             for elt in target.elts:
                 if isinstance(elt, ast.Name):
-                     targets.add(elt.id)
+                    targets.add(elt.id)
 
     return targets
 
@@ -63,12 +65,12 @@ def check_pure_uncached_in_loop(tree: ast.AST, file_path: str) -> Iterable[dict[
         # We also need to consider variables assigned INSIDE the loop as variant
         for stmt in body:
             for child in ast.walk(stmt):
-                 if isinstance(child, ast.Assign):
-                      for t in child.targets:
-                           if isinstance(t, ast.Name):
-                               loop_targets.add(t.id)
-                 elif isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
-                      loop_targets.add(child.target.id)
+                if isinstance(child, ast.Assign):
+                    for t in child.targets:
+                        if isinstance(t, ast.Name):
+                            loop_targets.add(t.id)
+                elif isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
+                    loop_targets.add(child.target.id)
 
         # Now find all calls in the loop
         for stmt in body:
@@ -92,20 +94,23 @@ def check_pure_uncached_in_loop(tree: ast.AST, file_path: str) -> Iterable[dict[
                             break
                     # Check kw args
                     if all_invariant:
-                         for kwarg in node.keywords:
-                              if not _is_loop_invariant(kwarg.value, loop_targets):
-                                   all_invariant = False
-                                   break
+                        for kwarg in node.keywords:
+                            if not _is_loop_invariant(kwarg.value, loop_targets):
+                                all_invariant = False
+                                break
 
                     if all_invariant and (node.args or node.keywords):
-                        yield {
-                             "file": file_path,
-                             "line": node.lineno,
-                             "col": node.col_offset,
-                             "message": (
-                                 f"PERF011: Uncached pure call in loop. "
-                                 f"'{func_name}' is called with loop-invariant arguments. "
-                                 f"Hoist this call before the loop or use @lru_cache to prevent redundant computation."
-                             ),
-                             "code": "PERF011",
-                        }
+                        yield LintIssue(
+                            linter="performance_checker",
+                            kind="PERF011",
+                            message=(
+                                f"Uncached pure call in loop. "
+                                f"'{func_name}' is called with loop-invariant arguments. "
+                                f"Hoist this call before the loop or use @lru_cache to prevent redundant computation."
+                            ),
+                            file=file_path,
+                            line=node.lineno,
+                            severity="informational",
+                            confidence=0.8,
+                            evidence={"func": func_name, "check": "PERF011"},
+                        )

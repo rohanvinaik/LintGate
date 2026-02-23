@@ -46,6 +46,7 @@ def _path_a_env(habit_state, tracker, *, update_mode_rv=None, compaction=(False,
 
 # ── hook_habit.py: record_behavior_event line 128 ────────────────────
 
+
 class TestRecordBehaviorEventHabitEnabled:
     def test_habit_enabled_calls_path_a(self):
         from lintgate.hook_habit import record_behavior_event
@@ -77,6 +78,7 @@ class TestRecordBehaviorEventHabitEnabled:
 
 
 # ── hook_habit.py: _update_habit_mode_path_a uncovered branches ──────
+
 
 class TestUpdateHabitModePathABranches:
     def _cfg(self, *, auto_detect=True):
@@ -110,8 +112,13 @@ class TestUpdateHabitModePathABranches:
         tr = MagicMock()
         with _path_a_env(hs, tr) as mocks:
             _update_habit_mode_path_a(
-                self._cfg(), self._session(), self._compass(),
-                "/tmp", "Bash", {"command": "pytest"}, "1 passed",
+                self._cfg(),
+                self._session(),
+                self._compass(),
+                "/tmp",
+                "Bash",
+                {"command": "pytest"},
+                "1 passed",
             )
             mocks["detect_test_result"].assert_called_once()
             assert mocks["detect_test_result"].call_args[0][2] == "pytest tests/"
@@ -124,8 +131,13 @@ class TestUpdateHabitModePathABranches:
         tr = MagicMock()
         with _path_a_env(hs, tr) as mocks:
             _update_habit_mode_path_a(
-                self._cfg(), self._session({"habit_config_overrides": "bad"}),
-                self._compass(), "/tmp", "Read", {}, "",
+                self._cfg(),
+                self._session({"habit_config_overrides": "bad"}),
+                self._compass(),
+                "/tmp",
+                "Read",
+                {},
+                "",
             )
             mocks["update_mode"].assert_called_once()
 
@@ -139,7 +151,11 @@ class TestUpdateHabitModePathABranches:
             _update_habit_mode_path_a(
                 self._cfg(),
                 self._session({"habit_config_overrides": {"context_window_size": "100000"}}),
-                self._compass(), "/tmp", "Read", {}, "",
+                self._compass(),
+                "/tmp",
+                "Read",
+                {},
+                "",
             )
             assert tr.context_window_size == 100000
 
@@ -151,13 +167,19 @@ class TestUpdateHabitModePathABranches:
         tr = MagicMock()
         with _path_a_env(hs, tr):
             _update_habit_mode_path_a(
-                self._cfg(auto_detect=False), self._session(), self._compass(),
-                "/tmp", "Read", {}, "",
+                self._cfg(auto_detect=False),
+                self._session(),
+                self._compass(),
+                "/tmp",
+                "Read",
+                {},
+                "",
             )
             assert hs.total_events_in_habit == 6
 
 
 # ── hook_habit.py: _apply_path_b_telemetry line 423 ─────────────────
+
 
 class TestApplyPathBTelemetryFallback:
     def test_returns_signal_fires_on_load_error(self):
@@ -170,6 +192,7 @@ class TestApplyPathBTelemetryFallback:
 
 
 # ── hook_posttooluse.py: _parse_hook_input lines 68-69 ──────────────
+
 
 class TestParseHookInputErrors:
     def test_invalid_json_returns_none(self, monkeypatch):
@@ -186,6 +209,7 @@ class TestParseHookInputErrors:
 
 
 # ── hook_posttooluse.py: _normalize_fields lines 77, 89, 93 ─────────
+
 
 class TestNormalizeFieldsEdgeCases:
     def test_non_str_tool_name(self):
@@ -225,6 +249,7 @@ class TestNormalizeFieldsEdgeCases:
 
 # ── hook_posttooluse.py: _run_legacy_pipeline lines 111-123 ─────────
 
+
 class TestRunLegacyPipeline:
     def _legacy_patches(self, classification, tier, aggregated, *, dep_warnings=None):
         """Return a list of patch context managers for _run_legacy_pipeline."""
@@ -254,7 +279,8 @@ class TestRunLegacyPipeline:
         from lintgate.types import AggregatedResult, ChangeClassification, LintTier
 
         cls = ChangeClassification(
-            change_kind="dependency", risk_level="low",
+            change_kind="dependency",
+            risk_level="low",
             files_changed=["req.txt"],
         )
         tier = LintTier(name="t1", linters=["ruff"], files=["req.txt"], reason="dep", skip=False)
@@ -277,7 +303,8 @@ class TestRunLegacyPipeline:
         from lintgate.types import AggregatedResult, ChangeClassification, LintTier
 
         cls = ChangeClassification(
-            change_kind="logic", risk_level="moderate",
+            change_kind="logic",
+            risk_level="moderate",
             files_changed=["f.py"],
         )
         tier = LintTier(name="t2", linters=["ruff"], files=["f.py"], reason="logic", skip=False)
@@ -300,12 +327,14 @@ class TestRunLegacyPipeline:
 
 # ── hook_posttooluse.py: main() lines 191, 195-196, 204-207, 211 ────
 
+
 class TestMainBranches:
     def _run_main(self, payload, monkeypatch):
         monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
         monkeypatch.setattr(sys, "stdout", io.StringIO())
         with pytest.raises(SystemExit) as exc:
             from lintgate.hook_posttooluse import main
+
             main()
         return int(exc.value.code), sys.stdout.getvalue().strip()
 
@@ -320,8 +349,12 @@ class TestMainBranches:
     def test_config_load_failure_uses_fallback(self, monkeypatch, tmp_path):
         """Lines 195-196."""
         code, _ = self._run_main(
-            {"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "x=1"},
-             "tool_output": "ok", "cwd": str(tmp_path)},
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "x.py", "content": "x=1"},
+                "tool_output": "ok",
+                "cwd": str(tmp_path),
+            },
             monkeypatch,
         )
         assert code == 0
@@ -334,11 +367,23 @@ class TestMainBranches:
             patch("lintgate.config.load_controlplane_config", return_value=mock_cp),
             patch("lintgate.hook_posttooluse._run_controlplane") as mock_rc,
         ):
-            monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
-                {"tool_name": "Edit", "tool_input": {}, "tool_output": "ok", "cwd": str(tmp_path)}
-            )))
+            monkeypatch.setattr(
+                sys,
+                "stdin",
+                io.StringIO(
+                    json.dumps(
+                        {
+                            "tool_name": "Edit",
+                            "tool_input": {},
+                            "tool_output": "ok",
+                            "cwd": str(tmp_path),
+                        }
+                    )
+                ),
+            )
             monkeypatch.setattr(sys, "stdout", io.StringIO())
             from lintgate.hook_posttooluse import main
+
             main()
             mock_rc.assert_called_once()
 
@@ -349,11 +394,23 @@ class TestMainBranches:
             patch("lintgate.config.load_controlplane_config", side_effect=RuntimeError),
             patch("lintgate.hook_posttooluse._run_legacy_pipeline") as mock_leg,
         ):
-            monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
-                {"tool_name": "Edit", "tool_input": {}, "tool_output": "ok", "cwd": str(tmp_path)}
-            )))
+            monkeypatch.setattr(
+                sys,
+                "stdin",
+                io.StringIO(
+                    json.dumps(
+                        {
+                            "tool_name": "Edit",
+                            "tool_input": {},
+                            "tool_output": "ok",
+                            "cwd": str(tmp_path),
+                        }
+                    )
+                ),
+            )
             monkeypatch.setattr(sys, "stdout", io.StringIO())
             from lintgate.hook_posttooluse import main
+
             main()
             mock_leg.assert_called_once()
 

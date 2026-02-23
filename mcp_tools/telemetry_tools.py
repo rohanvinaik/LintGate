@@ -46,6 +46,16 @@ def register(mcp, helpers):
             if quality_economics.get("has_data", False):
                 summary["quality_economics"] = quality_economics
 
+        # Extend with performance economics if available
+        with contextlib.suppress(Exception):
+            from lintgate.telemetry import compute_performance_economics_summary
+
+            performance_economics = compute_performance_economics_summary(
+                project_root, period=period
+            )
+            if performance_economics.get("has_data", False):
+                summary["performance_economics"] = performance_economics
+
         return json.dumps(summary, indent=2)
 
     return {"telemetry_summary": telemetry_summary}

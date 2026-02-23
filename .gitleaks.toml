@@ -7,7 +7,7 @@ useDefault = true
 description = "Test fixtures with intentional secret-like strings and hook/template files with curl -u env-var references."
 paths = [
     '''tests/test_secrets_scanning\.py''',
-    '''tests/test_behavior_compass\.py''',
+    '''tests/test_behavior_compass_core\.py''',
     '''tests/test_git_channel_helpers\.py''',
     '''\.githooks/pre-push''',
     '''mcp_tools/onboarding_tools\.py''',

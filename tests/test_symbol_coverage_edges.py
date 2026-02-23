@@ -122,26 +122,20 @@ class TestResolveRequiredEdges:
         f.write_text("def func():\n    pass\n")
         targets: list[SymbolSpan] = []
         seen: set[str] = {"mod.py::func"}
-        result = _resolve_required_symbols(
-            ["mod.py::func"], str(tmp_path), targets, seen
-        )
+        result = _resolve_required_symbols(["mod.py::func"], str(tmp_path), targets, seen)
         assert result == []
         assert len(targets) == 0
 
     def test_invalid_format_unresolved(self) -> None:
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
-        result = _resolve_required_symbols(
-            ["no-double-colon"], "/root", targets, seen
-        )
+        result = _resolve_required_symbols(["no-double-colon"], "/root", targets, seen)
         assert "no-double-colon" in result
 
     def test_missing_file_unresolved(self, tmp_path: Path) -> None:
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
-        result = _resolve_required_symbols(
-            ["nonexistent.py::func"], str(tmp_path), targets, seen
-        )
+        result = _resolve_required_symbols(["nonexistent.py::func"], str(tmp_path), targets, seen)
         assert "nonexistent.py::func" in result
 
 
@@ -151,8 +145,13 @@ class TestResolveRequiredEdges:
 class TestApplyWaiversInvalidDate:
     def test_invalid_expiry_date_skipped(self) -> None:
         target = SymbolSpan(
-            file="/a.py", symbol_key="a.py::func", name="func",
-            start_line=1, end_line=5, is_method=False, class_name=None,
+            file="/a.py",
+            symbol_key="a.py::func",
+            name="func",
+            start_line=1,
+            end_line=5,
+            is_method=False,
+            class_name=None,
         )
         waiver = SymbolCoverageWaiver(
             symbol="a.py::func",
@@ -165,8 +164,13 @@ class TestApplyWaiversInvalidDate:
 
     def test_valid_future_expiry_applies(self) -> None:
         target = SymbolSpan(
-            file="/a.py", symbol_key="a.py::func", name="func",
-            start_line=1, end_line=5, is_method=False, class_name=None,
+            file="/a.py",
+            symbol_key="a.py::func",
+            name="func",
+            start_line=1,
+            end_line=5,
+            is_method=False,
+            class_name=None,
         )
         waiver = SymbolCoverageWaiver(
             symbol="a.py::func",
@@ -184,8 +188,10 @@ class TestApplyWaiversInvalidDate:
 class TestFindFileCoverageEdges:
     def test_relative_path_match(self) -> None:
         cov = FileCoverage(
-            executed_lines={1, 2}, missing_lines=set(),
-            excluded_lines=set(), missing_branches=[],
+            executed_lines={1, 2},
+            missing_lines=set(),
+            excluded_lines=set(),
+            missing_branches=[],
         )
         data = {"src/mod.py": cov}
         result = _find_file_coverage("/project/src/mod.py", data, "/project")
@@ -193,8 +199,10 @@ class TestFindFileCoverageEdges:
 
     def test_absolute_key_match(self) -> None:
         cov = FileCoverage(
-            executed_lines={1}, missing_lines=set(),
-            excluded_lines=set(), missing_branches=[],
+            executed_lines={1},
+            missing_lines=set(),
+            excluded_lines=set(),
+            missing_branches=[],
         )
         data = {"/project/src/mod.py": cov}
         result = _find_file_coverage("/project/src/mod.py", data, "/project")
@@ -203,8 +211,10 @@ class TestFindFileCoverageEdges:
     def test_normpath_key_match(self) -> None:
         """Key with double-slash matches after normpath."""
         cov = FileCoverage(
-            executed_lines={1}, missing_lines=set(),
-            excluded_lines=set(), missing_branches=[],
+            executed_lines={1},
+            missing_lines=set(),
+            excluded_lines=set(),
+            missing_branches=[],
         )
         data = {"/project//src/mod.py": cov}
         result = _find_file_coverage("/project/src/mod.py", data, "/other")
@@ -213,8 +223,10 @@ class TestFindFileCoverageEdges:
     def test_join_relative_key_match(self) -> None:
         """Relative key that joins with project_root to match abs_path."""
         cov = FileCoverage(
-            executed_lines={1}, missing_lines=set(),
-            excluded_lines=set(), missing_branches=[],
+            executed_lines={1},
+            missing_lines=set(),
+            excluded_lines=set(),
+            missing_branches=[],
         )
         data = {"./src/mod.py": cov}
         result = _find_file_coverage("/project/src/mod.py", data, "/project")
@@ -222,8 +234,10 @@ class TestFindFileCoverageEdges:
 
     def test_no_match_returns_none(self) -> None:
         cov = FileCoverage(
-            executed_lines={1}, missing_lines=set(),
-            excluded_lines=set(), missing_branches=[],
+            executed_lines={1},
+            missing_lines=set(),
+            excluded_lines=set(),
+            missing_branches=[],
         )
         data = {"other/file.py": cov}
         result = _find_file_coverage("/project/src/mod.py", data, "/project")
@@ -235,11 +249,13 @@ class TestFindFileCoverageEdges:
 
 class TestParseWaiversEdges:
     def test_non_dict_entry_skipped(self) -> None:
-        result = _parse_waivers([
-            {"symbol": "a.py::func", "reason": "valid"},
-            "not-a-dict",
-            42,
-        ])
+        result = _parse_waivers(
+            [
+                {"symbol": "a.py::func", "reason": "valid"},
+                "not-a-dict",
+                42,
+            ]
+        )
         assert len(result) == 1
         assert result[0].symbol == "a.py::func"
 
@@ -266,17 +282,21 @@ class TestRunGateNoCoverageForFile:
         src.write_text("def greet():\n    return 'hi'\n")
         cov_path = tmp_path / "coverage.json"
         # Valid coverage JSON with no matching file data
-        cov_path.write_text(json.dumps({
-            "meta": {"version": "7.0"},
-            "files": {
-                "other/unrelated.py": {
-                    "executed_lines": [1, 2],
-                    "missing_lines": [],
-                    "excluded_lines": [],
-                    "summary": {},
-                },
-            },
-        }))
+        cov_path.write_text(
+            json.dumps(
+                {
+                    "meta": {"version": "7.0"},
+                    "files": {
+                        "other/unrelated.py": {
+                            "executed_lines": [1, 2],
+                            "missing_lines": [],
+                            "excluded_lines": [],
+                            "summary": {},
+                        },
+                    },
+                }
+            )
+        )
         result = run_symbol_coverage_gate(
             coverage_json_path=str(cov_path),
             changed_files=[str(src)],

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import Enum
+from typing import Any
 
 
 class PropertyKind(str, Enum):
@@ -26,6 +27,13 @@ class SideEffect:
     line: int
     detail: str  # human-readable explanation
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SideEffect:
+        return cls(**data)
+
 
 @dataclass(frozen=True)
 class PurityResult:
@@ -40,6 +48,18 @@ class PurityResult:
     parameter_count: int
     return_annotation: str | None
 
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["side_effects"] = [asdict(s) for s in self.side_effects]
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PurityResult:
+        side_effects = tuple(SideEffect(**s) for s in data.get("side_effects", []))
+        data_copy = dict(data)
+        data_copy["side_effects"] = side_effects
+        return cls(**data_copy)
+
 
 @dataclass(frozen=True)
 class BoundSpec:
@@ -48,6 +68,13 @@ class BoundSpec:
     lower: float | None
     upper: float | None
     source: str  # e.g., "clamp", "min_max", "annotation", "ratio"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BoundSpec:
+        return cls(**data)
 
 
 @dataclass(frozen=True)
@@ -59,6 +86,25 @@ class AlgebraicProperty:
     evidence: str  # What AST pattern triggered this classification
     bound_spec: BoundSpec | None = None  # Only populated if kind == BOUNDED
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "confidence": self.confidence,
+            "evidence": self.evidence,
+            "bound_spec": asdict(self.bound_spec) if self.bound_spec else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AlgebraicProperty:
+        kind = PropertyKind(data["kind"])
+        bound_spec = BoundSpec(**data["bound_spec"]) if data.get("bound_spec") else None
+        return cls(
+            kind=kind,
+            confidence=data["confidence"],
+            evidence=data["evidence"],
+            bound_spec=bound_spec,
+        )
+
 
 @dataclass(frozen=True)
 class FunctionProperties:
@@ -67,3 +113,20 @@ class FunctionProperties:
     purity: PurityResult
     properties: tuple[AlgebraicProperty, ...]
     optimization_hints: tuple[str, ...]  # e.g., "cacheable", "parallelizable", "foldable"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "purity": self.purity.to_dict(),
+            "properties": [p.to_dict() for p in self.properties],
+            "optimization_hints": list(self.optimization_hints),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FunctionProperties:
+        purity = PurityResult.from_dict(data["purity"])
+        properties = tuple(AlgebraicProperty.from_dict(p) for p in data.get("properties", []))
+        return cls(
+            purity=purity,
+            properties=properties,
+            optimization_hints=tuple(data.get("optimization_hints", [])),
+        )

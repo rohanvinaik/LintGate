@@ -26,6 +26,18 @@ wheels = [
 ]
 
 [[package]]
+name = "asttokens"
+version = "2.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/45/1d/f03bcb60c4a3212e15f99a56085d93093a497718adf828d050b9d675da81/asttokens-2.4.1.tar.gz", hash = "sha256:b03869718ba9a6eb027e134bfdf69f38a236d681c83c160d510768af11254ba0", size = 62284, upload-time = "2023-10-26T10:03:05.06Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/86/4736ac618d82a20d87d2f92ae19441ebc7ac9e7a581d7e58bbe79233b24a/asttokens-2.4.1-py2.py3-none-any.whl", hash = "sha256:051ed49c3dcae8913ea7cd08e46a606dba30b79993209636c4875bc1d637bc24", size = 27764, upload-time = "2023-10-26T10:03:01.789Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "25.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -430,6 +442,32 @@ wheels = [
 ]
 
 [[package]]
+name = "hypothesis"
+version = "6.151.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/e1/ef365ff480903b929d28e057f57b76cae51a30375943e33374ec9a165d9c/hypothesis-6.151.9.tar.gz", hash = "sha256:2f284428dda6c3c48c580de0e18470ff9c7f5ef628a647ee8002f38c3f9097ca", size = 463534, upload-time = "2026-02-16T22:59:23.09Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/f7/5cc291d701094754a1d327b44d80a44971e13962881d9a400235726171da/hypothesis-6.151.9-py3-none-any.whl", hash = "sha256:7b7220585c67759b1b1ef839b1e6e9e3d82ed468cfc1ece43c67184848d7edd9", size = 529307, upload-time = "2026-02-16T22:59:20.443Z" },
+]
+
+[[package]]
+name = "icontract"
+version = "2.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "asttokens" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/93/8a7d5850d848cba73aa094b961459d8101b7c96837b2e8dc91083adcf7ae/icontract-2.7.3.tar.gz", hash = "sha256:df37a43d86d532407bc6b84dea29dd9f7ece794b73211769fa8a33a76b8ed145", size = 68361, upload-time = "2026-01-29T13:11:14.724Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/aa/ffc16b7ed17e052e7d2140e66336f829e9383f61f31249c4d181e12fcdea/icontract-2.7.3-py3-none-any.whl", hash = "sha256:8fb0f93f71211416f214f37c01b8017fdc8c079d70159f49f0ddcc10918c14d0", size = 40983, upload-time = "2026-01-29T13:11:13.198Z" },
+]
+
+[[package]]
 name = "idna"
 version = "3.11"
 source = { registry = "https://pypi.org/simple" }
@@ -582,6 +620,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+algebra = [
+    { name = "hypothesis" },
+    { name = "icontract" },
+]
 dev = [
     { name = "bandit" },
     { name = "mcp" },
@@ -609,6 +651,8 @@ mcp = [
 [package.metadata]
 requires-dist = [
     { name = "bandit", marker = "extra == 'full'", specifier = ">=1.7" },
+    { name = "hypothesis", marker = "extra == 'algebra'", specifier = ">=6.0" },
+    { name = "icontract", marker = "extra == 'algebra'", specifier = ">=2.6" },
     { name = "lintgate", extras = ["full", "mcp"], marker = "extra == 'dev'" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'full'", specifier = ">=1.8" },
@@ -622,7 +666,7 @@ requires-dist = [
     { name = "ty", marker = "extra == 'full'", specifier = ">=0.0.17" },
     { name = "vulture", marker = "extra == 'full'", specifier = ">=2.0" },
 ]
-provides-extras = ["full", "mcp", "dev"]
+provides-extras = ["full", "mcp", "algebra", "dev"]
 
 [[package]]
 name = "mando"

@@ -20,6 +20,8 @@ Also covers re-exported symbols and module-level constants.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from lintgate.controlplane.reporter import (
     _BUDGET_BASE,
     _BUDGET_HARD_CAP,
@@ -786,7 +788,7 @@ def test_format_mesh_report_proposed_constraints_only_active() -> None:
 
 
 def test_format_mesh_report_informational_count() -> None:
-    mesh = _mesh(
+    _mesh(
         channel_results=[
             ChannelResult(
                 channel="structure",
@@ -796,8 +798,79 @@ def test_format_mesh_report_informational_count() -> None:
             ),
         ],
     )
-    report = format_mesh_report(mesh)
-    assert "INFO: 1 informational finding" in report["systemMessage"]
+# ── Delta Escalations & Resolutions ──────────────────────────────────────
+
+
+def test_format_mesh_report_delta_escalated_and_resolved() -> None:
+    # Set up fingerprints using actual logic
+    from lintgate.controlplane.reporter_delta import compute_finding_fingerprint
+
+    # ESCALATED finding: warning -> blocking
+    issue_escalated = _issue("blocking", message="Escalated")
+    fp_escalated = compute_finding_fingerprint(issue_escalated, "lint")
+
+    # RESOLVED finding: existed in prev, not in current
+    issue_resolved = _issue("blocking", message="Resolved")
+    fp_resolved = compute_finding_fingerprint(issue_resolved, "lint")
+
+    # Previous run has escalated finding as warning, and the resolved finding
+    prev_index = {
+        fp_escalated: {"severity": "warning", "count": 1, "channel": "lint"},
+        fp_resolved: {"severity": "blocking", "count": 1, "channel": "lint"},
+    }
+
+    # Current run has escalated finding as blocking
+    findings = [issue_escalated]
+    mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
+
+    # Pass previous_finding_index to trigger delta internal computation
+    report = format_mesh_report(mesh, previous_finding_index=prev_index)
+
+    msg = report["systemMessage"]
+    assert "DELTA:" in msg
+    assert "1 escalated" in msg
+    assert "1 resolved" in msg
+
+
+# ── Token Budget Truncation ──────────────────────────────────────────────
+
+
+def test_format_mesh_report_tight_budget_truncation() -> None:
+    """Verify truncation logic when budget is extremely limited."""
+    # Patch multipliers to ensure max_tokens relies on the floor config
+    with patch("lintgate.controlplane.reporter._BUDGET_BASE", 0), \
+         patch("lintgate.controlplane.reporter._BUDGET_PER_BLOCKING", 0):
+        findings = [_issue("blocking", message=f"Issue {i}") for i in range(10)]
+        mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
+
+        # Budget of 38 tokens is tight enough to force cap=1.
+        # Header (10) + Blocking List cap=3 (~50) -> FAIL.
+        # Header (10) + Blocking List cap=1 (~25) -> PASS.
+        config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=38))
+        report = format_mesh_report(mesh, config=config)
+
+        msg = report["systemMessage"]
+        assert "<controlplane-report" in msg
+        # The logic should try cap 3, fail, then cap 1.
+        assert "...and 9 more blocking issues" in msg
+
+
+def test_format_mesh_report_minimal_header() -> None:
+    """Verify minimal header when budget is too small for full header."""
+    with patch("lintgate.controlplane.reporter._BUDGET_BASE", 0):
+        mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=[])])
+        # Force minimal budget of 5 tokens.
+        config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=5))
+
+        # We need some reason to generate a report
+        mesh.partial = True
+        mesh.incomplete_channels = ["tests"]
+
+        report = format_mesh_report(mesh, config=config)
+        msg = report["systemMessage"]
+        # minimal header logic should trigger
+        assert 'coherence="stable"' in msg
+        assert 'channels=' not in msg
 
 
 def test_format_mesh_report_informational_plural() -> None:

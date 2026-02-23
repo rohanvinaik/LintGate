@@ -112,7 +112,10 @@ class TestChannel:
         try:
             # Step 4: Run selected tests (impacted or fallback)
             if tests_to_run:
-                remaining_ms = self.timeout_ms - int((time.perf_counter() - start) * 1000)
+                base_timeout_ms = config.channels.get("tests", ChannelConfig()).timeout_ms
+                if not base_timeout_ms:
+                    base_timeout_ms = self.timeout_ms
+                remaining_ms = base_timeout_ms - int((time.perf_counter() - start) * 1000)
                 timeout_floor_ms = 2000
                 if cov_cfg["symbol_enabled"] and event.surface in ("mcp", "ci"):
                     # Symbol gate needs a meaningful coverage sample; avoid 10s truncation.

@@ -160,7 +160,7 @@ Every linter implements a common protocol: `run(context) -> Iterable[LintIssue]`
 
 The `performance_checker` is a pure AST linter (Tier 2, no external dependencies) that detects structurally wrong performance choices — patterns that are mathematically inferior regardless of context. These are not micro-optimizations or style preferences. A `for val in other: if val in my_list` inside a loop is O(n²) when `my_set` makes it O(n). `sorted(x)[0]` is O(n log n) when `min(x)` is O(n). `re.compile(literal)` inside a function recompiles on every call when hoisting to module level compiles once. These are facts about complexity classes, not opinions about coding style.
 
-The 8 checks (PERF001–PERF008):
+The 11 checks (PERF001–PERF011):
 
 | Check | Severity | Pattern | Fix |
 |-------|----------|---------|-----|
@@ -172,8 +172,22 @@ The 8 checks (PERF001–PERF008):
 | PERF006 | informational | `for k in d.keys()` | Use `for k in d` |
 | PERF007 | informational | Arithmetic loop over large range without numpy/numba | Consider vectorization |
 | PERF008 | informational | `requests.*` or variable-path `open()` in loop | Batch or parallelize |
+| PERF009 | warning | Multi-pass sequence processing | Process in a single pass |
+| PERF010 | warning | Unnecessary materialization of lists/dicts | Return generators/iterators |
+| PERF011 | warning | Pure function called uncached in loop | Cache result or hoist |
 
-PERF001–PERF004 are severity `warning` because they are always structurally wrong. PERF005–PERF008 are `informational` because they have edge cases — the agent decides what to do with the signal.
+PERF001–PERF004 and PERF009–PERF011 are severity `warning` because they are always structurally wrong. PERF005–PERF008 are `informational` because they have edge cases — the agent decides what to do with the signal.
+
+### Algebraic Properties Bridge
+
+Beyond simple pattern matching, the `performance_checker` integrates a deeper **Algebraic Properties Bridge**. By performing AST-based analysis without execution, LintGate statically detects fundamental properties of functions:
+- **Purity**: Functions with no side effects and deterministic outputs based purely on inputs.
+- **Algebraic Properties**: Commutative, Associative, Idempotent, and Bounded behaviors.
+
+This data builds a `PropertyManifest` which powers three downstream capabilities:
+1. **Hypothesis Integration**: Automatically generates property-based testing templates (`hypothesis_bridge.py`) based on detected algebraic properties.
+2. **icontract Integration**: Autogenerates design-by-contract decorators (`icontract_bridge.py`) for enforcement of boundaries.
+3. **Telemetry & Economics**: Performance metrics (pure functions count, properties proven) are aggregated into telemetry economics and integrated into CI workflows via Performance Badges (e.g., in `.github/workflows/algebra-badges.yml`).
 
 False-positive guardrails are critical: PERF001 only fires when the membership container is loop-invariant (not mutated inside the loop body). PERF002 skips `@lru_cache`/`@cache` decorated functions. PERF007 requires non-trivial loop bounds and arithmetic operations on the loop variable, and skips files that already import numpy/pandas/numba.
 

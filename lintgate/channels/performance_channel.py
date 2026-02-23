@@ -19,6 +19,7 @@ def _discover_python_files(project_root: str) -> list[str]:
     """Discover Python files (simplified for channel)."""
     # In a real implementation this would ideally share the AST cache with structure_channel.
     from lintgate.channels.structure_channel import _discover_python_files as discover
+
     return discover(project_root)
 
 
@@ -46,7 +47,7 @@ class PerformanceChannel:
         py_files = _discover_python_files(project_root)
 
         if not py_files:
-             return ChannelResult(
+            return ChannelResult(
                 channel=self.name,
                 status="skip",
                 severity="none",
@@ -67,103 +68,124 @@ class PerformanceChannel:
 
         # PERFCH001 — Purity summary
         if total_funcs > 10 and purity_ratio < 0.2:
-             findings.append(
-                  LintIssue(
-                      linter="performance_channel",
-                      kind="PERFCH001",
-                      message=f"Low project purity ratio ({purity_ratio:.1%}). Only {manifest.pure_count} of {total_funcs} functions are mathematically pure.",
-                      file=project_root, # Project-level finding
-                      severity="informational",
-                      confidence=0.9,
-                      evidence={
-                          "code": "PERFCH001",
-                          "pure_count": manifest.pure_count,
-                          "impure_count": manifest.impure_count,
-                          "ratio": float(purity_ratio)
-                      },
-                      suggestions=[
-                          "Extract pure domain logic from functions that perform I/O or state mutation",
-                          "Consider dependency injection to isolate side-effects",
-                      ]
-                  )
-             )
+            findings.append(
+                LintIssue(
+                    linter="performance_channel",
+                    kind="PERFCH001",
+                    message=f"Low project purity ratio ({purity_ratio:.1%}). Only {manifest.pure_count} of {total_funcs} functions are mathematically pure.",
+                    file=project_root,  # Project-level finding
+                    severity="informational",
+                    confidence=0.9,
+                    evidence={
+                        "code": "PERFCH001",
+                        "pure_count": manifest.pure_count,
+                        "impure_count": manifest.impure_count,
+                        "ratio": float(purity_ratio),
+                    },
+                    suggestions=[
+                        "Extract pure domain logic from functions that perform I/O or state mutation",
+                        "Consider dependency injection to isolate side-effects",
+                    ],
+                )
+            )
 
         # Look closely at the top optimization opportunities
         for func_name, hints in manifest.optimization_potential:
-             # We only want to report the very highest-value hints at the channel level
-             # PERFCH003 — Parallelization / MapReduce
-             if "parallelizable" in hints or "map-reduce-compatible" in hints:
-                  findings.append(
-                       LintIssue(
-                           linter="performance_channel",
-                           kind="PERFCH003",
-                           message=f"High-value optimization: '{func_name}' is pure and associative/commutative, making it trivially parallelizable.",
-                           file=project_root, # In a real implementation we would track file origin per function
-                           severity="informational",
-                           confidence=0.8,
-                           evidence={"code": "PERFCH003", "function": func_name, "hints": hints},
-                           suggestions=["Use multiprocessing.Pool.map or thread pools safely on this function."]
-                       )
-                  )
+            # We only want to report the very highest-value hints at the channel level
+            # PERFCH003 — Parallelization / MapReduce
+            if "parallelizable" in hints or "map-reduce-compatible" in hints:
+                findings.append(
+                    LintIssue(
+                        linter="performance_channel",
+                        kind="PERFCH003",
+                        message=f"High-value optimization: '{func_name}' is pure and associative/commutative, making it trivially parallelizable.",
+                        file=project_root,  # In a real implementation we would track file origin per function
+                        severity="informational",
+                        confidence=0.8,
+                        evidence={"code": "PERFCH003", "function": func_name, "hints": hints},
+                        suggestions=[
+                            "Use multiprocessing.Pool.map or thread pools safely on this function."
+                        ],
+                    )
+                )
 
-             # PERFCH004 — High-value caching
-             if "cache-without-invalidation" in hints:
-                  findings.append(
-                       LintIssue(
-                           linter="performance_channel",
-                           kind="PERFCH004",
-                           message=f"High-value caching: '{func_name}' is pure and idempotent. It is extremely safe to cache without complex invalidation.",
-                           file=project_root,
-                           severity="informational",
-                           confidence=0.8,
-                           evidence={"code": "PERFCH004", "function": func_name},
-                           suggestions=["Decorate with @functools.lru_cache or @functools.cache"]
-                       )
-                  )
+            # PERFCH004 — High-value caching
+            if "cache-without-invalidation" in hints:
+                findings.append(
+                    LintIssue(
+                        linter="performance_channel",
+                        kind="PERFCH004",
+                        message=f"High-value caching: '{func_name}' is pure and idempotent. It is extremely safe to cache without complex invalidation.",
+                        file=project_root,
+                        severity="informational",
+                        confidence=0.8,
+                        evidence={"code": "PERFCH004", "function": func_name},
+                        suggestions=["Decorate with @functools.lru_cache or @functools.cache"],
+                    )
+                )
+            elif "cacheable" in hints:
+                findings.append(
+                    LintIssue(
+                        linter="performance_channel",
+                        kind="PERFCH005",
+                        message=f"Caching candidate: '{func_name}' is pure and likely to benefit from caching, though invalidation must be considered for external inputs.",
+                        file=project_root,
+                        severity="informational",
+                        confidence=0.7,
+                        evidence={"code": "PERFCH005", "function": func_name},
+                        suggestions=["Decorate with @functools.lru_cache if inputs are stable."],
+                    )
+                )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         # Build snapshot metrics
         metrics = {
-             "pure_functions": manifest.pure_count,
-             "impure_functions": manifest.impure_count,
-             "purity_ratio": round(purity_ratio, 3),
-             "properties_detected": {k.value: v for k, v in manifest.property_distribution.items()},
-             "optimization_opportunities": len(manifest.optimization_potential)
+            "pure_functions": manifest.pure_count,
+            "impure_functions": manifest.impure_count,
+            "purity_ratio": round(purity_ratio, 3),
+            "properties_detected": {k.value: v for k, v in manifest.property_distribution.items()},
+            "optimization_opportunities": len(manifest.optimization_potential),
         }
 
         # Telemetry: Emit metrics from Performance Channel (Phase 6.1)
         from lintgate.state import log_metric
+
         # We catch exceptions so telemetry doesn't break the channel
         with contextlib.suppress(Exception):
-            log_metric({
-                "event": "performance_analysis",
-                "project": project_root,
-                "pure_functions_found": manifest.pure_count,
-                "impure_functions_found": manifest.impure_count,
-                "purity_ratio": round(purity_ratio, 3),
-                "properties_detected": {k.value: v for k, v in manifest.property_distribution.items()},
-                "optimization_opportunities": len(manifest.optimization_potential),
-                "findings_count": len(findings),
-                "blocking_count": sum(1 for f in findings if f.severity == "blocking"),
-                "duration_ms": elapsed_ms,
-                "files_analyzed": len(py_files),
-            })
+            log_metric(
+                {
+                    "event": "performance_analysis",
+                    "project": project_root,
+                    "pure_functions": manifest.pure_count,
+                    "impure_functions": manifest.impure_count,
+                    "properties_proven": sum(manifest.property_distribution.values()),
+                    "purity_ratio": round(purity_ratio, 3),
+                    "properties_detected": {
+                        k.value: v for k, v in manifest.property_distribution.items()
+                    },
+                    "optimization_opportunities": len(manifest.optimization_potential),
+                    "findings_count": len(findings),
+                    "blocking_count": sum(1 for f in findings if f.severity == "blocking"),
+                    "duration_ms": elapsed_ms,
+                    "files_analyzed": len(py_files),
+                }
+            )
 
         status: Literal["pass", "fail"] = "fail" if findings else "pass"
         severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
-             severity = "informational"
-             if any(f.severity == "blocking" for f in findings):
-                  severity = "blocking"
-             elif any(f.severity == "warning" for f in findings):
-                  severity = "warning"
+            severity = "informational"
+            if any(f.severity == "blocking" for f in findings):
+                severity = "blocking"
+            elif any(f.severity == "warning" for f in findings):
+                severity = "warning"
 
         return ChannelResult(
-             channel=self.name,
-             status=status,
-             severity=severity,
-             findings=findings,
-             metrics=metrics,
-             duration_ms=elapsed_ms,
+            channel=self.name,
+            status=status,
+            severity=severity,
+            findings=findings,
+            metrics=metrics,
+            duration_ms=elapsed_ms,
         )

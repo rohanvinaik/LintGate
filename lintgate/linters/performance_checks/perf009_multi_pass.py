@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from lintgate.linters.performance_checks._helpers import get_name
+from ...types import LintIssue
+from ._helpers import get_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-def check_multi_pass(tree: ast.AST, file_path: str) -> Iterable[dict[str, Any]]:
+def check_multi_pass(tree: ast.AST, file_path: str) -> Iterable[LintIssue]:
     """Detect multiple `for` loops iterating over the same collection in the same scope."""
     # Group loops by their parent node (scope)
     scope_loops: dict[ast.AST, list[ast.For]] = {}
@@ -44,14 +45,21 @@ def check_multi_pass(tree: ast.AST, file_path: str) -> Iterable[dict[str, Any]]:
                 # We yield one issue for the *second* loop, pointing to the first.
                 first_loop = iter_loops[0]
                 for subsequent_loop in iter_loops[1:]:
-                    yield {
-                        "file": file_path,
-                        "line": subsequent_loop.lineno,
-                        "col": subsequent_loop.col_offset,
-                        "message": (
-                            f"PERF009: Multi-pass over '{coll_name}'. "
+                    yield LintIssue(
+                        linter="performance_checker",
+                        kind="PERF009",
+                        message=(
+                            f"Multi-pass over '{coll_name}'. "
                             f"This loops over the same collection as line {first_loop.lineno}. "
                             "Consider combining into a single pass using accumulator variables."
                         ),
-                        "code": "PERF009",
-                    }
+                        file=file_path,
+                        line=subsequent_loop.lineno,
+                        severity="informational",
+                        confidence=0.7,
+                        evidence={
+                            "collection": coll_name,
+                            "first_loop_line": first_loop.lineno,
+                            "check": "PERF009",
+                        },
+                    )

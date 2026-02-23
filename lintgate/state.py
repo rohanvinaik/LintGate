@@ -26,6 +26,7 @@ VERSION_DIR = Path.home() / ".claude" / "lintgate" / "versioning"
 VERSION_AUDIT_DIR = VERSION_DIR / "audits"
 VERSION_EVENTS_DIR = VERSION_DIR / "events"
 RUNS_DIR = Path.home() / ".claude" / "lintgate" / "runs"
+PERF_CACHE_DIR = Path.home() / ".claude" / "lintgate" / "perf_cache"
 
 
 def save_run(cwd: str, result: AggregatedResult) -> None:

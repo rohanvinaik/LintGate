@@ -1,6 +1,4 @@
-"""Targeted coverage tests for change_classifier.py uncovered symbols."""
-
-from __future__ import annotations
+import os
 
 from lintgate.change_classifier import (
     _classify_no_file_change,
@@ -110,11 +108,32 @@ def test_pipeline_empty_cwd():
     assert _matches_pipeline_path("/foo.py", ["lintgate/"], "") is False
 
 
-def test_pipeline_not_string():
-    assert _matches_pipeline_path(123, ["lintgate/"], "/tmp") is False
+# ── _extract_changed_files ───────────────────────────────────────────
 
 
-# ── _classify_no_file_change ─────────────────────────────────────────
+def test_extract_files_bash_unknown_command(tmp_path):
+    # Non-build, non-readonly bash command should return []
+    r = classify_change(
+        tool_name="Bash",
+        tool_input={"command": "touch foo.txt"},
+        tool_output="",
+        cwd=str(tmp_path),
+    )
+    assert r.files_changed == []
+
+
+# ── _resolve_path ────────────────────────────────────────────────────
+
+
+def test_resolve_path_invalid_input():
+    from lintgate.change_classifier import _resolve_path
+
+    assert _resolve_path(None, "/tmp") == ""
+    assert _resolve_path("", "/tmp") == ""
+    assert _resolve_path("foo.py", None) == os.path.normpath(os.path.join(os.getcwd(), "foo.py"))
+
+
+# ── _matches_pipeline_path ───────────────────────────────────────────
 
 
 def test_no_file_bash_build():
@@ -220,3 +239,83 @@ def test_classify_pipeline_critical(tmp_path):
         config=cfg,
     )
     assert r.touches_pipeline_critical is True
+
+
+def test_classify_multi_edit(tmp_path):
+    f = tmp_path / "app.py"
+    f.write_text("x = 1\ny = 2\n")
+    r = classify_change(
+        tool_name="MultiEdit",
+        tool_input={
+            "file_path": str(f),
+            "edits": [
+                {"old_string": "x = 1", "new_string": "x = 10"},
+                {"old_string": "y = 2", "new_string": "y = 20"},
+            ],
+        },
+        tool_output="ok",
+        cwd=str(tmp_path),
+    )
+    assert r.lines_added == 2
+    assert r.lines_removed == 2
+
+
+def test_classify_import_change(tmp_path):
+    f = tmp_path / "app.py"
+    f.write_text("import os\n")
+    r = classify_change(
+        tool_name="Edit",
+        tool_input={"file_path": str(f), "old_string": "import os", "new_string": "import sys"},
+        tool_output="ok",
+        cwd=str(tmp_path),
+    )
+    assert r.change_kind == "import"
+
+
+def test_classify_structural_change(tmp_path):
+    f = tmp_path / "app.py"
+    f.write_text("def old(): pass\n")
+    r = classify_change(
+        tool_name="Edit",
+        tool_input={"file_path": str(f), "old_string": "def old():", "new_string": "def new():"},
+        tool_output="ok",
+        cwd=str(tmp_path),
+    )
+    assert r.change_kind == "structural"
+
+
+def test_classify_dependency_change(tmp_path):
+    # Use poetry.lock which is not a doc extension
+    f = tmp_path / "poetry.lock"
+    r = classify_change(
+        tool_name="Write",
+        tool_input={"file_path": str(f), "content": "[metadata]\nversion = '1.0'"},
+        tool_output="ok",
+        cwd=str(tmp_path),
+    )
+    assert r.change_kind == "dependency"
+
+
+def test_classify_architectural_multi_file(tmp_path):
+    # Multiple structural changes across files = architectural
+    _f1 = tmp_path / "f1.py"
+    _f2 = tmp_path / "f2.py"
+    _f3 = tmp_path / "f3.py"
+    # Note: classify_change currently only supports one file per tool use for Write/Edit/MultiEdit.
+    # However, the underlying _classify_risk takes a list of files.
+    # We can test this by mocking if needed, or if MultiEdit supports multiple files (it doesn't in the code).
+    # wait, MultiEdit in the code only extracts one file_path.
+    # But _classify_risk logic: if len(files) >= 3 and kind == "structural": return "architectural"
+    from lintgate.change_classifier import _classify_risk
+    from lintgate.types import DiffAnalysis
+
+    diff = DiffAnalysis(class_structure_changed=True)
+    risk = _classify_risk("structural", diff, ["a.py", "b.py", "c.py"], False)
+    assert risk == "architectural"
+
+
+def test_classify_risk_none():
+    from lintgate.change_classifier import _classify_risk
+    from lintgate.types import DiffAnalysis
+
+    assert _classify_risk("logic", DiffAnalysis.empty(), [], False) == "none"

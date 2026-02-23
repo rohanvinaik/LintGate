@@ -20,7 +20,10 @@ def _get_return_nodes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.
         if isinstance(child, ast.Return):
             returns.append(child)
         # Don't descend into nested functions/classes
-        elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and child is not node:
+        elif (
+            isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and child is not node
+        ):
             continue
     return returns
 
@@ -44,7 +47,11 @@ def _is_single_expression_return(node: ast.FunctionDef | ast.AsyncFunctionDef) -
         return ret.value
 
     # Could be `def f(x): "doc"; return x`
-    if len(node.body) == 2 and isinstance(node.body[0], ast.Expr) and isinstance(node.body[1], ast.Return):
+    if (
+        len(node.body) == 2
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[1], ast.Return)
+    ):
         return ret.value
 
     return None
@@ -57,26 +64,56 @@ def _check_bounded(node: ast.FunctionDef | ast.AsyncFunctionDef) -> AlgebraicPro
     if not expr:
         return None
 
-    # Detect `max(0, min(1, x))` or `min(max(x, 0), 1)`
-    # This is a bit brittle as an AST check but catches common clamp patterns.
-    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in ("max", "min"):
-            # Simple heuristic: if we return min/max with a constant, there is a bound.
-            for arg in expr.args:
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, (int, float)):
-                    if expr.func.id == "max":
-                        return AlgebraicProperty(
-                            kind=PropertyKind.BOUNDED,
-                            confidence=0.7,
-                            evidence="Returns max(..., constant)",
-                            bound_spec=BoundSpec(lower=float(arg.value), upper=None, source="clamp")
-                        )
-                    else: # min
-                        return AlgebraicProperty(
-                            kind=PropertyKind.BOUNDED,
-                            confidence=0.7,
-                            evidence="Returns min(..., constant)",
-                            bound_spec=BoundSpec(lower=None, upper=float(arg.value), source="clamp")
-                        )
+    # Detect `max(lo, min(x, hi))` or `min(hi, max(x, lo))` patterns
+    def _extract_bounds(node: ast.AST) -> tuple[float | None, float | None]:
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            return None, None
+
+        fn = node.func.id
+        if fn not in ("max", "min"):
+            return None, None
+
+        def _get_val(n: ast.AST) -> float | None:
+            if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+                return float(n.value)
+            if (
+                isinstance(n, ast.UnaryOp)
+                and isinstance(n.op, ast.USub)
+                and isinstance(n.operand, ast.Constant)
+                and isinstance(n.operand.value, (int, float))
+            ):
+                return -float(n.operand.value)
+            return None
+
+        lo, hi = None, None
+        for arg in node.args:
+            val = _get_val(arg)
+            if val is not None:
+                if fn == "max":
+                    lo = val
+                else:
+                    hi = val
+            else:
+                inner_lo, inner_hi = _extract_bounds(arg)
+                if inner_lo is not None:
+                    lo = inner_lo
+                if inner_hi is not None:
+                    hi = inner_hi
+        return lo, hi
+
+    lo, hi = _extract_bounds(expr)
+    if lo is not None or hi is not None:
+        evidence = []
+        if lo is not None:
+            evidence.append(f"lower={lo}")
+        if hi is not None:
+            evidence.append(f"upper={hi}")
+        return AlgebraicProperty(
+            kind=PropertyKind.BOUNDED,
+            confidence=0.8,
+            evidence=f"Algebraic bound detected: {', '.join(evidence)}",
+            bound_spec=BoundSpec(lower=lo, upper=hi, source="clamp"),
+        )
 
     # Detect ratios like `x / (x + 1)` which are bounded [0, 1) for x > 0
     # Or bool returns which are bounded [0, 1]
@@ -85,13 +122,15 @@ def _check_bounded(node: ast.FunctionDef | ast.AsyncFunctionDef) -> AlgebraicPro
             kind=PropertyKind.BOUNDED,
             confidence=1.0,
             evidence="Return type annotation is bool",
-            bound_spec=BoundSpec(lower=0.0, upper=1.0, source="annotation")
+            bound_spec=BoundSpec(lower=0.0, upper=1.0, source="annotation"),
         )
 
     return None
 
 
-def _check_monotonic(node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: set[str]) -> AlgebraicProperty | None:
+def _check_monotonic(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: set[str]
+) -> AlgebraicProperty | None:
     """Detect if the function is monotonic relative to its inputs."""
     expr = _is_single_expression_return(node)
     if not expr:
@@ -105,15 +144,24 @@ def _check_monotonic(node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: 
 
         def visit_BinOp(self, op: ast.BinOp):
             if isinstance(op.op, (ast.Add, ast.Mult)):
-                 # addition and multiplication are monotonic for positive numbers
-                 self.generic_visit(op)
+                self.generic_visit(op)
             else:
-                 self.is_monotonic = False
+                self.is_monotonic = False
 
         def visit_UnaryOp(self, op: ast.UnaryOp):
-             if not isinstance(op.op, ast.UAdd): # USub reverses monotonicity
-                 self.is_monotonic = False
-             self.generic_visit(op)
+            if not isinstance(op.op, ast.UAdd):
+                self.is_monotonic = False
+            self.generic_visit(op)
+
+        def visit_Call(self, node: ast.Call):
+            # We don't know if a general call is monotonic
+            self.is_monotonic = False
+
+        def visit_Subscript(self, node: ast.Subscript):
+            self.is_monotonic = False
+
+        def visit_Attribute(self, node: ast.Attribute):
+            self.is_monotonic = False
 
     v = MonotonicVisitor()
     v.visit(expr)
@@ -124,7 +172,9 @@ def _check_monotonic(node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: 
     return None
 
 
-def _check_idempotent(node: ast.FunctionDef | ast.AsyncFunctionDef, param_types: list[str], ret_type: str | None) -> AlgebraicProperty | None:
+def _check_idempotent(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, param_types: list[str], ret_type: str | None
+) -> AlgebraicProperty | None:
     """Detect idempotent f(f(x)) == f(x)."""
     # Needs exactly 1 parameter of the same type as the return type
     if len(param_types) != 1 or not ret_type or param_types[0] != ret_type:
@@ -135,16 +185,22 @@ def _check_idempotent(node: ast.FunctionDef | ast.AsyncFunctionDef, param_types:
         return None
 
     # Example: `return abs(x)` is idempotent.
-    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in ("abs", "set", "list", "dict", "str", "int", "float", "bool"):
-            # Type casting is generally idempotent
-            return AlgebraicProperty(
-                PropertyKind.IDEMPOTENT, 0.9, f"Function returns a single {expr.func.id}() cast/call"
-            )
+    if (
+        isinstance(expr, ast.Call)
+        and isinstance(expr.func, ast.Name)
+        and expr.func.id in ("abs", "set", "list", "dict", "str", "int", "float", "bool")
+    ):
+        # Type casting is generally idempotent
+        return AlgebraicProperty(
+            PropertyKind.IDEMPOTENT, 0.9, f"Function returns a single {expr.func.id}() cast/call"
+        )
 
     return None
 
 
-def _check_commutative_associative(node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: set[str]) -> tuple[AlgebraicProperty | None, AlgebraicProperty | None]:
+def _check_commutative_associative(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: set[str]
+) -> tuple[AlgebraicProperty | None, AlgebraicProperty | None]:
     """Detect if f(x, y) == f(y, x) and f(x, f(y, z)) == f(f(x, y), z)."""
     if len(param_names) < 2:
         return None, None
@@ -156,25 +212,39 @@ def _check_commutative_associative(node: ast.FunctionDef | ast.AsyncFunctionDef,
     # Heuristic: the expression uses only Commutative operations (+, *, &, |)
     # on all arguments equally.
 
-    if isinstance(expr, ast.BinOp) and isinstance(expr.op, (ast.Add, ast.Mult, ast.BitAnd, ast.BitOr, ast.BitXor)):
-             comm = AlgebraicProperty(PropertyKind.COMMUTATIVE, 0.8, "Returns a commutative binary operation (+, *, &, |, ^)")
-             assoc = AlgebraicProperty(PropertyKind.ASSOCIATIVE, 0.8, "Returns an associative binary operation")
-             return comm, assoc
+    if isinstance(expr, ast.BinOp) and isinstance(
+        expr.op, (ast.Add, ast.Mult, ast.BitAnd, ast.BitOr, ast.BitXor)
+    ):
+        comm = AlgebraicProperty(
+            PropertyKind.COMMUTATIVE, 0.8, "Returns a commutative binary operation (+, *, &, |, ^)"
+        )
+        assoc = AlgebraicProperty(
+            PropertyKind.ASSOCIATIVE, 0.8, "Returns an associative binary operation"
+        )
+        return comm, assoc
 
     return None, None
 
 
-def classify_properties(func_node: ast.FunctionDef | ast.AsyncFunctionDef, purity: PurityResult) -> FunctionProperties:
+def classify_properties(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef, purity: PurityResult
+) -> FunctionProperties:
     """
     Given a known-pure function, attempt to classify its algebraic properties.
     """
     properties: list[AlgebraicProperty] = [
-        AlgebraicProperty(PropertyKind.PURE, purity.confidence, "Passed pure function detector pass 1 and 2")
+        AlgebraicProperty(
+            PropertyKind.PURE, purity.confidence, "Passed pure function detector pass 1 and 2"
+        )
     ]
     hints: list[str] = ["cacheable"]
 
     param_names = {arg.arg for arg in func_node.args.args}
-    param_types = [getattr(arg.annotation, "id", None) for arg in func_node.args.args if getattr(arg.annotation, "id", None)]
+    param_types = [
+        getattr(arg.annotation, "id", None)
+        for arg in func_node.args.args
+        if getattr(arg.annotation, "id", None)
+    ]
 
     # 1. Bounded
     bounded = _check_bounded(func_node)
@@ -193,7 +263,7 @@ def classify_properties(func_node: ast.FunctionDef | ast.AsyncFunctionDef, purit
         properties.append(idempot)
         hints.append("safe-to-retry")
         if "cacheable" in hints:
-             hints.append("cache-without-invalidation") # very cheap to cache
+            hints.append("cache-without-invalidation")  # very cheap to cache
 
     # 4 & 5. Commutative / Associative
     comm, assoc = _check_commutative_associative(func_node, param_names)
@@ -208,5 +278,5 @@ def classify_properties(func_node: ast.FunctionDef | ast.AsyncFunctionDef, purit
     return FunctionProperties(
         purity=purity,
         properties=tuple(properties),
-        optimization_hints=tuple(set(hints))  # deduplicate hints
+        optimization_hints=tuple(set(hints)),  # deduplicate hints
     )

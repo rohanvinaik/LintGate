@@ -7,6 +7,7 @@ from lintgate.controlplane.reporter_compact import (
     _build_cp_next_actions,
     _collect_symbol_coverage_blockers,
     _count_findings_by_severity,
+    format_mesh_report_compact,
 )
 from lintgate.controlplane.types import ChannelResult, CoherenceResult, MeshResult, SupervisionEvent
 from lintgate.types import ChangeClassification, LintIssue
@@ -213,3 +214,12 @@ class TestCollectSymbolCoverageBlockers:
         blockers = _collect_symbol_coverage_blockers(mesh)
         assert len(blockers) == 1
         assert blockers[0]["kind"] == "unresolved_required_symbol"
+
+
+class TestCompactReport:
+    def test_full_mesh_integration(self) -> None:
+        cr = ChannelResult(channel="lint", status="pass", severity="none", findings=[])
+        mesh = _make_mesh([cr])
+        report = format_mesh_report_compact(mesh)
+        assert "run_id" in report
+        assert "lint" in report["channels"]

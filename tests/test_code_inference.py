@@ -8,13 +8,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from lintgate.code_inference import (
+    _FRAMEWORK_MAP,
     _MAX_CONFIDENCE,
+    _SKIP_DIRS,
+    _claim,
+    _collect_py_files,
+    _extract_first_paragraph,
+    _infer_from_commit_messages,
     _infer_from_directory_structure,
     _infer_from_docstrings,
     _infer_from_imports,
     _infer_from_pyproject,
     _infer_from_readme,
     _infer_from_test_patterns,
+    _read_text_safe,
+    _scan_test_dir,
     infer_from_code,
 )
 
@@ -340,3 +348,68 @@ def test_all_claims_have_inferred_provenance(tmp_path: Path) -> None:
         assert claim.confidence <= _MAX_CONFIDENCE, (
             f"Claim '{claim.text}' confidence {claim.confidence} exceeds cap {_MAX_CONFIDENCE}"
         )
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestInternalHelpers:
+    def test_claim_basic(self) -> None:
+        c = _claim("some text", "src")
+        assert c.text == "some text"
+        assert c.source == "src"
+        assert c.confidence == 0.5
+        assert c.provenance == "inferred"
+
+    def test_claim_capped(self) -> None:
+        c = _claim("x", "s", confidence=0.9)
+        assert c.confidence == _MAX_CONFIDENCE
+
+    def test_read_text_safe_existing(self, tmp_path: Path) -> None:
+        f = tmp_path / "hello.txt"
+        f.write_text("content", encoding="utf-8")
+        assert _read_text_safe(f) == "content"
+
+    def test_read_text_safe_missing(self, tmp_path: Path) -> None:
+        assert _read_text_safe(tmp_path / "nope.txt") == ""
+
+    def test_collect_py_files_basic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text("x = 1")
+        (tmp_path / "b.txt").write_text("not python")
+        result = _collect_py_files(str(tmp_path))
+        assert len(result) == 1
+
+    def test_extract_first_paragraph_skips_badges(self) -> None:
+        lines = ["![badge](url)", "[![ci](link)](href)", "<!-- comment -->", "Real text."]
+        assert _extract_first_paragraph(lines) == "Real text."
+
+    def test_scan_test_dir_detects_conftest(self, tmp_path: Path) -> None:
+        td = tmp_path / "tests"
+        td.mkdir()
+        (td / "conftest.py").write_text("import pytest\n")
+        flags = _scan_test_dir(td)
+        assert flags["conftest"] is True
+        assert flags["pytest"] is True
+
+
+class TestCommitInference:
+    def test_conventional_commits_detected(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        stdout = "\n".join(
+            [f"abc{i:04d} {'feat' if i % 2 == 0 else 'fix'}: something {i}" for i in range(10)]
+        )
+        with patch("lintgate.code_inference.subprocess.run") as mock_run:
+            mock_run.return_value = type("R", (), {"returncode": 0, "stdout": stdout})()
+            claims = _infer_from_commit_messages(str(tmp_path))
+        assert any("conventional commit" in c.text.lower() for c in claims)
+
+
+class TestConstantsSanity:
+    def test_skip_dirs(self) -> None:
+        assert ".git" in _SKIP_DIRS
+        assert "__pycache__" in _SKIP_DIRS
+
+    def test_framework_map(self) -> None:
+        assert "fastapi" in _FRAMEWORK_MAP
+        assert "pytest" in _FRAMEWORK_MAP

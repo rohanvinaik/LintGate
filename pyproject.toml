@@ -47,6 +47,11 @@ full = [
 mcp = [
     "mcp>=1.0",
 ]
+# Algebra (Property testing and contracts)
+algebra = [
+    "hypothesis>=6.0",
+    "icontract>=2.6"
+]
 # Development
 dev = [
     "lintgate[full,mcp]",

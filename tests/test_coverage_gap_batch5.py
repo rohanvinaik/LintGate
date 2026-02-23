@@ -92,18 +92,30 @@ def test_format_mesh_report_quota_zero_skips() -> None:
 
     # Finding A: will be "new" (not in prev_index) — gives quota_by_fp an entry
     new_finding = LintIssue(
-        file="new.py", line=1, kind="E999", message="new issue",
-        severity="warning", linter="ruff",
+        file="new.py",
+        line=1,
+        kind="E999",
+        message="new issue",
+        severity="warning",
+        linter="ruff",
     )
     # Finding B: will be "still_active" (in prev_index with same severity)
     # Its fp won't be in quota_by_fp → allowed=0 → continue at line 186
     old_finding = LintIssue(
-        file="old.py", line=1, kind="E001", message="old issue",
-        severity="warning", linter="ruff",
+        file="old.py",
+        line=1,
+        kind="E001",
+        message="old issue",
+        severity="warning",
+        linter="ruff",
     )
     cr = ChannelResult(
-        channel="lint", status="fail", severity="warning",
-        findings=[old_finding, new_finding], metrics={}, duration_ms=1,
+        channel="lint",
+        status="fail",
+        severity="warning",
+        findings=[old_finding, new_finding],
+        metrics={},
+        duration_ms=1,
     )
     mesh = MeshResult(channel_results=[cr], duration_ms=1)
 
@@ -127,8 +139,13 @@ def test_path_a_transition_logs_metric() -> None:
 
     with _path_a_env(hs, tracker, update_mode_rv="entered") as mocks:
         _update_habit_mode_path_a(
-            _make_cp_config(), session, compass,
-            "/tmp/test", "Bash", "pytest", "ok",
+            _make_cp_config(),
+            session,
+            compass,
+            "/tmp/test",
+            "Bash",
+            "pytest",
+            "ok",
         )
         mocks["log_metric"].assert_called_once()
         call_data = mocks["log_metric"].call_args[0][0]
@@ -150,8 +167,13 @@ def test_path_a_compaction_snapshot_saved() -> None:
 
     with _path_a_env(hs, tracker, compaction=(True, fake_snapshot)):
         _update_habit_mode_path_a(
-            _make_cp_config(auto_detect=False), session, compass,
-            "/tmp/test", "Read", "f.py", "ok",
+            _make_cp_config(auto_detect=False),
+            session,
+            compass,
+            "/tmp/test",
+            "Read",
+            "f.py",
+            "ok",
         )
         assert session.behavior_compass["habit_last_snapshot"] == fake_snapshot
 
@@ -180,8 +202,12 @@ def test_legacy_pipeline_tier_skip_exits_clean() -> None:
     ):
         with pytest.raises(SystemExit):
             _run_legacy_pipeline(
-                tool_name="Edit", tool_input={}, tool_output="ok",
-                cwd="/tmp/test", config=mock_config, start=0.0,
+                tool_name="Edit",
+                tool_input={},
+                tool_output="ok",
+                cwd="/tmp/test",
+                config=mock_config,
+                start=0.0,
             )
         mock_exit.assert_called_once()
 
@@ -234,6 +260,7 @@ def test_prediction_register_accuracy_present() -> None:
             def decorator(func):
                 tools[kwargs.get("name", func.__name__)] = func
                 return func
+
             return decorator
 
         mcp.tool = capture_tool
@@ -297,6 +324,7 @@ def test_prediction_register_accuracy_note_and_outcomes() -> None:
             def decorator(func):
                 tools[kwargs.get("name", func.__name__)] = func
                 return func
+
             return decorator
 
         mcp.tool = capture_tool

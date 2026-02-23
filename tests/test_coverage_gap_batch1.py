@@ -236,9 +236,7 @@ class TestFindFileCoverageValueErrors:
             "lintgate.channels.symbol_coverage.os.path.relpath",
             side_effect=ValueError("different drives"),
         ):
-            result = _find_file_coverage(
-                "/proj/src/mod.py", coverage_data, "/proj"
-            )
+            result = _find_file_coverage("/proj/src/mod.py", coverage_data, "/proj")
 
         # Should still find via the normpath(join()) fallback
         assert result is cov
@@ -272,9 +270,7 @@ class TestFindFileCoverageValueErrors:
                 side_effect=patched_join,
             ),
         ):
-            result = _find_file_coverage(
-                "/proj/src/mod.py", coverage_data, "/proj"
-            )
+            result = _find_file_coverage("/proj/src/mod.py", coverage_data, "/proj")
 
         # Should return None after all fallbacks fail
         assert result is None

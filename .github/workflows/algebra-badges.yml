@@ -5,11 +5,13 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   algebra_badges:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       
@@ -23,13 +25,20 @@ jobs:
           pip install uv
           uv pip system install -e .[full]
           
-      - name: Count pure functions
-        id: purity
+      - name: Extract project metrics
+        id: metrics
         run: |
-          # Run the performance channel and grep the JSON for counts, or mock
-          # This is a placeholder standard to show properties proven
-          echo "PROPERTIES_PROVEN=12" >> $GITHUB_ENV
-          echo "PURE_FUNCTIONS=45" >> $GITHUB_ENV
+          python - <<'PY'
+          import glob, os
+          from lintgate.linters.performance_checks.manifest import build_manifest
+          py_files = sorted(glob.glob("lintgate/**/*.py", recursive=True))
+          manifest = build_manifest(".", py_files)
+          props_total = sum(manifest.property_distribution.values())
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"PURE_FUNCTIONS={manifest.pure_count}\n")
+              fh.write(f"PROPERTIES_PROVEN={props_total}\n")
+          print(f"Pure: {manifest.pure_count}, Properties: {props_total}")
+          PY
           
       - name: Generate Purity Badge
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2

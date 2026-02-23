@@ -568,9 +568,7 @@ def test_reset_project_state_no_dirs(tmp_path: Path) -> None:
 def test_reset_project_state_clears_habit_files(tmp_path: Path) -> None:
     import hashlib
 
-    project_hash = hashlib.sha256(
-        str(tmp_path).encode()
-    ).hexdigest()[:12]
+    project_hash = hashlib.sha256(str(tmp_path).encode()).hexdigest()[:12]
 
     fake_home = tmp_path / "fake_home"
     habit_dir = fake_home / ".lintgate" / "habit_state"

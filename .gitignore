@@ -73,3 +73,5 @@ CONVENTIONS.md
 .qlty/out/
 .qlty/plugin_cachedir/
 .qlty/results/
+bulk_test_gen.py
+tests/test_*_manual.py

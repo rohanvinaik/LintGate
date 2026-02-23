@@ -8,8 +8,8 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/rohanvinaik/LintGate/badge)](https://securityscorecards.dev/viewer/?uri=github.com/rohanvinaik/LintGate)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+![Mutation Score](https://raw.githubusercontent.com/rohanvinaik/LintGate/main/.github/badges/mutation.svg)
+[![Benchmark](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml)
 <!-- lintgate:quality-badges:end -->
 
 An MCP server for real-time code quality supervision — built entirely through vibe coding by a biochemist with no formal CS training.
@@ -57,6 +57,8 @@ The core mechanism, borrowed from how good instruments work: **multiple cheap, l
 **The ControlPlane** runs 6 independent channels in parallel: lint, tests, deps, git, behavior, structure. A coherence engine reads the pattern of agreement and disagreement across channels and computes a state — stable, isolated, coupled, systemic, degraded. The state tells you the *character* of your problems, not just the count. When three channels pass and one fails, the passing channels are actively narrowing your problem space.
 
 **The behavioral compass** tracks the agent's reasoning strategy in real time: live hypotheses, approach history, intent patterns, coverage metrics. When the strategy drifts — retrying failed approaches, ignoring discovered constraints, acting without verifying — the behavior channel catches it and intervenes *before* the bad reasoning produces bad code. Nine detection rules, deterministic scoring, no LLM calls.
+
+**The Algebraic Properties Bridge** performs formal analysis of your codebase's mathematical structure. It detects function purity (side-effect isolation), classifies algebraic properties (idempotency, commutativity, associativity), and identifies optimization opportunities like trivially safe parallelization or zero-invalidation caching. It bridges structural analysis with formal verification.
 
 ---
 

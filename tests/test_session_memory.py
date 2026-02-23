@@ -7,16 +7,21 @@ import time
 from unittest.mock import patch
 
 from lintgate.controlplane.session_memory import (
+    BehaviorEventData,
     SessionMemory,
     SessionSnapshot,
     _project_hash,
     _session_path,
+    detect_applied_repairs,
     expire_session,
+    get_habit_mode_active,
     get_or_create_session,
+    load_behavior_compass,
     load_session,
     propose_repairs,
     record_mesh_run,
     report_repair_outcome,
+    save_behavior_compass,
     save_session,
 )
 from lintgate.controlplane.types import (
@@ -476,3 +481,44 @@ class TestHelpers:
             path = _session_path("/test/proj")
             assert str(path).startswith(str(tmp_path))
             assert path.suffix == ".json"
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestBehaviorEventDataRoundTrip:
+    def test_populated_round_trip(self) -> None:
+        bed = BehaviorEventData(
+            action_type="bash",
+            command_signature="pytest:run",
+            exit_code=1,
+            behavior_alerts=["approach_cycling"],
+        )
+        d = bed.to_dict()
+        restored = BehaviorEventData.from_dict(d)
+        assert restored.action_type == "bash"
+        assert restored.exit_code == 1
+
+
+class TestLoadSaveBehaviorCompass:
+    def test_round_trip(self) -> None:
+        from lintgate.controlplane.behavior_types import BehaviorCompass
+
+        session = SessionMemory()
+        compass = BehaviorCompass(hypothesis_version=7, uncertainty_zones=["env"])
+        save_behavior_compass(session, compass)
+        restored = load_behavior_compass(session)
+        assert restored.hypothesis_version == 7
+        assert restored.uncertainty_zones == ["env"]
+
+
+class TestGetHabitModeActive:
+    def test_active_true(self) -> None:
+        session = SessionMemory(behavior_compass={"habit_mode": {"active": True}})
+        assert get_habit_mode_active(session) is True
+
+
+class TestDetectAppliedRepairs:
+    def test_no_snapshots_returns_empty(self) -> None:
+        session = SessionMemory()
+        assert detect_applied_repairs(session, []) == []

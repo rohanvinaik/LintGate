@@ -216,9 +216,16 @@ def _build_channels(cp_config: Any) -> list[Channel]:
     from lintgate.channels.dependency_channel import DependencyChannel
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
+    from lintgate.channels.performance_channel import PerformanceChannel
     from lintgate.channels.test_channel import TestChannel
 
-    channels: list[Channel] = [LintChannel(), TestChannel(), DependencyChannel(), GitChannel()]
+    channels: list[Channel] = [
+        LintChannel(),
+        TestChannel(),
+        DependencyChannel(),
+        GitChannel(),
+        PerformanceChannel(),
+    ]
     if cp_config.channel_enabled("structure"):
         from lintgate.channels.structure_channel import StructureChannel
 

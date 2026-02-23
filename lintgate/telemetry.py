@@ -293,6 +293,7 @@ _ALL_TRACKED_FEATURES = {
     "bootstrap",
     "habit_mode",
     "token_tracking",
+    "performance_analysis",
 }
 
 
@@ -529,4 +530,60 @@ def compute_token_economics_summary(
             else 0.0
         ),
         "runtime_write_dynamic_status": runtime_write_dynamic_status,
+    }
+
+
+def compute_performance_economics_summary(
+    project_root: str | None = None,
+    period: str = "7d",
+) -> dict[str, Any]:
+    """Aggregate performance and algebraic property telemetry.
+
+    Reads performance_analysis events to track:
+    - Pure functions detected
+    - Algebraic properties proven
+    - Performance findings raised
+
+    Args:
+        project_root: Filter to a specific project (None = all projects).
+        period: Time window — "1d", "7d", "30d", or "all".
+
+    Returns:
+        Dict with performance economics summary.
+    """
+    days = _PERIOD_MAP.get(period, 7)
+    entries = _load_jsonl_entries(days, project_root, "performance_analysis")
+
+    if not entries:
+        return {
+            "period": period,
+            "has_data": False,
+            "total_runs": 0,
+            "total_pure_functions": 0,
+            "total_properties_proven": 0,
+            "total_performance_issues": 0,
+            "avg_analysis_time_ms": 0.0,
+        }
+
+    total = len(entries)
+    pure_funcs = sum(int(e.get("pure_functions", 0)) for e in entries)
+    properties = sum(int(e.get("properties_proven", 0)) for e in entries)
+    issues = sum(int(e.get("findings_count", 0)) for e in entries)
+
+    # Safely extract analysis times, ignoring missing/invalid values
+    times = []
+    for e in entries:
+        if "duration_ms" in e and isinstance(e["duration_ms"], (int, float)):
+            times.append(float(e["duration_ms"]))
+
+    avg_time = round(sum(times) / len(times), 1) if times else 0.0
+
+    return {
+        "period": period,
+        "has_data": True,
+        "total_runs": total,
+        "total_pure_functions": pure_funcs,
+        "total_properties_proven": properties,
+        "total_performance_issues": issues,
+        "avg_analysis_time_ms": avg_time,
     }
