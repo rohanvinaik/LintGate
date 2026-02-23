@@ -143,6 +143,7 @@ jobs:
         if: steps.parse.outputs.skip != 'true'
         run: |
           cp .github/badges/mutation.svg /tmp/mutation.svg
+          rm -rf .github/badges
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
