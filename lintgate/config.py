@@ -77,9 +77,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     if isinstance(coherence_raw, dict):
         weights = coherence_raw.get("channel_weights")
         if isinstance(weights, dict):
-            cp_config.coherence_channel_weights = {
-                str(k): float(v) for k, v in weights.items()
-            }
+            cp_config.coherence_channel_weights = {str(k): float(v) for k, v in weights.items()}
 
     # Parse inquiry config (Architecture of Inquiry features)
     inquiry_raw = cp_raw.get("inquiry", {})

@@ -65,8 +65,12 @@ class TestSelectChannels:
 
     def test_none_channels_uses_all(self):
         registry = {
-            "lint": "L", "tests": "T", "deps": "D",
-            "git": "G", "behavior": "B", "structure": "S",
+            "lint": "L",
+            "tests": "T",
+            "deps": "D",
+            "git": "G",
+            "behavior": "B",
+            "structure": "S",
         }
         active, requested, unknown = _select_channels(None, registry)
         assert len(active) == 6
@@ -92,17 +96,13 @@ class TestCollectFilesForEvent:
         assert result == ["changed.py"]
 
     def test_falls_back_to_all_files(self):
-        helpers = _stub_helpers(
-            _collect_python_files=lambda _r: ["all1.py", "all2.py"]
-        )
+        helpers = _stub_helpers(_collect_python_files=lambda _r: ["all1.py", "all2.py"])
         # If the import fails, suppress kicks in and fallback triggers
         result = _collect_files_for_event("/tmp", helpers)
         assert result == ["all1.py", "all2.py"]
 
     def test_caps_at_50(self):
-        helpers = _stub_helpers(
-            _collect_python_files=lambda _r: [f"f{i}.py" for i in range(100)]
-        )
+        helpers = _stub_helpers(_collect_python_files=lambda _r: [f"f{i}.py" for i in range(100)])
         result = _collect_files_for_event("/tmp", helpers)
         assert len(result) == 50
 
@@ -140,11 +140,15 @@ class TestInjectBehaviorPriors:
         fake_gp.session_count = 10
         fake_gp.computed_bias_adjustments = {"sig": 0.1}
 
-        with mock.patch(
-            "lintgate.controlplane.global_behavior_profile.load_global_profile",
-            return_value=fake_gp,
-        ), mock.patch(
-            "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3,
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=fake_gp,
+            ),
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE",
+                3,
+            ),
         ):
             _inject_behavior_priors(event, session, cfg)
 
@@ -176,12 +180,15 @@ class TestPersistBehaviorCompassDelta:
         cp_config.global_memory_enabled = False
 
         fake_compass = mock.MagicMock()
-        with mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass",
-            return_value=fake_compass,
-        ) as load_bc, mock.patch(
-            "lintgate.controlplane.session_memory.save_behavior_compass",
-        ) as save_bc:
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.load_behavior_compass",
+                return_value=fake_compass,
+            ) as load_bc,
+            mock.patch(
+                "lintgate.controlplane.session_memory.save_behavior_compass",
+            ) as save_bc,
+        ):
             _persist_behavior_compass_delta(cr, session, cp_config)
         load_bc.assert_called_once_with(session)
         save_bc.assert_called_once_with(session, fake_compass)
@@ -214,14 +221,18 @@ class TestPersistGlobalProfileDelta:
         cp.global_memory_ttl_days = 90
 
         fake_gp = mock.MagicMock()
-        with mock.patch(
-            "lintgate.controlplane.global_behavior_profile.load_global_profile",
-            return_value=fake_gp,
-        ), mock.patch(
-            "lintgate.controlplane.global_behavior_profile.apply_session_delta",
-        ) as apply_fn, mock.patch(
-            "lintgate.controlplane.global_behavior_profile.save_global_profile",
-        ) as save_fn:
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=fake_gp,
+            ),
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.apply_session_delta",
+            ) as apply_fn,
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.save_global_profile",
+            ) as save_fn,
+        ):
             _persist_global_profile_delta(cr, session, cp)
         apply_fn.assert_called_once_with(fake_gp, {"key": "val"}, session_id="s1")
         save_fn.assert_called_once_with(fake_gp)
@@ -245,13 +256,17 @@ class TestPersistSessionAfterMesh:
         cp_config = mock.MagicMock()
         cp_config.global_memory_enabled = False
 
-        with mock.patch(
-            "lintgate.controlplane.session_memory.record_mesh_run",
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ), mock.patch(
-            "mcp_tools.controlplane_tools._persist_behavior_compass_delta",
-        ) as persist_bc:
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.record_mesh_run",
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ),
+            mock.patch(
+                "mcp_tools.controlplane_tools._persist_behavior_compass_delta",
+            ) as persist_bc,
+        ):
             _persist_session_after_mesh(session, mesh_result, {}, cp_config)
         persist_bc.assert_called_once_with(behavior_cr, session, cp_config)
 
@@ -287,11 +302,7 @@ class TestFilterChannelsAndExtract:
 
     def test_extract_findings_truncates(self):
         details = {
-            "channels": {
-                "lint": {
-                    "findings": [{"severity": "warning", "i": i} for i in range(5)]
-                }
-            }
+            "channels": {"lint": {"findings": [{"severity": "warning", "i": i} for i in range(5)]}}
         }
         result = _extract_findings(details, None, None, max_issues=2)
         assert result["total_matching"] == 5
@@ -308,9 +319,7 @@ class TestImplGetDetails:
             mock.patch("lintgate.state.load_controlplane_run", return_value=None),
             pytest.raises(ValueError, match="No ControlPlane run found"),
         ):
-            _impl_controlplane_get_details(
-                "missing", None, None, 10, None, _stub_helpers()
-            )
+            _impl_controlplane_get_details("missing", None, None, 10, None, _stub_helpers())
 
     def test_channel_filter_restricts_findings(self):
         """Branch: channel filter limits findings to a single channel."""
@@ -376,9 +385,7 @@ class TestImplGetDetails:
             },
         }
         with mock.patch("lintgate.state.load_controlplane_run", return_value=details):
-            raw = _impl_controlplane_get_details(
-                "r1", None, None, 10, ["repairs"], _stub_helpers()
-            )
+            raw = _impl_controlplane_get_details("r1", None, None, 10, ["repairs"], _stub_helpers())
         parsed = json.loads(raw)
         assert len(parsed["repairs"]) == 1
         assert parsed["repairs"][0]["action_id"] == "fix1"
@@ -430,7 +437,8 @@ class TestConfigAndSessionStatus:
         fake_session.coherence_trajectory = ["stable", "isolated", "stable"]
         fake_session.repair_outcomes = {"r1": "pending", "r2": "applied"}
         fake_session.proposed_constraints = [
-            {"status": "proposed"}, {"status": "accepted"},
+            {"status": "proposed"},
+            {"status": "accepted"},
         ]
         with mock.patch(
             "lintgate.controlplane.session_memory.load_session",
@@ -469,19 +477,35 @@ class TestImplControlplaneRun:
         fake_mesh.coherence.state = "stable"
         fake_compact = {"run_id": "r1"}
 
-        with mock.patch("lintgate.config.load_controlplane_config", return_value=None), \
-             mock.patch("mcp_tools.controlplane_tools._build_channel_registry", return_value={"lint": mock.MagicMock()}), \
-             mock.patch("mcp_tools.controlplane_tools._select_channels", return_value=([mock.MagicMock()], ["lint", "bogus"], ["bogus"])), \
-             mock.patch("mcp_tools.controlplane_tools._collect_files_for_event", return_value=["a.py"]), \
-             mock.patch("mcp_tools.controlplane_tools._build_supervision_event", return_value=mock.MagicMock()), \
-             mock.patch("mcp_tools.controlplane_tools._setup_session", return_value=None), \
-             mock.patch("mcp_tools.controlplane_tools._inject_behavior_priors"), \
-             mock.patch("lintgate.controlplane.runtime.run_mesh", return_value=fake_mesh), \
-             mock.patch("lintgate.controlplane.reporter.build_finding_index", return_value={}), \
-             mock.patch("lintgate.controlplane.reporter.format_mesh_report_compact", return_value=dict(fake_compact)), \
-             mock.patch("mcp_tools.controlplane_tools._persist_session_after_mesh"), \
-             mock.patch("mcp_tools.controlplane_tools._persist_runtime_state"), \
-             mock.patch("mcp_tools.controlplane_tools._save_run_details_for_drilldown"):
+        with (
+            mock.patch("lintgate.config.load_controlplane_config", return_value=None),
+            mock.patch(
+                "mcp_tools.controlplane_tools._build_channel_registry",
+                return_value={"lint": mock.MagicMock()},
+            ),
+            mock.patch(
+                "mcp_tools.controlplane_tools._select_channels",
+                return_value=([mock.MagicMock()], ["lint", "bogus"], ["bogus"]),
+            ),
+            mock.patch(
+                "mcp_tools.controlplane_tools._collect_files_for_event", return_value=["a.py"]
+            ),
+            mock.patch(
+                "mcp_tools.controlplane_tools._build_supervision_event",
+                return_value=mock.MagicMock(),
+            ),
+            mock.patch("mcp_tools.controlplane_tools._setup_session", return_value=None),
+            mock.patch("mcp_tools.controlplane_tools._inject_behavior_priors"),
+            mock.patch("lintgate.controlplane.runtime.run_mesh", return_value=fake_mesh),
+            mock.patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
+            mock.patch(
+                "lintgate.controlplane.reporter.format_mesh_report_compact",
+                return_value=dict(fake_compact),
+            ),
+            mock.patch("mcp_tools.controlplane_tools._persist_session_after_mesh"),
+            mock.patch("mcp_tools.controlplane_tools._persist_runtime_state"),
+            mock.patch("mcp_tools.controlplane_tools._save_run_details_for_drilldown"),
+        ):
             raw = _impl_controlplane_run("/tmp", "lint,bogus", "normal", _stub_helpers())
         parsed = json.loads(raw)
         assert parsed["unknown_channels"] == ["bogus"]

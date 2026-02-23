@@ -37,28 +37,32 @@ class TestGetChangedLineRanges:
             +    replaced
         """)
         with patch("lintgate.channels.symbol_coverage.subprocess.run") as mock_run:
-            mock_run.return_value = type("R", (), {
-                "returncode": 0,
-                "stdout": diff_output,
-                "stderr": "",
-            })()
-            ranges = get_changed_line_ranges(
-                str(tmp_path / "mod.py"), str(tmp_path)
-            )
+            mock_run.return_value = type(
+                "R",
+                (),
+                {
+                    "returncode": 0,
+                    "stdout": diff_output,
+                    "stderr": "",
+                },
+            )()
+            ranges = get_changed_line_ranges(str(tmp_path / "mod.py"), str(tmp_path))
         assert ranges is not None
         assert range(11, 14) in ranges
         assert range(24, 25) in ranges
 
     def test_git_failure_returns_none(self, tmp_path):
         with patch("lintgate.channels.symbol_coverage.subprocess.run") as mock_run:
-            mock_run.return_value = type("R", (), {
-                "returncode": 128,
-                "stdout": "",
-                "stderr": "fatal: not a git repo",
-            })()
-            result = get_changed_line_ranges(
-                str(tmp_path / "mod.py"), str(tmp_path)
-            )
+            mock_run.return_value = type(
+                "R",
+                (),
+                {
+                    "returncode": 128,
+                    "stdout": "",
+                    "stderr": "fatal: not a git repo",
+                },
+            )()
+            result = get_changed_line_ranges(str(tmp_path / "mod.py"), str(tmp_path))
         assert result is None
 
     def test_timeout_returns_none(self, tmp_path):
@@ -66,9 +70,7 @@ class TestGetChangedLineRanges:
 
         with patch("lintgate.channels.symbol_coverage.subprocess.run") as mock_run:
             mock_run.side_effect = sp.TimeoutExpired("git", 10)
-            result = get_changed_line_ranges(
-                str(tmp_path / "mod.py"), str(tmp_path)
-            )
+            result = get_changed_line_ranges(str(tmp_path / "mod.py"), str(tmp_path))
         assert result is None
 
 
@@ -99,19 +101,20 @@ class TestBuildTargetSet:
 
     def test_changed_only_mode(self, tmp_path):
         mod = tmp_path / "mod.py"
-        self._write_py(mod, """\
+        self._write_py(
+            mod,
+            """\
             def unchanged():
                 pass
 
             def changed():
                 return 1
-        """)
+        """,
+        )
         # Mock git diff to show changes only in lines 4-5 (the changed function)
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(4, 6)]
-            targets, unresolved = build_target_set(
-                [str(mod)], str(tmp_path), {"mode": "changed"}
-            )
+            targets, unresolved = build_target_set([str(mod)], str(tmp_path), {"mode": "changed"})
         names = [t.name for t in targets]
         assert "changed" in names
         assert "unchanged" not in names
@@ -119,31 +122,36 @@ class TestBuildTargetSet:
 
     def test_new_file_targets_all(self, tmp_path):
         mod = tmp_path / "new_mod.py"
-        self._write_py(mod, """\
+        self._write_py(
+            mod,
+            """\
             def func_a():
                 pass
 
             def func_b():
                 return 1
-        """)
+        """,
+        )
         # git diff returns None for new/untracked files
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = None
-            targets, _ = build_target_set(
-                [str(mod)], str(tmp_path), {"mode": "changed"}
-            )
+            targets, _ = build_target_set([str(mod)], str(tmp_path), {"mode": "changed"})
         names = [t.name for t in targets]
         assert "func_a" in names
         assert "func_b" in names
 
     def test_required_symbols(self, tmp_path):
         mod = tmp_path / "pkg" / "mod.py"
-        self._write_py(mod, """\
+        self._write_py(
+            mod,
+            """\
             def target_func():
                 pass
-        """)
+        """,
+        )
         targets, unresolved = build_target_set(
-            [], str(tmp_path),
+            [],
+            str(tmp_path),
             {"mode": "changed", "required_symbols": ["pkg/mod.py::target_func"]},
         )
         assert len(targets) == 1
@@ -152,7 +160,8 @@ class TestBuildTargetSet:
 
     def test_unresolved_required_symbols(self, tmp_path):
         targets, unresolved = build_target_set(
-            [], str(tmp_path),
+            [],
+            str(tmp_path),
             {"mode": "changed", "required_symbols": ["nonexistent.py::func"]},
         )
         assert targets == []
@@ -160,12 +169,16 @@ class TestBuildTargetSet:
 
     def test_unresolved_symbol_in_existing_file(self, tmp_path):
         mod = tmp_path / "mod.py"
-        self._write_py(mod, """\
+        self._write_py(
+            mod,
+            """\
             def real_func():
                 pass
-        """)
+        """,
+        )
         targets, unresolved = build_target_set(
-            [], str(tmp_path),
+            [],
+            str(tmp_path),
             {"mode": "changed", "required_symbols": ["mod.py::ghost_func"]},
         )
         assert targets == []
@@ -173,7 +186,8 @@ class TestBuildTargetSet:
 
     def test_invalid_required_symbol_format(self, tmp_path):
         targets, unresolved = build_target_set(
-            [], str(tmp_path),
+            [],
+            str(tmp_path),
             {"mode": "changed", "required_symbols": ["no_separator"]},
         )
         assert "no_separator" in unresolved
@@ -183,26 +197,26 @@ class TestBuildTargetSet:
         txt.write_text("hello")
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 2)]
-            targets, _ = build_target_set(
-                [str(txt)], str(tmp_path), {"mode": "changed"}
-            )
+            targets, _ = build_target_set([str(txt)], str(tmp_path), {"mode": "changed"})
         assert targets == []
 
     def test_diff_base_override(self, tmp_path):
         mod = tmp_path / "mod.py"
-        self._write_py(mod, """\
+        self._write_py(
+            mod,
+            """\
             def func():
                 pass
-        """)
+        """,
+        )
         with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             build_target_set(
-                [str(mod)], str(tmp_path),
+                [str(mod)],
+                str(tmp_path),
                 {"mode": "changed", "diff_base": "origin/main"},
             )
-            mock_diff.assert_called_once_with(
-                str(mod), str(tmp_path), diff_base="origin/main"
-            )
+            mock_diff.assert_called_once_with(str(mod), str(tmp_path), diff_base="origin/main")
 
 
 # ── TestWaivers ──────────────────────────────────────────────────────────

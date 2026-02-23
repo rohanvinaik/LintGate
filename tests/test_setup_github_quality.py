@@ -495,13 +495,15 @@ class TestGenerateSecurityWorkflow:
 class TestGeneratePrePushHook:
     """Tests for _generate_pre_push_hook."""
 
-    def test_contains_primary_and_fallback_checks(self) -> None:
+    def test_contains_ci_mirror_checks(self) -> None:
         content = _generate_pre_push_hook()
         assert "qlty check --all" in content
-        assert "ruff check ." in content
+        assert "ruff check ." not in content  # no fallback — qlty is required
+        assert "gitleaks detect" in content
         assert "python -m pytest" in content
         assert "--cov-report=json:coverage.json" in content
         assert "python -m lintgate.symbol_gate_runner" in content
+        assert "pip-audit" in content
 
     def test_contains_optional_sonar_gate_check(self) -> None:
         content = _generate_pre_push_hook()

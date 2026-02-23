@@ -20,28 +20,14 @@ else
   exit 1
 fi
 
-if command -v qlty >/dev/null 2>&1; then
-  qlty check --all
-else
-  echo "[lintgate] qlty not found; using fallback checks (ruff)"
-  if command -v ruff >/dev/null 2>&1; then
-    ruff check .
-  elif python -c 'import ruff' >/dev/null 2>&1; then
-    python -m ruff check .
-  else
-    echo "[lintgate] warning: ruff not installed; skipping lint step."
-  fi
-fi
+# qlty analysis (mirrors CI qlty.yml)
+qlty check --all
 
 # Secrets scan (mirrors CI gitleaks check)
-if command -v gitleaks >/dev/null 2>&1; then
-  echo "[lintgate] scanning for secrets (gitleaks)"
-  if ! gitleaks detect --source . --no-banner --redact; then
-    echo "[lintgate] BLOCKED: secrets detected — fix before pushing."
-    exit 1
-  fi
-else
-  echo "[lintgate] warning: gitleaks not installed; skipping secrets scan."
+echo "[lintgate] scanning for secrets (gitleaks)"
+if ! gitleaks detect --source . --no-banner --redact; then
+  echo "[lintgate] BLOCKED: secrets detected — fix before pushing."
+  exit 1
 fi
 
 if [ -d tests ] || [ -d test ]; then
@@ -64,6 +50,14 @@ if [ -d tests ] || [ -d test ]; then
       --project-root "$REPO_ROOT" \
       --coverage-json coverage.json \
       --head HEAD --surface ci
+  fi
+fi
+
+# pip-audit (mirrors CI security-lite.yml)
+if command -v pip-audit >/dev/null 2>&1; then
+  if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then
+    echo "[lintgate] running pip-audit (supply-chain scan)"
+    pip-audit
   fi
 fi
 

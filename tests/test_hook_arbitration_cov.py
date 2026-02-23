@@ -92,12 +92,17 @@ class TestInjectDispositions:
         session = {"event_counter": 10, "_disposition_cooldowns": {}}
         fired = inject_dispositions(session, True, 0.8, 0.60, 0, 0.7)
         assert len(fired) >= 1
-        assert any("compact" in d["disposition"].lower() or "pressure" in d["disposition"].lower() for d in fired)
+        assert any(
+            "compact" in d["disposition"].lower() or "pressure" in d["disposition"].lower()
+            for d in fired
+        )
 
     def test_habit_enter_suggested(self):
         session = {"event_counter": 25, "_disposition_cooldowns": {}}
         fired = inject_dispositions(session, False, 0.75, 0.0, 0, 0.70)
-        assert any("habit" in d["disposition"].lower() or "declare_mode" in d["tool_hint"] for d in fired)
+        assert any(
+            "habit" in d["disposition"].lower() or "declare_mode" in d["tool_hint"] for d in fired
+        )
 
     def test_constraint_reorient(self):
         session = {"event_counter": 5, "_disposition_cooldowns": {}}

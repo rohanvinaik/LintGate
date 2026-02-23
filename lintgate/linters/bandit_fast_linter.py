@@ -34,10 +34,18 @@ if TYPE_CHECKING:
 _FAST_TESTS = "B105,B106,B107,B110,B301,B302,B303,B501,B502,B602,B603,B604,B605,B608"
 
 # Directories where B105 (hardcoded password) has low signal
-_B105_LOW_SIGNAL_DIRS = frozenset({
-    "test", "tests", "testing", "docs", "doc",
-    "examples", "fixtures", "conftest",
-})
+_B105_LOW_SIGNAL_DIRS = frozenset(
+    {
+        "test",
+        "tests",
+        "testing",
+        "docs",
+        "doc",
+        "examples",
+        "fixtures",
+        "conftest",
+    }
+)
 
 
 def _is_test_or_docs_context(filepath: str, project_root: str) -> bool:
@@ -53,6 +61,7 @@ def _is_test_or_docs_context(filepath: str, project_root: str) -> bool:
         return False
     parts = Path(rel).parts
     return any(p.lower() in _B105_LOW_SIGNAL_DIRS for p in parts[:-1])
+
 
 # Bandit severity → LintGate severity (same mapping as bandit_linter.py)
 _SEVERITY_MAP = {
@@ -121,8 +130,10 @@ class BanditFastLinter(BaseLinter):
             filename = item.get("filename")
 
             # B105 scope-aware filtering: suppress in test/docs only
-            if test_id == "B105" and filename and _is_test_or_docs_context(
-                filename, ctx.project_root
+            if (
+                test_id == "B105"
+                and filename
+                and _is_test_or_docs_context(filename, ctx.project_root)
             ):
                 continue
 

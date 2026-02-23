@@ -259,7 +259,9 @@ def _log_controlplane_metric(
     log_metric(metric_data)
 
 
-def _finalize_report(report: dict, advisory: str | None, session: Any, cp_config: Any) -> tuple[dict, dict]:
+def _finalize_report(
+    report: dict, advisory: str | None, session: Any, cp_config: Any
+) -> tuple[dict, dict]:
     """Apply advisory, arbitration, and strip internal telemetry from report."""
     from lintgate.hook_arbitration import arbitrate_output
 

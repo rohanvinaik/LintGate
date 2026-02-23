@@ -200,7 +200,9 @@ def test_badge_fingerprint_count_is_8() -> None:
 def test_is_git_repo_subprocess_timeout(tmp_path: Path) -> None:
     """_is_git_repo returns False when subprocess times out (line 146)."""
     # No .git dir, so it falls through to subprocess; mock that to timeout
-    with patch("lintgate.quality_infra.subprocess.run", side_effect=subprocess.TimeoutExpired("git", 2)):
+    with patch(
+        "lintgate.quality_infra.subprocess.run", side_effect=subprocess.TimeoutExpired("git", 2)
+    ):
         assert _is_git_repo(str(tmp_path)) is False
 
 
@@ -236,8 +238,10 @@ def test_has_github_remote_empty_stdout(tmp_path: Path) -> None:
 def test_has_github_remote_no_github_url(tmp_path: Path) -> None:
     """_has_github_remote returns False when remote is not GitHub (line 162)."""
     mock_result = subprocess.CompletedProcess(
-        args=[], returncode=0,
-        stdout="origin\tgit@gitlab.com:user/repo.git (fetch)\n", stderr="",
+        args=[],
+        returncode=0,
+        stdout="origin\tgit@gitlab.com:user/repo.git (fetch)\n",
+        stderr="",
     )
     with patch("lintgate.quality_infra.subprocess.run", return_value=mock_result):
         assert _has_github_remote(str(tmp_path)) is False
@@ -246,8 +250,10 @@ def test_has_github_remote_no_github_url(tmp_path: Path) -> None:
 def test_has_github_remote_with_github_url(tmp_path: Path) -> None:
     """_has_github_remote returns True when remote is GitHub."""
     mock_result = subprocess.CompletedProcess(
-        args=[], returncode=0,
-        stdout="origin\tgit@github.com:user/repo.git (fetch)\n", stderr="",
+        args=[],
+        returncode=0,
+        stdout="origin\tgit@github.com:user/repo.git (fetch)\n",
+        stderr="",
     )
     with patch("lintgate.quality_infra.subprocess.run", return_value=mock_result):
         assert _has_github_remote(str(tmp_path)) is True
@@ -255,7 +261,9 @@ def test_has_github_remote_with_github_url(tmp_path: Path) -> None:
 
 def test_has_github_remote_timeout(tmp_path: Path) -> None:
     """_has_github_remote returns False on timeout (lines 163-164)."""
-    with patch("lintgate.quality_infra.subprocess.run", side_effect=subprocess.TimeoutExpired("git", 5)):
+    with patch(
+        "lintgate.quality_infra.subprocess.run", side_effect=subprocess.TimeoutExpired("git", 5)
+    ):
         assert _has_github_remote(str(tmp_path)) is False
 
 

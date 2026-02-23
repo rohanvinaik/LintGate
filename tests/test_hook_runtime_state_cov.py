@@ -134,9 +134,7 @@ class TestRuntimeTargets:
 
 class TestWriteDynamicRuntimeFiles:
     def test_no_targets(self):
-        with mock.patch(
-            "lintgate.renderers.build_default_registry"
-        ) as mock_reg:
+        with mock.patch("lintgate.renderers.build_default_registry") as mock_reg:
             reg = mock_reg.return_value
             reg.detect_runtime_hosts.return_value = []
             reg.detect_host.return_value = None
@@ -145,10 +143,9 @@ class TestWriteDynamicRuntimeFiles:
         assert status == "no_targets"
 
     def test_success(self):
-        with mock.patch(
-            "lintgate.renderers.build_default_registry"
-        ) as mock_reg, mock.patch(
-            "lintgate.renderers.dynamic.write_dynamic_file", return_value=True
+        with (
+            mock.patch("lintgate.renderers.build_default_registry") as mock_reg,
+            mock.patch("lintgate.renderers.dynamic.write_dynamic_file", return_value=True),
         ):
             reg = mock_reg.return_value
             reg.detect_runtime_hosts.return_value = ["claude_code"]
@@ -158,10 +155,9 @@ class TestWriteDynamicRuntimeFiles:
         assert status == "success"
 
     def test_write_failed(self):
-        with mock.patch(
-            "lintgate.renderers.build_default_registry"
-        ) as mock_reg, mock.patch(
-            "lintgate.renderers.dynamic.write_dynamic_file", return_value=False
+        with (
+            mock.patch("lintgate.renderers.build_default_registry") as mock_reg,
+            mock.patch("lintgate.renderers.dynamic.write_dynamic_file", return_value=False),
         ):
             reg = mock_reg.return_value
             reg.detect_runtime_hosts.return_value = ["claude_code"]
@@ -201,24 +197,18 @@ class TestRefreshRuntimeStateWithSession:
         mesh.coherence.state = "stable"
         mesh.channel_results = []
 
-        with mock.patch(
-            "lintgate.runtime_state.build_runtime_state", return_value=runtime
-        ), mock.patch(
-            "lintgate.runtime_state.save_runtime_state_with_meta", return_value=save_result
-        ), mock.patch(
-            "lintgate.write_scheduler.WriteScheduler.from_dict", return_value=scheduler
-        ), mock.patch(
-            "lintgate.write_scheduler.mark_dirty"
-        ), mock.patch(
-            "lintgate.write_scheduler.record_tool_call"
-        ), mock.patch(
-            "lintgate.write_scheduler.should_write", return_value=False
-        ), mock.patch(
-            "lintgate.hook_runtime_state.log_runtime_state_write_metric"
-        ), mock.patch(
-            "lintgate.hook_runtime_state.mesh_finding_counts", return_value=(0, 0)
-        ), mock.patch(
-            "lintgate.hook_runtime_state.mesh_symbol_blocker_count", return_value=0
+        with (
+            mock.patch("lintgate.runtime_state.build_runtime_state", return_value=runtime),
+            mock.patch(
+                "lintgate.runtime_state.save_runtime_state_with_meta", return_value=save_result
+            ),
+            mock.patch("lintgate.write_scheduler.WriteScheduler.from_dict", return_value=scheduler),
+            mock.patch("lintgate.write_scheduler.mark_dirty"),
+            mock.patch("lintgate.write_scheduler.record_tool_call"),
+            mock.patch("lintgate.write_scheduler.should_write", return_value=False),
+            mock.patch("lintgate.hook_runtime_state.log_runtime_state_write_metric"),
+            mock.patch("lintgate.hook_runtime_state.mesh_finding_counts", return_value=(0, 0)),
+            mock.patch("lintgate.hook_runtime_state.mesh_symbol_blocker_count", return_value=0),
         ):
             refresh_runtime_state_with_session(
                 "/tmp", session, mesh_result=mesh, tool_name="Read", trigger="tool_call"
@@ -240,20 +230,16 @@ class TestRefreshRuntimeStateLightweight:
         scheduler = mock.MagicMock()
         scheduler.to_dict.return_value = {"gen": 1}
 
-        with mock.patch(
-            "lintgate.runtime_state.build_runtime_state", return_value=runtime
-        ), mock.patch(
-            "lintgate.runtime_state.save_runtime_state_with_meta", return_value=save_result
-        ), mock.patch(
-            "lintgate.write_scheduler.WriteScheduler.from_dict", return_value=scheduler
-        ), mock.patch(
-            "lintgate.write_scheduler.mark_dirty"
-        ), mock.patch(
-            "lintgate.write_scheduler.record_tool_call"
-        ), mock.patch(
-            "lintgate.write_scheduler.should_write", return_value=False
-        ), mock.patch(
-            "lintgate.hook_runtime_state.log_runtime_state_write_metric"
+        with (
+            mock.patch("lintgate.runtime_state.build_runtime_state", return_value=runtime),
+            mock.patch(
+                "lintgate.runtime_state.save_runtime_state_with_meta", return_value=save_result
+            ),
+            mock.patch("lintgate.write_scheduler.WriteScheduler.from_dict", return_value=scheduler),
+            mock.patch("lintgate.write_scheduler.mark_dirty"),
+            mock.patch("lintgate.write_scheduler.record_tool_call"),
+            mock.patch("lintgate.write_scheduler.should_write", return_value=False),
+            mock.patch("lintgate.hook_runtime_state.log_runtime_state_write_metric"),
         ):
             result = refresh_runtime_state_lightweight(
                 "/tmp", tool_name="Read", trigger="tool_call", scheduler_dict={"gen": 0}
@@ -278,27 +264,22 @@ class TestRefreshRuntimeStateLightweight:
         mesh.coherence.state = "coupled"
         mesh.channel_results = []
 
-        with mock.patch(
-            "lintgate.runtime_state.build_runtime_state", return_value=runtime
-        ), mock.patch(
-            "lintgate.runtime_state.save_runtime_state_with_meta", return_value=save_result
-        ), mock.patch(
-            "lintgate.write_scheduler.WriteScheduler.from_dict", return_value=scheduler
-        ), mock.patch(
-            "lintgate.write_scheduler.mark_dirty"
-        ), mock.patch(
-            "lintgate.write_scheduler.should_write", return_value=True
-        ), mock.patch(
-            "lintgate.hook_runtime_state.write_dynamic_runtime_files",
-            return_value=(True, "success"),
-        ), mock.patch(
-            "lintgate.write_scheduler.record_write"
-        ), mock.patch(
-            "lintgate.hook_runtime_state.log_runtime_state_write_metric"
-        ), mock.patch(
-            "lintgate.hook_runtime_state.mesh_finding_counts", return_value=(1, 2)
-        ), mock.patch(
-            "lintgate.hook_runtime_state.mesh_symbol_blocker_count", return_value=0
+        with (
+            mock.patch("lintgate.runtime_state.build_runtime_state", return_value=runtime),
+            mock.patch(
+                "lintgate.runtime_state.save_runtime_state_with_meta", return_value=save_result
+            ),
+            mock.patch("lintgate.write_scheduler.WriteScheduler.from_dict", return_value=scheduler),
+            mock.patch("lintgate.write_scheduler.mark_dirty"),
+            mock.patch("lintgate.write_scheduler.should_write", return_value=True),
+            mock.patch(
+                "lintgate.hook_runtime_state.write_dynamic_runtime_files",
+                return_value=(True, "success"),
+            ),
+            mock.patch("lintgate.write_scheduler.record_write"),
+            mock.patch("lintgate.hook_runtime_state.log_runtime_state_write_metric"),
+            mock.patch("lintgate.hook_runtime_state.mesh_finding_counts", return_value=(1, 2)),
+            mock.patch("lintgate.hook_runtime_state.mesh_symbol_blocker_count", return_value=0),
         ):
             result = refresh_runtime_state_lightweight(
                 "/tmp", mesh_result=mesh, tool_name="Bash", tool_input={"command": "pytest"}

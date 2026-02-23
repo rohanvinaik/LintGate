@@ -79,12 +79,15 @@ class TestPersistRuntimeState:
         mesh.coherence.state = "isolated"
 
         fake_rt = mock.MagicMock()
-        with mock.patch(
-            "lintgate.runtime_state.build_runtime_state",
-            return_value=fake_rt,
-        ), mock.patch(
-            "lintgate.runtime_state.save_runtime_state",
-        ) as save_fn:
+        with (
+            mock.patch(
+                "lintgate.runtime_state.build_runtime_state",
+                return_value=fake_rt,
+            ),
+            mock.patch(
+                "lintgate.runtime_state.save_runtime_state",
+            ) as save_fn,
+        ):
             _persist_runtime_state(mesh, "/proj", None)
 
         save_fn.assert_called_once_with("/proj", fake_rt)
@@ -166,10 +169,13 @@ class TestImplControlplaneStatus:
         from lintgate.controlplane.types import ControlPlaneConfig
 
         cfg = ControlPlaneConfig(enabled=True)
-        with mock.patch(
-            "lintgate.config.load_controlplane_config",
-            return_value=cfg,
-        ), mock.patch("os.getcwd", return_value="/cwd"):
+        with (
+            mock.patch(
+                "lintgate.config.load_controlplane_config",
+                return_value=cfg,
+            ),
+            mock.patch("os.getcwd", return_value="/cwd"),
+        ):
             raw = _impl_controlplane_status(None, _stub_helpers())
         parsed = json.loads(raw)
         assert parsed["project"] == "/cwd"

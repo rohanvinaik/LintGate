@@ -18,7 +18,9 @@ build/
 .coverage
 .coverage.*
 coverage.xml
+coverage.json
 htmlcov/
+pytest-results.xml
 
 # External quality tools (local analysis artifacts)
 .qlty/*

@@ -55,10 +55,16 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "isolated_lint_only": {
         "channels": [
             {
-                "name": "lint", "status": "fail", "severity": "blocking",
+                "name": "lint",
+                "status": "fail",
+                "severity": "blocking",
                 "findings": [
-                    {"severity": "blocking", "kind": "F821",
-                     "message": "undefined name 'foo'", "file": "/src/a.py"},
+                    {
+                        "severity": "blocking",
+                        "kind": "F821",
+                        "message": "undefined name 'foo'",
+                        "file": "/src/a.py",
+                    },
                 ],
             },
             {"name": "tests", "status": "pass"},
@@ -75,10 +81,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "channels": [
             {"name": "lint", "status": "pass"},
             {
-                "name": "tests", "status": "fail", "severity": "warning",
+                "name": "tests",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "kind": "test_failure",
-                     "message": "test_foo failed"},
+                    {"severity": "warning", "kind": "test_failure", "message": "test_foo failed"},
                 ],
             },
             {"name": "deps", "status": "pass"},
@@ -94,7 +101,9 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "isolated_low_confidence_one_pass": {
         "channels": [
             {
-                "name": "lint", "status": "fail", "severity": "warning",
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [{"severity": "warning", "message": "issue"}],
             },
             {"name": "tests", "status": "pass"},
@@ -108,7 +117,9 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "isolated_low_confidence_no_pass": {
         "channels": [
             {
-                "name": "lint", "status": "fail", "severity": "warning",
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [{"severity": "warning", "message": "issue"}],
             },
             {"name": "tests", "status": "skip"},
@@ -122,13 +133,17 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "coupled_shared_files": {
         "channels": [
             {
-                "name": "lint", "status": "fail", "severity": "warning",
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [
                     {"severity": "warning", "file": "/src/shared.py", "message": "lint issue"},
                 ],
             },
             {
-                "name": "tests", "status": "fail", "severity": "warning",
+                "name": "tests",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [
                     {"severity": "warning", "file": "/src/shared.py", "message": "test failure"},
                 ],
@@ -145,13 +160,17 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "coupled_independent": {
         "channels": [
             {
-                "name": "lint", "status": "fail", "severity": "warning",
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [
                     {"severity": "warning", "file": "/src/a.py", "message": "lint issue"},
                 ],
             },
             {
-                "name": "tests", "status": "fail", "severity": "warning",
+                "name": "tests",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [
                     {"severity": "warning", "file": "/src/b.py", "message": "test failure"},
                 ],
@@ -167,12 +186,24 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     # -- SYSTEMIC (3+ failures) -----------------------------------------------
     "systemic_three_failures": {
         "channels": [
-            {"name": "lint", "status": "fail", "severity": "warning",
-             "findings": [{"severity": "warning", "message": "issue"}]},
-            {"name": "tests", "status": "fail", "severity": "warning",
-             "findings": [{"severity": "warning", "message": "issue"}]},
-            {"name": "deps", "status": "fail", "severity": "warning",
-             "findings": [{"severity": "warning", "message": "issue"}]},
+            {
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [{"severity": "warning", "message": "issue"}],
+            },
+            {
+                "name": "tests",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [{"severity": "warning", "message": "issue"}],
+            },
+            {
+                "name": "deps",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [{"severity": "warning", "message": "issue"}],
+            },
             {"name": "git", "status": "pass"},
         ],
         "expected_state": "systemic",
@@ -184,12 +215,20 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     # -- SYSTEMIC (cross-domain: infra + code) --------------------------------
     "systemic_cross_domain": {
         "channels": [
-            {"name": "lint", "status": "fail", "severity": "warning",
-             "findings": [{"severity": "warning", "file": "/src/a.py", "message": "lint issue"}]},
-            {"name": "deps", "status": "fail", "severity": "warning",
-             "findings": [
-                 {"severity": "warning", "file": "/pyproject.toml", "message": "dep issue"},
-             ]},
+            {
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [{"severity": "warning", "file": "/src/a.py", "message": "lint issue"}],
+            },
+            {
+                "name": "deps",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [
+                    {"severity": "warning", "file": "/pyproject.toml", "message": "dep issue"},
+                ],
+            },
             {"name": "tests", "status": "pass"},
         ],
         "expected_state": "systemic",
@@ -227,8 +266,12 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     # -- DEGRADED takes priority over failures --------------------------------
     "degraded_with_failures": {
         "channels": [
-            {"name": "lint", "status": "fail", "severity": "warning",
-             "findings": [{"severity": "warning", "message": "issue"}]},
+            {
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [{"severity": "warning", "message": "issue"}],
+            },
             {"name": "tests", "status": "error", "error_message": "crash"},
             {"name": "deps", "status": "pass"},
         ],
@@ -266,10 +309,15 @@ SCENARIOS: dict[str, dict[str, Any]] = {
             {"name": "tests", "status": "pass"},
             {"name": "deps", "status": "pass"},
             {
-                "name": "behavior", "status": "fail", "severity": "informational",
+                "name": "behavior",
+                "status": "fail",
+                "severity": "informational",
                 "findings": [
-                    {"severity": "informational", "kind": "approach_cycling",
-                     "message": "3 approaches tried"},
+                    {
+                        "severity": "informational",
+                        "kind": "approach_cycling",
+                        "message": "3 approaches tried",
+                    },
                 ],
             },
         ],
@@ -282,11 +330,19 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     # -- Edge: 5 channels, 2 infra fail = systemic ----------------------------
     "systemic_infra_plus_code_five_channels": {
         "channels": [
-            {"name": "lint", "status": "fail", "severity": "blocking",
-             "findings": [{"severity": "blocking", "message": "issue"}]},
+            {
+                "name": "lint",
+                "status": "fail",
+                "severity": "blocking",
+                "findings": [{"severity": "blocking", "message": "issue"}],
+            },
             {"name": "tests", "status": "pass"},
-            {"name": "git", "status": "fail", "severity": "warning",
-             "findings": [{"severity": "warning", "message": "dirty tree"}]},
+            {
+                "name": "git",
+                "status": "fail",
+                "severity": "warning",
+                "findings": [{"severity": "warning", "message": "dirty tree"}],
+            },
             {"name": "deps", "status": "pass"},
             {"name": "behavior", "status": "pass"},
         ],
@@ -300,16 +356,23 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "coupled_lint_and_behavior": {
         "channels": [
             {
-                "name": "lint", "status": "fail", "severity": "warning",
+                "name": "lint",
+                "status": "fail",
+                "severity": "warning",
                 "findings": [
                     {"severity": "warning", "file": "/src/x.py", "message": "lint issue"},
                 ],
             },
             {
-                "name": "behavior", "status": "fail", "severity": "informational",
+                "name": "behavior",
+                "status": "fail",
+                "severity": "informational",
                 "findings": [
-                    {"severity": "informational", "kind": "failure_amnesia",
-                     "message": "repeated error"},
+                    {
+                        "severity": "informational",
+                        "kind": "failure_amnesia",
+                        "message": "repeated error",
+                    },
                 ],
             },
             {"name": "tests", "status": "pass"},

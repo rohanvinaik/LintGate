@@ -23,21 +23,21 @@ class TestCheckHabitApiCalibration:
         tracker = mock.MagicMock()
         cfg = mock.MagicMock(habit_mode_token_api_interval=50)
 
-        with mock.patch(
-            "lintgate.token_tracker.should_api_check", return_value=True
-        ), mock.patch(
-            "lintgate.token_tracker.do_api_calibration",
-            return_value={"source": "api", "tokens": 1000},
-        ), mock.patch("lintgate.state.log_metric"):
+        with (
+            mock.patch("lintgate.token_tracker.should_api_check", return_value=True),
+            mock.patch(
+                "lintgate.token_tracker.do_api_calibration",
+                return_value={"source": "api", "tokens": 1000},
+            ),
+            mock.patch("lintgate.state.log_metric"),
+        ):
             check_habit_api_calibration(tracker, 50, "/tmp", {}, cfg)
 
     def test_should_not_check(self):
         tracker = mock.MagicMock()
         cfg = mock.MagicMock(habit_mode_token_api_interval=50)
 
-        with mock.patch(
-            "lintgate.token_tracker.should_api_check", return_value=False
-        ):
+        with mock.patch("lintgate.token_tracker.should_api_check", return_value=False):
             check_habit_api_calibration(tracker, 10, "/tmp", {}, cfg)
 
 
@@ -64,20 +64,27 @@ class TestRecordBehaviorEvent:
         session = mock.MagicMock()
         session.behavior_compass = {}
 
-        with mock.patch(
-            "lintgate.controlplane.session_memory.get_or_create_session",
-            return_value=session,
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass",
-            return_value=mock.MagicMock(),
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.save_behavior_compass",
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.save_session",
-        ), mock.patch(
-            "lintgate.controlplane.behavior_compass.record_tool_event",
-        ), mock.patch(
-            "lintgate.hook_runtime_state.refresh_runtime_state_with_session",
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=session,
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.load_behavior_compass",
+                return_value=mock.MagicMock(),
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.save_behavior_compass",
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.save_session",
+            ),
+            mock.patch(
+                "lintgate.controlplane.behavior_compass.record_tool_event",
+            ),
+            mock.patch(
+                "lintgate.hook_runtime_state.refresh_runtime_state_with_session",
+            ),
         ):
             record_behavior_event(cfg, "/tmp", "Read", {}, "")
 
@@ -107,38 +114,23 @@ class TestUpdateHabitModePathA:
         habit_state.active = False
         tracker = mock.MagicMock()
 
-        with mock.patch(
-            "lintgate.habit_mode.load_habit_state", return_value=habit_state
-        ), mock.patch(
-            "lintgate.token_tracker.load_tracker_state", return_value=tracker
-        ), mock.patch(
-            "lintgate.habit_mode.update_signals"
-        ), mock.patch(
-            "lintgate.habit_mode.track_active_files"
-        ), mock.patch(
-            "lintgate.token_tracker.estimate_tool_tokens"
-        ), mock.patch(
-            "lintgate.habit_mode.detect_test_result"
-        ), mock.patch(
-            "lintgate.habit_mode.update_mode", return_value=None
-        ), mock.patch(
-            "lintgate.hook_habit.check_habit_api_calibration"
-        ), mock.patch(
-            "lintgate.hook_habit.try_habit_compaction", return_value=(False, None)
-        ), mock.patch(
-            "lintgate.habit_mode.save_habit_state"
-        ), mock.patch(
-            "lintgate.token_tracker.save_tracker_state"
-        ), mock.patch(
-            "lintgate.hook_runtime_state.refresh_runtime_state_with_session"
-        ), mock.patch(
-            "lintgate.state.load_last_run", return_value=None
-        ), mock.patch(
-            "lintgate.state.log_feature_usage"
-        ), mock.patch(
-            "lintgate.state.log_metric"
-        ), mock.patch(
-            "lintgate.habit_mode.save_habit_state_standalone"
+        with (
+            mock.patch("lintgate.habit_mode.load_habit_state", return_value=habit_state),
+            mock.patch("lintgate.token_tracker.load_tracker_state", return_value=tracker),
+            mock.patch("lintgate.habit_mode.update_signals"),
+            mock.patch("lintgate.habit_mode.track_active_files"),
+            mock.patch("lintgate.token_tracker.estimate_tool_tokens"),
+            mock.patch("lintgate.habit_mode.detect_test_result"),
+            mock.patch("lintgate.habit_mode.update_mode", return_value=None),
+            mock.patch("lintgate.hook_habit.check_habit_api_calibration"),
+            mock.patch("lintgate.hook_habit.try_habit_compaction", return_value=(False, None)),
+            mock.patch("lintgate.habit_mode.save_habit_state"),
+            mock.patch("lintgate.token_tracker.save_tracker_state"),
+            mock.patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session"),
+            mock.patch("lintgate.state.load_last_run", return_value=None),
+            mock.patch("lintgate.state.log_feature_usage"),
+            mock.patch("lintgate.state.log_metric"),
+            mock.patch("lintgate.habit_mode.save_habit_state_standalone"),
         ):
             _update_habit_mode_path_a(cfg, session, compass, "/tmp", "Read", {}, "")
 
@@ -148,18 +140,21 @@ class TestLoadStandaloneState:
         habit_state = mock.MagicMock()
         action_ring = [{"tool": "Read"}]
 
-        with mock.patch(
-            "lintgate.habit_mode.load_habit_state_standalone",
-            return_value=(habit_state, action_ring),
-        ), mock.patch(
-            "lintgate.habit_mode.load_standalone_extras",
-            return_value={
-                "token_tracker": {"tool_call_count": 5},
-                "config_overrides": {"auto_detect": True},
-                "write_scheduler": {"gen": 1},
-                "habit_last_snapshot": {"sections": 3},
-                "signal_fire_counts": {"cmd_fail": 2},
-            },
+        with (
+            mock.patch(
+                "lintgate.habit_mode.load_habit_state_standalone",
+                return_value=(habit_state, action_ring),
+            ),
+            mock.patch(
+                "lintgate.habit_mode.load_standalone_extras",
+                return_value={
+                    "token_tracker": {"tool_call_count": 5},
+                    "config_overrides": {"auto_detect": True},
+                    "write_scheduler": {"gen": 1},
+                    "habit_last_snapshot": {"sections": 3},
+                    "signal_fire_counts": {"cmd_fail": 2},
+                },
+            ),
         ):
             result = _load_standalone_state("/tmp")
         hs, ar, extras, tracker, overrides, scheduler, snapshot, fires = result
@@ -167,18 +162,21 @@ class TestLoadStandaloneState:
         assert isinstance(overrides, dict)
 
     def test_invalid_types_handled(self):
-        with mock.patch(
-            "lintgate.habit_mode.load_habit_state_standalone",
-            return_value=(mock.MagicMock(), []),
-        ), mock.patch(
-            "lintgate.habit_mode.load_standalone_extras",
-            return_value={
-                "token_tracker": "invalid",
-                "config_overrides": 42,
-                "write_scheduler": None,
-                "habit_last_snapshot": "nope",
-                "signal_fire_counts": [],
-            },
+        with (
+            mock.patch(
+                "lintgate.habit_mode.load_habit_state_standalone",
+                return_value=(mock.MagicMock(), []),
+            ),
+            mock.patch(
+                "lintgate.habit_mode.load_standalone_extras",
+                return_value={
+                    "token_tracker": "invalid",
+                    "config_overrides": 42,
+                    "write_scheduler": None,
+                    "habit_last_snapshot": "nope",
+                    "signal_fire_counts": [],
+                },
+            ),
         ):
             result = _load_standalone_state("/tmp")
         _, _, _, tracker, overrides, scheduler, snapshot, fires = result
@@ -220,16 +218,18 @@ class TestBuildActionEntry:
 class TestUpdateActionRing:
     def test_normal_append(self):
         ring = [{"tool": "Read"}]
-        with mock.patch("lintgate.habit_mode.MAX_ACTION_RING", 100), mock.patch(
-            "lintgate.habit_mode.quick_intent", return_value="edit"
+        with (
+            mock.patch("lintgate.habit_mode.MAX_ACTION_RING", 100),
+            mock.patch("lintgate.habit_mode.quick_intent", return_value="edit"),
         ):
             new_ring, cmd = _update_action_ring(ring, "Edit", {"file_path": "/foo.py"})
         assert len(new_ring) == 2
 
     def test_trim_when_over_max(self):
         ring = [{"tool": f"T{i}"} for i in range(100)]
-        with mock.patch("lintgate.habit_mode.MAX_ACTION_RING", 20), mock.patch(
-            "lintgate.habit_mode.quick_intent", return_value="run"
+        with (
+            mock.patch("lintgate.habit_mode.MAX_ACTION_RING", 20),
+            mock.patch("lintgate.habit_mode.quick_intent", return_value="run"),
         ):
             new_ring, _ = _update_action_ring(ring, "Bash", {"command": "ls"})
         assert len(new_ring) == 20
@@ -243,9 +243,7 @@ class TestDetectBashSignals:
     def test_bash_with_pytest(self):
         habit_state = mock.MagicMock()
         with mock.patch("lintgate.habit_mode.detect_test_result"):
-            _detect_bash_signals(
-                "Bash", "1 passed", "pytest tests/", habit_state, {}
-            )
+            _detect_bash_signals("Bash", "1 passed", "pytest tests/", habit_state, {})
 
     def test_bash_error_tracking(self):
         fires: dict[str, int] = {}
@@ -264,12 +262,10 @@ class TestApplyPathBTelemetry:
         store = mock.MagicMock()
         store.profiles = {"key": profile}
 
-        with mock.patch(
-            "lintgate.controlplane.model_profiles.load_profiles", return_value=store
-        ), mock.patch(
-            "lintgate.controlplane.model_profiles.apply_telemetry_update"
-        ), mock.patch(
-            "lintgate.controlplane.model_profiles.save_profiles"
+        with (
+            mock.patch("lintgate.controlplane.model_profiles.load_profiles", return_value=store),
+            mock.patch("lintgate.controlplane.model_profiles.apply_telemetry_update"),
+            mock.patch("lintgate.controlplane.model_profiles.save_profiles"),
         ):
             result = _apply_path_b_telemetry(50, {"cmd_fail": 3})
         assert result == {}
@@ -289,9 +285,10 @@ class TestRunModeTransition:
         cfg.habit_mode_exit_score = 0.3
         cfg.habit_mode_sustain_calls = 10
 
-        with mock.patch(
-            "lintgate.habit_mode.update_mode", return_value="entered"
-        ), mock.patch("lintgate.state.log_metric"):
+        with (
+            mock.patch("lintgate.habit_mode.update_mode", return_value="entered"),
+            mock.patch("lintgate.state.log_metric"),
+        ):
             result = _run_mode_transition(habit_state, 50, {}, cfg, "/tmp")
         assert result == "entered"
 
@@ -337,37 +334,51 @@ class TestRecordHabitEventLightweight:
         tracker = mock.MagicMock()
         tracker.tool_call_count = 10
 
-        with mock.patch(
-            "lintgate.hook_habit._load_standalone_state",
-            return_value=(habit_state, [], {}, tracker, {}, {}, None, {}),
-        ), mock.patch(
-            "lintgate.hook_habit._apply_context_window_override",
-        ), mock.patch(
-            "lintgate.hook_habit._update_action_ring",
-            return_value=([], ""),
-        ), mock.patch(
-            "lintgate.habit_mode.update_signals",
-        ), mock.patch(
-            "lintgate.habit_mode.track_active_files",
-        ), mock.patch(
-            "lintgate.token_tracker.estimate_tool_tokens",
-        ), mock.patch(
-            "lintgate.hook_habit._detect_bash_signals",
-        ), mock.patch(
-            "lintgate.hook_habit._apply_path_b_telemetry",
-            return_value={},
-        ), mock.patch(
-            "lintgate.hook_habit._run_mode_transition",
-            return_value=None,
-        ), mock.patch(
-            "lintgate.hook_habit.check_habit_api_calibration",
-        ), mock.patch(
-            "lintgate.hook_habit.try_habit_compaction",
-            return_value=(False, None),
-        ), mock.patch(
-            "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
-            return_value={"gen": 1},
-        ), mock.patch(
-            "lintgate.habit_mode.save_habit_state_standalone",
+        with (
+            mock.patch(
+                "lintgate.hook_habit._load_standalone_state",
+                return_value=(habit_state, [], {}, tracker, {}, {}, None, {}),
+            ),
+            mock.patch(
+                "lintgate.hook_habit._apply_context_window_override",
+            ),
+            mock.patch(
+                "lintgate.hook_habit._update_action_ring",
+                return_value=([], ""),
+            ),
+            mock.patch(
+                "lintgate.habit_mode.update_signals",
+            ),
+            mock.patch(
+                "lintgate.habit_mode.track_active_files",
+            ),
+            mock.patch(
+                "lintgate.token_tracker.estimate_tool_tokens",
+            ),
+            mock.patch(
+                "lintgate.hook_habit._detect_bash_signals",
+            ),
+            mock.patch(
+                "lintgate.hook_habit._apply_path_b_telemetry",
+                return_value={},
+            ),
+            mock.patch(
+                "lintgate.hook_habit._run_mode_transition",
+                return_value=None,
+            ),
+            mock.patch(
+                "lintgate.hook_habit.check_habit_api_calibration",
+            ),
+            mock.patch(
+                "lintgate.hook_habit.try_habit_compaction",
+                return_value=(False, None),
+            ),
+            mock.patch(
+                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                return_value={"gen": 1},
+            ),
+            mock.patch(
+                "lintgate.habit_mode.save_habit_state_standalone",
+            ),
         ):
             record_habit_event_lightweight(cfg, "/tmp", "Read", {}, "")

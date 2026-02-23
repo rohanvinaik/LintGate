@@ -32,14 +32,14 @@ def _docstring_lines(source: str) -> set[int]:
         return lines
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)) and (
-                node.body
-                and isinstance(node.body[0], ast.Expr)
-                and isinstance(node.body[0].value, ast.Constant)
-                and isinstance(node.body[0].value.value, str)
-            ):
-                ds = node.body[0]
-                for ln in range(ds.lineno, (ds.end_lineno or ds.lineno) + 1):
-                    lines.add(ln)
+            node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        ):
+            ds = node.body[0]
+            for ln in range(ds.lineno, (ds.end_lineno or ds.lineno) + 1):
+                lines.add(ln)
     return lines
 
 

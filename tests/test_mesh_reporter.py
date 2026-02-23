@@ -341,5 +341,3 @@ def test_truncation_metadata_present() -> None:
     report = format_mesh_report(mesh, config)
     # Report should exist even under tight budget
     assert "systemMessage" in report
-
-

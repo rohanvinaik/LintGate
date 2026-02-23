@@ -19,8 +19,11 @@ def _make_event() -> SupervisionEvent:
         tool_name="test",
         files_changed=[],
         change_classification=ChangeClassification(
-            files_changed=[], files_by_language={}, change_kind="logic",
-            risk_level="moderate", tool_name="test",
+            files_changed=[],
+            files_by_language={},
+            change_kind="logic",
+            risk_level="moderate",
+            tool_name="test",
         ),
         raw_input={},
     )
@@ -148,7 +151,9 @@ class TestCollectSymbolCoverageBlockers:
 
     def test_non_blocking_skipped(self) -> None:
         finding = LintIssue(
-            linter="test_channel", kind="symbol_uncovered", message="msg",
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="msg",
             severity="warning",
         )
         cr = ChannelResult(channel="tests", status="fail", severity="warning", findings=[finding])
@@ -157,7 +162,9 @@ class TestCollectSymbolCoverageBlockers:
 
     def test_non_symbol_kind_skipped(self) -> None:
         finding = LintIssue(
-            linter="test_channel", kind="test_failure", message="msg",
+            linter="test_channel",
+            kind="test_failure",
+            message="msg",
             severity="blocking",
         )
         cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
@@ -166,7 +173,9 @@ class TestCollectSymbolCoverageBlockers:
 
     def test_symbol_uncovered_collected(self) -> None:
         finding = LintIssue(
-            linter="test_channel", kind="symbol_uncovered", message="Symbol foo uncovered",
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="Symbol foo uncovered",
             severity="blocking",
             evidence={"symbol_key": "pkg/mod.py::foo", "missing_lines": [10, 11]},
         )
@@ -179,7 +188,8 @@ class TestCollectSymbolCoverageBlockers:
 
     def test_fallback_to_message_when_no_symbol_key(self) -> None:
         finding = LintIssue(
-            linter="test_channel", kind="symbol_uncovered",
+            linter="test_channel",
+            kind="symbol_uncovered",
             message="Symbol bar is not covered",
             severity="blocking",
             evidence={},
@@ -192,7 +202,8 @@ class TestCollectSymbolCoverageBlockers:
 
     def test_unresolved_required_symbol_collected(self) -> None:
         finding = LintIssue(
-            linter="test_channel", kind="unresolved_required_symbol",
+            linter="test_channel",
+            kind="unresolved_required_symbol",
             message="Required symbol missing",
             severity="blocking",
             evidence={"symbol_key": "pkg/mod.py::required_fn"},

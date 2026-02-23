@@ -183,9 +183,7 @@ def setup_github_quality(
         qlty_workflow_result["content"] = qlty_workflow_content
 
     # --- .github/workflows/security-lite.yml ---
-    security_workflow_path = os.path.join(
-        project_root, ".github", "workflows", "security-lite.yml"
-    )
+    security_workflow_path = os.path.join(project_root, ".github", "workflows", "security-lite.yml")
     security_workflow_exists = os.path.exists(security_workflow_path)
     security_workflow_content = _generate_security_workflow(
         layout,
@@ -206,24 +204,26 @@ def setup_github_quality(
         security_workflow_result["content"] = security_workflow_content
 
     # --- .github/workflows/scorecard.yml ---
-    scorecard_path = os.path.join(
-        project_root, ".github", "workflows", "scorecard.yml"
-    )
+    scorecard_path = os.path.join(project_root, ".github", "workflows", "scorecard.yml")
     scorecard_exists = os.path.exists(scorecard_path)
     scorecard_content = _generate_scorecard_workflow()
 
     scorecard_result = _apply_managed_artifact(
-        scorecard_path, scorecard_content, scorecard_exists, write,
+        scorecard_path,
+        scorecard_content,
+        scorecard_exists,
+        write,
     )
 
     # --- .github/workflows/quality-infra-gate.yml ---
-    qi_gate_path = os.path.join(
-        project_root, ".github", "workflows", "quality-infra-gate.yml"
-    )
+    qi_gate_path = os.path.join(project_root, ".github", "workflows", "quality-infra-gate.yml")
     qi_gate_exists = os.path.exists(qi_gate_path)
     qi_gate_content = _generate_quality_infra_gate_workflow()
     qi_gate_result: dict[str, Any] = _apply_managed_artifact(
-        qi_gate_path, qi_gate_content, qi_gate_exists, write,
+        qi_gate_path,
+        qi_gate_content,
+        qi_gate_exists,
+        write,
     )
 
     # --- .github/dependabot.yml ---
@@ -231,7 +231,10 @@ def setup_github_quality(
     dependabot_exists = os.path.exists(dependabot_path)
     dependabot_content = _generate_dependabot_yml()
     dependabot_result: dict[str, Any] = _apply_managed_artifact(
-        dependabot_path, dependabot_content, dependabot_exists, write,
+        dependabot_path,
+        dependabot_content,
+        dependabot_exists,
+        write,
     )
 
     # --- SECURITY.md ---

@@ -30,9 +30,7 @@ def _make_config(enabled: bool = True, **overrides):
         "check_secrets": True,
     }
     qg_kwargs.update(overrides)
-    return ControlPlaneConfig(
-        enabled=True, quality_gate=QualityGateConfig(**qg_kwargs)
-    )
+    return ControlPlaneConfig(enabled=True, quality_gate=QualityGateConfig(**qg_kwargs))
 
 
 def _fresh_state(**overrides) -> RuntimeState:
@@ -353,6 +351,7 @@ class TestRunControlplane:
 
             # Verify _telemetry was stripped from printed output
             import json as json_mod
+
             printed_str = mock_print.call_args[0][0]
             printed_data = json_mod.loads(printed_str)
             assert "_telemetry" not in printed_data
@@ -479,9 +478,7 @@ class TestRunControlplane:
             patch("sys.exit", side_effect=SystemExit(0)),
             contextlib.suppress(SystemExit),
         ):
-            _run_controlplane(
-                input_data, config, cp_config, cwd, time.perf_counter()
-            )
+            _run_controlplane(input_data, config, cp_config, cwd, time.perf_counter())
 
 
 # ── _fallback_config (hook_posttooluse.py lines 385-389) ─────────────

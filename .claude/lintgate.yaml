@@ -20,8 +20,10 @@ controlplane:
   channels:
     tests:
       symbol_coverage:
-        enabled: false  # Gate infrastructure shipped; enforce after baseline coverage established
+        enabled: true
         waivers:
+          - symbol: "mcp_tools/lint_tools.py::register"
+            reason: "MCP registration closure with stateful lint_status branches (last_run, version_audit, metrics); tested via helper-level unit tests."
           - symbol: "mcp_tools/controlplane_tools.py::register"
             reason: "MCP registration closure with 20+ tool definitions; tested via helper-level unit tests."
           - symbol: "mcp_tools/onboarding_tools.py::register"
@@ -32,6 +34,8 @@ controlplane:
             reason: "CLI entry point; tested via subprocess integration."
           - symbol: "lintgate/quality_infra.py::_cli_main"
             reason: "CLI entry point; tested via subprocess integration."
+          - symbol: "lintgate/controlplane/coherence.py::_compute_base_coherence"
+            reason: "Defensive fallback at line 179 is unreachable dead code; all integer paths (0/1/>=2) return before it."
   quality_gate:
     enabled: true
   inquiry:

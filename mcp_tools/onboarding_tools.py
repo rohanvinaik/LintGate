@@ -588,14 +588,27 @@ def _detect_license_fallback(root: Path) -> str | None:
     return None
 
 
-_SKIP_DIRS = frozenset({
-    ".venv", "venv", "env", ".git", "__pycache__", "node_modules",
-    ".mypy_cache", ".ruff_cache", ".pytest_cache", ".claude", "dist", "build",
-})
+_SKIP_DIRS = frozenset(
+    {
+        ".venv",
+        "venv",
+        "env",
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".claude",
+        "dist",
+        "build",
+    }
+)
 
 
 def _scan_project_dirs(
-    root: Path, test_dirs: list[str],
+    root: Path,
+    test_dirs: list[str],
 ) -> tuple[list[str], list[str], list[str]]:
     """Scan root for source, test, and doc directories.
 
@@ -1000,13 +1013,13 @@ def _generate_security_md(github: dict[str, Any]) -> str:
 def _generate_pre_push_hook() -> str:
     """Generate a project-local pre-push hook script.
 
-    The hook enforces local checks before push:
+    The hook mirrors CI checks locally before push:
     - Quality infrastructure completeness gate (hard fail)
-    - Prefer qlty when available (closest match to CI quality scans)
-    - Fallback to ruff when qlty is not installed
-    - Run pytest with coverage and enforce symbol-level coverage gate
-    - Optionally check Sonar Quality Gate when SONAR_TOKEN and
-      SONAR_PROJECT_KEY are set in the shell environment
+    - qlty check --all (mirrors CI qlty.yml — no fallback)
+    - gitleaks secrets scan (mirrors CI gitleaks check)
+    - pytest with coverage + symbol-level coverage gate (mirrors CI tests.yml)
+    - pip-audit supply-chain scan (mirrors CI security-lite.yml, optional)
+    - Sonar Quality Gate (optional, when SONAR_TOKEN set)
     """
     lines = [
         "#!/usr/bin/env bash",
@@ -1031,17 +1044,14 @@ def _generate_pre_push_hook() -> str:
         "  exit 1",
         "fi",
         "",
-        "if command -v qlty >/dev/null 2>&1; then",
-        "  qlty check --all",
-        "else",
-        '  echo "[lintgate] qlty not found; using fallback checks (ruff)"',
-        "  if command -v ruff >/dev/null 2>&1; then",
-        "    ruff check .",
-        "  elif python -c 'import ruff' >/dev/null 2>&1; then",
-        "    python -m ruff check .",
-        "  else",
-        '    echo "[lintgate] warning: ruff not installed; skipping lint step."',
-        "  fi",
+        "# qlty analysis (mirrors CI qlty.yml)",
+        "qlty check --all",
+        "",
+        "# Secrets scan (mirrors CI gitleaks check)",
+        'echo "[lintgate] scanning for secrets (gitleaks)"',
+        "if ! gitleaks detect --source . --no-banner --redact; then",
+        '  echo "[lintgate] BLOCKED: secrets detected — fix before pushing."',
+        "  exit 1",
         "fi",
         "",
         "if [ -d tests ] || [ -d test ]; then",
@@ -1051,19 +1061,27 @@ def _generate_pre_push_hook() -> str:
         "    --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \\",
         "    --tb=short -q",
         "  BASE='HEAD~1'",
-        "  if ! git rev-parse --verify \"$BASE\" >/dev/null 2>&1; then",
+        '  if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then',
         "    BASE=''",
         "  fi",
-        "  if [ -n \"$BASE\" ]; then",
+        '  if [ -n "$BASE" ]; then',
         "    python -m lintgate.symbol_gate_runner \\",
-        "      --project-root \"$REPO_ROOT\" \\",
+        '      --project-root "$REPO_ROOT" \\',
         "      --coverage-json coverage.json \\",
-        "      --base \"$BASE\" --head HEAD --surface ci",
+        '      --base "$BASE" --head HEAD --surface ci',
         "  else",
         "    python -m lintgate.symbol_gate_runner \\",
-        "      --project-root \"$REPO_ROOT\" \\",
+        '      --project-root "$REPO_ROOT" \\',
         "      --coverage-json coverage.json \\",
         "      --head HEAD --surface ci",
+        "  fi",
+        "fi",
+        "",
+        "# pip-audit (mirrors CI security-lite.yml)",
+        "if command -v pip-audit >/dev/null 2>&1; then",
+        "  if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then",
+        '    echo "[lintgate] running pip-audit (supply-chain scan)"',
+        "    pip-audit",
         "  fi",
         "fi",
         "",
@@ -1466,27 +1484,27 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
         "            BASE='origin/${{ github.base_ref }}'",
         "          else",
         "            BASE='${{ github.event.before }}'",
-        "            if [ -z \"$BASE\" ] || [ \"$BASE\" = '0000000000000000000000000000000000000000' ]; then",
+        '            if [ -z "$BASE" ] || [ "$BASE" = \'0000000000000000000000000000000000000000\' ]; then',
         "              BASE='HEAD~1'",
         "            fi",
         "          fi",
         "",
-        "          if [ -n \"$BASE\" ] && ! git rev-parse --verify \"$BASE\" >/dev/null 2>&1; then",
+        '          if [ -n "$BASE" ] && ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then',
         "            BASE=''",
         "          fi",
         "",
-        "          if [ -n \"$BASE\" ]; then",
+        '          if [ -n "$BASE" ]; then',
         "            python -m lintgate.symbol_gate_runner \\",
         "              --project-root . \\",
         "              --coverage-json coverage.json \\",
-        "              --base \"$BASE\" \\",
-        "              --head \"$HEAD\" \\",
+        '              --base "$BASE" \\',
+        '              --head "$HEAD" \\',
         "              --surface ci",
         "          else",
         "            python -m lintgate.symbol_gate_runner \\",
         "              --project-root . \\",
         "              --coverage-json coverage.json \\",
-        "              --head \"$HEAD\" \\",
+        '              --head "$HEAD" \\',
         "              --surface ci",
         "          fi",
         "",
@@ -2241,9 +2259,7 @@ def _reset_project_state(project_root: str) -> list[dict[str, str]]:
         # Compute project hash to find matching habit state files
         import hashlib
 
-        project_hash = hashlib.sha256(
-            os.path.abspath(project_root).encode()
-        ).hexdigest()[:12]
+        project_hash = hashlib.sha256(os.path.abspath(project_root).encode()).hexdigest()[:12]
         for item in habit_base.iterdir():
             if item.is_file() and project_hash in item.name:
                 item.unlink()
@@ -2481,9 +2497,11 @@ def register(mcp, helpers):
                 "config_status_after": config_status,
                 "setup_diff": {
                     "config": (
-                        "created" if config_status_before["config_state"] != "config_enabled"
+                        "created"
+                        if config_status_before["config_state"] != "config_enabled"
                         and config_status["config_state"] == "config_enabled"
-                        else "already_existed" if config_status["config_state"] == "config_enabled"
+                        else "already_existed"
+                        if config_status["config_state"] == "config_enabled"
                         else "not_created"
                     ),
                     "venv": venv_setup.get("status", "not_requested"),
@@ -2597,7 +2615,10 @@ def register(mcp, helpers):
         )
 
         return _setup_github_quality_impl(
-            path, write=write, sonar_token=sonar_token, _helpers=helpers,
+            path,
+            write=write,
+            sonar_token=sonar_token,
+            _helpers=helpers,
         )
 
     return {

@@ -3,23 +3,13 @@ title = "LintGate gitleaks overrides"
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Intentional secret-like fixtures for secret-scanning tests."
-targetRules = ["generic-api-key", "private-key", "gitlab-pat"]
-paths = ['''tests/test_secrets_scanning\.py''']
-
-[[allowlists]]
-description = "Intentional auth-token fixture used in behavior-compass tests."
-targetRules = ["stripe-access-token", "curl-auth-header"]
-paths = ['''tests/test_behavior_compass\.py''']
-
-[[allowlists]]
-description = "Fake GitHub PAT used to test secret-scanning detection."
-targetRules = ["generic-api-key"]
-paths = ['''tests/test_git_channel_helpers\.py''']
-
-[[allowlists]]
-description = "curl -u with env var reference, not a hardcoded secret."
-targetRules = ["curl-auth-user"]
-paths = ['''\.githooks/pre-push''', '''mcp_tools/onboarding_tools\.py''']
+[allowlist]
+description = "Test fixtures with intentional secret-like strings and hook/template files with curl -u env-var references."
+paths = [
+    '''tests/test_secrets_scanning\.py''',
+    '''tests/test_behavior_compass\.py''',
+    '''tests/test_git_channel_helpers\.py''',
+    '''\.githooks/pre-push''',
+    '''mcp_tools/onboarding_tools\.py''',
+]
 

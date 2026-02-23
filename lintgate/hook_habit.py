@@ -434,9 +434,7 @@ def _run_mode_transition(
     from lintgate.habit_mode import update_mode
     from lintgate.state import log_metric
 
-    auto_detect_enabled = bool(
-        overrides.get("auto_detect", cp_config.habit_mode_auto_detect)
-    )
+    auto_detect_enabled = bool(overrides.get("auto_detect", cp_config.habit_mode_auto_detect))
     transition = None
     if auto_detect_enabled:
         transition = update_mode(
@@ -523,9 +521,7 @@ def record_habit_event_lightweight(
             habit_state, event_counter, standalone_overrides, cp_config, cwd
         )
 
-        check_habit_api_calibration(
-            tracker, event_counter, cwd, standalone_overrides, cp_config
-        )
+        check_habit_api_calibration(tracker, event_counter, cwd, standalone_overrides, cp_config)
 
         did_compact, compact_snapshot = try_habit_compaction(
             tracker,

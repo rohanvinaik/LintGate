@@ -36,9 +36,7 @@ class TestParsePyprojectMetadata:
 
     def test_valid_pyproject_extracts_version(self, tmp_path: Path) -> None:
         """Extracts requires-python version from valid pyproject.toml."""
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.11"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
         version, _lic, _dirs, has = _parse_pyproject_metadata(tmp_path)
         assert version == "3.11"
         assert has is True
@@ -46,8 +44,7 @@ class TestParsePyprojectMetadata:
     def test_valid_pyproject_extracts_license_dict(self, tmp_path: Path) -> None:
         """Extracts license from dict form (text key)."""
         (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.12"\n'
-            '\n[project.license]\ntext = "MIT"\n'
+            '[project]\nrequires-python = ">=3.12"\n\n[project.license]\ntext = "MIT"\n'
         )
         _ver, lic, _dirs, _has = _parse_pyproject_metadata(tmp_path)
         assert lic == "MIT"
@@ -89,24 +86,20 @@ class TestParsePyprojectMetadata:
     def test_extracts_testpaths(self, tmp_path: Path) -> None:
         """Extracts pytest testpaths from pyproject.toml."""
         (tmp_path / "pyproject.toml").write_text(
-            "[tool.pytest.ini_options]\ntestpaths = [\"tests\", \"integration\"]\n"
+            '[tool.pytest.ini_options]\ntestpaths = ["tests", "integration"]\n'
         )
         _ver, _lic, dirs, _has = _parse_pyproject_metadata(tmp_path)
         assert dirs == ["tests", "integration"]
 
     def test_non_dict_non_string_license(self, tmp_path: Path) -> None:
         """Returns None when license is neither dict nor string (else branch)."""
-        (tmp_path / "pyproject.toml").write_bytes(
-            b"[project]\nlicense = 42\n"
-        )
+        (tmp_path / "pyproject.toml").write_bytes(b"[project]\nlicense = 42\n")
         _ver, lic, _dirs, _has = _parse_pyproject_metadata(tmp_path)
         assert lic is None
 
     def test_license_dict_file_key(self, tmp_path: Path) -> None:
         """Extracts license from dict form using 'file' key when 'text' absent."""
-        (tmp_path / "pyproject.toml").write_bytes(
-            b'[project.license]\nfile = "LICENSE.txt"\n'
-        )
+        (tmp_path / "pyproject.toml").write_bytes(b'[project.license]\nfile = "LICENSE.txt"\n')
         _ver, lic, _dirs, _has = _parse_pyproject_metadata(tmp_path)
         assert lic == "LICENSE.txt"
 
@@ -114,12 +107,12 @@ class TestParsePyprojectMetadata:
         """Lines 529-530: when tomllib import fails, falls back to tomli."""
         import sys
 
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.10"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.10"\n')
         # Temporarily make 'tomllib' unavailable by removing it from sys.modules
         # and patching builtins.__import__ to raise for 'tomllib'
-        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+        original_import = (
+            __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        )
 
         def _mock_import(name, *args, **kwargs):
             if name == "tomllib":
@@ -301,9 +294,7 @@ class TestDetectProjectLayoutIntegration:
 
     def test_full_project(self, tmp_path: Path) -> None:
         """Detect layout from a project with pyproject, package, tests, docs."""
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.11"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
         pkg = tmp_path / "mylib"
         pkg.mkdir()
         (pkg / "__init__.py").touch()
@@ -418,10 +409,7 @@ class TestReadInformationalBanditCodes:
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
         (claude_dir / "lintgate.yaml").write_text(
-            "severity_overrides:\n"
-            "  B110: informational\n"
-            "  B112: informational\n"
-            "  B105: warning\n"
+            "severity_overrides:\n  B110: informational\n  B112: informational\n  B105: warning\n"
         )
         codes = _read_informational_bandit_codes(str(tmp_path))
         assert "B110" in codes
@@ -477,9 +465,7 @@ class TestComputeBanditCiSkips:
         """Picks up informational overrides from lintgate.yaml."""
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text(
-            "severity_overrides:\n  B110: informational\n"
-        )
+        (claude_dir / "lintgate.yaml").write_text("severity_overrides:\n  B110: informational\n")
         skips = _compute_bandit_ci_skips(str(tmp_path))
         assert "B110" in skips
         assert "B101" in skips
@@ -489,9 +475,7 @@ class TestComputeBanditCiSkips:
         """Does not duplicate base codes when they also appear in overrides."""
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text(
-            "severity_overrides:\n  B101: informational\n"
-        )
+        (claude_dir / "lintgate.yaml").write_text("severity_overrides:\n  B101: informational\n")
         skips = _compute_bandit_ci_skips(str(tmp_path))
         assert skips.count("B101") == 1
 
@@ -505,9 +489,7 @@ class TestComputeBanditCiSkips:
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
         # B404 comes in via informational override, then tool_runner tries again
-        (claude_dir / "lintgate.yaml").write_text(
-            "severity_overrides:\n  B404: informational\n"
-        )
+        (claude_dir / "lintgate.yaml").write_text("severity_overrides:\n  B404: informational\n")
         skips = _compute_bandit_ci_skips(str(tmp_path), is_tool_runner=True)
         assert skips.count("B404") == 1
 
@@ -542,9 +524,11 @@ class TestRegister:
         mock_mcp.tool.return_value = lambda fn: fn
         mock_helpers = {
             "_validate_project_root": MagicMock(return_value=str(tmp_path)),
-            "_build_onboarding_status": MagicMock(return_value={
-                "config_state": "config_missing",
-            }),
+            "_build_onboarding_status": MagicMock(
+                return_value={
+                    "config_state": "config_missing",
+                }
+            ),
         }
         tools = register(mock_mcp, mock_helpers)
         # Create config so auto_setup does not run scaffold
@@ -574,10 +558,7 @@ class TestRegister:
             mock_reset.assert_called_once_with(str(tmp_path))
             output = json.loads(raw)
             actions = output.get("startup_setup", {}).get("actions_applied", [])
-            assert any(
-                a.get("action") == "reset_dir"
-                for a in actions
-            )
+            assert any(a.get("action") == "reset_dir" for a in actions)
 
     def test_scaffold_config_preview_existing(self, tmp_path: Path) -> None:
         """Branch: scaffold_config with existing config and write=False → preview_existing."""
