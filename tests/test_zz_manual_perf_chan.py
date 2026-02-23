@@ -6,6 +6,7 @@ def test_performance_channel_discover():
     files = _discover_python_files(".")
     assert isinstance(files, list)
 
+
 def test_performance_channel_execute():
     channel = PerformanceChannel()
     config = ControlPlaneConfig()

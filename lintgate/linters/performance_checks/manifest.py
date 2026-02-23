@@ -76,7 +76,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
 
     # 1. Load cache
     cached_manifest = PropertyManifest()
-    cache_metadata: dict[str, dict[str, Any]] = {} # filepath -> {hash: str, functions: list[str]}
+    cache_metadata: dict[str, dict[str, Any]] = {}  # filepath -> {hash: str, functions: list[str]}
 
     if cache_path.exists():
         try:
@@ -131,7 +131,11 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
                         self.class_stack.pop()
 
                     def visit_FunctionDef(self, node):
-                        qualname = f"{'.'.join(self.class_stack)}.{node.name}" if self.class_stack else node.name
+                        qualname = (
+                            f"{'.'.join(self.class_stack)}.{node.name}"
+                            if self.class_stack
+                            else node.name
+                        )
                         self.nodes[qualname] = node
 
                     def visit_AsyncFunctionDef(self, node):
@@ -164,10 +168,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
     # 3. Save cache
     try:
         with open(cache_path, "w") as f:
-            json.dump({
-                "manifest": manifest.to_dict(),
-                "metadata": new_metadata
-            }, f)
+            json.dump({"manifest": manifest.to_dict(), "metadata": new_metadata}, f)
     except OSError:
         pass
 

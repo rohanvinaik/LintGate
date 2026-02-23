@@ -64,7 +64,7 @@ def check_unnecessary_materialization(tree: ast.AST, file_path: str) -> Iterable
 
     # Check 3: result = list(genexp); for x in result: ...
     # Detect variable assigned a list(genexp) then used in a loop
-    assigned_lists: dict[str, int] = {} # name -> line
+    assigned_lists: dict[str, int] = {}  # name -> line
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
@@ -78,18 +78,22 @@ def check_unnecessary_materialization(tree: ast.AST, file_path: str) -> Iterable
             ):
                 assigned_lists[target.id] = node.lineno
 
-        if isinstance(node, ast.For) and isinstance(node.iter, ast.Name) and node.iter.id in assigned_lists:
-                yield LintIssue(
-                    linter="performance_checker",
-                    kind="PERF010",
-                    message=(
-                        f"Unnecessary materialization. "
-                        f"Variable '{node.iter.id}' is materialized as a list starting at line {assigned_lists[node.iter.id]} "
-                        "but is only iterated. Use the generator directly."
-                    ),
-                    file=file_path,
-                    line=node.lineno,
-                    severity="informational",
-                    confidence=0.7,
-                    evidence={"var": node.iter.id, "check": "PERF010"},
-                )
+        if (
+            isinstance(node, ast.For)
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id in assigned_lists
+        ):
+            yield LintIssue(
+                linter="performance_checker",
+                kind="PERF010",
+                message=(
+                    f"Unnecessary materialization. "
+                    f"Variable '{node.iter.id}' is materialized as a list starting at line {assigned_lists[node.iter.id]} "
+                    "but is only iterated. Use the generator directly."
+                ),
+                file=file_path,
+                line=node.lineno,
+                severity="informational",
+                confidence=0.7,
+                evidence={"var": node.iter.id, "check": "PERF010"},
+            )

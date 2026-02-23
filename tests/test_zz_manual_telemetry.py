@@ -6,6 +6,7 @@ def test_telemetry_summary_basic():
     summary = compute_telemetry_summary(".", period="7d")
     assert isinstance(summary, dict)
 
+
 def test_quality_economics_summary():
     summary = compute_quality_economics_summary(".", period="7d")
     assert summary["period"] == "7d"

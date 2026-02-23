@@ -11,7 +11,13 @@ from lintgate.habit_mode import (
     SNAPSHOT_MAX_CHARS,
     HabitModeState,
     HabitSignals,
+    _add_to_mru,
     _classify_user_message,
+    _compute_edit_streak,
+    _compute_inter_tool_gap_median,
+    _compute_same_file_ratio,
+    _detect_test_in_window,
+    _enforce_snapshot_cap,
     build_compaction_snapshot,
     compute_habit_score,
     declare_mode,
@@ -543,3 +549,53 @@ class TestBuildCompactionSnapshot:
         snapshot = build_compaction_snapshot(state, "/project")
         assert "/a.py" in snapshot["focus_directive"]
         assert "Test: fail" in snapshot["focus_directive"]
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestComputeSameFileRatio:
+    def test_empty_window(self) -> None:
+        assert _compute_same_file_ratio([]) == 0.0
+
+    def test_all_same_file(self) -> None:
+        window = [
+            {"tool": "Read", "sig": "a.py"},
+            {"tool": "Edit", "sig": "a.py"},
+        ]
+        assert _compute_same_file_ratio(window) == 0.5
+
+
+class TestComputeInterToolGapMedian:
+    def test_fewer_than_two_timestamps(self) -> None:
+        assert _compute_inter_tool_gap_median([]) == 0.0
+
+    def test_multiple_gaps(self) -> None:
+        window = [{"ts": 1.0}, {"ts": 2.0}, {"ts": 5.0}]
+        assert _compute_inter_tool_gap_median(window) == 2.0
+
+
+class TestComputeEditStreak:
+    def test_consecutive_edits_at_end(self) -> None:
+        window = [{"tool": "Read"}, {"tool": "Edit"}, {"tool": "MultiEdit"}]
+        assert _compute_edit_streak(window) == 2
+
+
+class TestDetectTestInWindow:
+    def test_pytest_command(self) -> None:
+        window = [{"tool": "Bash", "sig": "pytest tests/"}]
+        assert _detect_test_in_window(window) is True
+
+
+class TestAddToMru:
+    def test_new_file(self) -> None:
+        files = ["a.py"]
+        _add_to_mru(files, "b.py")
+        assert files == ["b.py", "a.py"]
+
+
+class TestEnforceSnapshotCap:
+    def test_under_cap_unchanged(self) -> None:
+        snap = {"mode": {"active": True}}
+        _enforce_snapshot_cap(snap)
+        assert snap["mode"]["active"] is True

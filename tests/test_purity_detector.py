@@ -29,6 +29,7 @@ def mutable_default(x, lst=[]):
     assert results["print_test"].is_pure is False  # print is impure
     assert results["mutable_default"].is_pure is False
 
+
 def test_purity_builtin_recognition():
     code = """
 def math_usage(x):
@@ -48,6 +49,7 @@ def os_usage():
     assert results["math_usage"].is_pure is True
     assert results["len_usage"].is_pure is True
     assert results["os_usage"].is_pure is False
+
 
 def test_purity_transitive():
     code = """
@@ -72,6 +74,7 @@ def main_impure(x):
     assert results["main_pure"].is_pure is True
     assert results["impure_helper"].is_pure is False
     assert results["main_impure"].is_pure is False
+
 
 def test_purity_local_mutation_is_safe():
     code = """

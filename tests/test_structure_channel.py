@@ -19,11 +19,13 @@ import pytest
 
 from lintgate.channels.structure_channel import (
     StructureChannel,
+    _build_reexport_map,
     _check_import_cycles,
     _check_module_size_distribution,
     _check_orphans,
     _check_package_cohesion,
     _count_loc,
+    _detect_reexports,
     _discover_python_files,
     _find_cycles,
     _is_orphan_excluded,
@@ -564,3 +566,55 @@ class TestIntegration:
             assert f.kind.startswith("STRUCT")
             assert f.linter == "structure_channel"
             assert "code" in f.evidence
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestDetectReexports:
+    def test_named_import_definite(self, tmp_path):
+        init = str(tmp_path / "__init__.py")
+        _write_file(init, "from .sub import Foo\n")
+        result = _detect_reexports(init, str(tmp_path))
+        assert result == {"sub": "definite"}
+
+
+class TestBuildReexportMap:
+    def test_collects_from_init_files(self, tmp_path):
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        _write_file(str(pkg / "__init__.py"), "from .sub import Foo\n")
+        _write_file(str(pkg / "sub.py"), "Foo = 1\n")
+        py_files = [str(pkg / "__init__.py"), str(pkg / "sub.py")]
+        result = _build_reexport_map(py_files, str(tmp_path))
+        assert str(pkg) in result
+        assert result[str(pkg)] == {"sub": "definite"}
+
+
+class TestCountLocEdgeCases:
+    def test_single_triple_quote_toggles_docstring(self, tmp_path):
+        f = str(tmp_path / "mod.py")
+        _write_file(
+            f,
+            '''\
+            x = 1
+            """
+            This is a docstring body.
+            """
+            y = 2
+            ''',
+        )
+        assert _count_loc(f) == 2
+
+
+class TestCheckOrphansReexports:
+    def test_definite_reexport_skips_orphan(self, tmp_path):
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        _write_file(str(pkg / "__init__.py"), "from .sub import Foo\n")
+        _write_file(str(pkg / "sub.py"), "Foo = 1\n")
+        graph = {}
+        file_map = {"pkg.sub": str(pkg / "sub.py")}
+        py_files = [str(pkg / "__init__.py"), str(pkg / "sub.py")]
+        findings = _check_orphans(py_files, graph, file_map, str(tmp_path))
+        assert all(f.evidence.get("module") != "pkg.sub" for f in findings)

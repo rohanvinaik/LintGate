@@ -377,5 +377,15 @@ def test_channel_reports_test_failures(mock_run: MagicMock, tmp_path: Path) -> N
 
     test_failures = [f for f in result.findings if f.kind == "test_failure"]
     assert len(test_failures) >= 1
+    assert len(test_failures) >= 1
     assert result.status == "fail"
     assert result.severity == "warning"  # Advisory
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+# NOTE: _get_test_file_candidates, _is_recent_enough, and find_covered_symbols
+# were refactored into internal logic of find_impacted_tests and
+# symbol_coverage.py respectively. Targeted tests for those are
+# now part of the class-level or orchestrator tests.

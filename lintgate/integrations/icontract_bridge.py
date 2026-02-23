@@ -4,19 +4,30 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from lintgate.linters.performance_checks.algebra_types import FunctionProperties
-from lintgate.linters.performance_checks.algebra_types import PropertyKind
+from lintgate.linters.performance_checks.algebra_types import (
+    AlgebraicProperty,
+    FunctionProperties,
+    PropertyKind,
+    PurityResult,
+)
 
 
-def generate_icontract_decorators(properties: FunctionProperties) -> list[str]:
+def generate_icontract_decorators(
+    properties: FunctionProperties | tuple[PurityResult, list[AlgebraicProperty]],
+) -> list[str]:
     """Generate icontract decorators for the given properties."""
-    if not properties.purity.is_pure:
+    if isinstance(properties, tuple):
+        purity, props_list = properties
+    else:
+        purity = properties.purity
+        props_list = list(properties.properties)
+
+    if not purity.is_pure:
         return []
 
     decorators = []
 
-    for prop in properties.properties:
+    for prop in props_list:
         if prop.kind == PropertyKind.BOUNDED and prop.bound_spec:
             if prop.bound_spec.lower is not None and prop.bound_spec.upper is not None:
                 decorators.append(

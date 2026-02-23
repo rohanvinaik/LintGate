@@ -19,6 +19,7 @@ def impure_add(a, b):
     assert results["pure_add"].is_pure is True
     assert results["impure_add"].is_pure is False
 
+
 def test_purity_edge_cases():
     code = """
 def nonlocal_test():

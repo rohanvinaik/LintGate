@@ -6,7 +6,17 @@ from unittest import mock
 
 import mcp_server
 from lintgate.context_bootstrap import (
+    _NEGATIVE_CUE_RE,
+    _NO_THEORY,
+    _PERF_ANTI_PATTERN_CUE,
+    ReviewItem,
+    _build_quick_wins,
+    _collect_dead_path_review_items,
+    _collect_machine_rule_lines,
     _model_biased_guardrails,
+    _read_readme_description,
+    _recommended_commands,
+    _rule_to_line,
     _select_actionable_anti_patterns,
     bootstrap_context_files,
 )
@@ -105,7 +115,7 @@ def test_select_actionable_anti_patterns_filters_non_negative_claims() -> None:
 def test_mcp_bootstrap_context_files_returns_payload(tmp_path) -> None:
     (tmp_path / "README.md").write_text("# Repo\n\nMinimal description.\n")
 
-    output = mcp_server.bootstrap_context_files(
+    output = mcp_server.bootstrap_context_files(  # type: ignore
         path=str(tmp_path),
         write=False,
         include_theory_rules_doc=False,
@@ -369,3 +379,90 @@ class TestBootstrapModelProfileIntegration:
             use_model_profile=False,
         )
         assert payload["source_signals"]["model_profile_applied"] is False
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestReviewItem:
+    def test_to_dict_basic(self) -> None:
+        item = ReviewItem(
+            review_type="directive_classification",
+            context="Do not import pandas",
+            question="Is this enforceable?",
+        )
+        d = item.to_dict()
+        assert d["type"] == "directive_classification"
+        assert d["context"] == "Do not import pandas"
+
+
+class TestRuleToLine:
+    def test_forbid_regex(self) -> None:
+        rule = {"kind": "forbid_regex", "pattern": "import os"}
+        assert _rule_to_line(rule) == "LINTGATE_FORBID_REGEX: import os"
+
+    def test_empty_pattern_returns_empty(self) -> None:
+        assert _rule_to_line({"kind": "forbid_regex", "pattern": ""}) == ""
+
+
+class TestCollectMachineRuleLines:
+    def test_from_guidance_rules(self) -> None:
+        guidance = {"rules": [{"kind": "forbid_regex", "pattern": "eval\\("}]}
+        result = _collect_machine_rule_lines(guidance=guidance, theory={}, max_machine_rules=10)
+        assert len(result) == 1
+        assert "LINTGATE_FORBID_REGEX: eval\\(" in result[0]
+
+
+class TestReadReadmeDescription:
+    def test_finds_readme_md(self, tmp_path) -> None:
+        (tmp_path / "README.md").write_text("# Title\n\nDescription line.\n")
+        result = _read_readme_description(tmp_path)
+        assert "Description line" in result
+
+
+class TestRecommendedCommands:
+    def test_python_project(self, tmp_path) -> None:
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        cmds = _recommended_commands(tmp_path)
+        assert any("ruff" in c for c in cmds)
+
+
+class TestBuildQuickWins:
+    def test_no_config_suggests_creation(self, tmp_path) -> None:
+        wins = _build_quick_wins(tmp_path, {}, {})
+        assert any("lintgate.yaml" in w for w in wins)
+
+
+class TestCollectDeadPathReviewItems:
+    def test_dead_paths_collected(self) -> None:
+        items: list[ReviewItem] = []
+        audit = {
+            "audit": [
+                {
+                    "name": "CLAUDE.md",
+                    "file": "/tmp/CLAUDE.md",
+                    "health_checks": [
+                        {
+                            "check": "path_references",
+                            "status": "warn",
+                            "detail": "1 referenced paths don't exist: src/missing.py",
+                        }
+                    ],
+                }
+            ]
+        }
+        _collect_dead_path_review_items(items, audit)
+        assert len(items) == 1
+        assert items[0].context == "src/missing.py"
+
+
+class TestConstants:
+    def test_negative_cue_regex_matches(self) -> None:
+        assert _NEGATIVE_CUE_RE.search("Do not use eval")
+        assert _NEGATIVE_CUE_RE.search("Avoid wildcard imports")
+
+    def test_no_theory_sentinel(self) -> None:
+        assert _NO_THEORY == "(no theory content found)"
+
+    def test_perf_anti_pattern_cue(self) -> None:
+        assert _PERF_ANTI_PATTERN_CUE == "O(n\u00b2)"

@@ -123,6 +123,19 @@ class PerformanceChannel:
                         suggestions=["Decorate with @functools.lru_cache or @functools.cache"],
                     )
                 )
+            elif "cacheable" in hints:
+                findings.append(
+                    LintIssue(
+                        linter="performance_channel",
+                        kind="PERFCH005",
+                        message=f"Caching candidate: '{func_name}' is pure and likely to benefit from caching, though invalidation must be considered for external inputs.",
+                        file=project_root,
+                        severity="informational",
+                        confidence=0.7,
+                        evidence={"code": "PERFCH005", "function": func_name},
+                        suggestions=["Decorate with @functools.lru_cache if inputs are stable."],
+                    )
+                )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 

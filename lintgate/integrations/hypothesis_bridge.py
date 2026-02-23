@@ -4,14 +4,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from lintgate.linters.performance_checks.algebra_types import FunctionProperties
-from lintgate.linters.performance_checks.algebra_types import PropertyKind
+from lintgate.linters.performance_checks.algebra_types import (
+    AlgebraicProperty,
+    FunctionProperties,
+    PropertyKind,
+    PurityResult,
+)
 
 
-def generate_hypothesis_template(func_name: str, properties: FunctionProperties) -> str | None:
+def generate_hypothesis_template(
+    func_name: str, properties: FunctionProperties | tuple[PurityResult, list[AlgebraicProperty]]
+) -> str | None:
     """Generate a Hypothesis property test template based on detected traits."""
-    if not properties.purity.is_pure:
+    if isinstance(properties, tuple):
+        purity, props_list = properties
+    else:
+        purity = properties.purity
+        props_list = list(properties.properties)
+
+    if not purity.is_pure:
         return None
 
     lines = [
@@ -22,15 +33,11 @@ def generate_hypothesis_template(func_name: str, properties: FunctionProperties)
 
     tests = []
 
-    args_list = (
-        ["x", "y", "z"][: properties.purity.parameter_count]
-        if properties.purity.parameter_count > 0
-        else ["x"]
-    )
+    args_list = ["x", "y", "z"][: purity.parameter_count] if purity.parameter_count > 0 else ["x"]
     args_str = ", ".join(f"{arg}=st.integers()" for arg in args_list)
     args_call = ", ".join(args_list)
 
-    for prop in properties.properties:
+    for prop in props_list:
         if prop.kind == PropertyKind.COMMUTATIVE:
             tests.append(f"""@given(x=st.integers(), y=st.integers())
 def test_{func_name}_is_commutative(x, y):

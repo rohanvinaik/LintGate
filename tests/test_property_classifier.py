@@ -4,8 +4,10 @@ from lintgate.linters.performance_checks.properties import classify_properties
 
 def _get_func_node(code):
     import ast
+
     tree = ast.parse(code)
     return tree.body[0]
+
 
 def _mock_purity(name, params=1):
     return PurityResult(
@@ -16,8 +18,9 @@ def _mock_purity(name, params=1):
         line=1,
         confidence=1.0,
         side_effects=(),
-        return_annotation=None
+        return_annotation=None,
     )
+
 
 def test_detect_idempotent():
     code = "def to_int(x: int) -> int: return int(x)"
@@ -32,11 +35,12 @@ def test_detect_idempotent():
         confidence=purity.confidence,
         side_effects=purity.side_effects,
         parameter_count=purity.parameter_count,
-        return_annotation="int"
+        return_annotation="int",
     )
     props = classify_properties(node, purity)
     kinds = [p.kind for p in props.properties]
     assert PropertyKind.IDEMPOTENT in kinds
+
 
 def test_detect_commutative_associative():
     code = "def add(a, b): return a + b"
@@ -47,6 +51,7 @@ def test_detect_commutative_associative():
     assert PropertyKind.COMMUTATIVE in kinds
     assert PropertyKind.ASSOCIATIVE in kinds
 
+
 def test_detect_monotonic():
     code = "def increment(x): return x + 1"
     node = _get_func_node(code)
@@ -55,6 +60,7 @@ def test_detect_monotonic():
     kinds = [p.kind for p in props.properties]
     assert PropertyKind.MONOTONIC in kinds
 
+
 def test_detect_bounded():
     code = "def clamp(x): return max(0, min(x, 10))"
     node = _get_func_node(code)
@@ -62,6 +68,17 @@ def test_detect_bounded():
     props = classify_properties(node, purity)
     kinds = [p.kind for p in props.properties]
     assert PropertyKind.BOUNDED in kinds
+
+def test_detect_bounded_nested_order():
+    # Nested in different order
+    code = "def clamp(x): return min(100, max(x, -100))"
+    node = _get_func_node(code)
+    purity = _mock_purity("clamp")
+    props = classify_properties(node, purity)
+    prop = [p for p in props.properties if p.kind == PropertyKind.BOUNDED][0]
+    assert prop.bound_spec.lower == -100.0
+    assert prop.bound_spec.upper == 100.0
+
 
 def test_detect_complex_associative():
     # Bitwise ops are also associative

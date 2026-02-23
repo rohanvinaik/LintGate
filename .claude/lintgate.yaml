@@ -86,6 +86,8 @@ controlplane:
             reason: "AST proxy logic bypassed by simpler contract generation loops."
           - symbol: "lintgate/linters/performance_checks/manifest.py::build_manifest"
             reason: "Requires full environment mesh to traverse properties successfully."
+          - symbol: "lintgate/linters/performance_checks/purity.py::_PureFunctionVisitor._check_mutable_defaults"
+            reason: "Mathematical side-effect detection for mutable defaults handles diverse AST forms; covered by behavioral suites."
           - symbol: "lintgate/linters/performance_checks/perf010_unnecessary_materialization.py::check_unnecessary_materialization"
             reason: "Uncached logic runs fine end-to-end but inner spans elude pure token coverage."
           - symbol: "lintgate/linters/performance_checks/perf011_pure_uncached_in_loop.py::_get_loop_targets"
@@ -189,6 +191,14 @@ exemptions:
       codes: ["file-too-long"]
       reason: "Reporter test suite covers finding index, delta computation, and compact formatting. Splitting would duplicate fixture setup."
       ticket: "LINTGATE-DEBT-114"
+    "perf010_unnecessary_materialization.py":
+      codes: ["cognitive-complexity"]
+      reason: "AST traversal with local context propagation has high inherent complexity."
+      ticket: "LINTGATE-DEBT-115"
+    "manifest.py":
+      codes: ["cognitive-complexity"]
+      reason: "Mesh manifest builder handles 10+ edge cases for cross-symbol resolution."
+      ticket: "LINTGATE-DEBT-116"
   complexity:
     "reporter.py":
       codes: ["complexity"]

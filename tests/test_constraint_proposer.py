@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from lintgate.controlplane.constraint_proposer import (
+    _BEHAVIOR_CONSTRAINT_MAP,
+    _NEGATIVE_POLARITY,
+    _POSITIVE_POLARITY,
     ProposedConstraint,
+    TheoryCoherenceResult,
+    _apply_coherence_check,
+    _compute_proposal_confidence,
+    _extract_coherence_keywords,
+    _is_contradicting,
+    _resolve_constraint_template,
+    check_theory_coherence,
     propose_constraints_from_patterns,
     store_proposals_in_session,
     update_constraint_status,
 )
 from lintgate.controlplane.session_memory import SessionMemory
+from lintgate.controlplane.types import ControlPlaneConfig, InquiryConfig
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -245,3 +258,113 @@ class TestSerialization:
         assert restored.pattern_key == "ruff|F821"
         assert restored.confidence == 0.85
         assert restored.status == "proposed"
+
+
+# ── Targeted Coverage Fixes ──────────────────────────────────────────
+
+
+class TestTheoryCoherenceResult:
+    def test_default_values(self) -> None:
+        tc = TheoryCoherenceResult()
+        assert tc.aligned is None
+        assert tc.coherence_score == 0.0
+
+    def test_roundtrip(self) -> None:
+        original = TheoryCoherenceResult(
+            aligned=True,
+            supporting_claims=["a"],
+            contradicting_claims=[],
+            coherence_score=1.0,
+        )
+        restored = TheoryCoherenceResult.from_dict(original.to_dict())
+        assert restored.aligned == original.aligned
+        assert restored.coherence_score == original.coherence_score
+
+
+class TestProposedConstraintV2:
+    def test_default_values(self) -> None:
+        pc = ProposedConstraint()
+        assert pc.source == "pattern_bank"
+        assert pc.status == "proposed"
+
+    def test_to_dict_with_theory_coherence(self) -> None:
+        tc = TheoryCoherenceResult(aligned=True, coherence_score=0.5)
+        pc = ProposedConstraint(theory_coherence=tc, drift_warning=True)
+        d = pc.to_dict()
+        assert d["theory_coherence"]["aligned"] is True
+        assert d["drift_warning"] is True
+
+
+class TestExtractCoherenceKeywords:
+    def test_extracts_4plus_char_words(self) -> None:
+        result = _extract_coherence_keywords("The quick brown fox jumps")
+        assert "quick" in result
+        assert "fox" not in result
+
+    def test_excludes_stopwords(self) -> None:
+        result = _extract_coherence_keywords("this should have been detected")
+        assert "this" not in result
+        assert "been" not in result
+
+
+class TestIsContradicting:
+    def test_opposite_polarity_with_overlap_returns_true(self) -> None:
+        assert (
+            _is_contradicting(
+                "avoid complexity patterns",
+                "prefer complexity patterns always",
+            )
+            is True
+        )
+
+
+class TestResolveConstraintTemplate:
+    def test_behavior_channel_maps_to_behavior_map(self) -> None:
+        result = _resolve_constraint_template("behavior_channel", "approach_cycling")
+        assert result == _BEHAVIOR_CONSTRAINT_MAP["approach_cycling"]
+
+
+class TestComputeProposalConfidence:
+    def test_above_threshold_adds_bonus(self) -> None:
+        template = {"base_confidence": 0.8}
+        result = _compute_proposal_confidence(template, 4)
+        assert result > 0.8
+
+
+class TestCheckTheoryCoherence:
+    @patch("lintgate.theory_extractor.get_theory_context_from_profile")
+    def test_all_supporting_claims(self, mock_get: MagicMock) -> None:
+        mock_get.return_value = {
+            "claims": [
+                {"claim": "prefer smaller composable functions always"},
+            ]
+        }
+        proposal = ProposedConstraint(
+            proposed_rule="prefer smaller functions always",
+            rationale="complexity appeared often",
+        )
+        result = check_theory_coherence(proposal, {"facets": {}})
+        assert result.aligned is True
+
+
+class TestApplyCoherenceCheck:
+    @patch("lintgate.controlplane.constraint_proposer.check_theory_coherence")
+    def test_applies_coherence_and_sets_drift_warning(self, mock_check: MagicMock) -> None:
+        mock_check.return_value = TheoryCoherenceResult(
+            aligned=False,
+            contradicting_claims=["contradicts something"],
+            coherence_score=-0.5,
+        )
+        config = ControlPlaneConfig(inquiry=InquiryConfig(theory_coherence_check=True))
+        session = SessionMemory()
+        session.theory_profile_cache = {"facets": {"core_theory": {}}}
+        proposal = ProposedConstraint(proposed_rule="avoid something")
+        _apply_coherence_check(proposal, config, session)
+        assert proposal.theory_coherence is not None
+        assert proposal.drift_warning is True
+
+
+class TestModuleConstants:
+    def test_polarity_sets_are_disjoint(self) -> None:
+        overlap = _POSITIVE_POLARITY & _NEGATIVE_POLARITY
+        assert overlap == set()

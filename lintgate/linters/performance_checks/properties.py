@@ -64,30 +64,54 @@ def _check_bounded(node: ast.FunctionDef | ast.AsyncFunctionDef) -> AlgebraicPro
     if not expr:
         return None
 
-    # Detect `max(0, min(1, x))` or `min(max(x, 0), 1)`
-    # This is a bit brittle as an AST check but catches common clamp patterns.
-    if (
-        isinstance(expr, ast.Call)
-        and isinstance(expr.func, ast.Name)
-        and expr.func.id in ("max", "min")
-    ):
-        # Simple heuristic: if we return min/max with a constant, there is a bound.
-        for arg in expr.args:
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, (int, float)):
-                if expr.func.id == "max":
-                    return AlgebraicProperty(
-                        kind=PropertyKind.BOUNDED,
-                        confidence=0.7,
-                        evidence="Returns max(..., constant)",
-                        bound_spec=BoundSpec(lower=float(arg.value), upper=None, source="clamp"),
-                    )
-                else:  # min
-                    return AlgebraicProperty(
-                        kind=PropertyKind.BOUNDED,
-                        confidence=0.7,
-                        evidence="Returns min(..., constant)",
-                        bound_spec=BoundSpec(lower=None, upper=float(arg.value), source="clamp"),
-                    )
+    # Detect `max(lo, min(x, hi))` or `min(hi, max(x, lo))` patterns
+    def _extract_bounds(node: ast.AST) -> tuple[float | None, float | None]:
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            return None, None
+
+        fn = node.func.id
+        if fn not in ("max", "min"):
+            return None, None
+
+        def _get_val(n: ast.AST) -> float | None:
+            if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+                return float(n.value)
+            if (
+                isinstance(n, ast.UnaryOp)
+                and isinstance(n.op, ast.USub)
+                and isinstance(n.operand, ast.Constant)
+                and isinstance(n.operand.value, (int, float))
+            ):
+                return -float(n.operand.value)
+            return None
+
+        lo, hi = None, None
+        for arg in node.args:
+            val = _get_val(arg)
+            if val is not None:
+                if fn == "max":
+                    lo = val
+                else:
+                    hi = val
+            else:
+                inner_lo, inner_hi = _extract_bounds(arg)
+                if inner_lo is not None:
+                    lo = inner_lo
+                if inner_hi is not None:
+                    hi = inner_hi
+        return lo, hi
+
+    lo, hi = _extract_bounds(expr)
+    if lo is not None or hi is not None:
+        evidence = []
+        if lo is not None: evidence.append(f"lower={lo}")
+        if hi is not None: evidence.append(f"upper={hi}")
+        return AlgebraicProperty(
+            kind=PropertyKind.BOUNDED,
+            confidence=0.8,
+            evidence=f"Algebraic bound detected: {', '.join(evidence)}",
+            bound_spec=BoundSpec(lower=lo, upper=hi, source="clamp"),
+        )
 
     # Detect ratios like `x / (x + 1)` which are bounded [0, 1) for x > 0
     # Or bool returns which are bounded [0, 1]

@@ -17,6 +17,7 @@ def example():
     issues = list(check_unnecessary_materialization(tree, "dummy.py"))
     assert len(issues) > 0
 
+
 def test_perf011_basic():
     code = """
 def example():
