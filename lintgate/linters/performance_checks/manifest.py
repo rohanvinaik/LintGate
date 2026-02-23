@@ -27,6 +27,15 @@ class PropertyManifest:
     property_distribution: dict[PropertyKind, int] = field(default_factory=dict)
     optimization_potential: list[tuple[str, list[str]]] = field(default_factory=list)
 
+    def get_source_file(self, func_name: str) -> str | None:
+        """Look up the source file for a function by qualified name."""
+        func = self.functions.get(func_name)
+        return func.source_file if func else None
+
+    def get_pure_function_names(self) -> set[str]:
+        """Return set of qualified names for all pure functions."""
+        return {name for name, f in self.functions.items() if f.purity.is_pure}
+
     def update_metrics(self) -> None:
         """Recalculate counts based on the current functions dictionary."""
         self.pure_count = sum(1 for f in self.functions.values() if f.purity.is_pure)
@@ -66,110 +75,151 @@ class PropertyManifest:
         return manifest
 
 
+# ── Manifest builder helpers ────────────────────────────────────────────
+
+
+class _FuncFinder(ast.NodeVisitor):
+    """Collect qualified function names and their AST nodes from a module."""
+
+    def __init__(self) -> None:
+        self.nodes: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+        self._class_stack: list[str] = []
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._class_stack.append(node.name)
+        self.generic_visit(node)
+        self._class_stack.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        qualname = f"{'.'.join(self._class_stack)}.{node.name}" if self._class_stack else node.name
+        self.nodes[qualname] = node
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.visit_FunctionDef(node)  # type: ignore[arg-type]
+
+
+def _compute_file_hash(filepath: str) -> str:
+    """Compute MD5 hash of a file's contents."""
+    with open(filepath, "rb") as f:
+        return hashlib.md5(f.read(), usedforsecurity=False).hexdigest()
+
+
+def _load_manifest_cache(
+    cache_path: Any,
+) -> tuple[PropertyManifest, dict[str, dict[str, Any]]]:
+    """Load cached manifest and metadata from disk, returning empty defaults on failure."""
+    if not cache_path.exists():
+        return PropertyManifest(), {}
+    try:
+        with open(cache_path) as f:
+            cached_data = json.load(f)
+            return (
+                PropertyManifest.from_dict(cached_data.get("manifest", {})),
+                cached_data.get("metadata", {}),
+            )
+    except (json.JSONDecodeError, OSError, KeyError):
+        return PropertyManifest(), {}
+
+
+def _restore_cached_functions(
+    manifest: PropertyManifest,
+    filepath: str,
+    cached_manifest: PropertyManifest,
+    cached_entry: dict[str, Any],
+) -> None:
+    """Restore function entries from cache for an unchanged file."""
+    for name in cached_entry.get("functions", []):
+        if name in cached_manifest.functions:
+            manifest.functions[name] = cached_manifest.functions[name]
+
+
+def _scan_file(
+    manifest: PropertyManifest,
+    filepath: str,
+) -> list[str]:
+    """Parse a Python file, run purity + property analysis, and populate the manifest.
+
+    Returns the list of qualified function names found, or empty on parse failure.
+    """
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename=filepath)
+    except (SyntaxError, OSError):
+        return []
+
+    purity_results = analyze_purity(tree)
+
+    finder = _FuncFinder()
+    finder.visit(tree)
+
+    found_funcs: list[str] = []
+    for qualname, purity in purity_results.items():
+        func_node = finder.nodes.get(qualname)
+        if not func_node:
+            continue
+
+        found_funcs.append(qualname)
+        if purity.is_pure:
+            props = classify_properties(func_node, purity)
+            manifest.functions[qualname] = FunctionProperties(
+                purity=props.purity,
+                properties=props.properties,
+                optimization_hints=props.optimization_hints,
+                source_file=filepath,
+            )
+        else:
+            manifest.functions[qualname] = FunctionProperties(
+                purity=purity,
+                properties=(),
+                optimization_hints=(),
+                source_file=filepath,
+            )
+
+    return found_funcs
+
+
+def _save_manifest_cache(
+    cache_path: Any,
+    manifest: PropertyManifest,
+    metadata: dict[str, dict[str, Any]],
+) -> None:
+    """Persist manifest and per-file metadata to disk cache."""
+    try:
+        with open(cache_path, "w") as f:
+            json.dump({"manifest": manifest.to_dict(), "metadata": metadata}, f)
+    except OSError:
+        pass
+
+
+# ── Public API ──────────────────────────────────────────────────────────
+
+
 def build_manifest(project_root: str, python_files: list[str]) -> PropertyManifest:
-    """
-    Build a PropertyManifest by scanning python files, with caching.
-    """
+    """Build a PropertyManifest by scanning Python files, with incremental caching."""
     PERF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     project_hash = hashlib.sha256(project_root.encode()).hexdigest()[:16]
     cache_path = PERF_CACHE_DIR / f"{project_hash}.json"
 
-    # 1. Load cache
-    cached_manifest = PropertyManifest()
-    cache_metadata: dict[str, dict[str, Any]] = {}  # filepath -> {hash: str, functions: list[str]}
+    cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
 
-    if cache_path.exists():
-        try:
-            with open(cache_path) as f:
-                cached_data = json.load(f)
-                cached_manifest = PropertyManifest.from_dict(cached_data.get("manifest", {}))
-                cache_metadata = cached_data.get("metadata", {})
-        except (json.JSONDecodeError, OSError, KeyError):
-            pass
-
-    # 2. Identify which files need re-scanning
     manifest = PropertyManifest()
     new_metadata: dict[str, dict[str, Any]] = {}
 
     for filepath in python_files:
         try:
-            with open(filepath, "rb") as f:
-                file_hash = hashlib.md5(f.read(), usedforsecurity=False).hexdigest()
-
-            cached_entry = cache_metadata.get(filepath)
-            if cached_entry and cached_entry.get("hash") == file_hash:
-                # Reuse cached functions
-                func_names = cached_entry.get("functions", [])
-                for name in func_names:
-                    if name in cached_manifest.functions:
-                        manifest.functions[name] = cached_manifest.functions[name]
-                new_metadata[filepath] = cached_entry
-            else:
-                # Must scan
-                tree = None
-                try:
-                    with open(filepath, encoding="utf-8") as f:
-                        tree = ast.parse(f.read(), filename=filepath)
-                except (SyntaxError, OSError):
-                    continue
-
-                if not tree:
-                    continue
-
-                # Purity analysis
-                purity_results = analyze_purity(tree)
-
-                # Function node discovery
-                class FuncFinder(ast.NodeVisitor):
-                    def __init__(self):
-                        self.nodes = {}
-                        self.class_stack = []
-
-                    def visit_ClassDef(self, node):
-                        self.class_stack.append(node.name)
-                        self.generic_visit(node)
-                        self.class_stack.pop()
-
-                    def visit_FunctionDef(self, node):
-                        qualname = (
-                            f"{'.'.join(self.class_stack)}.{node.name}"
-                            if self.class_stack
-                            else node.name
-                        )
-                        self.nodes[qualname] = node
-
-                    def visit_AsyncFunctionDef(self, node):
-                        self.visit_FunctionDef(node)
-
-                finder = FuncFinder()
-                finder.visit(tree)
-
-                found_funcs = []
-                for qualname, purity in purity_results.items():
-                    func_node = finder.nodes.get(qualname)
-                    if not func_node:
-                        continue
-
-                    found_funcs.append(qualname)
-                    if purity.is_pure:
-                        props = classify_properties(func_node, purity)
-                        manifest.functions[qualname] = props
-                    else:
-                        manifest.functions[qualname] = FunctionProperties(
-                            purity=purity, properties=(), optimization_hints=()
-                        )
-
-                new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
+            file_hash = _compute_file_hash(filepath)
         except OSError:
             continue
 
-    manifest.update_metrics()
+        cached_entry = cache_metadata.get(filepath)
+        if cached_entry and cached_entry.get("hash") == file_hash:
+            _restore_cached_functions(manifest, filepath, cached_manifest, cached_entry)
+            new_metadata[filepath] = cached_entry
+        else:
+            found_funcs = _scan_file(manifest, filepath)
+            new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
 
-    # 3. Save cache
-    try:
-        with open(cache_path, "w") as f:
-            json.dump({"manifest": manifest.to_dict(), "metadata": new_metadata}, f)
-    except OSError:
-        pass
+    manifest.update_metrics()
+    _save_manifest_cache(cache_path, manifest, new_metadata)
 
     return manifest

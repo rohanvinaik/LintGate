@@ -40,6 +40,13 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `controlplane_agent_feedback` | Accept/reject findings and constraint proposals                          |
 | `controlplane_test_skeleton`  | Generate pytest skeleton from AST analysis                               |
 
+### Performance Analysis
+
+| Tool                      | Purpose                                                              |
+| ------------------------- | -------------------------------------------------------------------- |
+| `inspect_algebra`         | Inspect algebraic property manifest (purity, cacheability, parallelism) |
+| `generate_property_tests` | Generate Hypothesis + icontract templates from algebraic properties  |
+
 ### Behavioral Supervision
 
 | Tool                   | Purpose                                                                 |

@@ -1,6 +1,6 @@
 # LintGate
 
-Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 49 MCP tools for on-demand analysis.
+Proactive professional cognition stack for LLM coding agents. Fires on every Write, Edit, and Bash via PostToolUse hooks. 51 MCP tools for on-demand analysis.
 
 ## First Steps
 

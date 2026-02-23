@@ -12,6 +12,7 @@ functions, and the entry point.
 from __future__ import annotations
 
 import contextlib
+import functools
 import inspect
 import json
 import os
@@ -286,6 +287,7 @@ def _resolve_files(files: list[str], project_root: str) -> tuple[list[str], list
     return existing, missing
 
 
+@functools.cache
 def _normalize_linter_names(base: list[str], extra: list[str]) -> list[str]:
     names = [*base, *extra]
     seen: set[str] = set()
