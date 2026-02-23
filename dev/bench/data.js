@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771831359393,
+  "lastUpdate": 1771831472367,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -59,6 +59,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00045103515471656234",
             "extra": "mean: 772.0766885247727 usec\nrounds: 610"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ef1c0415636fed5f280ea49d626b83748bb0bf48",
+          "message": "Merge pull request #15 from rohanvinaik/fix/badge-push-logic\n\nFix badge push: save SVGs before branch switch",
+          "timestamp": "2026-02-23T02:23:56-05:00",
+          "tree_id": "068dacbc8d55f7c6f94c8fe19f7fe6810121db26",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/ef1c0415636fed5f280ea49d626b83748bb0bf48"
+        },
+        "date": 1771831471551,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 127.60016713537365,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00018110009532786085",
+            "extra": "mean: 7.836980330433889 msec\nrounds: 115"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 212704.3617512009,
+            "unit": "iter/sec",
+            "range": "stddev: 7.491619324473386e-7",
+            "extra": "mean: 4.701361042937589 usec\nrounds: 54157"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5392.994177713304,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017431251215902177",
+            "extra": "mean: 185.42575182679175 usec\nrounds: 3832"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 13838.202897775165,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000016079618761667544",
+            "extra": "mean: 72.26371859027843 usec\nrounds: 9392"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1669.2445113135,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00024349218489917263",
+            "extra": "mean: 599.0734090915879 usec\nrounds: 572"
           }
         ]
       }
