@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771832125681,
+  "lastUpdate": 1771833664726,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -179,6 +179,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00005766324375808683",
             "extra": "mean: 522.2627009344021 usec\nrounds: 642"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "35805ea8c0e7ecdbaefd9714e8e95bd6b4b15600",
+          "message": "Merge pull request #17 from rohanvinaik/fix/badge-svg-cleanup\n\nFix badge push: clean SVGs before branch switch",
+          "timestamp": "2026-02-23T03:00:27-05:00",
+          "tree_id": "72952ab5548bee53db26efd33d1ddcb104c36725",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/35805ea8c0e7ecdbaefd9714e8e95bd6b4b15600"
+        },
+        "date": 1771833663606,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 119.26059618711119,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0008141741556840404",
+            "extra": "mean: 8.384999169642526 msec\nrounds: 112"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 208961.54167276324,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000012764359691037223",
+            "extra": "mean: 4.785569593308296 usec\nrounds: 41333"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5586.288455451057,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00019840193009869296",
+            "extra": "mean: 179.00973212799414 usec\nrounds: 3595"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14505.190823568366,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001545785345275301",
+            "extra": "mean: 68.9408372604914 usec\nrounds: 7724"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1272.5690777251612,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002127258632632327",
+            "extra": "mean: 785.8119590549816 usec\nrounds: 635"
           }
         ]
       }
