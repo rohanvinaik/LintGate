@@ -154,11 +154,14 @@ jobs:
       - name: Push badge to badges branch
         if: steps.parse.outputs.skip != 'true'
         run: |
+          cp .github/badges/mutation.svg /tmp/mutation.svg
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin badges:badges
-          git checkout badges -- .github/badges/ 2>/dev/null || true
-          git checkout -B badges
+          git fetch origin badges
+          git checkout badges
+          mkdir -p .github/badges
+          cp /tmp/mutation.svg .github/badges/mutation.svg
           git add .github/badges/mutation.svg
           git commit -m "Update mutation badge (${{ steps.parse.outputs.score }}% — ${{ steps.parse.outputs.killed }}/${{ steps.parse.outputs.total }} killed)" || echo "No changes"
           git push origin badges
