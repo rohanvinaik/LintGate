@@ -95,6 +95,24 @@ check_untyped_defs = true
 
 [tool.mutmut]
 paths_to_mutate = ["lintgate/controlplane/", "lintgate/channels/"]
+also_copy = [
+    "lintgate/",
+    "mcp_tools/",
+    "mcp_server.py",
+    "README.md",
+    "AGENTS.md",
+    "SKILL.md",
+    "docs/",
+    "integrate.sh",
+    "pyproject.toml",
+    "sonar-project.properties",
+    ".coveragerc",
+    ".codeclimate.yml",
+    ".gitleaks.toml",
+    ".githooks/",
+    ".github/",
+    "setup.sh",
+]
 do_not_mutate = [
     "*__init__.py",
     "*cli.py",
