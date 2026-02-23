@@ -470,14 +470,32 @@ def apply_waivers(
                 continue  # Invalid date format — skip waiver
         active_waivers[waiver.symbol] = waiver
 
+    # Separate exact-match and glob-pattern waivers
+    exact_waivers: dict[str, SymbolCoverageWaiver] = {}
+    glob_waivers: list[SymbolCoverageWaiver] = []
+    for sym, waiver in active_waivers.items():
+        if "*" in sym:
+            glob_waivers.append(waiver)
+        else:
+            exact_waivers[sym] = waiver
+
     filtered: list[SymbolSpan] = []
     applied: list[tuple[str, SymbolCoverageWaiver]] = []
 
     for target in targets:
-        if target.symbol_key in active_waivers:
-            applied.append((target.symbol_key, active_waivers[target.symbol_key]))
+        if target.symbol_key in exact_waivers:
+            applied.append((target.symbol_key, exact_waivers[target.symbol_key]))
         else:
-            filtered.append(target)
+            matched = False
+            for gw in glob_waivers:
+                from fnmatch import fnmatch
+
+                if fnmatch(target.symbol_key, gw.symbol):
+                    applied.append((target.symbol_key, gw))
+                    matched = True
+                    break
+            if not matched:
+                filtered.append(target)
 
     return filtered, applied, expired
 
