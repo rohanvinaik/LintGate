@@ -65,6 +65,7 @@ jobs:
           output-file-path: output.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
+          gh-pages-branch: badges
           alert-threshold: '200%'
           comment-on-alert: true
           fail-on-alert: true

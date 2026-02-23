@@ -151,9 +151,14 @@ jobs:
           color: "${{ steps.parse.outputs.color }}"
           path: ".github/badges/mutation.svg"
 
-      - name: Commit badge
+      - name: Push badge to badges branch
         if: steps.parse.outputs.skip != 'true'
-        uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403 # v5
-        with:
-          commit_message: "Update mutation score badge (${{ steps.parse.outputs.score }}% — ${{ steps.parse.outputs.killed }}/${{ steps.parse.outputs.total }} killed)"
-          file_pattern: ".github/badges/mutation.svg"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin badges:badges
+          git checkout badges -- .github/badges/ 2>/dev/null || true
+          git checkout -B badges
+          git add .github/badges/mutation.svg
+          git commit -m "Update mutation badge (${{ steps.parse.outputs.score }}% — ${{ steps.parse.outputs.killed }}/${{ steps.parse.outputs.total }} killed)" || echo "No changes"
+          git push origin badges
