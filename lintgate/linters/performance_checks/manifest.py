@@ -94,7 +94,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
     for filepath in python_files:
         try:
             with open(filepath, "rb") as f:
-                file_hash = hashlib.md5(f.read()).hexdigest()
+                file_hash = hashlib.md5(f.read(), usedforsecurity=False).hexdigest()
 
             cached_entry = cache_metadata.get(filepath)
             if cached_entry and cached_entry.get("hash") == file_hash:
