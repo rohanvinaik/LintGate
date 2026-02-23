@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 from typing import TYPE_CHECKING, Any
@@ -144,6 +145,7 @@ def _build_issue(
     )
 
 
+@functools.lru_cache(maxsize=None)
 def _line_number(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 

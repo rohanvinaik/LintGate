@@ -202,7 +202,7 @@ def test_line_number_caching() -> None:
     from lintgate.linters.context_rule_checker import _line_number
 
     test_text = "line1\nline2\nline3"
-    
+
     # Clear the cache before testing to ensure a fresh start
     _line_number.cache_clear()
 
@@ -222,7 +222,7 @@ def test_line_number_caching() -> None:
     # Call with different arguments
     line_new = _line_number(test_text, 0)
     assert line_new == 1
-    
+
     cache_info_after_new = _line_number.cache_info()
     assert cache_info_after_new.hits == 1
     assert cache_info_after_new.misses == 2
