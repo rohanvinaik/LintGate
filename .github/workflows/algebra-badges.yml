@@ -72,6 +72,7 @@ jobs:
         run: |
           cp .github/badges/purity.svg /tmp/purity.svg
           cp .github/badges/properties.svg /tmp/properties.svg
+          rm -rf .github/badges
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
