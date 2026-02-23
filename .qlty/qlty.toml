@@ -250,3 +250,12 @@ match.rules = [
   "shellcheck:2144",
 ]
 set.ignored = true
+
+# ── trivy ─────────────────────────────────────────────────────────────
+
+# DS001/DS002/DS026 — ClusterFuzzLite build containers use the OSS-Fuzz
+# base image (no stable tags, must run as root, no HEALTHCHECK needed)
+[[triage]]
+match.rules = ["trivy:DS001", "trivy:DS002", "trivy:DS026"]
+match.file_patterns = ["**/.clusterfuzzlite/**"]
+set.ignored = true

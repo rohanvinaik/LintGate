@@ -39,6 +39,8 @@ _REQUIRED_ARTIFACTS: dict[str, str] = {
     "qlty_toml": os.path.join(".qlty", "qlty.toml"),
     "dependabot": os.path.join(".github", "dependabot.yml"),
     "security_md": "SECURITY.md",
+    "workflow_clusterfuzzlite": os.path.join(".github", "workflows", "cif.yml"),
+    "workflow_pypi_publish": os.path.join(".github", "workflows", "pypi-publish.yml"),
 }
 
 # Badge fingerprints that must appear in the README managed block.
@@ -50,7 +52,6 @@ _REQUIRED_BADGE_FINGERPRINTS: tuple[str, ...] = (
     "metric=security_rating",
     "metric=sqale_rating",
     "metric=reliability_rating",
-    "securityscorecards.dev",
 )
 
 # Managed badge block markers (must match onboarding_tools.py).

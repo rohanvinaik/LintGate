@@ -18,10 +18,12 @@ from mcp_tools.onboarding_tools import (
     _detect_project_layout,
     _detect_subprocess_usage,
     _generate_badge_markdown,
+    _generate_clusterfuzzlite_workflow,
     _generate_codeclimate_yml,
     _generate_coveragerc,
     _generate_gitleaks_toml,
     _generate_pre_push_hook,
+    _generate_pypi_publish_workflow,
     _generate_qlty_toml,
     _generate_qlty_workflow,
     _generate_security_workflow,
@@ -247,6 +249,18 @@ class TestGenerateSonarProperties:
         content = _generate_sonar_properties(github, layout)
         assert "*.sh" in content
 
+    def test_includes_coverage_exclusions_example(self) -> None:
+        """Template includes commented coverage exclusions example."""
+        github = {"detected": True, "owner": "alice", "repo": "myrepo"}
+        layout = {
+            "source_dirs": ["src"],
+            "test_dirs": ["tests"],
+            "python_version": "3.12",
+            "exclude_patterns": ["tests/"],
+        }
+        content = _generate_sonar_properties(github, layout)
+        assert "sonar.coverage.exclusions" in content
+
     def test_file_glob_patterns_not_corrupted(self) -> None:
         """File-extension globs like *.sh must not become *.sh** in exclusions."""
         github = {"detected": True, "owner": "alice", "repo": "myrepo"}
@@ -320,6 +334,11 @@ class TestGenerateSonarWorkflow:
         assert "sonarcloud_missing_token" not in content
         assert content.count("runs-on:") == 1
 
+    def test_pins_pip(self) -> None:
+        """Sonar workflow must pin pip version for Scorecard Pinned-Dependencies."""
+        content = _generate_sonar_workflow({"python_version": "3.11"})
+        assert "pip==25.0.1" in content
+
     def test_includes_coverage_steps(self) -> None:
         """Sonar workflow must install pytest-cov and run tests with --cov."""
         content = _generate_sonar_workflow({"python_version": "3.11"})
@@ -367,6 +386,11 @@ class TestGenerateTestsWorkflow:
     def test_runs_pytest(self) -> None:
         content = _generate_tests_workflow({"python_version": "3.11"})
         assert "python -m pytest" in content
+
+    def test_pins_pip(self) -> None:
+        """Tests workflow must pin pip version for Scorecard Pinned-Dependencies."""
+        content = _generate_tests_workflow({"python_version": "3.11"})
+        assert "pip==25.0.1" in content
 
     def test_resilient_dependency_install(self) -> None:
         """Install step tries editable install with fallback to bare pytest."""
@@ -444,6 +468,11 @@ class TestGenerateSecurityWorkflow:
         assert "pip-audit -r" in content
         assert 'python-version: "3.12"' in content
 
+    def test_pins_pip(self) -> None:
+        """Security workflow must pin pip version for Scorecard Pinned-Dependencies."""
+        content = _generate_security_workflow({"python_version": "3.11"})
+        assert "pip==25.0.1" in content
+
     def test_fallback_python_version_for_unexpected_input(self) -> None:
         content = _generate_security_workflow({"python_version": ">=3.11"})
         assert 'python-version: "3.11"' in content
@@ -492,6 +521,75 @@ class TestGenerateSecurityWorkflow:
         """Without a config file, only B101 and B108 are skipped."""
         skips = _compute_bandit_ci_skips(None)
         assert skips == ["B101", "B108"]
+
+
+class TestGenerateClusterFuzzLiteWorkflow:
+    """Tests for _generate_clusterfuzzlite_workflow."""
+
+    def test_uses_clusterfuzzlite_actions(self) -> None:
+        content = _generate_clusterfuzzlite_workflow()
+        assert "google/clusterfuzzlite/actions/build_fuzzers@" in content
+        assert "google/clusterfuzzlite/actions/run_fuzzers@" in content
+
+    def test_includes_schedule_and_dispatch(self) -> None:
+        content = _generate_clusterfuzzlite_workflow()
+        assert "schedule:" in content
+        assert "workflow_dispatch:" in content
+        assert "push:" in content
+        assert "pull_request:" in content
+
+    def test_pins_actions_to_sha(self) -> None:
+        content = _generate_clusterfuzzlite_workflow()
+        assert "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5" in content
+        assert "52ecc61cb587ee99c26825a112a21abf19c7448c" in content
+
+    def test_sets_python_language(self) -> None:
+        content = _generate_clusterfuzzlite_workflow()
+        assert "language: python" in content
+
+    def test_batch_fuzzing_mode(self) -> None:
+        content = _generate_clusterfuzzlite_workflow()
+        assert "mode: batch" in content
+        assert "fuzz-seconds: 300" in content
+
+
+class TestGeneratePypiPublishWorkflow:
+    """Tests for _generate_pypi_publish_workflow."""
+
+    def test_triggers_on_release(self) -> None:
+        content = _generate_pypi_publish_workflow()
+        assert "release:" in content
+        assert "types: [published]" in content
+
+    def test_three_job_pipeline(self) -> None:
+        content = _generate_pypi_publish_workflow()
+        assert "name: Build distribution" in content
+        assert "name: Publish to PyPI" in content
+        assert "name: Sign with Sigstore" in content
+
+    def test_uses_trusted_publishing(self) -> None:
+        content = _generate_pypi_publish_workflow()
+        assert "pypa/gh-action-pypi-publish@" in content
+        assert "id-token: write" in content
+        # No API token references
+        assert "PYPI_TOKEN" not in content
+        assert "TWINE" not in content
+
+    def test_uses_sigstore(self) -> None:
+        content = _generate_pypi_publish_workflow()
+        assert "sigstore/gh-action-sigstore-python@" in content
+        assert "*.sigstore.json" in content
+
+    def test_pins_all_actions_to_sha(self) -> None:
+        content = _generate_pypi_publish_workflow()
+        assert "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5" in content
+        assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in content
+        assert "ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e" in content
+        assert "a5caf349bc536fbef3668a10ed7f5cd309a4b53d" in content
+
+    def test_pins_pip(self) -> None:
+        content = _generate_pypi_publish_workflow()
+        assert "pip==25.0.1" in content
 
 
 class TestGeneratePrePushHook:
@@ -738,6 +836,8 @@ class TestSetupGithubQualityTool:
         assert result["qlty_workflow"]["status"] == "preview"
         assert result["security_workflow"]["status"] == "preview"
         assert result["pre_push_hook"]["status"] == "preview"
+        assert result["clusterfuzzlite_workflow"]["status"] == "preview"
+        assert result["pypi_publish_workflow"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
         assert "content" in result["coveragerc"]
@@ -782,6 +882,8 @@ class TestSetupGithubQualityTool:
         assert (tmp_path / ".github" / "workflows" / "qlty.yml").exists()
         assert (tmp_path / ".github" / "workflows" / "security-lite.yml").exists()
         assert (tmp_path / ".githooks" / "pre-push").exists()
+        assert (tmp_path / ".github" / "workflows" / "cif.yml").exists()
+        assert (tmp_path / ".github" / "workflows" / "pypi-publish.yml").exists()
         assert result["codeclimate"]["status"] == "written"
         assert result["sonar"]["status"] == "written"
         assert result["coveragerc"]["status"] == "written"
@@ -791,6 +893,8 @@ class TestSetupGithubQualityTool:
         assert result["qlty_workflow"]["status"] == "written"
         assert result["security_workflow"]["status"] == "written"
         assert result["pre_push_hook"]["status"] == "written"
+        assert result["clusterfuzzlite_workflow"]["status"] in ("written", "drift_repaired")
+        assert result["pypi_publish_workflow"]["status"] in ("written", "drift_repaired")
         assert "hooks_path_configured" in result["pre_push_hook"]
         # README should have badges
         readme_content = (tmp_path / "README.md").read_text()

@@ -46,7 +46,6 @@ jobs:
           if ! grep -q "metric=security_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=security_rating"; MISSING=$((MISSING+1)); fi
           if ! grep -q "metric=sqale_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=sqale_rating"; MISSING=$((MISSING+1)); fi
           if ! grep -q "metric=reliability_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=reliability_rating"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "securityscorecards\.dev" README.md 2>/dev/null; then echo "BADGE MISSING: securityscorecards.dev"; MISSING=$((MISSING+1)); fi
           if [ "$MISSING" -gt 0 ]; then
             echo ""
             echo "Quality infrastructure is incomplete ($MISSING items missing)."

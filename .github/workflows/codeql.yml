@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
@@ -19,6 +18,9 @@ jobs:
   analyze:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

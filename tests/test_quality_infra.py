@@ -184,14 +184,14 @@ def test_cli_no_enforce_missing(mock_remote: object, tmp_path: Path) -> None:
 # ── Artifact count consistency ───────────────────────────────────────────
 
 
-def test_artifact_count_is_15() -> None:
-    """Verify the artifact checklist has exactly 15 items."""
-    assert len(_REQUIRED_ARTIFACTS) == 15
+def test_artifact_count_is_17() -> None:
+    """Verify the artifact checklist has exactly 17 items."""
+    assert len(_REQUIRED_ARTIFACTS) == 17
 
 
-def test_badge_fingerprint_count_is_8() -> None:
-    """Verify badge fingerprints match the 8 badges."""
-    assert len(_REQUIRED_BADGE_FINGERPRINTS) == 8
+def test_badge_fingerprint_count_is_7() -> None:
+    """Verify badge fingerprints match the 7 service badges."""
+    assert len(_REQUIRED_BADGE_FINGERPRINTS) == 7
 
 
 # ── _is_git_repo exception handling (lines 146-147) ─────────────────────

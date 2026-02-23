@@ -22,12 +22,14 @@ from mcp_tools.onboarding_tools import (
     _detect_sonar_scanner,
     _detect_subprocess_usage,
     _generate_badge_markdown,
+    _generate_clusterfuzzlite_workflow,
     _generate_codeclimate_yml,
     _generate_codeql_workflow,
     _generate_coveragerc,
     _generate_dependabot_yml,
     _generate_gitleaks_toml,
     _generate_pre_push_hook,  # noqa: F401 — re-exported for test access
+    _generate_pypi_publish_workflow,
     _generate_qlty_toml,
     _generate_qlty_workflow,
     _generate_quality_infra_gate_workflow,
@@ -227,6 +229,28 @@ def setup_github_quality(
         write,
     )
 
+    # --- .github/workflows/cif.yml (ClusterFuzzLite) ---
+    cif_path = os.path.join(project_root, ".github", "workflows", "cif.yml")
+    cif_exists = os.path.exists(cif_path)
+    cif_content = _generate_clusterfuzzlite_workflow()
+    cif_result = _apply_managed_artifact(
+        cif_path,
+        cif_content,
+        cif_exists,
+        write,
+    )
+
+    # --- .github/workflows/pypi-publish.yml ---
+    pypi_path = os.path.join(project_root, ".github", "workflows", "pypi-publish.yml")
+    pypi_exists = os.path.exists(pypi_path)
+    pypi_content = _generate_pypi_publish_workflow()
+    pypi_result = _apply_managed_artifact(
+        pypi_path,
+        pypi_content,
+        pypi_exists,
+        write,
+    )
+
     # --- .github/workflows/quality-infra-gate.yml ---
     qi_gate_path = os.path.join(project_root, ".github", "workflows", "quality-infra-gate.yml")
     qi_gate_exists = os.path.exists(qi_gate_path)
@@ -402,6 +426,10 @@ def setup_github_quality(
         files_to_stage.append(".github/workflows/scorecard.yml")
     if codeql_result.get("status") in ("written", "drift_repaired"):
         files_to_stage.append(".github/workflows/codeql.yml")
+    if cif_result.get("status") in ("written", "drift_repaired"):
+        files_to_stage.append(".github/workflows/cif.yml")
+    if pypi_result.get("status") in ("written", "drift_repaired"):
+        files_to_stage.append(".github/workflows/pypi-publish.yml")
     if qi_gate_result.get("status") in ("written", "drift_repaired"):
         files_to_stage.append(".github/workflows/quality-infra-gate.yml")
     if dependabot_result.get("status") in ("written", "drift_repaired"):
@@ -471,7 +499,10 @@ def setup_github_quality(
                     "    ]\n"
                     "  },\n"
                     '  "enforce_admins": true,\n'
-                    '  "required_pull_request_reviews": null,\n'
+                    '  "required_pull_request_reviews": {\n'
+                    '    "required_approving_review_count": 1,\n'
+                    '    "dismiss_stale_reviews": true\n'
+                    "  },\n"
                     '  "restrictions": null\n'
                     "}\n"
                     "JSON"
@@ -511,6 +542,8 @@ def setup_github_quality(
         "security_workflow": security_workflow_result,
         "scorecard_workflow": scorecard_result,
         "codeql_workflow": codeql_result,
+        "clusterfuzzlite_workflow": cif_result,
+        "pypi_publish_workflow": pypi_result,
         "quality_infra_gate_workflow": qi_gate_result,
         "dependabot": dependabot_result,
         "security_md": security_md_result,
