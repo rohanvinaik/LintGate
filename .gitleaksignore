@@ -1,0 +1,5 @@
+# False positives: fake test tokens in test_behavior_compass.py
+d5a31347e7fff15dbbc8f31bd71c321afd26dfb0:tests/test_behavior_compass.py:curl-auth-header:66
+d0aef2ff1e07cb6002ad4e974b01fe0b3d8ea455:tests/test_behavior_compass.py:curl-auth-header:72
+d0aef2ff1e07cb6002ad4e974b01fe0b3d8ea455:tests/test_behavior_compass.py:stripe-access-token:72
+d5a31347e7fff15dbbc8f31bd71c321afd26dfb0:tests/test_behavior_compass.py:stripe-access-token:66

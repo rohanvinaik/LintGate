@@ -1,14 +1,8 @@
 name: Mutation Testing
 
-# Mutation testing injects small code changes (mutants) into LintGate's
-# architectural core and checks whether the test suite catches them.
-# A killed mutant = the tests detected the change. A survived mutant =
-# a gap in test effectiveness (not coverage — you can have 100% line
-# coverage and still miss mutations).
-#
-# Targets: controlplane/ + channels/ (the decision-making core).
-# Tool: mutmut (Python-native mutation testing).
-# Schedule: weekly + on push to main.
+# Injects small code changes (mutants) and checks whether the test suite
+# catches them. Killed = detected, survived = gap in test effectiveness.
+# Tool: mutmut. Schedule: weekly + on push to main.
 
 on:
   push:
@@ -70,12 +64,6 @@ jobs:
 
       - name: Run mutation testing
         run: |
-          echo "## What this measures"
-          echo ""
-          echo "Mutation testing checks whether the test suite detects small code"
-          echo "changes (e.g., flipping a comparison, removing a return statement)."
-          echo "High mutation score = tests catch real bugs, not just execute lines."
-          echo ""
           mutmut run \
             --paths-to-mutate="${{ steps.targets.outputs.paths }}" \
             --runner="python -m pytest tests/ -x -q --timeout=30 --tb=no" \

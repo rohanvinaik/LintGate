@@ -1,14 +1,7 @@
 name: Performance Benchmark
 
-# Measures wall-clock time of LintGate's hot paths:
-#   - Ruff lint on a single file (the PostToolUse:Edit critical path)
-#   - Agent report formatting (runs after every lint pass)
-#   - Purity analysis via AST (foundation of the algebraic pipeline)
-#   - Algebraic property classification (feeds Hypothesis/icontract)
-#   - Manifest building (orchestrates purity + properties across files)
-#
-# Alerts on >200% regression. Results tracked over time via
-# benchmark-action/github-action-benchmark.
+# Runs pytest-benchmark tests and tracks results over time.
+# Alerts on >200% regression via benchmark-action/github-action-benchmark.
 
 on:
   push:
@@ -42,12 +35,6 @@ jobs:
         id: run_benchmarks
         continue-on-error: true
         run: |
-          echo "## What this measures"
-          echo ""
-          echo "These benchmarks track the performance of LintGate's core"
-          echo "operations — the code that runs on every AI tool-use event."
-          echo "A regression here means slower feedback loops for supervised agents."
-          echo ""
           pytest tests/test_benchmarks.py --benchmark-only --benchmark-json output.json -v
           if [ ! -s output.json ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -60,7 +47,7 @@ jobs:
         if: steps.run_benchmarks.outputs.skip != 'true' && github.ref == 'refs/heads/main'
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1
         with:
-          name: LintGate Hot Path Benchmarks
+          name: Performance Benchmarks
           tool: 'pytest'
           output-file-path: output.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
