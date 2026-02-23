@@ -8,7 +8,9 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Mutation Testing](https://github.com/rohanvinaik/LintGate/actions/workflows/mutation.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/mutation.yml)
+[![Mutation Score](https://raw.githubusercontent.com/rohanvinaik/LintGate/main/.github/badges/mutation.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/mutation.yml)
+[![Pure Functions](https://raw.githubusercontent.com/rohanvinaik/LintGate/main/.github/badges/purity.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
+[![Properties Proven](https://raw.githubusercontent.com/rohanvinaik/LintGate/main/.github/badges/properties.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
 [![Benchmark](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml)
 <!-- lintgate:quality-badges:end -->
 
