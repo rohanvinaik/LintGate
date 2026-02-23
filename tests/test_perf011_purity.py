@@ -11,8 +11,6 @@ from lintgate.linters.performance_checks.perf011_pure_uncached_in_loop import (
     check_pure_uncached_in_loop,
     set_manifest_pure_names,
 )
-from lintgate.linters.performance_checks.purity import _KNOWN_PURE_BUILTINS
-
 
 # ── set_manifest_pure_names ─────────────────────────────────────────
 

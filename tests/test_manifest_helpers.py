@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import ast
-import json
 import textwrap
-from pathlib import Path
 
 from lintgate.linters.performance_checks.algebra_types import (
     AlgebraicProperty,
@@ -15,8 +13,8 @@ from lintgate.linters.performance_checks.algebra_types import (
 )
 from lintgate.linters.performance_checks.manifest import (
     PropertyManifest,
-    _FuncFinder,
     _compute_file_hash,
+    _FuncFinder,
     _load_manifest_cache,
     _restore_cached_functions,
     _save_manifest_cache,
