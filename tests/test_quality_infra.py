@@ -184,9 +184,9 @@ def test_cli_no_enforce_missing(mock_remote: object, tmp_path: Path) -> None:
 # ── Artifact count consistency ───────────────────────────────────────────
 
 
-def test_artifact_count_is_14() -> None:
-    """Verify the artifact checklist has exactly 14 items."""
-    assert len(_REQUIRED_ARTIFACTS) == 14
+def test_artifact_count_is_15() -> None:
+    """Verify the artifact checklist has exactly 15 items."""
+    assert len(_REQUIRED_ARTIFACTS) == 15
 
 
 def test_badge_fingerprint_count_is_8() -> None:

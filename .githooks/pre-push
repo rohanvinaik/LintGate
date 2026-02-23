@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure qlty is discoverable (installed to ~/.qlty/bin by default)
+if [ -d "$HOME/.qlty/bin" ]; then
+  export PATH="$HOME/.qlty/bin:$PATH"
+fi
+
 if [ "${LINTGATE_SKIP_PRE_PUSH:-0}" = "1" ]; then
   echo "[lintgate] skipping pre-push checks (LINTGATE_SKIP_PRE_PUSH=1)"
   exit 0

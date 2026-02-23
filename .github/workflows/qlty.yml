@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install qlty
-        uses: qltysh/qlty-action/install@main
+        uses: qltysh/qlty-action/install@0814173ae3b13074fc896ca0e8e6d631c8352509 # main
 
       - name: Initialize qlty (if needed)
         run: |

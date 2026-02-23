@@ -287,6 +287,35 @@ class TestWaivers:
         assert len(applied) == 1
         assert expired == []
 
+    def test_glob_waiver_matches_multiple_symbols(self):
+        targets = [
+            self._make_span("pkg/checks/a.py::func_a"),
+            self._make_span("pkg/checks/b.py::func_b"),
+            self._make_span("pkg/other.py::func_c"),
+        ]
+        waivers = [
+            SymbolCoverageWaiver(
+                symbol="pkg/checks/*::*",
+                reason="WIP module — tests pending.",
+            )
+        ]
+        filtered, applied, expired = apply_waivers(targets, waivers, date(2025, 6, 1))
+        assert len(filtered) == 1
+        assert filtered[0].symbol_key == "pkg/other.py::func_c"
+        assert len(applied) == 2
+
+    def test_glob_waiver_no_false_positive(self):
+        targets = [self._make_span("mod.py::func")]
+        waivers = [
+            SymbolCoverageWaiver(
+                symbol="other/*::*",
+                reason="Should not match.",
+            )
+        ]
+        filtered, applied, expired = apply_waivers(targets, waivers, date(2025, 6, 1))
+        assert len(filtered) == 1
+        assert applied == []
+
     def test_future_expiry_still_active(self):
         targets = [self._make_span("mod.py::func")]
         waivers = [

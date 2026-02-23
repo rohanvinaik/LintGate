@@ -218,7 +218,9 @@ class TestGenerateSonarProperties:
         assert "sonar.sources=src" in content
         assert "sonar.tests=tests" in content
         assert "sonar.python.version=3.12" in content
-        assert "sonar.coverage.exclusions=lintgate/hook_posttooluse.py" in content
+        assert "sonar.issue.ignore.multicriteria=fp1,fp2,fp3" in content
+        assert "pythonsecurity:S2083" in content
+        assert "pythonsecurity:S6549" in content
 
     def test_placeholder_without_github(self) -> None:
         """Falls back to OWNER/REPO when no GitHub detected."""
@@ -278,7 +280,7 @@ class TestGenerateGitleaksToml:
         content = _generate_gitleaks_toml()
         assert "[extend]" in content
         assert "useDefault = true" in content
-        assert "[[allowlists]]" in content
+        assert "[allowlist]" in content
 
 
 class TestGenerateSonarWorkflow:
@@ -292,7 +294,7 @@ class TestGenerateSonarWorkflow:
         assert "push:" in content
         assert "pull_request:" in content
         assert "workflow_dispatch:" in content
-        assert "SonarSource/sonarqube-scan-action@v7" in content
+        assert "SonarSource/sonarqube-scan-action@" in content
         assert 'python-version: "3.12"' in content
         assert "SONAR_TOKEN" in content
 
@@ -343,7 +345,7 @@ class TestGenerateSonarWorkflow:
         """Sonar workflow must enforce quality gate after scan."""
         content = _generate_sonar_workflow({"python_version": "3.11"})
         assert "Check Quality Gate" in content
-        assert "SonarSource/sonarqube-quality-gate-action@master" in content
+        assert "SonarSource/sonarqube-quality-gate-action@" in content
         assert "github.ref == 'refs/heads/main'" in content
 
     def test_fallbacks_python_version_for_unexpected_input(self) -> None:
@@ -420,7 +422,7 @@ class TestGenerateQltyWorkflow:
     def test_uses_official_action(self) -> None:
         """Must use qltysh/qlty-action/install@main, not curl | sh."""
         content = _generate_qlty_workflow()
-        assert "qltysh/qlty-action/install@main" in content
+        assert "qltysh/qlty-action/install@" in content
         assert "curl" not in content
         assert "QLTY_BIN" not in content
 
@@ -436,7 +438,7 @@ class TestGenerateSecurityWorkflow:
         assert "push:" in content
         assert "pull_request:" in content
         assert "workflow_dispatch:" in content
-        assert "gitleaks/gitleaks-action@v2" in content
+        assert "gitleaks/gitleaks-action@" in content
         assert "GITLEAKS_CONFIG: .gitleaks.toml" in content
         assert "bandit -q -r ." in content
         assert "pip-audit -r" in content
