@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771833664726,
+  "lastUpdate": 1771858804616,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -238,6 +238,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.002127258632632327",
             "extra": "mean: 785.8119590549816 usec\nrounds: 635"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a39027b70b71f5674924d004b78d4d7f8e8a3b3c",
+          "message": "Merge pull request #19 from rohanvinaik/feat/performance-engineering-small-model\n\nPerformance engineering, test effectiveness, CI hardening",
+          "timestamp": "2026-02-23T09:59:27-05:00",
+          "tree_id": "fd29929621dfacd5188f162a07f1c76259bb8e71",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/a39027b70b71f5674924d004b78d4d7f8e8a3b3c"
+        },
+        "date": 1771858803635,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 109.49486276450928,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007139544286753861",
+            "extra": "mean: 9.132848562500152 msec\nrounds: 112"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 213940.36192612472,
+            "unit": "iter/sec",
+            "range": "stddev: 8.20042756216047e-7",
+            "extra": "mean: 4.674199814363724 usec\nrounds: 53865"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5554.440766598185,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00018828918107657706",
+            "extra": "mean: 180.0361264114172 usec\nrounds: 3631"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14566.484651250094,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001599400328172116",
+            "extra": "mean: 68.65074339773393 usec\nrounds: 7611"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1508.0535685456098,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00035199776135677466",
+            "extra": "mean: 663.1064180063679 usec\nrounds: 622"
           }
         ]
       }
