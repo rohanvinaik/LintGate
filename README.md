@@ -12,9 +12,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- lintgate:quality-badges:end -->
 
-> An MCP server for real-time code quality supervision — built entirely through vibe coding by a biochemist with no formal CS training.
+An MCP server for real-time code quality supervision — built entirely through vibe coding by a biochemist with no formal CS training.
 
-`--dangerously-skip-permissions`, minus the danger.
+> `--dangerously-skip-permissions`, minus the danger.
 
 A biochemist kept running into the same problem with AI-generated code. Not complex bugs — *discipline* bugs. The agent would act before it understood. It would hit an error, move on, and hit the same error twenty minutes later.
 
