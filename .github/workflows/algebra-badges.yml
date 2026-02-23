@@ -1,5 +1,9 @@
 name: Algebra Badges
 
+# Runs static analysis to count pure functions and algebraic properties
+# (commutative, associative, monotonic, bounded, idempotent) across the
+# codebase, then generates badges with the counts.
+
 on:
   push:
     branches: [ main ]
@@ -14,7 +18,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -24,7 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip==25.0.1
           pip install -e .[dev,algebra]
-          
+
       - name: Extract project metrics
         id: metrics
         run: |
@@ -33,19 +37,25 @@ jobs:
           from lintgate.linters.performance_checks.manifest import build_manifest
           py_files = sorted(glob.glob("lintgate/**/*.py", recursive=True))
           manifest = build_manifest(".", py_files)
+          total_funcs = manifest.pure_count + manifest.impure_count
           props_total = sum(manifest.property_distribution.values())
           with open(os.environ["GITHUB_ENV"], "a") as fh:
-              fh.write(f"PURE_FUNCTIONS={manifest.pure_count}\n")
-              fh.write(f"PROPERTIES_PROVEN={props_total}\n")
-          print(f"Pure: {manifest.pure_count}, Properties: {props_total}")
+              fh.write(f"PURE_COUNT={manifest.pure_count}\n")
+              fh.write(f"TOTAL_FUNCTIONS={total_funcs}\n")
+              fh.write(f"PROPERTIES_COUNT={props_total}\n")
+          dist = {k.value: v for k, v in manifest.property_distribution.items()}
+          print(f"Pure functions: {manifest.pure_count} / {total_funcs}")
+          print(f"Algebraic properties: {props_total}")
+          for prop, count in sorted(dist.items()):
+              print(f"  {prop}: {count}")
           PY
-          
+
       - name: Generate Purity Badge
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
         id: badge_pure
         with:
-          label: "Pure Functions"
-          status: "${{ env.PURE_FUNCTIONS }}"
+          label: "Side-Effect-Free"
+          status: "${{ env.PURE_COUNT }} / ${{ env.TOTAL_FUNCTIONS }} functions"
           color: "success"
           path: ".github/badges/purity.svg"
 
@@ -53,14 +63,13 @@ jobs:
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
         id: badge_prop
         with:
-          label: "Properties Proven"
-          status: "${{ env.PROPERTIES_PROVEN }}"
+          label: "Algebraic Properties"
+          status: "${{ env.PROPERTIES_COUNT }} detected"
           color: "blue"
           path: ".github/badges/properties.svg"
-          
+
       - name: Push badges to badges branch
         run: |
-          # Save generated SVGs before switching branches
           cp .github/badges/purity.svg /tmp/purity.svg
           cp .github/badges/properties.svg /tmp/properties.svg
 
@@ -72,5 +81,5 @@ jobs:
           cp /tmp/purity.svg .github/badges/purity.svg
           cp /tmp/properties.svg .github/badges/properties.svg
           git add .github/badges/purity.svg .github/badges/properties.svg
-          git commit -m "Update algebra badges (Pure: ${{ env.PURE_FUNCTIONS }}, Properties: ${{ env.PROPERTIES_PROVEN }})" || echo "No changes"
+          git commit -m "Update algebra badges (${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)" || echo "No changes"
           git push origin badges

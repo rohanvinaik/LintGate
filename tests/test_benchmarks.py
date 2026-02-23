@@ -1,9 +1,8 @@
-"""Performance benchmarks for LintGate hot paths.
+"""Performance benchmarks.
 
-Measures wall-clock time of the core operations that run on every
-tool-use event (lint pipeline, report formatting) and the algebraic
-analysis pipeline (purity detection, property classification, manifest
-building). Regressions beyond 200% trigger a CI alert.
+Measures wall-clock time of core operations: lint pipeline, report
+formatting, purity analysis, property classification, and manifest
+building. Regressions beyond 200% trigger a CI alert.
 
 Requires: pip install pytest-benchmark
 Run locally: pytest tests/test_benchmarks.py --benchmark-only
@@ -76,7 +75,6 @@ def project_python_files():
 def test_bench_lint_single_file(benchmark, sample_file, tmp_path):
     """Lint a single Python file through the ruff linter.
 
-    This is the critical path — ruff runs on every PostToolUse:Edit event.
     Target: <500ms for a single file.
     """
     from lintgate.linters.ruff_linter import RuffLinter
@@ -88,10 +86,7 @@ def test_bench_lint_single_file(benchmark, sample_file, tmp_path):
 
 
 def test_bench_format_report(benchmark):
-    """Format a lint report with typical issue counts.
-
-    Runs after every lint pass to produce the agent-facing summary.
-    """
+    """Format a lint report with typical issue counts."""
     from lintgate.agent_reporter import format_report
     from lintgate.types import AggregatedResult, LintIssue
 
@@ -128,22 +123,14 @@ def test_bench_format_report(benchmark):
 # ---------------------------------------------------------------------------
 
 def test_bench_purity_analysis(benchmark, sample_tree):
-    """Detect pure vs impure functions via AST analysis.
-
-    The purity detector is the foundation of the algebraic pipeline —
-    its output feeds property classification and PERF011 checks.
-    """
+    """Detect pure vs impure functions via AST analysis."""
     from lintgate.linters.performance_checks.purity import analyze_purity
 
     benchmark(analyze_purity, sample_tree)
 
 
 def test_bench_property_classification(benchmark, sample_tree):
-    """Classify algebraic properties (commutative, associative, etc.).
-
-    Runs per-function after purity analysis to identify Hypothesis
-    test candidates and icontract decorator targets.
-    """
+    """Classify algebraic properties (commutative, associative, etc.)."""
     from lintgate.linters.performance_checks.properties import classify_properties
     from lintgate.linters.performance_checks.purity import analyze_purity
 
@@ -162,11 +149,7 @@ def test_bench_property_classification(benchmark, sample_tree):
 
 
 def test_bench_manifest_build(benchmark, tmp_path, sample_file):
-    """Build the full algebraic property manifest for a project.
-
-    Orchestrates purity + property classification across all files.
-    Runs in the Algebra Badges CI workflow and on-demand via MCP.
-    """
+    """Build the full algebraic property manifest for a project."""
     from lintgate.linters.performance_checks.manifest import build_manifest
 
     benchmark(build_manifest, str(tmp_path), [str(sample_file)])
