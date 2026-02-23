@@ -268,8 +268,6 @@ def _generate_class_tests(
         for method in cls.methods:
             if method.startswith("_"):
                 continue
-            if method in ("__init__", "__repr__", "__str__", "__eq__", "__hash__"):
-                continue
             lines.append(f"    def test_{method}_modifies_state(self) -> None:")
             lines.append(f'        """Test {cn}.{method} state changes."""')
             lines.append(f"        obj = {cn}()")

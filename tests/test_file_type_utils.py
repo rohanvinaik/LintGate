@@ -111,3 +111,88 @@ def test_resolve_path_invalid_input():
     assert _resolve_path("foo.py", str(None)) == os.path.normpath(
         os.path.join(os.getcwd(), "foo.py")
     )
+
+
+def test_resolve_path_absolute_filepath():
+    """Covers _resolve_path line 133: absolute filepath returned as-is."""
+    from lintgate.change_classifiers.file_type_utils import _resolve_path
+
+    assert _resolve_path("/usr/local/bin/python", "/tmp") == "/usr/local/bin/python"
+
+
+# ── _is_docs_file ──────────────────────────────────────────────────
+
+
+def test_is_docs_file_markdown():
+    """Covers _is_docs_file lines 138-139: .md is a docs extension."""
+    assert file_type_utils._is_docs_file("README.md") is True
+
+
+def test_is_docs_file_rst():
+    assert file_type_utils._is_docs_file("docs/guide.rst") is True
+
+
+def test_is_docs_file_case_insensitive():
+    assert file_type_utils._is_docs_file("CHANGES.TXT") is True
+
+
+def test_is_docs_file_python():
+    assert file_type_utils._is_docs_file("app.py") is False
+
+
+# ── _is_config_file ────────────────────────────────────────────────
+
+
+def test_is_config_file_yaml():
+    """Covers _is_config_file lines 143-144: .yaml is a config extension."""
+    assert file_type_utils._is_config_file("config.yaml") is True
+
+
+def test_is_config_file_toml():
+    assert file_type_utils._is_config_file("settings.toml") is True
+
+
+def test_is_config_file_by_name():
+    """Covers the p.name in _CONFIG_NAMES branch."""
+    assert file_type_utils._is_config_file("Makefile") is True
+    assert file_type_utils._is_config_file("Dockerfile") is True
+    assert file_type_utils._is_config_file(".gitignore") is True
+
+
+def test_is_config_file_python():
+    assert file_type_utils._is_config_file("app.py") is False
+
+
+# ── _is_readonly_bash (non-string input) ───────────────────────────
+
+
+def test_readonly_bash_non_string_input():
+    """Covers _is_readonly_bash line 159: non-string returns False."""
+    assert file_type_utils._is_readonly_bash(123) is False  # type: ignore[arg-type]
+    assert file_type_utils._is_readonly_bash(None) is False  # type: ignore[arg-type]
+
+
+# ── _is_build_command (non-string input) ───────────────────────────
+
+
+def test_build_command_non_string_input():
+    """Covers _is_build_command line 169: non-string returns False."""
+    assert file_type_utils._is_build_command(42) is False  # type: ignore[arg-type]
+    assert file_type_utils._is_build_command(None) is False  # type: ignore[arg-type]
+
+
+# ── _matches_pipeline_path (ValueError branch) ────────────────────
+
+
+def test_pipeline_path_relpath_value_error():
+    """Covers _matches_pipeline_path lines 183-184: ValueError from os.path.relpath.
+
+    On Windows, relpath raises ValueError when filepath and cwd are on
+    different drives. On Unix we can trigger it by passing paths that
+    cause relpath to raise (or we mock it).
+    """
+    import unittest.mock
+
+    with unittest.mock.patch("os.path.relpath", side_effect=ValueError("cross-drive")):
+        result = file_type_utils._matches_pipeline_path("/d/some/file.py", ["some/"], "/c/project")
+        assert result is False

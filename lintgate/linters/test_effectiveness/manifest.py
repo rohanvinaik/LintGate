@@ -114,17 +114,7 @@ def build_test_effectiveness_manifest(
 
     manifest = TestEffectivenessManifest(functions=effectiveness)
 
-    # Compute per-file scores
-    file_scores: dict[str, list[float]] = {}
-    for func_name, fe in effectiveness.items():
-        # Group by source file via a simple heuristic
-        for sf in python_files:
-            if func_name in new_metadata.get(sf, {}):
-                file_scores.setdefault(sf, []).append(fe.effectiveness_score)
-
-    manifest.file_scores = {
-        path: sum(scores) / len(scores) for path, scores in file_scores.items() if scores
-    }
+    manifest.file_scores = {}
 
     manifest.update_metrics()
     _save_manifest_cache(cache_path, manifest, new_metadata)

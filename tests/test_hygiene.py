@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from lintgate.hygiene import (
@@ -385,4 +386,165 @@ class TestCheckQualityInfra:
             side_effect=RuntimeError("boom"),
         ):
             result = _check_quality_infra("git push", str(tmp_path))
+        assert result is None
+
+
+# ── Coverage gap tests ────────────────────────────────────────────────────
+
+
+class TestClassifyAndCheckCoverageGaps:
+    """Tests targeting uncovered lines in classify_and_check."""
+
+    def test_unknown_check_name_skipped(self, tmp_path):
+        """Line 116: continue when check_fn is None (check name not in registry)."""
+        # Temporarily inject an unknown check name into a command class
+        original_checks = _COMMAND_CLASSES["pip_install"]["checks"]
+        _COMMAND_CLASSES["pip_install"]["checks"] = ["nonexistent_check"]
+        try:
+            result = classify_and_check("pip install requests", str(tmp_path))
+            assert result.command_class == "pip_install"
+            # No warnings because the only check was skipped
+            assert len(result.warnings) == 0
+            assert "passed" in result.recommendation
+        finally:
+            _COMMAND_CLASSES["pip_install"]["checks"] = original_checks
+
+    def test_check_exception_swallowed_via_registry(self, tmp_path):
+        """Lines 121, 123: except Exception / pass when a check raises.
+
+        Must patch _CHECK_REGISTRY directly because it holds function references,
+        not module-level attribute lookups.
+        """
+
+        def _exploding_check(planned_action, project_root):
+            raise RuntimeError("kaboom")
+
+        original_fn = _CHECK_REGISTRY["venv_active"]
+        _CHECK_REGISTRY["venv_active"] = _exploding_check
+        # Also make other checks succeed to isolate the exception path
+        original_checks = _COMMAND_CLASSES["pip_install"]["checks"]
+        _COMMAND_CLASSES["pip_install"]["checks"] = ["venv_active"]
+        try:
+            result = classify_and_check("pip install requests", str(tmp_path))
+            assert result.command_class == "pip_install"
+            # The exception was swallowed so no warnings from the broken check
+            assert len(result.warnings) == 0
+            assert "passed" in result.recommendation
+        finally:
+            _CHECK_REGISTRY["venv_active"] = original_fn
+            _COMMAND_CLASSES["pip_install"]["checks"] = original_checks
+
+
+class TestCheckPinnedVersionCoverageGaps:
+    """Tests targeting uncovered line in _check_pinned_version."""
+
+    def test_no_install_match_returns_none(self):
+        """Line 201: return None when regex doesn't match.
+
+        Command classified as pip_install by pattern but the pinned-version
+        regex doesn't find the install verb (e.g. bare 'pip' with no install).
+        """
+        # Feed a string that won't match the install regex
+        result = _check_pinned_version("some random command", "/tmp")
+        assert result is None
+
+
+class TestCheckNoStagedSecretsCoverageGaps:
+    """Tests targeting uncovered lines in _check_no_staged_secrets."""
+
+    def test_import_exception_swallowed(self, tmp_path):
+        """Lines 266-267: except Exception / pass when _check_diff_secrets raises."""
+        with patch(
+            "lintgate.hygiene._check_no_staged_secrets.__module__",
+            side_effect=ImportError("no module"),
+        ):
+            # We need to patch the actual import inside the function
+            pass
+
+        # Patch at the point of import to force an exception
+        with patch(
+            "lintgate.channels.git_channel._check_diff_secrets",
+            side_effect=OSError("disk error"),
+        ):
+            result = _check_no_staged_secrets("git commit", str(tmp_path))
+        assert result is None
+
+
+class TestCheckLockfileFreshCoverageGaps:
+    """Tests targeting uncovered lines in _check_lockfile_fresh."""
+
+    def test_manifest_exists_lockfile_missing_continues(self, tmp_path):
+        """Line 283: continue when lockfile doesn't exist.
+
+        A manifest exists but its paired lockfile does not. The inner loop
+        should continue to the next paired lockfile (or fall through).
+        """
+        # Create pyproject.toml but no uv.lock or poetry.lock
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n")
+        result = _check_lockfile_fresh("git commit", str(tmp_path))
+        # No lockfile found at all, returns None
+        assert result is None
+
+    def test_stat_oserror_swallowed(self, tmp_path):
+        """Lines 297-298: except OSError / pass when stat() fails."""
+        manifest = tmp_path / "pyproject.toml"
+        manifest.write_text("[project]\nname='test'\n")
+        lockfile = tmp_path / "uv.lock"
+        lockfile.write_text("lock content")
+
+        # Patch Path.stat to raise OSError for the comparison
+        original_stat = type(manifest).stat
+
+        call_count = 0
+
+        def _failing_stat(self, *args, **kwargs):
+            nonlocal call_count
+            # Let the exists() checks work, but fail on stat() for mtime comparison
+            # The function calls stat() on manifest and lockfile for mtime comparison
+            call_count += 1
+            if call_count >= 3:
+                raise OSError("permission denied")
+            return original_stat(self, *args, **kwargs)
+
+        with patch.object(type(manifest), "stat", _failing_stat):
+            result = _check_lockfile_fresh("git commit", str(tmp_path))
+        # OSError was caught, function returns None (lockfile exists but stat failed)
+        assert result is None
+
+
+class TestCheckGitignoreCoverageGaps:
+    """Tests targeting uncovered lines in _check_gitignore_coverage."""
+
+    def test_gitignore_read_oserror_returns_none(self, tmp_path):
+        """Lines 326-327: except OSError / return None when read_text() fails."""
+        gitignore = tmp_path / ".gitignore"
+        gitignore.write_text(".env\n")
+
+        with (
+            patch.object(type(gitignore), "read_text", side_effect=OSError("read error")),
+            patch("pathlib.Path.read_text", side_effect=OSError("read error")),
+        ):
+            result = _check_gitignore_coverage("edit .env", str(tmp_path))
+        assert result is None
+
+
+class TestCheckCleanWorkingTreeCoverageGaps:
+    """Tests targeting uncovered lines in _check_clean_working_tree."""
+
+    def test_timeout_expired_returns_none(self, tmp_path):
+        """Lines 360-361: except (TimeoutExpired, OSError) / pass."""
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="git", timeout=3),
+        ):
+            result = _check_clean_working_tree("uv publish", str(tmp_path))
+        assert result is None
+
+    def test_oserror_returns_none(self, tmp_path):
+        """Lines 360-361: except (TimeoutExpired, OSError) / pass - OSError variant."""
+        with patch(
+            "subprocess.run",
+            side_effect=OSError("git not found"),
+        ):
+            result = _check_clean_working_tree("uv publish", str(tmp_path))
         assert result is None

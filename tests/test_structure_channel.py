@@ -618,3 +618,246 @@ class TestCheckOrphansReexports:
         py_files = [str(pkg / "__init__.py"), str(pkg / "sub.py")]
         findings = _check_orphans(py_files, graph, file_map, str(tmp_path))
         assert all(f.evidence.get("module") != "pkg.sub" for f in findings)
+
+
+# ── Additional Coverage Tests ─────────────────────────────────────────
+
+
+class TestShouldRunBranches:
+    """Cover should_run branches: structural risk, config files, import_only,
+    class_structure_changed."""
+
+    def test_structural_risk_level(self, tmp_path):
+        """Line 152: structural risk_level returns True."""
+        ch = StructureChannel()
+        cfg = ControlPlaneConfig(enabled=True)
+        event = SupervisionEvent(
+            surface="hook",
+            project_root=str(tmp_path),
+            files_changed=["pkg/utils.py"],
+            change_classification=ChangeClassification(
+                files_changed=["pkg/utils.py"],
+                change_kind="logic",
+                risk_level="structural",
+            ),
+        )
+        assert ch.should_run(event, cfg) is True
+
+    def test_architectural_risk_level(self, tmp_path):
+        """Line 152: architectural risk_level returns True."""
+        ch = StructureChannel()
+        cfg = ControlPlaneConfig(enabled=True)
+        event = SupervisionEvent(
+            surface="hook",
+            project_root=str(tmp_path),
+            files_changed=["pkg/utils.py"],
+            change_classification=ChangeClassification(
+                files_changed=["pkg/utils.py"],
+                change_kind="logic",
+                risk_level="architectural",
+            ),
+        )
+        assert ch.should_run(event, cfg) is True
+
+    def test_config_file_triggers(self, tmp_path):
+        """Lines 161-162: config/build file in changeset returns True."""
+        ch = StructureChannel()
+        cfg = ControlPlaneConfig(enabled=True)
+        event = SupervisionEvent(
+            surface="hook",
+            project_root=str(tmp_path),
+            files_changed=["pyproject.toml"],
+            change_classification=ChangeClassification(
+                files_changed=["pyproject.toml"],
+                change_kind="config",
+                risk_level="moderate",
+            ),
+        )
+        assert ch.should_run(event, cfg) is True
+
+    def test_import_only_triggers(self, tmp_path):
+        """Lines 165-166: import_only=True returns True."""
+        ch = StructureChannel()
+        cfg = ControlPlaneConfig(enabled=True)
+        event = SupervisionEvent(
+            surface="hook",
+            project_root=str(tmp_path),
+            files_changed=["pkg/models.py"],
+            change_classification=ChangeClassification(
+                files_changed=["pkg/models.py"],
+                change_kind="logic",
+                risk_level="moderate",
+                import_only=True,
+            ),
+        )
+        assert ch.should_run(event, cfg) is True
+
+    def test_class_structure_changed_true(self, tmp_path):
+        """Line 169: class_structure_changed=True returns True."""
+        ch = StructureChannel()
+        cfg = ControlPlaneConfig(enabled=True)
+        event = SupervisionEvent(
+            surface="hook",
+            project_root=str(tmp_path),
+            files_changed=["pkg/models.py"],
+            change_classification=ChangeClassification(
+                files_changed=["pkg/models.py"],
+                change_kind="logic",
+                risk_level="moderate",
+                class_structure_changed=True,
+            ),
+        )
+        assert ch.should_run(event, cfg) is True
+
+    def test_class_structure_changed_false(self, tmp_path):
+        """Line 169: class_structure_changed=False returns False (fallthrough)."""
+        ch = StructureChannel()
+        cfg = ControlPlaneConfig(enabled=True)
+        event = SupervisionEvent(
+            surface="hook",
+            project_root=str(tmp_path),
+            files_changed=["pkg/models.py"],
+            change_classification=ChangeClassification(
+                files_changed=["pkg/models.py"],
+                change_kind="logic",
+                risk_level="moderate",
+                import_only=False,
+                class_structure_changed=False,
+            ),
+        )
+        assert ch.should_run(event, cfg) is False
+
+
+class TestCheckImportCyclesNoRelevantFiles:
+    """Cover _check_import_cycles line 384: cycle with no modules in file_map."""
+
+    def test_cycle_all_modules_missing_from_file_map(self, tmp_path):
+        """Line 384: continue when relevant_files is empty."""
+        # Create a cycle between modules that are NOT in the file_map
+        graph = {"ghost.a": {"ghost.b"}, "ghost.b": {"ghost.a"}}
+        # file_map has NONE of the cycle modules
+        file_map = {"other.x": str(tmp_path / "other" / "x.py")}
+        findings = _check_import_cycles(graph, file_map, str(tmp_path))
+        # The cycle should be skipped because none of its modules are in file_map
+        assert findings == []
+
+
+class TestPercentileBoundary:
+    """Cover _percentile line 531: c >= n boundary."""
+
+    def test_pct_1_0_with_two_elements(self):
+        """Line 531: c >= n when pct=1.0 on small data."""
+        # n=2, pct=1.0 → k=1.0, f=1, c=2 → c >= n → return sorted_data[-1]
+        result = _percentile([10, 20], 1.0)
+        assert result == 20.0
+
+    def test_pct_1_0_with_three_elements(self):
+        """Line 531: c >= n when pct=1.0 on 3 elements."""
+        # n=3, pct=1.0 → k=2.0, f=2, c=3 → c >= n → return sorted_data[-1]
+        result = _percentile([5, 15, 25], 1.0)
+        assert result == 25.0
+
+
+class TestDetectReexportsUncovered:
+    """Cover _detect_reexports lines 560-561, 575-576, 603, 607."""
+
+    def test_syntax_error_returns_empty(self, tmp_path):
+        """Lines 560-561: SyntaxError in __init__.py returns {}."""
+        init = str(tmp_path / "__init__.py")
+        _write_file(init, "def broken(\n")  # invalid syntax
+        result = _detect_reexports(init, str(tmp_path))
+        assert result == {}
+
+    def test_wildcard_import_unknown(self, tmp_path):
+        """Lines 575-576: 'from .sub import *' marks stem as unknown."""
+        init = str(tmp_path / "__init__.py")
+        _write_file(init, "from .sub import *\n")
+        result = _detect_reexports(init, str(tmp_path))
+        assert result == {"sub": "unknown"}
+
+    def test_wildcard_not_downgrade_definite(self, tmp_path):
+        """Lines 575-576: wildcard doesn't overwrite a 'definite' re-export."""
+        init = str(tmp_path / "__init__.py")
+        # Named import first (definite), then wildcard — should stay definite
+        _write_file(
+            init,
+            "from .sub import Foo\nfrom .sub import *\n",
+        )
+        result = _detect_reexports(init, str(tmp_path))
+        assert result["sub"] == "definite"
+
+    def test_dynamic_import_importlib(self, tmp_path):
+        """Lines 603, 607: importlib.import_module(...) sets dynamic marker."""
+        init = str(tmp_path / "__init__.py")
+        _write_file(
+            init,
+            "import importlib\nimportlib.import_module('.sub', __name__)\n",
+        )
+        result = _detect_reexports(init, str(tmp_path))
+        assert "*" in result
+        assert result["*"] == "unknown"
+
+    def test_dynamic_import_dunder(self, tmp_path):
+        """Lines 603, 607: __import__(...) sets dynamic marker."""
+        init = str(tmp_path / "__init__.py")
+        _write_file(init, "__import__('sub')\n")
+        result = _detect_reexports(init, str(tmp_path))
+        assert "*" in result
+        assert result["*"] == "unknown"
+
+
+class TestCheckOrphansWildcardAndAmbiguous:
+    """Cover _check_orphans lines 698, 708, 737: wildcard/dynamic re-export handling."""
+
+    def test_wildcard_reexport_reports_low_confidence(self, tmp_path):
+        """Lines 698, 708, 737: module in package with dynamic imports → low-confidence finding."""
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        # __init__.py with __import__ → dynamic marker "*": "unknown"
+        _write_file(str(pkg / "__init__.py"), "__import__('sub')\n")
+        _write_file(str(pkg / "orphan_mod.py"), "x = 1\n")
+
+        graph: dict[str, set[str]] = {}
+        file_map = {"pkg.orphan_mod": str(pkg / "orphan_mod.py")}
+        py_files = [str(pkg / "__init__.py"), str(pkg / "orphan_mod.py")]
+
+        findings = _check_orphans(py_files, graph, file_map, str(tmp_path))
+
+        # Should find the module as ambiguous re-export (confidence 0.3)
+        orphan_findings = [f for f in findings if f.evidence.get("module") == "pkg.orphan_mod"]
+        assert len(orphan_findings) == 1
+        finding = orphan_findings[0]
+        assert finding.confidence == 0.3
+        assert finding.evidence["reexport_status"] == "unknown"
+        assert finding.kind == "STRUCT003"
+
+    def test_wildcard_star_import_reports_low_confidence(self, tmp_path):
+        """Lines 575-576 via _check_orphans: wildcard import → ambiguous orphan."""
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        # __init__.py with wildcard import from .sub
+        _write_file(str(pkg / "__init__.py"), "from .sub import *\n")
+        # sub.py is re-exported ambiguously; another module has no re-export path
+        _write_file(str(pkg / "sub.py"), "x = 1\n")
+        _write_file(str(pkg / "other.py"), "y = 2\n")
+
+        graph: dict[str, set[str]] = {}
+        file_map = {
+            "pkg.sub": str(pkg / "sub.py"),
+            "pkg.other": str(pkg / "other.py"),
+        }
+        py_files = [str(pkg / "__init__.py"), str(pkg / "sub.py"), str(pkg / "other.py")]
+
+        findings = _check_orphans(py_files, graph, file_map, str(tmp_path))
+
+        sub_findings = [f for f in findings if f.evidence.get("module") == "pkg.sub"]
+        other_findings = [f for f in findings if f.evidence.get("module") == "pkg.other"]
+
+        # pkg.sub: wildcard re-export → ambiguous → confidence 0.3
+        assert len(sub_findings) == 1
+        assert sub_findings[0].confidence == 0.3
+        assert sub_findings[0].evidence["reexport_status"] == "unknown"
+
+        # pkg.other: no re-export at all → standard orphan → confidence 0.6
+        assert len(other_findings) == 1
+        assert other_findings[0].confidence == 0.6

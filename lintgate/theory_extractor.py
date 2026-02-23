@@ -1274,6 +1274,4 @@ def _strip_markdown(text: str) -> str:
 def _words_to_pattern(words: str) -> str:
     """Convert a multi-word phrase to a regex-friendly pattern."""
     parts = re.split(r"[\s-]+", words.strip())
-    if not parts:
-        return re.escape(words)
-    return r"[_\s-]*".join(re.escape(p) for p in parts)
+    return r"[_\s-]*".join(re.escape(p) for p in parts) if parts else re.escape(words)
