@@ -145,8 +145,8 @@ def test_bench_property_classification(benchmark, sample_tree):
     Runs per-function after purity analysis to identify Hypothesis
     test candidates and icontract decorator targets.
     """
-    from lintgate.linters.performance_checks.purity import analyze_purity
     from lintgate.linters.performance_checks.properties import classify_properties
+    from lintgate.linters.performance_checks.purity import analyze_purity
 
     purity = analyze_purity(sample_tree)
     # Find a pure function node + its purity result
