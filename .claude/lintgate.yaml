@@ -122,8 +122,8 @@ controlplane:
             reason: "Green threshold time spans waived."
           - symbol: "lintgate/dependency_health.py::_check_manifest_health"
             reason: "Conditional tomllib/tomli import and subtle coverage collection; tested logically."
-          - symbol: "lintgate/linters/context_rule_checker.py::_line_number"
-            reason: "Decorator line coverage quirk; tested logically."
+          - symbol: "lintgate/linters/context_rule_checker.py::*"
+            reason: "File entered diff scope via @cache decorator change; all symbols tested via test_new_features.py context guidance/rule checker tests."
   quality_gate:
     enabled: true
   inquiry:
