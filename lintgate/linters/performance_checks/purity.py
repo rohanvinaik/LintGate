@@ -12,24 +12,91 @@ from lintgate.linters.performance_checks.algebra_types import (
 
 # Functions known to be pure by definition in Python
 _KNOWN_PURE_BUILTINS = {
-    "abs", "all", "any", "ascii", "bin", "bool", "callable", "chr", "complex",
-    "dict", "dir", "divmod", "enumerate", "filter", "float", "format",
-    "frozenset", "getattr", "hasattr", "hash", "hex", "id", "int", "isinstance",
-    "issubclass", "iter", "len", "list", "map", "max", "min", "next", "oct",
-    "ord", "pow", "repr", "reversed", "round", "set", "slice", "sorted",
-    "str", "sum", "tuple", "type", "vars", "zip",
+    "abs",
+    "all",
+    "any",
+    "ascii",
+    "bin",
+    "bool",
+    "callable",
+    "chr",
+    "complex",
+    "dict",
+    "dir",
+    "divmod",
+    "enumerate",
+    "filter",
+    "float",
+    "format",
+    "frozenset",
+    "getattr",
+    "hasattr",
+    "hash",
+    "hex",
+    "id",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "list",
+    "map",
+    "max",
+    "min",
+    "next",
+    "oct",
+    "ord",
+    "pow",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "slice",
+    "sorted",
+    "str",
+    "sum",
+    "tuple",
+    "type",
+    "vars",
+    "zip",
 }
 
 # Methods/Attributes known to mutate state
 _MUTATING_METHODS = {
-    "append", "extend", "insert", "remove", "pop", "clear", "sort", "reverse",
-    "update", "setdefault", "add", "discard", "write", "writelines", "seek",
+    "append",
+    "extend",
+    "insert",
+    "remove",
+    "pop",
+    "clear",
+    "sort",
+    "reverse",
+    "update",
+    "setdefault",
+    "add",
+    "discard",
+    "write",
+    "writelines",
+    "seek",
 }
 
 # Known impure modules/namespaces generally involving I/O or global state
 _IMPURE_NAMESPACES = {
-    "print", "open", "input", "logging", "requests", "os", "sys", "time",
-    "random", "urllib", "http", "socket", "subprocess", "threading", "multiprocessing"
+    "print",
+    "open",
+    "input",
+    "logging",
+    "requests",
+    "os",
+    "sys",
+    "time",
+    "random",
+    "urllib",
+    "http",
+    "socket",
+    "subprocess",
+    "threading",
+    "multiprocessing",
 }
 
 
@@ -54,8 +121,8 @@ class _PureFunctionVisitor(ast.NodeVisitor):
 
         # Add 'self' or 'cls' explicitly if it's a method
         if self.is_method and self.local_names:
-             # the first arg is usually self/cls, but we just track it as a local
-             pass
+            # the first arg is usually self/cls, but we just track it as a local
+            pass
 
     def visit_Global(self, node: ast.Global) -> None:
         for name in node.names:
@@ -67,7 +134,9 @@ class _PureFunctionVisitor(ast.NodeVisitor):
     def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
         for name in node.names:
             self.side_effects.append(
-                SideEffect("nonlocal_write", "Nonlocal", node.lineno, f"Writes to nonlocal '{name}'")
+                SideEffect(
+                    "nonlocal_write", "Nonlocal", node.lineno, f"Writes to nonlocal '{name}'"
+                )
             )
         self.generic_visit(node)
 
@@ -85,15 +154,15 @@ class _PureFunctionVisitor(ast.NodeVisitor):
                             "attribute_mutation",
                             "Assign",
                             node.lineno,
-                            f"Mutates instance state: {target_name}.{target.attr}"
+                            f"Mutates instance state: {target_name}.{target.attr}",
                         )
                     )
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-         if isinstance(node.target, ast.Name):
-             self.local_names.add(node.target.id)
-         self.generic_visit(node)
+        if isinstance(node.target, ast.Name):
+            self.local_names.add(node.target.id)
+        self.generic_visit(node)
 
     def visit_Yield(self, node: ast.Yield) -> None:
         self.side_effects.append(
@@ -115,7 +184,12 @@ class _PureFunctionVisitor(ast.NodeVisitor):
             # Direct I/O or known impure builtins
             if func_name in _IMPURE_NAMESPACES or func_name.split(".")[0] in _IMPURE_NAMESPACES:
                 self.side_effects.append(
-                    SideEffect("io_call", "Call", node.lineno, f"Calls impure namespace/function: {func_name}")
+                    SideEffect(
+                        "io_call",
+                        "Call",
+                        node.lineno,
+                        f"Calls impure namespace/function: {func_name}",
+                    )
                 )
 
             # Method call mutations (e.g., list.append, dict.update)
@@ -125,7 +199,12 @@ class _PureFunctionVisitor(ast.NodeVisitor):
                 target = get_name(node.func.value)
                 if target and target not in self.local_names:
                     self.side_effects.append(
-                        SideEffect("mutation", "Call", node.lineno, f"Mutates external object var via .{node.func.attr}()")
+                        SideEffect(
+                            "mutation",
+                            "Call",
+                            node.lineno,
+                            f"Mutates external object var via .{node.func.attr}()",
+                        )
                     )
 
         self.generic_visit(node)
@@ -134,7 +213,7 @@ class _PureFunctionVisitor(ast.NodeVisitor):
 def _get_parameter_count(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     count = len(node.args.args) + len(node.args.kwonlyargs)
     if hasattr(node.args, "posonlyargs"):
-        count += len(node.args.posonlyargs) # type: ignore
+        count += len(node.args.posonlyargs)  # type: ignore
     if node.args.vararg:
         count += 1
     if node.args.kwarg:
@@ -164,7 +243,7 @@ def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
             self._handle_func(node)
 
         def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-             self._handle_func(node)
+            self._handle_func(node)
 
         def _handle_func(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             qualname = node.name
@@ -202,21 +281,23 @@ def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
                                 "impure_call",
                                 "Call",
                                 node.lineno,
-                                f"Calls organically impure function '{called}' in same module"
+                                f"Calls organically impure function '{called}' in same module",
                             )
                         )
                         changed = True
                         break
-                elif called not in _KNOWN_PURE_BUILTINS and not called.islower(): # heuristic for Built-Ins
+                elif (
+                    called not in _KNOWN_PURE_BUILTINS and not called.islower()
+                ):  # heuristic for Built-Ins
                     # We have a call to an unknown, unresolved function (external module).
                     # We conservatively mark it impure.
                     visitor.side_effects.append(
-                         SideEffect(
+                        SideEffect(
                             "impure_call",
                             "Call",
                             node.lineno,
-                            f"Calls unresolved external function '{called}'"
-                         )
+                            f"Calls unresolved external function '{called}'",
+                        )
                     )
                     changed = True
                     break

@@ -347,7 +347,11 @@ def _collect_changed_symbols(
 
         # Skip test files — they are tests, not source requiring coverage
         basename = os.path.basename(filepath)
-        if basename.startswith("test_") or basename.endswith("_test.py") or basename == "conftest.py":
+        if (
+            basename.startswith("test_")
+            or basename.endswith("_test.py")
+            or basename == "conftest.py"
+        ):
             continue
 
         spans = extract_symbol_spans(filepath, project_root)

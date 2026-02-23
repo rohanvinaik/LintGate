@@ -733,9 +733,9 @@ class TestBootstrapContextFiles:
                 {"lintgate.controlplane.model_profiles": None},
             ),
         ):
-                # The try/except in bootstrap_context_files handles ImportError
-                payload = bootstrap_context_files(str(tmp_path), write=False, model_id="test-model")
-                assert payload["source_signals"]["model_profile_applied"] is False
+            # The try/except in bootstrap_context_files handles ImportError
+            payload = bootstrap_context_files(str(tmp_path), write=False, model_id="test-model")
+            assert payload["source_signals"]["model_profile_applied"] is False
 
     def test_write_with_review_items_adds_instruction(self, tmp_path: Path) -> None:
         (tmp_path / "README.md").write_text("# Repo\n")

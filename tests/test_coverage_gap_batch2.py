@@ -323,8 +323,10 @@ def test_posttooluse_context_truncation():
         hidden_findings=2,
         channels_run=30,
         delta={
-            "new": [{"count": 1}], "escalated": [],
-            "resolved_count": 2, "still_active_count": 5,
+            "new": [{"count": 1}],
+            "escalated": [],
+            "resolved_count": 2,
+            "still_active_count": 5,
         },
         resurfaced_count=1,
     )

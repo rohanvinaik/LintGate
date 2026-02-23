@@ -586,4 +586,3 @@ def compute_performance_economics_summary(
         "total_performance_issues": issues,
         "avg_analysis_time_ms": avg_time,
     }
-

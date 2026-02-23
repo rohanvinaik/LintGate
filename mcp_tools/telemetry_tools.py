@@ -50,7 +50,9 @@ def register(mcp, helpers):
         with contextlib.suppress(Exception):
             from lintgate.telemetry import compute_performance_economics_summary
 
-            performance_economics = compute_performance_economics_summary(project_root, period=period)
+            performance_economics = compute_performance_economics_summary(
+                project_root, period=period
+            )
             if performance_economics.get("has_data", False):
                 summary["performance_economics"] = performance_economics
 

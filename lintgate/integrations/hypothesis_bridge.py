@@ -17,12 +17,16 @@ def generate_hypothesis_template(func_name: str, properties: FunctionProperties)
     lines = [
         "from hypothesis import given, strategies as st",
         f"from ... import {func_name}  # TODO: fix import path",
-        ""
+        "",
     ]
 
     tests = []
 
-    args_list = ["x", "y", "z"][:properties.purity.parameter_count] if properties.purity.parameter_count > 0 else ["x"]
+    args_list = (
+        ["x", "y", "z"][: properties.purity.parameter_count]
+        if properties.purity.parameter_count > 0
+        else ["x"]
+    )
     args_str = ", ".join(f"{arg}=st.integers()" for arg in args_list)
     args_call = ", ".join(args_list)
 

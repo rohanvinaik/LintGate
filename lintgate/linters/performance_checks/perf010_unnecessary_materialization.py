@@ -39,7 +39,11 @@ def check_unnecessary_materialization(tree: ast.AST, file_path: str) -> Iterable
                 # But `sum(1 for _ in gen)` is the zero-allocation equivalent.
             elif func_name == "len" and node.args:
                 first_arg = node.args[0]
-                if isinstance(first_arg, ast.Call) and isinstance(first_arg.func, ast.Name) and first_arg.func.id == "list":
+                if (
+                    isinstance(first_arg, ast.Call)
+                    and isinstance(first_arg.func, ast.Name)
+                    and first_arg.func.id == "list"
+                ):
                     # len(list(x))
                     yield {
                         "file": file_path,

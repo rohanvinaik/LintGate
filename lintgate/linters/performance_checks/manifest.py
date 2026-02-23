@@ -84,7 +84,9 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
                 self.class_stack.pop()
 
             def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                qualname = f"{'.'.join(self.class_stack)}.{node.name}" if self.class_stack else node.name
+                qualname = (
+                    f"{'.'.join(self.class_stack)}.{node.name}" if self.class_stack else node.name
+                )
                 self.nodes[qualname] = node
 
             def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
@@ -105,9 +107,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
             else:
                 # Still store it as a FunctionProperty with no extra algebraic properties
                 manifest.functions[qualname] = FunctionProperties(
-                    purity=purity,
-                    properties=(),
-                    optimization_hints=()
+                    purity=purity, properties=(), optimization_hints=()
                 )
 
     manifest.update_metrics()

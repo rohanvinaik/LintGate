@@ -171,9 +171,7 @@ def test_constraint_check_theory_cold_start(tmp_path, monkeypatch):
 
     fake_profile = {
         "theory_profile": {
-            "anti_patterns": [
-                {"claims": ["Avoid global state", "Never use mutable defaults"]}
-            ]
+            "anti_patterns": [{"claims": ["Avoid global state", "Never use mutable defaults"]}]
         }
     }
     monkeypatch.setattr(
@@ -486,7 +484,9 @@ def test_ensure_venv_ensurepip_completes():
     create_result = subprocess.CompletedProcess([], 0)
     pip_fail = subprocess.CompletedProcess([], 1)
     ensurepip_ok = subprocess.CompletedProcess(
-        [], 0, stderr="",
+        [],
+        0,
+        stderr="",
     )
 
     with (
