@@ -93,5 +93,13 @@ warn_unused_configs = true
 disallow_untyped_defs = false  # Gradual typing
 check_untyped_defs = true
 
+[tool.mutmut]
+paths_to_mutate = ["lintgate/controlplane/", "lintgate/channels/"]
+do_not_mutate = [
+    "*__init__.py",
+    "*cli.py",
+    "*performance_channel.py",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
