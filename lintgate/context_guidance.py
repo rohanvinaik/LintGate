@@ -148,9 +148,16 @@ def _parse_context_file(path: str) -> dict[str, Any]:
     rules: list[dict[str, Any]] = []
     path_hints: set[str] = set()
 
+    in_code_block = False
     for line_no, raw in enumerate(lines, 1):
         stripped = raw.strip()
         if not stripped:
+            continue
+        # Toggle code-block state on fenced boundaries (``` or ```python, etc.)
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
             continue
         # Skip markdown table rows — they contain keywords like "DO NOT"
         # in descriptive cells, not as actionable directives.

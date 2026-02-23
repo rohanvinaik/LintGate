@@ -9,11 +9,12 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Literal
 
 # ── Channel selection helpers ───────────────────────────────────────────
 
-_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure,performance"
+_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure,performance,test_effectiveness"
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
     "lint": "Code quality (ruff, mypy, complexity, structure)",
@@ -43,6 +44,7 @@ def _build_channel_registry():
     from lintgate.channels.performance_channel import PerformanceChannel
     from lintgate.channels.structure_channel import StructureChannel
     from lintgate.channels.test_channel import TestChannel
+    from lintgate.channels.test_effectiveness_channel import TestEffectivenessChannel
 
     return {
         "lint": LintChannel(),
@@ -52,6 +54,7 @@ def _build_channel_registry():
         "behavior": BehaviorChannel(),
         "structure": StructureChannel(),
         "performance": PerformanceChannel(),
+        "test_effectiveness": TestEffectivenessChannel(),
     }
 
 
@@ -84,7 +87,16 @@ def _collect_files_for_event(project_root, helpers):
 
     if not files_for_event:
         files_for_event = py_files
-    return files_for_event[:50]
+
+    # Deduplicate by resolved path — git-changed and fallback lists may overlap
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for f in files_for_event[:50]:
+        resolved = str(Path(f).resolve())
+        if resolved not in seen:
+            seen.add(resolved)
+            deduped.append(f)
+    return deduped
 
 
 def _build_supervision_event(project_root, files_for_event, strictness, requested):

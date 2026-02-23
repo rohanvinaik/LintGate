@@ -460,3 +460,20 @@ class TestCoherenceScenarios:
                 f"Scenario '{scenario_name}': expected '{ch}' in silent channels, "
                 f"got silent={coherence.silent_channels}"
             )
+
+
+class TestBuildClassificationReasonFallback:
+    """Test the defensive fallback in _build_classification_reason (line 883)."""
+
+    def test_unknown_state_produces_fallback_reason(self):
+        """When CoherenceResult has an unrecognized state, the fallback branch fires."""
+        from lintgate.controlplane.coherence import _build_classification_reason
+        from lintgate.controlplane.types import CoherenceResult
+
+        result = CoherenceResult(
+            state="unknown_state",  # type: ignore[arg-type]
+            loud_channels=["lint", "tests"],
+            silent_channels=["deps"],
+        )
+        reason = _build_classification_reason(result)
+        assert reason == "State: unknown_state, 2 loud, 1 silent."

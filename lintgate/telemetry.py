@@ -203,19 +203,52 @@ def _compute_trend(entries: list[dict[str, Any]]) -> str:
 def _compute_trend_evidence(entries: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute evidence backing the trend direction.
 
-    Returns a dict with early/recent averages and sample size so the
-    agent (and user) can see *why* the trend was classified the way it was.
+    Returns a dict with early/recent averages, sample size, and a
+    human-readable ``trend_explanation`` so the agent (and user) can
+    see *why* the trend was classified the way it was.
     """
     if len(entries) < 4:
-        return {"reason": f"Insufficient data ({len(entries)} runs, need 4+)"}
+        explanation = (
+            f"Insufficient data: {len(entries)} runs collected, "
+            f"minimum 4 required for trend analysis."
+        )
+        return {
+            "reason": f"Insufficient data ({len(entries)} runs, need 4+)",
+            "trend_explanation": explanation,
+        }
 
     mid = len(entries) // 2
     avg_first = sum(e.get("blocking_count", 0) for e in entries[:mid]) / mid
     avg_second = sum(e.get("blocking_count", 0) for e in entries[mid:]) / (len(entries) - mid)
+    n_runs = len(entries)
+
+    # Build human-readable explanation
+    if avg_first > 0:
+        pct_change = (avg_second - avg_first) / avg_first * 100
+    else:
+        pct_change = 0.0 if avg_second == 0 else 100.0
+
+    if avg_second < avg_first * 0.8:
+        explanation = (
+            f"Blocking issues decreased from avg {avg_first:.1f} to {avg_second:.1f} "
+            f"({abs(pct_change):.0f}% decrease over {n_runs} runs, threshold: 20%)"
+        )
+    elif avg_second > avg_first * 1.2:
+        explanation = (
+            f"Blocking issues increased from avg {avg_first:.1f} to {avg_second:.1f} "
+            f"({abs(pct_change):.0f}% increase over {n_runs} runs, threshold: 20%)"
+        )
+    else:
+        explanation = (
+            f"Blocking issues stable at avg {avg_first:.1f} -> {avg_second:.1f} "
+            f"({pct_change:+.0f}% change, within +/-20% threshold)"
+        )
+
     return {
         "avg_blockers_early": round(avg_first, 1),
         "avg_blockers_recent": round(avg_second, 1),
-        "sample_size": len(entries),
+        "sample_size": n_runs,
+        "trend_explanation": explanation,
     }
 
 

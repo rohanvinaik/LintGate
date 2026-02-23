@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import textwrap
+from unittest.mock import patch
 
 from lintgate.controlplane.skeleton_generator import (
     _build_imports,
@@ -325,3 +326,101 @@ class TestGenerateTestPath:
         src.touch()
         result = generate_test_path(str(src))
         assert "test_module.py" in result
+
+    def test_relpath_value_error_falls_back_to_tests_dir(self) -> None:
+        """Lines 128-129: When os.path.relpath raises ValueError, fall back."""
+        with patch(
+            "lintgate.controlplane.skeleton_generator.os.path.relpath",
+            side_effect=ValueError("different drives"),
+        ):
+            result = generate_test_path("/some/src/mod.py", "/project")
+        # Falls through to the final return: os.path.join(tests_dir, test_name)
+        assert result.endswith(os.path.join("tests", "test_mod.py"))
+
+
+# ── generate_test_skeleton — default fallback (line 52) ─────────────────
+
+
+class TestGenerateTestSkeletonDefaultFallback:
+    """Tests for the default archetype fallback in generate_test_skeleton."""
+
+    def test_empty_archetypes_from_selector_uses_default(self, tmp_path: object) -> None:
+        """Line 52: When select_archetypes returns [] and no archetypes given, use default."""
+        import pathlib
+
+        src = pathlib.Path(str(tmp_path)) / "bare.py"
+        src.write_text("def greet(): pass\n")
+
+        with patch(
+            "lintgate.controlplane.skeleton_generator.select_archetypes",
+            return_value=[],
+        ):
+            result = generate_test_skeleton(str(src))
+        # The default archetype is input_validation, which generates a basic test
+        assert "test_greet_returns_expected_output" in result
+
+
+# ── generate_test_skeleton — method skip (line 81) ──────────────────────
+
+
+class TestGenerateTestSkeletonMethodSkip:
+    """Tests for skipping methods in the function loop of generate_test_skeleton."""
+
+    def test_methods_skipped_in_function_loop(self, tmp_path: object) -> None:
+        """Line 81: Functions with is_method=True are skipped in the top-level loop."""
+        import pathlib
+
+        src = pathlib.Path(str(tmp_path)) / "with_class.py"
+        src.write_text(
+            textwrap.dedent("""\
+                class MyObj:
+                    def do_work(self):
+                        pass
+
+                def standalone():
+                    pass
+            """)
+        )
+        result = generate_test_skeleton(str(src), archetypes=["input_validation"])
+        # standalone gets a test, but do_work (a method) does not get a
+        # top-level function test — it is handled with its class
+        assert "test_standalone_returns_expected_output" in result
+        assert "test_do_work_returns_expected_output" not in result
+
+
+# ── _generate_class_tests — dunder continue (line 272) ──────────────────
+
+
+class TestGenerateClassTestsDunderSkip:
+    """Tests for private/dunder method skip in _generate_class_tests."""
+
+    def test_private_and_dunder_methods_excluded(self) -> None:
+        """Private methods (startswith '_') are skipped in state_invariant tests."""
+        cls = ClassInfo(
+            name="Widget",
+            mutable_fields=["value"],
+            methods=["__str__", "__eq__", "_internal", "update"],
+        )
+        signals = SourceSignals(classes=[cls])
+        lines = _generate_class_tests(cls, signals, {"state_invariant"}, "mod")
+        text = "\n".join(lines)
+        assert "test_update_modifies_state" in text
+        assert "test___str___modifies_state" not in text
+        assert "test___eq___modifies_state" not in text
+        assert "test__internal_modifies_state" not in text
+
+
+# ── _compute_import_path — ValueError fallback (lines 297-298) ──────────
+
+
+class TestComputeImportPathValueErrorFallback:
+    """Tests for the ValueError fallback in _compute_import_path."""
+
+    def test_relpath_value_error_returns_basename(self) -> None:
+        """Lines 297-298: When relpath raises ValueError, return basename."""
+        with patch(
+            "lintgate.controlplane.skeleton_generator.os.path.relpath",
+            side_effect=ValueError("cannot compute relative path"),
+        ):
+            result = _compute_import_path("/x/y/mymod.py", "/some/root")
+        assert result == "mymod"

@@ -109,9 +109,29 @@ def run_safe_fixes(
         # Split into per-file segments for structured output
         if result.diff_preview:
             result.file_diffs = _split_diff_by_file(result.diff_preview)
-            for line in result.diff_preview.splitlines():
-                if line.startswith("--- ") or line.startswith("Would fix:"):
-                    result.changes.append({"action": "preview", "detail": line[:120]})
+            for fd in result.file_diffs:
+                diff_lines = fd["diff"].splitlines()
+                additions = sum(
+                    1 for ln in diff_lines if ln.startswith("+") and not ln.startswith("+++")
+                )
+                deletions = sum(
+                    1 for ln in diff_lines if ln.startswith("-") and not ln.startswith("---")
+                )
+                content_lines = [
+                    ln
+                    for ln in diff_lines
+                    if not ln.startswith(("---", "+++", "@@"))
+                    and (ln.startswith("+") or ln.startswith("-"))
+                ][:5]
+                result.changes.append(
+                    {
+                        "action": "preview",
+                        "file": fd["file"],
+                        "additions": additions,
+                        "deletions": deletions,
+                        "sample": content_lines,
+                    }
+                )
     else:
         # Apply mode: actually modify files — track via mtime comparison
         before_mtimes = _snapshot_mtimes(py_files)

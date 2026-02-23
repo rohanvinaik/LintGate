@@ -69,6 +69,7 @@ def test_detect_bounded():
     kinds = [p.kind for p in props.properties]
     assert PropertyKind.BOUNDED in kinds
 
+
 def test_detect_bounded_nested_order():
     # Nested in different order
     code = "def clamp(x): return min(100, max(x, -100))"

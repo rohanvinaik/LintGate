@@ -66,6 +66,10 @@ def compute_coherence(
     if files_changed:
         result = _apply_edit_scope(result, channel_results, files_changed)
 
+    # Populate classification_reason from computed state
+    if not result.classification_reason:
+        result.classification_reason = _build_classification_reason(result)
+
     return result
 
 
@@ -855,6 +859,30 @@ def _channel_finding_summary(result: ChannelResult) -> str:
     )
 
 
+def _build_classification_reason(result: CoherenceResult) -> str:
+    """Build a human-readable reason for the coherence classification."""
+    loud_count = len(result.loud_channels)
+    silent_count = len(result.silent_channels)
+
+    if result.state == "stable":
+        return f"All {silent_count} channel(s) passed — no failures detected."
+    if result.state == "degraded":
+        return "One or more channels errored or timed out — results incomplete."
+    if result.state == "isolated":
+        return (
+            f"Single failure in {', '.join(result.loud_channels)}; "
+            f"{silent_count} channel(s) passed, corroborating isolation."
+        )
+    if result.state == "coupled":
+        return (
+            f"{loud_count} channels failed with overlapping file scope: "
+            f"{', '.join(result.loud_channels)}."
+        )
+    if result.state == "systemic":
+        return f"{loud_count} channels failed across domains: {', '.join(result.loud_channels)}."
+    return f"State: {result.state}, {loud_count} loud, {silent_count} silent."
+
+
 _SEVERITY_WEIGHT = {"blocking": 1.0, "warning": 0.55, "informational": 0.25, "none": 0.0}
 
 # Severity count weights for volume-aware scoring.
@@ -875,6 +903,11 @@ def _channel_failure_weight(result: ChannelResult) -> float:
         + counts["informational"] * _INFO_COUNT_WEIGHT
     )
     if base_score > 0:
+        # Dampen channels that are overwhelmingly informational — they
+        # shouldn't inflate severity when nothing is actually blocking.
+        total_findings = sum(counts.values())
+        if total_findings > 0 and counts["informational"] / total_findings > 0.8:
+            base_score *= 0.3
         return min(_MAX_CHANNEL_FAILURE_WEIGHT, base_score)
     return _SEVERITY_WEIGHT.get(result.severity, 0.5)
 
