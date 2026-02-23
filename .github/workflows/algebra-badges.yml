@@ -58,8 +58,13 @@ jobs:
           color: "blue"
           path: ".github/badges/properties.svg"
           
-      - name: Commit badges
-        uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403 # v5
-        with:
-          commit_message: "Update algebraic property badges"
-          file_pattern: ".github/badges/*.svg"
+      - name: Push badges to badges branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin badges:badges
+          git checkout badges -- .github/badges/ 2>/dev/null || true
+          git checkout -B badges
+          git add .github/badges/purity.svg .github/badges/properties.svg
+          git commit -m "Update algebra badges (Pure: ${{ env.PURE_FUNCTIONS }}, Properties: ${{ env.PROPERTIES_PROVEN }})" || echo "No changes"
+          git push origin badges
