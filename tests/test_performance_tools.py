@@ -1,6 +1,8 @@
-"""Tests for mcp_tools/performance_tools.py helper functions."""
+"""Tests for mcp_tools/performance_tools.py helper functions and MCP tools."""
 
 from __future__ import annotations
+
+import json
 
 from lintgate.linters.performance_checks.algebra_types import (
     AlgebraicProperty,
@@ -10,10 +12,13 @@ from lintgate.linters.performance_checks.algebra_types import (
 )
 from lintgate.linters.performance_checks.manifest import PropertyManifest
 from mcp_tools.performance_tools import (
+    _build_manifest_for_project,
     _build_manifest_summary,
+    _build_test_entry,
     _filter_manifest,
     _matches_filter,
     _select_property_candidates,
+    register,
 )
 
 
@@ -229,3 +234,164 @@ class TestSelectPropertyCandidates:
         m = PropertyManifest()
         candidates = _select_property_candidates(m, None, 10)
         assert candidates == []
+
+
+# ── _FakeMCP + helpers for integration tests ─────────────────────────
+
+
+class _FakeMCP:
+    """Minimal MCP stub that captures decorated functions."""
+
+    def tool(self):
+        def _decorator(fn):
+            return fn
+        return _decorator
+
+
+def _stub_helpers(**overrides):
+    defaults = {
+        "_validate_project_root": lambda p, **kw: p or "/tmp/test",
+        "_json_dumps": lambda obj, **kw: json.dumps(obj),
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def _register(**helper_overrides):
+    return register(_FakeMCP(), _stub_helpers(**helper_overrides))
+
+
+# ── _build_manifest_for_project ──────────────────────────────────────
+
+
+class TestBuildManifestForProject:
+    def test_with_python_files(self, tmp_path):
+        f = tmp_path / "logic.py"
+        f.write_text("def add(a, b): return a + b\n")
+        helpers = _stub_helpers()
+        helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
+        root, manifest, py_files = _build_manifest_for_project(str(tmp_path), helpers)
+        assert root == str(tmp_path)
+        assert manifest is not None
+        assert len(py_files) >= 1
+
+    def test_empty_project(self, tmp_path):
+        helpers = _stub_helpers()
+        helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
+        root, manifest, py_files = _build_manifest_for_project(str(tmp_path), helpers)
+        assert py_files == []
+        assert manifest is None
+
+
+# ── _build_test_entry ────────────────────────────────────────────────
+
+
+class TestBuildTestEntry:
+    def test_basic_entry(self):
+        bounded = AlgebraicProperty(
+            kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp"
+        )
+        func = _make_func("score", props=(bounded,), source="/a.py")
+        entry = _build_test_entry("score", func)
+        assert entry["function"] == "score"
+        assert entry["source_file"] == "/a.py"
+        assert "bounded" in entry["properties"]
+
+    def test_entry_with_no_properties(self):
+        func = _make_func("simple")
+        entry = _build_test_entry("simple", func)
+        assert entry["function"] == "simple"
+        assert entry["properties"] == []
+
+
+# ── MCP tool integration: inspect_algebra ────────────────────────────
+
+
+class TestInspectAlgebra:
+    def test_with_python_files(self, tmp_path):
+        f = tmp_path / "logic.py"
+        f.write_text("def add(a, b): return a + b\n")
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["inspect_algebra"](path=str(tmp_path)))
+        assert "summary" in result
+        assert result["summary"]["total_functions"] >= 1
+
+    def test_with_filter(self, tmp_path):
+        f = tmp_path / "logic.py"
+        f.write_text("def add(a, b): return a + b\ndef sub(a, b): return a - b\n")
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["inspect_algebra"](path=str(tmp_path), filter_by="pure"))
+        assert "filter_applied" in result
+        assert result["filter_applied"]["type"] == "pure"
+
+    def test_with_function_filter(self, tmp_path):
+        f = tmp_path / "logic.py"
+        f.write_text("def add(a, b): return a + b\ndef sub(a, b): return a - b\n")
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["inspect_algebra"](path=str(tmp_path), function="add"))
+        assert "filter_applied" in result
+
+    def test_empty_project(self, tmp_path):
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["inspect_algebra"](path=str(tmp_path)))
+        assert "error" in result
+
+
+# ── MCP tool integration: generate_property_tests ────────────────────
+
+
+class TestGeneratePropertyTests:
+    def test_with_pure_functions(self, tmp_path):
+        f = tmp_path / "math_ops.py"
+        f.write_text("def add(a, b): return a + b\n")
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["generate_property_tests"](path=str(tmp_path)))
+        # May or may not find algebraic properties beyond PURE
+        assert "note" in result or "functions" in result
+
+    def test_empty_project(self, tmp_path):
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["generate_property_tests"](path=str(tmp_path)))
+        assert "error" in result
+
+    def test_no_candidates_returns_note(self, tmp_path):
+        # A file with only impure functions
+        f = tmp_path / "impure.py"
+        f.write_text("import os\ndef rm(p): os.remove(p)\n")
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["generate_property_tests"](path=str(tmp_path)))
+        assert "note" in result
+
+    def test_with_function_filter(self, tmp_path):
+        f = tmp_path / "logic.py"
+        f.write_text("def add(a, b): return a + b\n")
+        tools = register(
+            _FakeMCP(),
+            _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
+        )
+        result = json.loads(tools["generate_property_tests"](
+            path=str(tmp_path), function="nonexistent"
+        ))
+        assert "note" in result
+        assert "nonexistent" in result["note"]
