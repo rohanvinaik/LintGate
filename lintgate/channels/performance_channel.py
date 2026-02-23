@@ -144,8 +144,9 @@ class PerformanceChannel:
                 {
                     "event": "performance_analysis",
                     "project": project_root,
-                    "pure_functions_found": manifest.pure_count,
-                    "impure_functions_found": manifest.impure_count,
+                    "pure_functions": manifest.pure_count,
+                    "impure_functions": manifest.impure_count,
+                    "properties_proven": sum(manifest.property_distribution.values()),
                     "purity_ratio": round(purity_ratio, 3),
                     "properties_detected": {
                         k.value: v for k, v in manifest.property_distribution.items()

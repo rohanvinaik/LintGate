@@ -118,15 +118,24 @@ def _check_monotonic(
 
         def visit_BinOp(self, op: ast.BinOp):
             if isinstance(op.op, (ast.Add, ast.Mult)):
-                # addition and multiplication are monotonic for positive numbers
                 self.generic_visit(op)
             else:
                 self.is_monotonic = False
 
         def visit_UnaryOp(self, op: ast.UnaryOp):
-            if not isinstance(op.op, ast.UAdd):  # USub reverses monotonicity
+            if not isinstance(op.op, ast.UAdd):
                 self.is_monotonic = False
             self.generic_visit(op)
+
+        def visit_Call(self, node: ast.Call):
+            # We don't know if a general call is monotonic
+            self.is_monotonic = False
+
+        def visit_Subscript(self, node: ast.Subscript):
+            self.is_monotonic = False
+
+        def visit_Attribute(self, node: ast.Attribute):
+            self.is_monotonic = False
 
     v = MonotonicVisitor()
     v.visit(expr)

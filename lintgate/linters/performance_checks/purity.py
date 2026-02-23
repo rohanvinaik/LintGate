@@ -124,6 +124,27 @@ class _PureFunctionVisitor(ast.NodeVisitor):
             # the first arg is usually self/cls, but we just track it as a local
             pass
 
+        # Check for mutable defaults
+        self._check_mutable_defaults()
+
+    def _check_mutable_defaults(self) -> None:
+        """Flag mutable default arguments as persistent side effects."""
+        defaults = list(self.func_node.args.defaults)
+        defaults.extend(
+            [d for d in self.func_node.args.kw_defaults if d is not None]
+        )
+
+        for d in defaults:
+            if isinstance(d, (ast.List, ast.Dict, ast.Set, ast.Call)):
+                self.side_effects.append(
+                    SideEffect(
+                        "mutable_default",
+                        "DefaultArg",
+                        self.func_node.lineno,
+                        "Function has a mutable default argument which persists state across calls"
+                    )
+                )
+
     def visit_Global(self, node: ast.Global) -> None:
         for name in node.names:
             self.side_effects.append(

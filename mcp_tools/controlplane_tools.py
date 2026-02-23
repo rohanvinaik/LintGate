@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 # ── Channel selection helpers ───────────────────────────────────────────
 
-_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure"
+_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure,performance"
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
     "lint": "Code quality (ruff, mypy, complexity, structure)",
@@ -27,6 +27,10 @@ _AVAILABLE_CHANNEL_DESCRIPTIONS = {
         "Codebase structure lens "
         "(import cycles, module-size concentration, orphans, package cohesion)"
     ),
+    "performance": (
+        "Algebraic performance analysis "
+        "(purity detection, algebraic properties, optimization hints)"
+    ),
 }
 
 
@@ -36,6 +40,7 @@ def _build_channel_registry():
     from lintgate.channels.dependency_channel import DependencyChannel
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
+    from lintgate.channels.performance_channel import PerformanceChannel
     from lintgate.channels.structure_channel import StructureChannel
     from lintgate.channels.test_channel import TestChannel
 
@@ -46,6 +51,7 @@ def _build_channel_registry():
         "git": GitChannel(),
         "behavior": BehaviorChannel(),
         "structure": StructureChannel(),
+        "performance": PerformanceChannel(),
     }
 
 

@@ -58,6 +58,8 @@ The core mechanism, borrowed from how good instruments work: **multiple cheap, l
 
 **The behavioral compass** tracks the agent's reasoning strategy in real time: live hypotheses, approach history, intent patterns, coverage metrics. When the strategy drifts — retrying failed approaches, ignoring discovered constraints, acting without verifying — the behavior channel catches it and intervenes *before* the bad reasoning produces bad code. Nine detection rules, deterministic scoring, no LLM calls.
 
+**The Algebraic Properties Bridge** performs formal analysis of your codebase's mathematical structure. It detects function purity (side-effect isolation), classifies algebraic properties (idempotency, commutativity, associativity), and identifies optimization opportunities like trivially safe parallelization or zero-invalidation caching. It bridges structural analysis with formal verification.
+
 ---
 
 ## The Economics

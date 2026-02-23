@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from lintgate.linters.performance_checks._helpers import find_loop_bodies, get_name
 from lintgate.linters.performance_checks.purity import _KNOWN_PURE_BUILTINS
 
+from ...types import LintIssue
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -98,14 +100,17 @@ def check_pure_uncached_in_loop(tree: ast.AST, file_path: str) -> Iterable[dict[
                                 break
 
                     if all_invariant and (node.args or node.keywords):
-                        yield {
-                            "file": file_path,
-                            "line": node.lineno,
-                            "col": node.col_offset,
-                            "message": (
-                                f"PERF011: Uncached pure call in loop. "
+                        yield LintIssue(
+                            linter="performance_checker",
+                            kind="PERF011",
+                            message=(
+                                f"Uncached pure call in loop. "
                                 f"'{func_name}' is called with loop-invariant arguments. "
                                 f"Hoist this call before the loop or use @lru_cache to prevent redundant computation."
                             ),
-                            "code": "PERF011",
-                        }
+                            file=file_path,
+                            line=node.lineno,
+                            severity="informational",
+                            confidence=0.8,
+                            evidence={"func": func_name, "check": "PERF011"},
+                        )

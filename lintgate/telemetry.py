@@ -293,6 +293,7 @@ _ALL_TRACKED_FEATURES = {
     "bootstrap",
     "habit_mode",
     "token_tracking",
+    "performance_analysis",
 }
 
 

@@ -245,10 +245,10 @@ class TestRunControlplane:
             # Verify both channel constructors were called
             mock_struct.assert_called_once()
             mock_behav.assert_called_once()
-            # run_mesh should have received 6 channels (4 default + structure + behavior)
+            # run_mesh should have received 7 channels (5 default + structure + behavior)
             call_args = patched_run_mesh.call_args
             channels_arg = call_args[0][2]  # third positional arg
-            assert len(channels_arg) == 6
+            assert len(channels_arg) == 7
 
     def test_telemetry_stripped_and_logged(self, tmp_path) -> None:
         """When format_mesh_report returns a report with _telemetry key,

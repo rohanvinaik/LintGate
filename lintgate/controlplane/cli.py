@@ -35,8 +35,8 @@ def main(argv: list[str] | None = None) -> None:
     run_parser.add_argument("path", help="Project root path")
     run_parser.add_argument(
         "--channels",
-        default="lint,tests,deps,git",
-        help="Comma-separated channel list (default: lint,tests,deps,git)",
+        default="lint,tests,deps,git,performance",
+        help="Comma-separated channel list (default: lint,tests,deps,git,performance)",
     )
     run_parser.add_argument(
         "--strictness",
@@ -70,6 +70,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from lintgate.channels.dependency_channel import DependencyChannel
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
+    from lintgate.channels.performance_channel import PerformanceChannel
     from lintgate.channels.test_channel import TestChannel
 
     from .reporter import format_mesh_report
@@ -84,6 +85,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
         "tests": TestChannel(),
         "deps": DependencyChannel(),
         "git": GitChannel(),
+        "performance": PerformanceChannel(),
     }
 
     # Select requested channels
@@ -162,6 +164,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
     print("  ✓ tests     — Test coverage and health")
     print("  ✓ deps      — Dependency health")
     print("  ✓ git       — Git hygiene")
+    print("  ✓ performance — Algebraic performance analysis")
 
 
 def _discover_python_files(project_root: str, max_files: int = 50) -> list[str]:
