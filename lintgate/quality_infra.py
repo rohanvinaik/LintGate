@@ -256,11 +256,11 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
                 errors.append(f"pre-push missing contract command fragment: {cmd}")
 
     remote_checks = _fetch_branch_protection_required_checks(project_root)
-    require_remote = os.getenv("CI", "").strip().lower() == "true"
+    require_remote = _branch_protection_fail_closed()
     if remote_checks is None:
         if require_remote:
             errors.append(
-                "Unable to read main branch protection checks via gh api (CI fail-closed)"
+                "Unable to read main branch protection checks via gh api (fail-closed mode)"
             )
     else:
         missing_remote = sorted(set(required_checks) - set(remote_checks))
@@ -277,6 +277,18 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
             )
 
     return errors
+
+
+def _branch_protection_fail_closed() -> bool:
+    """Whether branch-protection API parity is enforced fail-closed.
+
+    Default is best-effort because GitHub Actions' default GITHUB_TOKEN
+    typically cannot read branch protection endpoints. Local pre-push can
+    opt into strict mode by exporting:
+      LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1
+    """
+    raw = os.getenv("LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED", "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _load_gate_contract(contract_path: Path) -> dict[str, Any] | None:

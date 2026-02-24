@@ -24,7 +24,7 @@ echo "[lintgate] running local quality checks before push"
 
 # Quality infrastructure gate (hard fail)
 echo "[lintgate] checking quality infrastructure completeness"
-if python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
+if LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1 python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
   echo "[lintgate] quality infrastructure: complete"
 else
   echo "[lintgate] quality infrastructure: INCOMPLETE — run setup_github_quality to fix"

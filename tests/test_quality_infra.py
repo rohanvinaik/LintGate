@@ -278,7 +278,22 @@ def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) 
     assert any("Branch protection missing contract required check(s)" in e for e in errors)
 
 
-def test_gate_contract_drift_fails_closed_in_ci_when_remote_unavailable(tmp_path: Path) -> None:
+def test_gate_contract_drift_best_effort_when_remote_unavailable_by_default(tmp_path: Path) -> None:
+    _write_valid_gate_contract(tmp_path)
+    _write_contract_workflows(tmp_path)
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text(
+        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+    )
+
+    with patch("lintgate.quality_infra._fetch_branch_protection_required_checks", return_value=None):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert not any("Unable to read main branch protection checks via gh api" in e for e in errors)
+
+
+def test_gate_contract_drift_fails_closed_when_env_enabled(tmp_path: Path) -> None:
     _write_valid_gate_contract(tmp_path)
     _write_contract_workflows(tmp_path)
     hook_dir = tmp_path / ".githooks"
@@ -289,7 +304,7 @@ def test_gate_contract_drift_fails_closed_in_ci_when_remote_unavailable(tmp_path
 
     with (
         patch("lintgate.quality_infra._fetch_branch_protection_required_checks", return_value=None),
-        patch.dict("os.environ", {"CI": "true"}),
+        patch.dict("os.environ", {"LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED": "1"}),
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
