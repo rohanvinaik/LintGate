@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771969434566,
+  "lastUpdate": 1771971056243,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -474,6 +474,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00017827123969486465",
             "extra": "mean: 651.4940804598558 usec\nrounds: 609"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "94abdd6e23a29fe79cd4e9a5cfc1fccf81d78a2c",
+          "message": "fix: harden MCP command resolution for desktop startup (#50)\n\n* fix: resolve MCP server command paths for desktop agents\n\n* test: cover admin command-resolution failure branches",
+          "timestamp": "2026-02-24T22:10:17Z",
+          "tree_id": "d3f9ffaa292a570532c6c4305b6c8aec17241be7",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/94abdd6e23a29fe79cd4e9a5cfc1fccf81d78a2c"
+        },
+        "date": 1771971055024,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 129.04061805555764,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00016132974568517673",
+            "extra": "mean: 7.749497910568409 msec\nrounds: 123"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 210459.41862395356,
+            "unit": "iter/sec",
+            "range": "stddev: 7.452754395870433e-7",
+            "extra": "mean: 4.751509847068371 usec\nrounds: 52757"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5632.426840057042,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00019606685820653923",
+            "extra": "mean: 177.54336246112211 usec\nrounds: 3868"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14606.82534622474,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001602646592438299",
+            "extra": "mean: 68.4611458203311 usec\nrounds: 9594"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1629.2282297713998,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000662412871854512",
+            "extra": "mean: 613.7875478258267 usec\nrounds: 575"
           }
         ]
       }
