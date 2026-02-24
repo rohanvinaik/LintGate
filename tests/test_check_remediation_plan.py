@@ -49,6 +49,18 @@ def test_skips_non_gate_changes(monkeypatch, capsys) -> None:
     assert "Remediation plan not required" in out
 
 
+def test_no_changed_files_is_non_blocking(monkeypatch, capsys) -> None:
+    module = _load_module()
+    monkeypatch.setenv("PR_BODY", "")
+    monkeypatch.delenv("CHANGED_FILES_JSON", raising=False)
+    monkeypatch.delenv("CHANGED_FILES", raising=False)
+
+    code = module.main()
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "No changed files provided." in out
+
+
 def test_fails_gate_changes_without_required_template(monkeypatch, capsys) -> None:
     module = _load_module()
     monkeypatch.setenv("PR_BODY", "")
