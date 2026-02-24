@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771858804616,
+  "lastUpdate": 1771952411149,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -297,6 +297,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00035199776135677466",
             "extra": "mean: 663.1064180063679 usec\nrounds: 622"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2d01fc8ac6fcc5f9b4242150927c4fd9001604e1",
+          "message": "chore: unify strict gate contract and close split-brain pipeline (#41)\n\n* Centralize strict ship pipeline and gate contract parity\n\n* Stabilize qlty pre-push inputs for local secrets\n\n* Align script coverage with symbol gate and add ship_main tests\n\n* Make branch-protection drift strict in pre-push and best-effort in CI\n\n* Expand quality infra tests for branch-protection drift helpers",
+          "timestamp": "2026-02-24T16:59:34Z",
+          "tree_id": "782f5083f4bd0f3d44671a969b26ef951339a049",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/2d01fc8ac6fcc5f9b4242150927c4fd9001604e1"
+        },
+        "date": 1771952410294,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 123.15233477212567,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017821292007164495",
+            "extra": "mean: 8.120024698275882 msec\nrounds: 116"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 218463.6125643104,
+            "unit": "iter/sec",
+            "range": "stddev: 8.034636044851968e-7",
+            "extra": "mean: 4.577421330088205 usec\nrounds: 50839"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 6115.1074427376425,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00022152323734194772",
+            "extra": "mean: 163.529424358293 usec\nrounds: 3662"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 15227.937092080845,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000015968575962558416",
+            "extra": "mean: 65.66877666706682 usec\nrounds: 9703"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1615.5802760456186,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004398930784755579",
+            "extra": "mean: 618.9726470588349 usec\nrounds: 578"
           }
         ]
       }
