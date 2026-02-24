@@ -20,7 +20,7 @@ import os
 import shutil
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +74,7 @@ def _ensure_branch(repo_root: str, base_branch: str) -> str:
     if branch != base_branch:
         return branch
 
-    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     branch = f"codex/ship-{ts}"
     _run(["git", "switch", "-c", branch], cwd=repo_root)
     print(f"[ship] Created ephemeral branch from {base_branch}: {branch}")
