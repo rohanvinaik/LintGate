@@ -114,3 +114,17 @@ def test_check_ship_gate_parity_invalid_json(monkeypatch, tmp_path) -> None:
     assert result["status"] == "error"
     assert result["exit_code"] == 2
     assert "Failed to parse json" in result["error"]
+
+
+def test_check_ship_gate_parity_subprocess_exception(monkeypatch, tmp_path) -> None:
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "ship_main.py").write_text("#!/usr/bin/env python3\n")
+
+    def fake_run(*_args, **_kwargs):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr("mcp_tools.controlplane_tools.subprocess.run", fake_run)
+    result = _check_ship_gate_parity(str(tmp_path), "strict")
+    assert result["status"] == "error"
+    assert "spawn failed" in result["error"]

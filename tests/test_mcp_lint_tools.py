@@ -285,6 +285,11 @@ class TestLintProject:
         with pytest.raises(ValueError, match="No Python files found"):
             tools["lint_project"](path=str(tmp_path))
 
+    def test_raises_for_invalid_tier(self, tmp_path):
+        tools = _register()
+        with pytest.raises(ValueError, match="Invalid tier"):
+            tools["lint_project"](path=str(tmp_path), tier=99)
+
 
 # ── lint_get_details tool ───────────────────────────────────────────
 

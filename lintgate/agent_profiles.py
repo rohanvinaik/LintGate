@@ -46,63 +46,49 @@ def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     tmp_path.rename(path)
 
 
-def write_claude_config(config_path: Path, server_cmd: str) -> bool:
-    """Write a Claude Desktop config idempotently."""
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
+def _load_existing_config(config_path: Path) -> dict[str, Any]:
+    """Load existing JSON config, defaulting to an empty MCP server block."""
     if config_path.exists():
         try:
             with open(config_path) as f:
-                data = json.load(f)
+                loaded = json.load(f)
         except json.JSONDecodeError:
-            data = {"mcpServers": {}}
-    else:
-        data = {"mcpServers": {}}
+            loaded = {}
+        if isinstance(loaded, dict):
+            return loaded
+    return {"mcpServers": {}}
+
+
+def _write_mcp_server_config(config_path: Path, server_cmd: str) -> bool:
+    """Write an MCP server entry idempotently to an agent config file."""
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    data = _load_existing_config(config_path)
 
     mcp_servers = data.setdefault("mcpServers", {})
     existing = mcp_servers.get("lintgate")
 
     desired = {
         "command": server_cmd,
-        "args": []
+        "args": [],
     }
 
-    if existing and existing == desired:
+    if existing == desired:
         return False  # perfectly configured
 
     mcp_servers["lintgate"] = desired
 
     _atomic_write_json(config_path, data)
     return True
+
+
+def write_claude_config(config_path: Path, server_cmd: str) -> bool:
+    """Write a Claude Desktop config idempotently."""
+    return _write_mcp_server_config(config_path, server_cmd)
+
 
 def write_antigravity_config(config_path: Path, server_cmd: str) -> bool:
     """Write Antigravity MCP config idempotently."""
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                data = json.load(f)
-        except json.JSONDecodeError:
-            data = {"mcpServers": {}}
-    else:
-        data = {"mcpServers": {}}
-
-    mcp_servers = data.setdefault("mcpServers", {})
-    existing = mcp_servers.get("lintgate")
-
-    desired = {
-        "command": server_cmd,
-        "args": []
-    }
-
-    if existing and existing == desired:
-        return False  # perfectly configured
-
-    mcp_servers["lintgate"] = desired
-
-    _atomic_write_json(config_path, data)
-    return True
+    return _write_mcp_server_config(config_path, server_cmd)
 
 
 # --- Registry ---

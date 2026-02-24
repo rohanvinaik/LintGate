@@ -1,6 +1,13 @@
 """Unit tests for the PreToolUse mutation guard hook."""
 
-from lintgate.hook_pretooluse import _is_mutation
+from __future__ import annotations
+
+import io
+import json
+
+import pytest
+
+from lintgate.hook_pretooluse import _is_mutation, main
 
 
 def test_safe_commands_pass():
@@ -78,3 +85,69 @@ def test_privilege_escalation_blocked():
     ]
     for cmd in blocked_commands:
         assert _is_mutation(cmd), f"Mutation guard missed privilege escalation: {cmd}"
+
+
+def _invoke_hook(stdin_payload: str, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO(stdin_payload))
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    output = capsys.readouterr().out.strip()
+    parsed = json.loads(output)
+    return excinfo.value.code, parsed
+
+
+def test_main_invalid_json_returns_empty(monkeypatch, capsys):
+    code, payload = _invoke_hook("{invalid", monkeypatch, capsys)
+    assert code == 0
+    assert payload == {}
+
+
+def test_main_non_bash_tool_is_ignored(monkeypatch, capsys):
+    code, payload = _invoke_hook(
+        json.dumps({"tool_name": "Read", "tool_input": {"command": "cat file.txt"}}),
+        monkeypatch,
+        capsys,
+    )
+    assert code == 0
+    assert payload == {}
+
+
+def test_main_override_bypasses_block(monkeypatch, capsys):
+    code, payload = _invoke_hook(
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": "brew install jq # lintgate-override"}}),
+        monkeypatch,
+        capsys,
+    )
+    assert code == 0
+    assert payload == {}
+
+
+def test_main_detects_mutation_and_emits_error(monkeypatch, capsys):
+    code, payload = _invoke_hook(
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": "brew install jq"}}),
+        monkeypatch,
+        capsys,
+    )
+    assert code == 0
+    assert "error" in payload
+    assert "SYSTEM MUTATION GUARD" in payload["error"]
+
+
+def test_main_handles_string_tool_input(monkeypatch, capsys):
+    code, payload = _invoke_hook(
+        json.dumps({"tool_name": "Bash", "tool_input": "echo hello"}),
+        monkeypatch,
+        capsys,
+    )
+    assert code == 0
+    assert payload == {}
+
+
+def test_main_empty_command_is_ignored(monkeypatch, capsys):
+    code, payload = _invoke_hook(
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": ""}}),
+        monkeypatch,
+        capsys,
+    )
+    assert code == 0
+    assert payload == {}

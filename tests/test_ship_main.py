@@ -559,6 +559,63 @@ def test_main_preflight_flow(ship_main, monkeypatch):
     assert seen["merge_called"] is False
 
 
+def test_run_preflight_non_json_missing_hook_raises(ship_main, tmp_path):
+    with pytest.raises(RuntimeError, match="Missing .githooks/pre-push"):
+        ship_main._run_preflight(str(tmp_path), json_mode=False)
+
+
+def test_run_preflight_non_json_non_executable_raises(ship_main, tmp_path):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="not executable"):
+        ship_main._run_preflight(str(tmp_path), json_mode=False)
+
+
+def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_path, capsys):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    stdout = (
+        "blocked: symbol gate failed\n"
+        "quality infrastructure incomplete\n"
+        "pytest FAILED test_file.py::test_case\n"
+        "sonar fail"
+    )
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout=stdout, stderr=""),
+    )
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    payload = ship_main.json.loads(capsys.readouterr().out.strip())
+    assert code == 1
+    assert payload["status"] == "fail"
+    assert payload["failed_gate_ids"] == ["symbol_gate", "quality_infra", "pytest", "sonar"]
+
+
+def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_path, capsys):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout="unknown failure", stderr=""),
+    )
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    payload = ship_main.json.loads(capsys.readouterr().out.strip())
+    assert code == 1
+    assert payload["failed_gate_ids"] == ["pre-push-hook"]
+
+
 def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
     old_argv = os.sys.argv
     os.sys.argv = ["ship_main.py", "--json"]
