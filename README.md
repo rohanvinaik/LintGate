@@ -54,6 +54,16 @@ The downstream consequence is stranger than the mechanism: **when discipline is 
 
 ---
 
+## The Deeper Signal
+
+Clean code and well-tested code are usually treated as separate virtues. They're not — they're the same property viewed from different angles.
+
+A function whose tests catch every behavioral mutation is fully specified. But you can't fully specify a tangled function. Mutation pressure forces decomposition: extracting constants, splitting branches, replacing sentinels with typed results. The decomposed code naturally exhibits algebraic properties — purity, cacheability, parallelizability — that enable safe optimization.
+
+The signals aren't independent. Lint quality, test effectiveness, mutation survival, and algebraic structure are projections of a single quantity: *how completely the code's behavior is specified*. When they agree, you have evidence. When they disagree, you have a diagnosis.
+
+---
+
 ## How It Works
 
 **The hook** fires on every code change. It classifies what changed, selects a lint tier (up to 18 linters across 4 escalating tiers), runs them in parallel, and returns a compact report — or `{}` when nothing is wrong. Silent when you're doing fine. Loud when it matters.
