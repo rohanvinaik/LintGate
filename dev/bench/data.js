@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771971056243,
+  "lastUpdate": 1771973221722,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -533,6 +533,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0000662412871854512",
             "extra": "mean: 613.7875478258267 usec\nrounds: 575"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "dd96d0b68456d83b792c080454d57ea3865a1930",
+          "message": "merge: reconcile local and remote main (#51)\n\n* feat: complete issue #43 mutation guard and provider schema hardening\n\n* fix(ci): uniquify test artifacts across os matrix\n\n* fix(ci): align test check names with branch protection",
+          "timestamp": "2026-02-24T22:46:28Z",
+          "tree_id": "4be5b12107bea14eadfacfe06566727daacad164",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/dd96d0b68456d83b792c080454d57ea3865a1930"
+        },
+        "date": 1771973221097,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 126.67399991188522,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00045230782972965287",
+            "extra": "mean: 7.894279810344686 msec\nrounds: 116"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 197673.07829131107,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000002352710557661271",
+            "extra": "mean: 5.058857830535217 usec\nrounds: 54843"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5488.504133826516,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001978564648376255",
+            "extra": "mean: 182.19900643544062 usec\nrounds: 3574"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14397.476225944913,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000016199629683275454",
+            "extra": "mean: 69.45661755620434 usec\nrounds: 9387"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1545.8026547882323,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007047402575004671",
+            "extra": "mean: 646.9131081528614 usec\nrounds: 601"
           }
         ]
       }
