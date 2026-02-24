@@ -202,6 +202,49 @@ class TestRunSymbolGate:
             )
         assert code == 0
 
+    def test_base_overrides_diff_base_setting(self, tmp_path):
+        cov = tmp_path / "coverage.json"
+        cov.write_text("{}")
+
+        gate_result = mock.MagicMock()
+        gate_result.passed = True
+        gate_result.symbol_results = []
+        gate_result.waivers_applied = []
+        gate_result.unresolved_required = []
+        gate_result.skipped_reasons = []
+
+        captured: dict[str, object] = {}
+
+        def fake_run_symbol_coverage_gate(**kwargs):
+            captured.update(kwargs)
+            return gate_result
+
+        with (
+            mock.patch(
+                "lintgate.symbol_gate_runner.load_symbol_coverage_settings",
+                return_value={"enabled": True, "mode": "changed", "diff_base": "HEAD"},
+            ),
+            mock.patch(
+                "lintgate.symbol_gate_runner.collect_changed_python_files",
+                return_value=[],
+            ),
+            mock.patch(
+                "lintgate.symbol_gate_runner.run_symbol_coverage_gate",
+                side_effect=fake_run_symbol_coverage_gate,
+            ),
+        ):
+            code = run_symbol_gate(
+                project_root=str(tmp_path),
+                coverage_json=str(cov),
+                base="HEAD~1",
+                head="HEAD",
+                explicit_files=None,
+                surface="ci",
+            )
+
+        assert code == 0
+        assert captured["settings"]["diff_base"] == "HEAD~1"
+
 
 class TestMain:
     def test_main_passes(self, tmp_path):

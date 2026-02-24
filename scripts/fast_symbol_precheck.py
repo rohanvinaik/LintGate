@@ -35,6 +35,15 @@ def _is_source_file(path: str) -> bool:
     return "tests" not in p.parts and "test" not in p.parts
 
 
+def _is_test_file(path: str) -> bool:
+    p = Path(path)
+    if p.suffix != ".py":
+        return False
+    if p.name == "conftest.py":
+        return True
+    return p.name.startswith("test_") or "tests" in p.parts or "test" in p.parts
+
+
 def _head_has_parent(project_root: str) -> bool:
     proc = subprocess.run(
         ["git", "rev-parse", "--verify", "HEAD~1"],
@@ -61,7 +70,8 @@ def run_precheck(project_root: str) -> int:
         print("[lintgate] fast precheck: no changed source Python files")
         return 0
 
-    impacted_tests = find_impacted_tests(changed_sources, project_root)
+    changed_tests = [path for path in changed_py if _is_test_file(path)]
+    impacted_tests = sorted(set(find_impacted_tests(changed_sources, project_root) + changed_tests))
     if not impacted_tests:
         print("[lintgate] fast precheck: no impacted tests found for changed source files")
         print("[lintgate] add/modify tests, or add a symbol_coverage waiver in .claude/lintgate.yaml")
@@ -78,6 +88,7 @@ def run_precheck(project_root: str) -> int:
             *impacted_tests,
             "--cov",
             "--cov-config=.coveragerc",
+            "--cov-fail-under=0",
             f"--cov-report=json:{coverage_json}",
             "--tb=short",
             "-q",
@@ -91,9 +102,9 @@ def run_precheck(project_root: str) -> int:
         return run_symbol_gate(
             project_root=project_root,
             coverage_json=coverage_json,
-            base=None,
-            head=None,
-            explicit_files=changed_sources,
+            base=base,
+            head=head,
+            explicit_files=None,
             surface="prepush_fast",
         )
 

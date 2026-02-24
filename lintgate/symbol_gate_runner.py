@@ -166,6 +166,11 @@ def run_symbol_gate(
         print("[lintgate] symbol coverage gate disabled by configuration")
         return 0
 
+    # When an explicit base revision is supplied (CI/pre-push), it is the
+    # authoritative diff reference for changed-symbol targeting.
+    if base:
+        settings["diff_base"] = base
+
     changed_files = collect_changed_python_files(
         project_root,
         explicit_files=explicit_files,

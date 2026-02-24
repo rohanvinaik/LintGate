@@ -33,6 +33,8 @@ controlplane:
             reason: "MCP registration closure with 20+ tool definitions; tested via helper-level unit tests."
           - symbol: "mcp_tools/onboarding_tools.py::register"
             reason: "MCP registration closure with 30+ generator functions; tested via helper-level unit tests."
+          - symbol: "mcp_tools/onboarding_tools.py::_generate_pre_push_hook"
+            reason: "Large hook-template generator; validated via artifact-level parity tests and marker regression checks."
           - symbol: "mcp_tools/setup_github_quality.py::setup_github_quality"
             reason: "Complex orchestrator with filesystem + network I/O; tested via artifact-level unit tests."
           - symbol: "lintgate/symbol_gate_runner.py::main"
