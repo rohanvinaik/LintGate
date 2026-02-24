@@ -323,7 +323,7 @@ def test_merge_pr(ship_main, monkeypatch):
         lambda cmd, **kwargs: calls.append((cmd, kwargs["cwd"])) or subprocess.CompletedProcess(cmd, 0),
     )
     ship_main._merge_pr("/repo", 42)
-    assert calls[0][0] == ["gh", "pr", "merge", "42", "--squash", "--delete-branch"]
+    assert calls[0][0] == ["gh", "pr", "merge", "42", "--auto", "--squash", "--delete-branch"]
 
 
 def test_prune_merged_local_branches(ship_main, monkeypatch):

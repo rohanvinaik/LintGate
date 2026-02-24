@@ -384,13 +384,14 @@ def _watch_required_checks(
 
 
 def _merge_pr(repo_root: str, pr_number: int) -> None:
-    print(f"[ship] Merging PR #{pr_number} with squash + branch deletion")
+    print(f"[ship] Enabling GitHub auto-merge for PR #{pr_number} (squash + branch deletion)")
     _run(
         [
             "gh",
             "pr",
             "merge",
             str(pr_number),
+            "--auto",
             "--squash",
             "--delete-branch",
         ],
