@@ -1,0 +1,28 @@
+name: Remediation Guard
+
+on:
+    pull_request:
+        paths:
+            - "lintgate/channels/**"
+            - "lintgate/controlplane/**"
+            - ".github/workflows/**"
+            - "scripts/ship_main.py"
+            - "mcp_tools/onboarding_tools.py"
+            - "gate_contract.yaml"
+
+jobs:
+    validate-remediation-plan:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Enforce Gates Impact Acknowledgments
+              env:
+                  PR_BODY: ${{ github.event.pull_request.body }}
+                  CHANGED_FILES: ${{ join(github.event.pull_request.changed_files, ' ') }}
+              run: |
+                  python scripts/check_remediation_plan.py

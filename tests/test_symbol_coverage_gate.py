@@ -215,11 +215,13 @@ class TestTestChannelIntegration:
             ControlPlaneConfig,
             SupervisionEvent,
         )
+        from lintgate.types import ChangeClassification
 
         event = SupervisionEvent(
             surface=surface,
             project_root=project_root,
-            files_changed=files or [f"{project_root}/mod.py"],
+            files_changed=files if files is not None else [f"{project_root}/mod.py"],
+            change_classification=ChangeClassification(change_kind="logic"),
         )
         config = ControlPlaneConfig(
             enabled=True,
@@ -376,3 +378,45 @@ class TestTestChannelIntegration:
         assert any(str(t).endswith("/tests") for t in run_targets)
         fallback_findings = [f for f in result.findings if f.kind == "symbol_gate_fallback"]
         assert len(fallback_findings) == 1
+
+    def test_mcp_clean_tree_resolves_head_1(self, tmp_path):
+        """When MCP runs on a clean tree, it checks HEAD~1 for changed files."""
+        from lintgate.channels.test_channel import TestChannel, TestRunResult
+
+        event, config = self._make_config(
+            surface="mcp",
+            project_root=str(tmp_path),
+            files=[],  # Empty working tree
+        )
+
+        def fake_subprocess_run(cmd, **kwargs):
+            class FakeProc:
+                def __init__(self, cmd):
+                    self.returncode = 0
+                    if "diff" in cmd:
+                        self.stdout = "mod.py\n"
+                    else:
+                        self.stdout = ""
+            return FakeProc(cmd)
+
+        fake_result = TestRunResult(
+            passed=1,
+            failed=0,
+            coverage_pct=100.0,
+            coverage_json_path="/tmp/cov.json",
+        )
+        gate_result = SymbolCoverageGateResult(passed=True, symbol_results=[])
+
+        channel = TestChannel()
+        with (
+            patch("lintgate.channels.test_channel.subprocess.run", side_effect=fake_subprocess_run) as mock_run,
+            patch("lintgate.channels.test_channel.find_impacted_tests", return_value=["test_mod.py"]) as mock_impacted,
+            patch("lintgate.channels.test_channel.run_tests", return_value=fake_result),
+            patch("lintgate.channels.test_channel._run_symbol_gate_if_enabled", return_value=gate_result),
+        ):
+            channel.execute(event, config)
+
+        # Ensure run was called for git rev-parse and git diff
+        assert mock_run.call_count == 2
+        # Ensure impacted tests was called with the resolved files from HEAD~1
+        assert mock_impacted.call_args.args[0] == [f"{tmp_path}/mod.py"]

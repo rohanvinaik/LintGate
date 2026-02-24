@@ -580,10 +580,10 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
 
     stdout = (
-        "blocked: symbol gate failed\n"
-        "quality infrastructure incomplete\n"
-        "pytest FAILED test_file.py::test_case\n"
-        "sonar fail"
+        "[lintgate:gate:START:symbol_gate]\n"
+        "[lintgate:gate:FAIL:symbol_gate]\n"
+        "[lintgate:gate:START:quality_infra]\n"
+        "[lintgate:gate:FAIL:quality_infra]\n"
     )
     monkeypatch.setattr(
         ship_main.subprocess,
@@ -595,7 +595,9 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     payload = ship_main.json.loads(capsys.readouterr().out.strip())
     assert code == 1
     assert payload["status"] == "fail"
-    assert payload["failed_gate_ids"] == ["symbol_gate", "quality_infra", "pytest", "sonar"]
+    # Should maintain order based on string parsing matches
+    assert payload["failed_gate_ids"] == ["symbol_gate", "quality_infra"]
+    assert payload["missing_checks"] == ["gate_contract.yaml"]
 
 
 def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_path, capsys):
@@ -607,13 +609,15 @@ def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_pa
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout="unknown failure", stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout="legacy failure without any tokens", stderr=""),
     )
 
     code = ship_main._run_preflight(str(tmp_path), json_mode=True)
     payload = ship_main.json.loads(capsys.readouterr().out.strip())
     assert code == 1
-    assert payload["failed_gate_ids"] == ["pre-push-hook"]
+    assert payload["status"] == "error"
+    assert "Legacy pre-push hook detected" in payload["error"]
+    assert payload["failed_gate_ids"] == []
 
 
 def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
@@ -637,7 +641,7 @@ def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
     def fake_run(cmd, **kwargs):
         class FakeProc:
             returncode = 1
-            stdout = "[lintgate] BLOCKED: secrets detected\\n"
+            stdout = "[lintgate:gate:START:secrets_scan]\\n[lintgate:gate:FAIL:secrets_scan]\\n"
             stderr = ""
 
         return FakeProc()
@@ -651,7 +655,8 @@ def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
     data = json.loads(out)
     assert data["status"] == "fail"
     assert data["exit_code"] == 1
-    assert "secrets_scan" in data["failed_gate_ids"]
+    assert data["failed_gate_ids"] == ["secrets_scan"]
+    assert "missing_checks" in data
 
 
 def test_run_preflight_json_missing_hook_emits_error(ship_main, tmp_path, capsys):

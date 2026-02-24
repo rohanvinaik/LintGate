@@ -91,6 +91,34 @@ class TestChannel:
         project_root = event.project_root
         changed_files = event.files_changed
 
+        # Split-brain fix: If evaluating readiness via MCP and the working tree is clean,
+        # we must evaluate HEAD vs HEAD~1 to mirror the commit being pushed.
+        if event.surface == "mcp" and not changed_files:
+            try:
+                # Check if HEAD~1 exists (not first commit)
+                res = subprocess.run(
+                    ["git", "rev-parse", "--verify", "HEAD~1"],
+                    cwd=project_root,
+                    capture_output=True,
+                    timeout=2,
+                )
+                if res.returncode == 0:
+                    diff_res = subprocess.run(
+                        ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+                        cwd=project_root,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if diff_res.returncode == 0:
+                        changed_files = [
+                            os.path.join(project_root, f.strip())
+                            for f in diff_res.stdout.splitlines()
+                            if f.strip()
+                        ]
+            except Exception:
+                pass
+
         # Step 1: Find impacted test files
         impacted_tests = find_impacted_tests(changed_files, project_root)
 

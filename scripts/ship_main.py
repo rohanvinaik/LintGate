@@ -93,15 +93,52 @@ def _run_local_gate_stack(repo_root: str) -> None:
     _run([str(hook_path)], cwd=repo_root)
 
 
+def _get_contract_missing_checks(repo_root: str) -> list[str]:
+    """Identify required checks missing from the local gate-graph."""
+    import yaml
+    try:
+        from lintgate.quality_infra import _fetch_branch_protection_required_checks
+    except ImportError:
+        def _fetch_branch_protection_required_checks(root):
+            return []
+
+    missing: list[str] = []
+    contract_path = Path(repo_root) / "gate_contract.yaml"
+    if not contract_path.exists():
+        missing.append("gate_contract.yaml")
+        return missing
+
+    try:
+        contract = yaml.safe_load(contract_path.read_text()) or {}
+    except Exception:
+        missing.append("gate_contract_parse_error")
+        return missing
+
+    workflows = contract.get("ci_workflows", [])
+    for wf in workflows:
+        if isinstance(wf, str) and not (Path(repo_root) / wf).exists():
+            missing.append(f"missing_workflow:{wf}")
+
+    bp_checks = _fetch_branch_protection_required_checks(repo_root) or []
+    req_checks = contract.get("required_checks", [])
+    for rc in req_checks:
+        if isinstance(rc, str) and rc not in bp_checks:
+            missing.append(f"missing_branch_protection:{rc}")
+
+    return missing
+
+
 def _run_preflight(repo_root: str, json_mode: bool) -> int:
     """Run precisely the pre-push hook without side effects."""
+    import re
     hook_path = Path(repo_root) / ".githooks" / "pre-push"
 
-    def emit_json(status: str, exit_code: int, failed_ids: list[str], err_msg: str | None = None) -> None:
+    def emit_json(status: str, exit_code: int, failed_ids: list[str], missing: list[str], err_msg: str | None = None) -> None:
         payload = {
             "status": status,
             "exit_code": exit_code,
             "failed_gate_ids": failed_ids,
+            "missing_checks": missing,
             "command": str(hook_path),
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -114,13 +151,13 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
 
     if not hook_path.exists():
         if json_mode:
-            emit_json("error", 1, [], "Missing .githooks/pre-push")
+            emit_json("error", 1, [], [], "Missing .githooks/pre-push")
             return 1
         raise RuntimeError("Missing .githooks/pre-push")
 
     if not os.access(hook_path, os.X_OK):
         if json_mode:
-            emit_json("error", 1, [], ".githooks/pre-push is not executable")
+            emit_json("error", 1, [], [], ".githooks/pre-push is not executable")
             return 1
         raise RuntimeError(".githooks/pre-push is not executable")
 
@@ -136,40 +173,18 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
     )
 
     if json_mode:
+        output_text = proc.stdout + proc.stderr
+        failed_gate_ids = re.findall(r"\[lintgate:gate:FAIL:([^\]]+)\]", output_text)
+        started_gate_ids = re.findall(r"\[lintgate:gate:START:([^\]]+)\]", output_text)
+        missing_checks = _get_contract_missing_checks(repo_root)
+
+        if proc.returncode != 0 and not failed_gate_ids and not started_gate_ids:
+            # Legacy hook fallback: fail-closed if there are no semantic tokens at all.
+            emit_json("error", proc.returncode, [], missing_checks, "Legacy pre-push hook detected. Run getting_started to update.")
+            return proc.returncode
+
         status = "pass" if proc.returncode == 0 else "fail"
-        failed_gate_ids = []
-
-        # Heuristic for failed blocks
-        if status == "fail":
-            stdout_lower = proc.stdout.lower()
-            stderr_lower = proc.stderr.lower()
-            if "blocked: secrets" in stdout_lower or "blocked: secrets" in stderr_lower:
-                failed_gate_ids.append("secrets_scan")
-            if (
-                ("blocked" in stdout_lower or "blocked" in stderr_lower)
-                and "symbol_gate" not in failed_gate_ids
-                and ("symbol" in stdout_lower or "symbol" in stderr_lower)
-            ):
-                failed_gate_ids.append("symbol_gate")
-            if (
-                ("incomplete" in stdout_lower or "incomplete" in stderr_lower)
-                and (
-                    "quality infrastructure" in stdout_lower
-                    or "quality infrastructure" in stderr_lower
-                )
-            ):
-                failed_gate_ids.append("quality_infra")
-            if "pytest" in stdout_lower and (
-                proc.stdout.count("FAILED ") > 0 or proc.stdout.count("FAILURES ") > 0
-            ):
-                failed_gate_ids.append("pytest")
-            if "sonar" in stdout_lower and "fail" in stdout_lower:
-                failed_gate_ids.append("sonar")
-
-            if not failed_gate_ids:
-                failed_gate_ids.append("pre-push-hook")
-
-        emit_json(status, proc.returncode, failed_gate_ids)
+        emit_json(status, proc.returncode, failed_gate_ids, missing_checks)
         return proc.returncode
 
     return proc.returncode
