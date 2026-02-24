@@ -256,7 +256,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: quality-status-${{ matrix.python-version }}
+          name: quality-status-${{ matrix.python-version }}-${{ matrix.os }}
           path: quality-status.json
           retention-days: 30
 
@@ -264,7 +264,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: coverage-report-${{ matrix.python-version }}
+          name: coverage-report-${{ matrix.python-version }}-${{ matrix.os }}
           path: |
             coverage.xml
             pytest-results.xml
