@@ -245,6 +245,95 @@ class TestRunSymbolGate:
         assert code == 0
         assert captured["settings"]["diff_base"] == "HEAD~1"
 
+    def test_reports_notes_uncovered_and_unresolved_symbols(self, tmp_path):
+        cov = tmp_path / "coverage.json"
+        cov.write_text("{}")
+
+        symbol = mock.MagicMock()
+        symbol.symbol_key = "pkg/mod.py::func"
+        uncovered_result = mock.MagicMock()
+        uncovered_result.covered = False
+        uncovered_result.missing_lines = [12, 13]
+        uncovered_result.symbol = symbol
+
+        gate_result = mock.MagicMock()
+        gate_result.passed = False
+        gate_result.symbol_results = [uncovered_result]
+        gate_result.waivers_applied = []
+        gate_result.unresolved_required = ["pkg/mod.py::required"]
+        gate_result.skipped_reasons = ["diff unavailable"]
+
+        with (
+            mock.patch(
+                "lintgate.symbol_gate_runner.load_symbol_coverage_settings",
+                return_value={"enabled": True, "mode": "changed"},
+            ),
+            mock.patch(
+                "lintgate.symbol_gate_runner.collect_changed_python_files",
+                return_value=[str(tmp_path / "pkg" / "mod.py")],
+            ),
+            mock.patch(
+                "lintgate.symbol_gate_runner.run_symbol_coverage_gate",
+                return_value=gate_result,
+            ),
+        ):
+            code = run_symbol_gate(
+                project_root=str(tmp_path),
+                coverage_json=str(cov),
+                base=None,
+                head=None,
+                explicit_files=None,
+                surface="ci",
+            )
+
+        assert code == 1
+
+    def test_reports_truncated_uncovered_list_summary(self, tmp_path):
+        cov = tmp_path / "coverage.json"
+        cov.write_text("{}")
+
+        uncovered_results = []
+        for i in range(26):
+            symbol = mock.MagicMock()
+            symbol.symbol_key = f"pkg/mod.py::func_{i}"
+            result = mock.MagicMock()
+            result.covered = False
+            result.missing_lines = [i + 1]
+            result.symbol = symbol
+            uncovered_results.append(result)
+
+        gate_result = mock.MagicMock()
+        gate_result.passed = False
+        gate_result.symbol_results = uncovered_results
+        gate_result.waivers_applied = []
+        gate_result.unresolved_required = []
+        gate_result.skipped_reasons = []
+
+        with (
+            mock.patch(
+                "lintgate.symbol_gate_runner.load_symbol_coverage_settings",
+                return_value={"enabled": True, "mode": "changed"},
+            ),
+            mock.patch(
+                "lintgate.symbol_gate_runner.collect_changed_python_files",
+                return_value=[str(tmp_path / "pkg" / "mod.py")],
+            ),
+            mock.patch(
+                "lintgate.symbol_gate_runner.run_symbol_coverage_gate",
+                return_value=gate_result,
+            ),
+        ):
+            code = run_symbol_gate(
+                project_root=str(tmp_path),
+                coverage_json=str(cov),
+                base=None,
+                head=None,
+                explicit_files=None,
+                surface="ci",
+            )
+
+        assert code == 1
+
 
 class TestMain:
     def test_main_passes(self, tmp_path):
