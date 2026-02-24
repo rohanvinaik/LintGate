@@ -62,6 +62,29 @@ def test_resolve_server_command_raises_when_missing(monkeypatch, tmp_path) -> No
         admin._resolve_server_command()
 
 
+def test_resolve_server_command_falls_back_to_repo_venv(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(admin.shutil, "which", lambda _name: None)
+    fake_python = tmp_path / "bin" / "python"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(admin.sys, "executable", str(fake_python))
+
+    fake_admin = tmp_path / "repo" / "lintgate" / "cli" / "admin.py"
+    fake_admin.parent.mkdir(parents=True)
+    fake_admin.write_text("# stub\n", encoding="utf-8")
+    monkeypatch.setattr(admin, "__file__", str(fake_admin))
+
+    repo_venv_bin = tmp_path / "repo" / ".venv" / "bin"
+    repo_venv_bin.mkdir(parents=True)
+    repo_mcp = repo_venv_bin / "lintgate-mcp"
+    repo_mcp.write_text("#!/bin/sh\n", encoding="utf-8")
+    repo_mcp.chmod(0o755)
+
+    command, source = admin._resolve_server_command()
+    assert command == str(repo_mcp)
+    assert source == "repo_venv"
+
+
 def test_load_configured_server_command_and_runnable(tmp_path, monkeypatch) -> None:
     config_path = tmp_path / "claude.json"
     config_path.write_text(
@@ -74,6 +97,24 @@ def test_load_configured_server_command_and_runnable(tmp_path, monkeypatch) -> N
     monkeypatch.setattr(admin.shutil, "which", lambda _name: "/usr/bin/lintgate-mcp")
     assert admin._command_runnable("lintgate-mcp") is True
     assert admin._command_runnable("/missing/command") is False
+
+
+def test_load_configured_server_command_handles_bad_shapes(tmp_path) -> None:
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("{invalid", encoding="utf-8")
+    assert admin._load_configured_server_command(bad_json) is None
+
+    no_mcp = tmp_path / "no_mcp.json"
+    no_mcp.write_text(json.dumps({"mcpServers": []}), encoding="utf-8")
+    assert admin._load_configured_server_command(no_mcp) is None
+
+    no_lintgate = tmp_path / "no_lintgate.json"
+    no_lintgate.write_text(json.dumps({"mcpServers": {"lintgate": []}}), encoding="utf-8")
+    assert admin._load_configured_server_command(no_lintgate) is None
+
+    no_command = tmp_path / "no_command.json"
+    no_command.write_text(json.dumps({"mcpServers": {"lintgate": {"args": []}}}), encoding="utf-8")
+    assert admin._load_configured_server_command(no_command) is None
 
 
 def test_cmd_install_unknown_agent() -> None:
@@ -289,6 +330,30 @@ def test_cmd_doctor_fails_unrunnable_configured_command(tmp_path, monkeypatch) -
     )
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
+    with pytest.raises(SystemExit):
+        admin.cmd_doctor(args)
+
+
+def test_cmd_doctor_fix_path_exits_when_install_repair_fails(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "claude.json"
+    config_path.write_text(
+        json.dumps({"mcpServers": {"lintgate": {"command": "/missing/lintgate-mcp", "args": []}}}),
+        encoding="utf-8",
+    )
+    fake_profile = SimpleNamespace(
+        display_name="Demo Agent",
+        schema_strict=False,
+        config_path=config_path,
+    )
+    monkeypatch.setattr(admin, "PROFILES", {"demo": fake_profile})
+    monkeypatch.setattr(
+        admin,
+        "_load_contract",
+        lambda: {"safety_critical_tools": [], "expected_tools": {"demo": []}},
+    )
+    monkeypatch.setattr(admin, "cmd_install", lambda _args: 1)
+
+    args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
     with pytest.raises(SystemExit):
         admin.cmd_doctor(args)
 
