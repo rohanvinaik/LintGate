@@ -595,3 +595,43 @@ def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
     assert data["status"] == "fail"
     assert data["exit_code"] == 1
     assert "secrets_scan" in data["failed_gate_ids"]
+
+
+def test_run_preflight_json_missing_hook_emits_error(ship_main, tmp_path, capsys):
+    import json
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    assert code == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "error"
+    assert data["error"] == "Missing .githooks/pre-push"
+
+
+def test_run_preflight_json_non_executable_hook_emits_error(ship_main, tmp_path, capsys):
+    import json
+
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    # intentionally do not chmod +x
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    assert code == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "error"
+    assert data["error"] == ".githooks/pre-push is not executable"
+
+
+def test_run_preflight_non_json_prints_banner(ship_main, monkeypatch, tmp_path, capsys):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
+    code = ship_main._run_preflight(str(tmp_path), json_mode=False)
+    assert code == 0
+    assert "[ship] [PREFLIGHT] Running strict local gate stack" in capsys.readouterr().out
