@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771952411149,
+  "lastUpdate": 1771962258151,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -356,6 +356,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00004398930784755579",
             "extra": "mean: 618.9726470588349 usec\nrounds: 578"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a2871ff2548af5519094ca9458baca9b3e9bf26f",
+          "message": "chore: ship codex/ship-20260224-182822 to main (#47)\n\n* feat: complete issue #43 mutation guard and provider schema hardening\n\n* feat: add ship preflight parity path and controlplane parity signal\n\n* test: cover ship preflight and parity helper branches for symbol gate\n\n* fix: unblock ship pipeline checks and coverage parity",
+          "timestamp": "2026-02-24T14:43:41-05:00",
+          "tree_id": "705bf750eb302072c666d5c5a19b3fefa8e49e92",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/a2871ff2548af5519094ca9458baca9b3e9bf26f"
+        },
+        "date": 1771962257228,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 128.40090365385183,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00016717313276650705",
+            "extra": "mean: 7.788107182608614 msec\nrounds: 115"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 212793.70590668265,
+            "unit": "iter/sec",
+            "range": "stddev: 7.527757892714768e-7",
+            "extra": "mean: 4.6993871164522805 usec\nrounds: 55761"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5580.879896500342,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017087915660366791",
+            "extra": "mean: 179.18321457286336 usec\nrounds: 3980"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14446.07301260543,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001566994613594073",
+            "extra": "mean: 69.22296454734894 usec\nrounds: 8462"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1446.6650606996368,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001452344413353655",
+            "extra": "mean: 691.2450069931043 usec\nrounds: 572"
           }
         ]
       }
