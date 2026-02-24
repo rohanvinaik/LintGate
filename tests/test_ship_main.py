@@ -697,3 +697,18 @@ def test_run_preflight_non_json_prints_banner(ship_main, monkeypatch, tmp_path, 
     code = ship_main._run_preflight(str(tmp_path), json_mode=False)
     assert code == 0
     assert "[ship] [PREFLIGHT] Running strict local gate stack" in capsys.readouterr().out
+
+
+def test_repo_pre_push_contains_structured_gate_markers() -> None:
+    hook_path = Path(__file__).resolve().parents[1] / ".githooks" / "pre-push"
+    hook_content = hook_path.read_text(encoding="utf-8")
+    required_markers = [
+        "[lintgate:gate:START:quality_infra]",
+        "[lintgate:gate:START:qlty]",
+        "[lintgate:gate:START:gitleaks]",
+        "[lintgate:gate:START:tests]",
+        "[lintgate:gate:START:symbol_gate]",
+        "[lintgate:gate:START:sonar]",
+    ]
+    for marker in required_markers:
+        assert marker in hook_content

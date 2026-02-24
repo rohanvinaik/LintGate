@@ -23,15 +23,18 @@ fi
 echo "[lintgate] running local quality checks before push"
 
 # Quality infrastructure gate (hard fail)
+echo "[lintgate:gate:START:quality_infra]"
 echo "[lintgate] checking quality infrastructure completeness"
 if LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1 python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
   echo "[lintgate] quality infrastructure: complete"
 else
+  echo "[lintgate:gate:FAIL:quality_infra]"
   echo "[lintgate] quality infrastructure: INCOMPLETE — run setup_github_quality to fix"
   exit 1
 fi
 
 # qlty analysis (mirrors CI qlty.yml — init parity + shellcheckrc safety)
+echo "[lintgate:gate:START:qlty]"
 # Handle .shellcheckrc symlink collision (qlty init may create .shellcheckrc symlink).
 if [ -f "$REPO_ROOT/.shellcheckrc" ] && [ ! -L "$REPO_ROOT/.shellcheckrc" ]; then
   cp "$REPO_ROOT/.shellcheckrc" "$REPO_ROOT/.shellcheckrc.bak"
@@ -50,43 +53,63 @@ elif [ -f "$REPO_ROOT/.shellcheckrc.bak" ]; then
   rm "$REPO_ROOT/.shellcheckrc.bak"
 fi
 
-qlty check --all
+if ! qlty check --all; then
+  echo "[lintgate:gate:FAIL:qlty]"
+  exit 1
+fi
 
 # Secrets scan (mirrors CI gitleaks check)
+echo "[lintgate:gate:START:gitleaks]"
 echo "[lintgate] scanning for secrets (gitleaks)"
 if ! gitleaks detect --source . --no-banner --redact; then
+  echo "[lintgate:gate:FAIL:gitleaks]"
   echo "[lintgate] BLOCKED: secrets detected — fix before pushing."
   exit 1
 fi
 
 if [ -d tests ] || [ -d test ]; then
   if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi
+  echo "[lintgate:gate:START:tests]"
   echo "[lintgate] running tests with coverage + symbol gate"
-  python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
+  if ! python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
     --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
-    --tb=short -q
+    --tb=short -q; then
+    echo "[lintgate:gate:FAIL:tests]"
+    exit 1
+  fi
+  echo "[lintgate:gate:START:symbol_gate]"
   BASE='HEAD~1'
   if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
     BASE=''
   fi
   if [ -n "$BASE" ]; then
-    python -m lintgate.symbol_gate_runner \
+    if ! python -m lintgate.symbol_gate_runner \
       --project-root "$REPO_ROOT" \
       --coverage-json coverage.json \
-      --base "$BASE" --head HEAD --surface ci
+      --base "$BASE" --head HEAD --surface ci; then
+      echo "[lintgate:gate:FAIL:symbol_gate]"
+      exit 1
+    fi
   else
-    python -m lintgate.symbol_gate_runner \
+    if ! python -m lintgate.symbol_gate_runner \
       --project-root "$REPO_ROOT" \
       --coverage-json coverage.json \
-      --head HEAD --surface ci
+      --head HEAD --surface ci; then
+      echo "[lintgate:gate:FAIL:symbol_gate]"
+      exit 1
+    fi
   fi
 fi
 
 # pip-audit (mirrors CI security-lite.yml)
 if command -v pip-audit >/dev/null 2>&1; then
   if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then
+    echo "[lintgate:gate:START:pip_audit]"
     echo "[lintgate] running pip-audit (supply-chain scan)"
-    pip-audit
+    if ! pip-audit; then
+      echo "[lintgate:gate:FAIL:pip_audit]"
+      exit 1
+    fi
   fi
 fi
 
@@ -106,9 +129,12 @@ except Exception:
 fi
 
 if [ "$SONAR_LOCAL_MODE" = "ci_only" ]; then
+  echo "[lintgate:gate:START:sonar]"
   echo "[lintgate] Sonar local mode: ci_only (CI SonarCloud check-run is authoritative)"
 else
+  echo "[lintgate:gate:START:sonar]"
   if [ -z "${SONAR_TOKEN:-}" ] || [ -z "${SONAR_PROJECT_KEY:-}" ]; then
+    echo "[lintgate:gate:FAIL:sonar]"
     echo "[lintgate] BLOCKED: SONAR_TOKEN or SONAR_PROJECT_KEY is not set."
     exit 1
   fi
@@ -119,14 +145,17 @@ else
     if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then  # gitleaks:allow
       SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get(\"projectStatus\",{}).get(\"status\",\"\"))' 2>/dev/null || true)"
       if [ -n "$SONAR_STATUS" ] && [ "$SONAR_STATUS" != "OK" ]; then
+        echo "[lintgate:gate:FAIL:sonar]"
         echo "[lintgate] BLOCKED: Sonar quality gate is ${SONAR_STATUS} (cached remote state)."
         exit 1
       fi
     else
+      echo "[lintgate:gate:FAIL:sonar]"
       echo "[lintgate] BLOCKED: could not query Sonar quality gate."
       exit 1
     fi
   else
+    echo "[lintgate:gate:FAIL:sonar]"
     echo "[lintgate] BLOCKED: curl is not installed - required for Sonar gate."
     exit 1
   fi
