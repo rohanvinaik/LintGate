@@ -6,6 +6,8 @@
 config_version = "0"
 
 exclude_patterns = [
+  ".env",
+  ".env.*",
   "*_min.*",
   "*-min.*",
   "*.min.*",

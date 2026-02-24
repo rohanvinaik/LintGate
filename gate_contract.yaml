@@ -1,0 +1,37 @@
+version: "1.0"
+
+required_checks:
+  - "Tests (3.11)"
+  - "Tests (3.12)"
+  - "Qlty"
+  - "SonarCloud Code Analysis"
+
+ci_workflows:
+  - ".github/workflows/tests.yml"
+  - ".github/workflows/qlty.yml"
+  - ".github/workflows/sonarcloud.yml"
+  - ".github/workflows/security-lite.yml"
+  - ".github/workflows/codeql.yml"
+  - ".github/workflows/quality-infra-gate.yml"
+
+local_pre_push:
+  - id: "quality_infra"
+    command: "python -m lintgate.quality_infra --enforce"
+  - id: "qlty"
+    command: "qlty check --all"
+  - id: "gitleaks"
+    command: "gitleaks detect --source . --no-banner --redact"
+  - id: "tests"
+    command: "python -m pytest"
+  - id: "symbol_gate"
+    command: "python -m lintgate.symbol_gate_runner"
+  - id: "pip_audit"
+    command: "pip-audit"
+
+tools:
+  qlty:
+    init_policy: "dry_run_then_init"
+    shellcheckrc_policy: "backup_restore"
+  sonar:
+    local_mode: "ci_only"
+    freshness_source: "ci_check_run"

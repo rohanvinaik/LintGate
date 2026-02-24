@@ -17,39 +17,22 @@ jobs:
   gate:
     name: Quality Infrastructure Gate
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Check quality infrastructure completeness
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install gate dependencies
         run: |
-          MISSING=0
-          if [ ! -e ".codeclimate.yml" ]; then echo "MISSING: .codeclimate.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e "sonar-project.properties" ]; then echo "MISSING: sonar-project.properties"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".coveragerc" ]; then echo "MISSING: .coveragerc"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".gitleaks.toml" ]; then echo "MISSING: .gitleaks.toml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/sonarcloud.yml" ]; then echo "MISSING: .github/workflows/sonarcloud.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/tests.yml" ]; then echo "MISSING: .github/workflows/tests.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/qlty.yml" ]; then echo "MISSING: .github/workflows/qlty.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/security-lite.yml" ]; then echo "MISSING: .github/workflows/security-lite.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/scorecard.yml" ]; then echo "MISSING: .github/workflows/scorecard.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/codeql.yml" ]; then echo "MISSING: .github/workflows/codeql.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/workflows/quality-infra-gate.yml" ]; then echo "MISSING: .github/workflows/quality-infra-gate.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".githooks/pre-push" ]; then echo "MISSING: .githooks/pre-push"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".qlty/qlty.toml" ]; then echo "MISSING: .qlty/qlty.toml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e ".github/dependabot.yml" ]; then echo "MISSING: .github/dependabot.yml"; MISSING=$((MISSING+1)); fi
-          if [ ! -e "SECURITY.md" ]; then echo "MISSING: SECURITY.md"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "actions\/workflows\/tests\.yml\/badge\.svg" README.md 2>/dev/null; then echo "BADGE MISSING: actions/workflows/tests.yml/badge.svg"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "actions\/workflows\/security-lite\.yml\/badge\.svg" README.md 2>/dev/null; then echo "BADGE MISSING: actions/workflows/security-lite.yml/badge.svg"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "metric=alert_status" README.md 2>/dev/null; then echo "BADGE MISSING: metric=alert_status"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "metric=coverage" README.md 2>/dev/null; then echo "BADGE MISSING: metric=coverage"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "metric=security_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=security_rating"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "metric=sqale_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=sqale_rating"; MISSING=$((MISSING+1)); fi
-          if ! grep -q "metric=reliability_rating" README.md 2>/dev/null; then echo "BADGE MISSING: metric=reliability_rating"; MISSING=$((MISSING+1)); fi
-          if [ "$MISSING" -gt 0 ]; then
-            echo ""
-            echo "Quality infrastructure is incomplete ($MISSING items missing)."
-            echo "Fix: run setup_github_quality(path=..., write=True)"
-            exit 1
-          fi
-          echo "Quality infrastructure: complete"
+          python -m pip install --upgrade pip==25.0.1
+          python -m pip install pyyaml
+
+      - name: Enforce centralized quality gate contract
+        run: |
+          python -m lintgate.quality_infra --enforce .

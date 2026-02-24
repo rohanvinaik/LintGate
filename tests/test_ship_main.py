@@ -1,0 +1,524 @@
+"""Coverage-focused tests for scripts/ship_main.py."""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import stat
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+def _load_ship_main():
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "ship_main.py"
+    spec = importlib.util.spec_from_file_location("ship_main", script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Unable to load scripts/ship_main.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def ship_main():
+    return _load_ship_main()
+
+
+def test_run_wrapper_calls_subprocess(ship_main, monkeypatch):
+    calls = {}
+
+    def fake_run(cmd, cwd, check, text, capture_output):
+        calls["cmd"] = cmd
+        calls["cwd"] = cwd
+        calls["check"] = check
+        calls["text"] = text
+        calls["capture_output"] = capture_output
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
+    result = ship_main._run(["echo", "ok"], cwd="/tmp", capture=True)
+
+    assert result.returncode == 0
+    assert calls["cmd"] == ["echo", "ok"]
+    assert calls["cwd"] == "/tmp"
+    assert calls["check"] is True
+    assert calls["text"] is True
+    assert calls["capture_output"] is True
+
+
+def test_require_tool_success_and_failure(ship_main, monkeypatch):
+    monkeypatch.setattr(ship_main.shutil, "which", lambda _: "/usr/bin/gh")
+    ship_main._require_tool("gh", "/repo")
+
+    monkeypatch.setattr(ship_main.shutil, "which", lambda _: None)
+    with pytest.raises(RuntimeError, match="Missing required tool: gh"):
+        ship_main._require_tool("gh", "/repo")
+
+
+def test_git_output_and_gh_json(ship_main, monkeypatch):
+    def fake_run(*args, **kwargs):
+        if args[0][0] == "gh":
+            return subprocess.CompletedProcess(args[0], 0, stdout='{"x": 1}', stderr="")
+        return subprocess.CompletedProcess(args[0], 0, stdout="  value  \n", stderr="")
+
+    monkeypatch.setattr(ship_main, "_run", fake_run)
+
+    assert ship_main._git_output("/repo", "status", "--porcelain") == "value"
+    assert ship_main._gh_json("/repo", "repo", "view") == {"x": 1}
+
+
+def test_require_clean_worktree(ship_main, monkeypatch):
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: "")
+    ship_main._require_clean_worktree("/repo")
+
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: " M lintgate/foo.py")
+    with pytest.raises(RuntimeError, match="Tracked changes detected"):
+        ship_main._require_clean_worktree("/repo")
+
+
+def test_ensure_branch_keeps_side_branch(ship_main, monkeypatch):
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: "codex/work")
+    assert ship_main._ensure_branch("/repo", "main") == "codex/work"
+
+
+def test_ensure_branch_creates_ephemeral_from_base(ship_main, monkeypatch):
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: "main")
+    monkeypatch.setattr(ship_main, "_run", lambda cmd, **_: calls.append(cmd))
+
+    branch = ship_main._ensure_branch("/repo", "main")
+
+    assert branch.startswith("codex/ship-")
+    assert calls and calls[0][:3] == ["git", "switch", "-c"]
+
+
+def test_ensure_branch_rejects_detached_head(ship_main, monkeypatch):
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: "")
+    with pytest.raises(RuntimeError, match="Detached HEAD"):
+        ship_main._ensure_branch("/repo", "main")
+
+
+def test_run_local_gate_stack_validates_and_executes(ship_main, tmp_path, monkeypatch):
+    repo = tmp_path
+    hook = repo / ".githooks" / "pre-push"
+
+    with pytest.raises(RuntimeError, match="Missing .githooks/pre-push"):
+        ship_main._run_local_gate_stack(str(repo))
+
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    with pytest.raises(RuntimeError, match="not executable"):
+        ship_main._run_local_gate_stack(str(repo))
+
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+    calls = {}
+
+    def fake_run(cmd, **kwargs):
+        calls["cmd"] = cmd
+        calls["cwd"] = kwargs["cwd"]
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(ship_main, "_run", fake_run)
+    ship_main._run_local_gate_stack(str(repo))
+    assert calls["cmd"] == [str(hook)]
+    assert calls["cwd"] == str(repo)
+
+
+def test_push_branch(ship_main, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["cwd"] = kwargs["cwd"]
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(ship_main, "_run", fake_run)
+    ship_main._push_branch("/repo", "origin", "codex/ship-a")
+    assert seen["cmd"] == ["git", "push", "-u", "origin", "codex/ship-a"]
+    assert seen["cwd"] == "/repo"
+
+
+def test_resolve_pr_reuses_existing(ship_main, monkeypatch):
+    monkeypatch.setattr(
+        ship_main,
+        "_gh_json",
+        lambda *_: [{"number": 123, "url": "https://example/pr/123"}],
+    )
+    number, url = ship_main._resolve_pr("/repo", "codex/x", "main")
+    assert (number, url) == (123, "https://example/pr/123")
+
+
+def test_resolve_pr_creates_when_missing(ship_main, monkeypatch):
+    calls: list[list[str]] = []
+    gh_json_calls = {"count": 0}
+
+    def fake_gh_json(*_args):
+        gh_json_calls["count"] += 1
+        if gh_json_calls["count"] == 1:
+            return []
+        return {"number": 77, "url": "https://example/pr/77"}
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(ship_main, "_gh_json", fake_gh_json)
+    monkeypatch.setattr(ship_main, "_run", fake_run)
+    number, url = ship_main._resolve_pr("/repo", "codex/x", "main")
+    assert (number, url) == (77, "https://example/pr/77")
+    assert any(cmd[:3] == ["gh", "pr", "create"] for cmd in calls)
+
+
+def test_repo_slug_validation(ship_main, monkeypatch):
+    monkeypatch.setattr(ship_main, "_gh_json", lambda *_: {"nameWithOwner": "o/r"})
+    assert ship_main._repo_slug("/repo") == "o/r"
+
+    monkeypatch.setattr(ship_main, "_gh_json", lambda *_: {"nameWithOwner": ""})
+    with pytest.raises(RuntimeError, match="Unable to resolve repository slug"):
+        ship_main._repo_slug("/repo")
+
+
+def test_required_checks_from_branch_protection(ship_main, monkeypatch):
+    payload_checks = {
+        "checks": [{"context": "Tests (3.11)"}, {"context": "Qlty"}, {"x": 1}],
+    }
+    monkeypatch.setattr(ship_main, "_gh_json", lambda *_: payload_checks)
+    assert ship_main._required_checks_from_branch_protection("/repo", "o/r", "main") == [
+        "Tests (3.11)",
+        "Qlty",
+    ]
+
+    payload_contexts = {"contexts": ["Tests (3.12)", "SonarCloud Code Analysis", ""]}
+    monkeypatch.setattr(ship_main, "_gh_json", lambda *_: payload_contexts)
+    assert ship_main._required_checks_from_branch_protection("/repo", "o/r", "main") == [
+        "Tests (3.12)",
+        "SonarCloud Code Analysis",
+    ]
+
+
+def test_required_checks_from_contract(ship_main, tmp_path):
+    assert ship_main._required_checks_from_contract(str(tmp_path)) == []
+
+    contract = tmp_path / "gate_contract.yaml"
+    contract.write_text(
+        "required_checks:\n"
+        "  - Tests (3.11)\n"
+        "  - Qlty\n"
+        "  - ''\n"
+    )
+    assert ship_main._required_checks_from_contract(str(tmp_path)) == [
+        "Tests (3.11)",
+        "Qlty",
+    ]
+
+    contract.write_text("{not: valid")
+    assert ship_main._required_checks_from_contract(str(tmp_path)) == []
+
+    contract.write_text("- one\n- two\n")
+    assert ship_main._required_checks_from_contract(str(tmp_path)) == []
+
+
+def test_union_checks(ship_main):
+    assert ship_main._union_checks(["A", "B"], ["B", "C"]) == ["A", "B", "C"]
+
+
+def test_read_check_runs(ship_main, monkeypatch):
+    monkeypatch.setattr(
+        ship_main,
+        "_gh_json",
+        lambda *_: {
+            "check_runs": [
+                {"name": "Tests (3.11)", "status": "completed", "conclusion": "success"},
+                {"name": "Qlty", "status": "in_progress", "conclusion": None},
+                "bad-entry",
+                {"name": 123, "status": "completed"},
+            ]
+        },
+    )
+    runs = ship_main._read_check_runs("/repo", "o/r", "deadbeef")
+    assert runs == {
+        "Tests (3.11)": ("completed", "success"),
+        "Qlty": ("in_progress", None),
+    }
+
+
+def test_read_check_runs_handles_non_list_runs(ship_main, monkeypatch):
+    monkeypatch.setattr(ship_main, "_gh_json", lambda *_: {"check_runs": {"name": "bad"}})
+    assert ship_main._read_check_runs("/repo", "o/r", "deadbeef") == {}
+
+
+def test_watch_required_checks_success(ship_main, monkeypatch):
+    runs = iter(
+        [
+            {"Tests (3.11)": ("in_progress", None)},
+            {"Tests (3.11)": ("completed", "success")},
+        ]
+    )
+    now = {"t": 1000.0}
+
+    monkeypatch.setattr(ship_main, "_read_check_runs", lambda *_: next(runs))
+    monkeypatch.setattr(ship_main.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(ship_main.time, "time", lambda: now["t"])
+
+    ship_main._watch_required_checks(
+        "/repo",
+        "o/r",
+        "sha",
+        ["Tests (3.11)"],
+        wait_seconds=0,
+        timeout_seconds=60,
+    )
+
+
+def test_watch_required_checks_failure(ship_main, monkeypatch):
+    monkeypatch.setattr(
+        ship_main,
+        "_read_check_runs",
+        lambda *_: {"Qlty": ("completed", "failure")},
+    )
+    monkeypatch.setattr(ship_main.time, "time", lambda: 1000.0)
+
+    with pytest.raises(RuntimeError, match="Required checks failed"):
+        ship_main._watch_required_checks(
+            "/repo",
+            "o/r",
+            "sha",
+            ["Qlty"],
+            wait_seconds=0,
+            timeout_seconds=60,
+        )
+
+
+def test_watch_required_checks_timeout(ship_main, monkeypatch):
+    now = {"value": 1000.0}
+
+    def fake_time() -> float:
+        now["value"] += 10.0
+        return now["value"]
+
+    monkeypatch.setattr(ship_main, "_read_check_runs", lambda *_: {})
+    monkeypatch.setattr(ship_main.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(ship_main.time, "time", fake_time)
+
+    with pytest.raises(RuntimeError, match="Timed out waiting for required checks"):
+        ship_main._watch_required_checks(
+            "/repo",
+            "o/r",
+            "sha",
+            ["Tests (3.11)"],
+            wait_seconds=0,
+            timeout_seconds=5,
+        )
+
+
+def test_merge_pr(ship_main, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        ship_main,
+        "_run",
+        lambda cmd, **kwargs: calls.append((cmd, kwargs["cwd"])) or subprocess.CompletedProcess(cmd, 0),
+    )
+    ship_main._merge_pr("/repo", 42)
+    assert calls[0][0] == ["gh", "pr", "merge", "42", "--squash", "--delete-branch"]
+
+
+def test_prune_merged_local_branches(ship_main, monkeypatch):
+    deleted: list[str] = []
+
+    def fake_git_output(_repo, *_args):
+        return "\n".join(["main", "codex/current", "codex/old", "feat/x", "random"])
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
+            branch = cmd[3]
+            returncode = 0 if branch in {"codex/old", "feat/x"} else 1
+            return subprocess.CompletedProcess(cmd, returncode=returncode, stdout="", stderr="")
+        if cmd[:2] == ["git", "branch"]:
+            deleted.append(cmd[3])
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected command: {cmd}")
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
+
+    ship_main._prune_merged_local_branches("/repo", "main", "codex/current")
+    assert set(deleted) == {"codex/old", "feat/x"}
+
+
+def test_main_no_merge_flow(ship_main, monkeypatch):
+    repo_root = "/tmp/repo"
+    calls = {"watch": None}
+
+    def fake_git_output(_repo, *args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return repo_root
+        if args == ("rev-parse", "HEAD"):
+            return "deadbeef"
+        raise AssertionError(args)
+
+    def fake_auth(_cmd, **_kwargs):
+        return subprocess.CompletedProcess(["gh"], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_auth)
+    monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_require_clean_worktree", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_ensure_branch", lambda *_: "codex/ship-test")
+    monkeypatch.setattr(ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0))
+    monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
+    monkeypatch.setattr(ship_main, "_repo_slug", lambda *_: "o/r")
+    monkeypatch.setattr(ship_main, "_required_checks_from_branch_protection", lambda *_: ["Tests (3.11)"])
+    monkeypatch.setattr(ship_main, "_required_checks_from_contract", lambda *_: ["Qlty"])
+    monkeypatch.setattr(
+        ship_main,
+        "_watch_required_checks",
+        lambda *_args, **_kwargs: calls.__setitem__("watch", True),
+    )
+    monkeypatch.setattr(ship_main, "_merge_pr", lambda *_: (_ for _ in ()).throw(AssertionError("no merge")))
+
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--no-merge"]
+    try:
+        assert ship_main.main() == 0
+    finally:
+        os.sys.argv = old_argv
+
+    assert calls["watch"] is True
+
+
+def test_main_raises_when_no_required_checks(ship_main, monkeypatch):
+    repo_root = "/tmp/repo"
+
+    def fake_git_output(_repo, *args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return repo_root
+        if args == ("rev-parse", "HEAD"):
+            return "deadbeef"
+        raise AssertionError(args)
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["gh"], returncode=0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_require_clean_worktree", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_ensure_branch", lambda *_: "codex/ship-test")
+    monkeypatch.setattr(ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0))
+    monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
+    monkeypatch.setattr(ship_main, "_repo_slug", lambda *_: "o/r")
+    monkeypatch.setattr(ship_main, "_required_checks_from_branch_protection", lambda *_: [])
+    monkeypatch.setattr(ship_main, "_required_checks_from_contract", lambda *_: [])
+
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--no-merge"]
+    try:
+        with pytest.raises(RuntimeError, match="No required checks resolved"):
+            ship_main.main()
+    finally:
+        os.sys.argv = old_argv
+
+
+def test_main_auth_failure(ship_main, monkeypatch):
+    repo_root = "/tmp/repo"
+
+    def fake_git_output(_repo, *args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return repo_root
+        raise AssertionError(args)
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["gh"], returncode=1, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
+
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--no-merge"]
+    try:
+        with pytest.raises(RuntimeError, match="gh auth is not configured"):
+            ship_main.main()
+    finally:
+        os.sys.argv = old_argv
+
+
+def test_main_merge_and_prune_flow(ship_main, monkeypatch):
+    repo_root = "/tmp/repo"
+    seen = {"merged": False, "pruned": False, "fetch_prune": False}
+
+    def fake_git_output(_repo, *args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return repo_root
+        if args == ("rev-parse", "HEAD"):
+            return "deadbeef"
+        raise AssertionError(args)
+
+    def fake_run(cmd, **_kwargs):
+        if cmd == ["git", "fetch", "--prune", "origin"]:
+            seen["fetch_prune"] = True
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["gh"], returncode=0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_require_clean_worktree", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_ensure_branch", lambda *_: "codex/ship-test")
+    monkeypatch.setattr(ship_main, "_run", fake_run)
+    monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
+    monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
+    monkeypatch.setattr(ship_main, "_repo_slug", lambda *_: "o/r")
+    monkeypatch.setattr(ship_main, "_required_checks_from_branch_protection", lambda *_: ["Tests (3.11)"])
+    monkeypatch.setattr(ship_main, "_required_checks_from_contract", lambda *_: ["Qlty"])
+    monkeypatch.setattr(ship_main, "_watch_required_checks", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        ship_main,
+        "_merge_pr",
+        lambda *_: seen.__setitem__("merged", True),
+    )
+    monkeypatch.setattr(
+        ship_main,
+        "_prune_merged_local_branches",
+        lambda *_: seen.__setitem__("pruned", True),
+    )
+
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--prune-merged"]
+    try:
+        assert ship_main.main() == 0
+    finally:
+        os.sys.argv = old_argv
+
+    assert seen["merged"] is True
+    assert seen["fetch_prune"] is True
+    assert seen["pruned"] is True
+
+
+def test_file_level_runtime_error_print(monkeypatch, capsys):
+    ship_main = _load_ship_main()
+    monkeypatch.setattr(ship_main, "main", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(SystemExit):
+        try:
+            raise SystemExit(ship_main.main())
+        except RuntimeError as exc:
+            print(f"[ship] ERROR: {exc}")
+            raise SystemExit(1) from exc
+
+    out = capsys.readouterr().out
+    assert "[ship] ERROR: boom" in out

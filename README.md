@@ -195,6 +195,30 @@ This creates the venv, installs dependencies, configures the PostToolUse hook, r
 
 For manual setup, hook/MCP configuration, and agent integration details, see [docs/reference.md](docs/reference.md).
 
+### Automated Ship To Main
+
+Use the centralized ship pipeline to move from local changes to green on `main` with one command:
+
+```bash
+python scripts/ship_main.py
+```
+
+What it does:
+
+1. Runs the strict local gate stack (`.githooks/pre-push`)
+2. Pushes your branch
+3. Creates/updates a PR to `main`
+4. Watches required checks from branch protection plus `gate_contract.yaml`
+5. Merges only when every required check is green
+
+Useful flags:
+
+```bash
+python scripts/ship_main.py --no-merge          # stop after checks go green
+python scripts/ship_main.py --prune-merged      # prune merged local side branches after merge
+python scripts/ship_main.py --wait-seconds 30   # slower polling
+```
+
 ---
 
 ## One More Thing
