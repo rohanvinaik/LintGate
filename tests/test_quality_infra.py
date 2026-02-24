@@ -14,6 +14,7 @@ from lintgate.quality_infra import (
     _REQUIRED_BADGE_FINGERPRINTS,
     QualityAuditResult,
     _check_badge_fingerprints,
+    _check_gate_contract_drift,
     _cli_main,
     _has_github_remote,
     _is_git_repo,
@@ -43,8 +44,9 @@ def test_audit_git_no_remote(tmp_path: Path) -> None:
 # ── GitHub projects ──────────────────────────────────────────────────────
 
 
+@patch("lintgate.quality_infra._check_gate_contract_drift", return_value=[])
 @patch("lintgate.quality_infra._has_github_remote", return_value=True)
-def test_audit_all_present(mock_remote: object, tmp_path: Path) -> None:
+def test_audit_all_present(mock_remote: object, mock_contract: object, tmp_path: Path) -> None:
     """All artifacts present + badges → complete=True."""
     # Create .git dir
     (tmp_path / ".git").mkdir()
@@ -181,12 +183,125 @@ def test_cli_no_enforce_missing(mock_remote: object, tmp_path: Path) -> None:
     assert exit_code == 0
 
 
+# ── Gate contract drift checks ──────────────────────────────────────────
+
+
+def _write_valid_gate_contract(tmp_path: Path) -> None:
+    (tmp_path / "gate_contract.yaml").write_text(
+        """
+version: "1.0"
+required_checks:
+  - "Tests (3.11)"
+  - "Tests (3.12)"
+  - "Qlty"
+  - "SonarCloud Code Analysis"
+ci_workflows:
+  - ".github/workflows/tests.yml"
+  - ".github/workflows/qlty.yml"
+  - ".github/workflows/sonarcloud.yml"
+  - ".github/workflows/quality-infra-gate.yml"
+local_pre_push:
+  - command: "python -m lintgate.quality_infra --enforce"
+  - command: "qlty check --all"
+"""
+    )
+
+
+def _write_contract_workflows(tmp_path: Path) -> None:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    for wf in ("tests.yml", "qlty.yml", "sonarcloud.yml", "quality-infra-gate.yml"):
+        (workflow_dir / wf).write_text(
+            "name: wf\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+        )
+
+
+def test_gate_contract_drift_none_when_all_parity_checks_pass(tmp_path: Path) -> None:
+    _write_valid_gate_contract(tmp_path)
+    _write_contract_workflows(tmp_path)
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text(
+        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+    )
+
+    with patch(
+        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        return_value=[
+            "Tests (3.11)",
+            "Tests (3.12)",
+            "Qlty",
+            "SonarCloud Code Analysis",
+        ],
+    ):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert errors == []
+
+
+def test_gate_contract_drift_detects_missing_pre_push_command(tmp_path: Path) -> None:
+    _write_valid_gate_contract(tmp_path)
+    _write_contract_workflows(tmp_path)
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text("python -m lintgate.quality_infra --enforce .\n")
+
+    with patch(
+        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        return_value=[
+            "Tests (3.11)",
+            "Tests (3.12)",
+            "Qlty",
+            "SonarCloud Code Analysis",
+        ],
+    ):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert any("pre-push missing contract command fragment: qlty check --all" in e for e in errors)
+
+
+def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) -> None:
+    _write_valid_gate_contract(tmp_path)
+    _write_contract_workflows(tmp_path)
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text(
+        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+    )
+
+    with patch(
+        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        return_value=["Tests (3.11)", "Tests (3.12)", "Qlty"],
+    ):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert any("Branch protection missing contract required check(s)" in e for e in errors)
+
+
+def test_gate_contract_drift_fails_closed_in_ci_when_remote_unavailable(tmp_path: Path) -> None:
+    _write_valid_gate_contract(tmp_path)
+    _write_contract_workflows(tmp_path)
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text(
+        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+    )
+
+    with (
+        patch("lintgate.quality_infra._fetch_branch_protection_required_checks", return_value=None),
+        patch.dict("os.environ", {"CI": "true"}),
+    ):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert any("Unable to read main branch protection checks via gh api" in e for e in errors)
+
+
 # ── Artifact count consistency ───────────────────────────────────────────
 
 
-def test_artifact_count_is_17() -> None:
-    """Verify the artifact checklist has exactly 17 items."""
-    assert len(_REQUIRED_ARTIFACTS) == 17
+def test_artifact_count_is_18() -> None:
+    """Verify the artifact checklist has exactly 18 items."""
+    assert len(_REQUIRED_ARTIFACTS) == 18
 
 
 def test_badge_fingerprint_count_is_7() -> None:

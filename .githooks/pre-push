@@ -14,6 +14,12 @@ fi
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
+# Source local secrets (.env is gitignored)
+if [ -f "$REPO_ROOT/.env" ]; then
+  # shellcheck disable=SC1091
+  . "$REPO_ROOT/.env"
+fi
+
 echo "[lintgate] running local quality checks before push"
 
 # Quality infrastructure gate (hard fail)
@@ -25,7 +31,25 @@ else
   exit 1
 fi
 
-# qlty analysis (mirrors CI qlty.yml)
+# qlty analysis (mirrors CI qlty.yml — init parity + shellcheckrc safety)
+# Handle .shellcheckrc symlink collision (qlty init may create .shellcheckrc symlink).
+if [ -f "$REPO_ROOT/.shellcheckrc" ] && [ ! -L "$REPO_ROOT/.shellcheckrc" ]; then
+  cp "$REPO_ROOT/.shellcheckrc" "$REPO_ROOT/.shellcheckrc.bak"
+fi
+
+# Mirror CI init step: dry-run probe first, init fallback if needed.
+if ! qlty check --all --dry-run >/dev/null 2>&1; then
+  qlty init --skip-plugins 2>/dev/null || true
+fi
+
+# Restore original .shellcheckrc when qlty init replaced it with a symlink.
+if [ -f "$REPO_ROOT/.shellcheckrc.bak" ] && [ -L "$REPO_ROOT/.shellcheckrc" ]; then
+  rm "$REPO_ROOT/.shellcheckrc"
+  mv "$REPO_ROOT/.shellcheckrc.bak" "$REPO_ROOT/.shellcheckrc"
+elif [ -f "$REPO_ROOT/.shellcheckrc.bak" ]; then
+  rm "$REPO_ROOT/.shellcheckrc.bak"
+fi
+
 qlty check --all
 
 # Secrets scan (mirrors CI gitleaks check)
@@ -66,19 +90,45 @@ if command -v pip-audit >/dev/null 2>&1; then
   fi
 fi
 
-if [ -n "${SONAR_TOKEN:-}" ] && [ -n "${SONAR_PROJECT_KEY:-}" ]; then
-  echo "[lintgate] checking Sonar quality gate for ${SONAR_PROJECT_KEY}"
+# Sonar local mode from contract (default: ci_only).
+# ci_only prevents stale-read split-brain; CI check-runs are authoritative.
+SONAR_LOCAL_MODE="${SONAR_LOCAL_MODE:-ci_only}"
+if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
+  _CONTRACT_MODE="$(python -c "
+import yaml
+try:
+    c = yaml.safe_load(open('$REPO_ROOT/gate_contract.yaml'))
+    print(c.get('tools', {}).get('sonar', {}).get('local_mode', 'ci_only'))
+except Exception:
+    print('ci_only')
+" 2>/dev/null || echo 'ci_only')"
+  SONAR_LOCAL_MODE="${_CONTRACT_MODE}"
+fi
+
+if [ "$SONAR_LOCAL_MODE" = "ci_only" ]; then
+  echo "[lintgate] Sonar local mode: ci_only (CI SonarCloud check-run is authoritative)"
+else
+  if [ -z "${SONAR_TOKEN:-}" ] || [ -z "${SONAR_PROJECT_KEY:-}" ]; then
+    echo "[lintgate] BLOCKED: SONAR_TOKEN or SONAR_PROJECT_KEY is not set."
+    exit 1
+  fi
+
+  echo "[lintgate] checking Sonar quality gate for ${SONAR_PROJECT_KEY} (mode: api_read)"
   SONAR_HOST="${SONAR_HOST_URL:-https://sonarcloud.io}"
   if command -v curl >/dev/null 2>&1; then
     if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then  # gitleaks:allow
-      SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get("projectStatus",{}).get("status",""))' 2>/dev/null || true)"
+      SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get(\"projectStatus\",{}).get(\"status\",\"\"))' 2>/dev/null || true)"
       if [ -n "$SONAR_STATUS" ] && [ "$SONAR_STATUS" != "OK" ]; then
-        echo "[lintgate] Sonar quality gate is ${SONAR_STATUS}; blocking push."
+        echo "[lintgate] BLOCKED: Sonar quality gate is ${SONAR_STATUS} (cached remote state)."
         exit 1
       fi
     else
-      echo "[lintgate] warning: could not query Sonar quality gate (continuing)."
+      echo "[lintgate] BLOCKED: could not query Sonar quality gate."
+      exit 1
     fi
+  else
+    echo "[lintgate] BLOCKED: curl is not installed - required for Sonar gate."
+    exit 1
   fi
 fi
 
