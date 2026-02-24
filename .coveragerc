@@ -2,10 +2,10 @@
 source =
     lintgate
     mcp_tools
+    scripts
 omit =
     */pytest-*/*/repo/lintgate/*
 
 [report]
 fail_under = 80
 show_missing = true
-

@@ -5,6 +5,7 @@ quality_policy:
     source_packages:
       - lintgate
       - mcp_tools
+      - scripts
   security:
     tolerated_false_positives:
       - rule: "pythonsecurity:S2083"
