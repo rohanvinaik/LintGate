@@ -66,6 +66,23 @@ def test_cmd_install_reports_already_configured(tmp_path, monkeypatch) -> None:
     assert report["status"] == "already_configured"
 
 
+def test_cmd_install_fails_when_command_profile_sync_blocks(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    fake_profile = SimpleNamespace(
+        config_path=tmp_path / "cfg.json",
+        config_writer=lambda _path, _cmd: True,
+    )
+    monkeypatch.setattr(admin, "PROFILES", {"antigravity": fake_profile})
+    monkeypatch.setattr(
+        admin,
+        "sync_agent_command_profile",
+        lambda *_args, **_kwargs: {"blocking_issues": 1, "summary": {}},
+    )
+
+    args = SimpleNamespace(agent="antigravity", dry_run=False)
+    assert admin.cmd_install(args) == 1
+
+
 def test_cmd_bootstrap_propagates_install_and_doctor(monkeypatch) -> None:
     args = SimpleNamespace(agent="claude", dry_run=False)
     monkeypatch.setattr(admin, "cmd_install", lambda _args: 2)
@@ -201,6 +218,25 @@ def test_cmd_doctor_fix_path_runs_install(monkeypatch) -> None:
     args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
     assert admin.cmd_doctor(args) == 0
     assert called["install"] is True
+
+
+def test_cmd_doctor_blocks_when_command_profile_invalid(monkeypatch) -> None:
+    fake_profile = SimpleNamespace(display_name="Antigravity", schema_strict=True)
+    monkeypatch.setattr(admin, "PROFILES", {"antigravity": fake_profile})
+    monkeypatch.setattr(
+        admin,
+        "_load_contract",
+        lambda: {"safety_critical_tools": [], "expected_tools": {"antigravity": []}},
+    )
+    monkeypatch.setattr(
+        admin,
+        "sync_agent_command_profile",
+        lambda *_args, **_kwargs: {"blocking_issues": 2, "summary": {}},
+    )
+
+    args = SimpleNamespace(agent="antigravity", dry_run=False, fix=False)
+    with pytest.raises(SystemExit):
+        admin.cmd_doctor(args)
 
 
 def test_main_routes_subcommands(monkeypatch) -> None:

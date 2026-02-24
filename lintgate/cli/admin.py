@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from lintgate.agent_command_profiles import sync_agent_command_profile
 from lintgate.agent_profiles import PROFILES
 from lintgate.mcp_schema import ProviderSchemaError
 
@@ -34,6 +35,24 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     # Phase 2: Configure
     configured = profile.config_writer(profile.config_path, server_cmd)
+    command_profile = sync_agent_command_profile(args.agent, apply=True)
+    if command_profile is not None:
+        blocking = int(command_profile.get("blocking_issues", 0))
+        if blocking > 0:
+            print(
+                f"[!] Command profile sync reported {blocking} blocking issue(s). "
+                "Run doctor for details."
+            )
+            return 1
+        summary = command_profile.get("summary", {})
+        migrated = int(summary.get("migrated", 0))
+        recovered = int(summary.get("recovered", 0))
+        generated = int(summary.get("generated_templates", 0))
+        if migrated or recovered or generated:
+            print(
+                "[*] Command profile sync:"
+                f" generated={generated}, migrated={migrated}, recovered={recovered}"
+            )
 
     # Phase 3: Report
     report = {
@@ -41,6 +60,8 @@ def cmd_install(args: argparse.Namespace) -> int:
         "config_path": str(profile.config_path),
         "status": "configured" if configured else "already_configured",
     }
+    if command_profile is not None:
+        report["command_profile"] = command_profile
 
     report_path = Path("install_report.json")
     with open(report_path, "w") as f:
@@ -86,6 +107,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if args.dry_run:
         print("[Dry Run] Skipping active schema validation.")
         return 0
+
+    command_profile = sync_agent_command_profile(args.agent, apply=getattr(args, "fix", False))
+    if command_profile is not None:
+        blocking = int(command_profile.get("blocking_issues", 0))
+        if blocking > 0:
+            print(
+                "[!] Command profile validation failed. "
+                f"{blocking} file(s) are not provider-compatible."
+            )
+            if not getattr(args, "fix", False):
+                print("  => Re-run with --fix to auto-migrate local command files.")
+            sys.exit(1)
 
     import asyncio
 

@@ -656,11 +656,21 @@ _VERSION = "0.2.0"
 # ─── Entry point ────────────────────────────────────────────────────────
 
 def run_server() -> None:
+    from lintgate.agent_command_profiles import sync_all_command_profiles
     from lintgate.mcp_schema import (
         ProviderSchemaError,
         compile_and_validate_schemas,
         enforce_mcp_contract,
     )
+
+    for profile_report in sync_all_command_profiles(apply=True, allow_create_dirs=False):
+        blocking = int(profile_report.get("blocking_issues", 0))
+        if blocking > 0:
+            profile_id = profile_report.get("profile", "unknown")
+            print(
+                f"WARNING: Command profile '{profile_id}' has {blocking} unresolved issue(s).",
+                file=sys.stderr,
+            )
 
     try:
         tools = mcp._tool_manager.list_tools()
