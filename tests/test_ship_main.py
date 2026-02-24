@@ -706,6 +706,7 @@ def test_repo_pre_push_contains_structured_gate_markers() -> None:
         "[lintgate:gate:START:quality_infra]",
         "[lintgate:gate:START:qlty]",
         "[lintgate:gate:START:gitleaks]",
+        "[lintgate:gate:START:fast_symbol_precheck]",
         "[lintgate:gate:START:tests]",
         "[lintgate:gate:START:symbol_gate]",
         "[lintgate:gate:START:sonar]",
