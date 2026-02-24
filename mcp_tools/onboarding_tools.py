@@ -2689,6 +2689,7 @@ def register(mcp, helpers):
                 "3. Run controlplane_get_details(run_id) to review specific findings",
                 "4. Run lint_fix(path, dry_run=False) to auto-fix safe issues",
                 "5. Run bootstrap_context_files(path, write=true) to generate persistent context files",
+                "6. Run python scripts/ship_main.py --preflight to verify gate parity before pushing",
             ],
             "all_tools_count": 49,
             "startup_setup": {
@@ -2724,6 +2725,24 @@ def register(mcp, helpers):
             },
             "next_actions": next_actions,
         }
+        # Determine system mutation guard status
+        pre_hook_enabled = False
+        try:
+            with open(os.path.expanduser("~/.claude/settings.json")) as f:
+                settings = json.load(f)
+                hooks = settings.get("hooks", {})
+                pre = hooks.get("PreToolUse", [])
+                for entry in pre:
+                    for h in entry.get("hooks", []):
+                        if "lintgate-pre" in str(h.get("command", "")):
+                            pre_hook_enabled = True
+                            break
+        except Exception:
+            pass
+
+        output["system_mutation_guard"] = "active" if pre_hook_enabled else "inactive"
+        if pre_hook_enabled:
+            output["security_guidance"] = "The System Mutation Guard (lintgate-pre) intercepts global state changes (e.g. `brew install`). Use `# lintgate-override` to bypass if required."
 
         return json.dumps(output, indent=2)
 

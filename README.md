@@ -217,6 +217,7 @@ Useful flags:
 python scripts/ship_main.py --no-merge          # stop after checks go green
 python scripts/ship_main.py --prune-merged      # prune merged local side branches after merge
 python scripts/ship_main.py --wait-seconds 30   # slower polling
+python scripts/ship_main.py --preflight         # run strict local gate stacks without git mutations
 ```
 
 ---

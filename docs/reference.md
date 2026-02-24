@@ -186,6 +186,13 @@ See [design.md](design.md) for the full configuration reference, calibration dat
 - **Auto-fix**: `lint_fix` applies safe corrections (formatting, import sorting, simple refactors) without human intervention. Dry-run by default.
 - **Professional instinct layer**: command-class hygiene prechecks (venv active before installing? lockfile fresh before publishing? secrets in the staged diff?), supply-chain vulnerability scanning, type integrity verification.
 
+### System-Mutation Pre-Execution Guard (Threat Model)
+
+The `lintgate-pre` executable acts as a `PreToolUse` hook (specifically tuned for Claude Code) to intercept system-level commands that escape the project directory context.
+- **Catches**: Global package installations (`brew install`, `pip install <pkg>`, `npm install -g`), system directory modifications (`/etc/`, `/usr/local/`, `~/Library/LaunchAgents`), shell configuration mutations (`~/.zshrc`), direct web execution (`curl | sh`), and privilege escalation (`sudo`).
+- **Misses**: Scoped package manager scripts that execute arbitrary underlying code, obfuscated bash strings, explicit binary downloads to the project directory that are later executed, and `node_modules` post-install hooks.
+- **Evasion & Override Limits**: Users can explicitly bypass the guard by appending ` # lintgate-override` to the exact command. This is not a formal sandbox—it is a behavioral guardrail designed against hallucinated prompt injection and out-of-bounds agent operations, not determined malicious actors with interactive shell access.
+
 ### Behavioral Drift Detection
 
 - **9 detection rules**: approach cycling, failure amnesia, brute-force escalation, premature action, serial discovery, tool repetition, verification debt, stale model, consecutive failures.

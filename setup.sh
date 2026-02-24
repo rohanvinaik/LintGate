@@ -107,6 +107,86 @@ else:
 PY
 }
 
+merge_claude_pre_hook() {
+    local path="$1"
+    local hook_cmd="$2"
+    "$VENV_PYTHON" - "$path" "$hook_cmd" << 'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+hook_cmd = sys.argv[2]
+
+data = {}
+recovered = False
+backup_path = ""
+if path.exists():
+    try:
+        raw = path.read_text()
+        data = json.loads(raw) if raw.strip() else {}
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        backup = path.with_suffix(path.suffix + ".lintgate.bak")
+        path.rename(backup)
+        recovered = True
+        backup_path = str(backup)
+        data = {}
+
+hooks = data.get("hooks")
+if not isinstance(hooks, dict):
+    hooks = {}
+    data["hooks"] = hooks
+
+pre = hooks.get("PreToolUse")
+if not isinstance(pre, list):
+    pre = []
+    hooks["PreToolUse"] = pre
+
+found = False
+updated = False
+for entry in pre:
+    if not isinstance(entry, dict):
+        continue
+    entry_hooks = entry.get("hooks")
+    if not isinstance(entry_hooks, list):
+        continue
+    for hook in entry_hooks:
+        if not isinstance(hook, dict):
+            continue
+        if hook.get("type") != "command":
+            continue
+        command = hook.get("command")
+        if command == hook_cmd:
+            found = True
+            continue
+        if isinstance(command, str) and os.path.basename(command) == "lintgate-pre":
+            hook["command"] = hook_cmd
+            found = True
+            updated = True
+
+if not found:
+    pre.append(
+        {
+            "matcher": "Bash",
+            "hooks": [{"type": "command", "command": hook_cmd}],
+        }
+    )
+    updated = True
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(data, indent=2) + "\n")
+if recovered:
+    print(f"recovered:{backup_path}")
+elif updated:
+    print("updated")
+else:
+    print("unchanged")
+PY
+}
+
 merge_mcp_server() {
     local path="$1"
     local mcp_cmd="$2"
@@ -214,11 +294,20 @@ else
     echo "  WARNING: MCP server failed to load. Check mcp package installation."
 fi
 
-# ── Step 4: Configure PostToolUse hook ──────────────────────────────────
+# ── Step 4: Configure Hooks ─────────────────────────────────────────────
 echo ""
 SETTINGS_DIR="$HOME/.claude"
 SETTINGS_FILE="$SETTINGS_DIR/settings.json"
 ensure_json_file "$SETTINGS_FILE" "Claude"
+
+PRE_HOOK_STATUS="$(merge_claude_pre_hook "$SETTINGS_FILE" "$VENV_DIR/bin/lintgate-pre")"
+case "$PRE_HOOK_STATUS" in
+    recovered:*) echo "  WARNING: repaired invalid settings JSON (backup: ${PRE_HOOK_STATUS#recovered:})" ;;
+    updated) echo "  Updated PreToolUse hook (mutation guard) in $SETTINGS_FILE" ;;
+    unchanged) echo "  PreToolUse hook already configured in $SETTINGS_FILE" ;;
+    *) echo "  Updated PreToolUse hook in $SETTINGS_FILE" ;;
+esac
+
 HOOK_STATUS="$(merge_claude_hook "$SETTINGS_FILE" "$VENV_LINTGATE")"
 case "$HOOK_STATUS" in
     recovered:*) echo "  WARNING: repaired invalid settings JSON (backup: ${HOOK_STATUS#recovered:})" ;;
@@ -303,3 +392,10 @@ echo "Agent config files point all detected agents to AGENTS.md."
 echo ""
 echo "Quick test:"
 echo "  $VENV_LINTGATE <<< '{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"test.py\"},\"tool_output\":\"ok\",\"cwd\":\"'$LINTGATE_DIR'\"}'"
+
+if [ -x "$VENV_DIR/bin/lintgate-admin" ]; then
+    echo ""
+    echo "=== Running Python Configuration (lintgate-admin) ==="
+    "$VENV_DIR/bin/lintgate-admin" bootstrap --agent claude || true
+    "$VENV_DIR/bin/lintgate-admin" bootstrap --agent antigravity || true
+fi

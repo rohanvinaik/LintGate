@@ -61,9 +61,11 @@ dev = [
 
 [project.scripts]
 lintgate = "lintgate.hook_posttooluse:main"
-lintgate-mcp = "mcp_server:mcp.run"
+lintgate-pre = "lintgate.hook_pretooluse:main"
+lintgate-admin = "lintgate.cli.admin:main"
+lintgate-mcp = "mcp_server:run_server"
 controlplane = "lintgate.controlplane.cli:main"
-controlplane-mcp = "mcp_server:mcp.run"
+controlplane-mcp = "mcp_server:run_server"
 
 [tool.hatch.build.targets.wheel]
 # Include mcp_server.py at the root of the wheel so `mcp_server:mcp.run`

@@ -378,6 +378,52 @@ class TestGettingStarted:
         readme_content = (tmp_path / "README.md").read_text()
         assert "metric=security_rating" in readme_content
 
+    def test_getting_started_reports_active_system_mutation_guard(self, tmp_path: Path) -> None:
+        import json
+        import os
+
+        from mcp_server import getting_started
+
+        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_python = str(tmp_path / ".venv" / "bin" / "python")
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {"hooks": [{"command": "python -m lintgate-pre"}]},
+                        ]
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        real_expanduser = os.path.expanduser
+        with (
+            mock.patch(
+                "mcp_tools.onboarding_tools._ensure_project_venv",
+                return_value={"status": "present", "venv_python": fake_python},
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._project_venv_python",
+                return_value=fake_python,
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools._collect_external_tool_gaps",
+                side_effect=[fake_gaps, fake_gaps],
+            ),
+            mock.patch(
+                "mcp_tools.onboarding_tools.os.path.expanduser",
+                side_effect=lambda p: str(settings_path) if p == "~/.claude/settings.json" else real_expanduser(p),
+            ),
+        ):
+            result = json.loads(getting_started(str(tmp_path)))
+
+        assert result["system_mutation_guard"] == "active"
+        assert "security_guidance" in result
+
 
 class TestScaffoldConfig:
     """The scaffold_config tool should be safe-by-default and preview-friendly."""

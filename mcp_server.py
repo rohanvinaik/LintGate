@@ -655,5 +655,22 @@ _VERSION = "0.2.0"
 
 # ─── Entry point ────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def run_server() -> None:
+    from lintgate.mcp_schema import (
+        ProviderSchemaError,
+        compile_and_validate_schemas,
+        enforce_mcp_contract,
+    )
+
+    try:
+        tools = mcp._tool_manager.list_tools()
+        compile_and_validate_schemas(tools, agent_profile="strict")
+        enforce_mcp_contract(tools)
+    except ProviderSchemaError as e:
+        print(f"FATAL: {e}", file=sys.stderr)
+        sys.exit(1)
+
     mcp.run()
+
+if __name__ == "__main__":
+    run_server()

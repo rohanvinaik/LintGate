@@ -1,0 +1,35 @@
+schema_version: "1.0"
+policy_version: "1.0"
+
+safety_critical_tools:
+  - "constraint_check"
+  - "global_memory_status"
+
+expected_tools:
+  antigravity:
+    - "lint_files"
+    - "lint_project"
+    - "lint_fix"
+    - "controlplane_run"
+    - "controlplane_get_details"
+    - "getting_started"
+    - "setup_github_quality"
+    - "compass_status"
+    - "compass_update"
+    - "compass_interview"
+    - "theory_mode_enter"
+    - "theory_mode_freeze"
+
+  claude:
+    - "lint_files"
+    - "lint_project"
+    - "lint_fix"
+    - "controlplane_run"
+    - "controlplane_get_details"
+    - "getting_started"
+    - "setup_github_quality"
+    - "compass_status"
+    - "compass_update"
+    - "compass_interview"
+    - "theory_mode_enter"
+    - "theory_mode_freeze"

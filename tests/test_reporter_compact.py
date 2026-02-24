@@ -140,6 +140,16 @@ class TestBuildCpNextActions:
         warning_actions = [a for a in actions if "warning" in a["reason"].lower()]
         assert len(warning_actions) == 1
 
+    def test_ship_gate_parity_failure_adds_preflight_action(self) -> None:
+        counts = {"blocking": 0, "warning": 0, "repairs_available": 0}
+        actions = _build_cp_next_actions(
+            "run1",
+            counts,
+            ship_gate_parity={"status": "fail"},
+        )
+        assert actions[0]["tool"] == "terminal"
+        assert actions[0]["args"]["command"] == "python scripts/ship_main.py --preflight"
+
 
 # ── _collect_symbol_coverage_blockers ──────────────────────────────────
 
@@ -223,3 +233,17 @@ class TestCompactReport:
         report = format_mesh_report_compact(mesh)
         assert "run_id" in report
         assert "lint" in report["channels"]
+
+    def test_symbol_blockers_add_remediation_loop(self) -> None:
+        finding = LintIssue(
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="Symbol foo uncovered",
+            severity="blocking",
+            evidence={"symbol_key": "pkg/mod.py::foo", "missing_lines": [10]},
+        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
+        mesh = _make_mesh([cr])
+        report = format_mesh_report_compact(mesh)
+        assert report["remediation_loop"]["required"] is True
+        assert report["remediation_loop"]["policy"].startswith("Add tests for uncovered symbols")
