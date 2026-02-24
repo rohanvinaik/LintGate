@@ -90,7 +90,7 @@ def register(mcp, helpers):
     @mcp.tool()
     def lint_files(
         files: list[str],
-        tier: Literal[0, 1, 2, 3] = 2,
+        tier: int = 2,
         project_root: str | None = None,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
     ) -> str:
@@ -105,6 +105,8 @@ def register(mcp, helpers):
         Use lint_get_details(run_id) to drill into full issue details.
         Use lint_fix() to auto-fix safe issues found.
         """
+        if tier not in (0, 1, 2, 3):
+            raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
         if not files:
             raise ValueError("No files specified")
 
@@ -132,7 +134,7 @@ def register(mcp, helpers):
     @mcp.tool()
     def lint_project(
         path: str,
-        tier: Literal[0, 1, 2, 3] = 2,
+        tier: int = 2,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
     ) -> str:
         """Lint all Python files in a project at a given tier level.
@@ -146,6 +148,8 @@ def register(mcp, helpers):
         Use lint_get_details(run_id) to drill into full issue details.
         Use lint_fix(path) to auto-fix safe issues found.
         """
+        if tier not in (0, 1, 2, 3):
+            raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
         project_root = helpers["_validate_project_root"](path)
 
         py_files = helpers["_collect_python_files"](project_root)

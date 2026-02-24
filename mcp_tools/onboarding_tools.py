@@ -2724,6 +2724,24 @@ def register(mcp, helpers):
             },
             "next_actions": next_actions,
         }
+        # Determine system mutation guard status
+        pre_hook_enabled = False
+        try:
+            with open(os.path.expanduser("~/.claude/settings.json")) as f:
+                settings = json.load(f)
+                hooks = settings.get("hooks", {})
+                pre = hooks.get("PreToolUse", [])
+                for entry in pre:
+                    for h in entry.get("hooks", []):
+                        if "lintgate-pre" in str(h.get("command", "")):
+                            pre_hook_enabled = True
+                            break
+        except Exception:
+            pass
+
+        output["system_mutation_guard"] = "active" if pre_hook_enabled else "inactive"
+        if pre_hook_enabled:
+            output["security_guidance"] = "The System Mutation Guard (lintgate-pre) intercepts global state changes (e.g. `brew install`). Use `# lintgate-override` to bypass if required."
 
         return json.dumps(output, indent=2)
 

@@ -558,6 +558,38 @@ class TestPayloadSizeRegression:
         assert "  " not in compact
 
 
+# ── Provider Schema Constraints ─────────────────────────────────────────
+
+
+class TestProviderSchemaConstraints:
+    """Verify tools comply with strict provider schema boundaries."""
+
+    def test_no_enum_on_non_string_hard_regression(self) -> None:
+        """Ensure no exported tools contain enums on non-string types.
+
+        This prevents Antigravity/Gemini HTTP 400 Invalid Arguments on startup.
+        """
+        import mcp_server
+        from lintgate.mcp_schema import ProviderSchemaError, compile_and_validate_schemas
+
+        tools = mcp_server.mcp._tool_manager.list_tools()
+        try:
+            compile_and_validate_schemas(tools, agent_profile="strict")
+        except ProviderSchemaError as e:
+            pytest.fail(f"Strict provider schema validation failed: {e}")
+
+    def test_safety_critical_tools_present(self) -> None:
+        """Ensure all safety-critical tools declared in the contract actually register."""
+        import mcp_server
+        from lintgate.mcp_schema import ProviderSchemaError, enforce_mcp_contract
+
+        tools = mcp_server.mcp._tool_manager.list_tools()
+        try:
+            enforce_mcp_contract(tools)
+        except ProviderSchemaError as e:
+            pytest.fail(f"Safety contract enforcement failed: {e}")
+
+
 # ── Version Consistency ─────────────────────────────────────────────────
 
 
