@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771962258151,
+  "lastUpdate": 1771969434566,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -415,6 +415,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001452344413353655",
             "extra": "mean: 691.2450069931043 usec\nrounds: 572"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "af418fbfa58579172b4f6c3e05f296997ddcfd8e",
+          "message": "ship: enable GitHub auto-merge mode in ship_main (#49)",
+          "timestamp": "2026-02-24T21:43:20Z",
+          "tree_id": "d4fe73eed5f49eff8b44052a33afc659fea3617d",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/af418fbfa58579172b4f6c3e05f296997ddcfd8e"
+        },
+        "date": 1771969433851,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 128.86003623859023,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00021814533528691332",
+            "extra": "mean: 7.760357898304906 msec\nrounds: 118"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 216962.67830235336,
+            "unit": "iter/sec",
+            "range": "stddev: 6.905554180011534e-7",
+            "extra": "mean: 4.609087645048458 usec\nrounds: 53865"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5604.4881700501355,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00022481447413669794",
+            "extra": "mean: 178.42842551509113 usec\nrounds: 3786"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14711.440483892175,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001544776973600804",
+            "extra": "mean: 67.97430891250373 usec\nrounds: 9582"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1534.9333631614152,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017827123969486465",
+            "extra": "mean: 651.4940804598558 usec\nrounds: 609"
           }
         ]
       }
