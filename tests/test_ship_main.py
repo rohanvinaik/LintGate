@@ -522,3 +522,76 @@ def test_file_level_runtime_error_print(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "[ship] ERROR: boom" in out
+
+
+def test_main_preflight_flow(ship_main, monkeypatch):
+    repo_root = "/tmp/repo"
+    seen = {"preflight_called": False, "push_called": False, "merge_called": False}
+
+    def fake_git_output(_repo, *args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return repo_root
+        raise AssertionError(args)
+
+    def fake_run_preflight(repo, json_mode):
+        assert repo == repo_root
+        assert json_mode is False
+        seen["preflight_called"] = True
+        return 0
+
+    def fake_push_branch(*args, **kwargs):
+        seen["push_called"] = True
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(ship_main, "_run_preflight", fake_run_preflight)
+    monkeypatch.setattr(ship_main, "_push_branch", fake_push_branch)
+    monkeypatch.setattr(ship_main, "_merge_pr", lambda *_: seen.__setitem__("merge_called", True))
+
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--preflight"]
+    try:
+        assert ship_main.main() == 0
+    finally:
+        os.sys.argv = old_argv
+
+    assert seen["preflight_called"] is True
+    assert seen["push_called"] is False
+    assert seen["merge_called"] is False
+
+
+def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--json"]
+    try:
+        with pytest.raises(RuntimeError, match="--json can only be used with --preflight"):
+            ship_main.main()
+    finally:
+        os.sys.argv = old_argv
+
+
+def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
+    import json
+    repo = tmp_path
+    hook = repo / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\\nexit 0\\n")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    def fake_run(cmd, **kwargs):
+        class FakeProc:
+            returncode = 1
+            stdout = "[lintgate] BLOCKED: secrets detected\\n"
+            stderr = ""
+
+        return FakeProc()
+
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
+
+    code = ship_main._run_preflight(str(repo), json_mode=True)
+    assert code == 1
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["status"] == "fail"
+    assert data["exit_code"] == 1
+    assert "secrets_scan" in data["failed_gate_ids"]

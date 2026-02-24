@@ -2689,6 +2689,7 @@ def register(mcp, helpers):
                 "3. Run controlplane_get_details(run_id) to review specific findings",
                 "4. Run lint_fix(path, dry_run=False) to auto-fix safe issues",
                 "5. Run bootstrap_context_files(path, write=true) to generate persistent context files",
+                "6. Run python scripts/ship_main.py --preflight to verify gate parity before pushing",
             ],
             "all_tools_count": 49,
             "startup_setup": {

@@ -265,6 +265,45 @@ def _save_run_details_for_drilldown(mesh_result, current_finding_index, compact,
         save_controlplane_run(compact["run_id"], full_details)
 
 
+def _check_ship_gate_parity(project_root: str, strictness: str) -> dict[str, Any]:
+    """Run ship_main.py --preflight --json if strict, or return advisory."""
+    if strictness != "strict":
+        return {
+            "status": "stale",
+            "message": "Gate parity check skipped (strictness < strict).",
+            "command_to_verify": "python scripts/ship_main.py --preflight",
+        }
+
+    ship_main_path = os.path.join(project_root, "scripts", "ship_main.py")
+    if not os.path.exists(ship_main_path):
+        return {
+            "status": "error",
+            "error": "scripts/ship_main.py not found",
+        }
+
+    import sys
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, ship_main_path, "--preflight", "--json"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        try:
+            return json.loads(proc.stdout)
+        except Exception:
+            return {
+                "status": "error",
+                "exit_code": proc.returncode,
+                "error": "Failed to parse json from ship_main.py",
+                "stderr": proc.stderr[-200:] if proc.stderr else "",
+            }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 def _impl_controlplane_run(path, channels, strictness, helpers):
     """Core implementation of controlplane_run."""
     from lintgate.config import load_controlplane_config
@@ -310,8 +349,12 @@ def _impl_controlplane_run(path, channels, strictness, helpers):
     _persist_session_after_mesh(session, mesh_result, current_finding_index, cp_config)
 
     # Compact output
+    ship_gate_parity = _check_ship_gate_parity(project_root, strictness)
     compact = format_mesh_report_compact(
-        mesh_result, cp_config, previous_finding_index=previous_finding_index
+        mesh_result,
+        cp_config,
+        previous_finding_index=previous_finding_index,
+        ship_gate_parity=ship_gate_parity,
     )
 
     # Persist runtime state and drill-down details

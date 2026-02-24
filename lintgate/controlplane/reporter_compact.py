@@ -18,6 +18,7 @@ def format_mesh_report_compact(
     config: ControlPlaneConfig | None = None,
     previous_finding_index: dict[str, dict[str, Any]] | None = None,
     proposed_constraints: list[dict] | None = None,
+    ship_gate_parity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Format MeshResult as compact JSON for MCP tool responses.
 
@@ -49,7 +50,11 @@ def format_mesh_report_compact(
 
     _attach_delta_or_blocking(compact, current_index, previous_finding_index)
     compact["channels"] = _build_channel_summary(mesh_result)
-    compact["next_actions"] = _build_cp_next_actions(run_id, counts, symbol_blockers)
+
+    if ship_gate_parity is not None:
+        compact["ship_gate_parity"] = ship_gate_parity
+
+    compact["next_actions"] = _build_cp_next_actions(run_id, counts, symbol_blockers, ship_gate_parity)
 
     if symbol_blockers:
         compact["remediation_loop"] = _build_remediation_loop(symbol_blockers)
@@ -174,10 +179,30 @@ def _build_cp_next_actions(
     run_id: str,
     counts: dict[str, int],
     symbol_blockers: list[dict[str, Any]] | None = None,
+    ship_gate_parity: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build next_actions for ControlPlane compact output."""
     actions: list[dict[str, Any]] = []
     symbol_count = len(symbol_blockers or [])
+
+    parity_status = ship_gate_parity.get("status") if ship_gate_parity else None
+    parity_failing = parity_status in ("fail", "error")
+    parity_missing = parity_status in ("unknown", "skipped", "stale")
+
+    # Only emit parity actions when parity data is explicitly present.
+    if ship_gate_parity and (parity_failing or (parity_missing and counts.get("blocking", 0) > 0)):
+        actions.append(
+            {
+                "tool": "controlplane_run" if parity_missing else "terminal",
+                "args": (
+                    {"path": ".", "strictness": "strict"}
+                    if parity_missing
+                    else {"command": "python scripts/ship_main.py --preflight"}
+                ),
+                "reason": "Ship gate parity is failing or missing. Evaluate strict preflight output.",
+                "priority": 1,
+            }
+        )
 
     if symbol_count > 0:
         actions.append(
