@@ -1,0 +1,45 @@
+name: Ship Gate Parity Guard
+
+on:
+    push:
+        paths:
+            - ".githooks/pre-push"
+            - "scripts/ship_main.py"
+            - "gate_contract.yaml"
+            - ".github/workflows/ship_parity.yml"
+    pull_request:
+        paths:
+            - ".githooks/pre-push"
+            - "scripts/ship_main.py"
+            - "gate_contract.yaml"
+            - ".github/workflows/ship_parity.yml"
+
+jobs:
+    test-parity:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -e .[dev]
+
+            - name: Run ship_main.py tests
+              run: pytest tests/test_ship_main.py -v
+
+            - name: Test preflight execution deterministic output
+              run: |
+                  # pre-push skips on LINTGATE_SKIP_PRE_PUSH=1, exiting 0
+                  OUTPUT=$(LINTGATE_SKIP_PRE_PUSH=1 python scripts/ship_main.py --preflight --json)
+                  echo "Preflight JSON Output: $OUTPUT"
+                  STATUS=$(echo "$OUTPUT" | jq -r .status)
+                  if [ "$STATUS" != "pass" ]; then
+                    echo "Parity Guard Failed: Expected status 'pass', got '$STATUS'"
+                    exit 1
+                  fi

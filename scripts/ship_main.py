@@ -19,6 +19,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,6 +91,88 @@ def _run_local_gate_stack(repo_root: str) -> None:
 
     print("[ship] Running strict local gate stack (.githooks/pre-push)")
     _run([str(hook_path)], cwd=repo_root)
+
+
+def _run_preflight(repo_root: str, json_mode: bool) -> int:
+    """Run precisely the pre-push hook without side effects."""
+    hook_path = Path(repo_root) / ".githooks" / "pre-push"
+
+    def emit_json(status: str, exit_code: int, failed_ids: list[str], err_msg: str | None = None) -> None:
+        payload = {
+            "status": status,
+            "exit_code": exit_code,
+            "failed_gate_ids": failed_ids,
+            "command": str(hook_path),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if err_msg:
+            payload["error"] = err_msg
+
+        # Safely determine if we should indent
+        indent = 2 if getattr(sys.stdout, "isatty", lambda: False)() else None
+        print(json.dumps(payload, indent=indent))
+
+    if not hook_path.exists():
+        if json_mode:
+            emit_json("error", 1, [], "Missing .githooks/pre-push")
+            return 1
+        raise RuntimeError("Missing .githooks/pre-push")
+
+    if not os.access(hook_path, os.X_OK):
+        if json_mode:
+            emit_json("error", 1, [], ".githooks/pre-push is not executable")
+            return 1
+        raise RuntimeError(".githooks/pre-push is not executable")
+
+    if not json_mode:
+        print("[ship] [PREFLIGHT] Running strict local gate stack (.githooks/pre-push)")
+
+    proc = subprocess.run(
+        [str(hook_path)],
+        cwd=repo_root,
+        check=False,
+        text=True,
+        capture_output=json_mode,
+    )
+
+    if json_mode:
+        status = "pass" if proc.returncode == 0 else "fail"
+        failed_gate_ids = []
+
+        # Heuristic for failed blocks
+        if status == "fail":
+            stdout_lower = proc.stdout.lower()
+            stderr_lower = proc.stderr.lower()
+            if "blocked: secrets" in stdout_lower or "blocked: secrets" in stderr_lower:
+                failed_gate_ids.append("secrets_scan")
+            if (
+                ("blocked" in stdout_lower or "blocked" in stderr_lower)
+                and "symbol_gate" not in failed_gate_ids
+                and ("symbol" in stdout_lower or "symbol" in stderr_lower)
+            ):
+                failed_gate_ids.append("symbol_gate")
+            if (
+                ("incomplete" in stdout_lower or "incomplete" in stderr_lower)
+                and (
+                    "quality infrastructure" in stdout_lower
+                    or "quality infrastructure" in stderr_lower
+                )
+            ):
+                failed_gate_ids.append("quality_infra")
+            if "pytest" in stdout_lower and (
+                proc.stdout.count("FAILED ") > 0 or proc.stdout.count("FAILURES ") > 0
+            ):
+                failed_gate_ids.append("pytest")
+            if "sonar" in stdout_lower and "fail" in stdout_lower:
+                failed_gate_ids.append("sonar")
+
+            if not failed_gate_ids:
+                failed_gate_ids.append("pre-push-hook")
+
+        emit_json(status, proc.returncode, failed_gate_ids)
+        return proc.returncode
+
+    return proc.returncode
 
 
 def _push_branch(repo_root: str, remote: str, branch: str) -> None:
@@ -286,13 +369,14 @@ def _watch_required_checks(
 
 
 def _merge_pr(repo_root: str, pr_number: int) -> None:
-    print(f"[ship] Merging PR #{pr_number} with squash + branch deletion")
+    print(f"[ship] Enabling GitHub auto-merge for PR #{pr_number} (squash + branch deletion)")
     _run(
         [
             "gh",
             "pr",
             "merge",
             str(pr_number),
+            "--auto",
             "--squash",
             "--delete-branch",
         ],
@@ -332,9 +416,26 @@ def main() -> int:
         action="store_true",
         help="Delete merged local side branches after merge",
     )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Run strict gate parity check locally without modifying git state. Exits cleanly upon completion.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON (Only valid with --preflight)",
+    )
     args = parser.parse_args()
 
     repo_root = _git_output(os.getcwd(), "rev-parse", "--show-toplevel")
+
+    if args.preflight:
+        # Preflight strictly guarantees NO SIDE EFFECTS: no auth, no branching, no pushing
+        return _run_preflight(repo_root, args.json)
+
+    if args.json and not args.preflight:
+        raise RuntimeError("--json can only be used with --preflight")
 
     _require_tool("git", repo_root)
     _require_tool("gh", repo_root)

@@ -323,7 +323,7 @@ def test_merge_pr(ship_main, monkeypatch):
         lambda cmd, **kwargs: calls.append((cmd, kwargs["cwd"])) or subprocess.CompletedProcess(cmd, 0),
     )
     ship_main._merge_pr("/repo", 42)
-    assert calls[0][0] == ["gh", "pr", "merge", "42", "--squash", "--delete-branch"]
+    assert calls[0][0] == ["gh", "pr", "merge", "42", "--auto", "--squash", "--delete-branch"]
 
 
 def test_prune_merged_local_branches(ship_main, monkeypatch):
@@ -522,3 +522,173 @@ def test_file_level_runtime_error_print(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "[ship] ERROR: boom" in out
+
+
+def test_main_preflight_flow(ship_main, monkeypatch):
+    repo_root = "/tmp/repo"
+    seen = {"preflight_called": False, "push_called": False, "merge_called": False}
+
+    def fake_git_output(_repo, *args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return repo_root
+        raise AssertionError(args)
+
+    def fake_run_preflight(repo, json_mode):
+        assert repo == repo_root
+        assert json_mode is False
+        seen["preflight_called"] = True
+        return 0
+
+    def fake_push_branch(*args, **kwargs):
+        seen["push_called"] = True
+
+    monkeypatch.setattr(ship_main, "_git_output", fake_git_output)
+    monkeypatch.setattr(ship_main, "_run_preflight", fake_run_preflight)
+    monkeypatch.setattr(ship_main, "_push_branch", fake_push_branch)
+    monkeypatch.setattr(ship_main, "_merge_pr", lambda *_: seen.__setitem__("merge_called", True))
+
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--preflight"]
+    try:
+        assert ship_main.main() == 0
+    finally:
+        os.sys.argv = old_argv
+
+    assert seen["preflight_called"] is True
+    assert seen["push_called"] is False
+    assert seen["merge_called"] is False
+
+
+def test_run_preflight_non_json_missing_hook_raises(ship_main, tmp_path):
+    with pytest.raises(RuntimeError, match="Missing .githooks/pre-push"):
+        ship_main._run_preflight(str(tmp_path), json_mode=False)
+
+
+def test_run_preflight_non_json_non_executable_raises(ship_main, tmp_path):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="not executable"):
+        ship_main._run_preflight(str(tmp_path), json_mode=False)
+
+
+def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_path, capsys):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    stdout = (
+        "blocked: symbol gate failed\n"
+        "quality infrastructure incomplete\n"
+        "pytest FAILED test_file.py::test_case\n"
+        "sonar fail"
+    )
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout=stdout, stderr=""),
+    )
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    payload = ship_main.json.loads(capsys.readouterr().out.strip())
+    assert code == 1
+    assert payload["status"] == "fail"
+    assert payload["failed_gate_ids"] == ["symbol_gate", "quality_infra", "pytest", "sonar"]
+
+
+def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_path, capsys):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout="unknown failure", stderr=""),
+    )
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    payload = ship_main.json.loads(capsys.readouterr().out.strip())
+    assert code == 1
+    assert payload["failed_gate_ids"] == ["pre-push-hook"]
+
+
+def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
+    old_argv = os.sys.argv
+    os.sys.argv = ["ship_main.py", "--json"]
+    try:
+        with pytest.raises(RuntimeError, match="--json can only be used with --preflight"):
+            ship_main.main()
+    finally:
+        os.sys.argv = old_argv
+
+
+def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
+    import json
+    repo = tmp_path
+    hook = repo / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\\nexit 0\\n")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    def fake_run(cmd, **kwargs):
+        class FakeProc:
+            returncode = 1
+            stdout = "[lintgate] BLOCKED: secrets detected\\n"
+            stderr = ""
+
+        return FakeProc()
+
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
+
+    code = ship_main._run_preflight(str(repo), json_mode=True)
+    assert code == 1
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["status"] == "fail"
+    assert data["exit_code"] == 1
+    assert "secrets_scan" in data["failed_gate_ids"]
+
+
+def test_run_preflight_json_missing_hook_emits_error(ship_main, tmp_path, capsys):
+    import json
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    assert code == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "error"
+    assert data["error"] == "Missing .githooks/pre-push"
+
+
+def test_run_preflight_json_non_executable_hook_emits_error(ship_main, tmp_path, capsys):
+    import json
+
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    # intentionally do not chmod +x
+
+    code = ship_main._run_preflight(str(tmp_path), json_mode=True)
+    assert code == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "error"
+    assert data["error"] == ".githooks/pre-push is not executable"
+
+
+def test_run_preflight_non_json_prints_banner(ship_main, monkeypatch, tmp_path, capsys):
+    hook = tmp_path / ".githooks" / "pre-push"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
+    code = ship_main._run_preflight(str(tmp_path), json_mode=False)
+    assert code == 0
+    assert "[ship] [PREFLIGHT] Running strict local gate stack" in capsys.readouterr().out
