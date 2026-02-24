@@ -83,6 +83,30 @@ def test_cmd_install_fails_when_command_profile_sync_blocks(tmp_path, monkeypatc
     assert admin.cmd_install(args) == 1
 
 
+def test_cmd_install_includes_command_profile_in_report(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    fake_profile = SimpleNamespace(
+        config_path=tmp_path / "cfg.json",
+        config_writer=lambda _path, _cmd: False,
+    )
+    monkeypatch.setattr(admin, "PROFILES", {"antigravity": fake_profile})
+    monkeypatch.setattr(
+        admin,
+        "sync_agent_command_profile",
+        lambda *_args, **_kwargs: {
+            "blocking_issues": 0,
+            "summary": {"generated_templates": 1, "migrated": 1, "recovered": 0},
+        },
+    )
+
+    args = SimpleNamespace(agent="antigravity", dry_run=False)
+    assert admin.cmd_install(args) == 0
+    report = json.loads((tmp_path / "install_report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "already_configured"
+    assert report["command_profile"]["blocking_issues"] == 0
+    assert report["command_profile"]["summary"]["generated_templates"] == 1
+
+
 def test_cmd_bootstrap_propagates_install_and_doctor(monkeypatch) -> None:
     args = SimpleNamespace(agent="claude", dry_run=False)
     monkeypatch.setattr(admin, "cmd_install", lambda _args: 2)
