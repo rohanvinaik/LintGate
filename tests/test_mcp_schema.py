@@ -14,7 +14,11 @@ from lintgate.mcp_schema import (
 @dataclass
 class MockTool:
     name: str
-    inputSchema: dict
+    input_schema: dict
+
+    def __post_init__(self) -> None:
+        # Provider contracts reference `inputSchema`; expose it for test doubles.
+        self.inputSchema = self.input_schema
 
 
 def test_validate_schema_node_valid_string_enum():
@@ -65,22 +69,26 @@ def test_enforce_mcp_contract_success():
     contract = {"safety_critical_tools": ["tool1", "tool2"]}
     tools = [MockTool("tool1", {}), MockTool("tool2", {})]
 
-    with patch("pathlib.Path") as MockPath:
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
-        with patch("builtins.open", mock_open()):
-            with patch("yaml.safe_load", return_value=contract):
-                enforce_mcp_contract(tools)
+    with (
+        patch("pathlib.Path") as mock_path,
+        patch("builtins.open", mock_open()),
+        patch("yaml.safe_load", return_value=contract),
+    ):
+        mock_path.return_value.__truediv__.return_value.exists.return_value = True
+        enforce_mcp_contract(tools)
 
 
 def test_enforce_mcp_contract_missing_tool():
     contract = {"safety_critical_tools": ["tool1", "tool2"]}
     tools = [MockTool("tool1", {})]
 
-    with patch("pathlib.Path") as MockPath:
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
-        with patch("builtins.open", mock_open()):
-            with patch("yaml.safe_load", return_value=contract):
-                with pytest.raises(ProviderSchemaError) as excinfo:
-                    enforce_mcp_contract(tools)
-                assert "Safety-critical tools are missing" in str(excinfo.value)
-                assert "tool2" in str(excinfo.value)
+    with (
+        patch("pathlib.Path") as mock_path,
+        patch("builtins.open", mock_open()),
+        patch("yaml.safe_load", return_value=contract),
+    ):
+        mock_path.return_value.__truediv__.return_value.exists.return_value = True
+        with pytest.raises(ProviderSchemaError) as excinfo:
+            enforce_mcp_contract(tools)
+        assert "Safety-critical tools are missing" in str(excinfo.value)
+        assert "tool2" in str(excinfo.value)

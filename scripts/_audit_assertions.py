@@ -14,7 +14,7 @@ import contextlib
 
 import mcp_server
 
-OUT = "/tmp/lintgate_audit.jsonl"
+OUT = "/tmp/lintgate_audit.jsonl"  # nosec B108
 
 test_files = sorted(
     os.path.join(r, f)
