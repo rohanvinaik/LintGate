@@ -322,16 +322,16 @@ class MutationEngine:
         except (subprocess.SubprocessError, FileNotFoundError):
             return {}
 
-        # 0. If libcst is available, build a category map for mutants in these paths
+        # 0. Build a category map for mutants in these paths.
+        #    Uses mutmut+libcst when available, with a built-in AST fallback.
         mutant_category_map: dict[str, str] = {}
-        if cst:
-            for path in paths:
-                if os.path.exists(path):
-                    try:
-                        source = Path(path).read_text("utf-8")
-                        mutant_category_map.update(self._build_mutant_category_map(path, source))
-                    except Exception as e:
-                        logger.debug(f"Failed to build category map for {path}: {e}")
+        for path in paths:
+            if os.path.exists(path):
+                try:
+                    source = Path(path).read_text("utf-8")
+                    mutant_category_map.update(self._build_mutant_category_map(path, source))
+                except Exception as e:
+                    logger.debug(f"Failed to build category map for {path}: {e}")
 
         # Parse mutmut v3 output lines and aggregate per function
         func_counts: dict[str, dict[str, Any]] = {}
@@ -422,10 +422,26 @@ class MutationEngine:
         return states
 
     def _build_mutant_category_map(self, path: str, source: str) -> dict[str, str]:
-        """Use LibCST to replicate mutmut's mutant generation and map IDs to categories."""
+        """Build mutant-id -> category map for a module.
+
+        Prefers mutmut's native operator stream (when available) and falls back to
+        a lightweight AST-based approximation when optional dependencies are missing.
+        """
+        module_name = os.path.splitext(path)[0].replace("/", ".")
+        if module_name.startswith("."):
+            module_name = module_name[1:]
+
+        # Preferred path: match mutmut internals as closely as possible.
+        native_map = self._build_mutant_category_map_with_mutmut(module_name, source)
+        if native_map:
+            return native_map
+
+        # Fallback path: ensure deterministic category mapping even without mutmut/libcst.
+        return self._build_mutant_category_map_with_ast(module_name, source)
+
+    def _build_mutant_category_map_with_mutmut(self, module_name: str, source: str) -> dict[str, str]:
         if not cst:
             return {}
-
         try:
             module = cst.parse_module(source)
             wrapper = MetadataWrapper(module)
@@ -499,14 +515,6 @@ class MutationEngine:
             visitor = MappingVisitor(mutation_operators)
             wrapper.visit(visitor)
 
-            # Convert to full mutmut names: package.module.x__func__mutmut_N
-            # We need the module name from the path
-            # Convert to full mutmut names: package.module.x__func__mutmut_N
-            # We need the module name from the path
-            module_name = os.path.splitext(path)[0].replace("/", ".")
-            if module_name.startswith("."):
-                module_name = module_name[1:]
-
             id_map: dict[str, str] = {}
             # Collect mutants per function
             func_mutant_counts: dict[str, int] = {}
@@ -518,7 +526,91 @@ class MutationEngine:
 
             return id_map
         except Exception as e:
-            logger.debug(f"Exception in _build_mutant_category_map for {path}: {e}")
+            logger.debug(f"Exception in _build_mutant_category_map_with_mutmut for {module_name}: {e}")
+            return {}
+
+    def _build_mutant_category_map_with_ast(self, module_name: str, source: str) -> dict[str, str]:
+        """Approximate mutmut category IDs using plain AST traversal."""
+
+        class_sep = "\u01c1"
+
+        def _is_string_expr(node: ast.AST) -> bool:
+            return isinstance(node, ast.JoinedStr) or (
+                isinstance(node, ast.Constant) and isinstance(node.value, str)
+            )
+
+        def _infer_category(node: ast.AST) -> str | None:
+            if isinstance(node, ast.BinOp) and isinstance(
+                node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
+            ):
+                if _is_string_expr(node.left) or _is_string_expr(node.right):
+                    return "string"
+                return "arithmetic"
+            if isinstance(node, ast.BoolOp):
+                return "conditional"
+            if isinstance(node, ast.Compare):
+                return "conditional"
+            if isinstance(node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.Match)):
+                return "conditional"
+            if isinstance(node, ast.Constant):
+                if isinstance(node.value, str):
+                    return "string"
+                if isinstance(node.value, (int, float, complex)):
+                    return "number"
+            if isinstance(node, ast.Assign):
+                return "keyword"
+            return None
+
+        def _iter_function_nodes(node: ast.AST):
+            for child in ast.iter_child_nodes(node):
+                # Skip nested functions/classes so each function gets its own IDs.
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                    continue
+                yield child
+                yield from _iter_function_nodes(child)
+
+        class FallbackVisitor(ast.NodeVisitor):
+            def __init__(self):
+                self.id_map: dict[str, str] = {}
+                self.class_stack: list[str] = []
+                self.func_mutant_counts: dict[str, int] = {}
+
+            def visit_ClassDef(self, node: ast.ClassDef):  # noqa: N802
+                self.class_stack.append(node.name)
+                self.generic_visit(node)
+                self.class_stack.pop()
+
+            def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+                if self.class_stack:
+                    base = f"x{class_sep}{self.class_stack[-1]}{class_sep}{node.name}"
+                else:
+                    base = f"x_{node.name}"
+
+                for child in _iter_function_nodes(node):
+                    category = _infer_category(child)
+                    if not category:
+                        continue
+                    next_index = self.func_mutant_counts.get(base, 0) + 1
+                    self.func_mutant_counts[base] = next_index
+                    full_key = f"{module_name}.{base}__mutmut_{next_index}"
+                    self.id_map[full_key] = category
+
+                # Continue traversal for nested defs so they are handled separately.
+                self.generic_visit(node)
+
+            def visit_FunctionDef(self, node: ast.FunctionDef):  # noqa: N802
+                self._visit_function(node)
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):  # noqa: N802
+                self._visit_function(node)
+
+        try:
+            tree = ast.parse(source)
+            visitor = FallbackVisitor()
+            visitor.visit(tree)
+            return visitor.id_map
+        except (SyntaxError, ValueError, TypeError) as e:
+            logger.debug(f"Exception in _build_mutant_category_map_with_ast for {module_name}: {e}")
             return {}
 
 
