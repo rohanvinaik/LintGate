@@ -18,14 +18,30 @@ from mcp_tools.quality_helpers import (
     _BADGE_BLOCK_START,
     _README_NAMES,
     _REQUIRED_BADGE_FINGERPRINTS,
-    _compute_gitignore_additions as _quality_compute_gitignore_additions,
     _detect_github_remote,
+)
+from mcp_tools.quality_helpers import (
+    _compute_gitignore_additions as _quality_compute_gitignore_additions,
+)
+from mcp_tools.quality_helpers import (
     _detect_sonar_scanner as _quality_detect_sonar_scanner,
+)
+from mcp_tools.quality_helpers import (
     _detect_subprocess_usage as _quality_detect_subprocess_usage,
+)
+from mcp_tools.quality_helpers import (
     _generate_qlty_toml as _quality_generate_qlty_toml,
+)
+from mcp_tools.quality_helpers import (
     _inject_badges_into_readme as _quality_inject_badges_into_readme,
+)
+from mcp_tools.quality_helpers import (
     _normalize_qlty_exclude_pattern as _quality_normalize_qlty_exclude_pattern,
+)
+from mcp_tools.quality_helpers import (
     _run_sonar_scanner as _quality_run_sonar_scanner,
+)
+from mcp_tools.quality_helpers import (
     _write_pre_push_hook as _quality_write_pre_push_hook,
 )
 
