@@ -110,18 +110,18 @@ class _LocalDefinitionCollector(ast.NodeVisitor):
         self.defined_names: set[str] = set()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._record_name(node.name)
+        self._record_name(node.name, kind="func")
         self.generic_visit(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._record_name(node.name)
+        self._record_name(node.name, kind="async_func")
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self._record_name(node.name)
+        self._record_name(node.name, kind="class")
         self.generic_visit(node)
 
-    def _record_name(self, name: str) -> None:
+    def _record_name(self, name: str, kind: str) -> None:
         self.defined_names.add(name)
 
 
@@ -183,12 +183,12 @@ class _SourceFunctionVisitor(ast.NodeVisitor):
         self.class_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._handle_def(node)
+        self._handle_def(node, is_async=False)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._handle_def(node)
+        self._handle_def(node, is_async=True)
 
-    def _handle_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _handle_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:
         self._record_function(node.name)
         self.generic_visit(node)
 

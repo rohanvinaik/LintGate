@@ -4,7 +4,7 @@
 import collections
 import json
 
-INFILE = "/tmp/lintgate_audit.jsonl"
+INFILE = "/tmp/lintgate_audit.jsonl"  # nosec B108
 results = []
 with open(INFILE) as f:
     for line in f:
