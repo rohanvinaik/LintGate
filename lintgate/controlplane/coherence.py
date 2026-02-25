@@ -36,11 +36,45 @@ from .coherence_history import (
     detect_resolutions,
     state_severity,
 )
-from .coherence_scope import apply_edit_scope
+from .coherence_scope import (
+    apply_edit_scope,
+    classify_edit_scope,
+    has_ambient_critical_findings,
+)
+from .coherence_scoring import (
+    channel_failure_weight,
+    channel_finding_summary,
+    effective_failure_count,
+    find_shared_files,
+    finding_severity_counts,
+    is_cross_domain_failure,
+    ordered_failed_channels,
+    top_finding_kind,
+)
 from .types import ChannelResult, CoherenceResult
 
 if TYPE_CHECKING:
     from .session_memory import SessionMemory
+
+# Backward-compat aliases for tests and internal callers that still import
+# private helper names from this module.
+_apply_edit_scope = apply_edit_scope
+_classify_coupled_failure = classify_coupled_failure
+_classify_edit_scope = classify_edit_scope
+_classify_isolated_failure = classify_isolated_failure
+_classify_systemic_failure = classify_systemic_failure
+_detect_persistent_loud = detect_persistent_loud
+_detect_refactoring_tradeoffs = detect_refactoring_tradeoffs
+_detect_resolutions = detect_resolutions
+_channel_failure_weight = channel_failure_weight
+_channel_finding_summary = channel_finding_summary
+_effective_failure_count = effective_failure_count
+_find_shared_files = find_shared_files
+_finding_severity_counts = finding_severity_counts
+_has_ambient_critical_findings = has_ambient_critical_findings
+_is_cross_domain_failure = is_cross_domain_failure
+_ordered_failed_channels = ordered_failed_channels
+_top_finding_kind = top_finding_kind
 
 
 def compute_coherence(

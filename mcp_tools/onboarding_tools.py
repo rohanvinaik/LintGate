@@ -18,13 +18,70 @@ from mcp_tools.quality_helpers import (
     _BADGE_BLOCK_START,
     _README_NAMES,
     _REQUIRED_BADGE_FINGERPRINTS,
+    _compute_gitignore_additions as _quality_compute_gitignore_additions,
     _detect_github_remote,
+    _detect_sonar_scanner as _quality_detect_sonar_scanner,
+    _detect_subprocess_usage as _quality_detect_subprocess_usage,
+    _generate_qlty_toml as _quality_generate_qlty_toml,
+    _inject_badges_into_readme as _quality_inject_badges_into_readme,
+    _normalize_qlty_exclude_pattern as _quality_normalize_qlty_exclude_pattern,
+    _run_sonar_scanner as _quality_run_sonar_scanner,
+    _write_pre_push_hook as _quality_write_pre_push_hook,
 )
 
 _OPTIONAL_STARTUP_PACKAGES = {
     "pip-audit": "pip-audit",
     "ty": "ty",
 }
+
+
+# Backward-compat wrappers for helpers moved to mcp_tools.quality_helpers.
+def _write_pre_push_hook(project_root: str, write: bool) -> dict[str, Any]:
+    return _quality_write_pre_push_hook(project_root, write)
+
+
+def _compute_gitignore_additions(project_root: str) -> dict[str, Any]:
+    return _quality_compute_gitignore_additions(project_root)
+
+
+def _inject_badges_into_readme(
+    project_root: str,
+    badge_markdown: str,
+    write: bool,
+) -> dict[str, Any]:
+    return _quality_inject_badges_into_readme(
+        project_root,
+        badge_markdown,
+        write=write,
+    )
+
+
+def _generate_qlty_toml(layout: dict[str, Any], *, is_tool_runner: bool = False) -> str:
+    return _quality_generate_qlty_toml(layout, is_tool_runner=is_tool_runner)
+
+
+def _normalize_qlty_exclude_pattern(pattern: str) -> str:
+    return _quality_normalize_qlty_exclude_pattern(pattern)
+
+
+def _detect_subprocess_usage(project_root: str) -> bool:
+    return _quality_detect_subprocess_usage(project_root)
+
+
+def _detect_sonar_scanner() -> str | None:
+    return _quality_detect_sonar_scanner()
+
+
+def _run_sonar_scanner(
+    project_root: str,
+    sonar_token: str,
+    scanner_path: str,
+) -> dict[str, Any]:
+    return _quality_run_sonar_scanner(
+        project_root,
+        sonar_token,
+        scanner_path,
+    )
 
 
 def _tool_package_name(tool: str) -> str:
