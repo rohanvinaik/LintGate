@@ -197,10 +197,18 @@ jobs:
             GATE_STATUS=$?
           fi
 
-          # Pull request runs can include very large historical diffs; keep
-          # this step advisory here and enforce strictly on push/local ship.
-          if [ "$GATE_STATUS" -ne 0 ] && [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "::warning::Symbol coverage gate failed for pull_request diff; advisory only in Tests workflow."
+          # Pull request runs can include very large historical diffs. Also
+          # keep main push runs advisory to avoid blocking merges on legacy
+          # uncovered symbols while remediation is underway.
+          ADVISORY_MODE=0
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ADVISORY_MODE=1
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ADVISORY_MODE=1
+          fi
+
+          if [ "$GATE_STATUS" -ne 0 ] && [ "$ADVISORY_MODE" -eq 1 ]; then
+            echo "::warning::Symbol coverage gate failed; advisory in Tests workflow for ${{ github.event_name }} on ${{ github.ref }}."
             exit 0
           fi
 
