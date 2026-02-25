@@ -267,8 +267,7 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         extra_remote = sorted(set(remote_checks) - set(required_checks))
         if missing_remote:
             errors.append(
-                "Branch protection missing contract required check(s): "
-                + ", ".join(missing_remote)
+                "Branch protection missing contract required check(s): " + ", ".join(missing_remote)
             )
         if extra_remote:
             errors.append(

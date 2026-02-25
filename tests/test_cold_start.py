@@ -255,7 +255,7 @@ class TestGettingStarted:
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._collect_external_tool_gaps",
-                side_effect=[fake_gaps, fake_gaps],
+                return_value=fake_gaps,
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._project_venv_python",
@@ -287,7 +287,7 @@ class TestGettingStarted:
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._collect_external_tool_gaps",
-                side_effect=[fake_gaps, fake_gaps],
+                return_value=fake_gaps,
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._project_venv_python",
@@ -359,10 +359,14 @@ class TestGettingStarted:
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._collect_external_tool_gaps",
-                side_effect=[fake_gaps, fake_gaps],
+                return_value=fake_gaps,
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._detect_github_remote",
+                return_value={"detected": True, "owner": "alice", "repo": "demo"},
+            ),
+            mock.patch(
+                "mcp_tools.setup_github_quality._detect_github_remote",
                 return_value={"detected": True, "owner": "alice", "repo": "demo"},
             ),
         ):
@@ -412,11 +416,13 @@ class TestGettingStarted:
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools._collect_external_tool_gaps",
-                side_effect=[fake_gaps, fake_gaps],
+                return_value=fake_gaps,
             ),
             mock.patch(
                 "mcp_tools.onboarding_tools.os.path.expanduser",
-                side_effect=lambda p: str(settings_path) if p == "~/.claude/settings.json" else real_expanduser(p),
+                side_effect=lambda p: (
+                    str(settings_path) if p == "~/.claude/settings.json" else real_expanduser(p)
+                ),
             ),
         ):
             result = json.loads(getting_started(str(tmp_path)))

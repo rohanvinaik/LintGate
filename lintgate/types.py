@@ -267,6 +267,7 @@ class ProjectConfig:
     exemptions: dict[str, dict[str, Any]] = field(default_factory=dict)
     extra_tier3_linters: list[str] = field(default_factory=list)
     tool_version_requirements: dict[str, str] = field(default_factory=dict)
+    enforced_optional_groups: list[str] = field(default_factory=list)
     path_policies: list[dict[str, Any]] = field(default_factory=list)
     debounce: dict[str, float] = field(
         default_factory=lambda: {

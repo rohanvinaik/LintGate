@@ -372,7 +372,9 @@ class TestWhich:
 
 class TestCollectFromPyproject:
     def _empty_reqs(self):
-        return {tool: {"specifiers": [], "sources": []} for tool in _TRACKED_TOOLS}
+        return {
+            tool: {"specifiers": [], "sources": [], "is_optional": []} for tool in _TRACKED_TOOLS
+        }
 
     def test_no_pyproject(self, tmp_path):
         reqs = self._empty_reqs()
@@ -415,7 +417,9 @@ class TestCollectFromPyproject:
 
 class TestCollectFromRequirementsFiles:
     def _empty_reqs(self):
-        return {tool: {"specifiers": [], "sources": []} for tool in _TRACKED_TOOLS}
+        return {
+            tool: {"specifiers": [], "sources": [], "is_optional": []} for tool in _TRACKED_TOOLS
+        }
 
     def test_requirements_txt(self, tmp_path):
         (tmp_path / "requirements.txt").write_text("ruff>=0.4.0\nflask>=2.0\n")

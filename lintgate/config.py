@@ -212,6 +212,11 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
             if isinstance(k, str) and isinstance(v, (str, int, float))
         }
 
+    # Version checker specific settings
+    vcheck_raw = linters_raw.get("version_checker", {})
+    if isinstance(vcheck_raw, dict):
+        config.enforced_optional_groups = vcheck_raw.get("enforced_optional_groups", [])
+
     # Path policies (per-path tier/strictness overrides)
     path_policies_raw = raw.get("path_policies", [])
     if isinstance(path_policies_raw, list):

@@ -30,8 +30,9 @@ class VersionChecker(BaseLinter):
         requirements = collect_required_version_specs(
             ctx.project_root,
             project_config.tool_version_requirements,
+            enforced_groups=project_config.enforced_optional_groups,
         )
-        observations = inspect_tool_versions(requirements)
+        observations = inspect_tool_versions(requirements, project_root=ctx.project_root)
 
         for item in observations:
             status = item.get("status", "ok")
@@ -44,10 +45,16 @@ class VersionChecker(BaseLinter):
             source_path = _source_file_path(item.get("requirement_sources", []), ctx.project_root)
 
             severity = "warning"
+            is_optional = item.get("is_optional", False)
+
             if status == "missing" and required:
-                severity = "blocking"
+                severity = "warning" if is_optional else "blocking"
             if status == "mismatch":
-                severity = "blocking"
+                severity = "warning" if is_optional else "blocking"
+
+            kind = f"version-{status}"
+            if is_optional and status in ("missing", "mismatch"):
+                kind = f"version-optional-{status}"
 
             message = str(item.get("message", f"Version issue detected for {tool}"))
             if installed:
@@ -63,7 +70,7 @@ class VersionChecker(BaseLinter):
 
             yield LintIssue(
                 linter="version_checker",
-                kind=f"version-{status}",
+                kind=kind,
                 message=message,
                 file=source_path,
                 severity=severity,

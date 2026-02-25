@@ -3,119 +3,286 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
+from lintgate.linters.test_effectiveness.test_effectiveness_logic import (
+    AnalysisState,
+    analyze_function_effectiveness,
+    apply_filters,
+    build_assertion_upgrades,
+    build_manifest_for_project,
+    build_summary,
+    handle_no_mapped_functions,
+)
 
-def _build_manifest_for_project(path: str, helpers: Any) -> tuple[str, Any, list[str], list[str]]:
-    """Common setup: validate project, discover files, build manifest."""
-    from lintgate.channels.structure_channel import _discover_python_files
-    from lintgate.linters.test_effectiveness.manifest import build_test_effectiveness_manifest
-    from lintgate.linters.test_effectiveness.test_analyzer import (
-        _discover_source_files,
-        _discover_test_files,
+
+def _analyze_test_strength_impl(
+    path: str,
+    helpers: Any,
+    file_filter: str | None = None,
+    function_filter: str | None = None,
+    max_runtime_ms: int | None = None,
+) -> str:
+    """Implementation of analyze_test_strength tool."""
+    _start = time.perf_counter()
+
+    project_root = helpers["_validate_project_root"](path)
+    manifest, py_files, test_files, source_files = build_manifest_for_project(project_root)
+
+    if not py_files:
+        return json.dumps(
+            {
+                "error": "No Python files found in path.",
+                "state": AnalysisState.NO_PYTHON_FILES.value,
+            }
+        )
+
+    if not test_files:
+        return json.dumps(
+            {
+                "note": "No test files found (looking for test_*.py).",
+                "state": AnalysisState.NO_TEST_FILES.value,
+            }
+        )
+
+    if not source_files:
+        return json.dumps(
+            {
+                "note": "Test files found, but no source files found to analyze.",
+                "hint": "Run this tool on the project root, not the tests directory.",
+                "details": f"Found {len(test_files)} test files but 0 source files in '{path}'.",
+                "state": "no_source_files",
+            }
+        )
+
+    if manifest is None:
+        return json.dumps(
+            {
+                "error": "Failed to build effectiveness manifest.",
+                "state": "manifest_build_failed",
+            }
+        )
+
+    if not manifest.functions:
+        # (#56) Distinguish: were there any mappings at all but no public functions?
+        diag = manifest.diagnostics
+        if diag.mapped > 0:
+            return json.dumps(
+                {
+                    "note": "Mappings were found but no analyzable public functions were produced.",
+                    "hint": "Ensure source files contain public (non-underscore) functions.",
+                    "state": AnalysisState.MAPPINGS_FOUND_BUT_NO_ANALYZABLE_PUBLIC_FUNCTIONS.value,
+                    "diagnostics": diag.to_dict(),
+                }
+            )
+        return handle_no_mapped_functions(manifest, source_files, test_files)
+
+    # (#70) Check runtime budget — warn with confidence downgrade if analysis took too long
+    elapsed_ms = (time.perf_counter() - _start) * 1000
+    analysis_truncated = max_runtime_ms is not None and elapsed_ms > max_runtime_ms
+
+    result = build_summary(manifest, project_root)
+
+    if analysis_truncated:
+        result["state"] = AnalysisState.ANALYSIS_TRUNCATED.value
+        result["analysis_truncated"] = True
+        result["scanned_source_files"] = len(source_files)
+        result["scanned_test_files"] = len(test_files)
+        result["elapsed_ms"] = round(elapsed_ms, 1)
+        result["confidence"] = "low"  # downgrade confidence on truncated analysis
+        result["truncation_note"] = (
+            f"Analysis exceeded {max_runtime_ms}ms budget. Results may be incomplete. "
+            "Consider scoping with file_filter or increasing max_runtime_ms."
+        )
+    else:
+        result["state"] = AnalysisState.SUCCESS.value
+        result["analysis_truncated"] = False
+
+    apply_filters(result, file_filter, function_filter)
+
+    result["assertion_upgrades"] = build_assertion_upgrades(manifest)
+    result["next_actions"] = [
+        "inspect_test_assertions(path, test_file) — drill into specific test file",
+        "controlplane_test_skeleton(source_file) — generate mutation-aware test stubs",
+        "generate_property_tests(path) — Hypothesis templates for pure functions",
+    ]
+
+    return helpers["_json_dumps"](result, output_mode="compact")
+
+
+def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> str:
+    """Implementation of inspect_test_assertions tool."""
+    from lintgate.linters.test_effectiveness.types import (
+        TEFF_SCHEMA_VERSION,
     )
 
     project_root = helpers["_validate_project_root"](path)
-    py_files = _discover_python_files(project_root)
-    test_files = _discover_test_files(project_root)
-    source_files = _discover_source_files(project_root)
+    target_files = _resolve_target_files(project_root, test_file)
 
-    manifest = (
-        build_test_effectiveness_manifest(project_root, source_files, test_files)
-        if py_files and test_files
-        else None
-    )
-    return project_root, manifest, py_files, test_files
+    if isinstance(target_files, dict) and "error" in target_files:
+        return json.dumps(target_files)
 
+    if not target_files:
+        return json.dumps({"note": "No test files found to inspect."})
 
-def _build_summary(manifest: Any, project_root: str) -> dict[str, Any]:
-    """Build a compact summary of the effectiveness manifest."""
-    vulnerable = sorted(
-        (
-            (name, fe)
-            for name, fe in manifest.functions.items()
-            if fe.mutation_vulnerability > 0.5 and fe.test_count > 0
-        ),
-        key=lambda x: x[1].mutation_vulnerability,
-        reverse=True,
-    )
+    target_files.sort()
 
-    top_vulnerable = [
-        {
-            "function": name,
-            "vulnerability": round(fe.mutation_vulnerability, 3),
-            "effectiveness": round(fe.effectiveness_score, 3),
-            "semantic_ratio": round(fe.semantic_ratio, 3),
-            "test_count": fe.test_count,
-            "assertion_count": len(fe.assertions),
-        }
-        for name, fe in vulnerable[:10]
-    ]
-
-    untested = [
-        name
-        for name, fe in manifest.functions.items()
-        if fe.test_count == 0 and not name.startswith("_")
-    ]
-
-    return {
-        "project": project_root,
+    result: dict[str, Any] = {
+        "project_root": project_root,
+        "schema_version": TEFF_SCHEMA_VERSION,
+        "test_files_analyzed": len(target_files),
+        "test_functions": {},
         "summary": {
-            "effectiveness_score": round(manifest.project_score, 3),
-            "functions_analyzed": manifest.functions_analyzed,
-            "mutation_vulnerable_count": manifest.mutation_vulnerable_count,
-            "untested_count": len(untested),
+            "total_assertions": 0,
+            "semantic_assertions": 0,
+            "structural_assertions": 0,
+            "effectiveness_score": 0.0,
+            "quality_profile": {},
         },
-        "top_vulnerable": top_vulnerable,
-        "untested_functions": untested[:20],
+        "file_errors": {},
+        "contract_test_anti_patterns": [],
     }
 
+    _process_test_files(target_files, project_root, result)
+    _truncate_results(result)
+    _compute_test_summary(result, target_files)
 
-def _build_assertion_upgrades(manifest: Any) -> list[dict[str, str]]:
-    """Suggest concrete assertion upgrades based on current patterns."""
-    from lintgate.linters.test_effectiveness.types import AssertionKind
+    return helpers["_json_dumps"](result)
 
-    upgrades: list[dict[str, str]] = []
-    seen: set[str] = set()
 
-    for _name, fe in manifest.functions.items():
-        for a in fe.assertions:
-            key = f"{a.kind.value}:{a.target_expression}"
-            if key in seen:
+def _resolve_target_files(project_root: str, test_file: str) -> list[str] | dict[str, str]:
+    """Resolve target test files for inspection."""
+    import os
+
+    from lintgate.linters.test_effectiveness.test_analyzer import _discover_test_files
+
+    if not test_file:
+        return _discover_test_files(project_root)
+
+    full_test_path = test_file if os.path.isabs(test_file) else os.path.join(project_root, test_file)
+    if os.path.isdir(full_test_path):
+        return _discover_test_files(full_test_path)
+    elif os.path.exists(full_test_path):
+        return [full_test_path]
+    return {"error": f"Test file/directory not found: {test_file}"}
+
+
+def _process_test_files(target_files: list[str], project_root: str, result: dict[str, Any]) -> None:
+    """Process a list of test files and update the result dict."""
+    import os
+
+    from lintgate.linters.test_effectiveness.assertion_classifier import (
+        classify_test_file_from_path,
+    )
+
+    for t_file in target_files:
+        try:
+            file_assertions = classify_test_file_from_path(t_file)
+            if not file_assertions:
                 continue
-            seen.add(key)
 
-            if a.kind == AssertionKind.IS_NOT_NONE:
-                upgrades.append(
-                    {
-                        "current": f"assert {a.target_expression} is not None",
-                        "suggested": f"assert {a.target_expression} == expected_value",
-                        "reason": "is_not_none (0.3) → equality (0.9): catches value-altering mutants",
-                    }
-                )
-            elif a.kind == AssertionKind.IS_TRUE:
-                upgrades.append(
-                    {
-                        "current": f"assert {a.target_expression}",
-                        "suggested": f"assert {a.target_expression} == expected",
-                        "reason": "bare assert (0.2) → equality (0.9): catches -1→+1 sentinel mutations",
-                    }
-                )
-            elif a.kind == AssertionKind.ISINSTANCE_CHECK:
-                upgrades.append(
-                    {
-                        "current": f"assert isinstance({a.target_expression}, ...)",
-                        "suggested": f"assert {a.target_expression} == expected_value",
-                        "reason": "isinstance (0.3) → equality (0.9): type check doesn't verify value",
-                    }
+            rel_path = os.path.relpath(t_file, project_root)
+
+            for func_name, assertions in file_assertions.items():
+                # Qualify name if in batch mode
+                full_func_name = f"{rel_path}::{func_name}" if len(target_files) > 1 else func_name
+
+                func_data, anti_patterns = analyze_function_effectiveness(func_name, assertions)
+                result["contract_test_anti_patterns"].extend(
+                    {**ap, "function": full_func_name} for ap in anti_patterns
                 )
 
-            if len(upgrades) >= 10:
-                break
-        if len(upgrades) >= 10:
-            break
+                result["test_functions"][full_func_name] = func_data
+                result["summary"]["total_assertions"] += func_data["count"]
+                result["summary"]["semantic_assertions"] += func_data["semantic_count"]
+                result["summary"]["structural_assertions"] += func_data["structural_count"]
 
-    return upgrades
+        except Exception as e:
+            result["file_errors"][t_file] = {
+                "error_kind": type(e).__name__,
+                "message": str(e),
+                "file": t_file,
+            }
+
+
+def _truncate_results(result: dict[str, Any], max_funcs: int = 50) -> None:
+    """Truncate test functions if they exceed the maximum limit."""
+    if len(result["test_functions"]) > max_funcs:
+        all_sorted_keys = sorted(result["test_functions"].keys())
+        truncated_keys = all_sorted_keys[:max_funcs]
+        result["test_functions"] = {k: result["test_functions"][k] for k in truncated_keys}
+        result["summary"]["note"] = (
+            f"Results truncated to top {max_funcs} functions for performance. Use file_filter to narrow scope."
+        )
+        result["truncated"] = True
+    else:
+        result["truncated"] = False
+
+
+def _compute_test_summary(result: dict[str, Any], target_files: list[str]) -> None:
+    """Compute summary metrics for test assertions."""
+    _compute_summary_metadata(result, target_files)
+    _compute_quality_profile(result)
+
+
+def _compute_summary_metadata(result: dict[str, Any], target_files: list[str]) -> None:
+    """Compute basic metadata counts and ratios for the summary."""
+    analyzed_func_count = len(result["test_functions"])
+    analyzed_file_count = len(target_files) - len(result["file_errors"])
+    total_file_count = len(target_files)
+
+    # (#84) sentinel_ratio: fraction of analyzed functions with an isolated sentinel
+    isolated_count = sum(
+        1 for f in result["test_functions"].values() if f.get("has_isolated_sentinel")
+    )
+    result["summary"]["sentinel_ratio"] = (
+        round(isolated_count / analyzed_func_count, 3) if analyzed_func_count > 0 else 0.0
+    )
+
+    # (#85) file count metadata
+    result["summary"]["analyzed_file_count"] = analyzed_file_count
+    result["summary"]["total_file_count"] = total_file_count
+    if analyzed_file_count < total_file_count:
+        result["summary"]["ratio_note"] = (
+            f"quality_profile computed over {analyzed_file_count}/{total_file_count} files; "
+            f"{total_file_count - analyzed_file_count} errored."
+        )
+
+
+def _compute_quality_profile(result: dict[str, Any]) -> None:
+    """Compute average effectiveness score and semantic/structural ratios."""
+    from lintgate.linters.test_effectiveness.types import (
+        AssertionInfo,
+        FunctionEffectiveness,
+    )
+
+    if not result["test_functions"]:
+        return
+
+    total = result["summary"]["total_assertions"]
+    func_list = [
+        FunctionEffectiveness(
+            function_name=f_name,
+            assertions=[AssertionInfo.from_dict(ai) for ai in f_data["assertions"]],
+        )
+        for f_name, f_data in result["test_functions"].items()
+    ]
+
+    if func_list:
+        avg_score = sum(f.compute_scores() or f.effectiveness_score for f in func_list) / len(
+            func_list
+        )
+        result["summary"]["effectiveness_score"] = round(avg_score, 3)
+
+        total_sem = result["summary"]["semantic_assertions"]
+        result["summary"]["quality_profile"] = {
+            "semantic_ratio": round(total_sem / total, 3) if total > 0 else 0.0,
+            "structural_ratio": round(result["summary"]["structural_assertions"] / total, 3)
+            if total > 0
+            else 0.0,
+        }
+
 
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
@@ -126,56 +293,17 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         path: str,
         file_filter: str | None = None,
         function_filter: str | None = None,
+        max_runtime_ms: int | None = None,
     ) -> str:
         """Analyze test assertion quality and mutation vulnerability for a project.
 
-        WHEN TO USE: After controlplane_run shows test_effectiveness findings, or
-        when you want to understand which functions have weak tests that would let
-        mutants survive. This is the drill-down tool for the test_effectiveness channel.
-
         Returns project summary, top vulnerable functions, and suggested assertion upgrades.
-
-        Example: analyze_test_strength(path="/my/project")
-        Example: analyze_test_strength(path="/my/project", function_filter="parse")
-
-        Args:
-            path: Project root path.
-            file_filter: Optional filename substring to filter by.
-            function_filter: Optional function name substring to filter by.
+        Optional max_runtime_ms budget: if exceeded, returns a partial result with
+        state='analysis_truncated' and confidence='low'.
         """
-        project_root, manifest, py_files, test_files = _build_manifest_for_project(path, helpers)
-        if not py_files or not test_files or manifest is None:
-            return json.dumps({"error": "No Python files or test files found in project"})
-
-        if not manifest.functions:
-            return json.dumps(
-                {"note": "No functions analyzed. Check that test files follow test_ naming."}
-            )
-
-        result = _build_summary(manifest, project_root)
-
-        # Apply filters
-        if function_filter:
-            result["top_vulnerable"] = [
-                v
-                for v in result["top_vulnerable"]
-                if function_filter.lower() in v["function"].lower()
-            ]
-            result["untested_functions"] = [
-                f for f in result["untested_functions"] if function_filter.lower() in f.lower()
-            ]
-            result["filter_applied"] = {"function": function_filter}
-
-        # Add assertion upgrade suggestions
-        result["assertion_upgrades"] = _build_assertion_upgrades(manifest)
-
-        result["next_actions"] = [
-            "inspect_test_assertions(path, test_file) — drill into specific test file",
-            "controlplane_test_skeleton(source_file) — generate mutation-aware test stubs",
-            "generate_property_tests(path) — Hypothesis templates for pure functions",
-        ]
-
-        return helpers["_json_dumps"](result, output_mode="compact")
+        return _analyze_test_strength_impl(
+            path, helpers, file_filter, function_filter, max_runtime_ms
+        )
 
     @mcp.tool()
     def inspect_test_assertions(
@@ -184,71 +312,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     ) -> str:
         """Drill down into a single test file showing every assertion classified.
 
-        WHEN TO USE: After analyze_test_strength identifies weak tests, use this
-        to see exactly which assertions are structural (weak) vs semantic (strong)
-        in a specific test file.
-
-        Example: inspect_test_assertions(path="/my/project", test_file="tests/test_parser.py")
-
-        Args:
-            path: Project root path.
-            test_file: Path to the test file to inspect (relative or absolute).
+        Returns assertion list with kind, target, line, and mutation score.
         """
-        import os
-
-        from lintgate.linters.test_effectiveness.assertion_classifier import (
-            classify_test_file_from_path,
-        )
-
-        project_root = helpers["_validate_project_root"](path)
-
-        # Resolve test file path
-        if not os.path.isabs(test_file):
-            test_file = os.path.join(project_root, test_file)
-
-        if not os.path.exists(test_file):
-            return json.dumps({"error": f"Test file not found: {test_file}"})
-
-        test_assertions = classify_test_file_from_path(test_file)
-
-        if not test_assertions:
-            return json.dumps({"note": f"No test functions found in {test_file}"})
-
-        result: dict[str, Any] = {
-            "test_file": test_file,
-            "test_functions": {},
-            "summary": {
-                "total_tests": len(test_assertions),
-                "total_assertions": 0,
-                "semantic_assertions": 0,
-                "structural_assertions": 0,
-            },
-        }
-
-        from lintgate.linters.test_effectiveness.types import SEMANTIC_STRENGTH_THRESHOLD
-
-        for func_name, assertions in test_assertions.items():
-            func_data: dict[str, Any] = {
-                "assertions": [a.to_dict() for a in assertions],
-                "count": len(assertions),
-            }
-            semantic = sum(1 for a in assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD)
-            structural = len(assertions) - semantic
-            func_data["semantic_count"] = semantic
-            func_data["structural_count"] = structural
-
-            result["test_functions"][func_name] = func_data
-            result["summary"]["total_assertions"] += len(assertions)
-            result["summary"]["semantic_assertions"] += semantic
-            result["summary"]["structural_assertions"] += structural
-
-        total = result["summary"]["total_assertions"]
-        if total > 0:
-            result["summary"]["semantic_ratio"] = round(
-                result["summary"]["semantic_assertions"] / total, 3
-            )
-
-        return helpers["_json_dumps"](result)
+        return _inspect_test_assertions_impl(path, test_file, helpers)
 
     return {
         "analyze_test_strength": analyze_test_strength,

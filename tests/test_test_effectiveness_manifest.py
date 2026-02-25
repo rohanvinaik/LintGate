@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from lintgate.linters.test_effectiveness.manifest import (
+    TEFF_CACHE_SCHEMA_VERSION,
     _load_manifest_cache,
     _save_manifest_cache,
     build_test_effectiveness_manifest,
@@ -124,7 +125,14 @@ def test_load_manifest_cache_valid_json():
     metadata = {"/some/file.py": {"hash": "abc123"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump({"manifest": manifest.to_dict(), "metadata": metadata}, f)
+        json.dump(
+            {
+                "schema_version": TEFF_CACHE_SCHEMA_VERSION,
+                "manifest": manifest.to_dict(),
+                "metadata": metadata,
+            },
+            f,
+        )
         f.flush()
         cache_path = Path(f.name)
 

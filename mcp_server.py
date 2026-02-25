@@ -288,7 +288,7 @@ def _resolve_files(files: list[str], project_root: str) -> tuple[list[str], list
 
 
 @functools.cache
-def _normalize_linter_names(base: list[str], extra: list[str]) -> list[str]:
+def _normalize_linter_names(base: tuple[str, ...], extra: tuple[str, ...]) -> list[str]:
     names = [*base, *extra]
     seen: set[str] = set()
     deduped: list[str] = []
@@ -477,7 +477,9 @@ def _run_lint(
 
     linter_names = TIER_LINTERS[tier]
     if tier >= 3:
-        linter_names = _normalize_linter_names(linter_names, config.extra_tier3_linters)
+        linter_names = _normalize_linter_names(
+            tuple(linter_names), tuple(config.extra_tier3_linters)
+        )
 
     lint_tier = LintTier(
         name=f"tier_{tier}_manual",
@@ -647,13 +649,128 @@ from mcp_tools import register_all  # noqa: E402
 # Register all domain tools and expose them as module-level attributes
 # so existing code (tests, etc.) can do `from mcp_server import behavior_precheck`.
 _tool_funcs = register_all(mcp, _helpers)
-globals().update(_tool_funcs)
+
+# Explicitly export tools to satisfy static analyzers and typing contracts.
+from mcp_tools.registry_types import ToolRegistry  # noqa: E402
+
+analyze_test_strength = _tool_funcs["analyze_test_strength"]
+audit_context_health = _tool_funcs["audit_context_health"]
+audit_tool_versions = _tool_funcs["audit_tool_versions"]
+behavior_precheck = _tool_funcs["behavior_precheck"]
+bootstrap_context_files = _tool_funcs["bootstrap_context_files"]
+build_theory_pack = _tool_funcs["build_theory_pack"]
+compass_check = _tool_funcs["compass_check"]
+compass_interview = _tool_funcs["compass_interview"]
+compass_reset = _tool_funcs["compass_reset"]
+compass_status = _tool_funcs["compass_status"]
+compass_update = _tool_funcs["compass_update"]
+constraint_check = _tool_funcs["constraint_check"]
+context_guidance = _tool_funcs["context_guidance"]
+context_patch_apply = _tool_funcs["context_patch_apply"]
+context_patch_review = _tool_funcs["context_patch_review"]
+controlplane_agent_feedback = _tool_funcs["controlplane_agent_feedback"]
+controlplane_apply_repairs = _tool_funcs["controlplane_apply_repairs"]
+controlplane_get_details = _tool_funcs["controlplane_get_details"]
+controlplane_report_repair = _tool_funcs["controlplane_report_repair"]
+controlplane_run = _tool_funcs["controlplane_run"]
+controlplane_status = _tool_funcs["controlplane_status"]
+controlplane_test_skeleton = _tool_funcs["controlplane_test_skeleton"]
+declare_mode = _tool_funcs["declare_mode"]
+dep_health_check = _tool_funcs["dep_health_check"]
+dep_sync = _tool_funcs["dep_sync"]
+extract_project_theory = _tool_funcs["extract_project_theory"]
+extract_theory_constraints = _tool_funcs["extract_theory_constraints"]
+generate_property_tests = _tool_funcs["generate_property_tests"]
+get_theory_context = _tool_funcs["get_theory_context"]
+getting_started = _tool_funcs["getting_started"]
+global_memory_reset = _tool_funcs["global_memory_reset"]
+global_memory_status = _tool_funcs["global_memory_status"]
+habit_compact = _tool_funcs["habit_compact"]
+habit_configure = _tool_funcs["habit_configure"]
+habit_status = _tool_funcs["habit_status"]
+hygiene_check = _tool_funcs["hygiene_check"]
+inspect_algebra = _tool_funcs["inspect_algebra"]
+inspect_test_assertions = _tool_funcs["inspect_test_assertions"]
+lint_files = _tool_funcs["lint_files"]
+lint_fix = _tool_funcs["lint_fix"]
+lint_get_details = _tool_funcs["lint_get_details"]
+lint_project = _tool_funcs["lint_project"]
+lint_status = _tool_funcs["lint_status"]
+model_profile_probe_start = _tool_funcs["model_profile_probe_start"]
+model_profile_probe_submit = _tool_funcs["model_profile_probe_submit"]
+model_profile_status = _tool_funcs["model_profile_status"]
+prediction_register = _tool_funcs["prediction_register"]
+scaffold_config = _tool_funcs["scaffold_config"]
+setup_github_quality = _tool_funcs["setup_github_quality"]
+setup_hooks = _tool_funcs["setup_hooks"]
+telemetry_summary = _tool_funcs["telemetry_summary"]
+theory_mode_enter = _tool_funcs["theory_mode_enter"]
+theory_mode_freeze = _tool_funcs["theory_mode_freeze"]
+
+__all__ = [
+    "mcp",
+    "ToolRegistry",
+    "analyze_test_strength",
+    "audit_context_health",
+    "audit_tool_versions",
+    "behavior_precheck",
+    "bootstrap_context_files",
+    "build_theory_pack",
+    "compass_check",
+    "compass_interview",
+    "compass_reset",
+    "compass_status",
+    "compass_update",
+    "constraint_check",
+    "context_guidance",
+    "context_patch_apply",
+    "context_patch_review",
+    "controlplane_agent_feedback",
+    "controlplane_apply_repairs",
+    "controlplane_get_details",
+    "controlplane_report_repair",
+    "controlplane_run",
+    "controlplane_status",
+    "controlplane_test_skeleton",
+    "declare_mode",
+    "dep_health_check",
+    "dep_sync",
+    "extract_project_theory",
+    "extract_theory_constraints",
+    "generate_property_tests",
+    "get_theory_context",
+    "getting_started",
+    "global_memory_reset",
+    "global_memory_status",
+    "habit_compact",
+    "habit_configure",
+    "habit_status",
+    "hygiene_check",
+    "inspect_algebra",
+    "inspect_test_assertions",
+    "lint_files",
+    "lint_fix",
+    "lint_get_details",
+    "lint_project",
+    "lint_status",
+    "model_profile_probe_start",
+    "model_profile_probe_submit",
+    "model_profile_status",
+    "prediction_register",
+    "scaffold_config",
+    "setup_github_quality",
+    "setup_hooks",
+    "telemetry_summary",
+    "theory_mode_enter",
+    "theory_mode_freeze",
+]
 
 # ─── Version constant (referenced by test_mcp_schema_contracts) ─────────
 # lint_status reports "version": "0.2.0" — keep this here for source-level checks.
 _VERSION = "0.2.0"
 
 # ─── Entry point ────────────────────────────────────────────────────────
+
 
 def run_server() -> None:
     from lintgate.mcp_schema import (
@@ -671,6 +788,7 @@ def run_server() -> None:
         sys.exit(1)
 
     mcp.run()
+
 
 if __name__ == "__main__":
     run_server()

@@ -134,7 +134,7 @@ class TestCheckImportCyclesDuplicate:
         graph: dict[str, set[str]] = {"a": {"b"}, "b": {"a"}}
 
         with patch(
-            "lintgate.channels.structure_channel._find_cycles",
+            "lintgate.channels.structure_logic._find_cycles",
             return_value=[["a", "b"], ["b", "a"]],
         ):
             findings = _check_import_cycles(graph, file_map, "/proj")
@@ -155,7 +155,7 @@ class TestCheckModuleSizeP50Zero:
         # but median is 0, that's impossible. Let's mock statistics.median.
         file_loc = {f"/proj/f{i}.py": 50 for i in range(6)}
 
-        with patch("lintgate.channels.structure_channel.statistics.median", return_value=0):
+        with patch("lintgate.channels.structure_logic.statistics.median", return_value=0):
             findings = _check_module_size_distribution(file_loc, "/proj")
 
         assert findings == []

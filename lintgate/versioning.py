@@ -99,10 +99,11 @@ def run_version_audit(
 def collect_required_version_specs(
     project_root: str,
     config_requirements: dict[str, str] | None = None,
+    enforced_groups: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Collect tool version requirements from project metadata and config."""
     requirements: dict[str, dict[str, Any]] = {
-        tool: {"specifiers": [], "sources": []} for tool in _TRACKED_TOOLS
+        tool: {"specifiers": [], "sources": [], "is_optional": []} for tool in _TRACKED_TOOLS
     }
 
     if config_requirements:
@@ -111,21 +112,28 @@ def collect_required_version_specs(
             if canonical in requirements and str(specifier).strip():
                 requirements[canonical]["specifiers"].append(str(specifier).strip())
                 requirements[canonical]["sources"].append(".claude/lintgate.yaml:tool_versions")
+                requirements[canonical]["is_optional"].append(False)
 
     project_path = Path(project_root)
-    _collect_from_pyproject(project_path, requirements)
+    _collect_from_pyproject(project_path, requirements, enforced_groups=enforced_groups)
     _collect_from_requirements_files(project_path, requirements)
 
     # Normalize unique specifiers while preserving order.
     for tool in requirements:
         seen: set[str] = set()
         deduped_specs = []
-        for spec in requirements[tool]["specifiers"]:
+        is_optional = True
+        for i, spec in enumerate(requirements[tool]["specifiers"]):
             if spec not in seen:
                 seen.add(spec)
                 deduped_specs.append(spec)
+            # If ANY source says it's NOT optional, then the combined requirement is NOT optional
+            if not requirements[tool]["is_optional"][i]:
+                is_optional = False
+
         requirements[tool]["specifiers"] = deduped_specs
         requirements[tool]["combined_specifier"] = ",".join(deduped_specs)
+        requirements[tool]["is_optional_combined"] = is_optional if deduped_specs else False
 
     return requirements
 
@@ -139,7 +147,13 @@ def inspect_tool_versions(
 
     for tool_name, spec in sorted(_TRACKED_TOOLS.items()):
         req_info = requirements.get(
-            tool_name, {"specifiers": [], "sources": [], "combined_specifier": ""}
+            tool_name,
+            {
+                "specifiers": [],
+                "sources": [],
+                "is_optional": [],
+                "combined_specifier": "",
+            },
         )
         required_spec = str(req_info.get("combined_specifier", "") or "")
         installed_version = _installed_version(spec, project_root=project_root)
@@ -174,6 +188,7 @@ def inspect_tool_versions(
                 "tool": tool_name,
                 "required_specifier": required_spec,
                 "requirement_sources": req_info.get("sources", []),
+                "is_optional": req_info.get("is_optional_combined", False),
                 "installed_version": installed_version,
                 "executable_path": executable_path,
                 "status": status,
@@ -188,6 +203,7 @@ def inspect_tool_versions(
 def _collect_from_pyproject(
     project_path: Path,
     requirements: dict[str, dict[str, Any]],
+    enforced_groups: list[str] | None = None,
 ) -> None:
     """Collect relevant requirements from pyproject.toml."""
     pyproject = project_path / "pyproject.toml"
@@ -203,31 +219,40 @@ def _collect_from_pyproject(
     project = data.get("project", {})
     requires_python = project.get("requires-python")
     if isinstance(requires_python, str) and requires_python.strip():
+        _ensure_entry(requirements, "python")
         requirements["python"]["specifiers"].append(requires_python.strip())
         requirements["python"]["sources"].append("pyproject.toml:project.requires-python")
+        requirements["python"]["is_optional"].append(False)
 
-    dep_groups: list[tuple[str, list[str]]] = []
+    dep_groups: list[tuple[str, list[str], bool]] = []
     deps = project.get("dependencies", [])
     if isinstance(deps, list):
-        dep_groups.append(("pyproject.toml:project.dependencies", deps))
+        dep_groups.append(("pyproject.toml:project.dependencies", deps, False))
 
     optional = project.get("optional-dependencies", {})
     if isinstance(optional, dict):
         for group_name, group_deps in optional.items():
             if isinstance(group_deps, list):
+                is_enforced = (enforced_groups is not None) and (group_name in enforced_groups)
                 dep_groups.append(
-                    (f"pyproject.toml:project.optional-dependencies.{group_name}", group_deps)
+                    (
+                        f"pyproject.toml:project.optional-dependencies.{group_name}",
+                        group_deps,
+                        not is_enforced,
+                    )
                 )
 
-    for source, entries in dep_groups:
+    for source, entries, is_opt in dep_groups:
         for entry in entries:
             parsed = _parse_requirement_entry(entry)
             if not parsed:
                 continue
             tool_name, specifier = parsed
             if specifier:
+                _ensure_entry(requirements, tool_name)
                 requirements[tool_name]["specifiers"].append(specifier)
                 requirements[tool_name]["sources"].append(source)
+                requirements[tool_name]["is_optional"].append(is_opt)
 
 
 def _collect_from_requirements_files(
@@ -250,8 +275,22 @@ def _collect_from_requirements_files(
                 continue
             tool_name, specifier = parsed
             if specifier:
+                _ensure_entry(requirements, tool_name)
                 requirements[tool_name]["specifiers"].append(specifier)
                 requirements[tool_name]["sources"].append(f"{filename}:{idx}")
+                requirements[tool_name]["is_optional"].append(False)
+
+
+def _ensure_entry(requirements: dict[str, dict[str, Any]], tool_name: str) -> None:
+    """Ensure a tool entry has all required keys."""
+    if tool_name not in requirements:
+        requirements[tool_name] = {"specifiers": [], "sources": [], "is_optional": []}
+    else:
+        entry = requirements[tool_name]
+        for key in ("specifiers", "sources", "is_optional"):
+            if key not in entry:
+                entry[key] = []
+
 
 
 def _parse_requirement_entry(entry: str) -> tuple[str, str] | None:

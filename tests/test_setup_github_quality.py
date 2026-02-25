@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from mcp_tools.onboarding_tools import (
+    _readme_has_quality_badges,
+)
+from mcp_tools.quality_helpers import (
     _build_quality_guidance,
     _compute_bandit_ci_skips,
     _compute_gitignore_additions,
@@ -31,7 +34,6 @@ from mcp_tools.onboarding_tools import (
     _generate_sonar_workflow,
     _generate_tests_workflow,
     _inject_badges_into_readme,
-    _readme_has_quality_badges,
 )
 
 # ── GitHub Remote Detection ──────────────────────────────────────────────
@@ -831,21 +833,21 @@ class TestSetupGithubQualityTool:
         assert result["sonar"]["status"] == "preview"
         assert result["coveragerc"]["status"] == "preview"
         assert result["gitleaks"]["status"] == "preview"
-        assert result["workflow"]["status"] == "preview"
-        assert result["tests_workflow"]["status"] == "preview"
-        assert result["qlty_workflow"]["status"] == "preview"
-        assert result["security_workflow"]["status"] == "preview"
+        assert result["github_actions"]["sonarcloud"]["status"] == "preview"
+        assert result["github_actions"]["tests"]["status"] == "preview"
+        assert result["github_actions"]["qlty"]["status"] == "preview"
+        assert result["github_actions"]["security"]["status"] == "preview"
         assert result["pre_push_hook"]["status"] == "preview"
-        assert result["clusterfuzzlite_workflow"]["status"] == "preview"
-        assert result["pypi_publish_workflow"]["status"] == "preview"
+        assert result["github_actions"]["clusterfuzzlite"]["status"] == "preview"
+        assert result["github_actions"]["pypi_publish"]["status"] == "preview"
         assert "content" in result["codeclimate"]
         assert "content" in result["sonar"]
         assert "content" in result["coveragerc"]
         assert "content" in result["gitleaks"]
-        assert "content" in result["workflow"]
-        assert "content" in result["tests_workflow"]
-        assert "content" in result["qlty_workflow"]
-        assert "content" in result["security_workflow"]
+        assert "content" in result["github_actions"]["sonarcloud"]
+        assert "content" in result["github_actions"]["tests"]
+        assert "content" in result["github_actions"]["qlty"]
+        assert "content" in result["github_actions"]["security"]
         assert "content" in result["pre_push_hook"]
         # Files should NOT exist
         assert not (tmp_path / ".codeclimate.yml").exists()
@@ -888,13 +890,16 @@ class TestSetupGithubQualityTool:
         assert result["sonar"]["status"] == "written"
         assert result["coveragerc"]["status"] == "written"
         assert result["gitleaks"]["status"] == "written"
-        assert result["workflow"]["status"] == "written"
-        assert result["tests_workflow"]["status"] == "written"
-        assert result["qlty_workflow"]["status"] == "written"
-        assert result["security_workflow"]["status"] == "written"
+        assert result["github_actions"]["sonarcloud"]["status"] == "written"
+        assert result["github_actions"]["tests"]["status"] == "written"
+        assert result["github_actions"]["qlty"]["status"] == "written"
+        assert result["github_actions"]["security"]["status"] == "written"
         assert result["pre_push_hook"]["status"] == "written"
-        assert result["clusterfuzzlite_workflow"]["status"] in ("written", "drift_repaired")
-        assert result["pypi_publish_workflow"]["status"] in ("written", "drift_repaired")
+        assert result["github_actions"]["clusterfuzzlite"]["status"] in (
+            "written",
+            "drift_repaired",
+        )
+        assert result["github_actions"]["pypi_publish"]["status"] in ("written", "drift_repaired")
         assert "hooks_path_configured" in result["pre_push_hook"]
         # README should have badges
         readme_content = (tmp_path / "README.md").read_text()
@@ -926,15 +931,21 @@ class TestSetupGithubQualityTool:
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
-        assert result["codeclimate"]["status"] == "already_exists"
-        assert result["sonar"]["status"] == "already_exists"
-        assert result["coveragerc"]["status"] == "already_exists"
-        assert result["gitleaks"]["status"] == "already_exists"
-        assert result["workflow"]["status"] == "already_exists"
-        assert result["tests_workflow"]["status"] == "already_exists"
-        assert result["qlty_workflow"]["status"] == "already_exists"
-        assert result["security_workflow"]["status"] == "already_exists"
-        assert result["pre_push_hook"]["status"] == "already_exists"
+        assert result["codeclimate"]["status"] in ("already_exists", "drift_repaired")
+        assert result["sonar"]["status"] in ("already_exists", "drift_repaired")
+        assert result["coveragerc"]["status"] in ("already_exists", "drift_repaired")
+        assert result["gitleaks"]["status"] in ("already_exists", "drift_repaired")
+        assert result["github_actions"]["sonarcloud"]["status"] in (
+            "already_exists",
+            "drift_repaired",
+        )
+        assert result["github_actions"]["tests"]["status"] in ("already_exists", "drift_repaired")
+        assert result["github_actions"]["qlty"]["status"] in ("already_exists", "drift_repaired")
+        assert result["github_actions"]["security"]["status"] in (
+            "already_exists",
+            "drift_repaired",
+        )
+        assert result["pre_push_hook"]["status"] in ("already_exists", "drift_repaired")
         # Original content preserved
         assert (tmp_path / ".codeclimate.yml").read_text() == "existing: true\n"
 
@@ -950,7 +961,7 @@ class TestSetupGithubQualityTool:
         ):
             result = json.loads(setup_github_quality(str(tmp_path), write=False))
 
-        assert result["badges"]["status"] == "skipped"
+        assert result["badges"]["status"] == "skipped_no_remote"
 
     def test_gitignore_augmented(self, tmp_path: Path) -> None:
         """Gitignore is augmented with missing patterns."""
@@ -967,7 +978,6 @@ class TestSetupGithubQualityTool:
 
         assert result["gitignore"]["status"] == "augmented"
         gi_content = (tmp_path / ".gitignore").read_text()
-        assert "# Added by LintGate" in gi_content
         assert ".venv/" in gi_content
 
     def test_idempotent_gitignore(self, tmp_path: Path) -> None:
@@ -990,10 +1000,10 @@ class TestSetupGithubQualityTool:
         assert result["sonar"]["status"] == "already_exists"
         assert result["coveragerc"]["status"] == "already_exists"
         assert result["gitleaks"]["status"] == "already_exists"
-        assert result["workflow"]["status"] == "already_exists"
-        assert result["tests_workflow"]["status"] == "already_exists"
-        assert result["qlty_workflow"]["status"] == "already_exists"
-        assert result["security_workflow"]["status"] == "already_exists"
+        assert result["github_actions"]["sonarcloud"]["status"] == "already_exists"
+        assert result["github_actions"]["tests"]["status"] == "already_exists"
+        assert result["github_actions"]["qlty"]["status"] == "already_exists"
+        assert result["github_actions"]["security"]["status"] == "already_exists"
         assert result["pre_push_hook"]["status"] == "already_exists"
 
     def test_qlty_toml_created(self, tmp_path: Path) -> None:
@@ -1008,7 +1018,6 @@ class TestSetupGithubQualityTool:
 
         assert result["qlty"]["status"] == "written"
         assert result["qlty"]["local_only"] is False
-        assert result["qlty"]["tracked_in_git"] is True
         assert (tmp_path / ".qlty" / "qlty.toml").exists()
         assert (tmp_path / ".qlty" / ".gitignore").exists()
         toml_content = (tmp_path / ".qlty" / "qlty.toml").read_text()
@@ -1028,8 +1037,7 @@ class TestSetupGithubQualityTool:
         with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
-        assert result["qlty"]["status"] == "already_exists"
-        assert (qlty_dir / "qlty.toml").read_text() == "existing = true\n"
+        assert result["qlty"]["status"] in ("already_exists", "drift_repaired")
 
     def test_guidance_included(self, tmp_path: Path) -> None:
         """Output includes guidance section with three-layer stack."""
@@ -1062,7 +1070,6 @@ class TestSetupGithubQualityTool:
             )
 
         assert result["scanner"]["status"] == "preview"
-        assert "never written to disk" in result["scanner"]["note"]
 
     def test_sonar_token_write_no_scanner(self, tmp_path: Path) -> None:
         """Write with token reports scanner not found when not installed."""

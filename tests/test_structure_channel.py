@@ -18,6 +18,7 @@ import textwrap
 import pytest
 
 from lintgate.channels.structure_channel import (
+    _NESTED_SUBPROJECT_MARKERS,
     StructureChannel,
     _build_reexport_map,
     _check_import_cycles,
@@ -25,6 +26,7 @@ from lintgate.channels.structure_channel import (
     _check_orphans,
     _check_package_cohesion,
     _count_loc,
+    _detect_nested_subproject_roots,
     _detect_reexports,
     _discover_python_files,
     _find_cycles,
@@ -866,3 +868,115 @@ class TestCheckOrphansWildcardAndAmbiguous:
         # pkg.other: no re-export at all → standard orphan → confidence 0.6
         assert len(other_findings) == 1
         assert other_findings[0].confidence == 0.6
+
+
+class TestDetectNestedSubprojectRoots:
+    """Tests for _detect_nested_subproject_roots (PR-H / #69)."""
+
+    def test_empty_project_root_returns_empty(self, tmp_path):
+        """No subdirectories → no nested subprojects detected."""
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        assert result == frozenset()
+
+    def test_no_marker_in_subdir_not_excluded(self, tmp_path):
+        """A plain subdirectory without any marker is not excluded."""
+        plain = tmp_path / "src"
+        plain.mkdir()
+        (plain / "module.py").write_text("x = 1")
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        assert str(plain) not in result
+
+    def test_pyproject_toml_marker_triggers_exclusion(self, tmp_path):
+        """A subdir with pyproject.toml is detected as a nested subproject."""
+        nested = tmp_path / "nested_lib"
+        nested.mkdir()
+        (nested / "pyproject.toml").write_text('[project]\nname = "nested"\n')
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        assert str(nested) in result
+
+    def test_setup_py_marker_triggers_exclusion(self, tmp_path):
+        """A subdir with setup.py is detected as a nested subproject."""
+        nested = tmp_path / "legacy_lib"
+        nested.mkdir()
+        (nested / "setup.py").write_text("from setuptools import setup; setup()")
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        assert str(nested) in result
+
+    def test_git_dir_marker_triggers_exclusion(self, tmp_path):
+        """A subdir with a .git directory is detected as a separate git repo."""
+        nested = tmp_path / "cloned_repo"
+        nested.mkdir()
+        (nested / ".git").mkdir()
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        assert str(nested) in result
+
+    def test_allowlisted_dir_not_excluded(self, tmp_path):
+        """A directory in the allowlist is NOT excluded even with markers present."""
+        nested = tmp_path / "vendor_analyzed"
+        nested.mkdir()
+        (nested / "pyproject.toml").write_text('[project]\nname = "vendor"\n')
+        result = _detect_nested_subproject_roots(
+            str(tmp_path), allowlist=frozenset({"vendor_analyzed"})
+        )
+        assert str(nested) not in result
+
+    def test_multiple_subprojects_all_detected(self, tmp_path):
+        """Multiple subdirectories with markers are all returned."""
+        sub_a = tmp_path / "proj_a"
+        sub_b = tmp_path / "proj_b"
+        sub_a.mkdir()
+        sub_b.mkdir()
+        (sub_a / "setup.cfg").write_text("[metadata]\nname = proj_a")
+        (sub_b / "pyproject.toml").write_text('[project]\nname = "proj_b"\n')
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        assert str(sub_a) in result
+        assert str(sub_b) in result
+        assert str(plain) not in result
+
+    def test_nested_markers_only_checks_direct_children(self, tmp_path):
+        """Markers in grandchildren are NOT detected (only direct children checked)."""
+        src = tmp_path / "src"
+        src.mkdir()
+        deep = src / "deep_nested"
+        deep.mkdir()
+        (deep / "pyproject.toml").write_text('[project]\nname = "deep"\n')
+        result = _detect_nested_subproject_roots(str(tmp_path))
+        # src has no markers — should NOT be excluded
+        assert str(src) not in result
+
+    def test_nested_subproject_markers_constant_nonempty(self):
+        """_NESTED_SUBPROJECT_MARKERS contains required sentinel values."""
+        assert "pyproject.toml" in _NESTED_SUBPROJECT_MARKERS
+        assert ".git" in _NESTED_SUBPROJECT_MARKERS
+        assert "setup.py" in _NESTED_SUBPROJECT_MARKERS
+        assert len(_NESTED_SUBPROJECT_MARKERS) >= 3
+
+    def test_discover_python_files_excludes_nested_subprojects(self, tmp_path):
+        """_discover_python_files skips directories identified as nested subprojects."""
+        # Create a normal source file at project root
+        (tmp_path / "main.py").write_text("def main(): pass")
+        # Create a nested subproject with its own python files
+        sub = tmp_path / "nested"
+        sub.mkdir()
+        (sub / "pyproject.toml").write_text('[project]\nname = "nested"')
+        (sub / "nested_module.py").write_text("# nested")
+        py_files = _discover_python_files(str(tmp_path))
+        filenames = [os.path.basename(f) for f in py_files]
+        assert "main.py" in filenames
+        assert "nested_module.py" not in filenames
+
+    def test_discover_python_files_allowlist_includes_nested(self, tmp_path):
+        """An allowlisted nested dir IS included in file discovery."""
+        (tmp_path / "main.py").write_text("def main(): pass")
+        sub = tmp_path / "vendor"
+        sub.mkdir()
+        (sub / "pyproject.toml").write_text('[project]\nname = "vendor"')
+        (sub / "vendor_module.py").write_text("# vendored")
+        py_files = _discover_python_files(
+            str(tmp_path), nested_subproject_allowlist=frozenset({"vendor"})
+        )
+        filenames = [os.path.basename(f) for f in py_files]
+        assert "main.py" in filenames
+        assert "vendor_module.py" in filenames

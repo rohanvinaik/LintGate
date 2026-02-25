@@ -184,7 +184,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             sys.exit(1)
 
         try:
-            compile_and_validate_schemas(tools, agent_profile="strict" if profile.schema_strict else "relaxed")
+            compile_and_validate_schemas(
+                tools, agent_profile="strict" if profile.schema_strict else "relaxed"
+            )
             print("[+] Schema validation passed.")
         except ProviderSchemaError as e:
             print(f"[!] Schema Validation Error: {e}")
@@ -194,7 +196,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         if missing_expected:
             print(f"[!] DEGRADED: Missing expected tools defined in contract: {missing_expected}")
             if getattr(args, "fix", False):
-                print("  => --fix cannot dynamically write tool code. Please check mcp_tools registry.")
+                print(
+                    "  => --fix cannot dynamically write tool code. Please check mcp_tools registry."
+                )
             sys.exit(1)
 
     asyncio.run(validate_schemas())
@@ -213,17 +217,23 @@ def main() -> int:
 
     # Install command
     p_install = subparsers.add_parser("install", help="Install config for a specific agent")
-    p_install.add_argument("--agent", required=True, choices=list(PROFILES.keys()), help="Target agent")
+    p_install.add_argument(
+        "--agent", required=True, choices=list(PROFILES.keys()), help="Target agent"
+    )
     p_install.add_argument("--dry-run", action="store_true", help="Preview mode")
 
     # Bootstrap command
     p_bootstrap = subparsers.add_parser("bootstrap", help="Bootstrap everything to green")
-    p_bootstrap.add_argument("--agent", required=True, choices=list(PROFILES.keys()), help="Target agent")
+    p_bootstrap.add_argument(
+        "--agent", required=True, choices=list(PROFILES.keys()), help="Target agent"
+    )
     p_bootstrap.add_argument("--dry-run", action="store_true")
 
     # Doctor command
     p_doctor = subparsers.add_parser("doctor", help="Verify integration health")
-    p_doctor.add_argument("--agent", required=True, choices=list(PROFILES.keys()), help="Target agent")
+    p_doctor.add_argument(
+        "--agent", required=True, choices=list(PROFILES.keys()), help="Target agent"
+    )
     p_doctor.add_argument("--fix", action="store_true", help="Attempt auto-fix")
     p_doctor.add_argument("--dry-run", action="store_true")
 

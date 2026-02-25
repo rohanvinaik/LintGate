@@ -8,6 +8,7 @@ Follows the same caching pattern as performance_checks/manifest.py:
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 from typing import Any
@@ -21,6 +22,11 @@ from .test_analyzer import (
 )
 from .types import TestEffectivenessManifest
 
+# Increment this constant whenever the cache schema changes in a backward-
+# incompatible way (e.g. new required keys, changed field semantics).
+# Caches written with an older version are silently discarded and rebuilt.
+TEFF_CACHE_SCHEMA_VERSION = "1"
+
 
 def _compute_file_hash(filepath: str) -> str:
     """Compute MD5 hash of a file's contents."""
@@ -30,13 +36,33 @@ def _compute_file_hash(filepath: str) -> str:
 
 def _load_manifest_cache(
     cache_path: Any,
+    expected_scope_fingerprint: str | None = None,
 ) -> tuple[TestEffectivenessManifest, dict[str, dict[str, Any]]]:
-    """Load cached manifest and metadata from disk."""
+    """Load cached manifest and metadata from disk.
+
+    Fails open (returns empty manifest) on:
+    - Missing file
+    - JSON decode error or OS error
+    - schema_version mismatch
+    - scope_fingerprint mismatch (prevents scope leakage #79)
+    """
     if not cache_path.exists():
         return TestEffectivenessManifest(), {}
     try:
         with open(cache_path) as f:
             cached_data = json.load(f)
+
+        # (#68) Validate schema version
+        if cached_data.get("schema_version") != TEFF_CACHE_SCHEMA_VERSION:
+            return TestEffectivenessManifest(), {}
+
+        # (#79) Validate scope fingerprint to prevent contamination from broader runs
+        if (
+            expected_scope_fingerprint
+            and cached_data.get("scope_fingerprint") != expected_scope_fingerprint
+        ):
+            return TestEffectivenessManifest(), {}
+
         return (
             TestEffectivenessManifest.from_dict(cached_data.get("manifest", {})),
             cached_data.get("metadata", {}),
@@ -49,11 +75,19 @@ def _save_manifest_cache(
     cache_path: Any,
     manifest: TestEffectivenessManifest,
     metadata: dict[str, dict[str, Any]],
+    scope_fingerprint: str | None = None,
 ) -> None:
     """Persist manifest and per-file metadata to disk cache."""
     try:
+        envelope = {
+            "schema_version": TEFF_CACHE_SCHEMA_VERSION,
+            "written_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "scope_fingerprint": scope_fingerprint,
+            "manifest": manifest.to_dict(),
+            "metadata": metadata,
+        }
         with open(cache_path, "w") as f:
-            json.dump({"manifest": manifest.to_dict(), "metadata": metadata}, f)
+            json.dump(envelope, f)
     except OSError:
         pass
 
@@ -85,8 +119,14 @@ def build_test_effectiveness_manifest(
     if not python_files or not test_files:
         return TestEffectivenessManifest()
 
-    # Check if cache is still valid (all files unchanged)
-    cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
+    # (#79) Compute scope fingerprint to prevent leakage
+    scope_payload = ",".join(sorted(python_files)) + ":" + ",".join(sorted(test_files))
+    scope_fingerprint = hashlib.sha256(scope_payload.encode()).hexdigest()
+
+    # Check if cache is still valid (all files unchanged AND scope matches)
+    cached_manifest, cache_metadata = _load_manifest_cache(
+        cache_path, expected_scope_fingerprint=scope_fingerprint
+    )
 
     all_files = python_files + test_files
     any_changed = False
@@ -110,13 +150,13 @@ def build_test_effectiveness_manifest(
         return cached_manifest
 
     # Rebuild from scratch (test mapping is holistic, not per-file incremental)
-    effectiveness = analyze_effectiveness(project_root, python_files, test_files)
+    effectiveness, diagnostics = analyze_effectiveness(project_root, python_files, test_files)
 
-    manifest = TestEffectivenessManifest(functions=effectiveness)
+    manifest = TestEffectivenessManifest(functions=effectiveness, diagnostics=diagnostics)
 
     manifest.file_scores = {}
 
     manifest.update_metrics()
-    _save_manifest_cache(cache_path, manifest, new_metadata)
+    _save_manifest_cache(cache_path, manifest, new_metadata, scope_fingerprint=scope_fingerprint)
 
     return manifest

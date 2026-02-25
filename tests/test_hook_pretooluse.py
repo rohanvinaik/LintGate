@@ -16,14 +16,15 @@ def test_safe_commands_pass():
         "ls -la",
         "pytest tests/",
         "git status",
-        "uv pip install -e .",            # Scoped internal install
-        "npm i",                          # Local package install
-        "python -m pip install -r req.txt", # Scoped install
-        "cat ~/.zshrc",                   # Read-only configuration access
+        "uv pip install -e .",  # Scoped internal install
+        "npm i",  # Local package install
+        "python -m pip install -r req.txt",  # Scoped install
+        "cat ~/.zshrc",  # Read-only configuration access
         "echo 'hello' > my_file.txt",
     ]
     for cmd in safe_commands:
         assert not _is_mutation(cmd), f"Safe command heavily flagged: {cmd}"
+
 
 def test_global_installs_blocked():
     """Verify global package manager installations are intercepted."""
@@ -44,6 +45,7 @@ def test_global_installs_blocked():
     for cmd in blocked_commands:
         assert _is_mutation(cmd), f"Mutation guard missed global install: {cmd}"
 
+
 def test_system_directories_blocked():
     """Verify writes to system directories are intercepted."""
     blocked_commands = [
@@ -57,6 +59,7 @@ def test_system_directories_blocked():
     for cmd in blocked_commands:
         assert _is_mutation(cmd), f"Mutation guard missed system dir: {cmd}"
 
+
 def test_shell_config_blocked():
     """Verify modifications or matches to shell configs are intercepted."""
     blocked_commands = [
@@ -67,6 +70,7 @@ def test_shell_config_blocked():
     for cmd in blocked_commands:
         assert _is_mutation(cmd), f"Mutation guard missed shell config: {cmd}"
 
+
 def test_network_execution_blocked():
     """Verify curl/wget piping to shell is intercepted."""
     blocked_commands = [
@@ -76,6 +80,7 @@ def test_network_execution_blocked():
     ]
     for cmd in blocked_commands:
         assert _is_mutation(cmd), f"Mutation guard missed network execution: {cmd}"
+
 
 def test_privilege_escalation_blocked():
     """Verify sudo commands are intercepted."""
@@ -114,7 +119,9 @@ def test_main_non_bash_tool_is_ignored(monkeypatch, capsys):
 
 def test_main_override_bypasses_block(monkeypatch, capsys):
     code, payload = _invoke_hook(
-        json.dumps({"tool_name": "Bash", "tool_input": {"command": "brew install jq # lintgate-override"}}),
+        json.dumps(
+            {"tool_name": "Bash", "tool_input": {"command": "brew install jq # lintgate-override"}}
+        ),
         monkeypatch,
         capsys,
     )

@@ -1,67 +1,94 @@
-"""Focused coverage tests for lintgate.mcp_schema."""
-
-from __future__ import annotations
-
-from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from unittest.mock import mock_open, patch
 
 import pytest
 
-import lintgate.mcp_schema as mcp_schema
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
-def test_provider_schema_error_records_fields() -> None:
-    err = mcp_schema.ProviderSchemaError("bad enum", "demo_tool", "inputSchema.properties.tier")
-    assert "demo_tool" in str(err)
-    assert err.tool_name == "demo_tool"
-    assert err.path == "inputSchema.properties.tier"
+from lintgate.mcp_schema import (
+    ProviderSchemaError,
+    compile_and_validate_schemas,
+    enforce_mcp_contract,
+    validate_schema_node,
+)
 
 
-def test_validate_schema_node_rejects_non_string_enum() -> None:
-    with pytest.raises(mcp_schema.ProviderSchemaError):
-        mcp_schema.validate_schema_node(
-            "demo_tool",
-            "inputSchema.properties.tier",
-            {"type": "integer", "enum": [0, 1, 2]},
-        )
+@dataclass
+class MockTool:
+    name: str
+    input_schema: dict
+
+    def __post_init__(self) -> None:
+        # Provider contracts reference `inputSchema`; expose it for test doubles.
+        self.__dict__["inputSchema"] = self.input_schema
 
 
-def test_validate_schema_node_rejects_empty_enum_value() -> None:
-    with pytest.raises(mcp_schema.ProviderSchemaError):
-        mcp_schema.validate_schema_node(
-            "demo_tool",
-            "inputSchema.properties.mode",
-            {"type": "string", "enum": ["strict", ""]},
-        )
+def test_validate_schema_node_valid_string_enum():
+    schema = {"type": "string", "enum": ["a", "b", "c"]}
+    # Should not raise
+    validate_schema_node("test_tool", "path", schema)
 
 
-def test_compile_and_validate_schemas_relaxed_profile_skips_validation() -> None:
-    tools = [SimpleNamespace(name="demo_tool", parameters={"type": "integer", "enum": [1]})]
-    # Should not raise when profile is relaxed.
-    mcp_schema.compile_and_validate_schemas(tools, agent_profile="relaxed")
+def test_validate_schema_node_invalid_type_enum():
+    schema = {"type": "integer", "enum": [1, 2, 3]}
+    with pytest.raises(ProviderSchemaError) as excinfo:
+        validate_schema_node("test_tool", "path", schema)
+    assert "Enums are only allowed on strictly 'string' types" in str(excinfo.value)
+    assert excinfo.value.tool_name == "test_tool"
+    assert excinfo.value.path == "path"
 
 
-def test_enforce_mcp_contract_missing_file_noop(tmp_path: Path, monkeypatch) -> None:
-    module_file = tmp_path / "pkg" / "mcp_schema.py"
-    module_file.parent.mkdir(parents=True, exist_ok=True)
-    module_file.write_text("# stub\n", encoding="utf-8")
-    monkeypatch.setattr(mcp_schema, "__file__", str(module_file))
-
-    # No contract file -> no-op.
-    mcp_schema.enforce_mcp_contract([])
+def test_validate_schema_node_empty_string_enum():
+    schema = {"type": "string", "enum": ["a", "", "c"]}
+    with pytest.raises(ProviderSchemaError) as excinfo:
+        validate_schema_node("test_tool", "path", schema)
+    assert "Empty string found in enum at index 1" in str(excinfo.value)
 
 
-def test_enforce_mcp_contract_raises_when_safety_tool_missing(tmp_path: Path, monkeypatch) -> None:
-    module_file = tmp_path / "pkg" / "mcp_schema.py"
-    module_file.parent.mkdir(parents=True, exist_ok=True)
-    module_file.write_text("# stub\n", encoding="utf-8")
-    monkeypatch.setattr(mcp_schema, "__file__", str(module_file))
+def test_validate_schema_node_recursive():
+    schema = {"type": "object", "properties": {"p1": {"type": "integer", "enum": [1]}}}
+    with pytest.raises(ProviderSchemaError) as excinfo:
+        validate_schema_node("test_tool", "path", schema)
+    assert "path.properties.p1" in excinfo.value.path
 
-    contract_path = module_file.parent / "mcp_contract.yaml"
-    contract_path.write_text("safety_critical_tools:\n  - lint_files\n", encoding="utf-8")
 
-    with pytest.raises(mcp_schema.ProviderSchemaError):
-        mcp_schema.enforce_mcp_contract([SimpleNamespace(name="controlplane_run")])
+def test_compile_and_validate_schemas_strict():
+    tools = [
+        MockTool("tool1", {"type": "string", "enum": ["a"]}),
+        MockTool("tool2", {"type": "integer", "enum": [1]}),
+    ]
+    with pytest.raises(ProviderSchemaError):
+        compile_and_validate_schemas(tools, agent_profile="strict")
+
+
+def test_compile_and_validate_schemas_relaxed():
+    tools = [MockTool("tool2", {"type": "integer", "enum": [1]})]
+    # Should not raise in relaxed mode
+    compile_and_validate_schemas(tools, agent_profile="relaxed")
+
+
+def test_enforce_mcp_contract_success():
+    contract = {"safety_critical_tools": ["tool1", "tool2"]}
+    tools = [MockTool("tool1", {}), MockTool("tool2", {})]
+
+    with (
+        patch("pathlib.Path") as mock_path,
+        patch("builtins.open", mock_open()),
+        patch("yaml.safe_load", return_value=contract),
+    ):
+        mock_path.return_value.__truediv__.return_value.exists.return_value = True
+        enforce_mcp_contract(tools)
+
+
+def test_enforce_mcp_contract_missing_tool():
+    contract = {"safety_critical_tools": ["tool1", "tool2"]}
+    tools = [MockTool("tool1", {})]
+
+    with (
+        patch("pathlib.Path") as mock_path,
+        patch("builtins.open", mock_open()),
+        patch("yaml.safe_load", return_value=contract),
+    ):
+        mock_path.return_value.__truediv__.return_value.exists.return_value = True
+        with pytest.raises(ProviderSchemaError) as excinfo:
+            enforce_mcp_contract(tools)
+        assert "Safety-critical tools are missing" in str(excinfo.value)
+        assert "tool2" in str(excinfo.value)

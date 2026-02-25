@@ -222,6 +222,7 @@ class TestBackwardCompatibility:
         registry = build_default_registry()
         claude = registry.get("claude")
         assert claude is not None
-        assert hasattr(claude, "render")
-        assert hasattr(claude, "name")
-        assert hasattr(claude, "output_paths")
+        assert claude.name == "claude"
+        assert callable(getattr(claude, "render", None))
+        assert isinstance(claude.output_paths, (list, tuple))
+        assert len(claude.output_paths) > 0

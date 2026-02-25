@@ -17,31 +17,31 @@ import sys
 _BLOCKED_PATTERNS = [
     # 1. Package managers (global context)
     re.compile(r"brew\s+(install|tap|cask)"),
-    re.compile(r"pip3?\s+install\s+(?!-e\s+\.)(?!-r\s+)"),  # heuristically catches global/unscoped installs
+    re.compile(
+        r"pip3?\s+install\s+(?!-e\s+\.)(?!-r\s+)"
+    ),  # heuristically catches global/unscoped installs
     re.compile(r"uv\s+tool\s+install"),
     re.compile(r"npm\s+(i|install)\s+-g"),
     re.compile(r"mas\s+install"),
     re.compile(r"apt(-get)?\s+install"),
     re.compile(r"cargo\s+install"),
     re.compile(r"gem\s+install"),
-
     # 2. System directories
     re.compile(r"(/etc/|/usr/local/|/opt/|/Applications/)"),
     re.compile(r"~/Library/LaunchAgents"),
-
     # 3. Shell config (modifications/writes)
     re.compile(r"(?:>>|>|nano|vim|rm|cp|mv)\s+.*~/\.(zshrc|bashrc|profile|config)"),
-
     # 4. Network fetches with execution
     re.compile(r"(?:curl|wget)\s+[^|&]+[|&]+\s*(?:sudo\s+)?(?:ba)?sh"),
-
     # 5. Privilege escalation
     re.compile(r"^\s*sudo\s+"),
 ]
 
+
 def _is_mutation(command: str) -> bool:
     """Check if command matches any known mutation pattern."""
     return any(pattern.search(command) for pattern in _BLOCKED_PATTERNS)
+
 
 def main() -> None:
     try:
@@ -84,6 +84,7 @@ def main() -> None:
 
     print(json.dumps({}))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

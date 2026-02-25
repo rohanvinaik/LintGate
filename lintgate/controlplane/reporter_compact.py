@@ -54,7 +54,9 @@ def format_mesh_report_compact(
     if ship_gate_parity is not None:
         compact["ship_gate_parity"] = ship_gate_parity
 
-    compact["next_actions"] = _build_cp_next_actions(run_id, counts, symbol_blockers, ship_gate_parity)
+    compact["next_actions"] = _build_cp_next_actions(
+        run_id, counts, symbol_blockers, ship_gate_parity
+    )
 
     if symbol_blockers:
         compact["remediation_loop"] = _build_remediation_loop(symbol_blockers)

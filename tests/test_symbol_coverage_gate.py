@@ -332,8 +332,11 @@ class TestTestChannelIntegration:
 
         blocking = [f for f in result.findings if f.severity == "blocking"]
         assert len(blocking) >= 1
-        symbol_uncovered = [f for f in blocking if f.kind == "symbol_uncovered"]
+        symbol_uncovered = [f for f in result.findings if f.kind == "symbol_uncovered"]
         assert len(symbol_uncovered) == 1
+        assert (
+            symbol_uncovered[0].severity == "warning"
+        )  # Downgraded due to partial run with passing coverage
         assert symbol_uncovered[0].evidence["symbol"] == "untested"
         unresolved = [f for f in blocking if f.kind == "unresolved_required_symbol"]
         assert len(unresolved) == 1
