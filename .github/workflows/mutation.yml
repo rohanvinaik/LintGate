@@ -9,7 +9,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * 1'  # Weekly Monday 06:00 UTC
+    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
 
 permissions:
   contents: read
@@ -35,63 +35,41 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run mutation testing
-        run: mutmut run || true
+        id: mutmut
+        run: |
+          set +e
+          mutmut run
+          echo "mutmut_rc=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Check mutmut exit code
+        run: |
+          RC=${{ steps.mutmut.outputs.mutmut_rc }}
+          if [ "$RC" -ne 0 ] && [ "$RC" -ne 1 ] && [ "$RC" -ne 2 ]; then
+            echo "::error::mutmut encountered a hard runner error (exit code $RC)"
+            exit 1
+          fi
+
+      - name: Export mutation stats
+        run: |
+          mutmut export-cicd-stats || true
+          mutmut results --all true > mutants/mutmut-survivors.txt 2>/dev/null || true
 
       - name: Parse results and generate badge
         id: parse
-        run: |
-          mutmut export-cicd-stats || true
+        run: python scripts/parse_mutation_stats.py
+        env:
+          STATS_PATH: mutants/mutmut-cicd-stats.json
 
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-
-          stats_path = Path("mutants/mutmut-cicd-stats.json")
-          if not stats_path.exists():
-              print("No mutmut stats found — skipping badge generation")
-              with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-                  fh.write("skip=true\n")
-              raise SystemExit(0)
-
-          stats = json.loads(stats_path.read_text())
-          killed = stats.get("killed", 0)
-          survived = stats.get("survived", 0)
-          timeout = stats.get("timeout", 0)
-          suspicious = stats.get("suspicious", 0)
-          total = killed + survived + timeout + suspicious
-
-          if total == 0:
-              print("No mutations tested — skipping badge")
-              with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-                  fh.write("skip=true\n")
-              raise SystemExit(0)
-
-          score = round(killed / total * 100, 1)
-
-          if score >= 80:
-              color = "brightgreen"
-          elif score >= 60:
-              color = "yellow"
-          else:
-              color = "red"
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"skip=false\n")
-              fh.write(f"score={score}\n")
-              fh.write(f"color={color}\n")
-              fh.write(f"killed={killed}\n")
-              fh.write(f"survived={survived}\n")
-              fh.write(f"total={total}\n")
-
-          print(f"## Results")
-          print(f"")
-          print(f"Mutation score: {score}%")
-          print(f"  Killed (detected):   {killed}")
-          print(f"  Survived (missed):   {survived}")
-          print(f"  Timeout:             {timeout}")
-          print(f"  Suspicious:          {suspicious}")
-          print(f"  Total mutants:       {total}")
-          PY
+      - name: Upload mutation stats
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutation-stats
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/mutmut-survivors.json
+          if-no-files-found: warn
 
       - name: Generate mutation badge
         if: steps.parse.outputs.skip != 'true'

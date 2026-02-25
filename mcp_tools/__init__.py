@@ -34,6 +34,7 @@ from . import (
     habit_tools,
     lint_tools,
     model_tools,
+    mutation_tools,
     onboarding_tools,
     performance_tools,
     telemetry_tools,
@@ -53,6 +54,7 @@ ALL_MODULES = [
     telemetry_tools,
     habit_tools,
     compass_tools,
+    mutation_tools,
 ]
 
 

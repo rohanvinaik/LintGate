@@ -15,7 +15,8 @@ from lintgate.linters.performance_checks.algebra_types import (
 )
 from lintgate.linters.performance_checks.properties import classify_properties
 from lintgate.linters.performance_checks.purity import analyze_purity
-from lintgate.state import PERF_CACHE_DIR
+from lintgate.mutation.state import MutationStateManager
+from lintgate.state import MUTATION_CACHE_DIR, PERF_CACHE_DIR
 
 
 @dataclass
@@ -138,6 +139,7 @@ def _scan_file(
     manifest: PropertyManifest,
     filepath: str,
     project_root: str,
+    mutation_manager: MutationStateManager | None = None,
 ) -> list[str]:
     """Parse a Python file, run purity + property analysis, and populate the manifest.
 
@@ -166,7 +168,11 @@ def _scan_file(
         found_funcs.append(unique_key)
 
         if purity.is_pure:
-            props = classify_properties(func_node, purity)
+            mutation_state = None
+            if mutation_manager:
+                mutation_state = mutation_manager.get_state(f"{relpath}::{qualname}")
+
+            props = classify_properties(func_node, purity, mutation_state)
             manifest.functions[unique_key] = FunctionProperties(
                 purity=props.purity,
                 properties=props.properties,
@@ -209,6 +215,13 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
 
     cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
 
+    # Mutation engine/tools persist state here; read from the same canonical path.
+    mutation_state_path = MUTATION_CACHE_DIR / "state.json"
+    try:
+        mutation_manager = MutationStateManager(str(mutation_state_path))
+    except (OSError, ValueError):
+        mutation_manager = None
+
     manifest = PropertyManifest()
     new_metadata: dict[str, dict[str, Any]] = {}
 
@@ -223,7 +236,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
             _restore_cached_functions(manifest, filepath, cached_manifest, cached_entry)
             new_metadata[filepath] = cached_entry
         else:
-            found_funcs = _scan_file(manifest, filepath, project_root)
+            found_funcs = _scan_file(manifest, filepath, project_root, mutation_manager)
             new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
 
     manifest.update_metrics()

@@ -73,6 +73,9 @@ class TestAnalyzeTestStrength:
         result = json.loads(result_str)
 
         assert "summary" in result or "error" in result or "note" in result
+        if "error" not in result and "note" not in result:
+            assert "mutation_ci_context" in result
+            assert "mutation_hotspots" in result
 
     def test_with_function_filter(self, temp_project, helpers):
         from mcp_tools.test_effectiveness_tools import register
@@ -226,6 +229,8 @@ class TestInspectTestAssertions:
         assert "sentinel_ratio" in result["summary"]
         assert "analyzed_file_count" in result["summary"]
         assert "total_file_count" in result["summary"]
+        # Phase 2 Additive Fields
+        assert "mutation_hotspots" in result
 
     def test_missing_file_returns_error(self, temp_project, helpers):
         from mcp_tools.test_effectiveness_tools import register

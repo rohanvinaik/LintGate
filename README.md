@@ -58,9 +58,13 @@ The downstream consequence is stranger than the mechanism: **when discipline is 
 
 Clean code and well-tested code are usually treated as separate virtues. They're not — they're the same property viewed from different angles.
 
-A function whose tests catch every behavioral mutation is fully specified. But you can't fully specify a tangled function. Mutation pressure forces decomposition: extracting constants, splitting branches, replacing sentinels with typed results. The decomposed code naturally exhibits algebraic properties — purity, cacheability, parallelizability — that enable safe optimization.
+A surviving mutant is a version of your function that behaves differently and no test notices. If no test can tell the difference, the test suite doesn't fully specify what the function does. In Sussman's framing (SICP): the function is an ambiguous specification of a computational process. And ambiguous specifications resist optimization, because you can't prove two things are equivalent when you haven't defined what equivalence means.
 
-The signals aren't independent. Lint quality, test effectiveness, mutation survival, and algebraic structure are projections of a single quantity: *how completely the code's behavior is specified*. When they agree, you have evidence. When they disagree, you have a diagnosis.
+But the surviving mutants aren't just a score. They're a **map**. Each one is a specific behavioral degree of freedom that isn't pinned down — the function could wobble in that dimension and nobody would know. The *category* of surviving mutants (conditional, arithmetic, string, keyword) tells you *why* the function is underspecified. And that tells you exactly what to do about it: which tests to write, or — when multiple categories survive — which axis to decompose along. The mutation profile is a constructive specification of the negative space between the code as it is and the code as it should be.
+
+This creates an operational chain that doesn't appear elsewhere in the literature: **mutation pressure → specification gap → forced decomposition → algebraically tractable units → safe optimization**. You can't fully specify a tangled function — the test surface is combinatorially large. Decomposition makes specification tractable. Fully specified functions naturally exhibit purity, cacheability, parallelizability. The act of driving toward zero surviving mutants *is* what produces clean, optimizable code.
+
+LintGate makes this concrete. Point it at a module with 99% line coverage and the algebra pipeline says `_get_parameter_count` is pure and cacheable. Then the mutation gate fires: 75% of mutants survive. The tests execute the code but don't verify what it computes. Confidence drops from 80% to 10%, and the gate tells you *why* — 12 surviving mutants across conditional and arithmetic categories — which is the surgical target for the 2-3 tests that would make the optimization safe. ([Full theory](docs/mutation-theory.md))
 
 ---
 
@@ -252,7 +256,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*53 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*60 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
 

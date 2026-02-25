@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
 
 from lintgate.linters.performance_checks.algebra_types import (
     AlgebraicProperty,
@@ -11,6 +12,9 @@ from lintgate.linters.performance_checks.algebra_types import (
     PropertyKind,
     PurityResult,
 )
+
+if TYPE_CHECKING:
+    from lintgate.mutation.state import FunctionMutationState
 
 
 def _get_return_nodes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Return]:
@@ -227,14 +231,37 @@ def _check_commutative_associative(
 
 
 def classify_properties(
-    func_node: ast.FunctionDef | ast.AsyncFunctionDef, purity: PurityResult
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    purity: PurityResult,
+    mutation_state: FunctionMutationState | None = None,
 ) -> FunctionProperties:
     """
     Given a known-pure function, attempt to classify its algebraic properties.
     """
+    confidence = purity.confidence
+    evidence_prefix = ""
+
+    # Integrated Cross-Channel Gate (Item 3)
+    if mutation_state and mutation_state.total > 0:
+        survival_rate = mutation_state.survival_rate
+        if survival_rate > 0.6:
+            # High survival indicates the function is likely NOT pure or tests are missing
+            confidence = min(confidence, 0.1)
+            evidence_prefix = f"[MUTATION GATED: {survival_rate:.2f} survival] "
+        elif survival_rate > 0.3:
+            # Moderate survival lowers confidence
+            confidence *= 0.5
+            evidence_prefix = f"[MUTATION PENALIZED: {survival_rate:.2f} survival] "
+        else:
+            # Low survival increases confidence if it wasn't already high
+            confidence = max(confidence, 0.9)
+            evidence_prefix = f"[MUTATION VERIFIED: {survival_rate:.2f} survival] "
+
     properties: list[AlgebraicProperty] = [
         AlgebraicProperty(
-            PropertyKind.PURE, purity.confidence, "Passed pure function detector pass 1 and 2"
+            PropertyKind.PURE,
+            confidence,
+            f"{evidence_prefix}Passed pure function detector pass 1 and 2",
         )
     ]
     hints: list[str] = ["cacheable"]
