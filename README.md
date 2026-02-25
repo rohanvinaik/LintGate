@@ -8,10 +8,8 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Mutation Score](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mutation.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/mutation.yml)
-[![Side-Effect-Free](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/purity.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Algebraic Properties](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/properties.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Benchmark](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/rohanvinaik/LintGate/badge)](https://securityscorecards.dev/viewer/?uri=github.com/rohanvinaik/LintGate)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- lintgate:quality-badges:end -->
 
 An MCP server for real-time code quality supervision — built entirely through vibe coding by a biochemist with no formal CS training.

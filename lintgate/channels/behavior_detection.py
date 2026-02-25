@@ -24,6 +24,7 @@ import time
 from typing import Any
 
 from lintgate.controlplane.behavior_compass import BehaviorCompass, error_memory_key
+from lintgate.orchestration.attribution import SignalSourceDecomposition
 from lintgate.types import LintIssue
 
 from .behavior_scoring import (
@@ -58,6 +59,12 @@ def detect_approach_cycling(
         window_actual = int((now - min(a.started_at for a in recent_failed)) / 60)
         sigs = ", ".join(a.approach_sig for a in recent_failed[:4])
 
+        decomp = SignalSourceDecomposition(
+            signal_name="approach_cycling",
+            pattern_score=min(1.0, len(recent_failed) / count_threshold),
+            outcome_score=1.0,  # All recent failures contribute to outcome evidence
+        )
+
         coord.add_finding(
             "approach_cycling",
             LintIssue(
@@ -76,6 +83,7 @@ def detect_approach_cycling(
                 "tool": "constraint_check",
                 "reason": "approach_cycling detected — enumerate constraints before next attempt",
             },
+            decomposition=decomp,
         )
 
 
@@ -128,7 +136,11 @@ def _detect_amnesia_from_action_history(
             last_ts = events[-1].get("ts", 0)
             gap_min = int((last_ts - first_ts) / 60) if last_ts > first_ts else 0
 
-            evidence["source"] = "action_history"
+            decomp = SignalSourceDecomposition(
+                signal_name="failure_amnesia",
+                pattern_score=min(1.0, len(events) / 2.0),
+                outcome_score=1.0,
+            )
             coord.add_finding(
                 "failure_amnesia",
                 LintIssue(
@@ -147,6 +159,7 @@ def _detect_amnesia_from_action_history(
                     "tool": "constraint_check",
                     "reason": f"failure_amnesia: '{err_sig[:60]}' repeated — check constraint ledger",
                 },
+                decomposition=decomp,
             )
             return True
     return False
@@ -171,7 +184,11 @@ def _detect_amnesia_from_error_memory(
     last_ts = float(mem.get("last_seen", 0.0))
     gap_min = int((last_ts - first_ts) / 60) if last_ts > first_ts else 0
     seen = int(mem.get("count", 0))
-    evidence["source"] = "error_memory"
+    decomp = SignalSourceDecomposition(
+        signal_name="failure_amnesia",
+        pattern_score=min(1.0, seen / 3.0),
+        outcome_score=1.0,
+    )
     coord.add_finding(
         "failure_amnesia",
         LintIssue(
@@ -190,6 +207,7 @@ def _detect_amnesia_from_error_memory(
             "tool": "constraint_check",
             "reason": f"failure_amnesia: '{latest_err[:60]}' repeated across session",
         },
+        decomposition=decomp,
     )
     return True
 
@@ -206,7 +224,11 @@ def _detect_amnesia_from_hypotheses(
             continue
         for candidate_err in _extract_hypothesis_error_candidates(hyp.evidence_for):
             if _error_like_match(candidate_err, latest_err):
-                evidence["source"] = "hypothesis_evidence"
+                decomp = SignalSourceDecomposition(
+                    signal_name="failure_amnesia",
+                    theory_score=hyp.confidence,
+                    outcome_score=1.0,
+                )
                 coord.add_finding(
                     "failure_amnesia",
                     LintIssue(
@@ -225,6 +247,7 @@ def _detect_amnesia_from_hypotheses(
                         "tool": "constraint_check",
                         "reason": f"failure_amnesia: error matches hypothesis '{hyp.id}'",
                     },
+                    decomposition=decomp,
                 )
                 return
 
@@ -242,6 +265,11 @@ def detect_brute_force_escalation(
     gap = approaches - constraints
 
     if approaches > 0 and gap > gap_threshold:
+        decomp = SignalSourceDecomposition(
+            signal_name="brute_force_escalation",
+            pattern_score=min(1.0, gap / 2.0),
+            outcome_score=min(1.0, approaches / 10.0),
+        )
         coord.add_finding(
             "brute_force_escalation",
             LintIssue(
@@ -260,6 +288,7 @@ def detect_brute_force_escalation(
                 "tool": "constraint_check",
                 "reason": "brute_force_escalation — approaches outpacing constraint understanding",
             },
+            decomposition=decomp,
         )
 
 
@@ -335,6 +364,12 @@ def detect_serial_discovery(
         evidence["score_delta"] = bias
         evidence["stage"] = 1
 
+        decomp = SignalSourceDecomposition(
+            signal_name="serial_discovery",
+            pattern_score=min(1.0, failure_sourced / 2.0),
+            theory_score=0.3,  # Indirect indicator of missing theory
+        )
+
         coord.add_finding(
             "serial_discovery_early",
             LintIssue(
@@ -354,6 +389,7 @@ def detect_serial_discovery(
                 "tool": "constraint_check",
                 "reason": "serial_discovery_early — first failure-sourced constraint, no constraint_check used",
             },
+            decomposition=decomp,
         )
         compass.early_nudge_emitted = True
 
@@ -361,6 +397,11 @@ def detect_serial_discovery(
     if failure_sourced >= 3 and precheck_sourced == 0:
         evidence = scorer.build_evidence_trace()
         evidence["stage"] = 2
+        decomp = SignalSourceDecomposition(
+            signal_name="serial_discovery",
+            pattern_score=min(1.0, failure_sourced / 5.0),
+            outcome_score=0.8,
+        )
         coord.add_finding(
             "serial_discovery",
             LintIssue(
@@ -375,6 +416,7 @@ def detect_serial_discovery(
                 evidence=evidence,
             ),
             is_hard=False,
+            decomposition=decomp,
         )
 
 

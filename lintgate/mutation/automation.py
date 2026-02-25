@@ -31,7 +31,7 @@ class MutationOrchestrator:
     def enqueue(self, file_path: str):
         """Request a mutation run for a file, applying debounce logic."""
         with self._lock:
-            now = time.time()
+            now = time.monotonic()
             last = self._last_run.get(file_path, 0.0)
 
             # Debounce: don't requeue if we just ran it recently
@@ -50,17 +50,15 @@ class MutationOrchestrator:
                     continue
                 # Take one file to process
                 file_to_process = self._queued_files.pop()
-                self._last_run[file_to_process] = time.time()
+                self._last_run[file_to_process] = time.monotonic()
 
             try:
                 # Late import to avoid circular dependencies
-                import os
-
                 from lintgate.mutation.policy import RuntimeBudget
                 from lintgate.mutation.state import MutationStateManager
-                from lintgate.state import MUTATION_CACHE_DIR
+                from lintgate.state import get_mutation_state_path
 
-                state_path = os.path.join(MUTATION_CACHE_DIR, "state.json")
+                state_path = get_mutation_state_path()
                 state_manager = MutationStateManager(state_path)
                 budget = RuntimeBudget()
                 engine = MutationEngine(state_manager, budget)
@@ -70,5 +68,6 @@ class MutationOrchestrator:
             except Exception as e:
                 # Failsafe for background thread
                 print(f"[MutationOrchestrator] Error processing {file_to_process}: {e}")
+
 
 global_orchestrator = MutationOrchestrator()

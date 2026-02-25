@@ -39,10 +39,91 @@ from lintgate.mutation.state import (
     CoverageDepth,
     FunctionMutationState,
     MutationStateManager,
+    SignalQuality,
+    SurvivorSite,
     compute_content_hash,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Thresholds for deterministic signal quality classification
+# These define the boundary between sampled_low and sampled_high
+_SAMPLED_HIGH_MUTANT_THRESHOLD = 10  # Minimum mutants for high quality
+_SAMPLED_HIGH_CATEGORY_THRESHOLD = 2  # Minimum categories covered for high quality
+
+
+def _classify_sampled_quality(
+    total_mutants: int,
+    category_count: int,
+    timeout_ratio: float,
+) -> SignalQuality:
+    """Classify sampled run as low or high quality deterministically.
+
+    Uses measurable run signals to determine signal quality:
+    - More mutants = higher quality (more coverage)
+    - More category coverage = higher quality
+    - Lower timeout ratio = higher quality (run completed successfully)
+
+    Args:
+        total_mutants: Total number of mutants generated
+        category_count: Number of mutation categories covered
+        timeout_ratio: Ratio of timeouts to total mutants (0.0-1.0)
+
+    Returns:
+        SignalQuality.SAMPLED_LOW or SignalQuality.SAMPLED_HIGH
+    """
+    # Default to low quality for invalid inputs
+    if total_mutants <= 0 or category_count <= 0:
+        return SignalQuality.SAMPLED_LOW
+
+    # Check thresholds for high quality
+    has_sufficient_mutants = total_mutants >= _SAMPLED_HIGH_MUTANT_THRESHOLD
+    has_sufficient_categories = category_count >= _SAMPLED_HIGH_CATEGORY_THRESHOLD
+    has_low_timeout_ratio = timeout_ratio < 0.1  # Less than 10% timeouts
+
+    # High quality requires sufficient mutants AND either good category coverage OR low timeouts
+    if has_sufficient_mutants and (has_sufficient_categories or has_low_timeout_ratio):
+        return SignalQuality.SAMPLED_HIGH
+
+    return SignalQuality.SAMPLED_LOW
+
+
+# Mapping from TEFF assertion kinds to mutation operator categories
+# This is used to determine which categories are "covered" by strong assertions
+ASSERTION_KIND_TO_MUTATION_CATEGORY: dict[str, str] = {
+    # Exact value assertions cover arithmetic/number categories
+    "exact_value": "arithmetic",
+    "equality": "arithmetic",
+    "comparison": "conditional",
+    # Range/length checks cover conditional/boundary categories
+    "range_check": "conditional",
+    "length_check": "conditional",
+    # String assertions cover string category
+    "string_equality": "string",
+    "regex_match": "string",
+    "substring": "string",
+    # Boolean assertions cover keyword category
+    "is_true": "keyword",
+    "is_false": "keyword",
+    # Type checks are structural (weak) so not mapped
+    "isinstance_check": None,
+    "hasattr_check": None,
+    "is_none": None,
+    "is_not_none": None,
+}
+
+
+def _map_assertion_kind_to_category(assertion_kind: str) -> str | None:
+    """Map a TEFF assertion kind to a mutation operator category.
+
+    Args:
+        assertion_kind: The assertion kind from TEFF (e.g., 'exact_value', 'comparison')
+
+    Returns:
+        The mutation category string or None if the assertion doesn't cover a category
+    """
+    return ASSERTION_KIND_TO_MUTATION_CATEGORY.get(assertion_kind)
 
 
 class MutationEngine:
@@ -75,25 +156,17 @@ class MutationEngine:
         results = []
         for file_path in target_files:
             # Check budgets
-            if telemetry.inline_time_ms_spent >= self.budget.max_inline_ms_per_function * len(target_files):
+            if telemetry.inline_time_ms_spent >= self.budget.max_inline_ms_per_function * len(
+                target_files
+            ):
                 logger.warning(f"Mutation inline budget exhausted. Skipping {file_path}")
                 break
 
-            # Heuristic: discover functions in file to compute relevance
-            relevant_categories = None
-            try:
-                source = Path(file_path).read_text("utf-8")
-                tree = ast.parse(source)
-                file_categories = set()
-                for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        cat = self._compute_relevant_categories(
-                            file_path, node.name, algebra_manifest, teff_manifest
-                        )
-                        file_categories.update(cat)
-                relevant_categories = file_categories
-            except (OSError, SyntaxError):
-                pass
+            relevant_categories, covered_skips, covered_categories = self._collect_file_categories(
+                file_path, algebra_manifest, teff_manifest
+            )
+            if covered_skips > 0:
+                telemetry.mutants_skipped_covered += covered_skips
 
             start_t = time.perf_counter()
             success = self._execute_mutmut(
@@ -101,6 +174,7 @@ class MutationEngine:
                 depth=CoverageDepth.SAMPLED,
                 test_filter=None,
                 relevant_categories=relevant_categories,
+                covered_categories=covered_categories,
                 telemetry=telemetry,
             )
             elapsed_ms = (time.perf_counter() - start_t) * 1000
@@ -110,6 +184,18 @@ class MutationEngine:
                 file_states = self._parse_mutmut_results([file_path])
                 for state in file_states.values():
                     state.depth = CoverageDepth.SAMPLED
+                    # Classify signal quality for sampled runs
+                    category_count = len(state.survived_by_category)
+                    timeout_ratio = state.timeout / state.total if state.total > 0 else 0.0
+                    state.signal_quality = _classify_sampled_quality(
+                        state.total, category_count, timeout_ratio
+                    )
+                    # Track signal quality in telemetry
+                    if telemetry:
+                        if state.signal_quality == SignalQuality.SAMPLED_HIGH:
+                            telemetry.sampled_high_runs += 1
+                        else:
+                            telemetry.sampled_low_runs += 1
                     self.state_manager.update_state(state)
                     results.append(state)
 
@@ -140,29 +226,22 @@ class MutationEngine:
             # Test-impact selection requirement (Item 6)
             test_filter = " ".join(relevant_tests) if relevant_tests else None
             if not test_filter:
-                logger.info(f"Fallback reason: No test impact mapping found for {file_path}. Running full suite.")
+                logger.info(
+                    f"Fallback reason: No test impact mapping found for {file_path}. Running full suite."
+                )
 
-            # Compute relevance for background profiling as well
-            relevant_categories = None
-            try:
-                source = Path(file_path).read_text("utf-8")
-                tree = ast.parse(source)
-                file_categories = set()
-                for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        cat = self._compute_relevant_categories(
-                            file_path, node.name, algebra_manifest, teff_manifest
-                        )
-                        file_categories.update(cat)
-                relevant_categories = file_categories
-            except (OSError, SyntaxError):
-                pass
+            relevant_categories, covered_skips, covered_categories = self._collect_file_categories(
+                file_path, algebra_manifest, teff_manifest
+            )
+            if covered_skips > 0:
+                telemetry.mutants_skipped_covered += covered_skips
 
             success = self._execute_mutmut(
                 paths=[file_path],
                 depth=CoverageDepth.PROFILED,
                 test_filter=test_filter,
                 relevant_categories=relevant_categories,
+                covered_categories=covered_categories,
                 telemetry=telemetry,
             )
             telemetry.background_functions_profiled += 1
@@ -171,6 +250,11 @@ class MutationEngine:
                 file_states = self._parse_mutmut_results([file_path])
                 for state in file_states.values():
                     state.depth = CoverageDepth.PROFILED
+                    # Profiled runs always get PROFILED quality
+                    state.signal_quality = SignalQuality.PROFILED
+                    # Track in telemetry
+                    if telemetry:
+                        telemetry.profiled_runs += 1
                     self.state_manager.update_state(state)
                     results.append(state)
 
@@ -183,6 +267,7 @@ class MutationEngine:
         depth: CoverageDepth,
         test_filter: str | None,
         relevant_categories: set[MutationOperatorCategory] | None = None,
+        covered_categories: set[MutationOperatorCategory] | None = None,
         telemetry: MutationTelemetry | None = None,
     ) -> bool:
         """Execute mutmut v3 via subprocess.
@@ -204,6 +289,8 @@ class MutationEngine:
 
             if relevant_categories is not None and cst:
                 filter_active = True
+                # Default to empty set if not provided
+                covered = covered_categories if covered_categories else set()
                 for path in paths:
                     try:
                         source = Path(path).read_text("utf-8")
@@ -212,7 +299,9 @@ class MutationEngine:
                             if cat in relevant_categories:
                                 mutants_to_run.append(mutant_id)
                             else:
-                                if telemetry:
+                                # Only count as policy skip if NOT a covered category
+                                # Covered categories are tracked separately in mutants_skipped_covered
+                                if cat not in covered and telemetry:
                                     telemetry.mutants_skipped_policy += 1
                     except Exception as e:
                         logger.debug(f"Failed to generate explicit mutant list for {path}: {e}")
@@ -223,8 +312,8 @@ class MutationEngine:
             if original_pyproject and paths:
                 scoped_paths = json.dumps(paths)
                 new_content = _re.sub(
-                    r'(paths_to_mutate\s*=\s*)\[[^\]]*\]',
-                    f'paths_to_mutate = {scoped_paths}',
+                    r"(paths_to_mutate\s*=\s*)\[[^\]]*\]",
+                    f"paths_to_mutate = {scoped_paths}",
                     original_pyproject,
                 )
                 pyproject_path.write_text(new_content, "utf-8")
@@ -232,15 +321,17 @@ class MutationEngine:
             max_children = min(self.budget.max_workers, 2)
             cmd = ["mutmut", "run", "--max-children", str(max_children)]
 
+            # Wire test_filter into pytest args to limit test scope
+            if test_filter:
+                cmd.extend(["--pytest-args", test_filter])
+
             if filter_active:
                 if not mutants_to_run:
                     # Everything was filtered out! We don't even need to run mutmut.
                     return True
                 cmd.extend(mutants_to_run)
 
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False, timeout=300
-            )
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=300)
             # mutmut v3: 0 = all killed, 2 = survivors found, 1 = other
             if proc.returncode in (0, 1, 2):
                 if telemetry and filter_active:
@@ -253,17 +344,51 @@ class MutationEngine:
             if original_pyproject is not None:
                 pyproject_path.write_text(original_pyproject, "utf-8")
 
+    def _collect_file_categories(
+        self,
+        file_path: str,
+        algebra_manifest: PropertyManifest | None = None,
+        teff_manifest: TestEffectivenessManifest | None = None,
+    ) -> tuple[set[MutationOperatorCategory] | None, int, set[MutationOperatorCategory]]:
+        """Walk a file's AST to collect the union of relevant categories for all functions.
+
+        Returns:
+            Tuple of (categories set or None, total skip count from covered categories, covered categories set)
+        """
+        try:
+            source = Path(file_path).read_text("utf-8")
+            tree = ast.parse(source)
+            file_categories: set[MutationOperatorCategory] = set()
+            total_skips = 0
+            all_covered: set[MutationOperatorCategory] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    cat, skip_count, covered = self._compute_relevant_categories(
+                        file_path, node.name, algebra_manifest, teff_manifest
+                    )
+                    file_categories.update(cat)
+                    total_skips += skip_count
+                    all_covered.update(covered)
+            return file_categories, total_skips, all_covered
+        except (OSError, SyntaxError):
+            return None, 0, set()
+
     def _compute_relevant_categories(
         self,
         file_path: str,
         func_name: str,
         algebra_manifest: PropertyManifest | None = None,
         teff_manifest: TestEffectivenessManifest | None = None,
-    ) -> set[MutationOperatorCategory]:
-        """Layer 1: Exclusionary filtering."""
+    ) -> tuple[set[MutationOperatorCategory], int, set[MutationOperatorCategory]]:
+        """Layer 1: Exclusionary filtering.
+
+        Returns:
+            Tuple of (relevant categories, estimated mutants skipped due to covered categories, covered categories set)
+        """
         is_pure = False
         if algebra_manifest:
             from lintgate.linters.performance_checks.algebra_types import PropertyKind
+
             for key, props in algebra_manifest.functions.items():
                 if key.endswith(f"::{func_name}"):
                     is_pure = any(p.kind == PropertyKind.PURE for p in props.properties)
@@ -278,7 +403,10 @@ class MutationEngine:
                 source = Path(file_path).read_text("utf-8")
                 tree = ast.parse(source)
                 for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
+                    if (
+                        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.name == func_name
+                    ):
                         visitor = FunctionCharacteristicVisitor()
                         visitor.visit(node)
                         branch_count = visitor.branch_count
@@ -290,18 +418,43 @@ class MutationEngine:
 
         # Determine categories currently "covered" by strong existing assertions
         covered_categories = set()
-        if teff_manifest:
-            # Find file in teff manifest
-            # This is a bit simplified: map strong assertions to categories
-            # For now, we'll leave it empty until we have a proper mapper
-            pass
+        mutants_skipped_covered_count = 0
+        if teff_manifest and os.path.exists(file_path):
+            # Find function in teff manifest - key is function_name or file_path::function_name
+            if file_path in teff_manifest.functions:
+                # Try file_path directly
+                func_effect = teff_manifest.functions.get(file_path)
+            elif f"{file_path}::{func_name}" in teff_manifest.functions:
+                func_effect = teff_manifest.functions.get(f"{file_path}::{func_name}")
+            else:
+                func_effect = None
 
-        return self.relevance_matrix.get_prioritized_categories(
-            is_pure=is_pure,
-            branch_count=branch_count,
-            has_strings=has_strings,
-            has_numbers=has_numbers,
-            covered_categories=covered_categories
+            if func_effect:
+                # Map strong assertions to mutation categories
+                from lintgate.linters.test_effectiveness.types import SEMANTIC_STRENGTH_THRESHOLD
+
+                for assertion in func_effect.assertions:
+                    if assertion.strength >= SEMANTIC_STRENGTH_THRESHOLD:
+                        # Map assertion kind to mutation category
+                        covered_cat = _map_assertion_kind_to_category(assertion.kind.value)
+                        if covered_cat:
+                            covered_categories.add(covered_cat)
+
+                # Estimate mutants skipped based on covered categories
+                # This is a heuristic: covered categories reduce relevant mutants
+                if covered_categories:
+                    mutants_skipped_covered_count = len(covered_categories) * 2  # Estimate
+
+        return (
+            self.relevance_matrix.get_prioritized_categories(
+                is_pure=is_pure,
+                branch_count=branch_count,
+                has_strings=has_strings,
+                has_numbers=has_numbers,
+                covered_categories=covered_categories,
+            ),
+            mutants_skipped_covered_count,
+            covered_categories,
         )
 
     def _parse_mutmut_results(self, paths: list[str]) -> dict[str, FunctionMutationState]:
@@ -325,11 +478,14 @@ class MutationEngine:
         # 0. Build a category map for mutants in these paths.
         #    Uses mutmut+libcst when available, with a built-in AST fallback.
         mutant_category_map: dict[str, str] = {}
+        # Also build detailed info map with line/operator for survivor_sites
+        mutant_info_map: dict[str, dict[str, Any]] = {}
         for path in paths:
             if os.path.exists(path):
                 try:
                     source = Path(path).read_text("utf-8")
                     mutant_category_map.update(self._build_mutant_category_map(path, source))
+                    mutant_info_map.update(self._get_mutant_info(path, source))
                 except Exception as e:
                     logger.debug(f"Failed to build category map for {path}: {e}")
 
@@ -357,7 +513,8 @@ class MutationEngine:
                     "survived": 0,
                     "timeout": 0,
                     "total": 0,
-                    "survived_by_category": {}
+                    "survived_by_category": {},
+                    "survivor_sites": [],  # Track detailed survivor info
                 }
 
             func_counts[func_mangled]["total"] += 1
@@ -368,8 +525,36 @@ class MutationEngine:
                 # Try to lookup category
                 cat = mutant_category_map.get(name_part)
                 if cat:
-                    func_counts[func_mangled]["survived_by_category"][cat] = \
+                    func_counts[func_mangled]["survived_by_category"][cat] = (
                         func_counts[func_mangled]["survived_by_category"].get(cat, 0) + 1
+                    )
+
+                # Collect survivor site info if available
+                info = mutant_info_map.get(name_part)
+                if info:
+                    # Valid info with line/operator
+                    site = SurvivorSite(
+                        line=info.get("line", -1),
+                        column=0,
+                        category=info.get("category", "unknown"),
+                        mutant_id=name_part.split("__mutmut_")[-1]
+                        if "__mutmut_" in name_part
+                        else "unknown",
+                        operator=info.get("operator", "unknown"),
+                    )
+                    func_counts[func_mangled]["survivor_sites"].append(site)
+                else:
+                    # Sentinel for unknown location
+                    site = SurvivorSite(
+                        line=-1,
+                        column=0,
+                        category="unknown",
+                        mutant_id=name_part.split("__mutmut_")[-1]
+                        if "__mutmut_" in name_part
+                        else "unknown",
+                        operator="unknown",
+                    )
+                    func_counts[func_mangled]["survivor_sites"].append(site)
             elif status == "timeout":
                 func_counts[func_mangled]["timeout"] += 1
 
@@ -416,7 +601,11 @@ class MutationEngine:
                 survived=counts["survived"],
                 timeout=counts["timeout"],
                 total=counts["total"],
-                survived_by_category=counts["survived_by_category"]
+                survived_by_category=counts["survived_by_category"],
+                survivor_sites=sorted(
+                    counts["survivor_sites"],
+                    key=lambda s: (s.line, s.category, s.mutant_id),
+                ),
             )
 
         return states
@@ -439,7 +628,150 @@ class MutationEngine:
         # Fallback path: ensure deterministic category mapping even without mutmut/libcst.
         return self._build_mutant_category_map_with_ast(module_name, source)
 
-    def _build_mutant_category_map_with_mutmut(self, module_name: str, source: str) -> dict[str, str]:
+    def _get_mutant_info(self, path: str, source: str) -> dict[str, dict[str, Any]]:
+        """Build mutant-id -> detailed info (category, line, operator) map.
+
+        Returns a dict mapping mutant_id to:
+        - category: mutation category (arithmetic, conditional, etc.)
+        - line: source line number (1-indexed)
+        - operator: mutmut operator name or "unknown"
+        """
+        module_name = os.path.splitext(path)[0].replace("/", ".")
+        if module_name.startswith("."):
+            module_name = module_name[1:]
+
+        # Try mutmut+libcst path first
+        info = self._get_mutant_info_with_cst(module_name, source)
+        if info:
+            return info
+
+        # Fallback to AST-based
+        return self._get_mutant_info_with_ast(module_name, source)
+
+    def _get_mutant_info_with_cst(self, module_name: str, source: str) -> dict[str, dict[str, Any]]:
+        """Get mutant info using libcst when available.
+
+        Note: Full libcst integration with mutmut requires more complex setup.
+        Currently returns empty dict to fall through to AST-based method.
+        """
+        # libcst integration would require mutmut internals that aren't easily accessible
+        # Fall through to AST-based method for actual implementation
+        return {}
+
+    def _get_mutant_info_with_ast(self, module_name: str, source: str) -> dict[str, dict[str, Any]]:
+        """Get mutant info using AST fallback (returns category and line)."""
+        class_sep = "\u01c1"
+
+        def _is_string_expr(node: ast.AST) -> bool:
+            return isinstance(node, ast.JoinedStr) or (
+                isinstance(node, ast.Constant) and isinstance(node.value, str)
+            )
+
+        def _infer_category(node: ast.AST) -> str | None:
+            if isinstance(node, ast.BinOp) and isinstance(
+                node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
+            ):
+                if _is_string_expr(node.left) or _is_string_expr(node.right):
+                    return "string"
+                return "arithmetic"
+            if isinstance(node, ast.BoolOp):
+                return "conditional"
+            if isinstance(node, ast.Compare):
+                return "conditional"
+            if isinstance(node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.Match)):
+                return "conditional"
+            if isinstance(node, ast.Constant):
+                if isinstance(node.value, str):
+                    return "string"
+                if isinstance(node.value, (int, float, complex)):
+                    return "number"
+            if isinstance(node, ast.Assign):
+                return "keyword"
+            return None
+
+        def _operator_name(node: ast.AST) -> str:
+            """Get a simplified operator name for the node."""
+            if isinstance(node, ast.BinOp):
+                return type(node.op).__name__.lower()
+            if isinstance(node, ast.BoolOp):
+                return type(node.op).__name__.lower()
+            if isinstance(node, ast.Compare):
+                return "compare"
+            if isinstance(node, (ast.If, ast.IfExp)):
+                return "conditional"
+            if isinstance(node, ast.Assign):
+                return "assignment"
+            return "unknown"
+
+        def _iter_function_nodes(node: ast.AST):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(
+                    child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+                ):
+                    continue
+                yield child
+                yield from _iter_function_nodes(child)
+
+        class InfoVisitor(ast.NodeVisitor):
+            def __init__(self):
+                self.id_map: dict[str, dict[str, Any]] = {}
+                self.class_stack: list[str] = []
+                self.func_mutant_counts: dict[str, int] = {}
+
+            def visit_ClassDef(self, node: ast.ClassDef):
+                self.class_stack.append(node.name)
+                self.generic_visit(node)
+                self.class_stack.pop()
+
+            def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+                if self.class_stack:
+                    base = f"x{class_sep}{self.class_stack[-1]}{class_sep}{node.name}"
+                else:
+                    base = f"x_{node.name}"
+
+                for child in _iter_function_nodes(node):
+                    category = _infer_category(child)
+                    if not category:
+                        continue
+
+                    next_index = self.func_mutant_counts.get(base, 0) + 1
+                    self.func_mutant_counts[base] = next_index
+
+                    full_key = f"{module_name}.{base}__mutmut_{next_index}"
+
+                    # Get line number (1-indexed from AST)
+                    line = getattr(child, "lineno", -1)
+                    if line is None:
+                        line = -1
+
+                    operator = _operator_name(child)
+
+                    self.id_map[full_key] = {
+                        "category": category,
+                        "line": line,
+                        "operator": operator,
+                    }
+
+                self.generic_visit(node)
+
+            def visit_FunctionDef(self, node: ast.FunctionDef):
+                self._visit_function(node)
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+                self._visit_function(node)
+
+        try:
+            tree = ast.parse(source)
+            visitor = InfoVisitor()
+            visitor.visit(tree)
+            return visitor.id_map
+        except (SyntaxError, ValueError, TypeError) as e:
+            logger.debug(f"Exception in _get_mutant_info_with_ast for {module_name}: {e}")
+            return {}
+
+    def _build_mutant_category_map_with_mutmut(
+        self, module_name: str, source: str
+    ) -> dict[str, str]:
         if not cst:
             return {}
         try:
@@ -456,25 +788,29 @@ class MutationEngine:
             # but for category mapping, we just need to know which operator was applied.
 
             class MappingVisitor(cst.CSTVisitor):
-                METADATA_DEPENDENCIES = (PositionProvider, )
+                METADATA_DEPENDENCIES = (PositionProvider,)
 
                 def __init__(self, operators):
-                    self.mutants: list[tuple[str, str]] = [] # (mangled_base, category)
+                    self.mutants: list[tuple[str, str]] = []  # (mangled_base, category)
                     self._operators = operators
-                    self._stack: list[tuple[str, str | None]] = [] # (type, name)
+                    self._stack: list[tuple[str, str | None]] = []  # (type, name)
 
                 def on_visit(self, node: cst.CSTNode) -> bool:
                     if isinstance(node, cst.ClassDef):
                         self._stack.append(("class", node.name.value))
                     elif isinstance(node, cst.FunctionDef):
-                        class_name = next((s[1] for s in reversed(self._stack) if s[0] == "class"), None)
+                        class_name = next(
+                            (s[1] for s in reversed(self._stack) if s[0] == "class"), None
+                        )
                         mangled = mangle_function_name(name=node.name.value, class_name=class_name)
                         self._stack.append(("func", mangled))
 
                     if isinstance(node, (cst.Annotation, cst.Decorator)):
                         return False
 
-                    current_func = next((s[1] for s in reversed(self._stack) if s[0] == "func"), None)
+                    current_func = next(
+                        (s[1] for s in reversed(self._stack) if s[0] == "func"), None
+                    )
                     if current_func:
                         for t, operator in self._operators:
                             if isinstance(node, t):
@@ -526,7 +862,9 @@ class MutationEngine:
 
             return id_map
         except Exception as e:
-            logger.debug(f"Exception in _build_mutant_category_map_with_mutmut for {module_name}: {e}")
+            logger.debug(
+                f"Exception in _build_mutant_category_map_with_mutmut for {module_name}: {e}"
+            )
             return {}
 
     def _build_mutant_category_map_with_ast(self, module_name: str, source: str) -> dict[str, str]:
@@ -564,7 +902,9 @@ class MutationEngine:
         def _iter_function_nodes(node: ast.AST):
             for child in ast.iter_child_nodes(node):
                 # Skip nested functions/classes so each function gets its own IDs.
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                if isinstance(
+                    child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+                ):
                     continue
                 yield child
                 yield from _iter_function_nodes(child)
@@ -638,7 +978,7 @@ def _demangle_mutmut_name(mangled: str) -> tuple[str, str]:
     class_idx = mangled.rfind(".x" + class_sep)
     if class_idx != -1:
         module_dotted = mangled[:class_idx]
-        remainder = mangled[class_idx + 2:]  # skip '.x'
+        remainder = mangled[class_idx + 2 :]  # skip '.x'
         # remainder is like 'ǁClassǁmethod' — split on separator
         parts = remainder.split(class_sep)
         # parts = ['', 'ClassName', 'method_name']
@@ -652,7 +992,7 @@ def _demangle_mutmut_name(mangled: str) -> tuple[str, str]:
     if idx == -1:
         return ("", "")
     module_dotted = mangled[:idx]
-    func_name = mangled[idx + 3:]  # skip '.x_'
+    func_name = mangled[idx + 3 :]  # skip '.x_'
     file_path = module_dotted.replace(".", "/") + ".py"
     return (file_path, func_name)
 
@@ -687,9 +1027,3 @@ class FunctionCharacteristicVisitor(ast.NodeVisitor):
             self.has_strings = True
         elif isinstance(node.value, (int, float)):
             self.has_numbers = True
-
-    def visit_Str(self, node: ast.Str): # Support Python < 3.8
-        self.has_strings = True
-
-    def visit_Num(self, node: ast.Num): # Support Python < 3.8
-        self.has_numbers = True

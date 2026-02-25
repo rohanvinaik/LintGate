@@ -247,3 +247,69 @@ class TestCompactReport:
         report = format_mesh_report_compact(mesh)
         assert report["remediation_loop"]["required"] is True
         assert report["remediation_loop"]["policy"].startswith("Add tests for uncovered symbols")
+
+    def test_truncation_limits_and_flags_correctly(self) -> None:
+        cr = ChannelResult(
+            channel="lint",
+            status="fail",
+            severity="blocking",
+            findings=[
+                LintIssue(linter="x", kind="y", message="1", severity="blocking"),
+                LintIssue(linter="x", kind="y", message="2", severity="warning"),
+            ],
+        )
+        mesh = _make_mesh([cr])
+        report = format_mesh_report_compact(
+            mesh, max_findings=1, scope="changed", files_analyzed=["a.py"]
+        )
+        assert len(report["finding_index"]) == 1
+        assert report["findings_truncated"] is True
+        assert report["max_findings"] == 1
+        assert report["scope"] == "changed"
+        assert report["files_analyzed"] == ["a.py"]
+        # Ensure highest severity kept
+        kept_finding = next(iter(report["finding_index"].values()))
+        assert kept_finding["severity"] == "blocking"
+
+    def test_truncation_sorting_determinism(self) -> None:
+        # Create a mesh with multiple channels
+        cr_fail = ChannelResult(
+            channel="fail_ch",
+            status="fail",
+            severity="blocking",
+            findings=[
+                LintIssue(linter="x", kind="y", message="1", severity="warning"),
+            ],
+        )
+        cr_pass = ChannelResult(
+            channel="pass_ch",
+            status="pass",
+            severity="none",
+            findings=[
+                LintIssue(linter="x", kind="y", message="2", severity="warning"),
+            ],
+        )
+        mesh = _make_mesh([cr_fail, cr_pass])
+
+        # Override the current finding index explicitly using internal tools to test the sorting mechanism
+        from lintgate.controlplane.reporter_compact import _truncate_finding_index
+
+        index = {
+            "z_warn_pass": {"severity": "warning", "channel": "pass_ch"},
+            "a_info_fail": {"severity": "informational", "channel": "fail_ch"},
+            "b_block_pass": {"severity": "blocking", "channel": "pass_ch"},
+            "y_warn_fail": {"severity": "warning", "channel": "fail_ch"},
+            "c_warn_fail": {"severity": "warning", "channel": "fail_ch"},
+        }
+
+        # Expected order:
+        # 1. b_block_pass (blocking)
+        # 2. c_warn_fail (warning, fail, alphabetically first warning fail)
+        # 3. y_warn_fail (warning, fail)
+        # 4. z_warn_pass (warning, pass)
+        # 5. a_info_fail (informational)
+
+        truncated = _truncate_finding_index(index, mesh, max_findings=3)
+        assert len(truncated) == 3
+        keys = [k for k, v in truncated]
+        assert keys == ["b_block_pass", "c_warn_fail", "y_warn_fail"]

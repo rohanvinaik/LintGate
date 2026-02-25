@@ -42,11 +42,10 @@ def test_classify_assertion_not_in_edge_case():
     """Kill mutants around NotIn / In comparators."""
     node = ast.parse("assert 'a' not in b").body[0]
     kind, _, _, confidence = _classify_assert_test(node.test)  # type: ignore
-    # NotIn is structural/weak
-    assert kind == AssertionKind.IS_FALSE or confidence == "structural"
+    # NotIn is structural membership
+    assert kind == AssertionKind.COLLECTION_MEMBERSHIP and confidence == "structural"
 
     node_in = ast.parse("assert 'a' in b").body[0]
     kind_in, _, _, confidence_in = _classify_assert_test(node_in.test)  # type: ignore
     # In check
-    assert kind_in == AssertionKind.COLLECTION_MEMBERSHIP or confidence_in == "structural"
-
+    assert kind_in == AssertionKind.COLLECTION_MEMBERSHIP and confidence_in == "structural"

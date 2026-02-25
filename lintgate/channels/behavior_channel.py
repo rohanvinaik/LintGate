@@ -41,6 +41,7 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
+from lintgate.orchestration.authority import AuthorityEscalationEngine
 
 from .behavior_detection import (
     detect_approach_cycling,
@@ -255,11 +256,26 @@ class BehaviorChannel:
         )
 
         scorer = _IntentBiasScorer(compass, bias_weights, global_priors=global_priors)
+
+        # Authority engine initialization
+        risk_level = "moderate"
+        if event.change_classification:
+            risk_level = event.change_classification.risk_level
+
+        # Get compliance rate from compass or default to 1.0
+        # (This will be truly implemented in Issue #165)
+        compliance_rate = getattr(compass, "compliance_rate", 1.0)
+
+        esc_engine = AuthorityEscalationEngine()
+
         coord = _SignalCoordinator(
             compass,
             thresholds,
             theory_profile=theory_profile,
             recent_codas=recent_codas,
+            escalation_engine=esc_engine,
+            model_risk=risk_level,
+            compliance_rate=compliance_rate,
         )
 
         # Run all 9 detection rules

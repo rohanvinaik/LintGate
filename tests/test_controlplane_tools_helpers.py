@@ -505,7 +505,13 @@ class TestImplControlplaneRun:
             mock.patch("mcp_tools.controlplane_tools._persist_session_after_mesh"),
             mock.patch("mcp_tools.controlplane_tools._persist_runtime_state"),
             mock.patch("mcp_tools.controlplane_tools._save_run_details_for_drilldown"),
+            mock.patch(
+                "mcp_tools.controlplane_tools._resolve_scope",
+                return_value=["a.py"],
+            ),
         ):
-            raw = _impl_controlplane_run("/tmp", "lint,bogus", "normal", _stub_helpers())
+            raw = _impl_controlplane_run(
+                "/tmp", "lint,bogus", "normal", "project", None, None, _stub_helpers()
+            )
         parsed = json.loads(raw)
         assert parsed["unknown_channels"] == ["bogus"]

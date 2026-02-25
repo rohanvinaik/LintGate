@@ -16,12 +16,14 @@ from lintgate.linters.performance_checks.manifest import PropertyManifest
 def channel():
     return PerformanceChannel()
 
+
 def test_resolve_file():
     manifest = PropertyManifest()
     # Mock get_source_file
     manifest.functions["func1"] = MagicMock(source_file="file1.py")
     assert _resolve_file(manifest, "func1", "root") == "file1.py"
     assert _resolve_file(manifest, "func2", "root") == "root"
+
 
 def test_analyze_purity_summary_low_ratio():
     manifest = PropertyManifest(pure_count=1, impure_count=9)
@@ -34,22 +36,22 @@ def test_analyze_purity_summary_low_ratio():
     assert len(issues) == 1
     assert issues[0].kind == "PERFCH001"
 
+
 def test_analyze_optimization_opportunities():
     manifest = PropertyManifest()
     manifest.optimization_potential = [
         ("func1", ["parallelizable", "cacheable"]),
         ("func2", ["cache-without-invalidation"]),
-        ("func3", ["cacheable"])
+        ("func3", ["cacheable"]),
     ]
     # Mock _resolve_file
     with patch("lintgate.channels.performance_channel._resolve_file", return_value="file.py"):
         issues = _analyze_optimization_opportunities(manifest, "/root")
 
     kinds = [i.kind for i in issues]
-    assert "PERFCH003" in kinds # parallelizable
-    assert "PERFCH004" in kinds # cache-without-invalidation
-    assert "PERFCH005" in kinds # summary for cacheable
-
+    assert "PERFCH003" in kinds  # parallelizable
+    assert "PERFCH004" in kinds  # cache-without-invalidation
+    assert "PERFCH005" in kinds  # summary for cacheable
 
 
 def test_performance_channel_metadata(channel):

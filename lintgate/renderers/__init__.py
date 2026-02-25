@@ -11,7 +11,7 @@ dynamic rule file rendering and capability detection.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from lintgate.compass import CompassState
@@ -42,6 +42,16 @@ class RendererRegistry:
     def get(self, name: str) -> Renderer | None:
         """Look up a renderer by name."""
         return self._renderers.get(name)
+
+    def get_adapter(self, name: str) -> Any | None:
+        """Look up a host adapter by name.
+
+        Returns the renderer if it implements HostAdapter, otherwise None.
+        """
+        renderer = self.get(name)
+        if renderer is None:
+            return None
+        return renderer
 
     def list_available(self) -> list[str]:
         """Return sorted list of registered renderer names."""

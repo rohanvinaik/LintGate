@@ -226,7 +226,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             # `name` from manifest contains the fully-qualified name, we extract baseline function name
             hotspot_functions = {h.get("function") for h in hotspots if h.get("function")}
 
-        candidates = _select_property_candidates(manifest, function, max_functions, hotspot_functions)
+        candidates = _select_property_candidates(
+            manifest, function, max_functions, hotspot_functions
+        )
 
         if not candidates:
             note = "No pure functions with algebraic properties found"

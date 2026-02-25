@@ -58,11 +58,15 @@ class MutationCIStats:
         skipped_equivalent_policy = raw.get("skipped_equivalent_policy", 0)
 
         # Prefer mutmut's own total when present; fall back to computed sum.
-        computed_sum = killed + survived + timeout + suspicious + no_tests + skipped + equivalent_suspect
+        computed_sum = (
+            killed + survived + timeout + suspicious + no_tests + skipped + equivalent_suspect
+        )
         total = raw.get("total", computed_sum)
 
         effective_total = total - equivalent_suspect - skipped_equivalent_policy
-        effective_total_for_score = raw.get("effective_total_for_score", effective_total if effective_total > 0 else 0)
+        effective_total_for_score = raw.get(
+            "effective_total_for_score", effective_total if effective_total > 0 else 0
+        )
 
         if total == 0:
             return cls(
@@ -81,7 +85,11 @@ class MutationCIStats:
                 source=source,
             )
 
-        score = round(killed / effective_total_for_score * 100, 1) if effective_total_for_score > 0 else 0.0
+        score = (
+            round(killed / effective_total_for_score * 100, 1)
+            if effective_total_for_score > 0
+            else 0.0
+        )
 
         return cls(
             killed=killed,
@@ -215,11 +223,7 @@ def load_mutation_hotspots(survivors_path: str) -> list[dict[str, Any]]:
         if isinstance(data, list):
             return [_normalize_hotspot(entry) for entry in data if isinstance(entry, dict)]
         if isinstance(data, dict) and "mutants" in data:
-            return [
-                _normalize_hotspot(m)
-                for m in data["mutants"]
-                if isinstance(m, dict)
-            ]
+            return [_normalize_hotspot(m) for m in data["mutants"] if isinstance(m, dict)]
     except json.JSONDecodeError:
         pass
 

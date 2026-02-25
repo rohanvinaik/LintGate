@@ -110,6 +110,9 @@ jobs:
             || python -m pip install pytest
           python -m pip install pytest-cov diff-cover
 
+      - name: Validate required-check profile contract
+        run: python scripts/check_required_profile.py --profile required-checks
+
       - name: Resolve quality policy thresholds
         id: quality_policy
         run: |

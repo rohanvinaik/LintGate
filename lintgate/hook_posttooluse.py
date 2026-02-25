@@ -61,6 +61,40 @@ from lintgate.hook_runtime_state import (
 )
 
 
+# ── Mutation Enqueue Helper ────────────────────────────────────────────────
+def _enqueue_mutation_tasks(classification: Any, cwd: str) -> None:
+    """Non-blocking enqueue of mutation tasks for Python files.
+
+    Enqueues changed Python files to the mutation orchestrator with bounded
+    fan-out (max 5 files per event). Errors are swallowed to preserve hook
+    output schema.
+
+    Args:
+        classification: ChangeClassification with files_by_language
+        cwd: Current working directory
+    """
+    # Get Python files from classification
+    python_files = classification.files_by_language.get("python", [])
+    if not python_files:
+        return
+
+    # Enforce bounded fan-out: max 5 files per event
+    files_to_enqueue = python_files[:5]
+
+    # Try to enqueue to orchestrator (non-blocking)
+    try:
+        from lintgate.mutation.automation import global_orchestrator
+
+        for file_path in files_to_enqueue:
+            # Make path absolute if relative
+            if not os.path.isabs(file_path):
+                file_path = os.path.join(cwd, file_path)
+            global_orchestrator.enqueue(file_path)
+    except Exception:
+        # Swallow all errors to preserve hook output
+        pass
+
+
 def _parse_hook_input() -> dict | None:
     """Parse and validate stdin JSON. Returns None on invalid input."""
     try:
@@ -107,6 +141,9 @@ def _run_legacy_pipeline(
     classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
     if classification.risk_level == "none":
         _exit_clean()
+
+    # Enqueue mutation tasks for Python files (non-blocking, bounded fan-out)
+    _enqueue_mutation_tasks(classification, cwd)
 
     dep_warnings: list[str] = []
     if classification.change_kind in ("dependency", "build"):
@@ -296,6 +333,7 @@ def _run_controlplane(
     from lintgate.controlplane.types import SupervisionEvent
     from lintgate.hook_controlplane import (
         accumulate_session_telemetry,
+        deliver_behavioral_findings,
         extract_finding_indexes,
         load_global_priors,
         post_process_session,
@@ -304,12 +342,17 @@ def _run_controlplane(
         setup_session_and_gate,
     )
     from lintgate.hook_habit import record_behavior_event, record_habit_event_lightweight
+    from lintgate.orchestration.cycle_detector import EditCycleState, detect_cycles, track_event
+    from lintgate.orchestration.disposition_enforcer import DispositionEnforcer
 
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
     tool_output = input_data.get("tool_output", "")
 
     classification = classify_change(tool_name, tool_input, tool_output, cwd, config)
+
+    # Enqueue mutation tasks for Python files (non-blocking, bounded fan-out)
+    _enqueue_mutation_tasks(classification, cwd)
 
     record_behavior_event(cp_config, cwd, tool_name, tool_input, tool_output)
     record_habit_event_lightweight(cp_config, cwd, tool_name, tool_input, tool_output)
@@ -336,6 +379,15 @@ def _run_controlplane(
         load_global_priors(cp_config),
     )
 
+    # Issue #154: Disposition enforcement engine
+    try:
+        enforcer = DispositionEnforcer(cp_config, session=session)
+        nudge = enforcer.evaluate(event)
+        if nudge:
+            advisory = (advisory + "\n\n" + nudge) if advisory else nudge
+    except Exception:
+        pass
+
     mesh_result = run_mesh(event, cp_config, channels, session=session)
 
     finding_index: dict = {}
@@ -346,7 +398,7 @@ def _run_controlplane(
 
     idx = extract_finding_indexes(session)
 
-    proposed_constraints = post_process_session(
+    proposed_constraints, behavior_findings = post_process_session(
         session,
         mesh_result,
         finding_index,
@@ -356,6 +408,16 @@ def _run_controlplane(
         tool_input,
         tool_output,
     )
+
+    # Issue #159: Unified delivery integration
+    behavior_advisory = deliver_behavioral_findings(
+        session,
+        behavior_findings,
+        cp_config,
+        cwd,
+    )
+    if behavior_advisory:
+        advisory = (advisory + "\n\n" + behavior_advisory) if advisory else behavior_advisory
 
     save_run_details(mesh_result, finding_index)
 
@@ -369,7 +431,53 @@ def _run_controlplane(
     )
 
     accumulate_session_telemetry(report, session)
-    refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
+
+    # Issue #147: deterministic cycle detection
+    try:
+        from dataclasses import asdict
+
+        cycle_state_dict = session.behavior_compass.get("cycle_state", {})
+        cycle_state = EditCycleState(**cycle_state_dict) if cycle_state_dict else EditCycleState()
+
+        # Build event for tracker
+        event_dict = {
+            "tool_name": tool_name,
+            "target_file": tool_input.get("target_file")
+            or tool_input.get("path")
+            or tool_input.get("file_path"),
+            "status": "success" if tool_output and "error" not in tool_output.lower() else "error",
+            "findings": finding_index.values() if finding_index else [],
+        }
+
+        new_cycle_state = track_event(cycle_state, event_dict)
+        results = detect_cycles(new_cycle_state)
+
+        detected = any(r.cycle_detected for r in results)
+        if detected:
+            new_cycle_state.total_detections += 1
+
+        session.behavior_compass["cycle_state"] = asdict(new_cycle_state)
+
+        # Inject metadata into report for arbitration and visibility
+        if report:
+            reason_codes = [r.reason for r in results if r.reason]
+            report.setdefault("metadata", {})["cycle_state"] = {
+                "detected": detected,
+                "reason_codes": reason_codes,
+                "escalation_level": results[0].escalation_level if results else "advisory",
+            }
+    except Exception:
+        pass
+
+    refresh_runtime_after_run(
+        cwd,
+        session,
+        cp_config,
+        mesh_result,
+        tool_name,
+        tool_input,
+        pending_findings=behavior_findings,
+    )
 
     report, telemetry = _finalize_report(report, advisory, session, cp_config)
 

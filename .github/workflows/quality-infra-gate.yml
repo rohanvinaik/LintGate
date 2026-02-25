@@ -36,3 +36,6 @@ jobs:
       - name: Enforce centralized quality gate contract
         run: |
           python -m lintgate.quality_infra --enforce .
+
+      - name: Enforce tracked artifact hygiene
+        run: python scripts/check_tracked_artifacts.py --enforce .

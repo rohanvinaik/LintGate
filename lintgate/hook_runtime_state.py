@@ -250,6 +250,7 @@ def refresh_runtime_state_lightweight(
     trigger: str = "tool_call",
     transition: str | None = None,
     scheduler_dict: dict[str, Any] | None = None,
+    pending_findings: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Refresh RuntimeState for non-session paths with scheduler persistence."""
     with contextlib.suppress(Exception):
@@ -270,6 +271,8 @@ def refresh_runtime_state_lightweight(
             habit_state=habit_state,
             tracker=tracker,
         )
+        if pending_findings:
+            runtime.pending_behavioral_findings = pending_findings
         if habit_state is not None:
             runtime.mode = "habit" if habit_state.active else "normal"
         if mesh_result is not None:

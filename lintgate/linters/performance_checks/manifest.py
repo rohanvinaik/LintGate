@@ -16,7 +16,7 @@ from lintgate.linters.performance_checks.algebra_types import (
 from lintgate.linters.performance_checks.properties import classify_properties
 from lintgate.linters.performance_checks.purity import analyze_purity
 from lintgate.mutation.state import MutationStateManager
-from lintgate.state import MUTATION_CACHE_DIR, PERF_CACHE_DIR
+from lintgate.state import PERF_CACHE_DIR, get_mutation_state_path
 
 
 @dataclass
@@ -170,7 +170,7 @@ def _scan_file(
         if purity.is_pure:
             mutation_state = None
             if mutation_manager:
-                mutation_state = mutation_manager.get_state(f"{relpath}::{qualname}")
+                mutation_state = mutation_manager.get_state(f"{filepath}::{qualname}")
 
             props = classify_properties(func_node, purity, mutation_state)
             manifest.functions[unique_key] = FunctionProperties(
@@ -216,7 +216,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
     cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
 
     # Mutation engine/tools persist state here; read from the same canonical path.
-    mutation_state_path = MUTATION_CACHE_DIR / "state.json"
+    mutation_state_path = get_mutation_state_path()
     try:
         mutation_manager = MutationStateManager(str(mutation_state_path))
     except (OSError, ValueError):

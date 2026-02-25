@@ -43,6 +43,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     from .controlplane.types import (
         ChannelConfig,
         ControlPlaneConfig,
+        DispositionEnforcementConfig,
         InquiryConfig,
         QualityGateConfig,
         TokenPolicy,
@@ -137,6 +138,23 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
             block_push=bool(qg_raw.get("block_push", True)),
             advise_commit=bool(qg_raw.get("advise_commit", True)),
             check_secrets=bool(qg_raw.get("check_secrets", True)),
+        )
+
+    # Parse disposition_enforcement config
+    de_raw = cp_raw.get("orchestration", {}).get("disposition_enforcement", {})
+    if not de_raw:
+        # Check top-level controlplane.disposition_enforcement for backward compat
+        de_raw = cp_raw.get("disposition_enforcement", {})
+
+    if isinstance(de_raw, dict):
+        cp_config.disposition_enforcement = DispositionEnforcementConfig(
+            enabled=bool(de_raw.get("enabled", False)),
+            nudge_after_edit_without_lint=bool(de_raw.get("nudge_after_edit_without_lint", True)),
+            nudge_before_bash_without_prediction=bool(
+                de_raw.get("nudge_before_bash_without_prediction", False)
+            ),
+            max_nudges_per_disposition=int(de_raw.get("max_nudges_per_disposition", 3)),
+            cadence_health_check_events=int(de_raw.get("cadence_health_check_events", 15)),
         )
 
     # Parse per-channel configs

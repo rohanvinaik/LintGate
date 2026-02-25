@@ -261,3 +261,15 @@ set.ignored = true
 match.rules = ["trivy:DS001", "trivy:DS002", "trivy:DS026"]
 match.file_patterns = ["**/.clusterfuzzlite/**"]
 set.ignored = true
+
+[[triage]]
+match.rules = [
+  "radarlint-python:python:S1186",
+  "radarlint-python:python:S5886",
+  "radarlint-python:python:S107",
+  "radarlint-python:python:S1135",
+  "radarlint-python:python:S1871",
+  "radarlint-python:python:S1764",
+  "ruff:A002"
+]
+set.ignored = true

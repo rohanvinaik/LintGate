@@ -445,12 +445,16 @@ class TestGenerateQltyWorkflow:
         assert "workflow_dispatch:" in content
         assert "check --all" in content
 
-    def test_uses_official_action(self) -> None:
-        """Must use qltysh/qlty-action/install@main, not curl | sh."""
+    def test_has_retry_backoff_for_transient_failures(self) -> None:
+        """Must have bounded retry with backoff for transient transport failures."""
         content = _generate_qlty_workflow()
-        assert "qltysh/qlty-action/install@" in content
-        assert "curl" not in content
-        assert "QLTY_BIN" not in content
+        assert "max_retries=" in content
+        assert "delay=" in content
+        assert "attempt" in content
+        # Should have explicit transport failure diagnostics
+        assert "transient error" in content or "transport" in content.lower()
+        # Should use PATH export for qlty
+        assert "QLTY_BIN" in content or ".qlty/bin" in content
 
 
 class TestGenerateSecurityWorkflow:

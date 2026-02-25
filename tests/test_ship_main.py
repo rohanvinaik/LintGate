@@ -221,6 +221,89 @@ def test_union_checks(ship_main):
     assert ship_main._union_checks(["A", "B"], ["B", "C"]) == ["A", "B", "C"]
 
 
+def test_classify_failure_transport_flake(ship_main):
+    """Test classification of transient/transport failures."""
+    # Network-related failures
+    assert ship_main._classify_failure("Qlty", "connection error") == "transport_flake"
+    assert ship_main._classify_failure("Tests", "timeout") == "transport_flake"
+    assert ship_main._classify_failure("SonarCloud", "500") == "transport_flake"
+    assert ship_main._classify_failure("Tests", "network failure") == "transport_flake"
+    assert ship_main._classify_failure("Qlty", "rate limit") == "transport_flake"
+    assert ship_main._classify_failure("Tests", "temporarily unavailable") == "transport_flake"
+
+
+def test_classify_failure_code_failure(ship_main):
+    """Test classification of code/test failures."""
+    # Clear code failure patterns
+    assert ship_main._classify_failure("Tests", "failure") == "code_failure"
+    assert ship_main._classify_failure("Qlty", "error") == "code_failure"
+    assert ship_main._classify_failure("SonarCloud", "failed") == "code_failure"
+
+
+def test_classify_failure_unknown(ship_main):
+    """Test fallback to unknown classification."""
+    # Unknown patterns - neutral/skipped outcomes are not failures
+    assert ship_main._classify_failure("Qlty", "skipped") == "unknown"
+    assert ship_main._classify_failure("Tests", "neutral") == "unknown"
+
+
+def test_watch_required_checks_telemetry_tracks_transitions(ship_main, monkeypatch):
+    """Test that telemetry tracks state transitions."""
+    telemetry = {}
+
+    # First call: in_progress, Second call: success
+    call_count = {"value": 0}
+
+    def fake_read_check_runs(repo, slug, sha):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return {"Tests": ("in_progress", None)}
+        return {"Tests": ("completed", "success")}
+
+    monkeypatch.setattr(ship_main, "_read_check_runs", fake_read_check_runs)
+    monkeypatch.setattr(ship_main.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(ship_main.time, "time", lambda: 1000.0)
+
+    ship_main._watch_required_checks(
+        "/repo",
+        "o/r",
+        "sha",
+        ["Tests"],
+        wait_seconds=0,
+        timeout_seconds=60,
+        telemetry_output=telemetry,
+    )
+
+    assert telemetry["checks"]["Tests"]["transitions"] >= 2
+
+
+def test_watch_required_checks_telemetry_present_on_failure(ship_main, monkeypatch):
+    """Test that telemetry is populated even when checks fail."""
+    telemetry = {}
+
+    monkeypatch.setattr(
+        ship_main,
+        "_read_check_runs",
+        lambda *_: {"Qlty": ("completed", "failure")},
+    )
+    monkeypatch.setattr(ship_main.time, "time", lambda: 1000.0)
+
+    with pytest.raises(RuntimeError, match="Required checks failed"):
+        ship_main._watch_required_checks(
+            "/repo",
+            "o/r",
+            "sha",
+            ["Qlty"],
+            wait_seconds=0,
+            timeout_seconds=60,
+            telemetry_output=telemetry,
+        )
+
+    # Telemetry should have been created and tracks the failure
+    assert "checks" in telemetry
+    assert "Qlty" in telemetry["checks"]
+
+
 def test_read_check_runs(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main,

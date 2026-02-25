@@ -12,6 +12,7 @@ import pytest
 from lintgate.controlplane.model_profiles import ModelProfile, ModelProfileStore
 from lintgate.hook_posttooluse import (
     _can_apply_session_telemetry,
+    _enqueue_mutation_tasks,
     _mark_session_telemetry_applied,
     _record_habit_event_lightweight,
     _refresh_runtime_state_lightweight,
@@ -297,6 +298,75 @@ class TestRunControlplane:
         parsed = json.loads(output)
         assert isinstance(parsed, dict)
 
+    def test_cycle_tracking_integration(self, tmp_path, monkeypatch) -> None:
+        """Verify that cycle_state is tracked in session.behavior_compass."""
+        import io
+        from unittest.mock import MagicMock, patch
+
+        from lintgate.controlplane.types import (
+            ChannelResult,
+            CoherenceResult,
+            MeshResult,
+            SupervisionEvent,
+        )
+        from lintgate.hook_posttooluse import _run_controlplane
+        from lintgate.types import ChangeClassification
+
+        classification = ChangeClassification(
+            change_kind="code", risk_level="low", files_changed=["foo.py"]
+        )
+        mock_config = MagicMock()
+        mock_cp_config = MagicMock()
+        mock_cp_config.channel_enabled.return_value = False
+
+        mesh_result = MeshResult(
+            event=SupervisionEvent(project_root=str(tmp_path)),
+            channel_results=[ChannelResult(channel="lint", status="pass")],
+            coherence=CoherenceResult(state="stable", summary="all pass"),
+            duration_ms=10.0,
+        )
+
+        mock_session = MagicMock()
+        mock_session.behavior_compass = {}
+
+        stdout_capture = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", stdout_capture)
+
+        with (
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hook_habit.record_behavior_event"),
+            patch("lintgate.hook_habit.record_habit_event_lightweight"),
+            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
+            patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
+            patch("lintgate.hook_controlplane.extract_finding_indexes", return_value=({}, {}, 0)),
+            patch(
+                "lintgate.hook_controlplane.setup_session_and_gate",
+                return_value=(mock_session, None),
+            ),
+            patch("lintgate.hook_controlplane.post_process_session", return_value=[]),
+            patch("lintgate.hook_controlplane.save_run_details"),
+            patch(
+                "lintgate.controlplane.reporter.format_mesh_report", return_value={"metadata": {}}
+            ),
+            patch("lintgate.hook_controlplane.accumulate_session_telemetry"),
+            patch("lintgate.hook_controlplane.refresh_runtime_after_run"),
+            patch("lintgate.hook_arbitration.arbitrate_output", side_effect=lambda r, *a: (r, {})),
+            patch("lintgate.hook_posttooluse.log_metric"),
+            pytest.raises(SystemExit),
+        ):
+            _run_controlplane(
+                {"tool_name": "Edit", "tool_input": {"target_file": "foo.py"}, "tool_output": "ok"},
+                mock_config,
+                mock_cp_config,
+                str(tmp_path),
+                0.0,
+            )
+
+        # Verify cycle_state was added to behavior_compass
+        assert "cycle_state" in mock_session.behavior_compass
+        assert mock_session.behavior_compass["cycle_state"]["file_edit_counts"]["foo.py"] == 1
+
     def test_advisory_prepended_to_report(self, tmp_path, monkeypatch) -> None:
         """When setup_session_and_gate returns an advisory, it is prepended."""
         import io
@@ -519,3 +589,48 @@ def test_runtime_write_metric_includes_lock_contention_fields(
     assert "lock_contention_count" in metric
     assert "lock_acquired" in metric
     assert isinstance(metric["lock_contention_count"], int)
+
+
+def test_enqueue_mutation_tasks_non_python_files(tmp_path) -> None:
+    """Test that non-Python files are not enqueued."""
+    from unittest.mock import MagicMock, patch
+
+    # Create a classification with non-Python files
+    classification = MagicMock()
+    classification.files_by_language = {"javascript": ["app.js"], "rust": ["lib.rs"]}
+
+    with patch("lintgate.mutation.automation.global_orchestrator") as mock_orchestrator:
+        _enqueue_mutation_tasks(classification, str(tmp_path))
+        # Should not enqueue anything
+        mock_orchestrator.enqueue.assert_not_called()
+
+
+def test_enqueue_mutation_tasks_bounded_fanout(tmp_path) -> None:
+    """Test that enqueue is bounded to max 5 files per event."""
+    from unittest.mock import MagicMock, patch
+
+    # Create a classification with more than 5 Python files
+    classification = MagicMock()
+    classification.files_by_language = {
+        "python": ["a.py", "b.py", "c.py", "d.py", "e.py", "f.py", "g.py"]
+    }
+
+    with patch("lintgate.mutation.automation.global_orchestrator") as mock_orchestrator:
+        _enqueue_mutation_tasks(classification, str(tmp_path))
+        # Should only enqueue first 5 files
+        assert mock_orchestrator.enqueue.call_count == 5
+
+
+def test_enqueue_mutation_tasks_orchestrator_error(tmp_path) -> None:
+    """Test that orchestrator errors are swallowed."""
+    from unittest.mock import MagicMock, patch
+
+    classification = MagicMock()
+    classification.files_by_language = {"python": ["test.py"]}
+
+    with patch(
+        "lintgate.mutation.automation.global_orchestrator",
+        side_effect=RuntimeError("orchestrator error"),
+    ):
+        # Should not raise
+        _enqueue_mutation_tasks(classification, str(tmp_path))

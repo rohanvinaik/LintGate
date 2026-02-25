@@ -34,6 +34,7 @@ class LintIssue:
     end_line: int | None = None
     end_column: int | None = None
     severity: str = "warning"  # "blocking", "warning", "informational"
+    authority_level: str | None = None  # "advisory", "nudge", "blocking", "intervention"
     confidence: float = 1.0  # 0.0-1.0 (deterministic tools = 1.0, fuzzy = lower)
     fixable: bool = False  # Can be auto-fixed
     fix_description: str | None = None
