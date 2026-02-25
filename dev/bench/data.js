@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771973221722,
+  "lastUpdate": 1771993153927,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -592,6 +592,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00007047402575004671",
             "extra": "mean: 646.9131081528614 usec\nrounds: 601"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5baaf29e664cf1337d5d12cfd194abf22ad6a7c4",
+          "message": "Add Contributor Covenant Code of Conduct (#92)\n\nAdded Contributor Covenant Code of Conduct to promote a respectful and inclusive community.",
+          "timestamp": "2026-02-24T23:18:36-05:00",
+          "tree_id": "c31abfb494abb142f4d84862ff9c0fbf100555e4",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/5baaf29e664cf1337d5d12cfd194abf22ad6a7c4"
+        },
+        "date": 1771993152413,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 119.97365769187024,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00022191135896926649",
+            "extra": "mean: 8.335163061947412 msec\nrounds: 113"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 215699.9337832065,
+            "unit": "iter/sec",
+            "range": "stddev: 7.840392663547506e-7",
+            "extra": "mean: 4.636070037022217 usec\nrounds: 54157"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5481.120114879551,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00021830108787302253",
+            "extra": "mean: 182.44446008130865 usec\nrounds: 3695"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14393.46368135551,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001634353149760454",
+            "extra": "mean: 69.47598035734403 usec\nrounds: 9011"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1543.6532813875965,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00025082775183807705",
+            "extra": "mean: 647.8138660134197 usec\nrounds: 612"
           }
         ]
       }
