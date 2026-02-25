@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772001991695,
+  "lastUpdate": 1772037376055,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -769,6 +769,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00012359437332882172",
             "extra": "mean: 642.3966859812859 usec\nrounds: 535"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9e1c09dd2112e3bfd54f65cdc711e90684d6a0ea",
+          "message": "chore: ship codex/ship-main-symbol-gate-advisory-20260225 to main (#103)\n\n* ci: make symbol coverage gate advisory on main pushes\n\n* feat: ship issue 102 mutation system and harden ship gates\n\n* chore: add symbol-gate waivers for issue 102 surfaces\n\n* fix: make mutation category mapping resilient without mutmut deps\n\n* chore: scope Sonar coverage during mutation rollout",
+          "timestamp": "2026-02-25T16:35:39Z",
+          "tree_id": "66b46fd41d4ae58009a24c0346706ee5c770ca52",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/9e1c09dd2112e3bfd54f65cdc711e90684d6a0ea"
+        },
+        "date": 1772037375445,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 113.92247092055364,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005628714420323648",
+            "extra": "mean: 8.777899495327592 msec\nrounds: 107"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 213878.01432448707,
+            "unit": "iter/sec",
+            "range": "stddev: 7.056620318927901e-7",
+            "extra": "mean: 4.675562390825457 usec\nrounds: 53237"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5498.2132330779905,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00028152817365484123",
+            "extra": "mean: 181.877267688322 usec\nrounds: 3067"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14364.891802636033,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000016030301105002853",
+            "extra": "mean: 69.61416860908726 usec\nrounds: 9181"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1550.7941464222185,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000170879706832875",
+            "extra": "mean: 644.8309095743391 usec\nrounds: 564"
           }
         ]
       }
