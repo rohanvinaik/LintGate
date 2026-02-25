@@ -3,3 +3,5 @@ d5a31347e7fff15dbbc8f31bd71c321afd26dfb0:tests/test_behavior_compass.py:curl-aut
 d0aef2ff1e07cb6002ad4e974b01fe0b3d8ea455:tests/test_behavior_compass.py:curl-auth-header:72
 d0aef2ff1e07cb6002ad4e974b01fe0b3d8ea455:tests/test_behavior_compass.py:stripe-access-token:72
 d5a31347e7fff15dbbc8f31bd71c321afd26dfb0:tests/test_behavior_compass.py:stripe-access-token:66
+# False positive: SONAR_TOKEN environment variable usage in generated shell snippet.
+c443876ae2d262ea8c041de9ce108a53eea94cff:mcp_tools/quality_helpers.py:curl-auth-user:980

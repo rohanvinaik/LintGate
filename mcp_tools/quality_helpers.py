@@ -978,7 +978,7 @@ def _generate_pre_push_hook() -> str:
         '  echo "[lintgate] checking Sonar quality gate for ${SONAR_PROJECT_KEY}"',
         '  SONAR_HOST="${SONAR_HOST_URL:-https://sonarcloud.io}"',
         "  if command -v curl >/dev/null 2>&1; then",
-        '    if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then',
+        '    if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then  # gitleaks:allow',
         '      SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c \'import json,sys; print(json.load(sys.stdin).get("projectStatus",{}).get("status",""))\' 2>/dev/null || true)"',
         '      if [ -n "$SONAR_STATUS" ] && [ "$SONAR_STATUS" != "OK" ]; then',
         '        echo "[lintgate] Sonar quality gate is ${SONAR_STATUS}; blocking push."',
