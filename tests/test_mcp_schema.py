@@ -18,7 +18,7 @@ class MockTool:
 
     def __post_init__(self) -> None:
         # Provider contracts reference `inputSchema`; expose it for test doubles.
-        self.inputSchema = self.input_schema
+        self.__dict__["inputSchema"] = self.input_schema
 
 
 def test_validate_schema_node_valid_string_enum():
