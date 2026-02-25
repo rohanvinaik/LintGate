@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/state.py
-# hypothesis_version: 6.151.9
-
-[10000, '*.json', '.claude', 'a', 'all', 'audits', 'blocking_count', 'controlplane', 'count', 'cp_', 'duration_ms', 'event', 'events', 'feature', 'feature_usage', 'file', 'fixable_count', 'issue_memory', 'kind', 'last_seen', 'line', 'lint', 'linter', 'lintgate', 'message', 'metrics', 'perf_cache', 'project', 'repeated_issue_count', 'run_id', 'runs', 'signatures', 'state', 'tier', 'timestamp', 'top_repeated', 'total_issues', 'type', 'updated_at', 'versioning', 'w', 'warning_count', '|']

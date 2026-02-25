@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/mcp_tools/habit_tools.py
-# hypothesis_version: 6.151.9
-
-[1e-12, 0.1, 0.3, 0.8, 0.9, 0.95, 100, 10000, 500000, 'active', 'active_files', 'compact_threshold', 'compaction_count', 'compaction_number', 'config_overrides', 'context_window_size', 'declaration', 'declare_mode', 'declared', 'enter_score', 'error', 'event', 'event_counter', 'events_in_habit', 'exit_score', 'habit', 'habit_compact', 'habit_configure', 'habit_last_snapshot', 'habit_mode', 'habit_score', 'habit_status', 'last_test_status', 'message', 'mode', 'ok', 'overrides_applied', 'project', 'signals', 'standard', 'status', 'sustain_calls', 'token_api_interval', 'token_economics', 'token_tracker', 'token_tracking', 'tool', 'tool_calls_compacted', 'transition', 'trigger']

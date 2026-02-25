@@ -16,6 +16,7 @@ build/
 .ruff_cache/
 .pytest_cache/
 .benchmarks/
+.hypothesis/
 .coverage
 .coverage.*
 coverage.xml
@@ -80,3 +81,7 @@ CONVENTIONS.md
 .qlty/results/
 bulk_test_gen.py
 tests/test_*_manual.py
+
+# Local MCP/controlplane scratch output
+cp_*.json
+details_*.json

@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/mcp_tools/telemetry_tools.py
-# hypothesis_version: 6.151.9
-
-['7d', 'feature_usage', 'has_data', 'quality_economics', 'telemetry_summary', 'total_invocations']

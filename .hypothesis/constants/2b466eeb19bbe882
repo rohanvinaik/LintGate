@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/linters/performance_checks/manifest.py
-# hypothesis_version: 6.151.9
-
-['functions', 'hash', 'impure_count', 'manifest', 'metadata', 'pure_count', 'rb', 'utf-8', 'w']

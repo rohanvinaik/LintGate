@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/controlplane/behavior_compass.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.1, 0.15, 0.3, 0.4, 0.5, 1.0, 3600.0, -100, 100, 120, ':', ':*', 'Bash', 'Glob', 'Grep', 'Read', 'active', 'actual_outcome', 'command', 'command_failure', 'confirmed', 'count', 'decay_per_hour', 'err', 'error', 'error_signature', 'event', 'exit', 'exit_code', 'expected_type', 'expected_value', 'expired', 'failed', 'falsified', 'first_seen', 'intent', 'last_seen', 'last_sig', 'max_active', 'precheck_declared', 'prediction_id', 'promote_threshold', 'sig', 'status', 'stdout_contains', 'strengthen', 'strengthen_delta', 'success', 'tool', 'ts', 'unknown', 'unknown:unknown', 'weaken', 'weaken_delta', 'weakened']

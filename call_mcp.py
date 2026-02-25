@@ -9,7 +9,8 @@ def call_mcp_tool(server_cmd, tool_name, arguments):
         server_cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        # Avoid pipe deadlocks from unconsumed stderr.
+        stderr=subprocess.DEVNULL,
         text=True,
         bufsize=0,
     )
@@ -57,6 +58,10 @@ def call_mcp_tool(server_cmd, tool_name, arguments):
             break
 
     process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
     return result
 
 

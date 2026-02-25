@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/compass.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.3, 0.5, 1.0, 3.0, 24.0, 3600.0, '.claude/compass.yaml', 'abstractions', 'alignment', 'anti_patterns', 'architecture', 'axes', 'axis_depths', 'claims', 'confidence', 'core_theory', 'depth', 'directives', 'enforceable_rules', 'forged_at', 'frozen', 'frozen_hash', 'gap_report', 'heading', 'implementation', 'kind', 'name', 'origin_facet', 'parsed', 'problem', 'problem_solving', 'provenance', 'solution', 'source', 'sparse_axes', 'spikiness', 'summary', 'text', 'toward', 'version', 'world']

@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/channels/behavior_channel.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.15, 0.3, 0.7, 1.0, 500, 1000, '_theory_recent_codas', 'accepted', 'active', 'alert_count', 'approaches_total', 'behavior', 'behavior_compass', 'behavior_thresholds', 'bias_weights', 'blocking', 'compass_summary', 'confirmed', 'early_nudge_emitted', 'fail', 'global_profile_delta', 'hard_alerts', 'hook', 'hypotheses_active', 'ignored', 'informational', 'intent', 'intent_summary', 'last_fired', 'mcp', 'next_actions', 'none', 'nudge_outcomes', 'pass', 'prediction_recall', 'settings', 'signal_fire_counts', 'soft_alerts', 'theory_profile', 'thresholds', 'warning']

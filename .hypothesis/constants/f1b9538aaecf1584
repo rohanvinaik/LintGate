@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/linters/performance_checks/algebra_types.py
-# hypothesis_version: 6.151.9
-
-['associative', 'bound_spec', 'bounded', 'commutative', 'confidence', 'evidence', 'idempotent', 'kind', 'monotonic', 'optimization_hints', 'properties', 'pure', 'purity', 'side_effects', 'source_file']

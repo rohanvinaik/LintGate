@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/linters/performance_checks/properties.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.5, 0.8, 0.9, 1.0, 'abs', 'annotation', 'bool', 'cacheable', 'clamp', 'dict', 'float', 'id', 'int', 'list', 'max', 'min', 'overflow-safe', 'parallelizable', 'safe-to-retry', 'set', 'str']

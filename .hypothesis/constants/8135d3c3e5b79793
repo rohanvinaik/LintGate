@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/lintgate/path_filters.py
-# hypothesis_version: 6.151.9
-
-['-archive', '-backup', '-bak', '-old', '-snapshot', '.archive', '.backup', '.bak', '.old', '.snapshot', '_archive', '_backup', '_bak', '_old', '_snapshot', 'archive', 'archive-', 'archive_', 'archives', 'backup', 'backup-', 'backup_', 'backups', 'bak', 'bak-', 'bak_', 'legacy_backup', 'old-version', 'old_versions', 'snapshot', 'snapshot-', 'snapshot_', 'snapshots']

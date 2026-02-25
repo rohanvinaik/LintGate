@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 
 with open("cp_run_2.json") as f:
     data = json.load(f)
@@ -33,11 +34,17 @@ for level in ["blocking", "warning"]:
         with open(f"details_{level}.json") as df:
             details = json.load(df)
             findings = json.loads(details["result"]["content"][0]["text"])
-            for f in findings:
-                fname = f.get("file", "")
+            for finding in findings:
+                fname = finding.get("file", "")
                 if any(name in fname for name in relevant_files):
                     print(
-                        f"[{level.upper()}] {fname}:{f.get('line')} - {f.get('kind')}: {f.get('message')}"
+                        f"[{level.upper()}] {fname}:{finding.get('line')} - "
+                        f"{finding.get('kind')}: {finding.get('message')}"
                     )
-    except Exception:
-        pass
+    except (
+        FileNotFoundError,
+        KeyError,
+        TypeError,
+        json.JSONDecodeError,
+    ) as exc:
+        print(f"[WARN] Could not parse details_{level}.json: {exc}", file=sys.stderr)

@@ -1,4 +1,0 @@
-# file: /Users/rohanvinaik/tools/lintgate/mcp_tools/dep_tools.py
-# hypothesis_version: 6.151.9
-
-[-500, 120, '.venv', '.venv already exists', 'action', 'actions', 'create_venv', 'dep_health_check', 'dep_sync', 'error', 'health_after', 'health_before', 'lock', 'ok', 'project', 'reason', 'returncode', 'skipped', 'status', 'stderr', 'summary', 'timeout', 'uv', 'venv']
