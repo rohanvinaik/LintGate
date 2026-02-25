@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 49 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 60 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (49)
+## MCP Tools (60)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -48,6 +48,13 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `generate_property_tests` | Generate Hypothesis + icontract templates from algebraic properties  |
 | `analyze_test_strength`   | Test assertion quality: vulnerability scores, semantic ratios, upgrades |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind/strength |
+| `mutation_run_sampling`   | Fast inline mutation sampling on specific files (Tier 1)                |
+| `mutation_run_full`       | Deep background mutation profiling with test-impact selection (Tier 2)  |
+| `mutation_get_state`      | View per-function mutation state (survival rates, depth, confidence)    |
+| `mutation_clear_state`    | Clear mutation state for specific files or all state                    |
+| `mutation_prescribe`      | Generate deterministic refactoring prescriptions from mutation profiles |
+| `mutation_decompose`      | Identify multi-category entangled functions requiring decomposition     |
+| `mutation_refactor_loop`  | Orchestrate before/after delta measurement for test reinforcement       |
 
 ### Behavioral Supervision
 
@@ -243,7 +250,7 @@ lintgate/
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 49 MCP tool definitions (incl. habit_tools.py, compass_tools.py)
+├── mcp_tools/                       # 60 MCP tool definitions (incl. habit_tools.py, compass_tools.py)
 ├── tests/                           # 2,180+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy

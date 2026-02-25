@@ -100,7 +100,7 @@ STRENGTH_MAP: dict[AssertionKind, float] = {
 
 # Threshold for classifying an assertion as "semantic" (strong)
 SEMANTIC_STRENGTH_THRESHOLD = 0.7
-TEFF_SCHEMA_VERSION = "1.1.0"
+TEFF_SCHEMA_VERSION = "1.2.0"
 
 
 @dataclass

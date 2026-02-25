@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 53 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 60 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 53 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 60 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 

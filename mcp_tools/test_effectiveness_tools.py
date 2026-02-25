@@ -102,6 +102,17 @@ def _analyze_test_strength_impl(
     apply_filters(result, file_filter, function_filter)
 
     result["assertion_upgrades"] = build_assertion_upgrades(manifest)
+
+    import os
+
+    from lintgate.mutation.ci_stats import MutationCIStats, load_mutation_hotspots
+
+    stats_path = os.path.join(project_root, "mutants", "mutmut-cicd-stats.json")
+    survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
+
+    result["mutation_ci_context"] = MutationCIStats.from_json_path(stats_path).to_dict()
+    result["mutation_hotspots"] = load_mutation_hotspots(survivors_path)
+
     result["next_actions"] = [
         "inspect_test_assertions(path, test_file) — drill into specific test file",
         "controlplane_test_skeleton(source_file) — generate mutation-aware test stubs",
@@ -147,6 +158,19 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
     _process_test_files(target_files, project_root, result)
     _truncate_results(result)
     _compute_test_summary(result, target_files)
+
+    import os
+
+    from lintgate.mutation.ci_stats import load_mutation_hotspots
+
+    survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
+    all_hotspots = load_mutation_hotspots(survivors_path)
+
+    # Filter hotspots to only include files we analyzed
+    analyzed_relpaths = {os.path.relpath(f, project_root) for f in target_files}
+    result["mutation_hotspots"] = [
+        h for h in all_hotspots if h.get("file") in analyzed_relpaths
+    ]
 
     return helpers["_json_dumps"](result)
 

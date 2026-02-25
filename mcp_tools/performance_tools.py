@@ -11,13 +11,22 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
     by_file: dict[str, list[dict[str, Any]]] = {}
     for name, func in manifest.functions.items():
         source = func.source_file or project_root
+        # Use property confidence (mutation-gated) when available, else purity confidence
+        effective_conf = func.purity.confidence
+        if func.properties:
+            effective_conf = func.properties[0].confidence
         entry: dict[str, Any] = {
             "name": name,
             "is_pure": func.purity.is_pure,
-            "confidence": func.purity.confidence,
+            "confidence": effective_conf,
         }
         if func.properties:
             entry["properties"] = [p.kind.value for p in func.properties]
+            # Surface mutation gate evidence if present
+            for p in func.properties:
+                if p.evidence and "[MUTATION" in p.evidence:
+                    entry["mutation_gate"] = p.evidence
+                    break
         if func.optimization_hints:
             entry["hints"] = list(func.optimization_hints)
         by_file.setdefault(source, []).append(entry)
@@ -89,7 +98,10 @@ def _build_manifest_for_project(path: str, helpers: Any) -> tuple[str, Any, list
 
 
 def _select_property_candidates(
-    manifest: Any, function_filter: str | None, max_functions: int
+    manifest: Any,
+    function_filter: str | None,
+    max_functions: int,
+    hotspot_functions: set[str] | None = None,
 ) -> list[tuple[str, Any]]:
     """Select the top pure functions with interesting algebraic properties."""
     from lintgate.linters.performance_checks.algebra_types import PropertyKind
@@ -103,6 +115,14 @@ def _select_property_candidates(
             continue
         if function_filter and function_filter.lower() not in name.lower():
             continue
+
+        # If prefer_mutation_hotspots is on, heavily boost functions that are in the hotspot list
+        # Note: manifest name is fully qualified (e.g. "src.file.func"), but hotspots from
+        # line-based mutmut exports generally only have the base function name via AST.
+        base_name = name.split(".")[-1]
+        if hotspot_functions and (name in hotspot_functions or base_name in hotspot_functions):
+            interesting += 100
+
         candidates.append((name, func, interesting))
 
     candidates.sort(key=lambda x: x[2], reverse=True)
@@ -169,6 +189,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         path: str,
         function: str | None = None,
         max_functions: int = 5,
+        prefer_mutation_hotspots: bool = False,
     ) -> str:
         """Generate Hypothesis property-based test templates from algebraic properties.
 
@@ -187,14 +208,25 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             function: Optional function name to generate tests for. If not given,
                 generates for the top functions with the most algebraic properties.
             max_functions: Max number of functions to generate tests for (default 5).
+            prefer_mutation_hotspots: If True, prioritizes generation for pure functions that have surviving mutations.
         """
-        from lintgate.linters.performance_checks.algebra_types import PropertyKind
+        import os
 
-        _project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
+        from lintgate.linters.performance_checks.algebra_types import PropertyKind
+        from lintgate.mutation.ci_stats import load_mutation_hotspots
+
+        project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
         if not py_files or manifest is None:
             return json.dumps({"error": "No Python files found in project"})
 
-        candidates = _select_property_candidates(manifest, function, max_functions)
+        hotspot_functions = None
+        if prefer_mutation_hotspots:
+            survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
+            hotspots = load_mutation_hotspots(survivors_path)
+            # `name` from manifest contains the fully-qualified name, we extract baseline function name
+            hotspot_functions = {h.get("function") for h in hotspots if h.get("function")}
+
+        candidates = _select_property_candidates(manifest, function, max_functions, hotspot_functions)
 
         if not candidates:
             note = "No pure functions with algebraic properties found"
