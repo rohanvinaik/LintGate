@@ -39,7 +39,13 @@ from mcp_tools.quality_helpers import (
     _normalize_qlty_exclude_pattern as _quality_normalize_qlty_exclude_pattern,
 )
 from mcp_tools.quality_helpers import (
+    _parse_pyproject_metadata as _quality_parse_pyproject_metadata,
+)
+from mcp_tools.quality_helpers import (
     _run_sonar_scanner as _quality_run_sonar_scanner,
+)
+from mcp_tools.quality_helpers import (
+    _scan_project_dirs as _quality_scan_project_dirs,
 )
 from mcp_tools.quality_helpers import (
     _write_pre_push_hook as _quality_write_pre_push_hook,
@@ -98,6 +104,14 @@ def _run_sonar_scanner(
         sonar_token,
         scanner_path,
     )
+
+
+def _parse_pyproject_metadata(root: Path) -> tuple[str, str | None, list[str], bool]:
+    return _quality_parse_pyproject_metadata(root)
+
+
+def _scan_project_dirs(root: Path, test_dirs: list[str]) -> tuple[list[str], list[str], list[str]]:
+    return _quality_scan_project_dirs(root, test_dirs)
 
 
 def _tool_package_name(tool: str) -> str:
