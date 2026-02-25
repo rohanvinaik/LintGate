@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771993153927,
+  "lastUpdate": 1772000477588,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -651,6 +651,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00025082775183807705",
             "extra": "mean: 647.8138660134197 usec\nrounds: 612"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c0e79449fd1794a47718a9fd6782d0192cc55a0a",
+          "message": "chore: ship codex/ship-20260225-052955 to main (#95)\n\n* fix: resolve versioning regressions and modularize complex handlers\n\n- Fix KeyError in versioning helpers by ensuring requirement keys exist\n- Enable venv-aware detection in VersionChecker linter\n- Decompose monolithic _inspect_test_assertions_impl into focused helpers\n- Further refactor _compute_base_coherence to meet complexity targets\n- Clean up unused imports and style residue in refactored modules\n\n* chore: finalize mapper refactor and audit script annotation\n\n* chore: fix ship pre-push lint and security blockers\n\n* chore: resolve remaining schema mock naming gate\n\n* chore: whitelist sonar curl false-positive in gitleaks\n\n* fix: restore legacy helper exports after module splits\n\n* style: fix onboarding_tools import ordering\n\n* fix: re-export remaining onboarding helper functions\n\n* fix: include hypothesis in dev dependency extra\n\n* chore: clean local artifacts and relax PR symbol gate strictness\n\n* chore: remove local audit artifacts from repo root",
+          "timestamp": "2026-02-25T06:20:20Z",
+          "tree_id": "ca3644a767d45efedf81e8e871a175b6b7b39b05",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/c0e79449fd1794a47718a9fd6782d0192cc55a0a"
+        },
+        "date": 1772000477075,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 122.65852963466006,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00023988844149975397",
+            "extra": "mean: 8.152714719298464 msec\nrounds: 114"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 214710.0248123931,
+            "unit": "iter/sec",
+            "range": "stddev: 7.615795937532287e-7",
+            "extra": "mean: 4.657444387488515 usec\nrounds: 54574"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5551.223060223511,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000210961445763832",
+            "extra": "mean: 180.14048240384287 usec\nrounds: 3694"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14497.678517999213,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000015710264321324126",
+            "extra": "mean: 68.97656054094979 usec\nrounds: 9316"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1607.80539672997,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013162317321944599",
+            "extra": "mean: 621.9658187700122 usec\nrounds: 618"
           }
         ]
       }
