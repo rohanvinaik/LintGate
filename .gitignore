@@ -85,3 +85,17 @@ tests/test_*_manual.py
 # Local MCP/controlplane scratch output
 cp_*.json
 details_*.json
+algebra_*.json
+getting_started.json
+install_report.json
+issue_*.txt
+issues_dump.txt
+lint_status.json
+list.txt
+new
+structure_details.json
+telemetry_strength.json
+test_assertions_reporter.json
+test_strength_*.json
+call_mcp.py
+check_findings.py
