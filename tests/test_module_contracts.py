@@ -50,19 +50,28 @@ def test_classify_change_has_required_fields() -> None:
         cwd="/tmp",
         config=ProjectConfig(project_root="/tmp"),
     )
-    # These fields must exist for downstream consumers
-    assert hasattr(result, "files_changed")
-    assert hasattr(result, "change_kind")
-    assert hasattr(result, "risk_level")
-    assert hasattr(result, "import_only")
-    assert hasattr(result, "function_signatures_changed")
-    assert hasattr(result, "class_structure_changed")
-    assert hasattr(result, "touches_pipeline_critical")
-    assert hasattr(result, "touches_test_files")
-    assert hasattr(result, "is_new_file")
-    assert hasattr(result, "lines_added")
-    assert hasattr(result, "lines_removed")
-    assert hasattr(result, "tool_name")
+    # Field existence AND type-level value sanity
+    assert isinstance(result.files_changed, list)
+    assert isinstance(result.change_kind, str)
+    assert result.change_kind in (
+        "logic",
+        "style",
+        "test",
+        "config",
+        "documentation",
+        "none",
+        "unknown",
+    )
+    assert result.risk_level in ("none", "low", "moderate", "high")
+    assert isinstance(result.import_only, bool)
+    assert isinstance(result.function_signatures_changed, bool)
+    assert isinstance(result.class_structure_changed, bool)
+    assert isinstance(result.touches_pipeline_critical, bool)
+    assert isinstance(result.touches_test_files, bool)
+    assert isinstance(result.is_new_file, bool)
+    assert isinstance(result.lines_added, int)
+    assert isinstance(result.lines_removed, int)
+    assert result.tool_name == "Edit"
 
 
 def test_classify_change_readonly_bash_returns_none_risk() -> None:
@@ -91,12 +100,13 @@ def test_select_tier_returns_lint_tier(tmp_path: Path) -> None:
     )
     result = select_tier(classification, config)
     assert isinstance(result, LintTier)
-    assert hasattr(result, "name")
-    assert hasattr(result, "linters")
-    assert hasattr(result, "files")
-    assert hasattr(result, "reason")
-    assert hasattr(result, "strictness")
-    assert hasattr(result, "skip")
+    # Validate concrete field values, not just existence
+    assert isinstance(result.name, str) and result.name != ""
+    assert isinstance(result.linters, (list, tuple))
+    assert isinstance(result.files, list)
+    assert isinstance(result.reason, str) and result.reason != ""
+    assert result.strictness in ("relaxed", "normal", "strict")
+    assert isinstance(result.skip, bool)
 
 
 # ── run_linters contract ──────────────────────────────────────────────
@@ -128,10 +138,10 @@ def test_linter_result_has_required_fields() -> None:
     results = run_linters(tier, config, registry, timeout_ms=5000)
     assert len(results) == 1
     r = results[0]
-    assert hasattr(r, "linter_name")
-    assert hasattr(r, "issues")
-    assert hasattr(r, "status")
-    assert hasattr(r, "duration_ms")
+    assert r.linter_name == "nop"
+    assert r.issues == []
+    assert r.status == "ok"
+    assert isinstance(r.duration_ms, (int, float)) and r.duration_ms >= 0
 
 
 # ── aggregate_results contract ────────────────────────────────────────
@@ -144,14 +154,17 @@ def test_aggregate_results_returns_aggregated_result() -> None:
 
     result = aggregate_results([linter_result], config)
     assert isinstance(result, AggregatedResult)
-    assert hasattr(result, "blocking")
-    assert hasattr(result, "warnings")
-    assert hasattr(result, "informational")
-    assert hasattr(result, "metrics")
-    assert hasattr(result, "linter_statuses")
-    assert hasattr(result, "tier_used")
-    assert hasattr(result, "total_duration_ms")
-    assert hasattr(result, "files_linted")
+    # Validate concrete shapes, not just field existence
+    assert isinstance(result.blocking, list)
+    assert isinstance(result.warnings, list)
+    assert len(result.warnings) == 1
+    assert result.warnings[0].linter == "test"
+    assert isinstance(result.informational, list)
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.linter_statuses, dict)
+    assert result.linter_statuses.get("test") == "ok"
+    assert isinstance(result.total_duration_ms, (int, float))
+    assert isinstance(result.files_linted, list)
 
 
 # ── format_report contract ────────────────────────────────────────────

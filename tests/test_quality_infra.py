@@ -292,7 +292,9 @@ def test_gate_contract_drift_best_effort_when_remote_unavailable_by_default(tmp_
         "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
     )
 
-    with patch("lintgate.quality_infra._fetch_branch_protection_required_checks", return_value=None):
+    with patch(
+        "lintgate.quality_infra._fetch_branch_protection_required_checks", return_value=None
+    ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
     assert not any("Unable to read main branch protection checks via gh api" in e for e in errors)
@@ -360,7 +362,9 @@ local_pre_push:
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert any("Contract workflow missing in repo: .github/workflows/tests.yml" in e for e in errors)
+    assert any(
+        "Contract workflow missing in repo: .github/workflows/tests.yml" in e for e in errors
+    )
 
 
 def test_gate_contract_drift_detects_extra_remote_required_checks(tmp_path: Path) -> None:

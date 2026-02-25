@@ -1,0 +1,54 @@
+title:	analyze_test_strength still returns generic zero-mapping guidance for narrow/ambiguous scopes
+state:	OPEN
+author:	rohanvinaik
+labels:	
+comments:	3
+assignees:	
+projects:	
+milestone:	
+number:	56
+--
+## Scope
+Phase 3 messaging/state consistency.
+
+## Dependency placement
+- Phase: **3**
+- Depends on: #63, #66
+
+## Goal
+Replace contradictory zero-function messaging with explicit analysis states driven by enriched diagnostics.
+
+## Implementation guidance
+1. Introduce explicit analysis-state model.
+- Add `AnalysisState` enum in `lintgate/linters/test_effectiveness/types.py`:
+  - `success`
+  - `no_source_symbols`
+  - `mappings_found_but_no_analyzable_public_functions`
+  - `no_mappings`
+  - `no_files`
+
+2. Update `analyze_test_strength` outcome branching in `mcp_tools/test_effectiveness_tools.py`.
+- Replace generic `not manifest.functions` fallback with state-specific conditions.
+- Ensure **consistency rule**: if diagnostics report `mapped > 0`, do not emit "No mapped functions analyzed".
+
+3. Use dominant-drop diagnostics for hints.
+- For `no_mappings`, select hint based on normalized dominant cause from phase-1 diagnostics (not raw if/elif only).
+
+4. Emit machine-readable state always.
+- Success path: `analysis_state: "success"`.
+- Non-success paths: state + state-specific note + diagnostics.
+
+## Test guidance
+Update/add in `tests/test_test_effectiveness_tools.py`:
+- `test_analysis_state_success`
+- `test_analysis_state_no_source_symbols`
+- `test_analysis_state_no_mappings`
+- `test_analysis_state_mappings_no_analyzable`
+- `test_no_contradictory_state`
+- Update legacy `test_zero_mapping_hints` to assert state-driven behavior (not fixed string only).
+
+## Acceptance criteria
+- State is explicit and non-contradictory in all paths.
+- Hints are cause-specific and stable.
+- Existing API shape remains backward compatible with additive fields.
+

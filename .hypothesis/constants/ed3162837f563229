@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/channels/lint_channel.py
+# hypothesis_version: 6.151.9
+
+[0.9, 2.5, 1000.0, 200, 1000, 2000, 8000, 2000000, 'alerted_patterns', 'blocking', 'fail', 'files_linted', 'informational', 'lint', 'lint_timeout_ms', 'linter_statuses', 'mcp', 'no_classification', 'none', 'normal', 'pass', 'pattern_alerts', 'reason', 'recurrence', 'relaxed', 'repeated_issue_count', 'skip', 'strict', 'strictness', 'tier', 'tier_reason', 'tier_skip', 'tier_strictness', 'tier_used', 'top_categories', 'top_repeated', 'warning']

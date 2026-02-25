@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/types.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1.0, 2.0, 3.0, 5.0, 8000, 'architectural', 'build', 'config', 'cosmetic', 'dependency', 'docs', 'import', 'lintgate', 'logic', 'mcp_tools', 'moderate', 'none', 'normal', 'ok', 'skip', 'structural', 'test', 'tier_0', 'tier_1', 'tier_2', 'tier_3', 'warning']

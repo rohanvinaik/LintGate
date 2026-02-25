@@ -389,3 +389,153 @@ def test_channel_reports_test_failures(mock_run: MagicMock, tmp_path: Path) -> N
 # were refactored into internal logic of find_impacted_tests and
 # symbol_coverage.py respectively. Targeted tests for those are
 # now part of the class-level or orchestrator tests.
+
+# ── Phase 2 & 4: Branch-aware texts and Gate Context ─────────────────────
+
+
+class MockSymbol:
+    def __init__(self, name="foo", file="foo.py", start_line=1):
+        self.name = name
+        self.file = file
+        self.start_line = start_line
+        self.symbol_key = f"{file}::{name}"
+
+
+class MockSymbolResult:
+    def __init__(
+        self,
+        name="foo",
+        covered=False,
+        missing_lines=None,
+        missing_branches=None,
+        total_lines=10,
+        executed_lines=5,
+    ):
+        self.symbol = MockSymbol(name=name)
+        self.covered = covered
+        self.missing_lines = missing_lines or []
+        self.missing_branches = missing_branches or []
+        self.total_lines_in_span = total_lines
+        self.executed_lines_in_span = executed_lines
+
+
+class MockGateResult:
+    def __init__(self, symbol_results=None):
+        self.symbol_results = symbol_results or []
+        self.unresolved_required = []
+        self.waivers_expired = []
+        self.waivers_applied = []
+        self.skipped_reasons = []
+
+
+def test_suggestion_line_only():
+    from lintgate.channels.test_channel import _build_symbol_suggestions
+
+    sr = MockSymbolResult(missing_lines=[1, 2, 3])
+    suggs = _build_symbol_suggestions(sr)
+    assert any("execute lines 1, 2, 3 in foo" in s for s in suggs)
+    assert any("waiver with reason" in s for s in suggs)
+
+
+def test_suggestion_branch_only():
+    from lintgate.channels.test_channel import _build_symbol_suggestions
+
+    sr = MockSymbolResult(missing_branches=[(1, 2), (2, 3)])
+    suggs = _build_symbol_suggestions(sr)
+    assert any("execute branches 1->2, 2->3 in foo" in s for s in suggs)
+
+
+def test_suggestion_mixed():
+    from lintgate.channels.test_channel import _build_symbol_suggestions
+
+    sr = MockSymbolResult(missing_lines=[1], missing_branches=[(1, 2)])
+    suggs = _build_symbol_suggestions(sr)
+    assert any("execute lines 1 and branches 1->2 in foo" in s for s in suggs)
+
+
+def test_suggestion_no_evidence():
+    from lintgate.channels.test_channel import _build_symbol_suggestions
+
+    sr = MockSymbolResult()
+    suggs = _build_symbol_suggestions(sr)
+    assert any("missing tests for foo" in s for s in suggs)
+
+
+def test_message_text_branch_only():
+    from lintgate.channels.test_channel import _emit_symbol_findings
+
+    findings = []
+    gate = MockGateResult([MockSymbolResult(missing_branches=[(1, 2), (2, 3)])])
+    _emit_symbol_findings(gate, findings)
+    assert "(missing 2 branches)" in findings[0].message
+    assert "missing lines" not in findings[0].message
+
+
+def test_partial_run_confidence_reduced():
+    from lintgate.channels.test_channel import _emit_symbol_findings
+
+    findings = []
+    gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
+    _emit_symbol_findings(gate, findings, is_partial_run=True, coverage_ok=True)
+    assert findings[0].severity == "warning"
+    assert getattr(findings[0], "confidence", 1.0) == 0.6
+    assert "downgraded: partial test run with healthy line coverage" in findings[0].message
+
+
+def test_full_run_confidence_1():
+    from lintgate.channels.test_channel import _emit_symbol_findings
+
+    findings = []
+    gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
+    _emit_symbol_findings(gate, findings, is_partial_run=False, coverage_ok=True)
+    assert findings[0].severity == "blocking"
+    assert getattr(findings[0], "confidence", 1.0) == 1.0
+    assert "downgraded" not in findings[0].message
+
+
+def test_gate_context_in_evidence():
+    from lintgate.channels.test_channel import _emit_symbol_findings
+
+    findings = []
+    gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
+    _emit_symbol_findings(
+        gate,
+        findings,
+        is_partial_run=True,
+        coverage_ok=True,
+        targets_mode="impacted",
+        coverage_pct=85.0,
+    )
+    ev = findings[0].evidence
+    assert ev.get("is_partial_run") is True
+    assert ev.get("coverage_ok") is True
+    assert ev.get("targets_mode") == "impacted"
+    assert ev.get("coverage_pct") == 85.0
+
+
+def test_reconciliation_metadata_in_channel_result():
+    from lintgate.channels.test_channel import TestChannelContext, _build_channel_result
+
+    cfg = {"measure": True, "threshold": 80.0}
+    gate = MockGateResult([MockSymbolResult(covered=False)])
+    ctx = TestChannelContext(
+        channel_name="tests",
+        start=0.0,
+        findings=[],
+        repairs=[],
+        impacted_tests=[],
+        test_result=None,
+        cov_cfg=cfg,
+        gate_result=gate,
+        targets_mode="fallback",
+        coverage_pct=90.0,
+        is_partial_run=False,
+        coverage_ok=True,
+    )
+    res = _build_channel_result(ctx)
+    sym_ctx = res.metrics.get("symbol_gate_context")
+    assert sym_ctx is not None
+    assert sym_ctx["targets_mode"] == "fallback"
+    assert sym_ctx["is_partial_run"] is False
+    assert sym_ctx["coverage_ok"] is True
+    assert sym_ctx["coverage_pct"] == 90.0

@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/channels/behavior_detection.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.5, 1.0, 3.0, 5.0, ', ', 'Bash', 'action_history', 'active', 'approach_cycling', 'behavior_channel', 'command_failure', 'confirmed', 'consecutive_failures', 'constraint_check', 'count', 'err', 'error_memory', 'execute', 'execute_streak', 'exit', 'expired', 'failed', 'failure_amnesia', 'first_seen', 'hypothesis_evidence', 'informational', 'last_seen', 'matched_bias_terms', 'modify', 'precheck_declared', 'premature_action', 'reason', 'score_delta', 'serial_discovery', 'sig', 'source', 'stage', 'stale_model', 'tool', 'tool_repetition', 'ts', 'verification_debt', 'warning']

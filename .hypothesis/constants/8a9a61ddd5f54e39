@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/mcp_tools/context_tools.py
+# hypothesis_version: 6.151.9
+
+['applied', 'args', 'audit_context_health', 'bootstrap', 'build_theory_pack', 'context_guidance', 'context_patch_apply', 'context_patch_review', 'diff_preview', 'dry_run', 'enforceable_rules', 'get_theory_context', 'living_context', 'message', 'next_actions', 'no_op', 'patch_id', 'patches', 'path', 'pending', 'pending_count', 'rationale', 'reason', 'results', 'section_id', 'status', 'summary', 'theory_extraction', 'tool', 'trigger']

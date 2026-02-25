@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Error executing tool analyze_test_strength: path must be an existing directory: /Users/rohanvinaik/tools/lintgate/tests/test_test_analyzer.py"
+      }
+    ],
+    "isError": true
+  }
+}

@@ -16,38 +16,38 @@ from lintgate.hooks.user_prompt import handle as user_prompt_handle
 
 def test_session_start_empty_input() -> None:
     result = session_start_handle({})
-    assert isinstance(result, dict)
     assert result["continue"] is True
+    assert isinstance(result.get("systemMessage", ""), str)
 
 
 def test_session_end_empty_input() -> None:
     result = session_end_handle({})
-    assert isinstance(result, dict)
     assert result["continue"] is True
+    assert isinstance(result.get("systemMessage", ""), str)
 
 
 def test_pre_tool_empty_input() -> None:
     result = pre_tool_handle({})
-    assert isinstance(result, dict)
     assert result["continue"] is True
+    assert isinstance(result.get("systemMessage", ""), str)
 
 
 def test_pre_compact_empty_input() -> None:
     result = pre_compact_handle({})
-    assert isinstance(result, dict)
     assert result["continue"] is True
+    assert isinstance(result.get("systemMessage", ""), str)
 
 
 def test_stop_gate_empty_input() -> None:
     result = stop_gate_handle({})
-    assert isinstance(result, dict)
     assert result["continue"] is True
+    assert isinstance(result.get("systemMessage", ""), str)
 
 
 def test_user_prompt_empty_input() -> None:
     result = user_prompt_handle({})
-    assert isinstance(result, dict)
     assert result["continue"] is True
+    assert isinstance(result.get("systemMessage", ""), str)
 
 
 # ── session_start with no compass ───────────────────────────────────

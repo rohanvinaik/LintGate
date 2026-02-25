@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -136,6 +137,7 @@ def _restore_cached_functions(
 def _scan_file(
     manifest: PropertyManifest,
     filepath: str,
+    project_root: str,
 ) -> list[str]:
     """Parse a Python file, run purity + property analysis, and populate the manifest.
 
@@ -153,22 +155,26 @@ def _scan_file(
     finder.visit(tree)
 
     found_funcs: list[str] = []
+    relpath = os.path.relpath(filepath, project_root)
+
     for qualname, purity in purity_results.items():
         func_node = finder.nodes.get(qualname)
         if not func_node:
             continue
 
-        found_funcs.append(qualname)
+        unique_key = f"{relpath}::{qualname}"
+        found_funcs.append(unique_key)
+
         if purity.is_pure:
             props = classify_properties(func_node, purity)
-            manifest.functions[qualname] = FunctionProperties(
+            manifest.functions[unique_key] = FunctionProperties(
                 purity=props.purity,
                 properties=props.properties,
                 optimization_hints=props.optimization_hints,
                 source_file=filepath,
             )
         else:
-            manifest.functions[qualname] = FunctionProperties(
+            manifest.functions[unique_key] = FunctionProperties(
                 purity=purity,
                 properties=(),
                 optimization_hints=(),
@@ -198,7 +204,8 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
     """Build a PropertyManifest by scanning Python files, with incremental caching."""
     PERF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     project_hash = hashlib.sha256(project_root.encode()).hexdigest()[:16]
-    cache_path = PERF_CACHE_DIR / f"{project_hash}.json"
+    # Bump cache version to v2 to invalidate non-unique key caches
+    cache_path = PERF_CACHE_DIR / f"{project_hash}_v2.json"
 
     cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
 
@@ -216,7 +223,7 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
             _restore_cached_functions(manifest, filepath, cached_manifest, cached_entry)
             new_metadata[filepath] = cached_entry
         else:
-            found_funcs = _scan_file(manifest, filepath)
+            found_funcs = _scan_file(manifest, filepath, project_root)
             new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
 
     manifest.update_metrics()

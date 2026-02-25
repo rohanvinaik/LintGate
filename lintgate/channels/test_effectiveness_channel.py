@@ -20,6 +20,7 @@ so weak tests on pure functions represent maximum wasted opportunity.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Literal
 
@@ -302,6 +303,57 @@ def _teff005_pure_weak_tests(
     return findings
 
 
+def _analyze_complexity_block(
+    block: Any,
+    manifest: TestEffectivenessManifest,
+    filepath: str,
+    project_root: str,
+) -> LintIssue | None:
+    """Analyze a single radon complexity block for weak test coverage."""
+    if getattr(block, "complexity", 0) <= 10:
+        return None
+
+    func_name = getattr(block, "name", "")
+    classname = getattr(block, "classname", None)
+    if classname:
+        func_name = f"{classname}.{func_name}"
+
+    if not func_name:
+        return None
+
+    relpath = os.path.relpath(filepath, project_root)
+    unique_key = f"{relpath}::{func_name}"
+
+    fe = manifest.functions.get(unique_key)
+    if not fe or fe.test_count == 0 or fe.semantic_ratio >= 0.5:
+        return None
+
+    return LintIssue(
+        linter="test_effectiveness",
+        kind="TEFF007",
+        message=(
+            f"'{func_name}' has high complexity ({block.complexity}) "
+            f"but low semantic assertion ratio ({fe.semantic_ratio:.1%}). "
+            f"Complex code needs strong assertions to catch mutation paths."
+        ),
+        file=filepath,
+        line=getattr(block, "lineno", 0),
+        severity="warning",
+        confidence=0.7,
+        evidence={
+            "code": "TEFF007",
+            "function": func_name,
+            "complexity": block.complexity,
+            "semantic_ratio": round(fe.semantic_ratio, 3),
+            "test_count": fe.test_count,
+        },
+        suggestions=[
+            "Add equality assertions for each branch path",
+            "Consider splitting complex logic into smaller testable functions",
+        ],
+    )
+
+
 def _teff007_complex_weak_tests(
     manifest: TestEffectivenessManifest,
     project_root: str,
@@ -311,7 +363,7 @@ def _teff007_complex_weak_tests(
     try:
         from radon.complexity import cc_visit
     except ImportError:
-        return []  # Graceful degradation
+        return []
 
     findings: list[LintIssue] = []
     count = 0
@@ -320,52 +372,16 @@ def _teff007_complex_weak_tests(
         try:
             with open(filepath, encoding="utf-8") as f:
                 source = f.read()
-            results = cc_visit(source)
-        except Exception:
+            blocks = cc_visit(source)
+        except (OSError, SyntaxError):
             continue
 
-        for block in results:
-            if block.complexity <= 10:
-                continue
-
-            func_name = block.name
-            if block.classname:
-                func_name = f"{block.classname}.{block.name}"
-
-            fe = manifest.functions.get(func_name)
-            if not fe or fe.test_count == 0:
-                continue
-            if fe.semantic_ratio >= 0.5:
-                continue
-
-            count += 1
-            if count <= _TOP_N_FINDINGS:
-                findings.append(
-                    LintIssue(
-                        linter="test_effectiveness",
-                        kind="TEFF007",
-                        message=(
-                            f"'{func_name}' has high complexity ({block.complexity}) "
-                            f"but low semantic assertion ratio ({fe.semantic_ratio:.1%}). "
-                            f"Complex code needs strong assertions to catch mutation paths."
-                        ),
-                        file=filepath,
-                        line=block.lineno,
-                        severity="warning",
-                        confidence=0.7,
-                        evidence={
-                            "code": "TEFF007",
-                            "function": func_name,
-                            "complexity": block.complexity,
-                            "semantic_ratio": round(fe.semantic_ratio, 3),
-                            "test_count": fe.test_count,
-                        },
-                        suggestions=[
-                            "Add equality assertions for each branch path",
-                            "Consider splitting complex logic into smaller testable functions",
-                        ],
-                    )
-                )
+        for block in blocks:
+            finding = _analyze_complexity_block(block, manifest, filepath, project_root)
+            if finding:
+                count += 1
+                if count <= _TOP_N_FINDINGS:
+                    findings.append(finding)
 
     return findings
 

@@ -7,9 +7,15 @@ import os
 import tempfile
 
 from lintgate.linters.test_effectiveness.source_mapper import (
+    _coerce_candidate_paths,
+    _filter_candidates_by_module_hint,
     _get_name,
     _ImportCollector,
+    _module_hint_from_import,
+    _path_to_module,
     _strip_test_prefix,
+    _symbol_name_from_import,
+    _TestFunctionCollector,
     build_source_function_index,
     map_tests_to_source,
 )
@@ -303,3 +309,368 @@ def test_map_tests_class_prefix_non_test_class_no_strip():
             raise AssertionError("Foo.bar should not match from SuiteFoo class")
     finally:
         os.unlink(test_path)
+
+
+def test_map_tests_to_source_class_scope_no_leakage_unique_keys():
+    """Class-qualified and top-level tests retain correct lexical scope."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "src.py")
+        test_path = os.path.join(tmpdir, "test_src.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "from src import foo\n\n"
+                "class TestA:\n"
+                "    def test_one(self):\n"
+                "        foo()\n\n"
+                "def test_top(self=None):\n"
+                "    foo()\n\n"
+                "class TestB:\n"
+                "    def test_two(self):\n"
+                "        foo()\n"
+            )
+
+        index = build_source_function_index([src_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert "src.py::foo" in mapping
+        assert sorted(mapping["src.py::foo"]) == ["TestA.test_one", "TestB.test_two", "test_top"]
+
+
+def test_map_tests_to_source_disambiguates_by_import_hint():
+    """When multiple files define same name, imports should disambiguate mapping."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        a_path = os.path.join(tmpdir, "a.py")
+        b_path = os.path.join(tmpdir, "b.py")
+        test_path = os.path.join(tmpdir, "test_mod.py")
+
+        with open(a_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+        with open(b_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 2\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("from a import foo\n\ndef test_foo():\n    assert foo() == 1\n")
+
+        index = build_source_function_index([a_path, b_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert "a.py::foo" in mapping
+        assert "b.py::foo" not in mapping
+        assert mapping["a.py::foo"] == ["test_foo"]
+
+
+def test_map_tests_to_source_unresolved_ambiguity_is_skipped():
+    """Ambiguous naming-only matches should not be over-attributed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        a_path = os.path.join(tmpdir, "a.py")
+        b_path = os.path.join(tmpdir, "b.py")
+        test_path = os.path.join(tmpdir, "test_mod.py")
+
+        with open(a_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+        with open(b_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 2\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("def test_foo():\n    assert True\n")
+
+        index = build_source_function_index([a_path, b_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert "a.py::foo" not in mapping
+        assert "b.py::foo" not in mapping
+
+
+def test_map_tests_to_source_alias_call_maps_to_imported_symbol():
+    """Alias calls resolve via imported symbol (`from a import foo as f`)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        a_path = os.path.join(tmpdir, "a.py")
+        b_path = os.path.join(tmpdir, "b.py")
+        test_path = os.path.join(tmpdir, "test_alias.py")
+
+        with open(a_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+        with open(b_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 2\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("from a import foo as f\n\ndef test_alias():\n    assert f() == 1\n")
+
+        index = build_source_function_index([a_path, b_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert mapping["a.py::foo"] == ["test_alias"]
+        assert "b.py::foo" not in mapping
+
+
+def test_map_tests_to_source_qualifier_import_sets_module_hint():
+    """Qualified calls (`alias.foo()`) use qualifier imports for disambiguation."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        a_path = os.path.join(tmpdir, "a.py")
+        b_path = os.path.join(tmpdir, "b.py")
+        test_path = os.path.join(tmpdir, "test_qual.py")
+
+        with open(a_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+        with open(b_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 2\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("import a as mod\n\ndef test_foo():\n    assert mod.foo() == 1\n")
+
+        index = build_source_function_index([a_path, b_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert mapping["a.py::foo"] == ["test_foo"]
+        assert "b.py::foo" not in mapping
+
+
+def test_map_tests_to_source_local_helper_shadowing_is_skipped():
+    """Local helper defs with same name should not be mapped to source symbols."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_local.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("def helper():\n    return 1\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "def helper():\n    return 99\n\ndef test_helper():\n    assert helper() == 99\n"
+            )
+
+        index = build_source_function_index([src_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert "a.py::helper" not in mapping
+
+
+def test_map_tests_to_source_async_paths_are_collected():
+    """Async tests/helpers hit async visitor paths without crashing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_async.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("async def ping():\n    return 1\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "from a import ping\n\n"
+                "async def helper():\n"
+                "    return 0\n\n"
+                "class TestAsync:\n"
+                "    async def test_ping(self):\n"
+                "        assert await ping() == 1\n"
+            )
+
+        index = build_source_function_index([src_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert mapping["a.py::ping"] == ["TestAsync.test_ping"]
+
+
+def test_filter_candidates_module_hint_no_hint_returns_input():
+    """Empty module hints should return input candidates unchanged."""
+    candidates = ["/tmp/a.py", "/tmp/b.py"]
+    assert _filter_candidates_by_module_hint(candidates, "", "/tmp") == candidates
+
+
+def test_filter_candidates_module_hint_init_module():
+    """`pkg/__init__.py` should map to module name `pkg`."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pkg_dir = os.path.join(tmpdir, "pkg")
+        os.makedirs(pkg_dir, exist_ok=True)
+        init_path = os.path.join(pkg_dir, "__init__.py")
+        with open(init_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+
+        filtered = _filter_candidates_by_module_hint([init_path], "pkg", tmpdir)
+        assert filtered == [init_path]
+
+
+def test_path_to_module_handles_relpath_value_error(monkeypatch):
+    """ValueError from relpath falls back to basename."""
+    import os as _os
+
+    original = _os.path.relpath
+
+    def _raise_value_error(path: str, root: str) -> str:
+        raise ValueError("no relative path")
+
+    monkeypatch.setattr(_os.path, "relpath", _raise_value_error)
+    try:
+        assert _path_to_module("/tmp/pkg/mod.py", "/tmp") == "mod"
+    finally:
+        monkeypatch.setattr(_os.path, "relpath", original)
+
+
+def test_module_and_symbol_hint_helpers_without_dots():
+    """Import helper parsing should preserve bare names without dots."""
+    assert _module_hint_from_import("foo") == "foo"
+    assert _symbol_name_from_import("foo") == "foo"
+    assert _coerce_candidate_paths(None) == []
+
+
+def test_test_function_collector_visits_async_defs():
+    """Async test functions are collected with class qualification."""
+    tree = ast.parse("class TestA:\n    async def test_one(self):\n        pass\n")
+    collector = _TestFunctionCollector()
+    collector.visit(tree)
+    assert collector.tests[0][0] == "TestA.test_one"
+
+
+def test_build_source_function_index_three_way_ambiguity_list_append():
+    """Third duplicate symbol should append into existing ambiguity list."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        paths: list[str] = []
+        for idx in range(3):
+            path = os.path.join(tmpdir, f"m{idx}.py")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("def foo():\n    return 1\n")
+            paths.append(path)
+
+        index = build_source_function_index(paths)
+
+        assert isinstance(index["foo"], list)
+        assert len(index["foo"]) == 3
+
+
+def test_map_tests_to_source_handles_empty_candidate_entries():
+    """Defensive handling: malformed empty candidate entries should be ignored."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as test:
+        test.write("from a import foo\n\ndef test_foo():\n    assert foo() == 1\n")
+        test.flush()
+        test_path = test.name
+
+    try:
+        mapping = map_tests_to_source(test_path, {"foo": []})
+        assert mapping == {}
+    finally:
+        os.unlink(test_path)
+
+
+def test_diagnostics_strategy_breakdown_call_graph():
+    """Verify call graph strategy populates its branch of strategy_breakdown."""
+    from lintgate.linters.test_effectiveness.types import MappingDiagnostics
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_call.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("def foo():\n    return 1\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("from a import foo\n\ndef test_foo():\n    foo()\n")
+
+        index = build_source_function_index([src_path])
+        diag = MappingDiagnostics()
+        map_tests_to_source(test_path, index, tmpdir, diagnostics=diag)
+
+        assert "call_graph" in diag.strategy_breakdown
+        sd = diag.strategy_breakdown["call_graph"]
+        assert sd.attempted > 0
+        assert sd.mapped > 0
+
+
+def test_diagnostics_strategy_breakdown_naming():
+    """Verify naming strategy populates its branch of strategy_breakdown."""
+    from lintgate.linters.test_effectiveness.types import MappingDiagnostics
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_naming.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("def my_func():\n    return 1\n")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("def test_my_func():\n    pass\n")
+
+        index = build_source_function_index([src_path])
+        diag = MappingDiagnostics()
+        map_tests_to_source(test_path, index, tmpdir, diagnostics=diag)
+
+        assert "naming" in diag.strategy_breakdown
+        sd = diag.strategy_breakdown["naming"]
+        assert sd.attempted > 0
+        assert sd.mapped > 0
+
+
+def test_diagnostics_unique_symbol_counts():
+    """Verify normalized metrics collect unique attempts and drops."""
+    from lintgate.linters.test_effectiveness.types import MappingDiagnostics
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_foo.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("def target():\n    return 1\n")
+
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "from a import target, missing\n\n"
+                "def test_1():\n"
+                "    target()\n"
+                "    missing()\n\n"
+                "def test_2():\n"
+                "    target()\n"
+                "    missing()\n"
+            )
+
+        index = build_source_function_index([src_path])
+        diag = MappingDiagnostics()
+        map_tests_to_source(test_path, index, tmpdir, diagnostics=diag)
+
+        assert diag.unique_symbols_attempted >= 2
+        assert diag.unique_symbols_mapped == 1
+        assert diag.test_functions_examined == 2
+
+
+def test_diagnostics_top_drop_examples_and_dominant_reason():
+    """Verify dominant drop reason and top examples list works."""
+    from lintgate.linters.test_effectiveness.types import MappingDiagnostics
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_foo.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("pass\n")
+
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "def test_miss_1(): missing_1()\n"
+                "def test_miss_2(): missing_2()\n"
+                "def test_miss_3(): missing_3()\n"
+            )
+
+        index = build_source_function_index([src_path])
+        diag = MappingDiagnostics()
+        map_tests_to_source(test_path, index, tmpdir, diagnostics=diag)
+
+        assert diag.dominant_drop_reason == "no_candidate"
+        assert diag.dominant_drop_pct == 1.0
+        assert len(diag.top_drop_examples) > 0
+        assert "symbol" in diag.top_drop_examples[0]
+        assert "reason" in diag.top_drop_examples[0]
+        assert "strategy" in diag.top_drop_examples[0]
+
+
+def test_diagnostics_normalized_vs_raw():
+    """Verify unique symbol metrics vs aggregate logic."""
+    from lintgate.linters.test_effectiveness.types import MappingDiagnostics
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_foo.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write("def t(): pass\n")
+
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("from a import t\ndef test_1(): t()\ndef test_2(): t()\ndef test_3(): t()\n")
+
+        index = build_source_function_index([src_path])
+        diag = MappingDiagnostics()
+        map_tests_to_source(test_path, index, tmpdir, diagnostics=diag)
+
+        assert diag.attempted == 3
+        assert diag.unique_symbols_mapped == 1

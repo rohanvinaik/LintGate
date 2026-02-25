@@ -116,7 +116,7 @@ class TestShouldCompact:
             last_compact_tokens=50000,
             context_window_size=DEFAULT_CONTEXT_WINDOW,
         )
-        assert should_compact(tracker, habit_active=True) is True
+        assert should_compact(tracker, habit_active=True)
 
     def test_not_when_habit_inactive(self):
         tracker = TokenTrackerState(
@@ -124,7 +124,7 @@ class TestShouldCompact:
             tool_calls_since_compact=25,
             last_compact_tokens=50000,
         )
-        assert should_compact(tracker, habit_active=False) is False
+        assert not should_compact(tracker, habit_active=False)
 
     def test_not_when_below_threshold(self):
         tracker = TokenTrackerState(
@@ -132,7 +132,7 @@ class TestShouldCompact:
             tool_calls_since_compact=25,
             last_compact_tokens=0,
         )
-        assert should_compact(tracker, habit_active=True) is False
+        assert not should_compact(tracker, habit_active=True)
 
     def test_not_when_insufficient_calls(self):
         """Anti-thrash: not enough calls since last compact."""
@@ -141,7 +141,7 @@ class TestShouldCompact:
             tool_calls_since_compact=5,  # Below 20 min
             last_compact_tokens=50000,
         )
-        assert should_compact(tracker, habit_active=True) is False
+        assert not should_compact(tracker, habit_active=True)
 
     def test_not_when_insufficient_delta(self):
         """Delta gate: not enough new tokens since last compact."""
@@ -150,7 +150,7 @@ class TestShouldCompact:
             tool_calls_since_compact=25,
             last_compact_tokens=99000,  # Only 1000 new tokens
         )
-        assert should_compact(tracker, habit_active=True) is False
+        assert not should_compact(tracker, habit_active=True)
 
 
 # ── API calibration ──────────────────────────────────────────────────
@@ -159,11 +159,11 @@ class TestShouldCompact:
 class TestShouldApiCheck:
     def test_fires_at_interval(self):
         tracker = TokenTrackerState(tool_call_count=15, last_api_check_event=0)
-        assert should_api_check(tracker, 15, interval=15) is True
+        assert should_api_check(tracker, 15, interval=15)
 
     def test_not_before_interval(self):
         tracker = TokenTrackerState(tool_call_count=10, last_api_check_event=0)
-        assert should_api_check(tracker, 10, interval=15) is False
+        assert not should_api_check(tracker, 10, interval=15)
 
     def test_exponential_backoff(self):
         tracker = TokenTrackerState(
@@ -172,14 +172,14 @@ class TestShouldApiCheck:
             consecutive_api_failures=2,
         )
         # With 2 failures, effective interval = 15 * 4 = 60
-        assert should_api_check(tracker, 30, interval=15) is False
+        assert not should_api_check(tracker, 30, interval=15)
 
         tracker.tool_call_count = 60
-        assert should_api_check(tracker, 60, interval=15) is True
+        assert should_api_check(tracker, 60, interval=15)
 
     def test_zero_calls(self):
         tracker = TokenTrackerState(tool_call_count=0)
-        assert should_api_check(tracker, 0) is False
+        assert not should_api_check(tracker, 0)
 
 
 class TestApplyApiCalibration:

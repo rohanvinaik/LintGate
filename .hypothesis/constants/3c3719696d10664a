@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/linters/test_effectiveness/manifest.py
+# hypothesis_version: 6.151.9
+
+[',', '1', ':', 'hash', 'manifest', 'metadata', 'rb', 'schema_version', 'scope_fingerprint', 'w', 'written_at']

@@ -204,12 +204,7 @@ def test_required_checks_from_contract(ship_main, tmp_path):
     assert ship_main._required_checks_from_contract(str(tmp_path)) == []
 
     contract = tmp_path / "gate_contract.yaml"
-    contract.write_text(
-        "required_checks:\n"
-        "  - Tests (3.11)\n"
-        "  - Qlty\n"
-        "  - ''\n"
-    )
+    contract.write_text("required_checks:\n  - Tests (3.11)\n  - Qlty\n  - ''\n")
     assert ship_main._required_checks_from_contract(str(tmp_path)) == [
         "Tests (3.11)",
         "Qlty",
@@ -320,7 +315,9 @@ def test_merge_pr(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main,
         "_run",
-        lambda cmd, **kwargs: calls.append((cmd, kwargs["cwd"])) or subprocess.CompletedProcess(cmd, 0),
+        lambda cmd, **kwargs: (
+            calls.append((cmd, kwargs["cwd"])) or subprocess.CompletedProcess(cmd, 0)
+        ),
     )
     ship_main._merge_pr("/repo", 42)
     assert calls[0][0] == ["gh", "pr", "merge", "42", "--auto", "--squash", "--delete-branch"]
@@ -368,19 +365,25 @@ def test_main_no_merge_flow(ship_main, monkeypatch):
     monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
     monkeypatch.setattr(ship_main, "_require_clean_worktree", lambda *_: None)
     monkeypatch.setattr(ship_main, "_ensure_branch", lambda *_: "codex/ship-test")
-    monkeypatch.setattr(ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0))
+    monkeypatch.setattr(
+        ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0)
+    )
     monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
     monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
     monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
     monkeypatch.setattr(ship_main, "_repo_slug", lambda *_: "o/r")
-    monkeypatch.setattr(ship_main, "_required_checks_from_branch_protection", lambda *_: ["Tests (3.11)"])
+    monkeypatch.setattr(
+        ship_main, "_required_checks_from_branch_protection", lambda *_: ["Tests (3.11)"]
+    )
     monkeypatch.setattr(ship_main, "_required_checks_from_contract", lambda *_: ["Qlty"])
     monkeypatch.setattr(
         ship_main,
         "_watch_required_checks",
         lambda *_args, **_kwargs: calls.__setitem__("watch", True),
     )
-    monkeypatch.setattr(ship_main, "_merge_pr", lambda *_: (_ for _ in ()).throw(AssertionError("no merge")))
+    monkeypatch.setattr(
+        ship_main, "_merge_pr", lambda *_: (_ for _ in ()).throw(AssertionError("no merge"))
+    )
 
     old_argv = os.sys.argv
     os.sys.argv = ["ship_main.py", "--no-merge"]
@@ -406,12 +409,16 @@ def test_main_raises_when_no_required_checks(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["gh"], returncode=0, stdout="", stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["gh"], returncode=0, stdout="", stderr=""
+        ),
     )
     monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
     monkeypatch.setattr(ship_main, "_require_clean_worktree", lambda *_: None)
     monkeypatch.setattr(ship_main, "_ensure_branch", lambda *_: "codex/ship-test")
-    monkeypatch.setattr(ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0))
+    monkeypatch.setattr(
+        ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0)
+    )
     monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
     monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
     monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
@@ -440,7 +447,9 @@ def test_main_auth_failure(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["gh"], returncode=1, stdout="", stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["gh"], returncode=1, stdout="", stderr=""
+        ),
     )
     monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
 
@@ -473,7 +482,9 @@ def test_main_merge_and_prune_flow(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["gh"], returncode=0, stdout="", stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["gh"], returncode=0, stdout="", stderr=""
+        ),
     )
     monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
     monkeypatch.setattr(ship_main, "_require_clean_worktree", lambda *_: None)
@@ -483,7 +494,9 @@ def test_main_merge_and_prune_flow(ship_main, monkeypatch):
     monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
     monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
     monkeypatch.setattr(ship_main, "_repo_slug", lambda *_: "o/r")
-    monkeypatch.setattr(ship_main, "_required_checks_from_branch_protection", lambda *_: ["Tests (3.11)"])
+    monkeypatch.setattr(
+        ship_main, "_required_checks_from_branch_protection", lambda *_: ["Tests (3.11)"]
+    )
     monkeypatch.setattr(ship_main, "_required_checks_from_contract", lambda *_: ["Qlty"])
     monkeypatch.setattr(ship_main, "_watch_required_checks", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -588,7 +601,9 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout=stdout, stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["hook"], 1, stdout=stdout, stderr=""
+        ),
     )
 
     code = ship_main._run_preflight(str(tmp_path), json_mode=True)
@@ -607,7 +622,9 @@ def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_pa
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["hook"], 1, stdout="unknown failure", stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["hook"], 1, stdout="unknown failure", stderr=""
+        ),
     )
 
     code = ship_main._run_preflight(str(tmp_path), json_mode=True)
@@ -628,6 +645,7 @@ def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
 
 def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
     import json
+
     repo = tmp_path
     hook = repo / ".githooks" / "pre-push"
     hook.parent.mkdir(parents=True)

@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/channels/dependency_channel.py
+# hypothesis_version: 6.151.9
+
+[1000, 5000, 'Dependency issue', 'Run: uv lock', 'blocking', 'build', 'command', 'config', 'cwd', 'dep_channel', 'dep_issue', 'dep_warning', 'dependency', 'deps', 'error', 'fail', 'hook', 'info', 'informational', 'issue_count', 'issues', 'lock', 'lockfile', 'mcp', 'message', 'name', 'none', 'pass', 'repair_count', 'status', 'suggestion', 'surface', 'uv lock', 'warning']

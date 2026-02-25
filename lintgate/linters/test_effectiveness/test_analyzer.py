@@ -12,58 +12,79 @@ import os
 
 from .assertion_classifier import classify_test_file_from_path
 from .source_mapper import build_source_function_index, map_tests_to_source
-from .types import AssertionInfo, FunctionEffectiveness
+from .types import AssertionInfo, FunctionEffectiveness, MappingDiagnostics
 
 
-def _discover_test_files(project_root: str, max_files: int = 200) -> list[str]:
+def _discover_test_files(project_root: str, max_files: int | None = None) -> list[str]:
     """Discover test files in the project."""
     test_files: list[str] = []
     root = os.path.abspath(project_root)
 
     for dirpath, dirnames, filenames in os.walk(root):
+        # (#69) Exclude subprojects (directories with pyproject.toml/setup.py that are not root)
+        # Also standard exclusions
+        excluded_names = (
+            "node_modules",
+            "__pycache__",
+            ".venv",
+            "venv",
+            "build",
+            "dist",
+            ".git",
+            ".tox",
+            "mutants",
+            ".mutmut",
+        )
+
         dirnames[:] = [
             d
             for d in dirnames
             if not d.startswith(".")
-            and d
-            not in ("node_modules", "__pycache__", ".venv", "venv", "build", "dist", ".git", ".tox")
+            and d not in excluded_names
+            and not os.path.exists(os.path.join(dirpath, d, "pyproject.toml"))
+            and not os.path.exists(os.path.join(dirpath, d, "setup.py"))
         ]
         for f in filenames:
             if f.startswith("test_") and f.endswith(".py"):
                 test_files.append(os.path.join(dirpath, f))
-                if len(test_files) >= max_files:
+                if max_files is not None and len(test_files) >= max_files:
                     return test_files
 
     return test_files
 
 
-def _discover_source_files(project_root: str, max_files: int = 500) -> list[str]:
+def _discover_source_files(project_root: str, max_files: int | None = None) -> list[str]:
     """Discover non-test Python source files."""
     source_files: list[str] = []
     root = os.path.abspath(project_root)
 
     for dirpath, dirnames, filenames in os.walk(root):
+        # (#69) Exclude subprojects and standard directories
+        excluded_names = (
+            "node_modules",
+            "__pycache__",
+            ".venv",
+            "venv",
+            "build",
+            "dist",
+            ".git",
+            ".tox",
+            "tests",
+            "mutants",
+            ".mutmut",
+        )
         dirnames[:] = [
             d
             for d in dirnames
             if not d.startswith(".")
-            and d
-            not in (
-                "node_modules",
-                "__pycache__",
-                ".venv",
-                "venv",
-                "build",
-                "dist",
-                ".git",
-                ".tox",
-                "tests",
-            )
+            and d not in excluded_names
+            and not os.path.exists(os.path.join(dirpath, d, "pyproject.toml"))
+            and not os.path.exists(os.path.join(dirpath, d, "setup.py"))
         ]
         for f in filenames:
             if f.endswith(".py") and not f.startswith("test_"):
                 source_files.append(os.path.join(dirpath, f))
-                if len(source_files) >= max_files:
+                if max_files is not None and len(source_files) >= max_files:
                     return source_files
 
     return source_files
@@ -111,7 +132,7 @@ def analyze_effectiveness(
     project_root: str,
     source_files: list[str] | None = None,
     test_files: list[str] | None = None,
-) -> dict[str, FunctionEffectiveness]:
+) -> tuple[dict[str, FunctionEffectiveness], MappingDiagnostics]:
     """Analyze test effectiveness for all source functions in a project.
 
     Args:
@@ -120,15 +141,17 @@ def analyze_effectiveness(
         test_files: Optional list of test files. Auto-discovered if None.
 
     Returns:
-        Mapping of source function names → FunctionEffectiveness.
+        Tuple of (Mapping of 'relpath::function' → FunctionEffectiveness, MappingDiagnostics).
     """
     if source_files is None:
         source_files = _discover_source_files(project_root)
     if test_files is None:
         test_files = _discover_test_files(project_root)
 
+    diagnostics = MappingDiagnostics()
+
     if not source_files or not test_files:
-        return {}
+        return {}, diagnostics
 
     # Build source function index
     source_index = build_source_function_index(source_files)
@@ -142,21 +165,24 @@ def analyze_effectiveness(
     # Map tests to source functions
     source_to_tests: dict[str, list[str]] = {}
     for tf in test_files:
-        file_mapping = map_tests_to_source(tf, source_index)
-        for src_func, test_funcs in file_mapping.items():
-            source_to_tests.setdefault(src_func, []).extend(test_funcs)
+        file_mapping = map_tests_to_source(tf, source_index, project_root, diagnostics=diagnostics)
+        for src_key, mapped_tests in file_mapping.items():
+            source_to_tests.setdefault(src_key, []).extend(mapped_tests)
 
     # Build effectiveness for each source function
     results: dict[str, FunctionEffectiveness] = {}
 
     # Get all public functions across all source files
-    all_public_functions: dict[str, str] = {}  # func_name → file_path
+    all_public_functions: list[tuple[str, str]] = []  # (func_name, file_path)
     for sf in source_files:
         for func_name in _extract_public_functions(sf):
-            all_public_functions[func_name] = sf
+            all_public_functions.append((func_name, sf))
 
-    for func_name, _filepath in all_public_functions.items():
-        test_funcs = source_to_tests.get(func_name, [])
+    for func_name, filepath in all_public_functions:
+        relpath = os.path.relpath(filepath, project_root)
+        unique_key = f"{relpath}::{func_name}"
+
+        test_funcs = source_to_tests.get(unique_key, [])
         # Deduplicate
         test_funcs = list(dict.fromkeys(test_funcs))
 
@@ -171,6 +197,6 @@ def analyze_effectiveness(
             assertions=assertions,
         )
         fe.compute_scores()
-        results[func_name] = fe
+        results[unique_key] = fe
 
-    return results
+    return results, diagnostics

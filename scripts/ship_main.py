@@ -97,7 +97,9 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
     """Run precisely the pre-push hook without side effects."""
     hook_path = Path(repo_root) / ".githooks" / "pre-push"
 
-    def emit_json(status: str, exit_code: int, failed_ids: list[str], err_msg: str | None = None) -> None:
+    def emit_json(
+        status: str, exit_code: int, failed_ids: list[str], err_msg: str | None = None
+    ) -> None:
         payload = {
             "status": status,
             "exit_code": exit_code,
@@ -151,12 +153,8 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
                 and ("symbol" in stdout_lower or "symbol" in stderr_lower)
             ):
                 failed_gate_ids.append("symbol_gate")
-            if (
-                ("incomplete" in stdout_lower or "incomplete" in stderr_lower)
-                and (
-                    "quality infrastructure" in stdout_lower
-                    or "quality infrastructure" in stderr_lower
-                )
+            if ("incomplete" in stdout_lower or "incomplete" in stderr_lower) and (
+                "quality infrastructure" in stdout_lower or "quality infrastructure" in stderr_lower
             ):
                 failed_gate_ids.append("quality_infra")
             if "pytest" in stdout_lower and (
@@ -405,7 +403,9 @@ def _prune_merged_local_branches(repo_root: str, base_branch: str, current_branc
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Ship current branch to main with strict gate parity")
+    parser = argparse.ArgumentParser(
+        description="Ship current branch to main with strict gate parity"
+    )
     parser.add_argument("--base", default="main", help="Base branch to merge into (default: main)")
     parser.add_argument("--remote", default="origin", help="Git remote (default: origin)")
     parser.add_argument("--wait-seconds", type=int, default=20, help="Polling interval")
@@ -463,7 +463,9 @@ def main() -> int:
     print(f"[ship] PR URL: {pr_url}")
 
     repo_slug = _repo_slug(repo_root)
-    required_by_protection = _required_checks_from_branch_protection(repo_root, repo_slug, args.base)
+    required_by_protection = _required_checks_from_branch_protection(
+        repo_root, repo_slug, args.base
+    )
     required_by_contract = _required_checks_from_contract(repo_root)
     required_checks = _union_checks(required_by_protection, required_by_contract)
     if not required_checks:

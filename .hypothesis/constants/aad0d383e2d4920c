@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/channels/performance_channel.py
+# hypothesis_version: 6.151.9
+
+[0.2, 0.7, 0.8, 0.9, 1000, 10000, ', ', 'PERFCH001', 'PERFCH003', 'PERFCH004', 'PERFCH005', 'blocking', 'blocking_count', 'cache_noinval_total', 'cacheable', 'cacheable_count', 'code', 'duration_ms', 'event', 'fail', 'files_analyzed', 'findings_count', 'function', 'hints', 'impure_count', 'impure_functions', 'informational', 'no_python_files', 'none', 'parallel_total', 'parallelizable', 'pass', 'performance', 'performance_analysis', 'performance_channel', 'project', 'properties_detected', 'pure_count', 'pure_functions', 'pure_functions_found', 'purity_ratio', 'ratio', 'reason', 'skip', 'top_examples', 'warning']

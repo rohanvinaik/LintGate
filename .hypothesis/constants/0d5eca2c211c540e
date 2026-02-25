@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/agent_reporter.py
+# hypothesis_version: 6.151.9
+
+[2000, ', ', '; ', '</lint-report>', '?', 'PostToolUse', 'additionalContext', 'alert_reason', 'alerted_patterns', 'blocking_count', 'blocking_delta', 'count', 'count_this_run', 'file', 'files_this_run', 'fixable_count', 'hookEventName', 'hookSpecificOutput', 'kind', 'line', 'linter', 'linters_errored', 'linters_skipped', 'message', 'recent_run_count', 'repeated_issue_count', 'single_run_volume', 'systemMessage', 'top_repeated', 'total_delta', 'total_issues', 'warning_count', 'warning_delta']

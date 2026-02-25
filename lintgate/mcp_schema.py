@@ -32,18 +32,14 @@ def validate_schema_node(tool_name: str, path: str, node: Any) -> None:
         node_type = node.get("type", "")
         if node_type != "string":
             raise ProviderSchemaError(
-                "Enums are only allowed on strictly 'string' types.",
-                tool_name,
-                path
+                "Enums are only allowed on strictly 'string' types.", tool_name, path
             )
 
         # Enforce: no empty strings inside an enum array
         for i, enum_val in enumerate(node["enum"]):
             if isinstance(enum_val, str) and not enum_val:
                 raise ProviderSchemaError(
-                    f"Empty string found in enum at index {i}",
-                    tool_name,
-                    path
+                    f"Empty string found in enum at index {i}", tool_name, path
                 )
 
     for key, value in node.items():
@@ -64,6 +60,7 @@ def compile_and_validate_schemas(tools: list[Any], agent_profile: str = "strict"
         schema = getattr(tool, "parameters", None) or getattr(tool, "inputSchema", None)
         if schema:
             validate_schema_node(tool.name, "inputSchema", schema)
+
 
 def enforce_mcp_contract(tools: list[Any]) -> None:
     """Verify that all safety_critical_tools are present and correctly loaded."""
@@ -86,5 +83,5 @@ def enforce_mcp_contract(tools: list[Any]) -> None:
         raise ProviderSchemaError(
             f"Safety-critical tools are missing from the active registry: {missing}",
             "STARTUP",
-            "mcp_contract"
+            "mcp_contract",
         )

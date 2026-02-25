@@ -22,12 +22,15 @@ class AgentProfile:
     display_name: str
     config_path: Path
     schema_strict: bool
-    config_writer: Callable[[Path, str], bool]  # Returns True if wrote/changed, False if already configured
+    config_writer: Callable[
+        [Path, str], bool
+    ]  # Returns True if wrote/changed, False if already configured
     # e.g., command to check if agent is active or installed
     check_command: str | None = None
 
 
 # --- Transactional Writers ---
+
 
 def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     """Write JSON atomically with a .bak fallback."""
@@ -97,18 +100,23 @@ PROFILES = {
     "claude": AgentProfile(
         id="claude",
         display_name="Claude Desktop",
-        config_path=Path(os.path.expanduser("~/Library/Application Support/Claude/claude_desktop_config.json")),
+        config_path=Path(
+            os.path.expanduser("~/Library/Application Support/Claude/claude_desktop_config.json")
+        ),
         schema_strict=False,
         config_writer=write_claude_config,
     ),
     "antigravity": AgentProfile(
         id="antigravity",
         display_name="Antigravity",
-        config_path=Path(os.path.expanduser("~/.gemini/antigravity/mcp.json")),  # Hypothetical config path
+        config_path=Path(
+            os.path.expanduser("~/.gemini/antigravity/mcp.json")
+        ),  # Hypothetical config path
         schema_strict=True,
         config_writer=write_antigravity_config,
-    )
+    ),
 }
+
 
 def get_profile(agent_id: str) -> AgentProfile | None:
     return PROFILES.get(agent_id.lower())

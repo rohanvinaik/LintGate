@@ -240,9 +240,9 @@ def test_scan_file_pure_function(tmp_path):
     f.write_text("def add(a, b): return a + b\n")
 
     m = PropertyManifest()
-    found = _scan_file(m, str(f))
-    assert "add" in found
-    assert "add" in m.functions
+    found = _scan_file(m, str(f), str(tmp_path))
+    assert "pure.py::add" in found
+    assert "pure.py::add" in m.functions
 
 
 def test_scan_file_syntax_error(tmp_path):
@@ -250,7 +250,7 @@ def test_scan_file_syntax_error(tmp_path):
     f.write_text("def broken(\n")
 
     m = PropertyManifest()
-    found = _scan_file(m, str(f))
+    found = _scan_file(m, str(f), str(tmp_path))
     assert found == []
     assert m.functions == {}
 
@@ -260,7 +260,7 @@ def test_scan_file_impure_function(tmp_path):
     f.write_text("def write_file(path): open(path, 'w').write('x')\n")
 
     m = PropertyManifest()
-    found = _scan_file(m, str(f))
+    found = _scan_file(m, str(f), str(tmp_path))
     # Function should be found but marked impure
     if found:
         for name in found:

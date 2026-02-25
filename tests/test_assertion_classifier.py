@@ -288,7 +288,7 @@ def test_classify_compare_empty_ops():
         ops=[],
         comparators=[],
     )
-    kind = _classify_compare(node)
+    kind, _ = _classify_compare(node)
     assert kind == AssertionKind.IS_TRUE
 
 
@@ -326,7 +326,7 @@ def test_classify_compare_unknown_op_fallback():
         ops=[ast.MatMult()],  # type: ignore[list-item] # not a valid cmpop
         comparators=[ast.Name(id="y")],
     )
-    kind = _classify_compare(node)
+    kind, _ = _classify_compare(node)
     assert kind == AssertionKind.IS_TRUE
 
 

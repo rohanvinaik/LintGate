@@ -232,7 +232,9 @@ class TestConstraintCheck:
     def test_first_session_hint(self, tmp_path, monkeypatch):
         """First constraint_check in a session should include first_session_hint."""
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
-        monkeypatch.setattr("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session")
+        monkeypatch.setattr(
+            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
+        )
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)

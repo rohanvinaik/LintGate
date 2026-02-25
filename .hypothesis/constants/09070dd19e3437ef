@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/controlplane/types.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.4, 0.6, 0.7, 1.0, 4.0, 24.0, 1800.0, 900, 8000, 15000, 'blocking', 'ci', 'command', 'config_patch', 'coupled', 'create_test_skeleton', 'degraded', 'error', 'fail', 'full', 'hook', 'informational', 'isolated', 'lint', 'mcp', 'none', 'pass', 'skip', 'stable', 'systemic', 'timeout', 'warning']

@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/linters/performance_checks/_helpers.py
+# hypothesis_version: 6.151.9
+
+['.']

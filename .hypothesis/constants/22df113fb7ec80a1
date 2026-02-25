@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/registry.py
+# hypothesis_version: 6.151.9
+
+[15000, 'command', 'enabled', 'lines', 'parse_mode', 'severity_default', 'tier', 'timeout_ms', 'warning']

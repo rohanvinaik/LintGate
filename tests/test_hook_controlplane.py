@@ -58,16 +58,20 @@ class TestSessionTelemetryUpdatesUsed:
 
 class TestMarkSessionTelemetryApplied:
     def test_none_session(self):
+        # Should not raise
         mark_session_telemetry_applied(None)
 
     def test_no_attr(self):
         s = MagicMock(spec=[])
         mark_session_telemetry_applied(s)
+        # Verify no attribute access/creation side effects beyond what's expected (none here)
 
     def test_bc_not_dict(self):
         s = MagicMock()
         s.behavior_compass = "not-a-dict"
         mark_session_telemetry_applied(s)
+        # Should not modify
+        assert s.behavior_compass == "not-a-dict"
 
     def test_increments(self):
         s = MagicMock()
@@ -147,14 +151,16 @@ class TestSelectTelemetryProfile:
         store = MagicMock()
         store.profiles = {"key": profile}
         with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
-            assert select_telemetry_profile(store, {}) is profile
+            assert select_telemetry_profile(store, {}) == profile
 
 
 class TestLoadGlobalPriors:
     def test_disabled(self):
         cfg = MagicMock()
         cfg.global_memory_enabled = False
-        assert load_global_priors(cfg) is None
+        with patch("lintgate.controlplane.global_behavior_profile.load_global_profile") as load_fn:
+            assert load_global_priors(cfg) is None
+        load_fn.assert_not_called()
 
     def test_behavior_disabled(self):
         cfg = MagicMock()
@@ -196,7 +202,7 @@ class TestLoadGlobalPriors:
             patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
         ):
             result = load_global_priors(cfg)
-        assert result["enabled"] is True
+        assert result["enabled"]
 
     def test_import_error(self):
         cfg = MagicMock()
@@ -472,13 +478,19 @@ class TestPostProcessSession:
 
 class TestAccumulateSessionTelemetry:
     def test_none_report(self):
-        accumulate_session_telemetry(None, MagicMock())
+        with patch("lintgate.controlplane.session_memory.save_session") as save_fn:
+            accumulate_session_telemetry(None, MagicMock())
+        save_fn.assert_not_called()
 
     def test_no_telemetry(self):
-        accumulate_session_telemetry({"systemMessage": "ok"}, MagicMock())
+        with patch("lintgate.controlplane.session_memory.save_session") as save_fn:
+            accumulate_session_telemetry({"systemMessage": "ok"}, MagicMock())
+        save_fn.assert_not_called()
 
     def test_session_none(self):
-        accumulate_session_telemetry({"_telemetry": {"a": 1}}, None)
+        with patch("lintgate.controlplane.session_memory.save_session") as save_fn:
+            accumulate_session_telemetry({"_telemetry": {"a": 1}}, None)
+        save_fn.assert_not_called()
 
     def test_accumulates(self):
         s = MagicMock()
@@ -486,7 +498,8 @@ class TestAccumulateSessionTelemetry:
         with patch("lintgate.controlplane.session_memory.save_session"):
             accumulate_session_telemetry({"_telemetry": {"a": 3, "b": 1}}, s)
         counters = s.behavior_compass["telemetry_counters"]
-        assert counters["a"] == 8 and counters["b"] == 1
+        assert counters["a"] == 8
+        assert counters["b"] == 1
 
     def test_existing_not_dict(self):
         s = MagicMock()

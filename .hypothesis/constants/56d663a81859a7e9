@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/mcp_tools/model_tools.py
+# hypothesis_version: 6.151.9
+
+[86400, '60-120 seconds', 'Bash', 'Edit', 'No answers provided.', 'Read', 'Run pytest to verify', '_json_dumps', 'actions', 'age_days', 'confidence', 'confidence_raw', 'constraint_refs', 'current_version', 'custom_anti_patterns', 'custom_dispositions', 'days_since_update', 'error', 'eta', 'example', 'existing_profile', 'expected', 'format', 'hint', 'id', 'low_confidence', 'message', 'minimum_tasks', 'model_calibration', 'model_id', 'model_key', 'model_profile_status', 'next_actions', 'no_profile', 'note', 'probe_runs', 'probe_set', 'probe_version', 'profiles', 'profiles_count', 'quick', 'response_schema', 'retry_count', 'signal_count', 'signal_risk', 'stale', 'status', 'supported_probe_sets', 'task_count', 'task_id', 'tasks', 'tasks_scored', 'telemetry_samples', 'text', 'time', 'tool_calls', 'unresolved', 'usable', 'v1', 'v2', 'valid_ids', 'verify_points']

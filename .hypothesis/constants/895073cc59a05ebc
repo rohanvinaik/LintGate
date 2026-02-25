@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/results_aggregator.py
+# hypothesis_version: 6.151.9
+
+[0.0, '..', '/', 'architecture', 'architecture_checker', 'blocking', 'blocking_count', 'codes', 'complexity', 'complexity_checker', 'dead_code', 'dead_code_checker', 'error', 'fixable_count', 'info_count', 'informational', 'linters_errored', 'linters_run', 'linters_skipped', 'ok', 'radon', 'skipped', 'structure', 'structure_checker', 'timeout', 'total_issues', 'warning', 'warning_count']

@@ -1,0 +1,50 @@
+title:	analyze_test_strength accepts file_filter but currently ignores it
+state:	OPEN
+author:	rohanvinaik
+labels:	
+comments:	0
+assignees:	
+projects:	
+milestone:	
+number:	64
+--
+## Scope
+Phase 2 independent fix.
+
+## Dependency placement
+- Phase: **2**
+- Independent from: #65
+- Depends on: none
+
+## Goal
+Make `file_filter` in `analyze_test_strength(...)` functional and composable with `function_filter`.
+
+## Implementation guidance
+1. Implement file filtering in `mcp_tools/test_effectiveness_tools.py`.
+- Current behavior only applies `function_filter`.
+- Add `file_filter` handling after function filtering using canonical key format `relpath::function`.
+- Match against the `relpath` component case-insensitively.
+
+2. Ensure filter composition.
+- If both `file_filter` and `function_filter` are provided, apply both (AND semantics).
+
+3. Emit filter metadata.
+- Populate `result["filter_applied"]` with:
+  - `file`
+  - `function` (if present)
+
+4. Handle zero-match case cleanly.
+- Return empty filtered arrays without contradictory status messaging.
+
+## Test guidance
+Add/update tests in `tests/test_test_effectiveness_tools.py`:
+- `test_file_filter_narrows_results`
+- `test_file_filter_metadata_emitted`
+- `test_file_filter_and_function_filter_compose`
+- `test_file_filter_no_matches_empty_results`
+
+## Acceptance criteria
+- `file_filter` materially changes output when provided.
+- Combined filtering works deterministically.
+- Output metadata reflects applied filters.
+

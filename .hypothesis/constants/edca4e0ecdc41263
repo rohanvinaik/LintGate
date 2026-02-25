@@ -1,0 +1,4 @@
+# file: /Users/rohanvinaik/tools/lintgate/lintgate/channels/structure_channel.py
+# hypothesis_version: 6.151.9
+
+[1000, 5000, 'StructureChannel', '__init__.py', '_build_import_graph', '_build_reexport_map', '_check_import_cycles', '_check_orphans', '_count_loc', '_detect_reexports', '_find_cycles', '_is_orphan_excluded', '_percentile', 'architectural', 'blocking', 'cosmetic', 'fail', 'file_count', 'informational', 'mcp', 'none', 'orphan_exclude_dirs', 'pass', 'reason', 'skip', 'structural', 'structure', 'too_few_files', 'warning']

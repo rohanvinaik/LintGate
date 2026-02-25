@@ -304,7 +304,9 @@ def test_cmd_doctor_fix_path_runs_install(monkeypatch) -> None:
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     called = {"install": False}
-    monkeypatch.setattr(admin, "cmd_install", lambda _args: called.__setitem__("install", True) or 0)
+    monkeypatch.setattr(
+        admin, "cmd_install", lambda _args: called.__setitem__("install", True) or 0
+    )
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
     assert admin.cmd_doctor(args) == 0

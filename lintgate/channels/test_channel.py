@@ -137,6 +137,30 @@ class TestChannel:
                 findings,
             )
 
+            # Determine partial run context
+            targets_mode = "unknown"
+            if tests_to_run:
+                if impacted_tests and tests_to_run == impacted_tests:
+                    targets_mode = "impacted"
+                else:
+                    targets_mode = "fallback"
+
+            is_partial_run = False
+            if targets_mode == "impacted":
+                is_partial_run = True
+
+            coverage_pct: float | None = None
+            if test_result and test_result.coverage_pct is not None:
+                coverage_pct = test_result.coverage_pct
+
+            coverage_ok = True
+            if (
+                cov_cfg["measure"]
+                and coverage_pct is not None
+                and cov_cfg.get("threshold") is not None
+            ):
+                coverage_ok = coverage_pct >= float(cov_cfg["threshold"])
+
             # Step 6: Symbol coverage gate
             gate_result = _run_symbol_gate_if_enabled(
                 cov_cfg,
@@ -145,17 +169,27 @@ class TestChannel:
                 project_root,
                 event.surface,
                 findings,
+                is_partial_run=is_partial_run,
+                coverage_ok=coverage_ok,
+                targets_mode=targets_mode,
+                coverage_pct=coverage_pct,
             )
 
             return _build_channel_result(
-                self.name,
-                start,
-                findings,
-                repairs,
-                impacted_tests,
-                test_result,
-                cov_cfg,
-                gate_result,
+                TestChannelContext(
+                    channel_name=self.name,
+                    start=start,
+                    findings=findings,
+                    repairs=repairs,
+                    impacted_tests=impacted_tests,
+                    test_result=test_result,
+                    cov_cfg=cov_cfg,
+                    gate_result=gate_result,
+                    targets_mode=targets_mode,
+                    coverage_pct=coverage_pct,
+                    is_partial_run=is_partial_run,
+                    coverage_ok=coverage_ok,
+                )
             )
         finally:
             if (
@@ -335,6 +369,10 @@ def _run_symbol_gate_if_enabled(
     project_root: str,
     surface: str,
     findings: list[LintIssue],
+    is_partial_run: bool = False,
+    coverage_ok: bool = True,
+    targets_mode: str = "unknown",
+    coverage_pct: float | None = None,
 ) -> Any:
     """Run symbol coverage gate if enabled. Returns gate result or None."""
     if not cov_cfg["symbol_enabled"]:
@@ -352,48 +390,67 @@ def _run_symbol_gate_if_enabled(
         cov_cfg["symbol_coverage"],
         surface,
         findings,
+        is_partial_run=is_partial_run,
+        coverage_ok=coverage_ok,
+        targets_mode=targets_mode,
+        coverage_pct=coverage_pct,
     )
 
 
-def _build_channel_result(
-    channel_name: str,
-    start: float,
-    findings: list[LintIssue],
-    repairs: list[RepairAction],
-    impacted_tests: list[str],
-    test_result: TestRunResult | None,
-    cov_cfg: dict[str, Any],
-    gate_result: Any,
-) -> ChannelResult:
+@dataclass
+class TestChannelContext:
+    """Context for building test channel results with many metrics."""
+
+    channel_name: str
+    start: float
+    findings: list[LintIssue]
+    repairs: list[RepairAction]
+    impacted_tests: list[str]
+    test_result: TestRunResult | None
+    cov_cfg: dict[str, Any]
+    gate_result: Any
+    targets_mode: str = "unknown"
+    coverage_pct: float | None = None
+    is_partial_run: bool = False
+    coverage_ok: bool = True
+
+
+def _build_channel_result(ctx: TestChannelContext) -> ChannelResult:
     """Assemble the final ChannelResult from collected findings and metrics."""
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    status: Literal["pass", "fail"] = "fail" if findings else "pass"
-    severity = _compute_severity(findings)
+    elapsed_ms = (time.perf_counter() - ctx.start) * 1000
+    status: Literal["pass", "fail"] = "fail" if ctx.findings else "pass"
+    severity = _compute_severity(ctx.findings)
 
     metrics: dict[str, Any] = {
-        "impacted_tests_found": len(impacted_tests),
-        "missing_test_count": sum(1 for f in findings if f.kind == "missing_test"),
-        "test_failure_count": sum(1 for f in findings if f.kind == "test_failure"),
+        "impacted_tests_found": len(ctx.impacted_tests),
+        "missing_test_count": sum(1 for f in ctx.findings if f.kind == "missing_test"),
+        "test_failure_count": sum(1 for f in ctx.findings if f.kind == "test_failure"),
     }
-    if cov_cfg["measure"] and test_result is not None:
-        cov = test_result.coverage_pct
+    if ctx.cov_cfg["measure"] and ctx.test_result is not None:
+        cov = ctx.test_result.coverage_pct
         if cov is not None:
             metrics["coverage_pct"] = cov
-        if cov_cfg["threshold"] is not None:
-            metrics["coverage_threshold"] = float(cov_cfg["threshold"])
-    if gate_result is not None:
-        sym_uncovered = sum(1 for r in gate_result.symbol_results if not r.covered)
-        metrics["symbol_coverage_targets"] = len(gate_result.symbol_results)
-        metrics["symbol_coverage_passed"] = len(gate_result.symbol_results) - sym_uncovered
+        if ctx.cov_cfg["threshold"] is not None:
+            metrics["coverage_threshold"] = float(ctx.cov_cfg["threshold"])
+    if ctx.gate_result is not None:
+        sym_uncovered = sum(1 for r in ctx.gate_result.symbol_results if not r.covered)
+        metrics["symbol_coverage_targets"] = len(ctx.gate_result.symbol_results)
+        metrics["symbol_coverage_passed"] = len(ctx.gate_result.symbol_results) - sym_uncovered
         metrics["symbol_coverage_failed"] = sym_uncovered
-        metrics["symbol_coverage_waivers"] = len(gate_result.waivers_applied)
+        metrics["symbol_coverage_waivers"] = len(ctx.gate_result.waivers_applied)
+        metrics["symbol_gate_context"] = {
+            "targets_mode": ctx.targets_mode,
+            "is_partial_run": ctx.is_partial_run,
+            "coverage_ok": ctx.coverage_ok,
+            "coverage_pct": ctx.coverage_pct,
+        }
 
     return ChannelResult(
-        channel=channel_name,
+        channel=ctx.channel_name,
         status=status,
         severity=severity,
-        findings=findings,
-        repairs=repairs,
+        findings=ctx.findings,
+        repairs=ctx.repairs,
         metrics=metrics,
         duration_ms=elapsed_ms,
     )
@@ -724,6 +781,10 @@ def _run_symbol_gate(
     settings: dict[str, Any],
     surface: str,
     findings: list[LintIssue],
+    is_partial_run: bool = False,
+    coverage_ok: bool = True,
+    targets_mode: str = "unknown",
+    coverage_pct: float | None = None,
 ) -> Any:
     """Run symbol coverage gate and append findings. Returns gate result or None."""
     if not coverage_json_path:
@@ -747,19 +808,72 @@ def _run_symbol_gate(
         settings=settings,
         surface=surface,
     )
-    _emit_symbol_findings(gate_result, findings)
+    _emit_symbol_findings(
+        gate_result, findings, is_partial_run, coverage_ok, targets_mode, coverage_pct
+    )
     return gate_result
 
 
-def _emit_symbol_findings(gate_result: Any, findings: list[LintIssue]) -> None:
+def _build_symbol_suggestions(sr: Any) -> list[str]:
+    """Generate branch-aware or line-aware remediation text."""
+    suggestions = []
+
+    missing_line_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
+    missing_branch_str = ", ".join(f"{b[0]}->{b[1]}" for b in sr.missing_branches[:5])
+
+    if sr.missing_lines and sr.missing_branches:
+        suggestions.append(
+            f"Add tests that execute lines {missing_line_str} and branches {missing_branch_str} in {sr.symbol.name}"
+        )
+    elif sr.missing_lines:
+        suggestions.append(f"Add tests that execute lines {missing_line_str} in {sr.symbol.name}")
+    elif sr.missing_branches:
+        suggestions.append(
+            f"Add tests that execute branches {missing_branch_str} in {sr.symbol.name}"
+        )
+    else:
+        suggestions.append(f"Add missing tests for {sr.symbol.name}")
+
+    suggestions.append("Or add a waiver with reason in symbol_coverage.waivers")
+    return suggestions
+
+
+def _emit_symbol_findings(
+    gate_result: Any,
+    findings: list[LintIssue],
+    is_partial_run: bool = False,
+    coverage_ok: bool = True,
+    targets_mode: str = "unknown",
+    coverage_pct: float | None = None,
+) -> None:
     """Convert symbol coverage gate results into LintIssue findings."""
     for sr in gate_result.symbol_results:
         if sr.covered:
             continue
-        missing_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
+
         msg = f"Symbol {sr.symbol.name} is not fully covered"
-        if sr.missing_lines:
-            msg += f" (missing lines: {missing_str})"
+        if sr.missing_lines and sr.missing_branches:
+            msg += f" (missing lines: {', '.join(str(ln) for ln in sr.missing_lines[:10])}, and {len(sr.missing_branches)} branches)"
+        elif sr.missing_lines:
+            msg += f" (missing lines: {', '.join(str(ln) for ln in sr.missing_lines[:10])})"
+        elif sr.missing_branches:
+            msg += f" (missing {len(sr.missing_branches)} branches)"
+
+        confidence = 1.0
+        downgrade_reason = ""
+        severity = "blocking"
+
+        if is_partial_run:
+            if coverage_ok:
+                confidence = 0.6
+                severity = "warning"
+                downgrade_reason = " (downgraded: partial test run with healthy line coverage)"
+            else:
+                confidence = 0.7
+                severity = "blocking"
+
+        msg += downgrade_reason
+
         findings.append(
             LintIssue(
                 linter="test_channel",
@@ -767,8 +881,8 @@ def _emit_symbol_findings(gate_result: Any, findings: list[LintIssue]) -> None:
                 message=msg,
                 file=sr.symbol.file,
                 line=sr.symbol.start_line,
-                severity="blocking",
-                confidence=1.0,
+                severity=severity,
+                confidence=confidence,
                 evidence={
                     "symbol_key": sr.symbol.symbol_key,
                     "symbol": sr.symbol.name,
@@ -776,11 +890,12 @@ def _emit_symbol_findings(gate_result: Any, findings: list[LintIssue]) -> None:
                     "missing_branches": sr.missing_branches,
                     "total_lines": sr.total_lines_in_span,
                     "executed_lines": sr.executed_lines_in_span,
+                    "is_partial_run": is_partial_run,
+                    "coverage_ok": coverage_ok,
+                    "coverage_pct": coverage_pct,
+                    "targets_mode": targets_mode,
                 },
-                suggestions=[
-                    f"Add tests that execute lines {missing_str} in {sr.symbol.name}",
-                    "Or add a waiver with reason in symbol_coverage.waivers",
-                ],
+                suggestions=_build_symbol_suggestions(sr),
             )
         )
 

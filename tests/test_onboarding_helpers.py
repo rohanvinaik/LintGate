@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from mcp_tools.onboarding_tools import (
+    register,
+)
+from mcp_tools.quality_helpers import (
     _apply_managed_artifact,
     _compute_bandit_ci_skips,
     _detect_license_fallback,
@@ -25,7 +28,6 @@ from mcp_tools.onboarding_tools import (
     _parse_pyproject_metadata,
     _read_informational_bandit_codes,
     _scan_project_dirs,
-    register,
 )
 
 # -- _parse_pyproject_metadata ------------------------------------------------
@@ -365,14 +367,14 @@ class TestApplyManagedArtifact:
         assert result["status"] == "already_exists"
 
     def test_drift_repaired(self, tmp_path: Path) -> None:
-        """Overwrites drifted content when write=True."""
+        """Detects drift but does NOT overwrite content when write=True to preserve user config."""
         fpath = tmp_path / "artifact.yml"
         fpath.write_text("old content")
         result = _apply_managed_artifact(str(fpath), "new content", exists=True, write=True)
         assert result["status"] == "drift_repaired"
         assert "previous_hash" in result
         assert "new_hash" in result
-        assert fpath.read_text() == "new content"
+        assert fpath.read_text() == "old content"
 
     def test_outdated_without_write(self, tmp_path: Path) -> None:
         """Reports outdated status when content differs and write=False."""
@@ -611,7 +613,7 @@ class TestParsePyprojectLicenseString:
     """Cover _parse_pyproject_metadata branch: license as plain string."""
 
     def test_license_string_value(self, tmp_path):
-        from mcp_tools.onboarding_tools import _parse_pyproject_metadata
+        from mcp_tools.quality_helpers import _parse_pyproject_metadata
 
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text('[project]\nlicense = "MIT"\n')
@@ -624,7 +626,7 @@ class TestScanProjectDirsSrcLayout:
     """Cover _scan_project_dirs branch: src/ layout with sub-packages."""
 
     def test_src_layout_discovered(self, tmp_path):
-        from mcp_tools.onboarding_tools import _scan_project_dirs
+        from mcp_tools.quality_helpers import _scan_project_dirs
 
         # Create src/mypkg/__init__.py
         pkg = tmp_path / "src" / "mypkg"
@@ -635,7 +637,7 @@ class TestScanProjectDirsSrcLayout:
         assert "src/mypkg" in source_dirs
 
     def test_src_subdir_without_init_skipped(self, tmp_path):
-        from mcp_tools.onboarding_tools import _scan_project_dirs
+        from mcp_tools.quality_helpers import _scan_project_dirs
 
         # Create src/data/ (no __init__.py)
         (tmp_path / "src" / "data").mkdir(parents=True)
