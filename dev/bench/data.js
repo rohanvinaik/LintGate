@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772037376055,
+  "lastUpdate": 1772065582137,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -828,6 +828,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.000170879706832875",
             "extra": "mean: 644.8309095743391 usec\nrounds: 564"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2d9da7e61b489ea1df2725a21efc9587a6d6a82f",
+          "message": "Merge pull request #171 from rohanvinaik/codex/ship-main-symbol-gate-advisory-20260225\n\nchore: ship codex/ship-main-symbol-gate-advisory-20260225 to main",
+          "timestamp": "2026-02-25T19:25:45-05:00",
+          "tree_id": "2a212c2ba2af2fb53ecd534901da9537e6378c82",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/2d9da7e61b489ea1df2725a21efc9587a6d6a82f"
+        },
+        "date": 1772065581374,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 121.71816758839823,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003058194978667286",
+            "extra": "mean: 8.215700415254336 msec\nrounds: 118"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 213710.92675649357,
+            "unit": "iter/sec",
+            "range": "stddev: 8.437366921149981e-7",
+            "extra": "mean: 4.679217928521828 usec\nrounds: 52040"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5434.599343534252,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000267019390068938",
+            "extra": "mean: 184.0062048345363 usec\nrounds: 3144"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14180.028377971763,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000017102422109586772",
+            "extra": "mean: 70.52172064433024 usec\nrounds: 9436"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1414.8911063423986,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00020446680483756318",
+            "extra": "mean: 706.7681714284544 usec\nrounds: 560"
           }
         ]
       }
