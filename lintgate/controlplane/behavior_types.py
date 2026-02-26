@@ -342,7 +342,6 @@ class BehaviorCompass:
     signals: SignalState = field(default_factory=SignalState)
     nudges: NudgeState = field(default_factory=NudgeState)
     predictions: PredictionStateContainer = field(default_factory=PredictionStateContainer)
-    compliance_rate: float = 1.0  # Cumulative compliance [0-1]
 
     # ── Backward-compatible property accessors for SignalState ──
 
@@ -449,7 +448,6 @@ class BehaviorCompass:
             "action_history": self.action_history,
             "error_memory": self.error_memory,
             "hypothesis_version": self.hypothesis_version,
-            "compliance_rate": self.compliance_rate,
         }
         # Flatten nested state for backward-compatible serialization
         d.update(self.signals.to_dict())
@@ -472,7 +470,6 @@ class BehaviorCompass:
             signals=SignalState.from_dict(data),
             nudges=NudgeState.from_dict(data),
             predictions=PredictionStateContainer.from_dict(data),
-            compliance_rate=data.get("compliance_rate", 1.0),
         )
 
 

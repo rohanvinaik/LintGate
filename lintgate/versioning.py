@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-if sys.version_info >= (3, 11):
+try:
     import tomllib
-else:
+except ModuleNotFoundError:  # Python 3.10 fallback
     import tomli as tomllib
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
@@ -290,6 +290,7 @@ def _ensure_entry(requirements: dict[str, dict[str, Any]], tool_name: str) -> No
         for key in ("specifiers", "sources", "is_optional"):
             if key not in entry:
                 entry[key] = []
+
 
 
 def _parse_requirement_entry(entry: str) -> tuple[str, str] | None:

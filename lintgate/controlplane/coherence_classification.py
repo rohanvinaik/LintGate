@@ -99,7 +99,9 @@ def classify_systemic_failure(
     if eff_count >= 3.0:
         conf = 0.9
         if severity_weighted:
-            systemic_notes.append(f"severity-weighted failure score={eff_count:.2f} (>=3.0)")
+            systemic_notes.append(
+                f"severity-weighted failure score={eff_count:.2f} (>=3.0)"
+            )
     else:
         # Cross-domain with only 2 failures — less certain it's truly systemic
         conf = 0.7

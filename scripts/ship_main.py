@@ -27,75 +27,6 @@ from typing import Any
 
 SUCCESS_CONCLUSIONS = {"success", "neutral", "skipped"}
 
-# Classification constants for telemetry
-# transport_flake: likely transient network/infra failure that may pass on rerun
-# code_failure: likely real regression requiring code changes
-# unknown: cannot determine from available signals
-CLASSIFICATION_TRANSPORT_FLAKE = "transport_flake"
-CLASSIFICATION_CODE_FAILURE = "code_failure"
-CLASSIFICATION_UNKNOWN = "unknown"
-
-# Known transient failure signatures (transport/infra layer)
-# These patterns suggest flaky failures that might pass on rerun
-TRANSIENT_FAILURE_SIGNATURES = [
-    "connection",
-    "timeout",
-    "network",
-    "dns",
-    "ssl",
-    "tls",
-    "certificate",
-    "500",
-    "502",
-    "503",
-    "504",
-    "temporary",
-    "transient",
-    "unavailable",
-    "rate limit",
-    "rate_limit",
-    "quota",
-    "api",
-]
-
-
-def _classify_failure(
-    check_name: str,
-    conclusion: str | None,
-    error_message: str | None = None,
-) -> str:
-    """Classify a check failure as transport_flake, code_failure, or unknown.
-
-    Classification rules:
-    - If failure message contains transient error signatures -> transport_flake
-    - If check is known to be flaky (e.g., qlty with retry logic) -> transport_flake
-    - If failure is clear code/test issue (pytest failures, lint errors) -> code_failure
-    - Otherwise -> unknown
-    """
-    # Check combined string for transient signatures (these can appear in check_name)
-    combined = " ".join(s.lower() for s in [check_name, conclusion or "", error_message or ""] if s)
-
-    # Check for transient signatures
-    for signature in TRANSIENT_FAILURE_SIGNATURES:
-        if signature in combined:
-            return CLASSIFICATION_TRANSPORT_FLAKE
-
-    # For code failure, only check conclusion (not check_name to avoid false positives)
-    conclusion_lower = (conclusion or "").lower()
-
-    # Known code failure patterns - only look at conclusion
-    code_failure_patterns = [
-        "failed",
-        "error",
-        "failure",
-    ]
-
-    for pattern in code_failure_patterns:
-        if pattern in conclusion_lower:
-            return CLASSIFICATION_CODE_FAILURE
-
-    return CLASSIFICATION_UNKNOWN
-
 
 def _run(
     cmd: list[str],
@@ -395,34 +326,11 @@ def _watch_required_checks(
     *,
     wait_seconds: int,
     timeout_seconds: int,
-    telemetry_output: dict[str, Any] | None = None,
 ) -> None:
-    """Watch required check status with optional telemetry tracking.
-
-    Args:
-        repo_root: Repository root path.
-        repo_slug: Repository slug (owner/name).
-        sha: Git SHA to check.
-        required_checks: List of required check names.
-        wait_seconds: Polling interval.
-        timeout_seconds: Max wait time.
-        telemetry_output: Optional dict to collect telemetry data.
-    """
     deadline = time.time() + timeout_seconds
     print("[ship] Required checks:")
     for check in required_checks:
         print(f"  - {check}")
-
-    # Initialize telemetry tracking
-    if telemetry_output is not None:
-        telemetry_output["checks"] = {}
-        for check in required_checks:
-            telemetry_output["checks"][check] = {
-                "transitions": 0,
-                "first_failure_signature": None,
-                "final_status": "unknown",
-                "classification": CLASSIFICATION_UNKNOWN,
-            }
 
     while True:
         runs = _read_check_runs(repo_root, repo_slug, sha)
@@ -431,22 +339,6 @@ def _watch_required_checks(
 
         for check in required_checks:
             status, conclusion = runs.get(check, ("missing", None))
-
-            # Track telemetry
-            if telemetry_output is not None:
-                check_telemetry = telemetry_output["checks"][check]
-                check_telemetry["transitions"] += 1
-                check_telemetry["_last_status"] = status
-
-                # Track first failure signature
-                if (
-                    status == "completed"
-                    and conclusion not in SUCCESS_CONCLUSIONS
-                    and check_telemetry["first_failure_signature"] is None
-                ):
-                    check_telemetry["first_failure_signature"] = conclusion
-                    check_telemetry["classification"] = _classify_failure(check, conclusion)
-
             if status != "completed":
                 pending.append(f"{check} [{status}]")
                 continue
@@ -454,49 +346,15 @@ def _watch_required_checks(
                 failed.append(f"{check} [{conclusion or 'none'}]")
 
         if failed:
-            # Update final status in telemetry
-            if telemetry_output is not None:
-                for check in failed:
-                    check_name = check.split(" [")[0]
-                    conclusion = check.split(" [")[1].rstrip("]") if " [" in check else None
-                    if check_name in telemetry_output["checks"]:
-                        telemetry_output["checks"][check_name]["final_status"] = (
-                            conclusion or "failed"
-                        )
-                        if (
-                            telemetry_output["checks"][check_name]["classification"]
-                            == CLASSIFICATION_UNKNOWN
-                        ):
-                            telemetry_output["checks"][check_name]["classification"] = (
-                                _classify_failure(check_name, conclusion)
-                            )
-
             raise RuntimeError(
                 "Required checks failed:\n" + "\n".join(f"  - {item}" for item in failed)
             )
 
         if not pending:
-            # Update final status for all checks in telemetry
-            if telemetry_output is not None:
-                for check in required_checks:
-                    check_telemetry = telemetry_output["checks"][check]
-                    check_telemetry["final_status"] = "passed"
-                    if check_telemetry["classification"] == CLASSIFICATION_UNKNOWN:
-                        check_telemetry["classification"] = (
-                            CLASSIFICATION_CODE_FAILURE  # Passed = not a permanent failure
-                        )
-
             print("[ship] All required checks passed")
             return
 
         if time.time() > deadline:
-            # Update final status for pending checks
-            if telemetry_output is not None:
-                for check in pending:
-                    check_name = check.split(" [")[0]
-                    if check_name in telemetry_output["checks"]:
-                        telemetry_output["checks"][check_name]["final_status"] = "timeout"
-
             raise RuntimeError(
                 "Timed out waiting for required checks:\n"
                 + "\n".join(f"  - {item}" for item in pending)
@@ -568,17 +426,6 @@ def main() -> int:
         action="store_true",
         help="Output machine-readable JSON (Only valid with --preflight)",
     )
-    parser.add_argument(
-        "--telemetry",
-        action="store_true",
-        help="Output structured telemetry about check runs (flaky vs code failure classification)",
-    )
-    parser.add_argument(
-        "--telemetry-path",
-        type=str,
-        default=None,
-        help="Path to write telemetry JSON file (default: stdout)",
-    )
     args = parser.parse_args()
 
     repo_root = _git_output(os.getcwd(), "rev-parse", "--show-toplevel")
@@ -625,67 +472,14 @@ def main() -> int:
         raise RuntimeError("No required checks resolved from branch protection or gate contract")
 
     sha = _git_output(repo_root, "rev-parse", "HEAD")
-
-    # Initialize telemetry if requested
-    telemetry_output: dict[str, Any] | None = None
-    if args.telemetry:
-        telemetry_output = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "repo_slug": repo_slug,
-            "sha": sha,
-            "branch": branch,
-            "checks": {},
-        }
-
-    try:
-        _watch_required_checks(
-            repo_root,
-            repo_slug,
-            sha,
-            required_checks,
-            wait_seconds=args.wait_seconds,
-            timeout_seconds=args.timeout_seconds,
-            telemetry_output=telemetry_output,
-        )
-        watch_result = "success"
-    except RuntimeError:
-        watch_result = "failure"
-        raise
-    finally:
-        # Output telemetry if requested
-        if telemetry_output is not None:
-            telemetry_output["result"] = watch_result
-
-            # Calculate summary statistics
-            checks_data = telemetry_output.get("checks", {})
-            transport_flake_count = sum(
-                1
-                for c in checks_data.values()
-                if c.get("classification") == CLASSIFICATION_TRANSPORT_FLAKE
-            )
-            code_failure_count = sum(
-                1
-                for c in checks_data.values()
-                if c.get("classification") == CLASSIFICATION_CODE_FAILURE
-            )
-            unknown_count = sum(
-                1 for c in checks_data.values() if c.get("classification") == CLASSIFICATION_UNKNOWN
-            )
-
-            telemetry_output["summary"] = {
-                "transport_flake_count": transport_flake_count,
-                "code_failure_count": code_failure_count,
-                "unknown_count": unknown_count,
-            }
-
-            # Write telemetry output
-            telemetry_json = json.dumps(telemetry_output, indent=2)
-            if args.telemetry_path:
-                Path(args.telemetry_path).write_text(telemetry_json)
-                print(f"[ship] Telemetry written to {args.telemetry_path}")
-            else:
-                print("[ship] Telemetry:")
-                print(telemetry_json)
+    _watch_required_checks(
+        repo_root,
+        repo_slug,
+        sha,
+        required_checks,
+        wait_seconds=args.wait_seconds,
+        timeout_seconds=args.timeout_seconds,
+    )
 
     if not args.no_merge:
         _merge_pr(repo_root, pr_number)

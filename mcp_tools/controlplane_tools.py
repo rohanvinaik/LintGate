@@ -12,122 +12,9 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-# ── Scope resolver helpers ───────────────────────────────────────────────
-
-ScopeType = Literal["project", "changed", "staged", "files"]
-
-
-def _resolve_scope(
-    project_root: Path,
-    scope: ScopeType,
-    files: list[str] | None = None,
-) -> list[str]:
-    """Resolve files based on scope parameter.
-
-    Deterministic resolution:
-    - project: all Python files in project
-    - changed: git-changed Python files only
-    - staged: git-staged Python files only
-    - files: explicit file list (must be non-empty)
-
-    Args:
-        project_root: Project root path
-        scope: Scope type
-        files: Explicit file list (required for scope="files")
-
-    Returns:
-        List of project-root-relative file paths
-
-    Raises:
-        ValueError: If scope="files" but files is missing/empty
-    """
-    import subprocess
-
-    # Validate files required for "files" scope
-    if scope == "files":
-        if not files:
-            raise ValueError(
-                "scope='files' requires non-empty 'files' parameter. "
-                "Provide a list of file paths to analyze."
-            )
-        # Normalize to project-root-relative paths
-        normalized = []
-        for f in files:
-            path = Path(f)
-            # If absolute, make relative to project_root
-            if path.is_absolute():
-                try:
-                    rel = path.relative_to(project_root)
-                    normalized.append(str(rel))
-                except ValueError:
-                    # File is outside project, skip
-                    continue
-            else:
-                normalized.append(str(path))
-        return normalized[:50]  # Limit to 50 files
-
-    # project: all Python files
-    if scope == "project":
-        py_files: list[Path] = []
-        for pattern in ["**/*.py"]:
-            py_files.extend(project_root.glob(pattern))
-        return sorted({str(f.relative_to(project_root)) for f in py_files})[:50]
-
-    # changed: git-changed files
-    if scope == "changed":
-        try:
-            result = subprocess.run(
-                ["git", "diff", "--name-only", "--diff-filter=ACM", "HEAD"],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                files = [
-                    f.strip()
-                    for f in result.stdout.strip().split("\n")
-                    if f.strip().endswith(".py")
-                ]
-                return sorted(set(files))[:50]
-        except (subprocess.SubprocessError, OSError):
-            pass
-        # Fall back to project scope if git fails
-        return _resolve_scope(project_root, "project")
-
-    # staged: git-staged files
-    if scope == "staged":
-        try:
-            result = subprocess.run(
-                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                files = [
-                    f.strip()
-                    for f in result.stdout.strip().split("\n")
-                    if f.strip().endswith(".py")
-                ]
-                return sorted(set(files))[:50]
-        except (subprocess.SubprocessError, OSError):
-            pass
-        # Fall back to project scope if git fails
-        return _resolve_scope(project_root, "project")
-
-    # Unknown scope - fail fast with explicit allowed values
-    raise ValueError(
-        f"Unknown scope value: {scope!r}. Allowed values: 'project', 'changed', 'staged', 'files'"
-    )
-
-
 # ── Channel selection helpers ───────────────────────────────────────────
 
-_ALL_CHANNEL_NAMES = (
-    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,mutation"
-)
+_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,mutation"
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
     "lint": "Code quality (ruff, mypy, complexity, structure)",
@@ -420,20 +307,8 @@ def _check_ship_gate_parity(project_root: str, strictness: str) -> dict[str, Any
         return {"status": "error", "error": str(e)}
 
 
-def _impl_controlplane_run(
-    path, channels, strictness, scope, files, max_findings, output_budget, helpers
-):
-    """Core implementation of controlplane_run.
-
-    Args:
-        path: Project root path
-        channels: Comma-separated channel list
-        strictness: Strictness level
-        scope: Scope type (project, changed, staged, files)
-        files: Explicit file list (for scope="files")
-        max_findings: Integer max truncation
-        helpers: Helper functions
-    """
+def _impl_controlplane_run(path, channels, strictness, helpers):
+    """Core implementation of controlplane_run."""
     from lintgate.config import load_controlplane_config
     from lintgate.controlplane.reporter import build_finding_index, format_mesh_report_compact
     from lintgate.controlplane.runtime import run_mesh
@@ -456,10 +331,8 @@ def _impl_controlplane_run(
     channel_registry = _build_channel_registry()
     active_channels, requested, unknown = _select_channels(channels, channel_registry)
 
-    # Scope resolution - use scope resolver instead of default collection
-    files_for_event = _resolve_scope(project_root, scope, files)
-
-    # Build event with resolved files
+    # Event
+    files_for_event = _collect_files_for_event(project_root, helpers)
     event = _build_supervision_event(project_root, files_for_event, strictness, requested)
 
     # Session + behavior injection
@@ -485,10 +358,6 @@ def _impl_controlplane_run(
         cp_config,
         previous_finding_index=previous_finding_index,
         ship_gate_parity=ship_gate_parity,
-        max_findings=max_findings,
-        scope=scope,
-        files_analyzed=files_for_event,
-        output_budget=output_budget,
     )
 
     # Persist runtime state and drill-down details
@@ -504,11 +373,6 @@ def _impl_controlplane_run(
     if onboarding.get("config_state") != "config_enabled":
         compact["onboarding"] = onboarding
 
-    compact["output_metadata"] = {
-        "output_budget": output_budget,
-        "estimated_tokens": 0,  # Placeholder for future estimation logic
-    }
-
     return helpers["_json_dumps"](compact, output_mode="compact")
 
 
@@ -523,35 +387,14 @@ def _filter_channels(channels_dict, channel_filter):
         yield ch_name, ch_data
 
 
-def _extract_findings(details, channel, severity, max_issues, output_budget="standard"):
+def _extract_findings(details, channel, severity, max_issues):
     """Extract and filter findings from run details."""
-    from lintgate.orchestration.remediation_router import route_finding
-
     all_findings = []
     for ch_name, ch_data in _filter_channels(details.get("channels", {}), channel):
         for f in ch_data.get("findings", []):
             if severity and f.get("severity") != severity:
                 continue
-
-            # Attach remediation next_action (Issue #151)
-            try:
-                f_copy = dict(f)
-                # Apply output_budget minimal shaping (Issue #152)
-                if output_budget == "minimal":
-                    if "message" in f_copy:
-                        f_copy["message"] = f_copy["message"].split("\n")[0][:120]
-                    # Remove heavy details
-                    for key in ["hint", "context", "evidence", "repair_proposals"]:
-                        f_copy.pop(key, None)
-
-                next_action = route_finding(f, ch_name)
-                if output_budget == "minimal":
-                    next_action.pop("remediation_sequence", None)
-
-                f_copy["next_action"] = next_action
-                all_findings.append({**f_copy, "channel": ch_name})
-            except Exception:
-                all_findings.append({**f, "channel": ch_name})
+            all_findings.append({**f, "channel": ch_name})
 
     result = {"total_matching": len(all_findings), "findings": all_findings[:max_issues]}
     if len(all_findings) > max_issues:
@@ -591,9 +434,7 @@ def _extract_evidence(details, channel):
     return evidence
 
 
-def _impl_controlplane_get_details(
-    run_id, channel, severity, max_issues, sections, output_budget, helpers
-):
+def _impl_controlplane_get_details(run_id, channel, severity, max_issues, sections, helpers):
     """Core implementation of controlplane_get_details."""
     from lintgate.state import load_controlplane_run
 
@@ -610,7 +451,7 @@ def _impl_controlplane_get_details(
         output["coherence"] = details.get("coherence", {})
 
     if "findings" in sections_set:
-        output.update(_extract_findings(details, channel, severity, max_issues, output_budget))
+        output.update(_extract_findings(details, channel, severity, max_issues))
 
     if "channel_details" in sections_set:
         output["channel_details"] = _extract_channel_details(details, channel)
@@ -618,15 +459,10 @@ def _impl_controlplane_get_details(
     if "repairs" in sections_set:
         output["repairs"] = _extract_repairs(details, channel)
 
-    if "evidence" in sections_set and output_budget != "minimal":
+    if "evidence" in sections_set:
         evidence = _extract_evidence(details, channel)
         if evidence:
             output["evidence"] = evidence
-
-    output["output_metadata"] = {
-        "output_budget": output_budget,
-        "estimated_tokens": 0,
-    }
 
     return helpers["_json_dumps"](output)
 
@@ -673,7 +509,7 @@ def _get_session_status(project_root):
 
         session = load_session(project_root)
         if session:
-            status = {
+            return {
                 "session_id": session.session_id,
                 "runs": len(session.snapshots),
                 "coherence_trajectory": session.coherence_trajectory[-5:],
@@ -685,24 +521,6 @@ def _get_session_status(project_root):
                     1 for c in session.proposed_constraints if c.get("status") == "proposed"
                 ),
             }
-
-            # Behavioral telemetry (Issue #170)
-            status["behavior"] = {
-                "compliance_rate": session.behavior_compass.get("compliance_rate", 1.0),
-                "habit_mode": bool(
-                    session.behavior_compass.get("habit_mode", {}).get("active", False)
-                ),
-                "event_counter": session.behavior_compass.get("event_counter", 0),
-            }
-
-            # Continuity telemetry
-            handoff_path = Path(project_root) / ".lintgate_handoff.json"
-            status["continuity"] = {
-                "handoff_file_present": handoff_path.exists(),
-                "last_transfer_len": len(session.behavior_compass.get("last_transfer_packet", "")),
-            }
-
-            return status
     return None
 
 
@@ -953,10 +771,6 @@ def register(mcp, helpers):
         path: str,
         channels: str | None = None,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
-        scope: ScopeType = "project",
-        files: list[str] | None = None,
-        max_findings: int | None = None,
-        output_budget: Literal["minimal", "standard", "detailed"] | None = None,
     ) -> str:
         """Run a comprehensive project health check across multiple dimensions.
 
@@ -976,37 +790,8 @@ def register(mcp, helpers):
             path: Project root path.
             channels: Comma-separated channel list (default: all). Options: lint,tests,deps,git,behavior,structure
             strictness: Strictness level for analysis.
-            scope: Scope of analysis. Options:
-                - "project": all Python files (default)
-                - "changed": only git-changed files
-                - "staged": only git-staged files
-                - "files": explicit file list (requires files parameter)
-            files: List of files to analyze (required when scope="files")
-            output_budget: Output verbosity mode (minimal, standard, detailed). If None, auto-selected based on model risk.
         """
-        # Validate scope=files requires files parameter
-        if scope == "files" and not files:
-            raise ValueError(
-                "scope='files' requires non-empty 'files' parameter. "
-                "Provide a list of file paths to analyze."
-            )
-
-        if max_findings is not None and max_findings <= 0:
-            raise ValueError(
-                f"max_findings must be greater than 0 if provided, got: {max_findings}"
-            )
-
-        # Auto-select budget if omitted (Issue #153)
-        if output_budget is None:
-            from lintgate.controlplane.model_profiles import recommend_output_budget
-            from lintgate.hook_controlplane import resolve_event_model_key
-
-            model_key = resolve_event_model_key({})
-            output_budget = recommend_output_budget(model_key)
-
-        return _impl_controlplane_run(
-            path, channels, strictness, scope, files, max_findings, output_budget, helpers
-        )
+        return _impl_controlplane_run(path, channels, strictness, helpers)
 
     @mcp.tool()
     def controlplane_get_details(
@@ -1015,7 +800,6 @@ def register(mcp, helpers):
         severity: str | None = None,
         max_issues: int = 10,
         sections: list[str] | None = None,
-        output_budget: Literal["minimal", "standard", "detailed"] | None = None,
     ) -> str:
         """Drill into a previous ControlPlane run by run_id.
 
@@ -1032,18 +816,9 @@ def register(mcp, helpers):
             max_issues: Maximum findings to return (default 10).
             sections: Which sections to include. Default: all.
                 Options: "findings", "channel_details", "evidence", "repairs", "coherence"
-            output_budget: Output verbosity mode (minimal, standard, detailed). If None, auto-selected based on model risk.
         """
-        # Auto-select budget if omitted (Issue #153)
-        if output_budget is None:
-            from lintgate.controlplane.model_profiles import recommend_output_budget
-            from lintgate.hook_controlplane import resolve_event_model_key
-
-            model_key = resolve_event_model_key({})
-            output_budget = recommend_output_budget(model_key)
-
         return _impl_controlplane_get_details(
-            run_id, channel, severity, max_issues, sections, output_budget, helpers
+            run_id, channel, severity, max_issues, sections, helpers
         )
 
     @mcp.tool()

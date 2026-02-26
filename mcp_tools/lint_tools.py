@@ -93,7 +93,6 @@ def register(mcp, helpers):
         tier: int = 2,
         project_root: str | None = None,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
-        output_budget: Literal["minimal", "standard", "detailed"] | None = None,
     ) -> str:
         """Lint specific files at a given tier level.
 
@@ -105,22 +104,7 @@ def register(mcp, helpers):
         Returns compact JSON with run_id, issue counts, and next_actions.
         Use lint_get_details(run_id) to drill into full issue details.
         Use lint_fix() to auto-fix safe issues found.
-
-        Args:
-            files: List of files to lint.
-            tier: Analysis depth (0-3).
-            project_root: Optional project root.
-            strictness: Strictness level.
-            output_budget: Output verbosity mode (minimal, standard, detailed). If None, auto-selected based on model risk.
         """
-        # Auto-select budget if omitted (Issue #153)
-        if output_budget is None:
-            from lintgate.controlplane.model_profiles import recommend_output_budget
-            from lintgate.hook_controlplane import resolve_event_model_key
-
-            model_key = resolve_event_model_key({})
-            output_budget = recommend_output_budget(model_key)
-
         if tier not in (0, 1, 2, 3):
             raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
         if not files:
@@ -145,12 +129,6 @@ def register(mcp, helpers):
         )
         if missing:
             result["missing_files"] = missing
-
-        result["output_metadata"] = {
-            "output_budget": output_budget,
-            "estimated_tokens": 0,
-        }
-
         return helpers["_json_dumps"](result, "compact")
 
     @mcp.tool()
@@ -158,7 +136,6 @@ def register(mcp, helpers):
         path: str,
         tier: int = 2,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
-        output_budget: Literal["minimal", "standard", "detailed"] | None = None,
     ) -> str:
         """Lint all Python files in a project at a given tier level.
 
@@ -170,21 +147,7 @@ def register(mcp, helpers):
         Returns compact JSON with run_id, issue counts, and next_actions.
         Use lint_get_details(run_id) to drill into full issue details.
         Use lint_fix(path) to auto-fix safe issues found.
-
-        Args:
-            path: Project root path.
-            tier: Analysis depth (0-3).
-            strictness: Strictness level.
-            output_budget: Output verbosity mode (minimal, standard, detailed). If None, auto-selected based on model risk.
         """
-        # Auto-select budget if omitted (Issue #153)
-        if output_budget is None:
-            from lintgate.controlplane.model_profiles import recommend_output_budget
-            from lintgate.hook_controlplane import resolve_event_model_key
-
-            model_key = resolve_event_model_key({})
-            output_budget = recommend_output_budget(model_key)
-
         if tier not in (0, 1, 2, 3):
             raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
         project_root = helpers["_validate_project_root"](path)
@@ -201,12 +164,6 @@ def register(mcp, helpers):
             output_mode="compact",
         )
         result["total_python_files"] = len(py_files)
-
-        result["output_metadata"] = {
-            "output_budget": output_budget,
-            "estimated_tokens": 0,
-        }
-
         return helpers["_json_dumps"](result, "compact")
 
     @mcp.tool()
@@ -215,7 +172,6 @@ def register(mcp, helpers):
         severity: str | None = None,
         max_issues: int = 10,
         include_recurrence: bool = False,
-        output_budget: Literal["minimal", "standard", "detailed"] | None = None,
     ) -> str:
         """Drill into a previous lint run by run_id.
 
@@ -227,17 +183,7 @@ def register(mcp, helpers):
             severity: Filter by severity: "blocking", "warning", "informational", or None for all.
             max_issues: Maximum issues to return (default 10).
             include_recurrence: Include recurrence data from issue memory.
-            output_budget: Output verbosity mode (minimal, standard, detailed). If None, auto-selected based on model risk.
         """
-        # Auto-select budget if omitted (Issue #153)
-        if output_budget is None:
-            from lintgate.controlplane.model_profiles import recommend_output_budget
-            from lintgate.hook_controlplane import resolve_event_model_key
-
-            model_key = resolve_event_model_key({})
-            output_budget = recommend_output_budget(model_key)
-
-        from lintgate.orchestration.remediation_router import route_finding
         from lintgate.state import load_run_details
 
         details = load_run_details(run_id)
@@ -267,26 +213,7 @@ def register(mcp, helpers):
             issues.extend(details.get("info_issues", []))
 
         output["total_matching"] = len(issues)
-
-        # Attach remediation next_action (Issue #151)
-        enriched_issues = []
-        for issue in issues[:max_issues]:
-            try:
-                issue_copy = dict(issue)
-                # Apply output_budget minimal shaping (Issue #152)
-                if output_budget == "minimal":
-                    if "message" in issue_copy:
-                        issue_copy["message"] = issue_copy["message"].split("\n")[0][:120]
-                    # Remove heavy details
-                    for key in ["hint", "context", "evidence", "repair_proposals"]:
-                        issue_copy.pop(key, None)
-
-                issue_copy["next_action"] = route_finding(issue, "lint")
-                enriched_issues.append(issue_copy)
-            except Exception:
-                enriched_issues.append(issue)
-
-        output["issues"] = enriched_issues
+        output["issues"] = issues[:max_issues]
         if len(issues) > max_issues:
             output["truncated"] = len(issues) - max_issues
 
@@ -294,13 +221,8 @@ def register(mcp, helpers):
             output["recurrence"] = details.get("recurrence", {})
 
         # Also include linter diagnostics for context
-        if details.get("linter_diagnostics") and output_budget != "minimal":
+        if details.get("linter_diagnostics"):
             output["linter_diagnostics"] = details["linter_diagnostics"]
-
-        output["output_metadata"] = {
-            "output_budget": output_budget,
-            "estimated_tokens": 0,
-        }
 
         return helpers["_json_dumps"](output, "standard")
 

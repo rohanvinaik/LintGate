@@ -98,7 +98,6 @@ class RuntimeState:
     # Behavioral signals (compact)
     top_constraint: str = ""  # Most relevant active constraint
     approach_failures: int = 0  # Recent failed approaches count
-    pending_behavioral_findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict."""
@@ -377,8 +376,6 @@ def build_runtime_state(
         constraints = bc.get("active_constraints", [])
         if constraints:
             state.top_constraint = str(constraints[0])[:80]
-        # Pending findings for proactive push
-        state.pending_behavioral_findings = list(bc.get("pending_behavioral_findings", []))
 
     return state
 

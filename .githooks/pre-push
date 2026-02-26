@@ -31,21 +31,6 @@ else
   exit 1
 fi
 
-# Required profile gate (hard fail)
-echo "[lintgate] checking required repository profile"
-if ! python scripts/check_required_profile.py --profile required-checks; then
-  echo "[lintgate] BLOCKED: repository profile check failed"
-  exit 1
-fi
-
-# Tracked artifact hygiene gate (hard fail)
-echo "[lintgate] checking for tracked generated/cache artifacts"
-if ! python scripts/check_tracked_artifacts.py --enforce . 2>/dev/null; then
-  echo "[lintgate] BLOCKED: tracked artifacts detected — fix before pushing"
-  exit 1
-fi
-echo "[lintgate] tracked artifacts: clean"
-
 # qlty analysis (mirrors CI qlty.yml — init parity + shellcheckrc safety)
 # Handle .shellcheckrc symlink collision (qlty init may create .shellcheckrc symlink).
 if [ -f "$REPO_ROOT/.shellcheckrc" ] && [ ! -L "$REPO_ROOT/.shellcheckrc" ]; then

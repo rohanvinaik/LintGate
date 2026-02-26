@@ -214,9 +214,9 @@ def apply_behavior_delta(
     cr: Any,
     cp_config: Any,
     input_data: dict,
-) -> list[dict[str, Any]]:
-    """Apply behavior compass delta and return finding dicts for delivery."""
-    findings = [f.to_dict() for f in cr.findings]
+) -> list[str]:
+    """Apply behavior compass delta, global profile delta, and model telemetry from a channel result."""
+    snapshot_alerts = [f.kind for f in cr.findings]
 
     # Apply compass delta (cooldown counters, nudge flags)
     if "behavior_compass_delta" in cr.metrics:
@@ -291,7 +291,7 @@ def apply_behavior_delta(
             mark_session_telemetry_applied(session)
             save_profiles(store)
 
-    return findings
+    return snapshot_alerts
 
 
 # ── Snapshot behavior recording ──────────────────────────────────────
@@ -465,12 +465,11 @@ def post_process_session(
     tool_name: str,
     tool_input: Any,
     tool_output: str,
-) -> tuple[list[dict], list[dict]]:
+) -> list[dict]:
     """Post-process session after mesh run: record, apply deltas, propose constraints."""
     proposed_constraints: list[dict] = []
-    behavior_findings: list[dict] = []
     if session is None:
-        return proposed_constraints, behavior_findings
+        return proposed_constraints
 
     with contextlib.suppress(Exception):
         from lintgate.controlplane.session_memory import record_mesh_run
@@ -479,39 +478,12 @@ def post_process_session(
 
         for cr in mesh_result.channel_results:
             if cr.channel == "behavior":
-                behavior_findings = apply_behavior_delta(
+                snapshot.behavior.behavior_alerts = apply_behavior_delta(
                     session,
                     cr,
                     cp_config,
                     input_data,
                 )
-                snapshot.behavior.behavior_alerts = [f.get("kind") for f in behavior_findings]
-
-                # Track resolutions and capture repertoire
-                from lintgate.orchestration.repertoire import RepertoireManager
-
-                rep_mgr = RepertoireManager(session.behavior_compass)
-                kinds = {f.get("kind") for f in behavior_findings if f.get("kind")}
-                rep_mgr.track_findings(
-                    kinds,
-                    session.behavior_compass.event_counter,
-                    len(session.behavior_compass.action_history),
-                )
-
-                # Update compliance stats
-                from lintgate.orchestration.compliance import ComplianceManager
-
-                comp_mgr = ComplianceManager(session.behavior_compass)
-                outcomes = cr.metrics.get("global_profile_delta", {}).get("nudge_outcomes", {})
-                if outcomes:
-                    comp_mgr.record_outcomes(outcomes)
-
-                # Generate session transfer packet for continuity
-                from lintgate.orchestration.continuity import generate_transfer_packet
-
-                packet = generate_transfer_packet(session)
-                session.behavior_compass["last_transfer_packet"] = packet.to_json()
-                snapshot.behavior.transfer_packet = packet.to_json()
                 break
 
         record_snapshot_behavior(snapshot, tool_name, tool_input, tool_output)
@@ -524,7 +496,7 @@ def post_process_session(
         save_session(session)
     session.theory_profile_cache = None
 
-    return proposed_constraints, behavior_findings
+    return proposed_constraints
 
 
 # ── Telemetry accumulation ───────────────────────────────────────────
@@ -547,71 +519,6 @@ def accumulate_session_telemetry(report: dict | None, session: Any) -> None:
         save_session(session)
 
 
-def deliver_behavioral_findings(
-    session: Any,
-    findings: list[dict[str, Any]],
-    cp_config: Any,
-    project_root: str,
-) -> str | None:
-    """Route findings through delivery abstraction and store pending for MCP.
-
-    Returns (advisory_text, pending_findings).
-    """
-    if not findings:
-        return None, []
-
-    from lintgate.orchestration.delivery import deliver_finding
-    from lintgate.renderers import build_default_registry
-    from lintgate.renderers.host_adapter import resolve_delivery_channels
-
-    registry = build_default_registry()
-    hosts = list(registry.detect_runtime_hosts(project_root))
-    if not hosts:
-        detected = registry.detect_host(project_root)
-        if detected:
-            hosts = [detected]
-
-    # For now, we take the first detected host's capabilities for routing
-    if not hosts:
-        return None
-
-    adapter = registry.get_adapter(hosts[0])
-    if not adapter:
-        return None
-
-    preferred = resolve_delivery_channels(adapter.capabilities)
-
-    delivered_msgs = []
-    pending_for_mcp = []
-
-    from lintgate.orchestration.repertoire import RepertoireManager
-
-    rep_mgr = RepertoireManager(session.behavior_compass) if session else None
-
-    for finding in findings:
-        # Add resolution hint if available
-        if rep_mgr:
-            hint = rep_mgr.get_resolution_hint(finding.get("kind", ""))
-            if hint:
-                finding["hint"] = hint
-
-        # Map finding severity to authority level (for now)
-        finding["authority_level"] = finding.get("severity", "nudge").lower()
-
-        payload, chan_type = deliver_finding(finding, preferred)
-        if payload:
-            if chan_type in ("hook_text", "rule_file"):
-                delivered_msgs.append(payload)
-            elif chan_type == "mcp_status":
-                pending_for_mcp.append(finding)
-
-    # Store pending for MCP micro-refresh surface
-    if session:
-        session.behavior_compass["pending_behavioral_findings"] = pending_for_mcp
-
-    return "\n\n".join(delivered_msgs) if delivered_msgs else None, pending_for_mcp
-
-
 # ── Runtime refresh after run ────────────────────────────────────────
 
 
@@ -622,7 +529,6 @@ def refresh_runtime_after_run(
     mesh_result: Any,
     tool_name: str,
     tool_input: Any,
-    pending_findings: list[dict[str, Any]] | None = None,
 ) -> None:
     """Refresh runtime state after a controlplane run."""
     from lintgate.hook_runtime_state import (
@@ -664,7 +570,6 @@ def refresh_runtime_after_run(
                     tool_input=tool_input,
                     trigger="lint_complete",
                     scheduler_dict=scheduler_dict,
-                    pending_findings=pending_findings,
                 )
                 if isinstance(updated, dict):
                     scheduler_dict = updated
@@ -691,5 +596,4 @@ def refresh_runtime_after_run(
                 tool_name=tool_name,
                 tool_input=tool_input,
                 trigger="lint_complete",
-                pending_findings=pending_findings,
             )

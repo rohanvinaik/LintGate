@@ -66,20 +66,17 @@ def test_mutation_ci_stats_from_json_path_valid():
     """Correctly parses a valid mutmut stats file with total override."""
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
         # Note: Sum is 1+2+3+4+5+6 = 21, but total=100 takes precedence
-        json.dump(
-            {
-                "killed": 1,
-                "survived": 2,
-                "timeout": 3,
-                "suspicious": 4,
-                "no_tests": 5,
-                "skipped": 6,
-                "equivalent_suspect": 7,
-                "skipped_equivalent_policy": 8,
-                "total": 100,
-            },
-            f,
-        )
+        json.dump({
+            "killed": 1,
+            "survived": 2,
+            "timeout": 3,
+            "suspicious": 4,
+            "no_tests": 5,
+            "skipped": 6,
+            "equivalent_suspect": 7,
+            "skipped_equivalent_policy": 8,
+            "total": 100
+        }, f)
         path = f.name
 
     try:
@@ -105,14 +102,11 @@ def test_mutation_ci_stats_from_json_path_valid():
 def test_mutation_ci_stats_from_json_path_computed_total():
     """Computes total when mutmut omits it."""
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-        json.dump(
-            {
-                "killed": 10,
-                "survived": 10,
-                "no_tests": 5,
-            },
-            f,
-        )
+        json.dump({
+            "killed": 10,
+            "survived": 10,
+            "no_tests": 5,
+        }, f)
         path = f.name
 
     try:
@@ -170,13 +164,10 @@ def test_parse_stats_for_ci_invalid(capsys):
 def test_parse_stats_for_ci_valid(capsys):
     """Valid stats configures badge and passes workflow."""
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-        json.dump(
-            {
-                "killed": 80,
-                "survived": 20,
-            },
-            f,
-        )
+        json.dump({
+            "killed": 80,
+            "survived": 20,
+        }, f)
         stats_path = f.name
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
@@ -211,18 +202,10 @@ def test_load_mutation_hotspots_missing():
 def test_load_mutation_hotspots_json():
     """Parses exported survivor JSON."""
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-        json.dump(
-            [
-                {"file": "foo.py", "line": 42},
-                {
-                    "filename": "bar.py",
-                    "lineno": 10,
-                    "func": "hello",
-                    "mutation_type": "NumberReplacer",
-                },
-            ],
-            f,
-        )
+        json.dump([
+            {"file": "foo.py", "line": 42},
+            {"filename": "bar.py", "lineno": 10, "func": "hello", "mutation_type": "NumberReplacer"}
+        ], f)
         path = f.name
 
     try:
@@ -259,9 +242,7 @@ def test_load_mutation_hotspots_text(tmp_path):
     utils_py.write_text("def utils_func():\n    pass\n")
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=str(tmp_path)) as f:
-        f.write(
-            "# Suspicious\n\n123  src/main.py:1  suspicious\n\n# Survived\n\n456  src/utils.py:1  survived\n789  bad_format\n"
-        )
+        f.write("# Suspicious\n\n123  src/main.py:1  suspicious\n\n# Survived\n\n456  src/utils.py:1  survived\n789  bad_format\n")
         path = f.name
 
     try:

@@ -216,20 +216,6 @@ class QualityGateConfig:
 
 
 @dataclass
-class DispositionEnforcementConfig:
-    """Configuration for the disposition enforcement engine.
-
-    Controls nudges and reminders based on agent-behavior patterns.
-    """
-
-    enabled: bool = False
-    nudge_after_edit_without_lint: bool = True
-    nudge_before_bash_without_prediction: bool = False
-    max_nudges_per_disposition: int = 3
-    cadence_health_check_events: int = 15
-
-
-@dataclass
 class ControlPlaneConfig:
     """Top-level ControlPlane configuration.
 
@@ -277,9 +263,6 @@ class ControlPlaneConfig:
     hook_verbosity: str = "full"  # "silent" | "pulse" | "full" | "auto"
     hook_pulse_interval: int = 5  # Events between pulse emissions
     hook_dispositions_enabled: bool = True  # Enable disposition injection
-    disposition_enforcement: DispositionEnforcementConfig = field(
-        default_factory=DispositionEnforcementConfig
-    )
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

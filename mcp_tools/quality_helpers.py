@@ -1407,8 +1407,8 @@ def _generate_tests_workflow(layout: dict[str, Any]) -> str:
 def _generate_qlty_workflow() -> str:
     """Generate a GitHub Actions workflow for qlty checks on push/PR.
 
-    Uses curl | sh with retry/backoff for reliable CI installs and
-    resilience against transient transport failures.
+    Uses the official ``qltysh/qlty-action/install@main`` GitHub Action
+    instead of ``curl | sh`` for reliable CI installs.
     """
     lines = [
         "name: Qlty Analysis",
@@ -1434,39 +1434,17 @@ def _generate_qlty_workflow() -> str:
         "      - name: Checkout",
         "        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4",
         "",
-        "      - name: Install qlty (with retry for transient failures)",
-        "        run: |",
-        "          # Bounded retry with exponential backoff for transport failures",
-        "          max_retries=3",
-        "          delay=2",
-        "          attempt=1",
-        "          while [ $attempt -le $max_retries ]; do",
-        "            if curl -fsSL https://qlty.sh/install | sh; then",
-        "              break",
-        "            fi",
-        '            echo "::warning::Qlty install attempt $attempt failed (transient error possible), retrying in ${delay}s..."',
-        "            sleep $delay",
-        "            delay=$((delay * 2))",
-        "            attempt=$((attempt + 1))",
-        "          done",
-        "          if [ $attempt -gt $max_retries ]; then",
-        '            echo "::error::Qlty install failed after $max_retries attempts - check network connectivity or https://qlty.sh status"',
-        "            exit 1",
-        "          fi",
-        '          export PATH="$HOME/.qlty/bin:$PATH"',
-        '          qlty --version || { echo "::error::Qlty not found in PATH after install"; exit 1; }',
+        "      - name: Install qlty",
+        "        uses: qltysh/qlty-action/install@0814173ae3b13074fc896ca0e8e6d631c8352509 # main",
         "",
         "      - name: Initialize qlty (if needed)",
         "        run: |",
-        '          export PATH="$HOME/.qlty/bin:$PATH"',
         "          if ! qlty check --all --dry-run >/dev/null 2>&1; then",
         "            qlty init --skip-plugins 2>/dev/null || true",
         "          fi",
         "",
         "      - name: Run qlty checks",
-        "        run: |",
-        '          export PATH="$HOME/.qlty/bin:$PATH"',
-        "          qlty check --all",
+        "        run: qlty check --all",
     ]
     return "\n".join(lines) + "\n"
 

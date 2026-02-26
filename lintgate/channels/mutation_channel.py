@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import TYPE_CHECKING, Literal
 
@@ -10,11 +11,10 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
-from lintgate.mutation.decomposition import DecompositionDetector
 from lintgate.mutation.engine import MutationEngine
 from lintgate.mutation.policy import MutationTelemetry, RuntimeBudget
-from lintgate.mutation.state import CoverageDepth, MutationStateManager, SignalQuality
-from lintgate.state import get_mutation_state_path
+from lintgate.mutation.state import CoverageDepth, MutationStateManager
+from lintgate.state import MUTATION_CACHE_DIR
 from lintgate.types import LintIssue
 
 if TYPE_CHECKING:
@@ -40,13 +40,10 @@ class MutationChannel:
         """Execute mutation analysis."""
         start = time.perf_counter()
 
-        state_path = get_mutation_state_path()
+        state_path = os.path.join(MUTATION_CACHE_DIR, "state.json")
         state_manager = MutationStateManager(state_path)
         with contextlib.suppress(OSError, ValueError):
             state_manager.load()
-
-        # Store on self for access by _analyze_state
-        self.state_manager = state_manager
 
         budget = RuntimeBudget()
         MutationEngine(state_manager, budget)
@@ -58,7 +55,6 @@ class MutationChannel:
         if not relevant_files:
             # Fallback to discover all
             from lintgate.channels.performance_channel import _discover_python_files
-
             relevant_files = _discover_python_files(event.project_root)
 
         # 2. Heuristic: queue sampling if state is stale or missing for changed files
@@ -69,11 +65,10 @@ class MutationChannel:
                 any_stale = True
                 break
 
-        if any_stale and len(relevant_files) <= 5:  # Limit auto-sampling to small PRs
-            from lintgate.mutation.automation import global_orchestrator
-
-            for f in relevant_files:
-                global_orchestrator.enqueue(f)
+        if any_stale and len(relevant_files) <= 5: # Limit auto-sampling to small PRs
+             from lintgate.mutation.automation import global_orchestrator
+             for f in relevant_files:
+                 global_orchestrator.enqueue(f)
 
         # 3. Analyze state and build findings
         findings: list[LintIssue] = []
@@ -92,13 +87,10 @@ class MutationChannel:
         metrics = {
             "functions_profiled": len(all_states),
             "vulnerable_functions": sum(1 for s in all_states.values() if s.survival_rate > 0.3),
-            "avg_survival": sum(s.survival_rate for s in all_states.values())
-            / max(len(all_states), 1),
+            "avg_survival": sum(s.survival_rate for s in all_states.values()) / max(len(all_states), 1),
         }
 
-        status: Literal["pass", "fail"] = (
-            "fail" if any(f.severity == "blocking" for f in findings) else "pass"
-        )
+        status: Literal["pass", "fail"] = "fail" if any(f.severity == "blocking" for f in findings) else "pass"
         severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = "informational"
@@ -116,101 +108,57 @@ class MutationChannel:
             duration_ms=elapsed_ms,
         )
 
-    def _analyze_state(
-        self, state: FunctionMutationState, all_states: dict, policy: CalibratedPolicy
-    ) -> list[LintIssue]:
+    def _analyze_state(self, state: FunctionMutationState, all_states: dict, policy: CalibratedPolicy) -> list[LintIssue]:
         """Generate findings for a specific function state."""
         issues = []
-        warning_thresh, blocking_thresh, calibration_metadata = policy.get_thresholds(
-            state, all_states
-        )
-        confidence_score, confidence_metadata = policy.get_confidence(state)
+        warning_thresh, blocking_thresh = policy.get_thresholds(state, all_states)
+        confidence_score = policy.get_confidence(state)
 
-        # Get signal quality (default to sampled_low for backward compatibility)
-        signal_quality = getattr(state, "signal_quality", SignalQuality.SAMPLED_LOW)
-
-        # MUT001/002: Survivors found - severity depends on signal quality
+        # MUT001/002: Survivors found
         if state.survived > 0:
             rate = state.survival_rate
             severity: Literal["blocking", "warning", "informational"] = "informational"
             kind = "MUT001"
 
-            # Signal-quality-aware gate behavior
-            if signal_quality == SignalQuality.PROFILED:
-                # Authoritative: existing gate behavior applies
-                if rate > blocking_thresh:
-                    severity = "blocking"
-                    kind = "MUT002"
-                elif rate > warning_thresh:
-                    severity = "warning"
-            elif signal_quality == SignalQuality.SAMPLED_HIGH:
-                # Near-authoritative: warnings allowed, recommend full profiling
-                if rate > blocking_thresh:
-                    severity = "warning"  # Downgrade from blocking
-                    kind = "MUT001"
-                elif rate > warning_thresh:
-                    severity = "warning"
-            else:
-                # sampled_low or unknown: advisory only - never blocking
-                severity = "informational"
-
-            # Build evidence with signal_quality for reproducibility
-            evidence = {
-                "survived": state.survived,
-                "total": state.total,
-                "survival_rate": rate,
-                "depth": state.depth.value,
-                "signal_quality": signal_quality.value,
-                "killed_by_assertion": state.killed_by_assertion,
-                "killed_by_crash": state.killed_by_crash,
-                "calibrated_thresholds": {"warning": warning_thresh, "blocking": blocking_thresh},
-                "calibration_metadata": calibration_metadata.to_dict(),
-                "confidence_metadata": confidence_metadata,
-            }
-
-            # Add suppression note for sampled_low
-            if signal_quality == SignalQuality.SAMPLED_LOW:
-                suppression_note = (
-                    "Gating suppressed by policy: signal quality is sampled_low. "
-                    "Run mutation_run_full for authoritative assessment."
-                )
-                message = (
-                    f"High mutation survival rate ({rate:.1%}) in '{state.function_name}'. "
-                    f"{state.survived} of {state.total} mutants survived. "
-                    f"[{suppression_note}]"
-                )
-            else:
-                message = (
-                    f"High mutation survival rate ({rate:.1%}) in '{state.function_name}'. "
-                    f"{state.survived} of {state.total} mutants survived."
-                )
-
-            # Add profiling recommendation for sampled_high at high survival
-            suggestions = [
-                "Add assertions that verify the return value or state change more strictly.",
-                "If this is a pure function, use property-based testing (Hypothesis/icontract).",
-            ]
-            if signal_quality == SignalQuality.SAMPLED_HIGH and rate > warning_thresh:
-                suggestions.append(
-                    "Consider running mutation_run_full for authoritative profiling."
-                )
+            if rate > blocking_thresh and state.depth == CoverageDepth.PROFILED:
+                severity = "blocking"
+                kind = "MUT002"
+            elif rate > warning_thresh:
+                severity = "warning"
 
             issues.append(
                 LintIssue(
                     linter=self.name,
                     kind=kind,
-                    message=message,
+                    message=(
+                        f"High mutation survival rate ({rate:.1%}) in '{state.function_name}'. "
+                        f"{state.survived} of {state.total} mutants survived."
+                    ),
                     file=state.file_path,
                     severity=severity,
                     confidence=confidence_score,
-                    evidence=evidence,
-                    suggestions=suggestions,
+                    evidence={
+                        "survived": state.survived,
+                        "total": state.total,
+                        "survival_rate": rate,
+                        "depth": state.depth.value,
+                        "killed_by_assertion": state.killed_by_assertion,
+                        "killed_by_crash": state.killed_by_crash,
+                        "calibrated_thresholds": {
+                            "warning": warning_thresh,
+                            "blocking": blocking_thresh
+                        }
+                    },
+                    suggestions=[
+                        "Add assertions that verify the return value or state change more strictly.",
+                        "If this is a pure function, use property-based testing (Hypothesis/icontract).",
+                    ],
                 )
             )
 
         # MUT003: Insufficient coverage depth
         if state.depth == CoverageDepth.SAMPLED and state.survival_rate > 0.2:
-            issues.append(
+             issues.append(
                 LintIssue(
                     linter=self.name,
                     kind="MUT003",
@@ -226,18 +174,6 @@ class MutationChannel:
         # MUTCH007: Decomposition Candidate (High Entanglement)
         surviving_cats = [c for c, count in state.survived_by_category.items() if count > 0]
         if state.survival_rate >= 0.50 and len(surviving_cats) >= 3:
-            # Try to create decomposition plan with axes if survivor_sites available
-            evidence = {"survived_categories": surviving_cats}
-            axes_info = None
-
-            if hasattr(state, "survivor_sites") and state.survivor_sites:
-                detector = DecompositionDetector(self.state_manager)
-                func_id = f"{state.file_path}::{state.function_name}"
-                plan = detector.create_decomposition_plan(func_id, state.survivor_sites)
-                if plan and plan.axes:
-                    axes_info = [a.to_dict() for a in plan.axes]
-                    evidence["decomposition_axes"] = axes_info
-
             issues.append(
                 LintIssue(
                     linter=self.name,
@@ -246,11 +182,11 @@ class MutationChannel:
                     file=state.file_path,
                     severity="blocking",
                     confidence=0.9,
-                    evidence=evidence,
+                    evidence={"survived_categories": surviving_cats},
                     suggestions=[
                         "Use the `mutation_decompose` tool to identify split candidates.",
                         "Use the `mutation_prescribe` tool for specific refactoring intents.",
-                        "Use the `mutation_run_full` tool to get a precise breakdown of surviving mutants.",
+                        "Use the `mutation_run_full` tool to get a precise breakdown of surviving mutants."
                     ],
                 )
             )

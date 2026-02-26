@@ -58,15 +58,6 @@ def attach_session_context(
             "test": runtime.last_test_status,
             "tokens_pct": round(runtime.estimated_tokens_pct, 1),
         }
-
-        # Add proactive behavioral status if findings are pending
-        if runtime.pending_behavioral_findings:
-            count = len(runtime.pending_behavioral_findings)
-            first = runtime.pending_behavioral_findings[0]
-            result["behavior_status"] = {
-                "pending_count": count,
-                "hint": first.get("message", "Review behavioral observations"),
-            }
     except Exception:
         pass  # Fail-open
 

@@ -51,7 +51,6 @@ class BehaviorEventData:
     behavior_alerts: list[str] = field(default_factory=list)  # Pattern names that fired
     prediction_accuracy: float | None = None
     predictions_checked: int = 0
-    transfer_packet: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -66,7 +65,6 @@ class BehaviorEventData:
             behavior_alerts=data.get("behavior_alerts", []),
             prediction_accuracy=data.get("prediction_accuracy"),
             predictions_checked=data.get("predictions_checked", 0),
-            transfer_packet=data.get("transfer_packet"),
         )
 
 
@@ -265,9 +263,6 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
             started_at=time.time(),
             last_active=time.time(),
         )
-
-        # Issue #169: Load and prewarm state from transfer packet if available
-        _apply_potential_transfer_packet(session, project_root)
 
     return session
 
@@ -497,57 +492,3 @@ def _session_path(project_root: str) -> Path:
 def _project_hash(project_root: str) -> str:
     """Generate a stable hash for a project path."""
     return hashlib.sha256(project_root.encode()).hexdigest()[:16]
-
-
-def _apply_potential_transfer_packet(session: SessionMemory, project_root: str) -> None:
-    """Check for and apply a session transfer packet to a fresh session."""
-    handoff_path = Path(project_root) / ".lintgate_handoff.json"
-    if not handoff_path.exists():
-        return
-
-    try:
-        with open(handoff_path) as f:
-            packet_data = json.load(f)
-
-        if not isinstance(packet_data, dict):
-            return
-
-        # Partial prewarm of behavior_compass
-        bc = session.behavior_compass or {}
-
-        # Restore compliance rate
-        if "comp" in packet_data:
-            bc["compliance_rate"] = packet_data["comp"]
-
-        # Restore confirmed hypotheses
-        if "hyps" in packet_data:
-            from .behavior_types import BehaviorHypothesis
-
-            existing_hyps = [BehaviorHypothesis.from_dict(h) for h in bc.get("hypotheses", [])]
-            existing_ids = {h.id for h in existing_hyps}
-
-            for h_data in packet_data["hyps"]:
-                h_id = h_data.get("id")
-                if h_id and h_id not in existing_ids:
-                    # Minimal reconstruction
-                    h = BehaviorHypothesis(
-                        id=h_id,
-                        claim=h_data.get("clm", "Restored hypothesis"),
-                        confidence=h_data.get("conf", 0.7),
-                        status="confirmed",
-                        source="transfer_packet",
-                    )
-                    existing_hyps.append(h)
-                    existing_ids.add(h_id)
-            bc["hypotheses"] = [h.to_dict() for h in existing_hyps]
-            bc["hypothesis_version"] = bc.get("hypothesis_version", 0) + 1
-
-        # Restore active findings
-        if "active" in packet_data:
-            bc["pending_nudge_signals"] = packet_data["active"]
-            bc["pending_nudge_constraint_check_count"] = 0  # Fresh start
-
-        session.behavior_compass = bc
-
-    except (json.JSONDecodeError, OSError, KeyError):
-        pass

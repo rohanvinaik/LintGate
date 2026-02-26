@@ -19,10 +19,6 @@ def format_mesh_report_compact(
     previous_finding_index: dict[str, dict[str, Any]] | None = None,
     proposed_constraints: list[dict] | None = None,
     ship_gate_parity: dict[str, Any] | None = None,
-    max_findings: int | None = None,
-    scope: str = "project",
-    files_analyzed: list[str] | None = None,
-    output_budget: str = "standard",
 ) -> dict[str, Any]:
     """Format MeshResult as compact JSON for MCP tool responses.
 
@@ -52,17 +48,8 @@ def format_mesh_report_compact(
         "counts": counts,
     }
 
-    if max_findings is not None:
-        truncated_items = _truncate_finding_index(current_index, mesh_result, max_findings)
-        current_index = dict(truncated_items)
-        findings_truncated = len(current_index) < len(severity_counts)  # Rough check but accurate
-    else:
-        findings_truncated = False
-
-    _attach_delta_or_blocking(compact, current_index, previous_finding_index, output_budget)
-
-    if output_budget != "minimal":
-        compact["channels"] = _build_channel_summary(mesh_result)
+    _attach_delta_or_blocking(compact, current_index, previous_finding_index)
+    compact["channels"] = _build_channel_summary(mesh_result)
 
     if ship_gate_parity is not None:
         compact["ship_gate_parity"] = ship_gate_parity
@@ -71,69 +58,14 @@ def format_mesh_report_compact(
         run_id, counts, symbol_blockers, ship_gate_parity
     )
 
-    if symbol_blockers and output_budget != "minimal":
+    if symbol_blockers:
         compact["remediation_loop"] = _build_remediation_loop(symbol_blockers)
 
-    if files_analyzed is None:
-        files_analyzed = []
-
-    if output_budget != "minimal":
-        compact["finding_index"] = current_index
-
-    compact["scope"] = scope
-    compact["files_analyzed"] = files_analyzed if output_budget != "minimal" else []
-    compact["max_findings"] = max_findings if max_findings is not None else len(current_index)
-
-    # Calculate truthy findings truncated
-    total_findings_count = sum(severity_counts.values())
-    if max_findings is not None and total_findings_count > max_findings:
-        findings_truncated = True
-    else:
-        findings_truncated = False
-
-    compact["findings_truncated"] = findings_truncated
-
+    compact["finding_index"] = current_index
     return compact
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
-
-
-def _truncate_finding_index(
-    finding_index: dict[str, dict[str, Any]],
-    mesh_result: MeshResult,
-    max_findings: int,
-) -> list[tuple[str, dict[str, Any]]]:
-    """Deterministically truncate findings index.
-
-    Sort order:
-    1. Severity (blocking > warning > informational > other)
-    2. Channel stability (failed > passed > other)
-    3. Fingerprint (lexicographic)
-    """
-    if len(finding_index) <= max_findings:
-        return list(finding_index.items())
-
-    # Map channel to its status to penalize stable channels less
-    channel_status = {cr.channel: cr.status for cr in mesh_result.channel_results}
-
-    def _sort_key(item: tuple[str, dict[str, Any]]) -> tuple[int, int, str]:
-        fp, info = item
-
-        # 1. Severity rank
-        sev = info.get("severity", "")
-        sev_rank = {"blocking": 0, "warning": 1, "informational": 2}.get(sev, 3)
-
-        # 2. Channel stability rank
-        # We only really care if the channel failed
-        status = channel_status.get(info.get("channel", ""), "unknown")
-        status_rank = 0 if status == "fail" else (1 if status == "pass" else 2)
-
-        # 3. Fingerprint
-        return (sev_rank, status_rank, fp)
-
-    sorted_items = sorted(finding_index.items(), key=_sort_key)
-    return sorted_items[:max_findings]
 
 
 def _count_findings_by_severity(
@@ -212,23 +144,16 @@ def _attach_delta_or_blocking(
     compact: dict[str, Any],
     current_index: dict[str, dict[str, Any]],
     previous_finding_index: dict[str, dict[str, Any]] | None,
-    output_budget: str = "standard",
 ) -> None:
     """Add either a delta section or inline blocking issues to the report."""
     if previous_finding_index is not None:
         compact["delta"] = compute_finding_delta(current_index, previous_finding_index)
     else:
-        blocking_issues = []
-        for fp, info in sorted(current_index.items()):
-            if info.get("severity") == "blocking":
-                issue = {**info, "fingerprint": fp}
-                # Minimal mode: strip heavy detail (Issue #152)
-                if output_budget == "minimal" and "message" in issue:
-                    issue["message"] = str(issue["message"]).split("\n")[0][:120]
-                    for key in ["hint", "context", "evidence", "repair_proposals"]:
-                        issue.pop(key, None)
-                blocking_issues.append(issue)
-
+        blocking_issues = [
+            {**info, "fingerprint": fp}
+            for fp, info in sorted(current_index.items())
+            if info.get("severity") == "blocking"
+        ]
         if blocking_issues:
             compact["blocking_issues"] = blocking_issues
 

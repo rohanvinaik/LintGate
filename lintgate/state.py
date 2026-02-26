@@ -30,15 +30,6 @@ PERF_CACHE_DIR = Path.home() / ".claude" / "lintgate" / "perf_cache"
 MUTATION_CACHE_DIR = Path.home() / ".claude" / "lintgate" / "mutation_cache"
 
 
-def get_mutation_state_path() -> Path:
-    """Return the canonical path for mutation state storage.
-
-    This is the single source of truth for mutation state path resolution.
-    All runtime readers/writers MUST use this function to ensure consistency.
-    """
-    return MUTATION_CACHE_DIR / "state.json"
-
-
 def save_run(cwd: str, result: AggregatedResult) -> None:
     """Save current run metrics for future delta comparison."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)

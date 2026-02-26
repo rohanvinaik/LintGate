@@ -641,86 +641,6 @@ def _handle_quality_bootstrap(
     return result
 
 
-def _build_intent_workflow(intent: str, project_root: str) -> list[dict[str, Any]]:
-    """Build a structured, machine-consumable workflow based on user intent."""
-    project_root_abs = os.path.abspath(project_root)
-
-    workflows = {
-        "explore": [
-            {
-                "id": "health_check",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs},
-                "reason": "Identify existing issues and project health across 6 channels.",
-            },
-            {
-                "id": "scaffold",
-                "tool": "scaffold_config",
-                "arguments": {"path": project_root_abs, "write": True},
-                "reason": "Tailor LintGate configuration to your project's specific needs.",
-            },
-        ],
-        "fix_bug": [
-            {
-                "id": "find_bugs",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs, "channels": "lint,test,behavior"},
-                "reason": "Focus on lint, test, and behavior channels to locate potential bugs.",
-            },
-            {
-                "id": "autofix",
-                "tool": "lint_fix",
-                "arguments": {"path": project_root_abs, "dry_run": True},
-                "reason": "Preview safe, automated fixes for identified lint issues.",
-            },
-        ],
-        "add_feature": [
-            {
-                "id": "baseline_check",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs},
-                "reason": "Establish a health baseline before making changes.",
-            },
-            {
-                "id": "test_gen",
-                "tool": "bootstrap_context_files",
-                "arguments": {"path": project_root_abs, "write": True},
-                "reason": "Ensure CLAUDE.md is up to date to guide implementation.",
-            },
-        ],
-        "refactor": [
-            {
-                "id": "structure_check",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs, "channels": "structure,lint"},
-                "reason": "Analyze project architecture and compliance before refactoring.",
-            },
-            {
-                "id": "perf_check",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs, "channels": "performance"},
-                "reason": "Identify performance hotspots that might benefit from refactoring.",
-            },
-        ],
-        "security": [
-            {
-                "id": "security_scan",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs, "channels": "lint", "strictness": "strict"},
-                "reason": "Run a strict security-focused scan using bandit and other plugins.",
-            },
-            {
-                "id": "dep_audit",
-                "tool": "controlplane_run",
-                "arguments": {"path": project_root_abs, "channels": "dependency"},
-                "reason": "Check for vulnerable or outdated dependencies.",
-            },
-        ],
-    }
-
-    return workflows.get(intent, workflows["explore"])
-
-
 def register(mcp, helpers):
     """Register onboarding tools on the shared MCP instance."""
 
@@ -730,17 +650,8 @@ def register(mcp, helpers):
         auto_setup: bool = True,
         auto_install_optional_linters: bool = True,
         reset: bool = False,
-        intent: str | None = "explore",
     ) -> str:
-        """Start here. Get oriented with LintGate on any project.
-
-        Args:
-            path: Project root path.
-            auto_setup: Automatically create .claude/lintgate.yaml if missing.
-            auto_install_optional_linters: Automatically install tools like gitleaks/bandit.
-            reset: Clear session and habit state (starts a fresh session).
-            intent: Goal-oriented workflow. One of: explore, fix_bug, add_feature, refactor, security.
-        """
+        """Start here. Get oriented with LintGate on any project."""
         project_root = helpers["_validate_project_root"](path)
         config_status_before = helpers["_build_onboarding_status"](project_root)
         tool_gaps_before = _collect_external_tool_gaps(project_root)
@@ -817,8 +728,6 @@ def register(mcp, helpers):
 
         output: dict[str, Any] = {
             "project": project_root,
-            "intent": intent,
-            "intent_workflow": _build_intent_workflow(intent or "explore", project_root),
             "config_status": config_status,
             "essential_tools": {
                 "lint_files": "Check specific files after edits",
@@ -828,15 +737,6 @@ def register(mcp, helpers):
                 "controlplane_get_details": "Drill into health check findings",
                 "bootstrap_context_files": "Generate project CLAUDE.md",
             },
-            "recommended_output_budget": (
-                lambda: __import__(
-                    "lintgate.controlplane.model_profiles", fromlist=["recommend_output_budget"]
-                ).recommend_output_budget(
-                    __import__(
-                        "lintgate.hook_controlplane", fromlist=["resolve_event_model_key"]
-                    ).resolve_event_model_key({})
-                )
-            )(),
             "first_session_workflow": [
                 "1. getting_started(path) applies startup setup automatically",
                 "2. Run controlplane_run(path) for a full project health check",
@@ -931,75 +831,6 @@ def register(mcp, helpers):
         return json.dumps(output, indent=2)
 
     @mcp.tool()
-    def tool_applicability_guide() -> str:
-        """Get structured guidance on when to use specific LintGate tools.
-
-        Provides deterministic cadence, triggers, and anti-patterns for core tools.
-        """
-        guide = {
-            "controlplane_run": {
-                "cadence": "Every 3-5 tool uses (edits/bash)",
-                "triggers": [
-                    "Completing a logical unit of work",
-                    "After fixing a bug to verify health",
-                    "Before a major refactor",
-                ],
-                "anti_patterns": [
-                    "Running after every character edit or tiny change",
-                    "Ignoring findings for sustained periods",
-                ],
-                "purpose": "Comprehensive multi-channel health check and session coordination.",
-            },
-            "lint_files": {
-                "cadence": "After every edit",
-                "triggers": [
-                    "Verifying local syntax/logic of modified files",
-                    "Fast feedback loop during implementation",
-                ],
-                "anti_patterns": ["Using on a whole project or unrelated files"],
-                "purpose": "Targeted, fast checks for specific files.",
-            },
-            "lint_project": {
-                "cadence": "Once per day or before push",
-                "triggers": ["Final quality assurance", "Synchronizing with repo-wide rules"],
-                "anti_patterns": ["Running in a tight edit loop (unnecessarily slow)"],
-                "purpose": "Exhaustive project-wide rule enforcement.",
-            },
-            "lint_fix": {
-                "cadence": "As needed",
-                "triggers": ["Automatically fixing simple, low-risk style/formatting issues"],
-                "anti_patterns": [
-                    "Applying fixes without reviewing dry-run first",
-                    "Using on complex logic issues that require manual reasoning",
-                ],
-                "purpose": "Automated remediation of safe findings.",
-            },
-            "scaffold_config": {
-                "cadence": "Onboarding or project reset",
-                "triggers": [
-                    "Initial project setup",
-                    "Repairing corrupted or missing lintgate.yaml",
-                ],
-                "anti_patterns": ["Running repeatedly in a healthy session"],
-                "purpose": "Tailored configuration generation from project signals.",
-            },
-            "getting_started": {
-                "cadence": "Onboarding only",
-                "triggers": [
-                    "Starting work on a new project",
-                    "Orienting an agent in a fresh session",
-                ],
-                "anti_patterns": ["Using as a general health check (use controlplane_run instead)"],
-                "purpose": "Initial environment provisioning and intent-aware workflow selection.",
-            },
-        }
-
-        json_dumps = helpers.get("_json_dumps")
-        if json_dumps:
-            return json_dumps(guide, output_mode="compact")
-        return json.dumps(guide, indent=2)
-
-    @mcp.tool()
     def setup_github_quality(
         path: str,
         write: bool = False,
@@ -1056,5 +887,4 @@ def register(mcp, helpers):
         "getting_started": getting_started,
         "scaffold_config": scaffold_config,
         "setup_github_quality": setup_github_quality,
-        "tool_applicability_guide": tool_applicability_guide,
     }

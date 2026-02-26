@@ -24,7 +24,6 @@ CHANNELS = [
     StructureChannel(),
 ]
 
-
 @pytest.mark.parametrize("channel", CHANNELS)
 def test_channel_metadata_contract(channel):
     """Verify channel has required architectural metadata."""
@@ -32,11 +31,8 @@ def test_channel_metadata_contract(channel):
     assert isinstance(channel.name, str)
     assert hasattr(channel, "timeout_ms"), f"Channel {type(channel).__name__} missing 'timeout_ms'"
     assert isinstance(channel.timeout_ms, int)
-    assert hasattr(channel, "blocking_capable"), (
-        f"Channel {type(channel).__name__} missing 'blocking_capable'"
-    )
+    assert hasattr(channel, "blocking_capable"), f"Channel {type(channel).__name__} missing 'blocking_capable'"
     assert isinstance(channel.blocking_capable, bool)
-
 
 @pytest.mark.parametrize("channel", CHANNELS)
 def test_channel_interface_contract(channel):

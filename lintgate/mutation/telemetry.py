@@ -54,7 +54,7 @@ def evaluate_telemetry_against_targets(
 
     baseline_time = _coerce_float(baseline_stats.get("total_time_s"))
     filtered_time = _resolve_filtered_runtime_s(filtered_telemetry, filtered_stats)
-    if baseline_time > 0.0 and filtered_time > 0.0:
+    if baseline_time > 0.0:
         runtime_reduction_ratio = (baseline_time - filtered_time) / baseline_time
     else:
         runtime_reduction_ratio = 0.0

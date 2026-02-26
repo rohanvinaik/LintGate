@@ -16,8 +16,6 @@ if TYPE_CHECKING:
     from lintgate.controlplane.behavior_compass import (
         BehaviorCompass,
     )
-    from lintgate.orchestration.attribution import SignalSourceDecomposition
-    from lintgate.orchestration.authority import AuthorityEscalationEngine
     from lintgate.types import LintIssue
 
 # ── Theory Grounding ─────────────────────────────────────────────────
@@ -71,14 +69,15 @@ def _ground_finding_in_theory(
     finding: LintIssue,
     signal_name: str,
     theory_profile: dict[str, Any] | None,
-) -> tuple[str | None, float]:
+) -> str | None:
     """Append a theory coda to a behavioral finding's message.
 
     Pulls 1-2 short claims from the project's theory profile that are
-    relevant to the signal. Returns (coda_text, relevance_score).
+    relevant to the signal. Returns the coda text (for dedup tracking)
+    or None if no grounding was applied.
     """
     if not theory_profile or signal_name not in SIGNAL_THEORY_MAP:
-        return None, 0.0
+        return None
 
     from lintgate.theory_extractor import get_theory_context_from_profile
 
@@ -98,7 +97,7 @@ def _ground_finding_in_theory(
         all_claims.extend(result.get("claims", []))
 
     if not all_claims:
-        return None, 0.0
+        return None
 
     # Deduplicate and sort by relevance
     seen: set[str] = set()
@@ -127,13 +126,11 @@ def _ground_finding_in_theory(
     coda = f" Theory: {'; '.join(coda_parts)}."
     finding.message = finding.message.rstrip() + coda
 
-    max_score = max(c.get("relevance_score", 0) for c in unique[:2])
-
     if not finding.evidence:
         finding.evidence = {}
     finding.evidence["theory_context"] = [c["claim"] for c in unique[:2]]
 
-    return coda, float(max_score)
+    return coda
 
 
 # ── Intent Bias Scorer ─────────────────────────────────────────────────
@@ -313,9 +310,6 @@ class SignalCoordinator:
         thresholds: dict[str, Any],
         theory_profile: dict[str, Any] | None = None,
         recent_codas: dict[str, str] | None = None,
-        escalation_engine: AuthorityEscalationEngine | None = None,
-        model_risk: str = "moderate",
-        compliance_rate: float = 1.0,
     ):
         self.compass = compass
         self.thresholds = thresholds
@@ -328,9 +322,6 @@ class SignalCoordinator:
         self._theory_profile = theory_profile
         self._recent_codas: dict[str, str] = recent_codas or {}
         self._new_codas: dict[str, str] = {}
-        self.escalation_engine = escalation_engine
-        self.model_risk = model_risk
-        self.compliance_rate = compliance_rate
 
     def can_fire(self, signal_name: str) -> bool:
         last = self.compass.last_fired.get(signal_name)
@@ -352,57 +343,10 @@ class SignalCoordinator:
         finding: LintIssue,
         is_hard: bool,
         precheck_nudge: dict[str, Any] | None = None,
-        decomposition: SignalSourceDecomposition | None = None,
     ) -> None:
         if not self.can_fire(signal_name):
             return
         self.record_firing(signal_name)
-
-        # Attribution and confidence modulation
-        if decomposition:
-            # Escalation
-            fire_count = self.compass.signal_fire_counts.get(signal_name, 0)
-            threshold = self.thresholds.get("escalation_threshold", 3)
-
-            # Theory grounding (run before confidence calc to include theory_score)
-            if self._theory_profile is not None:
-                coda, theory_score = _ground_finding_in_theory(
-                    finding, signal_name, self._theory_profile
-                )
-                if coda is not None:
-                    prev_coda = self._recent_codas.get(signal_name)
-                    if prev_coda == coda:
-                        finding.message = finding.message[: -len(coda)]
-                        finding.evidence.pop("theory_context", None)
-                    else:
-                        self._new_codas[signal_name] = coda
-                        decomposition.theory_score = max(decomposition.theory_score, theory_score)
-
-            finding.confidence = round(decomposition.total_confidence, 2)
-            if not finding.evidence:
-                finding.evidence = {}
-            finding.evidence["attribution"] = {
-                "pattern": decomposition.pattern_score,
-                "theory": decomposition.theory_score,
-                "outcome": decomposition.outcome_score,
-                "coherence": decomposition.coherence_score,
-            }
-            # Append attribution summary to message
-            summary = decomposition.to_summary()
-            if summary:
-                finding.message += f" ({summary})"
-
-        else:
-            # Theory grounding fallback if no decomposition
-            if self._theory_profile is not None:
-                coda, _ = _ground_finding_in_theory(finding, signal_name, self._theory_profile)
-                if coda is not None:
-                    prev_coda = self._recent_codas.get(signal_name)
-                    if prev_coda == coda:
-                        finding.message = finding.message[: -len(coda)]
-                        finding.evidence.pop("theory_context", None)
-                    else:
-                        self._new_codas[signal_name] = coda
 
         # Escalation
         fire_count = self.compass.signal_fire_counts.get(signal_name, 0)
@@ -413,30 +357,16 @@ class SignalCoordinator:
             else:
                 finding.severity = "warning"
 
-        # Authority escalation
-        if self.escalation_engine:
-            # Significance is modeled as confidence if not explicitly provided
-            significance = finding.confidence or 0.5
-            level = self.escalation_engine.calculate_authority(
-                significance=significance,
-                recurrence_count=fire_count,
-                model_risk=self.model_risk,
-                compliance_rate=self.compliance_rate,
-            )
-            finding.authority_level = level.value
-
-            # Force blocking severity if authority is high enough
-            from lintgate.orchestration.authority import AuthorityLevel
-
-            if level >= AuthorityLevel.BLOCKING:
-                finding.severity = "blocking"
-            elif level == AuthorityLevel.NUDGE:
-                finding.severity = "warning"
-
         # Theory grounding
         if self._theory_profile is not None:
-            # We already ran this in the decomposition block or fallback block above.
-            pass
+            coda = _ground_finding_in_theory(finding, signal_name, self._theory_profile)
+            if coda is not None:
+                prev_coda = self._recent_codas.get(signal_name)
+                if prev_coda == coda:
+                    finding.message = finding.message[: -len(coda)]
+                    finding.evidence.pop("theory_context", None)
+                else:
+                    self._new_codas[signal_name] = coda
 
         self.findings.append(finding)
 

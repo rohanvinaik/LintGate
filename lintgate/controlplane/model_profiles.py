@@ -323,32 +323,3 @@ def apply_telemetry_update(
         profile.telemetry_samples += 1
         profile.last_seen_at = time.time()
         profile.updated_at = time.time()
-
-
-# ── Budget Recommendation ───────────────────────────────────────────
-
-
-def recommend_output_budget(
-    model_key: str | None = None,
-    risk_threshold: float = 0.7,
-) -> str:
-    """Recommend an output_budget based on model risk profile.
-
-    Logic:
-    1. If no model_key or profile, return "standard".
-    2. If profile confidence is low (< 0.5), return "standard".
-    3. If signal_risk.premature_action > risk_threshold, return "minimal".
-    4. Otherwise, return "standard".
-    """
-    if not model_key:
-        return "standard"
-
-    profile = get_profile(model_key)
-    if not profile or not profile.is_usable(min_confidence=0.5):
-        return "standard"
-
-    premature_action_risk = profile.signal_risk.get("premature_action", 0.0)
-    if premature_action_risk > risk_threshold:
-        return "minimal"
-
-    return "standard"

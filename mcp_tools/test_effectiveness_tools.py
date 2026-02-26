@@ -168,7 +168,9 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
 
     # Filter hotspots to only include files we analyzed
     analyzed_relpaths = {os.path.relpath(f, project_root) for f in target_files}
-    result["mutation_hotspots"] = [h for h in all_hotspots if h.get("file") in analyzed_relpaths]
+    result["mutation_hotspots"] = [
+        h for h in all_hotspots if h.get("file") in analyzed_relpaths
+    ]
 
     return helpers["_json_dumps"](result)
 
@@ -182,9 +184,7 @@ def _resolve_target_files(project_root: str, test_file: str) -> list[str] | dict
     if not test_file:
         return _discover_test_files(project_root)
 
-    full_test_path = (
-        test_file if os.path.isabs(test_file) else os.path.join(project_root, test_file)
-    )
+    full_test_path = test_file if os.path.isabs(test_file) else os.path.join(project_root, test_file)
     if os.path.isdir(full_test_path):
         return _discover_test_files(full_test_path)
     elif os.path.exists(full_test_path):
@@ -306,6 +306,7 @@ def _compute_quality_profile(result: dict[str, Any]) -> None:
             if total > 0
             else 0.0,
         }
+
 
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:

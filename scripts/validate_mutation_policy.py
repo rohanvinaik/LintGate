@@ -45,14 +45,14 @@ def main() -> None:
         baseline_stats=baseline_stats,
         filtered_telemetry=telemetry,
         filtered_stats=filtered_stats,
-        targets=TelemetryTargets(),
+        targets=TelemetryTargets()
     )
 
     print("\n=== Mutation Engine Validation Results ===")
-    passed = "✅" if validation["passed_all"] else "❌"
+    passed = "✅" if validation['passed_all'] else "❌"
     print(f"Passed All Targets: {validation['passed_all']} {passed}")
     print("-" * 40)
-    for metric, value in validation["metrics"].items():
+    for metric, value in validation['metrics'].items():
         print(f"  {metric}: {value}")
 
     print("-" * 40)

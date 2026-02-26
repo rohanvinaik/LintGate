@@ -27,7 +27,11 @@ def compute_metrics(states):
     total_mutants = sum(s.total for s in states)
     killed = sum(s.killed for s in states)
     score = (killed / total_mutants * 100.0) if total_mutants > 0 else 100.0
-    return {"score": score, "total_killed": killed, "total_mutants": total_mutants}
+    return {
+        "score": score,
+        "total_killed": killed,
+        "total_mutants": total_mutants
+    }
 
 
 def main():
@@ -51,11 +55,8 @@ def main():
     baseline_start = time.perf_counter()
     # Baseline: Force relevant_categories=None to disable pre-execution filtering
     original_execute = engine._execute_mutmut
-
     def _baseline_exec(paths, depth, test_filter, relevant_categories=None, telemetry=None):
-        return original_execute(
-            paths, depth, test_filter, relevant_categories=None, telemetry=telemetry
-        )
+        return original_execute(paths, depth, test_filter, relevant_categories=None, telemetry=telemetry)
 
     with patch.object(engine, "_execute_mutmut", side_effect=_baseline_exec):
         baseline_states = engine.run_inline_sampling(files, baseline_telemetry)
@@ -65,10 +66,8 @@ def main():
     baseline_stats = compute_metrics(baseline_states)
     baseline_stats["total_time_s"] = baseline_end - baseline_start
 
-    print(
-        f"Baseline: {baseline_stats['total_time_s']:.2f}s, Score: {baseline_stats['score']:.1f}% "
-        f"({baseline_stats['total_killed']}/{baseline_stats['total_mutants']})"
-    )
+    print(f"Baseline: {baseline_stats['total_time_s']:.2f}s, Score: {baseline_stats['score']:.1f}% "
+          f"({baseline_stats['total_killed']}/{baseline_stats['total_mutants']})")
 
     # Clear state for the second run
     state_path.unlink()
@@ -87,41 +86,36 @@ def main():
     filtered_stats = compute_metrics(filtered_states)
     filtered_stats["total_time_s"] = filtered_end - filtered_start
 
-    print(
-        f"Filtered: {filtered_stats['total_time_s']:.2f}s, Score: {filtered_stats['score']:.1f}% "
-        f"({filtered_stats['total_killed']}/{filtered_stats['total_mutants']})"
-    )
+    print(f"Filtered: {filtered_stats['total_time_s']:.2f}s, Score: {filtered_stats['score']:.1f}% "
+          f"({filtered_stats['total_killed']}/{filtered_stats['total_mutants']})")
     print(f"Mutants execution skipped fully by policy: {filtered_telemetry.mutants_skipped_policy}")
 
     print("\n=== Evaluating Against Targets ===")
     targets = TelemetryTargets()
     evaluation = evaluate_telemetry_against_targets(
-        baseline_stats, filtered_telemetry, filtered_stats, targets
+        baseline_stats,
+        filtered_telemetry,
+        filtered_stats,
+        targets
     )
 
     print(json.dumps(evaluation, indent=2))
 
     report_path = Path("mutation_ab_report.json")
-    report_path.write_text(
-        json.dumps(
-            {
-                "baseline": baseline_stats,
-                "filtered": filtered_stats,
-                "telemetry": {
-                    "mutants_executed": filtered_telemetry.mutants_executed,
-                    "mutants_skipped_policy": filtered_telemetry.mutants_skipped_policy,
-                },
-                "evaluation": evaluation,
-            },
-            indent=2,
-        )
-    )
+    report_path.write_text(json.dumps({
+        "baseline": baseline_stats,
+        "filtered": filtered_stats,
+        "telemetry": {
+            "mutants_executed": filtered_telemetry.mutants_executed,
+            "mutants_skipped_policy": filtered_telemetry.mutants_skipped_policy
+        },
+        "evaluation": evaluation
+    }, indent=2))
 
     print(f"\nSaved report artifact to {report_path}")
 
     if state_path.exists():
         state_path.unlink()
-
 
 if __name__ == "__main__":
     main()

@@ -247,7 +247,11 @@ def detect_isolated_sentinels(
     """Detect isolated sentinels and generate warnings."""
     warnings: list[dict[str, Any]] = []
     for root in sentinel_targets:
-        if root and root not in semantic_roots and root not in ("True", "False", "None"):
+        if (
+            root
+            and root not in semantic_roots
+            and root not in ("True", "False", "None")
+        ):
             guard_line = next(
                 (
                     a.line
@@ -317,14 +321,18 @@ def analyze_function_effectiveness(
         assertions, func_name
     )
 
-    warnings = detect_isolated_sentinels(updated_assertions, sentinel_targets, semantic_roots)
+    warnings = detect_isolated_sentinels(
+        updated_assertions, sentinel_targets, semantic_roots
+    )
     warnings.extend(detect_hasattr_chains(updated_assertions))
 
     func_data = {
         "assertions": [a.to_dict() for a in updated_assertions],
         "count": len(updated_assertions),
         "warnings": warnings,
-        "has_isolated_sentinel": any(w["kind"] == "isolated_sentinel" for w in warnings),
+        "has_isolated_sentinel": any(
+            w["kind"] == "isolated_sentinel" for w in warnings
+        ),
     }
 
     anti_patterns = []
@@ -339,7 +347,9 @@ def analyze_function_effectiveness(
         )
         for a in updated_assertions
     )
-    has_hasattr = any(a.kind == AssertionKind.HASATTR_CHECK for a in updated_assertions)
+    has_hasattr = any(
+        a.kind == AssertionKind.HASATTR_CHECK for a in updated_assertions
+    )
     if is_structural_only and has_hasattr and len(updated_assertions) > 0:
         anti_patterns.append(
             {
@@ -352,7 +362,9 @@ def analyze_function_effectiveness(
     fe = FunctionEffectiveness(function_name=func_name, assertions=updated_assertions)
     fe.compute_scores()
 
-    sem_count = sum(1 for a in updated_assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD)
+    sem_count = sum(
+        1 for a in updated_assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD
+    )
     func_data.update(
         {
             "semantic_count": sem_count,

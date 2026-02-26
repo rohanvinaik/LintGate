@@ -29,12 +29,6 @@ _DISPOSITION_TRIGGERS = [
         "priority": 2,
         "tool_hint": "constraint_check",
     },
-    {
-        "name": "cycle_intervention",
-        "cooldown_events": 3,
-        "priority": 2,  # Boosted in inject_dispositions if enforced
-        "tool_hint": "none",
-    },
 ]
 
 
@@ -175,40 +169,6 @@ def inject_dispositions(
         )
         cooldowns[trigger["name"]] = event_counter
 
-    # Trigger 4: cycle_intervention -- deterministic loop detection
-    trigger = _DISPOSITION_TRIGGERS[3]  # cycle_intervention
-    last_fire = cooldowns.get(trigger["name"], 0)
-    cycle_state = session_data.get("cycle_state", {})
-
-    if event_counter - last_fire >= trigger["cooldown_events"] and cycle_state.get("detected"):
-        reasons = cycle_state.get("reason_codes", [])
-        escalation = cycle_state.get("escalation_level", "advisory")
-        priority = 3 if escalation == "enforced" else 2
-
-        guidance = [
-            "\u26a0 STUCK DETECTED: Repetitive tool patterns identified.",
-            "Steps to escape:",
-            "  1. STOP modifying the same block.",
-            "  2. READ the actual error output carefully.",
-            "  3. THINK about the root cause (indentation, syntax, or logic).",
-            "  4. USE read_file or view_file to confirm the current state.",
-            "DO NOT: blindly retry the same edit or ignore lint failures.",
-        ]
-
-        if "CYCLE_REPLACE_FAIL" in reasons:
-            guidance.insert(
-                2, "  (!) SYMBOL/SYNTAX ERROR: Your edits are consistently failing to parse."
-            )
-
-        fired.append(
-            {
-                "disposition": "\n".join(guidance),
-                "tool_hint": "none",
-                "priority": priority,
-            }
-        )
-        cooldowns[trigger["name"]] = event_counter
-
     session_data["_disposition_cooldowns"] = cooldowns
     return fired
 
@@ -275,11 +235,6 @@ def extract_habit_signals(session_data: dict) -> tuple[bool, float, float, int]:
                 consecutive_failures += 1
             else:
                 break
-
-    # Cycle state (Issue #147)
-    cycle_state = bc.get("cycle_state", {})
-    if not isinstance(cycle_state, dict):
-        cycle_state = {}
 
     return habit_active, habit_score, context_pressure, consecutive_failures
 

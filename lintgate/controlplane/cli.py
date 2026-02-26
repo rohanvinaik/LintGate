@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .types import ControlPlaneConfig, SupervisionEvent
@@ -44,17 +43,6 @@ def main(argv: list[str] | None = None) -> None:
         default="normal",
         choices=["relaxed", "normal", "strict"],
         help="Strictness level (default: normal)",
-    )
-    run_parser.add_argument(
-        "--scope",
-        default="project",
-        choices=["project", "changed", "staged", "files"],
-        help="Scope type (default: project)",
-    )
-    run_parser.add_argument(
-        "--files",
-        nargs="*",
-        help="Explicit file list (for --scope=files)",
     )
     run_parser.add_argument(
         "--json",
@@ -116,17 +104,12 @@ def _cmd_run(args: argparse.Namespace) -> None:
         print("Error: No valid channels specified", file=sys.stderr)
         sys.exit(1)
 
-    # Resolve files based on scope
-    from mcp_tools.controlplane_tools import _resolve_scope
-
-    files_to_analyze = _resolve_scope(Path(project_root), args.scope, args.files)
-
-    # Build event
+    # Build event (for CLI, we create a synthetic event)
     event = SupervisionEvent(
         surface="ci",
         project_root=project_root,
         tool_name="controlplane_run",
-        files_changed=files_to_analyze,
+        files_changed=_discover_python_files(project_root),
     )
 
     # Optionally classify changes
