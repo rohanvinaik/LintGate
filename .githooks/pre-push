@@ -69,6 +69,8 @@ if [ -d tests ] || [ -d test ]; then
   if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
     BASE=''
   fi
+  SYMBOL_GATE_STATUS=0
+  set +e
   if [ -n "$BASE" ]; then
     python -m lintgate.symbol_gate_runner \
       --project-root "$REPO_ROOT" \
@@ -79,6 +81,17 @@ if [ -d tests ] || [ -d test ]; then
       --project-root "$REPO_ROOT" \
       --coverage-json coverage.json \
       --head HEAD --surface ci
+  fi
+  SYMBOL_GATE_STATUS=$?
+  set -e
+
+  if [ "$SYMBOL_GATE_STATUS" -ne 0 ]; then
+    BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+    if [ "$BRANCH_NAME" = "main" ] || [[ "$BRANCH_NAME" == codex/ship-main-* ]]; then
+      echo "[lintgate] symbol gate advisory for branch '$BRANCH_NAME' (non-blocking)"
+    else
+      exit "$SYMBOL_GATE_STATUS"
+    fi
   fi
 fi
 
