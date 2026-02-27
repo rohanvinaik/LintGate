@@ -1,5 +1,5 @@
-<svg width="203.4" height="20" viewBox="0 0 2034 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Algebraic Properties: 679 detected">
-  <title>Algebraic Properties: 679 detected</title>
+<svg width="203.4" height="20" viewBox="0 0 2034 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Algebraic Properties: 816 detected">
+  <title>Algebraic Properties: 816 detected</title>
   <linearGradient id="a" x2="0" y2="100%">
     <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
     <stop offset="1" stop-opacity=".1"/>
@@ -13,8 +13,8 @@
   <g aria-hidden="true" fill="#fff" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
     <text x="60" y="148" textLength="1106" fill="#000" opacity="0.25">Algebraic Properties</text>
     <text x="50" y="138" textLength="1106">Algebraic Properties</text>
-    <text x="1261" y="148" textLength="728" fill="#000" opacity="0.25">679 detected</text>
-    <text x="1251" y="138" textLength="728">679 detected</text>
+    <text x="1261" y="148" textLength="728" fill="#000" opacity="0.25">816 detected</text>
+    <text x="1251" y="138" textLength="728">816 detected</text>
   </g>
   
 </svg>
