@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772065582137,
+  "lastUpdate": 1772235967346,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -887,6 +887,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00020446680483756318",
             "extra": "mean: 706.7681714284544 usec\nrounds: 560"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9a543ab1899bf741f92b043fe3aafac2bbba0aa2",
+          "message": "feat: authority escalation engine, orchestration layer, complexity refactoring, and full test remediation (#185)\n\nAdd authority escalation engine with severity modulation based on signal\nrecurrence and compliance rate. Add orchestration layer (delivery bus,\ndisposition enforcer, cycle detector, repertoire manager, compliance\ntracking). Add NSIL training data extraction and session transfer.\n\nRefactor high cognitive-complexity functions in mutation/engine.py,\nmutation/ci_stats.py, nsil/training_data.py, and quality/discovery.py\nvia helper extraction (CC 32-58 → 5-12). Split quality_helpers.py into\nquality/ subpackage with backward-compatible facades.\n\nFix all 195 test failures from API changes: 5-tuple extract_finding_indexes,\n4-tuple SignalCoordinator.finalize, compass save validation, behavior_compass\ndict guard, transfer packet error handling, and updated assertions across\n15+ test files. Final state: 5185 passed, 0 failed.\n\nUpdate tool count 60 → 68 across docs (AGENTS.md, README.md, reference.md).\n\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-02-27T18:45:32-05:00",
+          "tree_id": "811cd92edea06b5db9b6e098e32f7747ef111723",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/9a543ab1899bf741f92b043fe3aafac2bbba0aa2"
+        },
+        "date": 1772235966171,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 144.46553227727028,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001025833883624534",
+            "extra": "mean: 6.922066351998183 msec\nrounds: 125"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 214164.0367150536,
+            "unit": "iter/sec",
+            "range": "stddev: 8.140080776309415e-7",
+            "extra": "mean: 4.669318039286424 usec\nrounds: 55795"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5560.837098575876,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017502327790954486",
+            "extra": "mean: 179.82904053350148 usec\nrounds: 3824"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14395.925716882663,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000015786260895601124",
+            "extra": "mean: 69.46409836133435 usec\nrounds: 9882"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1527.6958072627829,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000027957278981069613",
+            "extra": "mean: 654.5805750372053 usec\nrounds: 633"
           }
         ]
       }
