@@ -183,7 +183,7 @@ class CompassState:
     axes: dict[str, CompassAxis] = field(default_factory=dict)
     directives: list[CompassDirective] = field(default_factory=list)
     gap_report: GapReport = field(default_factory=GapReport)
-    forged_at: float = 0.0
+    forged_at: float = field(default_factory=time.time)
     frozen: bool = False
     frozen_hash: str = ""
 

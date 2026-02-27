@@ -16,7 +16,10 @@ if TYPE_CHECKING:
     from lintgate.controlplane.behavior_compass import (
         BehaviorCompass,
     )
+    from lintgate.orchestration.attribution import SignalSourceDecomposition
     from lintgate.types import LintIssue
+
+from lintgate.orchestration.authority import AuthorityEscalationEngine, AuthorityLevel
 
 # ── Theory Grounding ─────────────────────────────────────────────────
 
@@ -69,7 +72,7 @@ def _ground_finding_in_theory(
     finding: LintIssue,
     signal_name: str,
     theory_profile: dict[str, Any] | None,
-) -> str | None:
+) -> tuple[str, float] | None:
     """Append a theory coda to a behavioral finding's message.
 
     Pulls 1-2 short claims from the project's theory profile that are
@@ -126,11 +129,13 @@ def _ground_finding_in_theory(
     coda = f" Theory: {'; '.join(coda_parts)}."
     finding.message = finding.message.rstrip() + coda
 
+    max_score = max(c.get("relevance_score", 0) for c in unique[:2])
+
     if not finding.evidence:
         finding.evidence = {}
     finding.evidence["theory_context"] = [c["claim"] for c in unique[:2]]
 
-    return coda
+    return coda, float(max_score)
 
 
 # ── Intent Bias Scorer ─────────────────────────────────────────────────
@@ -319,6 +324,8 @@ class SignalCoordinator:
         self._pending_priority: int = 999
         self._nudge_signals: list[str] = []
         self.run_fire_counts: dict[str, int] = {}
+        self.suppressed_nudge_count = 0
+        self.authority_engine = AuthorityEscalationEngine()
         self._theory_profile = theory_profile
         self._recent_codas: dict[str, str] = recent_codas or {}
         self._new_codas: dict[str, str] = {}
@@ -337,37 +344,103 @@ class SignalCoordinator:
         )
         self.run_fire_counts[signal_name] = self.run_fire_counts.get(signal_name, 0) + 1
 
+    def _apply_theory_coda(self, signal_name: str, finding: LintIssue) -> float:
+        """Apply theory grounding to a finding. Returns the theory score."""
+        if self._theory_profile is None:
+            return 0.0
+        coda, theory_score = _ground_finding_in_theory(
+            finding, signal_name, self._theory_profile
+        )
+        if not coda:
+            return theory_score
+        prev_coda = self._recent_codas.get(signal_name)
+        if prev_coda == coda:
+            finding.message = finding.message[: -len(coda)]
+            finding.evidence.pop("theory_context", None)
+        else:
+            self._new_codas[signal_name] = coda
+        return theory_score
+
+    def _apply_attribution(
+        self,
+        finding: LintIssue,
+        signal_name: str,
+        decomposition: SignalSourceDecomposition,
+    ) -> None:
+        """Apply decomposition attribution and theory grounding to a finding."""
+        theory_score = self._apply_theory_coda(signal_name, finding)
+        decomposition.theory_score = max(decomposition.theory_score, theory_score)
+        finding.confidence = round(decomposition.total_confidence, 2)
+        if not finding.evidence:
+            finding.evidence = {}
+        finding.evidence["attribution"] = {
+            "pattern": decomposition.pattern_score,
+            "theory": decomposition.theory_score,
+            "outcome": decomposition.outcome_score,
+            "coherence": decomposition.coherence_score,
+        }
+        summary = decomposition.to_summary()
+        if summary:
+            finding.message += f" ({summary})"
+
+    _AUTHORITY_SEVERITY_MAP: dict[AuthorityLevel, str] = {
+        AuthorityLevel.INTERVENTION: "blocking",
+        AuthorityLevel.WARNING: "warning",
+        AuthorityLevel.NUDGE: "warning",
+    }
+
+    def _apply_authority_severity(
+        self,
+        finding: LintIssue,
+        signal_name: str,
+        is_hard: bool,
+        decomposition: SignalSourceDecomposition | None,
+    ) -> None:
+        """Calculate authority level and map to finding severity."""
+        fire_count = self.compass.signal_fire_counts.get(signal_name, 0)
+        significance = decomposition.total_confidence if decomposition else 0.5
+        model_risk = "structural" if self._theory_profile else "moderate"
+        compliance = self.compass.compliance_rate
+
+        auth_level = self.authority_engine.calculate_authority(
+            significance=significance,
+            recurrence_count=fire_count,
+            model_risk=model_risk,
+            compliance_rate=compliance,
+        )
+
+        if not finding.evidence:
+            finding.evidence = {}
+        finding.evidence["authority"] = {
+            "level": auth_level.value,
+            "reason": self.authority_engine.get_escalation_reason(
+                auth_level, significance, fire_count, compliance
+            ),
+        }
+
+        finding.severity = self._AUTHORITY_SEVERITY_MAP.get(auth_level, "informational")
+        if auth_level == AuthorityLevel.WARNING and is_hard:
+            finding.message = f"[persistent] {finding.message}"
+
     def add_finding(
         self,
         signal_name: str,
         finding: LintIssue,
         is_hard: bool,
         precheck_nudge: dict[str, Any] | None = None,
+        decomposition: SignalSourceDecomposition | None = None,
     ) -> None:
         if not self.can_fire(signal_name):
+            self.suppressed_nudge_count += 1
             return
         self.record_firing(signal_name)
 
-        # Escalation
-        fire_count = self.compass.signal_fire_counts.get(signal_name, 0)
-        threshold = self.thresholds.get("escalation_threshold", 3)
-        if fire_count >= threshold:
-            if is_hard:
-                finding.message = f"[persistent] {finding.message}"
-            else:
-                finding.severity = "warning"
+        if decomposition:
+            self._apply_attribution(finding, signal_name, decomposition)
+        else:
+            self._apply_theory_coda(signal_name, finding)
 
-        # Theory grounding
-        if self._theory_profile is not None:
-            coda = _ground_finding_in_theory(finding, signal_name, self._theory_profile)
-            if coda is not None:
-                prev_coda = self._recent_codas.get(signal_name)
-                if prev_coda == coda:
-                    finding.message = finding.message[: -len(coda)]
-                    finding.evidence.pop("theory_context", None)
-                else:
-                    self._new_codas[signal_name] = coda
-
+        self._apply_authority_severity(finding, signal_name, is_hard, decomposition)
         self.findings.append(finding)
 
         if precheck_nudge:
@@ -387,10 +460,10 @@ class SignalCoordinator:
             self._pending_precheck = nudge
             self._pending_priority = p
 
-    def finalize(self) -> tuple[list[LintIssue], list[dict[str, Any]], list[str]]:
+    def finalize(self) -> tuple[list[LintIssue], list[dict[str, Any]], list[str], int]:
         if self._pending_precheck:
             self.next_actions.append(self._pending_precheck)
-        return self.findings, self.next_actions, self._nudge_signals
+        return self.findings, self.next_actions, self._nudge_signals, self.suppressed_nudge_count
 
 
 # ── Error Matching Helpers ─────────────────────────────────────────────

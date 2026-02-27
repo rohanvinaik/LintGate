@@ -18,6 +18,7 @@ from typing import Any
 try:
     from filelock import FileLock
 except ImportError:
+
     class FileLock:
         def __init__(self, *args, **kwargs):
             # No-op fallback when optional `filelock` dependency is unavailable.
@@ -33,13 +34,15 @@ except ImportError:
 
 class CoverageDepth(str, Enum):
     """The depth of mutation testing executed against a target."""
+
     NONE = "none"
-    SAMPLED = "sampled"    # Quick inline run with limited budget
+    SAMPLED = "sampled"  # Quick inline run with limited budget
     PROFILED = "profiled"  # Exhaustive background run
 
 
 class ConfidenceLevel(str, Enum):
     """Confidence in the mutation signal."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -165,7 +168,7 @@ class MutationStateManager:
         payload = {
             "schema_version": self.SCHEMA_VERSION,
             "last_updated": time.time(),
-            "states": raw_states
+            "states": raw_states,
         }
 
         try:
@@ -185,7 +188,13 @@ class MutationStateManager:
         func_id = f"{state.file_path}::{state.function_name}"
         self.state[func_id] = state
 
-    def requires_run(self, function_id: str, current_code_hash: str, current_test_hash: str, target_depth: CoverageDepth) -> bool:
+    def requires_run(
+        self,
+        function_id: str,
+        current_code_hash: str,
+        current_test_hash: str,
+        target_depth: CoverageDepth,
+    ) -> bool:
         """Determine if a function requires mutation execution.
 
         A run is required if:

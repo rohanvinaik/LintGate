@@ -35,6 +35,7 @@ class BehaviorHypothesis:
     status: str = "active"  # active | confirmed | weakened | expired
     applies_to_sigs: list[str] = field(default_factory=list)  # e.g. ["idevicerestore:*"]
     applies_to_tools: list[str] = field(default_factory=list)  # e.g. ["Bash"]
+    trust_score: float = 0.5  # Derived from coherence and source evidence
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -50,6 +51,7 @@ class BehaviorHypothesis:
             "status": self.status,
             "applies_to_sigs": self.applies_to_sigs,
             "applies_to_tools": self.applies_to_tools,
+            "trust_score": self.trust_score,
         }
 
     @classmethod
@@ -67,6 +69,7 @@ class BehaviorHypothesis:
             status=data.get("status", "active"),
             applies_to_sigs=data.get("applies_to_sigs", []),
             applies_to_tools=data.get("applies_to_tools", []),
+            trust_score=data.get("trust_score", 0.5),
         )
 
 
@@ -274,12 +277,14 @@ class NudgeState:
         0  # constraint_check_count snapshot when pending_nudge_signals was set
     )
     nudge_outcomes: dict[str, str] = field(default_factory=dict)  # signal → "accepted" | "ignored"
+    compliance_rate: float = 1.0  # Rolling compliance score (0.0-1.0)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "pending_nudge_signals": self.pending_nudge_signals,
             "pending_nudge_constraint_check_count": self.pending_nudge_constraint_check_count,
             "nudge_outcomes": self.nudge_outcomes,
+            "compliance_rate": self.compliance_rate,
         }
 
     @classmethod
@@ -291,6 +296,7 @@ class NudgeState:
                 data.get("pending_nudge_precheck_count", 0),  # v1 compat
             ),
             nudge_outcomes=data.get("nudge_outcomes", {}),
+            compliance_rate=data.get("compliance_rate", 1.0),
         )
 
 
@@ -418,6 +424,14 @@ class BehaviorCompass:
     @nudge_outcomes.setter
     def nudge_outcomes(self, val: dict[str, str]) -> None:
         self.nudges.nudge_outcomes = val
+
+    @property
+    def compliance_rate(self) -> float:
+        return self.nudges.compliance_rate
+
+    @compliance_rate.setter
+    def compliance_rate(self, val: float) -> None:
+        self.nudges.compliance_rate = val
 
     # ── Backward-compatible property accessors for PredictionState ──
 

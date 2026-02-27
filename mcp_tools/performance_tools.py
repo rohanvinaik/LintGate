@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
+import tempfile
 from typing import Any
 
 
@@ -226,7 +230,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             # `name` from manifest contains the fully-qualified name, we extract baseline function name
             hotspot_functions = {h.get("function") for h in hotspots if h.get("function")}
 
-        candidates = _select_property_candidates(manifest, function, max_functions, hotspot_functions)
+        candidates = _select_property_candidates(
+            manifest, function, max_functions, hotspot_functions
+        )
 
         if not candidates:
             note = "No pure functions with algebraic properties found"
@@ -253,7 +259,124 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         return helpers["_json_dumps"](output)
 
+    @mcp.tool()
+    def run_property_tests(
+        path: str,
+        function: str,
+        max_examples: int = 50,
+        deadline_ms: int = 500,
+    ) -> str:
+        """Execute generated property tests for a function and capture counterexamples.
+
+        WHEN TO USE: After generating property tests, use this to validate them
+        and find counterexamples. Closes the feedback loop by providing
+        refinement hints if tests fail.
+
+        Args:
+            path: Project root path.
+            function: Fully qualified function name (e.g. "src.module.func").
+            max_examples: Hypothesis max_examples setting (budget).
+            deadline_ms: Hypothesis deadline setting in milliseconds.
+        """
+        project_root = helpers["_validate_project_root"](path)
+        _, manifest, py_files = _build_manifest_for_project(path, helpers)
+
+        if not manifest or function not in manifest.functions:
+            return json.dumps(
+                {"error": f"Function '{function}' not found in performance manifest."}
+            )
+
+        func = manifest.functions[function]
+        from lintgate.integrations.hypothesis_bridge import generate_hypothesis_template
+
+        template = generate_hypothesis_template(function.split(".")[-1], func)
+
+        if not template:
+            return json.dumps({"error": "Failed to generate Hypothesis template for function."})
+
+        # Refine template: fix import and settings
+        # Hypothesisbridge uses 'from ... import {func_name}  # TODO: fix import path'
+        # We replace it with the actual module path relative to project root
+        module_path = function.rsplit(".", 1)[0]
+        template = template.replace("# TODO: fix import path", "")
+        template = template.replace(
+            f"from ... import {function.split('.')[-1]}",
+            f"from {module_path} import {function.split('.')[-1]}",
+        )
+
+        # Inject settings
+        settings_block = f"\nfrom hypothesis import settings\nsettings.register_profile('lintgate', max_examples={max_examples}, deadline={deadline_ms})\nsettings.load_profile('lintgate')\n"
+        template = settings_block + template
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".py", mode="w", dir=project_root, delete=False
+        ) as tmp:
+            tmp.write(template)
+            tmp_path = tmp.name
+
+        try:
+            # Run pytest on the temporary file
+            env = os.environ.copy()
+            env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
+
+            proc = subprocess.run(
+                ["pytest", tmp_path, "-v", "--tb=short"],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=15,  # Hard timeout
+            )
+
+            success = proc.returncode == 0
+            output = proc.stdout + proc.stderr
+
+            result = {
+                "success": success,
+                "function": function,
+                "output": output,
+                "refinement_hints": [],
+            }
+
+            if not success:
+                # Extract counterexample if available (Falsifying example)
+                match = re.search(r"Falsifying example:.*\n(.*)", output)
+                if match:
+                    result["counterexample"] = match.group(1).strip()
+
+                # Generate refinement hints based on failure type
+                if "Idempotent" in output or "test_is_idempotent" in output:
+                    result["refinement_hints"].append(
+                        "Idempotency violated - check if function has hidden state or precision issues."
+                    )
+                if "Commutative" in output or "test_is_commutative" in output:
+                    result["refinement_hints"].append(
+                        "Commutativity violated - check if argument order matters for internal logic."
+                    )
+                if "Bounded" in output or "test_is_bounded" in output:
+                    result["refinement_hints"].append(
+                        "Bounds violated - check for edge cases at extremes (min/max)."
+                    )
+
+                if not result["refinement_hints"]:
+                    result["refinement_hints"].append(
+                        "Property violated - consider refining the property hypothesis or fixing the implementation."
+                    )
+
+            return json.dumps(result)
+
+        except subprocess.TimeoutExpired:
+            return json.dumps(
+                {
+                    "error": "Hypothesis execution timed out (15s budget exceeded).",
+                    "suggestion": "Try reducing max_examples or increasing deadline_ms.",
+                }
+            )
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
     return {
         "inspect_algebra": inspect_algebra,
         "generate_property_tests": generate_property_tests,
+        "run_property_tests": run_property_tests,
     }

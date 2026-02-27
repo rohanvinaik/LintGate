@@ -14,7 +14,9 @@ from typing import Any, Literal
 
 # ── Channel selection helpers ───────────────────────────────────────────
 
-_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,mutation"
+_ALL_CHANNEL_NAMES = (
+    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,mutation"
+)
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
     "lint": "Code quality (ruff, mypy, complexity, structure)",
@@ -79,27 +81,69 @@ def _select_channels(channels_str, channel_registry):
 # ── controlplane_run helpers ────────────────────────────────────────────
 
 
-def _collect_files_for_event(project_root, helpers):
-    """Collect Python files for the supervision event, preferring git-changed files."""
+def _resolve_scope_files(project_root, scope, files, helpers):
+    """Resolve files based on requested scope."""
+    if scope == "files":
+        if not files:
+            raise ValueError("scope='files' requires a non-empty files list")
+        resolved = []
+        for f in files:
+            p = Path(project_root) / f if not Path(f).is_absolute() else Path(f)
+            resolved.append(str(p.resolve()))
+        return resolved
+
+    if scope and scope not in ("project", "changed", "staged"):
+        raise ValueError(f"Unknown scope: {scope}")
+
     py_files = helpers["_collect_python_files"](project_root)
-    files_for_event: list[str] = []
-    with contextlib.suppress(Exception):
-        from lintgate.symbol_gate_runner import collect_changed_python_files
 
-        files_for_event = collect_changed_python_files(project_root)
+    # Deduplicate matching the old logic limiting to 50
+    def dedup(fs):
+        seen = set()
+        res = []
+        for f in fs[:50]:
+            r = str(Path(f).resolve())
+            if r not in seen:
+                seen.add(r)
+                res.append(f)
+        return res
 
-    if not files_for_event:
-        files_for_event = py_files
+    if scope == "project":
+        return dedup(py_files)
 
-    # Deduplicate by resolved path — git-changed and fallback lists may overlap
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for f in files_for_event[:50]:
-        resolved = str(Path(f).resolve())
-        if resolved not in seen:
-            seen.add(resolved)
-            deduped.append(f)
-    return deduped
+    try:
+        if scope == "staged":
+            cmd = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"]
+        else:
+            cmd = ["git", "diff", "--name-only", "HEAD", "--diff-filter=ACMR"]
+
+        proc = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, check=True)
+        git_files = [f for f in proc.stdout.splitlines() if f.endswith(".py")]
+
+        if scope != "staged":
+            proc2 = subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard"],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+            )
+            git_files.extend([f for f in proc2.stdout.splitlines() if f.endswith(".py")])
+
+        full_paths = [str(Path(project_root) / f) for f in set(git_files)]
+        existing_py = {str(Path(f).resolve()) for f in py_files}
+        resolved = [f for f in full_paths if str(Path(f).resolve()) in existing_py]
+
+        if resolved:
+            return dedup(resolved)
+    except Exception:
+        pass
+
+    return dedup(py_files)
+
+
+def _collect_files_for_event(project_root, scope, files, helpers):
+    """Collect Python files for the supervision event."""
+    return _resolve_scope_files(project_root, scope, files, helpers)
 
 
 def _build_supervision_event(project_root, files_for_event, strictness, requested):
@@ -307,7 +351,7 @@ def _check_ship_gate_parity(project_root: str, strictness: str) -> dict[str, Any
         return {"status": "error", "error": str(e)}
 
 
-def _impl_controlplane_run(path, channels, strictness, helpers):
+def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
     """Core implementation of controlplane_run."""
     from lintgate.config import load_controlplane_config
     from lintgate.controlplane.reporter import build_finding_index, format_mesh_report_compact
@@ -332,7 +376,7 @@ def _impl_controlplane_run(path, channels, strictness, helpers):
     active_channels, requested, unknown = _select_channels(channels, channel_registry)
 
     # Event
-    files_for_event = _collect_files_for_event(project_root, helpers)
+    files_for_event = _collect_files_for_event(project_root, scope, files, helpers)
     event = _build_supervision_event(project_root, files_for_event, strictness, requested)
 
     # Session + behavior injection
@@ -348,16 +392,92 @@ def _impl_controlplane_run(path, channels, strictness, helpers):
     if session is not None and session.snapshots:
         previous_finding_index = session.snapshots[-1].finding_index
 
+    # Cycle Detection #147
+    cycle_alerts = None
+    if session is not None:
+        import dataclasses
+
+        from lintgate.orchestration.cycle_detector import EditCycleState, detect_cycles, track_event
+
+        state = EditCycleState(**session.edit_cycle_state)
+        finding_list = [{"fingerprint": fp} for fp in current_finding_index]
+        state = track_event(
+            state, {"tool_name": "controlplane_run", "status": "success", "findings": finding_list}
+        )
+        detected = detect_cycles(state)
+        session.edit_cycle_state = dataclasses.asdict(state)
+
+        alerts = []
+        for c in detected:
+            if c.cycle_detected:
+                if c.reason == "CYCLE_SAME_FILE":
+                    alerts.append(
+                        f"Repeated edits to {c.diagnostics.get('file')} without resolving issues."
+                    )
+                elif c.reason == "CYCLE_SAME_FINDING":
+                    alerts.append(
+                        f"Finding persisted across {c.diagnostics.get('persistence_count')} runs."
+                    )
+                elif c.reason == "CYCLE_REPLACE_FAIL":
+                    alerts.append(
+                        f"Failed to apply edits {c.diagnostics.get('consecutive_failures')} times."
+                    )
+        if alerts:
+            cycle_alerts = alerts
+
     # Persist session
+    if session is not None:
+        from lintgate.orchestration.continuity import generate_transfer_packet
+
+        with contextlib.suppress(AttributeError, TypeError):
+            session.latest_transfer_packet = generate_transfer_packet(session).to_json()
+
+        # Accumulate delivery metrics
+        delivery_total = 0
+        delivery_skipped = 0
+        channels_seen = set()
+        for cr in mesh_result.channel_results:
+            if cr.channel == "behavior":
+                delivery_skipped += cr.metrics.get("suppressed_nudges", 0)
+            if cr.findings:
+                delivery_total += len(cr.findings)
+                channels_seen.add(cr.channel)
+
+        delivery_metrics = {
+            "delivered": delivery_total,
+            "skipped": delivery_skipped,
+            "channels": list(channels_seen),
+        }
+        session.delivery_health_summary = delivery_metrics
+        # Also store in the current snapshot
+        if session.snapshots:
+            session.snapshots[-1].delivery_metrics = delivery_metrics
+
     _persist_session_after_mesh(session, mesh_result, current_finding_index, cp_config)
 
     # Compact output
     ship_gate_parity = _check_ship_gate_parity(project_root, strictness)
+
+    # Extract proven resolutions for the compact report summary
+    proven_resolutions = []
+    for cr in mesh_result.channel_results:
+        for f in cr.findings:
+            if hasattr(f, "proven_resolution") and f.proven_resolution:
+                proven_resolutions.append(
+                    {
+                        "finding": f.kind,
+                        "resolution": f.proven_resolution.get("repertoire"),
+                        "confidence": f.proven_resolution.get("confidence"),
+                    }
+                )
+
     compact = format_mesh_report_compact(
         mesh_result,
         cp_config,
         previous_finding_index=previous_finding_index,
         ship_gate_parity=ship_gate_parity,
+        cycle_alerts=cycle_alerts,
+        proven_resolutions=proven_resolutions,
     )
 
     # Persist runtime state and drill-down details
@@ -402,6 +522,46 @@ def _extract_findings(details, channel, severity, max_issues):
     return result
 
 
+def _build_details_next_actions(run_id: str, output: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build recommended next actions based on drill-down details."""
+    actions = []
+    repairs = output.get("repairs", [])
+    if repairs:
+        safe_count = sum(1 for r in repairs if r.get("safe"))
+        if safe_count > 0:
+            actions.append(
+                {
+                    "tool": "controlplane_apply_repairs",
+                    "args": {"path": ".", "safe_only": True},
+                    "reason": f"Apply {safe_count} safe auto-repairs found in these details.",
+                    "priority": 1,
+                }
+            )
+
+    findings = output.get("findings", [])
+    if findings:
+        actions.append(
+            {
+                "tool": "Bash / your file edit tools",
+                "reason": "Address the findings listed above by editing the corresponding files.",
+                "priority": 2,
+            }
+        )
+
+    truncate_count = output.get("truncated", 0)
+    if truncate_count > 0:
+        actions.append(
+            {
+                "tool": "controlplane_get_details",
+                "args": {"run_id": run_id, "max_issues": len(findings) + truncate_count},
+                "reason": f"View the remaining {truncate_count} truncated findings.",
+                "priority": 3,
+            }
+        )
+
+    return actions
+
+
 def _extract_channel_details(details, channel):
     """Extract channel summary info from run details."""
     ch_details: dict[str, Any] = {}
@@ -443,7 +603,16 @@ def _impl_controlplane_get_details(run_id, channel, severity, max_issues, sectio
         raise ValueError(f"No ControlPlane run found with run_id: {run_id}")
 
     sections_set = set(
-        sections or ["findings", "channel_details", "evidence", "repairs", "coherence"]
+        sections
+        or [
+            "findings",
+            "channel_details",
+            "evidence",
+            "repairs",
+            "coherence",
+            "next_actions",
+            "proven_resolutions",
+        ]
     )
     output: dict[str, Any] = {"run_id": run_id, "duration_ms": details.get("duration_ms", 0)}
 
@@ -463,6 +632,27 @@ def _impl_controlplane_get_details(run_id, channel, severity, max_issues, sectio
         evidence = _extract_evidence(details, channel)
         if evidence:
             output["evidence"] = evidence
+
+    if "proven_resolutions" in sections_set:
+        # Extract proven resolutions from findings in the run details
+        resolutions = []
+        for ch_name, ch_data in _filter_channels(details.get("channels", {}), channel):
+            for f in ch_data.get("findings", []):
+                if f.get("proven_resolution"):
+                    resolutions.append(
+                        {
+                            "channel": ch_name,
+                            "finding": f.get("kind"),
+                            "message": f.get("message"),
+                            "resolution": f["proven_resolution"].get("repertoire"),
+                            "confidence": f["proven_resolution"].get("confidence"),
+                        }
+                    )
+        if resolutions:
+            output["proven_resolutions"] = resolutions
+
+    if "next_actions" in sections_set:
+        output["next_actions"] = _build_details_next_actions(run_id, output)
 
     return helpers["_json_dumps"](output)
 
@@ -520,6 +710,17 @@ def _get_session_status(project_root):
                 "active_proposals": sum(
                     1 for c in session.proposed_constraints if c.get("status") == "proposed"
                 ),
+                "transfer_telemetry": {
+                    "latest_packet": session.latest_transfer_packet,
+                    "packet_age_hours": round((time.time() - session.last_active) / 3600, 2)
+                    if session.latest_transfer_packet
+                    else None,
+                }
+                if hasattr(session, "latest_transfer_packet")
+                else {},
+                "delivery_health": session.delivery_health_summary
+                if hasattr(session, "delivery_health_summary")
+                else {},
             }
     return None
 
@@ -771,6 +972,8 @@ def register(mcp, helpers):
         path: str,
         channels: str | None = None,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
+        scope: Literal["project", "changed", "staged", "files"] | None = None,
+        files: list[str] | None = None,
     ) -> str:
         """Run a comprehensive project health check across multiple dimensions.
 
@@ -790,8 +993,10 @@ def register(mcp, helpers):
             path: Project root path.
             channels: Comma-separated channel list (default: all). Options: lint,tests,deps,git,behavior,structure
             strictness: Strictness level for analysis.
+            scope: The scope of files to analyze. Defaults to "changed".
+            files: Explicit list of files to analyze when scope="files".
         """
-        return _impl_controlplane_run(path, channels, strictness, helpers)
+        return _impl_controlplane_run(path, channels, strictness, scope, files, helpers)
 
     @mcp.tool()
     def controlplane_get_details(
@@ -815,7 +1020,7 @@ def register(mcp, helpers):
             severity: Filter by severity (blocking, warning, informational).
             max_issues: Maximum findings to return (default 10).
             sections: Which sections to include. Default: all.
-                Options: "findings", "channel_details", "evidence", "repairs", "coherence"
+                Options: "findings", "channel_details", "evidence", "repairs", "coherence", "next_actions", "proven_resolutions"
         """
         return _impl_controlplane_get_details(
             run_id, channel, severity, max_issues, sections, helpers

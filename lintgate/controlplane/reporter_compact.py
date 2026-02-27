@@ -19,6 +19,8 @@ def format_mesh_report_compact(
     previous_finding_index: dict[str, dict[str, Any]] | None = None,
     proposed_constraints: list[dict] | None = None,
     ship_gate_parity: dict[str, Any] | None = None,
+    cycle_alerts: list[str] | None = None,
+    proven_resolutions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Format MeshResult as compact JSON for MCP tool responses.
 
@@ -48,11 +50,17 @@ def format_mesh_report_compact(
         "counts": counts,
     }
 
-    _attach_delta_or_blocking(compact, current_index, previous_finding_index)
+    _attach_delta_or_blocking(compact, current_index, previous_finding_index, config)
     compact["channels"] = _build_channel_summary(mesh_result)
 
     if ship_gate_parity is not None:
         compact["ship_gate_parity"] = ship_gate_parity
+
+    if cycle_alerts:
+        compact["cycle_alerts"] = cycle_alerts
+
+    if proven_resolutions:
+        compact["proven_resolutions"] = proven_resolutions
 
     compact["next_actions"] = _build_cp_next_actions(
         run_id, counts, symbol_blockers, ship_gate_parity
@@ -144,17 +152,33 @@ def _attach_delta_or_blocking(
     compact: dict[str, Any],
     current_index: dict[str, dict[str, Any]],
     previous_finding_index: dict[str, dict[str, Any]] | None,
+    config: ControlPlaneConfig | None = None,
 ) -> None:
     """Add either a delta section or inline blocking issues to the report."""
     if previous_finding_index is not None:
         compact["delta"] = compute_finding_delta(current_index, previous_finding_index)
     else:
+        # Provide a safe default of 5 if no config is available, but try to use config
+        # We take a max over all channel configs for simplicity if flattening
+        max_findings = 5
+        if config and config.channels:
+            channel_limits = [
+                c.max_findings_shown
+                for c in config.channels.values()
+                if hasattr(c, "max_findings_shown")
+            ]
+            if channel_limits:
+                max_findings = max(channel_limits)
+
         blocking_issues = [
             {**info, "fingerprint": fp}
             for fp, info in sorted(current_index.items())
             if info.get("severity") == "blocking"
         ]
         if blocking_issues:
+            if len(blocking_issues) > max_findings:
+                compact["blocking_truncated"] = len(blocking_issues) - max_findings
+                blocking_issues = blocking_issues[:max_findings]
             compact["blocking_issues"] = blocking_issues
 
 

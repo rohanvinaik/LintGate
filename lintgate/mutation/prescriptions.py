@@ -8,6 +8,7 @@ from lintgate.mutation.state import FunctionMutationState
 
 class PrescriptionCategory(str, Enum):
     """Broad categories of prescriptions based on mutation survival."""
+
     ADD_TEST_CASE = "add_test_case"
     ADD_BOUNDS_CHECK = "add_bounds_check"
     DECOMPOSE_FUNCTION = "decompose_function"
@@ -18,6 +19,7 @@ class PrescriptionCategory(str, Enum):
 @dataclass
 class Prescription:
     """A specific recommendation mapped to a profile condition."""
+
     category: PrescriptionCategory
     reason: str
     suggested_action: str
@@ -27,6 +29,7 @@ class Prescription:
 @dataclass
 class Diagnosis:
     """The aggregate analysis of a function's mutation profile."""
+
     function_id: str
     overall_survival_rate: float
     total_mutants: int
@@ -57,22 +60,26 @@ class PrescriptionEngine:
         )
 
         if state.total == 0:
-            diag.prescriptions.append(Prescription(
-                category=PrescriptionCategory.NO_ACTION_REQUIRED,
-                reason="No mutants generated for function.",
-                suggested_action="None",
-            ))
+            diag.prescriptions.append(
+                Prescription(
+                    category=PrescriptionCategory.NO_ACTION_REQUIRED,
+                    reason="No mutants generated for function.",
+                    suggested_action="None",
+                )
+            )
             diag.gate_status = "PASS"
             return diag
 
         if rate <= self.ACTIONABLE_SURVIVAL_THRESHOLD:
             diag.gate_status = "PASS"
             if rate > 0:
-                diag.prescriptions.append(Prescription(
-                    category=PrescriptionCategory.NO_ACTION_REQUIRED,
-                    reason="Low survival rate, within acceptable bounds.",
-                    suggested_action="Review visually if critical.",
-                ))
+                diag.prescriptions.append(
+                    Prescription(
+                        category=PrescriptionCategory.NO_ACTION_REQUIRED,
+                        reason="Low survival rate, within acceptable bounds.",
+                        suggested_action="Review visually if critical.",
+                    )
+                )
             return diag
 
         # Hard fail for very high unmitigated survival
@@ -83,12 +90,14 @@ class PrescriptionEngine:
 
         # 1. High Multi-Category Entanglement -> Decomposition
         if rate >= self.DECOMPOSITION_THRESHOLD and len(surviving_cats) >= 3:
-            diag.prescriptions.append(Prescription(
-                category=PrescriptionCategory.DECOMPOSE_FUNCTION,
-                reason=f"High survival ({rate:.0%}) across {len(surviving_cats)} semantic categories indicates the function does too much.",
-                suggested_action="Split the function into smaller, independently testable units.",
-                gate_lift_projection_percent=rate * 100.0,
-            ))
+            diag.prescriptions.append(
+                Prescription(
+                    category=PrescriptionCategory.DECOMPOSE_FUNCTION,
+                    reason=f"High survival ({rate:.0%}) across {len(surviving_cats)} semantic categories indicates the function does too much.",
+                    suggested_action="Split the function into smaller, independently testable units.",
+                    gate_lift_projection_percent=rate * 100.0,
+                )
+            )
             diag.next_actions.append("mutation_decompose")
 
         # 2. Specific Category Rules (mapped when decomposition isn't the sole answer)
@@ -98,46 +107,58 @@ class PrescriptionEngine:
                 cat_survival_rate = count / state.total
 
                 if cat == "arithmetic":
-                    diag.prescriptions.append(Prescription(
-                        category=PrescriptionCategory.ADD_TEST_CASE,
-                        reason="Arithmetic mutations survived, meaning math edge cases are unchecked.",
-                        suggested_action="Add tests specifically verifying exact payload outputs, not just types.",
-                        gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.8,
-                    ))
+                    diag.prescriptions.append(
+                        Prescription(
+                            category=PrescriptionCategory.ADD_TEST_CASE,
+                            reason="Arithmetic mutations survived, meaning math edge cases are unchecked.",
+                            suggested_action="Add tests specifically verifying exact payload outputs, not just types.",
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.8,
+                        )
+                    )
                 elif cat == "conditional":
-                    diag.prescriptions.append(Prescription(
-                        category=PrescriptionCategory.ADD_BOUNDS_CHECK,
-                        reason="Conditional branch mutations survived.",
-                        suggested_action="Add tests covering both branches (True/False) of the logic.",
-                        gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.9,
-                    ))
+                    diag.prescriptions.append(
+                        Prescription(
+                            category=PrescriptionCategory.ADD_BOUNDS_CHECK,
+                            reason="Conditional branch mutations survived.",
+                            suggested_action="Add tests covering both branches (True/False) of the logic.",
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.9,
+                        )
+                    )
                 elif cat == "string":
-                    diag.prescriptions.append(Prescription(
-                        category=PrescriptionCategory.STRENGTHEN_ASSERTION,
-                        reason="String mutations survived, indicating weak assertions on text outputs.",
-                        suggested_action="Assert exact string matching instead of substring or empty state.",
-                        gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.5,
-                    ))
+                    diag.prescriptions.append(
+                        Prescription(
+                            category=PrescriptionCategory.STRENGTHEN_ASSERTION,
+                            reason="String mutations survived, indicating weak assertions on text outputs.",
+                            suggested_action="Assert exact string matching instead of substring or empty state.",
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.5,
+                        )
+                    )
                 elif cat == "keyword":
-                    diag.prescriptions.append(Prescription(
-                        category=PrescriptionCategory.STRENGTHEN_ASSERTION,
-                        reason="Keyword (e.g. break->continue, True->False) mutations survived.",
-                        suggested_action="Verify exact boolean states and loop exit side-effects.",
-                        gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.75,
-                    ))
+                    diag.prescriptions.append(
+                        Prescription(
+                            category=PrescriptionCategory.STRENGTHEN_ASSERTION,
+                            reason="Keyword (e.g. break->continue, True->False) mutations survived.",
+                            suggested_action="Verify exact boolean states and loop exit side-effects.",
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.75,
+                        )
+                    )
                 else:
-                    diag.prescriptions.append(Prescription(
-                        category=PrescriptionCategory.ADD_TEST_CASE,
-                        reason=f"Mutations in {cat} survived.",
-                        suggested_action="Review test coverage missing this semantic block.",
-                        gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.5,
-                    ))
+                    diag.prescriptions.append(
+                        Prescription(
+                            category=PrescriptionCategory.ADD_TEST_CASE,
+                            reason=f"Mutations in {cat} survived.",
+                            suggested_action="Review test coverage missing this semantic block.",
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.5,
+                        )
+                    )
 
         # Sort prescriptions by projection (impact)
         diag.prescriptions.sort(key=lambda p: p.gate_lift_projection_percent, reverse=True)
 
         has_tests = "mutation_refactor_loop" not in diag.next_actions
-        if has_tests and any(p.category != PrescriptionCategory.DECOMPOSE_FUNCTION for p in diag.prescriptions):
-             diag.next_actions.append("mutation_refactor_loop")
+        if has_tests and any(
+            p.category != PrescriptionCategory.DECOMPOSE_FUNCTION for p in diag.prescriptions
+        ):
+            diag.next_actions.append("mutation_refactor_loop")
 
         return diag

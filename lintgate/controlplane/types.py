@@ -151,6 +151,19 @@ class MeshResult:
     partial: bool = False  # True if any channel was shed due to timeout
 
 
+@dataclass
+class SessionTransferPacket:
+    """A portable packet summarizing a session for handoff."""
+
+    source_agent_id: str = ""
+    target_agent_id: str = ""
+    transfer_reason: str = ""
+    active_findings: list[dict[str, Any]] = field(default_factory=list)
+    resolved_findings: list[dict[str, Any]] = field(default_factory=list)
+    context_summary: str = ""
+    timestamp: float = field(default_factory=time.time)
+
+
 # ── Config Types ──────────────────────────────────────────────────────
 
 
@@ -216,6 +229,19 @@ class QualityGateConfig:
 
 
 @dataclass
+class DispositionEnforcementConfig:
+    """Configuration for disposition enforcement in hooks."""
+
+    enabled: bool = True
+    max_ignores_before_blocking: int = 3
+    enforce_on_channels: list[str] = field(default_factory=lambda: ["behavior", "lint"])
+    nudge_after_edit_without_lint: bool = True
+    nudge_before_bash_without_prediction: bool = True
+    cadence_health_check_events: int = 15
+    max_nudges_per_disposition: int = 3
+
+
+@dataclass
 class ControlPlaneConfig:
     """Top-level ControlPlane configuration.
 
@@ -263,6 +289,9 @@ class ControlPlaneConfig:
     hook_verbosity: str = "full"  # "silent" | "pulse" | "full" | "auto"
     hook_pulse_interval: int = 5  # Events between pulse emissions
     hook_dispositions_enabled: bool = True  # Enable disposition injection
+    disposition_enforcement: DispositionEnforcementConfig = field(
+        default_factory=DispositionEnforcementConfig
+    )
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

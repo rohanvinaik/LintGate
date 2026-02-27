@@ -133,7 +133,7 @@ class TestControlPlaneDedup:
             side_effect=ImportError,
             create=True,
         ):
-            result = _collect_files_for_event("/tmp", helpers)
+            result = _collect_files_for_event("/tmp", None, None, helpers)
         assert result.count(dummy_file) == 1
 
     def test_mixed_paths_resolved_to_same_file(self, tmp_path: Path) -> None:
@@ -153,7 +153,7 @@ class TestControlPlaneDedup:
             side_effect=ImportError,
             create=True,
         ):
-            result = _collect_files_for_event(str(tmp_path), helpers)
+            result = _collect_files_for_event(str(tmp_path), None, None, helpers)
         assert len(result) == 1
 
 

@@ -47,9 +47,9 @@ from .context_guidance import build_context_guidance
 from .theory_extractor import build_theory_pack, extract_theory
 
 try:
-    import tomllib
+    import tomllib  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # pragma: no cover - Python <3.11
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 # Backward-compatible underscore aliases.
 _render_claude_md = render_claude_md

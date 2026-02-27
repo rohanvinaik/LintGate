@@ -409,7 +409,7 @@ class TestSaveRunDetails:
 
 class TestExtractFindingIndexes:
     def test_none_session(self):
-        prev, base, count = extract_finding_indexes(None)
+        prev, base, count, last_disp, last_nudge = extract_finding_indexes(None)
         assert prev is None
         assert base is None
         assert count == 0
@@ -422,7 +422,7 @@ class TestExtractFindingIndexes:
         session = mock.MagicMock()
         session.snapshots = [s1, s2]
 
-        prev, base, count = extract_finding_indexes(session)
+        prev, base, count, last_disp, last_nudge = extract_finding_indexes(session)
         assert prev == {"b": 2}
         assert base == {"a": 1}
         assert count == 2
@@ -430,7 +430,7 @@ class TestExtractFindingIndexes:
     def test_empty_snapshots(self):
         session = mock.MagicMock()
         session.snapshots = []
-        prev, base, count = extract_finding_indexes(session)
+        prev, base, count, last_disp, last_nudge = extract_finding_indexes(session)
         assert count == 0
 
 

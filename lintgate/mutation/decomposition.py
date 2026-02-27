@@ -38,13 +38,15 @@ class DecompositionDetector:
             surviving_cats = [c for c, count in state.survived_by_category.items() if count > 0]
 
             if rate >= self.DECOMPOSITION_THRESHOLD and len(surviving_cats) >= self.MIN_CATEGORIES:
-                candidates.append(DecompositionCandidate(
-                    function_id=f"{state.file_path}::{state.function_name}",
-                    file_path=state.file_path,
-                    survival_rate=rate,
-                    surviving_categories=surviving_cats,
-                    total_mutants=state.total,
-                    reason=f"High survival ({rate:.0%}) across {len(surviving_cats)} semantic categories indicates high structural entanglement.",
-                ))
+                candidates.append(
+                    DecompositionCandidate(
+                        function_id=f"{state.file_path}::{state.function_name}",
+                        file_path=state.file_path,
+                        survival_rate=rate,
+                        surviving_categories=surviving_cats,
+                        total_mutants=state.total,
+                        reason=f"High survival ({rate:.0%}) across {len(surviving_cats)} semantic categories indicates high structural entanglement.",
+                    )
+                )
 
         return sorted(candidates, key=lambda c: c.survival_rate, reverse=True)

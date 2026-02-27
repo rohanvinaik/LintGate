@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 60 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 68 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 60 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 68 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
@@ -74,6 +74,7 @@ LintGate provides 60 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `context_guidance` | Machine-usable rules and context signals for a project. |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals. Non-destructive by default. |
 | `setup_github_quality` | Generate Code Climate/SonarCloud configs, README badges, .gitignore augmentation. Non-destructive by default. |
+| `tool_applicability_guide` | Definitive guide on when and how to use each LintGate MCP tool. |
 
 ### Act — run checks, get findings
 
@@ -88,6 +89,8 @@ LintGate provides 60 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `controlplane_apply_repairs` | Execute proposed repair actions (command-type, safe-only by default). |
 | `analyze_test_strength` | Test assertion quality: vulnerability scores, semantic ratios, upgrade suggestions. |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind and strength. |
+| `calibrate_assertion_weights` | Run mutation-backed calibration pipeline to adjust assertion weights. |
+| `run_property_tests` | Execute generated property tests for a function and capture counterexamples. |
 
 ### Reflect — check yourself before acting
 
@@ -117,6 +120,7 @@ LintGate provides 60 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `dep_health_check` | Comprehensive dependency audit: venv, lockfile, .python-version, conflicts. |
 | `dep_sync` | Check sync status. Optionally create venv or refresh lockfile. |
 | `audit_tool_versions` | Compare installed linter versions against lintgate.yaml requirements. |
+| `toolchain_health_check` | Check CLI tool availability against the toolchain manifest. |
 | `telemetry_summary` | ROI dashboard: quality improvement vs token cost over time. |
 | `controlplane_test_skeleton` | Generate pytest skeleton from AST analysis of a source file. |
 
@@ -162,6 +166,15 @@ LintGate provides 60 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `setup_hooks` | Generate .claude/settings.json hook configuration for compass-aware hooks. |
 
 **Compass workflow**: `compass_update(path, write=True)` extracts theory from markdown docs, maps 7 facets to 4 axes (problem, solution, implementation, world), runs code inference, detects gaps. If gaps exist, `compass_interview` provides prioritized questions. Use `theory_mode_enter` → explore → `theory_mode_freeze` for deep investigation. Frozen compass constrains execution via toward/away/forbidden directives checked by `compass_check`. Multi-model context files generated via `compass_update(targets=["all"])`.
+
+### NSIL — behavioral enforcement and training data
+
+| Tool | Purpose |
+|------|---------|
+| `nsil_inference_snapshot` | Point-in-time snapshot of the agent's inference context. |
+| `nsil_verify_action` | Verify an action against behavioral constraints and gate contracts. |
+| `nsil_export_training_data` | Export collected alignment and compliance data for model fine-tuning. |
+| `nsil_benchmark` | Run NSIL enforcement benchmarks. |
 
 ## Professional Discipline Signals
 
@@ -223,4 +236,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 51). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 68). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

@@ -2,6 +2,7 @@ name: Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -197,17 +198,27 @@ jobs:
             GATE_STATUS=$?
           fi
 
-          # Pull request runs can include very large historical diffs. Also
-          # keep main push runs advisory to avoid blocking merges on legacy
-          # uncovered symbols while remediation is underway.
-          ADVISORY_MODE=0
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ADVISORY_MODE=1
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            if [ "${{ github.ref }}" = "refs/heads/main" ] || [[ "${{ github.ref }}" == refs/heads/codex/ship-main-* ]]; then
-              ADVISORY_MODE=1
-            fi
-          fi
+          # Advisory policy: read from gate_contract.yaml (single source of truth).
+          # Push events only fire on main (branches: [main] trigger), and the
+          # contract marks main as advisory. PR events are always advisory per
+          # pr_always_advisory: true. So in CI, the symbol gate is always advisory.
+          ADVISORY_MODE="$(python -c "
+          import yaml, fnmatch, sys
+          try:
+              c = yaml.safe_load(open('gate_contract.yaml'))
+              policy = c.get('symbol_gate', {}).get('advisory_policy', {})
+              event = '${{ github.event_name }}'
+              ref = '${{ github.ref }}'.replace('refs/heads/', '')
+              if event == 'pull_request' and policy.get('pr_always_advisory', True):
+                  print(1)
+              elif event == 'push':
+                  patterns = policy.get('advisory_branches', ['main'])
+                  print(1 if any(fnmatch.fnmatch(ref, p) for p in patterns) else 0)
+              else:
+                  print(0)
+          except Exception:
+              print(0)
+          " 2>/dev/null || echo 0)"
 
           if [ "$GATE_STATUS" -ne 0 ] && [ "$ADVISORY_MODE" -eq 1 ]; then
             echo "::warning::Symbol coverage gate failed; advisory in Tests workflow for ${{ github.event_name }} on ${{ github.ref }}."

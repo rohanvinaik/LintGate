@@ -75,7 +75,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             "telemetry": {
                 "time_ms": telemetry.inline_time_ms_spent,
                 "mutants_executed": telemetry.mutants_executed,
-            }
+            },
         }
         return helpers["_json_dumps"](output)
 
@@ -100,6 +100,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         if not files:
             # Discover all files if none provided
             from lintgate.channels.performance_channel import _discover_python_files
+
             files = _discover_python_files(project_root)
 
         # In a real impl, we'd load the real test mapping
@@ -114,7 +115,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             "results": [r.to_dict() for r in results],
             "telemetry": {
                 "functions_background": telemetry.background_functions_profiled,
-            }
+            },
         }
         return helpers["_json_dumps"](output)
 
@@ -204,7 +205,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         p_engine = PrescriptionEngine()
 
         # Determine actual depth enum
-        min_depth_enum = CoverageDepth.SAMPLED if min_depth.lower() == "sampled" else CoverageDepth.PROFILED
+        min_depth_enum = (
+            CoverageDepth.SAMPLED if min_depth.lower() == "sampled" else CoverageDepth.PROFILED
+        )
 
         all_states = engine.state_manager.state
         filtered_states = []
@@ -234,12 +237,14 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                 overall_gate = "WARN"
 
             profiles.append(state.to_dict())
-            diagnoses.append({
-                "function_id": diag.function_id,
-                "overall_survival_rate": diag.overall_survival_rate,
-                "surviving_categories": list(diag.surviving_categories),
-                "gate_status": diag.gate_status
-            })
+            diagnoses.append(
+                {
+                    "function_id": diag.function_id,
+                    "overall_survival_rate": diag.overall_survival_rate,
+                    "surviving_categories": list(diag.surviving_categories),
+                    "gate_status": diag.gate_status,
+                }
+            )
             for p in diag.prescriptions:
                 all_prescriptions.append(dataclasses.asdict(p))
 
@@ -249,7 +254,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         seen_prescriptions = set()
         unique_prescriptions = []
         for p in all_prescriptions:
-            key = (p['category'], p['reason'], p['suggested_action'])
+            key = (p["category"], p["reason"], p["suggested_action"])
             if key not in seen_prescriptions:
                 seen_prescriptions.add(key)
                 unique_prescriptions.append(p)
@@ -260,7 +265,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             "diagnoses": diagnoses,
             "prescriptions": unique_prescriptions,
             "gate_status": overall_gate,
-            "next_actions": list(all_next_actions)
+            "next_actions": list(all_next_actions),
         }
         return helpers["_json_dumps"](output)
 
@@ -302,7 +307,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             "schema_version": 2,
             "decomposition_candidates": [dataclasses.asdict(c) for c in candidates],
             "already_tractable": already_tractable,
-            "summary": f"Found {len(candidates)} candidates requiring decomposition."
+            "summary": f"Found {len(candidates)} candidates requiring decomposition.",
         }
         return helpers["_json_dumps"](output)
 
@@ -348,9 +353,10 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         if reprofile:
             telemetry = MutationTelemetry("refactor_loop")
             import os
+
             abs_file = os.path.join(project_root, file)
             if not os.path.exists(abs_file):
-                abs_file = file # fallback
+                abs_file = file  # fallback
             results = engine.run_inline_sampling([abs_file], telemetry)
 
             for state in results:
@@ -358,7 +364,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                     after_dict = state.to_dict()
                     break
         else:
-            after_dict = before_dict # Fallback
+            after_dict = before_dict  # Fallback
 
         # 3. Compute Delta
         delta: dict[str, float | int] = {}
@@ -374,10 +380,13 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         prescriptions = []
         if after_dict:
             from lintgate.mutation.prescriptions import PrescriptionEngine
+
             p_engine = PrescriptionEngine()
 
             for state in engine.state_manager.state.values():
-                if state.file_path.endswith(file) and (not function or state.function_name == function):
+                if state.file_path.endswith(file) and (
+                    not function or state.function_name == function
+                ):
                     diag = p_engine.diagnose(state)
                     prescriptions = [dataclasses.asdict(p) for p in diag.prescriptions]
                     break

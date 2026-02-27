@@ -37,6 +37,7 @@ class LintIssue:
     confidence: float = 1.0  # 0.0-1.0 (deterministic tools = 1.0, fuzzy = lower)
     fixable: bool = False  # Can be auto-fixed
     fix_description: str | None = None
+    proven_resolution: dict[str, Any] | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
     suggestions: list[str] = field(default_factory=list)
     issue_id: str = ""  # Deterministic hash — set by results_aggregator after dedup

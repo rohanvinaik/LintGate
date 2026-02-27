@@ -472,7 +472,7 @@ def test_generate_qlty_toml_empty_exclude_pattern():
     # Empty patterns should not appear; valid_dir should be present
     assert "valid_dir/**" in result
     # The toml output should be well-formed
-    assert "[config]" in result or "exclude_patterns" in result
+    assert "[config]" in result or "exclude_patterns" in result or "[[exclude]]" in result
 
 
 # ===================================================================

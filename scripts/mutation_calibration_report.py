@@ -33,7 +33,7 @@ def main():
     avg_survival = sum(s.survival_rate for s in valid_states) / len(valid_states)
 
     # Simulate thresholds for an average function to get the current repository baseline
-    dummy_state = valid_states[0] # Just an object to pass to get_thresholds
+    dummy_state = valid_states[0]  # Just an object to pass to get_thresholds
     warning_thresh, blocking_thresh = policy.get_thresholds(dummy_state, all_states)
 
     report_lines = [
@@ -57,11 +57,13 @@ def main():
         if state.survival_rate >= 0.50 and len(surviving_cats) >= 3:
             highly_entangled += 1
 
-    report_lines.extend([
-        f"- **Highly Entangled Functions:** {highly_entangled} (Survival >= 50% across 3+ operators)",
-        f"- **Healthy Functions:** {len(valid_states) - highly_entangled}",
-        ""
-    ])
+    report_lines.extend(
+        [
+            f"- **Highly Entangled Functions:** {highly_entangled} (Survival >= 50% across 3+ operators)",
+            f"- **Healthy Functions:** {len(valid_states) - highly_entangled}",
+            "",
+        ]
+    )
 
     report_lines.append("## Calibration Mechanism")
     report_lines.append(
@@ -75,6 +77,7 @@ def main():
 
     report_file.write_text("\n".join(report_lines))
     print(f"Calibration report generated at: {report_file}")
+
 
 if __name__ == "__main__":
     main()

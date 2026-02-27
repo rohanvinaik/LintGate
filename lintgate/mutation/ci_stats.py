@@ -58,11 +58,15 @@ class MutationCIStats:
         skipped_equivalent_policy = raw.get("skipped_equivalent_policy", 0)
 
         # Prefer mutmut's own total when present; fall back to computed sum.
-        computed_sum = killed + survived + timeout + suspicious + no_tests + skipped + equivalent_suspect
+        computed_sum = (
+            killed + survived + timeout + suspicious + no_tests + skipped + equivalent_suspect
+        )
         total = raw.get("total", computed_sum)
 
         effective_total = total - equivalent_suspect - skipped_equivalent_policy
-        effective_total_for_score = raw.get("effective_total_for_score", effective_total if effective_total > 0 else 0)
+        effective_total_for_score = raw.get(
+            "effective_total_for_score", effective_total if effective_total > 0 else 0
+        )
 
         if total == 0:
             return cls(
@@ -81,7 +85,11 @@ class MutationCIStats:
                 source=source,
             )
 
-        score = round(killed / effective_total_for_score * 100, 1) if effective_total_for_score > 0 else 0.0
+        score = (
+            round(killed / effective_total_for_score * 100, 1)
+            if effective_total_for_score > 0
+            else 0.0
+        )
 
         return cls(
             killed=killed,
@@ -215,11 +223,7 @@ def load_mutation_hotspots(survivors_path: str) -> list[dict[str, Any]]:
         if isinstance(data, list):
             return [_normalize_hotspot(entry) for entry in data if isinstance(entry, dict)]
         if isinstance(data, dict) and "mutants" in data:
-            return [
-                _normalize_hotspot(m)
-                for m in data["mutants"]
-                if isinstance(m, dict)
-            ]
+            return [_normalize_hotspot(m) for m in data["mutants"] if isinstance(m, dict)]
     except json.JSONDecodeError:
         pass
 
@@ -294,42 +298,66 @@ def _parse_survivor_line(line: str) -> dict[str, Any] | None:
     }
 
 
-def _enrich_function_names(survivors_path: str, hotspots: list[dict[str, Any]]) -> None:
-    """Enrich hotspots with function names by mapping lines to AST nodes."""
-    try:
-        # For tests or standard usage where survivors is in mutants/
-        project_root = Path(survivors_path).parent.parent
-        if not (project_root / ".git").exists() and not (project_root / "src").exists():
-            # Fallback for temporary directories in tests
-            project_root = Path(survivors_path).parent
-    except Exception:
-        project_root = Path(survivors_path).parent
+def _resolve_project_root(survivors_path: str) -> Path:
+    """Resolve project root from the survivors file path.
 
+    Assumes survivors file lives in a ``mutants/`` subdirectory of the project.
+    Falls back to the parent directory for temporary/test directories.
+    """
+    try:
+        candidate = Path(survivors_path).parent.parent
+        if (candidate / ".git").exists() or (candidate / "src").exists():
+            return candidate
+        return Path(survivors_path).parent
+    except Exception:
+        return Path(survivors_path).parent
+
+
+def _build_function_ranges(file_path: Path) -> list[tuple[int, int, str]]:
+    """Parse *file_path* and return ``(start, end, name)`` for each function."""
+    source = file_path.read_text("utf-8")
+    tree = ast.parse(source, filename=str(file_path))
+    return [
+        (node.lineno, node.end_lineno or node.lineno, node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+
+
+def _assign_function_names(
+    items: list[dict[str, Any]], funcs: list[tuple[int, int, str]]
+) -> None:
+    """Set ``item["function"]`` for each hotspot whose line falls inside a function range."""
+    for item in items:
+        line = item["line"]
+        for start, end, name in funcs:
+            if start <= line <= end:
+                item["function"] = name
+                break
+
+
+def _group_hotspots_by_file(
+    hotspots: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Group hotspots that need function-name enrichment by their file path."""
     file_hotspots: dict[str, list[dict[str, Any]]] = {}
     for h in hotspots:
         if not h.get("function") and h.get("file") and h.get("line"):
             file_hotspots.setdefault(h["file"], []).append(h)
+    return file_hotspots
+
+
+def _enrich_function_names(survivors_path: str, hotspots: list[dict[str, Any]]) -> None:
+    """Enrich hotspots with function names by mapping lines to AST nodes."""
+    project_root = _resolve_project_root(survivors_path)
+    file_hotspots = _group_hotspots_by_file(hotspots)
 
     for rel_path, items in file_hotspots.items():
         abs_path = project_root / rel_path
         if not abs_path.exists():
             continue
-
         try:
-            source = abs_path.read_text("utf-8")
-            tree = ast.parse(source, filename=str(abs_path))
-
-            # Build line -> function mapping
-            funcs: list[tuple[int, int, str]] = []
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    funcs.append((node.lineno, node.end_lineno or node.lineno, node.name))
-
-            for item in items:
-                line = item["line"]
-                for start, end, name in funcs:
-                    if start <= line <= end:
-                        item["function"] = name
-                        break
+            funcs = _build_function_ranges(abs_path)
         except (OSError, SyntaxError):
-            pass
+            continue
+        _assign_function_names(items, funcs)

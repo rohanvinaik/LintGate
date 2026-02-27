@@ -26,7 +26,7 @@ def test_migration_v1_to_v2(tmp_path):
             "timeout": 0,
             "total": 7,
             "killed_by_assertion": 3,
-            "killed_by_crash": 2
+            "killed_by_crash": 2,
         }
     }
     storage_path.write_text(json.dumps(v1_data))
@@ -47,6 +47,7 @@ def test_migration_v1_to_v2(tmp_path):
     assert "states" in raw
     assert "logic.py::add" in raw["states"]
     assert raw["states"]["logic.py::add"]["survived"] == 2
+
 
 def test_load_v2_directly(tmp_path):
     storage_path = tmp_path / "mutation_state_v2.json"
@@ -70,9 +71,9 @@ def test_load_v2_directly(tmp_path):
                 "total": 10,
                 "killed_by_assertion": 8,
                 "killed_by_crash": 2,
-                "survived_by_category": {"arithmetic": 0}
+                "survived_by_category": {"arithmetic": 0},
             }
-        }
+        },
     }
     storage_path.write_text(json.dumps(v2_data))
 
@@ -81,6 +82,7 @@ def test_load_v2_directly(tmp_path):
     state = manager.state["math.py::mul"]
     assert state.depth == CoverageDepth.PROFILED
     assert manager.last_updated == 2000.0
+
 
 def test_save_persists_v2(tmp_path):
     storage_path = tmp_path / "new_state.json"
@@ -94,7 +96,7 @@ def test_save_persists_v2(tmp_path):
         depth=CoverageDepth.SAMPLED,
         total=5,
         survived=1,
-        survived_by_category={"division": 1}
+        survived_by_category={"division": 1},
     )
     manager.update_state(new_state)
     manager.save()

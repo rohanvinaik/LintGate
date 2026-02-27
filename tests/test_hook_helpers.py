@@ -114,7 +114,7 @@ class TestRunControlplane:
             ),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
-                return_value=({}, {}, 0),
+                return_value=({}, {}, 0, None, None),
             ),
             patch(
                 "lintgate.hook_controlplane.post_process_session",
@@ -209,7 +209,7 @@ class TestRunControlplane:
             ),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
-                return_value=({}, {}, 0),
+                return_value=({}, {}, 0, None, None),
             ),
             patch(
                 "lintgate.hook_controlplane.post_process_session",
@@ -316,7 +316,7 @@ class TestRunControlplane:
             ),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
-                return_value=({}, {}, 0),
+                return_value=({}, {}, 0, None, None),
             ),
             patch(
                 "lintgate.hook_controlplane.post_process_session",
@@ -417,7 +417,7 @@ class TestRunControlplane:
             ),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
-                return_value=({}, {}, 0),
+                return_value=({}, {}, 0, None, None),
             ),
             patch(
                 "lintgate.hook_controlplane.post_process_session",

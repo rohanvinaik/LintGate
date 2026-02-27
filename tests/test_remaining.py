@@ -374,7 +374,7 @@ class TestScanProjectDirsUnmatched:
         pkg.mkdir()
         (pkg / "__init__.py").touch()
 
-        src_dirs, test_dirs, doc_dirs = _scan_project_dirs(tmp_path, [])
+        src_dirs, test_dirs, doc_dirs, _trunc = _scan_project_dirs(tmp_path, [])
         assert "mylib" in src_dirs
         assert "random_dir" not in src_dirs
         assert "nopkg" not in src_dirs
@@ -387,7 +387,7 @@ class TestScanProjectDirsUnmatched:
         src.mkdir()
         (src / "not_a_pkg").mkdir()
 
-        src_dirs, _test_dirs, _doc_dirs = _scan_project_dirs(tmp_path, [])
+        src_dirs, _test_dirs, _doc_dirs, _trunc = _scan_project_dirs(tmp_path, [])
         assert src_dirs == []
 
 

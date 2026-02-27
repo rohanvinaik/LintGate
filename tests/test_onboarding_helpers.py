@@ -19,15 +19,17 @@ if TYPE_CHECKING:
 from mcp_tools.onboarding_tools import (
     register,
 )
+from mcp_tools.quality.discovery import (
+    _detect_license_fallback,
+    _detect_python_version_fallback,
+    _parse_pyproject_metadata,
+    _scan_project_dirs,
+)
 from mcp_tools.quality_helpers import (
     _apply_managed_artifact,
     _compute_bandit_ci_skips,
-    _detect_license_fallback,
     _detect_project_layout,
-    _detect_python_version_fallback,
-    _parse_pyproject_metadata,
     _read_informational_bandit_codes,
-    _scan_project_dirs,
 )
 
 # -- _parse_pyproject_metadata ------------------------------------------------
@@ -226,33 +228,33 @@ class TestScanProjectDirs:
         pkg = tmp_path / "mypackage"
         pkg.mkdir()
         (pkg / "__init__.py").touch()
-        src, test, doc = _scan_project_dirs(tmp_path, [])
+        src, test, doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert "mypackage" in src
 
     def test_finds_test_dir(self, tmp_path: Path) -> None:
         """Detects tests/ directory."""
         (tmp_path / "tests").mkdir()
-        _src, test, _doc = _scan_project_dirs(tmp_path, [])
+        _src, test, _doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert "tests" in test
 
     def test_finds_doc_dir(self, tmp_path: Path) -> None:
         """Detects docs/ directory."""
         (tmp_path / "docs").mkdir()
-        _src, _test, doc = _scan_project_dirs(tmp_path, [])
+        _src, _test, doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert "docs" in doc
 
     def test_skips_venv(self, tmp_path: Path) -> None:
         """Skips .venv and venv directories."""
         (tmp_path / ".venv").mkdir()
         (tmp_path / "venv").mkdir()
-        src, test, doc = _scan_project_dirs(tmp_path, [])
+        src, test, doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert ".venv" not in src
         assert "venv" not in src
 
     def test_skips_hidden_dirs(self, tmp_path: Path) -> None:
         """Skips dot-prefixed directories."""
         (tmp_path / ".hidden").mkdir()
-        src, _test, _doc = _scan_project_dirs(tmp_path, [])
+        src, _test, _doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert ".hidden" not in src
 
     def test_src_layout(self, tmp_path: Path) -> None:
@@ -260,13 +262,13 @@ class TestScanProjectDirs:
         pkg = tmp_path / "src" / "mylib"
         pkg.mkdir(parents=True)
         (pkg / "__init__.py").touch()
-        src, _test, _doc = _scan_project_dirs(tmp_path, [])
+        src, _test, _doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert "src/mylib" in src
 
     def test_does_not_override_pyproject_test_dirs(self, tmp_path: Path) -> None:
         """When test_dirs already provided, does not re-add tests/."""
         (tmp_path / "tests").mkdir()
-        _src, test, _doc = _scan_project_dirs(tmp_path, ["custom_tests"])
+        _src, test, _doc, _trunc = _scan_project_dirs(tmp_path, ["custom_tests"])
         assert test == ["custom_tests"]
 
     def test_src_subdir_without_init(self, tmp_path: Path) -> None:
@@ -274,7 +276,7 @@ class TestScanProjectDirs:
         src_dir = tmp_path / "src" / "data"
         src_dir.mkdir(parents=True)
         (src_dir / "README.md").touch()
-        src, _test, _doc = _scan_project_dirs(tmp_path, [])
+        src, _test, _doc, _trunc = _scan_project_dirs(tmp_path, [])
         assert all("data" not in s for s in src)
 
     def test_regular_file_at_root_skipped(self, tmp_path: Path) -> None:
@@ -282,7 +284,7 @@ class TestScanProjectDirs:
         (tmp_path / "setup.py").write_text("# setup")
         (tmp_path / "mypackage").mkdir()
         (tmp_path / "mypackage" / "__init__.py").touch()
-        src, test, doc = _scan_project_dirs(tmp_path, [])
+        src, test, doc, _trunc = _scan_project_dirs(tmp_path, [])
         # setup.py should not appear anywhere
         assert "setup.py" not in src
         assert "mypackage" in src
@@ -406,42 +408,37 @@ class TestApplyManagedArtifact:
 class TestReadInformationalBanditCodes:
     """Tests for _read_informational_bandit_codes."""
 
-    def test_reads_valid_config(self, tmp_path: Path) -> None:
-        """Extracts bandit codes with severity_overrides == informational."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text(
-            "severity_overrides:\n  B110: informational\n  B112: informational\n  B105: warning\n"
-        )
-        codes = _read_informational_bandit_codes(str(tmp_path))
-        assert "B110" in codes
-        assert "B112" in codes
-        assert "B105" not in codes
+    def test_returns_hardcoded_codes(self) -> None:
+        """Returns hardcoded list of informational bandit codes."""
+        codes = _read_informational_bandit_codes()
+        assert "B101" in codes
+        assert "B108" in codes
+        assert "B311" in codes
+        assert "B404" in codes
+        assert "B603" in codes
+        assert "B607" in codes
 
-    def test_missing_config(self, tmp_path: Path) -> None:
-        """Returns empty list when config file is missing."""
-        assert _read_informational_bandit_codes(str(tmp_path)) == []
+    def test_returns_list(self) -> None:
+        """Returns a list type."""
+        codes = _read_informational_bandit_codes()
+        assert isinstance(codes, list)
+        assert len(codes) == 6
 
-    def test_invalid_yaml(self, tmp_path: Path) -> None:
-        """Returns empty list when config is invalid YAML."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text("{{{{ not yaml")
-        assert _read_informational_bandit_codes(str(tmp_path)) == []
+    def test_no_args_accepted(self) -> None:
+        """Function takes no positional arguments."""
+        codes = _read_informational_bandit_codes()
+        assert len(codes) > 0
 
-    def test_non_dict_config(self, tmp_path: Path) -> None:
-        """Returns empty list when YAML root is not a dict."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text("- item1\n- item2\n")
-        assert _read_informational_bandit_codes(str(tmp_path)) == []
+    def test_all_codes_start_with_b(self) -> None:
+        """All returned codes start with 'B'."""
+        codes = _read_informational_bandit_codes()
+        assert all(c.startswith("B") for c in codes)
 
-    def test_non_dict_overrides(self, tmp_path: Path) -> None:
-        """Returns empty list when severity_overrides is not a dict."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text("severity_overrides: null\n")
-        assert _read_informational_bandit_codes(str(tmp_path)) == []
+    def test_consistent_results(self) -> None:
+        """Returns same results on repeated calls."""
+        codes1 = _read_informational_bandit_codes()
+        codes2 = _read_informational_bandit_codes()
+        assert codes1 == codes2
 
 
 # -- _compute_bandit_ci_skips -------------------------------------------------
@@ -450,50 +447,40 @@ class TestReadInformationalBanditCodes:
 class TestComputeBanditCiSkips:
     """Tests for _compute_bandit_ci_skips."""
 
-    def test_default_skips(self) -> None:
-        """Without project root, returns B101 and B108."""
-        skips = _compute_bandit_ci_skips(None)
-        assert skips == ["B101", "B108"]
-
-    def test_tool_runner_adds_subprocess_codes(self) -> None:
-        """Tool runner mode adds B404, B603, B607."""
-        skips = _compute_bandit_ci_skips(None, is_tool_runner=True)
-        assert "B404" in skips
-        assert "B603" in skips
-        assert "B607" in skips
-        assert "B101" in skips
-
-    def test_with_config_overrides(self, tmp_path: Path) -> None:
-        """Picks up informational overrides from lintgate.yaml."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text("severity_overrides:\n  B110: informational\n")
+    def test_default_skips(self, tmp_path: Path) -> None:
+        """Returns comma-separated string with base codes."""
         skips = _compute_bandit_ci_skips(str(tmp_path))
-        assert "B110" in skips
-        assert "B101" in skips
-        assert "B108" in skips
+        assert isinstance(skips, str)
+        skip_list = skips.split(",")
+        assert "B101" in skip_list
+        assert "B108" in skip_list
+
+    def test_includes_all_hardcoded_codes(self, tmp_path: Path) -> None:
+        """Includes all hardcoded informational codes from _read_informational_bandit_codes."""
+        skips = _compute_bandit_ci_skips(str(tmp_path))
+        skip_list = skips.split(",")
+        assert "B404" in skip_list
+        assert "B603" in skip_list
+        assert "B607" in skip_list
+        assert "B101" in skip_list
+
+    def test_result_is_comma_separated(self, tmp_path: Path) -> None:
+        """Returns a comma-separated string."""
+        skips = _compute_bandit_ci_skips(str(tmp_path))
+        assert isinstance(skips, str)
+        assert "," in skips
 
     def test_no_duplicates(self, tmp_path: Path) -> None:
-        """Does not duplicate base codes when they also appear in overrides."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text("severity_overrides:\n  B101: informational\n")
+        """Does not duplicate codes in the result."""
         skips = _compute_bandit_ci_skips(str(tmp_path))
-        assert skips.count("B101") == 1
+        skip_list = skips.split(",")
+        assert len(skip_list) == len(set(skip_list))
 
-    def test_result_is_sorted(self) -> None:
+    def test_result_is_sorted(self, tmp_path: Path) -> None:
         """Skip list is returned sorted."""
-        skips = _compute_bandit_ci_skips(None, is_tool_runner=True)
-        assert skips == sorted(skips)
-
-    def test_no_duplicates_tool_runner_overlap(self, tmp_path: Path) -> None:
-        """Branch 1598->1597: tool-runner code already in base via overrides."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        # B404 comes in via informational override, then tool_runner tries again
-        (claude_dir / "lintgate.yaml").write_text("severity_overrides:\n  B404: informational\n")
-        skips = _compute_bandit_ci_skips(str(tmp_path), is_tool_runner=True)
-        assert skips.count("B404") == 1
+        skips = _compute_bandit_ci_skips(str(tmp_path))
+        skip_list = skips.split(",")
+        assert skip_list == sorted(skip_list)
 
 
 # -- register -----------------------------------------------------------------
@@ -613,7 +600,7 @@ class TestParsePyprojectLicenseString:
     """Cover _parse_pyproject_metadata branch: license as plain string."""
 
     def test_license_string_value(self, tmp_path):
-        from mcp_tools.quality_helpers import _parse_pyproject_metadata
+        from mcp_tools.quality.discovery import _parse_pyproject_metadata
 
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text('[project]\nlicense = "MIT"\n')
@@ -626,23 +613,23 @@ class TestScanProjectDirsSrcLayout:
     """Cover _scan_project_dirs branch: src/ layout with sub-packages."""
 
     def test_src_layout_discovered(self, tmp_path):
-        from mcp_tools.quality_helpers import _scan_project_dirs
+        from mcp_tools.quality.discovery import _scan_project_dirs
 
         # Create src/mypkg/__init__.py
         pkg = tmp_path / "src" / "mypkg"
         pkg.mkdir(parents=True)
         (pkg / "__init__.py").touch()
 
-        source_dirs, test_dirs, doc_dirs = _scan_project_dirs(tmp_path, [])
+        source_dirs, test_dirs, doc_dirs, _trunc = _scan_project_dirs(tmp_path, [])
         assert "src/mypkg" in source_dirs
 
     def test_src_subdir_without_init_skipped(self, tmp_path):
-        from mcp_tools.quality_helpers import _scan_project_dirs
+        from mcp_tools.quality.discovery import _scan_project_dirs
 
         # Create src/data/ (no __init__.py)
         (tmp_path / "src" / "data").mkdir(parents=True)
 
-        source_dirs, _, _ = _scan_project_dirs(tmp_path, [])
+        source_dirs, _, _, _trunc = _scan_project_dirs(tmp_path, [])
         assert source_dirs == []
 
 

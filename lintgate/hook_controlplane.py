@@ -387,7 +387,11 @@ def run_constraint_proposer(session: Any, mesh_result: Any, cp_config: Any) -> l
 # ── Run detail persistence ───────────────────────────────────────────
 
 
-def save_run_details(mesh_result: Any, finding_index: dict) -> None:
+def save_run_details(
+    mesh_result: Any,
+    finding_index: dict,
+    compliance_outcome: str | None = None,
+) -> None:
     """Persist full run details for controlplane_get_details drill-down."""
     if not finding_index:
         return
@@ -395,6 +399,7 @@ def save_run_details(mesh_result: Any, finding_index: dict) -> None:
         from lintgate.state import save_controlplane_run
 
         details: dict = {
+            "compliance_outcome": compliance_outcome,
             "coherence": {
                 "state": mesh_result.coherence.state,
                 "summary": mesh_result.coherence.summary,
@@ -439,18 +444,29 @@ def save_run_details(mesh_result: Any, finding_index: dict) -> None:
 
 def extract_finding_indexes(
     session: Any,
-) -> tuple[dict | None, dict | None, int]:
-    """Extract previous and baseline finding indexes from session snapshots."""
+) -> tuple[dict | None, dict | None, int, str | None, dict | None]:
+    """Extract previous and baseline finding indexes, and last disposition/nudge."""
     previous_finding_index: dict | None = None
     baseline_finding_index: dict | None = None
-    snapshot_count = 0
+    snapshot_count: int = 0
+    last_disposition: str | None = None
+    last_nudge: dict | None = None
     if session is not None:
         with contextlib.suppress(Exception):
             if session.snapshots:
                 snapshot_count = len(session.snapshots)
-                previous_finding_index = session.snapshots[-1].finding_index
+                last_snap = session.snapshots[-1]
+                previous_finding_index = last_snap.finding_index
+                last_disposition = last_snap.disposition
+                last_nudge = last_snap.last_nudge
                 baseline_finding_index = session.snapshots[0].finding_index
-    return previous_finding_index, baseline_finding_index, snapshot_count
+    return (
+        previous_finding_index,
+        baseline_finding_index,
+        snapshot_count,
+        last_disposition,
+        last_nudge,
+    )
 
 
 # ── Post-process session ─────────────────────────────────────────────
@@ -465,6 +481,9 @@ def post_process_session(
     tool_name: str,
     tool_input: Any,
     tool_output: str,
+    disposition: str | None = None,
+    last_nudge: dict | None = None,
+    compliance_outcome: str | None = None,
 ) -> list[dict]:
     """Post-process session after mesh run: record, apply deltas, propose constraints."""
     proposed_constraints: list[dict] = []
@@ -474,7 +493,14 @@ def post_process_session(
     with contextlib.suppress(Exception):
         from lintgate.controlplane.session_memory import record_mesh_run
 
-        snapshot = record_mesh_run(session, mesh_result, finding_index=finding_index)
+        snapshot = record_mesh_run(
+            session,
+            mesh_result,
+            finding_index=finding_index,
+            disposition=disposition,
+            last_nudge=last_nudge,
+            compliance_outcome=compliance_outcome,
+        )
 
         for cr in mesh_result.channel_results:
             if cr.channel == "behavior":

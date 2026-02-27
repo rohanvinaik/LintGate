@@ -73,16 +73,14 @@ def setup_github_quality(
         (".gitleaks.toml", _generate_gitleaks_toml(), "gitleaks_toml"),
         (
             ".github/workflows/sonarcloud.yml",
-            _generate_sonar_workflow(layout),
+            _generate_sonar_workflow(),
             "sonarcloud_workflow",
         ),
         (".github/workflows/qlty.yml", _generate_qlty_workflow(), "qlty_workflow"),
-        (".github/workflows/tests.yml", _generate_tests_workflow(layout), "tests_workflow"),
+        (".github/workflows/tests.yml", _generate_tests_workflow(), "tests_workflow"),
         (
             ".github/workflows/security-lite.yml",
-            _generate_security_workflow(
-                layout, is_tool_runner=is_tool_runner, project_root=project_root
-            ),
+            _generate_security_workflow(),
             "security_workflow",
         ),
         (".github/workflows/scorecard.yml", _generate_scorecard_workflow(), "scorecard_workflow"),
@@ -118,12 +116,12 @@ def setup_github_quality(
     results["pre_push_hook"] = _write_pre_push_hook(project_root, write)
 
     gi_delta = _compute_gitignore_additions(project_root)
-    if write and gi_delta["additions"]:
+    if write and gi_delta.get("missing"):
         gi_path = os.path.join(project_root, ".gitignore")
         with open(gi_path, "a") as f:
-            f.write("\n" + "\n".join(gi_delta["additions"]) + "\n")
+            f.write("\n" + "\n".join(gi_delta["missing"]) + "\n")
         gi_delta["status"] = "augmented"
-    elif write and not gi_delta["additions"]:
+    elif write and not gi_delta.get("missing"):
         gi_delta["status"] = "no_changes_needed"
     results["gitignore"] = gi_delta
 

@@ -434,26 +434,32 @@ class TestSaveRunDetails:
 
 class TestExtractFindingIndexes:
     def test_none_session(self):
-        prev, base, count = extract_finding_indexes(None)
+        prev, base, count, last_disp, last_nudge = extract_finding_indexes(None)
         assert prev is None and base is None and count == 0
+        assert last_disp is None and last_nudge is None
 
     def test_empty_snapshots(self):
         s = MagicMock()
         s.snapshots = []
-        prev, base, count = extract_finding_indexes(s)
+        prev, base, count, last_disp, last_nudge = extract_finding_indexes(s)
         assert count == 0
+        assert last_disp is None and last_nudge is None
 
     def test_with_snapshots(self):
         snap1 = MagicMock()
         snap1.finding_index = {"baseline": True}
         snap2 = MagicMock()
         snap2.finding_index = {"latest": True}
+        snap2.disposition = "cautious"
+        snap2.last_nudge = {"type": "slow_down"}
         s = MagicMock()
         s.snapshots = [snap1, snap2]
-        prev, base, count = extract_finding_indexes(s)
+        prev, base, count, last_disp, last_nudge = extract_finding_indexes(s)
         assert prev == {"latest": True}
         assert base == {"baseline": True}
         assert count == 2
+        assert last_disp == "cautious"
+        assert last_nudge == {"type": "slow_down"}
 
 
 class TestPostProcessSession:

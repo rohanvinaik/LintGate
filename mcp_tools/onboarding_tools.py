@@ -13,6 +13,15 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from mcp_tools.quality.discovery import (
+    _parse_pyproject_metadata as _quality_parse_pyproject_metadata,
+)
+from mcp_tools.quality.discovery import (
+    _scan_project_dirs as _quality_scan_project_dirs,
+)
+from mcp_tools.quality.rules_gen import (
+    _normalize_qlty_exclude_pattern as _quality_normalize_qlty_exclude_pattern,
+)
 from mcp_tools.quality_helpers import (
     _BADGE_BLOCK_END,
     _BADGE_BLOCK_START,
@@ -36,16 +45,7 @@ from mcp_tools.quality_helpers import (
     _inject_badges_into_readme as _quality_inject_badges_into_readme,
 )
 from mcp_tools.quality_helpers import (
-    _normalize_qlty_exclude_pattern as _quality_normalize_qlty_exclude_pattern,
-)
-from mcp_tools.quality_helpers import (
-    _parse_pyproject_metadata as _quality_parse_pyproject_metadata,
-)
-from mcp_tools.quality_helpers import (
     _run_sonar_scanner as _quality_run_sonar_scanner,
-)
-from mcp_tools.quality_helpers import (
-    _scan_project_dirs as _quality_scan_project_dirs,
 )
 from mcp_tools.quality_helpers import (
     _write_pre_push_hook as _quality_write_pre_push_hook,
@@ -110,7 +110,9 @@ def _parse_pyproject_metadata(root: Path) -> tuple[str, str | None, list[str], b
     return _quality_parse_pyproject_metadata(root)
 
 
-def _scan_project_dirs(root: Path, test_dirs: list[str]) -> tuple[list[str], list[str], list[str]]:
+def _scan_project_dirs(
+    root: Path, test_dirs: list[str]
+) -> tuple[list[str], list[str], list[str], str | None]:
     return _quality_scan_project_dirs(root, test_dirs)
 
 
@@ -606,15 +608,44 @@ def _handle_config_and_venv(
 def _handle_tool_installs(
     project_root: str, auto_install: bool, startup_actions: list
 ) -> list[dict[str, Any]]:
-    tool_gaps = _collect_external_tool_gaps(project_root)
-    if auto_install and tool_gaps["missing_tools"]:
-        attempts = _auto_install_optional_tools(project_root, tool_gaps["missing_tools"])
-        if attempts:
-            startup_actions.append(
-                {"action": "optional_tool_install_attempted", "count": len(attempts)}
-            )
-        return attempts
-    return []
+    # Use the toolchain manifest system (gate_contract.yaml) as primary source.
+    # Falls back to legacy _collect_external_tool_gaps if manifest unavailable.
+    try:
+        from lintgate.tool_manifest import (
+            check_tool_health,
+            install_missing_tools,
+            load_toolchain_manifest,
+            reconcile_with_registry,
+        )
+
+        manifest = load_toolchain_manifest(project_root)
+        statuses = check_tool_health(project_root, manifest)
+
+        # Report drift warnings (self-managing loop)
+        drift = reconcile_with_registry(project_root)
+        if drift:
+            startup_actions.append({"action": "toolchain_drift_detected", "warnings": drift})
+
+        if auto_install:
+            results = install_missing_tools(project_root, statuses, auto_only=True)
+            if results:
+                startup_actions.append(
+                    {"action": "toolchain_install_attempted", "count": len(results)}
+                )
+            return results
+        return []
+
+    except ImportError:
+        # Fallback: legacy path (no tool_manifest module available)
+        tool_gaps = _collect_external_tool_gaps(project_root)
+        if auto_install and tool_gaps["missing_tools"]:
+            attempts = _auto_install_optional_tools(project_root, tool_gaps["missing_tools"])
+            if attempts:
+                startup_actions.append(
+                    {"action": "optional_tool_install_attempted", "count": len(attempts)}
+                )
+            return attempts
+        return []
 
 
 def _handle_quality_bootstrap(
@@ -650,6 +681,7 @@ def register(mcp, helpers):
         auto_setup: bool = True,
         auto_install_optional_linters: bool = True,
         reset: bool = False,
+        intent: str | None = None,
     ) -> str:
         """Start here. Get oriented with LintGate on any project."""
         project_root = helpers["_validate_project_root"](path)
@@ -726,6 +758,10 @@ def register(mcp, helpers):
             )
             return actions
 
+        from lintgate.orchestration.workflows import get_workflow_for_intent
+
+        custom_workflow = get_workflow_for_intent(intent)
+
         output: dict[str, Any] = {
             "project": project_root,
             "config_status": config_status,
@@ -737,13 +773,16 @@ def register(mcp, helpers):
                 "controlplane_get_details": "Drill into health check findings",
                 "bootstrap_context_files": "Generate project CLAUDE.md",
             },
-            "first_session_workflow": [
+            "first_session_workflow": custom_workflow
+            if custom_workflow
+            else [
                 "1. getting_started(path) applies startup setup automatically",
                 "2. Run controlplane_run(path) for a full project health check",
                 "3. Run controlplane_get_details(run_id) to review specific findings",
                 "4. Run lint_fix(path, dry_run=False) to auto-fix safe issues",
                 "5. Run bootstrap_context_files(path, write=true) to generate context",
             ],
+            "intent": intent,
             "all_tools_count": 49,
             "startup_setup": {
                 "auto_setup_requested": auto_setup,
@@ -786,6 +825,70 @@ def register(mcp, helpers):
         if json_dumps:
             return json_dumps(output, output_mode="compact")
         return json.dumps(output, indent=2)
+
+    @mcp.tool()
+    def tool_applicability_guide() -> str:
+        """Returns the definitive guide on when and how to use each LintGate MCP tool.
+
+        This covers cadence (how often to run), triggers (what events should prompt a run),
+        and anti-patterns (when NOT to use the tool).
+        """
+        guide = {
+            "controlplane_run": {
+                "purpose": "Comprehensive cross-dimensional project health check.",
+                "cadence": "Every 3-5 tool uses, or when starting a new session/feature.",
+                "triggers": [
+                    "Session start",
+                    "Major refactor complete",
+                    "Before pushing code",
+                    "Ship gate parity mismatch",
+                ],
+                "anti_patterns": [
+                    "Running in the middle of a tight file edit cycle",
+                    "Running multiple times without changing code",
+                ],
+            },
+            "lint_files": {
+                "purpose": "Targeted static analysis on specific files.",
+                "cadence": "After every edit or small batch of edits.",
+                "triggers": ["File modifications", "Pre-commit check on changed files"],
+                "anti_patterns": ["Using lint_project when only a few files changed"],
+            },
+            "lint_project": {
+                "purpose": "Full repository static analysis.",
+                "cadence": "Rarely, mostly via controlplane_run.",
+                "triggers": ["CI/CD pipelines", "Global configuration changes"],
+                "anti_patterns": ["Iterative debugging (use lint_files instead)"],
+            },
+            "lint_fix": {
+                "purpose": "Auto-apply safe linting and formatting fixes.",
+                "cadence": "When tools report auto-fixable errors.",
+                "triggers": ["Ruff or Black complain about formatting", "Imports need sorting"],
+                "anti_patterns": [
+                    "Running blindly without checking git status if working outside of a safe environment"
+                ],
+            },
+            "scaffold_config": {
+                "purpose": "Generate or repair lintgate.yaml for the project.",
+                "cadence": "Once per project setup.",
+                "triggers": ["No config exists", "Need to override specific behaviors"],
+                "anti_patterns": [
+                    "Running continuously",
+                    "Overwriting manually tuned configs without caution",
+                ],
+            },
+            "getting_started": {
+                "purpose": "Onboarding entry point for LintGate.",
+                "cadence": "Onboarding only.",
+                "triggers": ["First time using LintGate in a repository"],
+                "anti_patterns": ["Running during regular development workflows"],
+            },
+        }
+
+        json_dumps = helpers.get("_json_dumps")
+        if json_dumps:
+            return json_dumps(guide)
+        return json.dumps(guide, indent=2)
 
     @mcp.tool()
     def scaffold_config(path: str, write: bool = False) -> str:
@@ -887,4 +990,5 @@ def register(mcp, helpers):
         "getting_started": getting_started,
         "scaffold_config": scaffold_config,
         "setup_github_quality": setup_github_quality,
+        "tool_applicability_guide": tool_applicability_guide,
     }

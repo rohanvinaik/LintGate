@@ -40,7 +40,7 @@ def _register_tools(tmp_path: Path) -> dict:
 class TestRegister:
     def test_register_returns_all_tool_names(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
-        assert set(tools.keys()) == {"dep_health_check", "dep_sync"}
+        assert set(tools.keys()) == {"dep_health_check", "dep_sync", "toolchain_health_check"}
 
     def test_register_values_are_callable(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)

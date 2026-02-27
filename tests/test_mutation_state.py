@@ -1,4 +1,3 @@
-
 from lintgate.mutation.state import (
     ConfidenceLevel,
     CoverageDepth,
@@ -31,7 +30,7 @@ def test_function_mutation_state_serialization():
         killed_by_crash=1,
     )
 
-    assert state.survival_rate == 1/6
+    assert state.survival_rate == 1 / 6
     assert state.killed_by_assertion == 4
 
     d = state.to_dict()
