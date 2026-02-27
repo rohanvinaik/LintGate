@@ -55,6 +55,7 @@ class MutationChannel:
         if not relevant_files:
             # Fallback to discover all
             from lintgate.channels.performance_channel import _discover_python_files
+
             relevant_files = _discover_python_files(event.project_root)
 
         # 2. Heuristic: queue sampling if state is stale or missing for changed files
@@ -65,10 +66,11 @@ class MutationChannel:
                 any_stale = True
                 break
 
-        if any_stale and len(relevant_files) <= 5: # Limit auto-sampling to small PRs
-             from lintgate.mutation.automation import global_orchestrator
-             for f in relevant_files:
-                 global_orchestrator.enqueue(f)
+        if any_stale and len(relevant_files) <= 5:  # Limit auto-sampling to small PRs
+            from lintgate.mutation.automation import global_orchestrator
+
+            for f in relevant_files:
+                global_orchestrator.enqueue(f)
 
         # 3. Analyze state and build findings
         findings: list[LintIssue] = []
@@ -87,10 +89,13 @@ class MutationChannel:
         metrics = {
             "functions_profiled": len(all_states),
             "vulnerable_functions": sum(1 for s in all_states.values() if s.survival_rate > 0.3),
-            "avg_survival": sum(s.survival_rate for s in all_states.values()) / max(len(all_states), 1),
+            "avg_survival": sum(s.survival_rate for s in all_states.values())
+            / max(len(all_states), 1),
         }
 
-        status: Literal["pass", "fail"] = "fail" if any(f.severity == "blocking" for f in findings) else "pass"
+        status: Literal["pass", "fail"] = (
+            "fail" if any(f.severity == "blocking" for f in findings) else "pass"
+        )
         severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = "informational"
@@ -108,7 +113,9 @@ class MutationChannel:
             duration_ms=elapsed_ms,
         )
 
-    def _analyze_state(self, state: FunctionMutationState, all_states: dict, policy: CalibratedPolicy) -> list[LintIssue]:
+    def _analyze_state(
+        self, state: FunctionMutationState, all_states: dict, policy: CalibratedPolicy
+    ) -> list[LintIssue]:
         """Generate findings for a specific function state."""
         issues = []
         warning_thresh, blocking_thresh = policy.get_thresholds(state, all_states)
@@ -146,8 +153,8 @@ class MutationChannel:
                         "killed_by_crash": state.killed_by_crash,
                         "calibrated_thresholds": {
                             "warning": warning_thresh,
-                            "blocking": blocking_thresh
-                        }
+                            "blocking": blocking_thresh,
+                        },
                     },
                     suggestions=[
                         "Add assertions that verify the return value or state change more strictly.",
@@ -158,7 +165,7 @@ class MutationChannel:
 
         # MUT003: Insufficient coverage depth
         if state.depth == CoverageDepth.SAMPLED and state.survival_rate > 0.2:
-             issues.append(
+            issues.append(
                 LintIssue(
                     linter=self.name,
                     kind="MUT003",
@@ -186,7 +193,7 @@ class MutationChannel:
                     suggestions=[
                         "Use the `mutation_decompose` tool to identify split candidates.",
                         "Use the `mutation_prescribe` tool for specific refactoring intents.",
-                        "Use the `mutation_run_full` tool to get a precise breakdown of surviving mutants."
+                        "Use the `mutation_run_full` tool to get a precise breakdown of surviving mutants.",
                     ],
                 )
             )

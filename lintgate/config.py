@@ -43,6 +43,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     from .controlplane.types import (
         ChannelConfig,
         ControlPlaneConfig,
+        DispositionEnforcementConfig,
         InquiryConfig,
         QualityGateConfig,
         TokenPolicy,
@@ -137,6 +138,15 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
             block_push=bool(qg_raw.get("block_push", True)),
             advise_commit=bool(qg_raw.get("advise_commit", True)),
             check_secrets=bool(qg_raw.get("check_secrets", True)),
+        )
+
+    # Parse disposition enforcement config
+    disp_raw = cp_raw.get("disposition_enforcement", {})
+    if isinstance(disp_raw, dict):
+        cp_config.disposition_enforcement = DispositionEnforcementConfig(
+            enabled=bool(disp_raw.get("enabled", True)),
+            max_ignores_before_blocking=int(disp_raw.get("max_ignores_before_blocking", 3)),
+            enforce_on_channels=disp_raw.get("enforce_on_channels", ["behavior", "lint"]),
         )
 
     # Parse per-channel configs

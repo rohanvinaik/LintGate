@@ -22,6 +22,19 @@ fi
 
 echo "[lintgate] running local quality checks before push"
 
+# Toolchain verification: check required tools before running gates.
+# Reads from gate_contract.yaml manifest — self-managing source of truth.
+if command -v python >/dev/null 2>&1; then
+  MISSING_TOOLS="$(python -m lintgate.tool_manifest --check-required --project-root "$REPO_ROOT" 2>/dev/null || true)"
+  if [ -n "$MISSING_TOOLS" ]; then
+    echo "[lintgate] WARNING: missing required tools from toolchain manifest:"
+    echo "$MISSING_TOOLS"
+    echo "[lintgate] Run: python -m lintgate.tool_manifest --install --project-root $REPO_ROOT"
+    echo "[lintgate] Or:  toolchain_health_check(path='$REPO_ROOT', install_missing=True)"
+    # Non-blocking warning — tools may still work via alternate paths
+  fi
+fi
+
 # Quality infrastructure gate (hard fail)
 echo "[lintgate] checking quality infrastructure completeness"
 if LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1 python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
@@ -65,7 +78,32 @@ if [ -d tests ] || [ -d test ]; then
   python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
     --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
     --tb=short -q
+
+  BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+
+  # Base selection: use merge-base for ship branches (avoids HEAD~1 scope inflation
+  # on repair/revert commits), HEAD~1 for normal branches.
+  SHIP_BASE_STRATEGY="head~1"
+  if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
+    SHIP_BASE_STRATEGY="$(python -c "
+import yaml
+try:
+    c = yaml.safe_load(open('$REPO_ROOT/gate_contract.yaml'))
+    print(c.get('symbol_gate', {}).get('ship_base_strategy', 'head~1'))
+except Exception:
+    print('head~1')
+" 2>/dev/null || echo 'head~1')"
+  fi
+
   BASE='HEAD~1'
+  if [[ "$BRANCH_NAME" == codex/ship-* ]] && [ "$SHIP_BASE_STRATEGY" = "merge-base" ]; then
+    MERGE_BASE="$(git merge-base origin/main HEAD 2>/dev/null || echo '')"
+    if [ -n "$MERGE_BASE" ]; then
+      BASE="$MERGE_BASE"
+      echo "[lintgate] using merge-base for ship branch (strategy: $SHIP_BASE_STRATEGY)"
+    fi
+  fi
+
   if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
     BASE=''
   fi
@@ -86,9 +124,24 @@ if [ -d tests ] || [ -d test ]; then
   set -e
 
   if [ "$SYMBOL_GATE_STATUS" -ne 0 ]; then
-    BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
-    if [ "$BRANCH_NAME" = "main" ] || [[ "$BRANCH_NAME" == codex/ship-main-* ]]; then
-      echo "[lintgate] symbol gate advisory for branch '$BRANCH_NAME' (non-blocking)"
+    # Read advisory policy from gate_contract.yaml (single source of truth).
+    # Falls back to hardcoded defaults if contract is missing or unreadable.
+    ADVISORY=0
+    if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
+      ADVISORY="$(python -c "
+import yaml, fnmatch
+try:
+    c = yaml.safe_load(open('$REPO_ROOT/gate_contract.yaml'))
+    patterns = c.get('symbol_gate', {}).get('advisory_policy', {}).get('advisory_branches', ['main'])
+    branch = '$BRANCH_NAME'
+    print(1 if any(fnmatch.fnmatch(branch, p) for p in patterns) else 0)
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)"
+    fi
+
+    if [ "$ADVISORY" = "1" ]; then
+      echo "[lintgate] symbol gate advisory for branch '$BRANCH_NAME' (non-blocking per gate_contract.yaml)"
     else
       exit "$SYMBOL_GATE_STATUS"
     fi

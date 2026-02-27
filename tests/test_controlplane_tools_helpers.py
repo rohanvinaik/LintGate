@@ -81,29 +81,24 @@ class TestSelectChannels:
 
 class TestCollectFilesForEvent:
     def test_prefers_git_changed_files(self):
-        helpers = _stub_helpers()
-        with (
-            mock.patch(
-                "mcp_tools.controlplane_tools.collect_changed_python_files",
-                create=True,
-            ),
-            mock.patch(
-                "lintgate.symbol_gate_runner.collect_changed_python_files",
-                return_value=["changed.py"],
-            ),
-        ):
-            result = _collect_files_for_event("/tmp", helpers)
-        assert result == ["changed.py"]
+        helpers = _stub_helpers(
+            _collect_python_files=lambda _r: ["/tmp/changed.py", "/tmp/other.py"]
+        )
+        fake_proc = mock.MagicMock()
+        fake_proc.stdout = "changed.py\n"
+        with mock.patch("subprocess.run", return_value=fake_proc):
+            result = _collect_files_for_event("/tmp", None, None, helpers)
+        assert result == ["/tmp/changed.py"]
 
     def test_falls_back_to_all_files(self):
         helpers = _stub_helpers(_collect_python_files=lambda _r: ["all1.py", "all2.py"])
         # If the import fails, suppress kicks in and fallback triggers
-        result = _collect_files_for_event("/tmp", helpers)
+        result = _collect_files_for_event("/tmp", None, None, helpers)
         assert result == ["all1.py", "all2.py"]
 
     def test_caps_at_50(self):
         helpers = _stub_helpers(_collect_python_files=lambda _r: [f"f{i}.py" for i in range(100)])
-        result = _collect_files_for_event("/tmp", helpers)
+        result = _collect_files_for_event("/tmp", None, None, helpers)
         assert len(result) == 50
 
 
@@ -506,6 +501,8 @@ class TestImplControlplaneRun:
             mock.patch("mcp_tools.controlplane_tools._persist_runtime_state"),
             mock.patch("mcp_tools.controlplane_tools._save_run_details_for_drilldown"),
         ):
-            raw = _impl_controlplane_run("/tmp", "lint,bogus", "normal", _stub_helpers())
+            raw = _impl_controlplane_run(
+                "/tmp", "lint,bogus", "normal", None, None, _stub_helpers()
+            )
         parsed = json.loads(raw)
         assert parsed["unknown_channels"] == ["bogus"]

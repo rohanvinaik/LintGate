@@ -108,6 +108,8 @@ def format_mesh_report(
     previous_finding_index: dict[str, dict[str, Any]] | None = None,
     baseline_finding_index: dict[str, dict[str, Any]] | None = None,
     snapshot_count: int = 0,
+    cycle_alerts: list[str] | None = None,
+    disposition: str | None = None,
 ) -> dict[str, Any]:
     """Format MeshResult as JSON for Claude Code systemMessage.
 
@@ -118,12 +120,30 @@ def format_mesh_report(
         previous_finding_index: Finding index from previous run (for delta).
         baseline_finding_index: Finding index from first run in session (debt baseline).
         snapshot_count: Number of snapshots in session (for resurfacing cadence).
+        cycle_alerts: Optional list of cycle alerts.
+        disposition: Optional behavioral disposition nudge.
 
     Returns:
         JSON dict with systemMessage key. Empty dict {} if no issues.
     """
     if config is None:
         config = ControlPlaneConfig()
+
+    # Budget Mode: Hook Verbosity
+    if config.hook_verbosity == "silent":
+        return {}
+    if config.hook_verbosity == "pulse":
+        # Only pulse every N events (floor 1)
+        interval = max(1, config.hook_pulse_interval)
+        if snapshot_count > 0 and snapshot_count % interval != 0:
+            # Minimal heartbeat instead of full report
+            return {
+                "systemMessage": f"CONTROLPLANE PULSE: Session active. Coherence: {mesh_result.coherence.state}.",
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": f"Pulse suppression active (interval={interval}).",
+                },
+            }
 
     # Collect findings across all channels
     all_findings = []
@@ -213,6 +233,14 @@ def format_mesh_report(
         # Budget too small even for header — emit minimal header
         parts.append(f'<controlplane-report coherence="{mesh_result.coherence.state}">')
         token_estimate += 10
+
+    # Section 1.5: Disposition Nudge (#155)
+    if disposition:
+        section = f"DISPOSITION: {disposition}"
+        section_tokens = _estimate_tokens(section)
+        if token_estimate + section_tokens <= max_tokens:
+            parts.append(section)
+            token_estimate += section_tokens
 
     # Delta summary line (when delta is available)
     if delta is not None:
@@ -337,6 +365,14 @@ def format_mesh_report(
                 parts.append(section)
                 token_estimate += section_tokens
 
+    # Section 10: Cycle alerts
+    if cycle_alerts:
+        section = "CYCLE ALERTS (Repetitive behavior detected):\n  " + "\n  ".join(cycle_alerts)
+        section_tokens = _estimate_tokens(section)
+        if token_estimate + section_tokens <= max_tokens:
+            parts.append(section)
+            token_estimate += section_tokens
+
     # Close tag
     parts.append("</controlplane-report>")
 
@@ -378,6 +414,7 @@ def format_mesh_report(
         delta=delta,
         baseline_delta=baseline_delta,
         resurfaced_count=resurfaced_count,
+        cycle_alerts=cycle_alerts,
     )
     output["hookSpecificOutput"] = {
         "hookEventName": "PostToolUse",

@@ -14,6 +14,7 @@ from typing import Any
 
 class MutationOperatorCategory(str, Enum):
     """Broad categories of mutation operators."""
+
     ARITHMETIC = "arithmetic"  # +, -, *, /, //, %
     CONDITIONAL = "conditional"  # if, and, or, ==, <, >
     STRING = "string"  # "foo" -> "XXfooXX"
@@ -25,6 +26,7 @@ class MutationOperatorCategory(str, Enum):
 @dataclass(frozen=True)
 class RuntimeBudget:
     """Hard constraints for mutation execution."""
+
     max_inline_ms_per_function: int = 5000  # 5 seconds per function max for inline profiling
     max_mutants_per_function_inline: int = 15  # Sample limit
     max_mutants_per_function_background: int = 100  # Deep sweep limit
@@ -35,6 +37,7 @@ class RuntimeBudget:
 @dataclass
 class MutationTelemetry:
     """Tracks metrics and budget adherence across a mutation run."""
+
     run_id: str
     start_time: float = field(default_factory=time.time)
     end_time: float = 0.0
@@ -69,7 +72,7 @@ class CalibratedPolicy:
 
     def get_thresholds(self, state: Any, all_states: dict[str, Any]) -> tuple[float, float]:
         """Returns (warning_threshold, blocking_threshold)."""
-        valid_states = [s for s in all_states.values() if getattr(s, 'total', 0) > 0]
+        valid_states = [s for s in all_states.values() if getattr(s, "total", 0) > 0]
         if len(valid_states) > 5:
             avg_survival = sum(s.survival_rate for s in valid_states) / len(valid_states)
             # Block aggressively if way worse than average, warn if worse than average
@@ -84,9 +87,12 @@ class CalibratedPolicy:
     def get_confidence(self, state: Any) -> float:
         """Adjust confidence based on depth and equivalent mutant uncertainty."""
         from lintgate.mutation.state import CoverageDepth
-        base_confidence = 0.8 if getattr(state, 'depth', CoverageDepth.NONE) == CoverageDepth.PROFILED else 0.5
 
-        rate = getattr(state, 'survival_rate', 0.0)
+        base_confidence = (
+            0.8 if getattr(state, "depth", CoverageDepth.NONE) == CoverageDepth.PROFILED else 0.5
+        )
+
+        rate = getattr(state, "survival_rate", 0.0)
         if rate > 0.8:
             base_confidence = max(0.1, base_confidence - self.equivalent_mutant_penalty)
 
@@ -127,13 +133,15 @@ class OperatorRelevanceMatrix:
 
         # If very simple, try everything (baseline testing)
         if branch_count == 0 and not has_strings and not has_numbers:
-            relevant.update([
-                MutationOperatorCategory.ARITHMETIC,
-                MutationOperatorCategory.CONDITIONAL,
-                MutationOperatorCategory.KEYWORD,
-                MutationOperatorCategory.NUMBER,
-                MutationOperatorCategory.STRING,
-            ])
+            relevant.update(
+                [
+                    MutationOperatorCategory.ARITHMETIC,
+                    MutationOperatorCategory.CONDITIONAL,
+                    MutationOperatorCategory.KEYWORD,
+                    MutationOperatorCategory.NUMBER,
+                    MutationOperatorCategory.STRING,
+                ]
+            )
 
         if covered_categories:
             relevant = relevant - covered_categories

@@ -41,7 +41,9 @@ def main():
                     f.write("### 🦠 Top Mutation Survivor Files\n\n")
                     for file_path, count in counts.most_common(10):
                         f.write(f"- **`{file_path}`**: {count} surviving mutants\n")
-                    f.write("\n_Run `lintgate mcp` or check artifact `mutmut-survivors.json` for details._\n")
+                    f.write(
+                        "\n_Run `lintgate mcp` or check artifact `mutmut-survivors.json` for details._\n"
+                    )
             except OSError:
                 pass  # Local runs outside actions might not have writable paths
 

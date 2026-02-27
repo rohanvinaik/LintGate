@@ -345,6 +345,76 @@ def _run_controlplane(
         finding_index = build_finding_index(mesh_result)
 
     idx = extract_finding_indexes(session)
+    (
+        previous_finding_index,
+        baseline_finding_index,
+        snapshot_count,
+        last_disposition,
+        last_nudge,
+    ) = idx
+
+    # Compliance Tracking (#164)
+    compliance_outcome = None
+    if session is not None:
+        try:
+            from lintgate.orchestration.compliance import ComplianceManager
+
+            cm = ComplianceManager(session.behavior_compass)
+            compliance_outcome = cm.evaluate_and_record(
+                event.to_dict(),
+                last_disposition=last_disposition,
+                last_nudge=last_nudge,
+            )
+        except Exception:
+            pass
+
+    # Unified Behavioral Delivery Bus (#174)
+    from lintgate.orchestration.delivery import (
+        DeliveryBus,
+        cycle_result_to_item,
+        disposition_nudge_to_item,
+        lint_finding_to_item,
+    )
+
+    bus = DeliveryBus(config=cp_config, session=session)
+
+    # 1. Collect Disposition Nudges (#155)
+    disposition: str | None = None
+    try:
+        from dataclasses import asdict
+
+        from lintgate.orchestration.disposition_enforcer import DispositionEnforcer
+
+        enforcer = DispositionEnforcer(cp_config, session=session)
+        disposition, rule_id = enforcer.evaluate(asdict(event))
+        if disposition and rule_id:
+            bus.collect(disposition_nudge_to_item(disposition, rule_id))
+    except Exception:
+        pass
+
+    # 2. Collect Cycle Interventions (#147)
+    if session and hasattr(session, "behavior_compass") and isinstance(session.behavior_compass, dict):
+        cycle_results = session.behavior_compass.get("cycle_detections")
+        if isinstance(cycle_results, list):
+            for cr_data in cycle_results:
+                from lintgate.orchestration.cycle_detector import CycleDetectionResult
+
+                try:
+                    res = (
+                        cr_data
+                        if isinstance(cr_data, CycleDetectionResult)
+                        else CycleDetectionResult(**cr_data)
+                    )
+                    bus.collect(cycle_result_to_item(res))
+                except Exception:
+                    pass
+
+    # 3. Collect Behavior Findings from Mesh (#159)
+    behavior_findings = next(
+        (cr.findings for cr in mesh_result.channel_results if cr.channel == "behavior"), []
+    )
+    for f in behavior_findings:
+        bus.collect(lint_finding_to_item(f))
 
     proposed_constraints = post_process_session(
         session,
@@ -355,18 +425,32 @@ def _run_controlplane(
         tool_name,
         tool_input,
         tool_output,
+        disposition=disposition,
+        last_nudge=last_nudge,
+        compliance_outcome=compliance_outcome,
     )
 
-    save_run_details(mesh_result, finding_index)
+    save_run_details(mesh_result, finding_index, compliance_outcome=compliance_outcome)
 
     report = format_mesh_report(
         mesh_result,
         cp_config,
         proposed_constraints=proposed_constraints,
-        previous_finding_index=idx[0],
-        baseline_finding_index=idx[1],
-        snapshot_count=idx[2],
+        previous_finding_index=previous_finding_index,
+        baseline_finding_index=baseline_finding_index,
+        snapshot_count=snapshot_count,
+        disposition=disposition,
     )
+
+    # Multi-channel Delivery Bus Emission (#174)
+    try:
+        preferred = ["hook_text", "rule_file", "mcp_status"]
+        bus_report = bus.emit(preferred_channels=preferred)
+        if bus_report.get("systemMessage"):
+            # Unified advisory message overrides any previous specific advisory
+            advisory = bus_report["systemMessage"]
+    except Exception:
+        pass
 
     accumulate_session_telemetry(report, session)
     refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)

@@ -12,6 +12,7 @@ Tools:
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 
@@ -639,6 +640,23 @@ def register(mcp, helpers):
             for k, v in sorted(profile.intent_ratios.items(), key=lambda x: -x[1])
         }
 
+        # Session transfer telemetry
+        transfer_info = {}
+        from lintgate.controlplane.session_memory import load_session
+
+        session = load_session(project_root)
+        if session:
+            transfer_info = {
+                "latest_transfer_packet": session.latest_transfer_packet,
+                "packet_age_hours": round((time.time() - session.last_active) / 3600, 2)
+                if session.latest_transfer_packet
+                else None,
+                "resolutions_available": len(session.resolution_repertoire),
+                "suppressed_nudges": session.delivery_health_summary.get("skipped", 0)
+                if hasattr(session, "delivery_health_summary")
+                else 0,
+            }
+
         output: dict[str, Any] = {
             "scope": "project",
             "scope_note": "Cross-session memory for this project (not cross-project)",
@@ -647,6 +665,7 @@ def register(mcp, helpers):
             "profile_path": str(GLOBAL_PROFILE_PATH),
             "session_count": profile.session_count,
             "updated_at": profile.updated_at,
+            "transfer_telemetry": transfer_info,
             "signal_priors": profile.signal_priors,
             "intent_ratios_normalized": normalized_intents,
             "nudge_outcomes": nudge_rates,

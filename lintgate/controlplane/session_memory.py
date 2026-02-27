@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from .behavior_compass import BehaviorCompass
     from .types import MeshResult, RepairAction
 
+from lintgate.orchestration.knowledge import KnowledgeManager, SessionKnowledge
+
 SESSION_DIR = Path.home() / ".claude" / "lintgate" / "session"
 
 _MAX_SNAPSHOTS = 50  # Prevent unbounded growth within a session
@@ -87,6 +89,10 @@ class SessionSnapshot:
     )  # action_id → compact meta
     behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
     finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
+    delivery_metrics: dict[str, Any] = field(default_factory=dict)  # channel health for this run
+    disposition: str | None = None  # Behavioral nudge string from last run
+    last_nudge: dict[str, Any] | None = None  # Full nudge object for compliance analysis
+    compliance_outcome: str | None = None  # followed | ignored | overridden | uncertain
 
     # Backward-compatible property accessors for behavior fields
     @property
@@ -141,6 +147,10 @@ class SessionSnapshot:
             repair_catalog=data.get("repair_catalog", {}),
             behavior=behavior,
             finding_index=data.get("finding_index", {}),
+            delivery_metrics=data.get("delivery_metrics", {}),
+            disposition=data.get("disposition"),
+            last_nudge=data.get("last_nudge"),
+            compliance_outcome=data.get("compliance_outcome"),
         )
 
 
@@ -168,6 +178,13 @@ class SessionMemory:
     theory_profile_cache: dict[str, Any] | None = None
     # Architecture of Inquiry: pending context patches awaiting explicit apply
     pending_patches: list[dict[str, Any]] = field(default_factory=list)
+    resolution_repertoire: list[dict[str, Any]] = field(default_factory=list)
+    active_finding_history: dict[str, Any] = field(default_factory=dict)
+    action_history: list[dict[str, Any]] = field(default_factory=list)
+    edit_cycle_state: dict[str, Any] = field(default_factory=dict)
+    latest_transfer_packet: dict[str, Any] | None = None
+    delivery_health_summary: dict[str, Any] = field(default_factory=dict)
+    knowledge_meta: dict[str, Any] = field(default_factory=dict)  # Staleness, survival, etc.
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -184,6 +201,12 @@ class SessionMemory:
             "behavior_compass": self.behavior_compass,
             # theory_profile_cache is transient (per-run), not persisted
             "pending_patches": self.pending_patches,
+            "resolution_repertoire": self.resolution_repertoire,
+            "active_finding_history": self.active_finding_history,
+            "action_history": self.action_history,
+            "edit_cycle_state": self.edit_cycle_state,
+            "latest_transfer_packet": self.latest_transfer_packet,
+            "delivery_health_summary": self.delivery_health_summary,
         }
 
     @classmethod
@@ -204,6 +227,56 @@ class SessionMemory:
             # theory_profile_cache is transient — always None on load
             theory_profile_cache=None,
             pending_patches=data.get("pending_patches", []),
+            resolution_repertoire=data.get("resolution_repertoire", []),
+            active_finding_history=data.get("active_finding_history", {}),
+            action_history=data.get("action_history", []),
+            edit_cycle_state=data.get("edit_cycle_state", {}),
+            latest_transfer_packet=data.get("latest_transfer_packet"),
+            delivery_health_summary=data.get("delivery_health_summary", {}),
+            knowledge_meta=data.get("knowledge_meta", {}),
+        )
+
+    def update_knowledge(self, knowledge: SessionKnowledge) -> None:
+        """Update knowledge state from current session."""
+        knowledge.compass_state = self.behavior_compass
+        knowledge.repertoire = self.resolution_repertoire
+        # Extract facts from latest snapshots
+        if self.snapshots:
+            last = self.snapshots[-1]
+            knowledge.facts["last_coherence"] = last.coherence_state
+            knowledge.facts["last_finding_count"] = last.finding_count
+            knowledge.facts["compliance_outcome"] = last.compliance_outcome
+
+    def preload_transfer_packet(self, packet: Any) -> None:
+        """Hydrate session from a transfer packet (handoff)."""
+        from dataclasses import asdict
+
+        self.latest_transfer_packet = asdict(packet) if hasattr(packet, "to_dict") else packet
+
+        # Hydrate active finding history to maintain coherence across handoff
+        active_findings = (
+            packet.active_findings
+            if hasattr(packet, "active_findings")
+            else packet.get("active_findings", [])
+        )
+        for finding in active_findings:
+            fingerprint = finding.get("fingerprint")
+            if fingerprint:
+                self.active_finding_history[fingerprint] = {
+                    "first_seen": finding.get("first_seen", time.time()),
+                    "last_seen": time.time(),
+                    "status": "active",
+                    "severity": finding.get("severity", "warning"),
+                }
+
+        # Record the transfer event in snapshots
+        self.snapshots.append(
+            SessionSnapshot(
+                run_id=f"transfer_{uuid.uuid4().hex[:8]}",
+                timestamp=time.time(),
+                coherence_state="stable",
+                disposition="Preloaded from transfer packet",
+            )
         )
 
 
@@ -241,6 +314,12 @@ def save_session(session: SessionMemory) -> None:
     try:
         with open(session_path, "w") as f:
             json.dump(session.to_dict(), f, indent=2)
+
+        # Also save to unified Knowledge store (#175)
+        km = KnowledgeManager(session.project_root)
+        knowledge = km.load()
+        session.update_knowledge(knowledge)
+        km.save(knowledge)
     except OSError:
         pass  # Non-fatal — session memory is observability, not correctness
 
@@ -264,6 +343,31 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
             last_active=time.time(),
         )
 
+        # Check for pending transfer packet (#169)
+        transfer_path = (
+            SESSION_DIR / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
+        )
+        if transfer_path.exists():
+            try:
+                with open(transfer_path) as f:
+                    packet_data = json.load(f)
+                session.preload_transfer_packet(packet_data)
+                # Cleanup transfer packet after preload to avoid re-triggering
+                transfer_path.unlink()
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        km = KnowledgeManager(project_root)
+        knowledge = km.load()
+        session.knowledge_meta = {
+            "staleness_hrs": knowledge.knowledge_staleness_hrs,
+            "survival_ratio": knowledge.survival_ratio,
+        }
+        if knowledge.compass_state:
+            session.behavior_compass = knowledge.compass_state
+        if knowledge.repertoire:
+            session.resolution_repertoire = knowledge.repertoire
+
     return session
 
 
@@ -271,23 +375,11 @@ def record_mesh_run(
     session: SessionMemory,
     mesh_result: MeshResult,
     finding_index: dict[str, dict[str, Any]] | None = None,
+    disposition: str | None = None,
+    last_nudge: dict[str, Any] | None = None,
+    compliance_outcome: str | None = None,
 ) -> SessionSnapshot:
-    """Record a mesh execution result as a session snapshot.
-
-    Updates:
-    - snapshots: append new snapshot
-    - coherence_trajectory: append coherence state
-    - pattern_trend: update per-pattern counts
-    - repair_outcomes: register newly proposed repairs as 'pending'
-
-    Args:
-        session: Active session memory.
-        mesh_result: Result from run_mesh().
-        finding_index: Optional fingerprint→summary index for delta computation.
-
-    Returns:
-        The new SessionSnapshot (also appended to session.snapshots).
-    """
+    """Record a mesh run and append its snapshot to session memory."""
     coherence = mesh_result.coherence
     run_id = mesh_result.event.event_id if mesh_result.event else uuid.uuid4().hex[:12]
 
@@ -340,6 +432,9 @@ def record_mesh_run(
         repairs_applied=[],
         repair_catalog=repair_catalog,
         finding_index=finding_index or {},
+        disposition=disposition,
+        last_nudge=last_nudge,
+        compliance_outcome=compliance_outcome,
     )
 
     session.snapshots.append(snapshot)

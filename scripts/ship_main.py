@@ -68,6 +68,82 @@ def _require_clean_worktree(repo_root: str) -> None:
         )
 
 
+def _read_contract_config(repo_root: str) -> dict[str, Any]:
+    """Read gate_contract.yaml and return the full config dict."""
+    contract_path = Path(repo_root) / "gate_contract.yaml"
+    if not contract_path.exists():
+        return {}
+    try:
+        import yaml
+
+        content = yaml.safe_load(contract_path.read_text())
+        return content if isinstance(content, dict) else {}
+    except Exception:
+        return {}
+
+
+def _check_mergeability(
+    repo_root: str, branch: str, base_branch: str, remote: str
+) -> tuple[bool, str]:
+    """Check if branch can merge cleanly into base using git merge-tree.
+
+    Returns (mergeable, detail_message).
+    """
+    remote_base = f"{remote}/{base_branch}"
+
+    # Ensure we have the latest remote base
+    try:
+        _run(["git", "fetch", remote, base_branch], cwd=repo_root, capture=True)
+    except subprocess.CalledProcessError:
+        return True, "Could not fetch remote base; skipping mergeability check"
+
+    # Find merge base
+    try:
+        merge_base = _git_output(repo_root, "merge-base", remote_base, "HEAD")
+    except subprocess.CalledProcessError:
+        return True, "No common ancestor; skipping mergeability check"
+
+    # git merge-tree (three-way) — available in git 2.38+
+    result = subprocess.run(
+        ["git", "merge-tree", "--write-tree", "--merge-base", merge_base, "HEAD", remote_base],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    if result.returncode == 0:
+        return True, "Branch merges cleanly into base"
+
+    # Parse conflict info from stderr/stdout
+    conflicts = []
+    for line in (result.stdout + result.stderr).splitlines():
+        if "CONFLICT" in line or "conflict" in line:
+            conflicts.append(line.strip())
+
+    if conflicts:
+        detail = "Merge conflicts detected:\n" + "\n".join(f"  - {c}" for c in conflicts[:10])
+    else:
+        detail = f"Branch cannot merge cleanly (git merge-tree exit code: {result.returncode})"
+
+    return False, detail
+
+
+def _auto_sync_branch(repo_root: str, base_branch: str, remote: str) -> None:
+    """Rebase current branch onto remote base to sync with latest changes."""
+    remote_base = f"{remote}/{base_branch}"
+
+    # Check how far behind we are
+    behind = _git_output(repo_root, "rev-list", "--count", f"HEAD..{remote_base}")
+    behind_count = int(behind) if behind.isdigit() else 0
+
+    if behind_count == 0:
+        print("[ship] Branch is up to date with remote base")
+        return
+
+    print(f"[ship] Branch is {behind_count} commit(s) behind {remote_base}, rebasing...")
+    _run(["git", "rebase", remote_base], cwd=repo_root)
+
+
 def _ensure_branch(repo_root: str, base_branch: str) -> str:
     branch = _git_output(repo_root, "branch", "--show-current")
     if not branch:
@@ -266,20 +342,7 @@ def _required_checks_from_branch_protection(
 
 
 def _required_checks_from_contract(repo_root: str) -> list[str]:
-    contract_path = Path(repo_root) / "gate_contract.yaml"
-    if not contract_path.exists():
-        return []
-
-    try:
-        import yaml
-
-        content = yaml.safe_load(contract_path.read_text())
-    except Exception:
-        return []
-
-    if not isinstance(content, dict):
-        return []
-
+    content = _read_contract_config(repo_root)
     checks = content.get("required_checks", [])
     out: list[str] = []
     if isinstance(checks, list):
@@ -402,6 +465,41 @@ def _prune_merged_local_branches(repo_root: str, base_branch: str, current_branc
             subprocess.run(["git", "branch", "-d", branch], cwd=repo_root, check=False)
 
 
+def _check_compliance(repo_root: str) -> None:
+    contract = _read_contract_config(repo_root)
+    if not contract:
+        return
+
+    comp_cfg = contract.get("compliance", {})
+    min_rate = comp_cfg.get("min_rate", 0.0)
+    block = comp_cfg.get("block_on_low_compliance", False)
+
+    if min_rate <= 0:
+        return
+
+    # Dynamic import to avoid boatloads of dependencies if not needed
+    try:
+        from lintgate.controlplane.session_memory import load_session
+
+        session = load_session(repo_root)
+        if not session:
+            return
+
+        # Access compliance_rate from behavior_compass
+        bc = session.behavior_compass
+        rate = bc.get("compliance_rate", 1.0)
+
+        print(f"[ship] Agent compliance rate: {rate:.2f} (required: {min_rate:.2f})")
+        if rate < min_rate:
+            msg = f"Agent compliance rate ({rate:.2f}) is below minimum required ({min_rate:.2f})."
+            if block:
+                raise RuntimeError(msg)
+            else:
+                print(f"[ship] WARNING: {msg}")
+    except (ImportError, AttributeError):
+        pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Ship current branch to main with strict gate parity"
@@ -426,12 +524,18 @@ def main() -> int:
         action="store_true",
         help="Output machine-readable JSON (Only valid with --preflight)",
     )
+    parser.add_argument(
+        "--auto-sync",
+        action="store_true",
+        help="Rebase onto remote base branch before running gates (resolves behind-main drift)",
+    )
     args = parser.parse_args()
 
     repo_root = _git_output(os.getcwd(), "rev-parse", "--show-toplevel")
 
     if args.preflight:
-        # Preflight strictly guarantees NO SIDE EFFECTS: no auth, no branching, no pushing
+        # Preflight strictly guarantees NO SIDE EFFECTS
+        _check_compliance(repo_root)
         return _run_preflight(repo_root, args.json)
 
     if args.json and not args.preflight:
@@ -456,6 +560,21 @@ def main() -> int:
     print(f"[ship] Fetching {args.remote}/{args.base}")
     _run(["git", "fetch", args.remote, args.base], cwd=repo_root)
 
+    # Auto-sync: rebase onto remote base if behind
+    if args.auto_sync:
+        _auto_sync_branch(repo_root, args.base, args.remote)
+
+    # Mergeability check: fail fast if branch has conflicts with base
+    mergeable, merge_detail = _check_mergeability(repo_root, branch, args.base, args.remote)
+    if not mergeable:
+        raise RuntimeError(
+            f"Branch '{branch}' cannot merge cleanly into '{args.base}'.\n"
+            f"{merge_detail}\n"
+            "Resolve conflicts first, or use --auto-sync to rebase."
+        )
+    print(f"[ship] Mergeability: {merge_detail}")
+
+    _check_compliance(repo_root)
     _run_local_gate_stack(repo_root)
     _push_branch(repo_root, args.remote, branch)
 

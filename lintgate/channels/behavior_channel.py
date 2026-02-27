@@ -275,7 +275,20 @@ class BehaviorChannel:
 
         _apply_prediction_modulation(coord.findings, compass, config)
 
-        findings, next_actions, nudge_signals = coord.finalize()
+        findings, next_actions, nudge_signals, suppressed_count = coord.finalize()
+
+        # Surface Repertoire Hints (#163)
+        repertoire = event.raw_input.get("resolution_repertoire", [])
+        if repertoire:
+            for finding in findings:
+                for record in reversed(repertoire):
+                    if record.get("trigger_signature") == finding.kind:
+                        finding.proven_resolution = {
+                            "repertoire": record.get("resolution"),
+                            "confidence": 0.8,
+                        }
+                        break
+
         nudge_outcomes = _compute_nudge_outcomes(compass, nudge_signals)
 
         # Global profile intent delta: per-run, not rolling-window cumulative
@@ -287,7 +300,7 @@ class BehaviorChannel:
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 
-        return _build_channel_result(
+        res = _build_channel_result(
             findings,
             next_actions,
             compass,
@@ -297,3 +310,5 @@ class BehaviorChannel:
             intent_delta,
             elapsed_ms,
         )
+        res.metrics["suppressed_nudges"] = suppressed_count
+        return res

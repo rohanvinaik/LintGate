@@ -49,4 +49,3 @@ def test_classify_assertion_not_in_edge_case():
     kind_in, _, _, confidence_in = _classify_assert_test(node_in.test)  # type: ignore
     # In check
     assert kind_in == AssertionKind.COLLECTION_MEMBERSHIP or confidence_in == "structural"
-

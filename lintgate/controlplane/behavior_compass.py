@@ -20,6 +20,8 @@ import re
 import time
 from typing import Any
 
+from lintgate.orchestration.attribution import SignalSourceDecomposition
+
 # ── Re-exports for backward compatibility ────────────────────────────────
 # All types, constants, and command normalization functions are re-exported
 # so existing imports from this module continue to work.
@@ -101,7 +103,13 @@ def _apply_prediction_to_hypothesis(
         if pred.status == "confirmed":
             delta = cfg.get("strengthen_delta", 0.15)
             hyp.confidence = min(hyp.confidence + delta, 1.0)
-            hyp.evidence_for.append(f"prediction confirmed at event {compass.event_counter}")
+
+            # Prediction confirmation boosts coherence and outcome
+            decomp = SignalSourceDecomposition(
+                signal_name=hyp.id, outcome_score=0.6, coherence_score=0.4
+            )
+            hyp.trust_score = min(1.0, hyp.trust_score + decomp.total_confidence * 0.1)
+            hyp.evidence_for.append(f"prediction confirmed: {decomp.to_summary()}")
         elif pred.status == "falsified":
             delta = cfg.get("weaken_delta", 0.1)
             hyp.confidence = max(hyp.confidence - delta, 0.0)
@@ -426,13 +434,14 @@ def _auto_generate_hypothesis(
         id=hyp_id,
         claim=f"{binary} failed: {error_sig[:100]}",
         confidence=cfg["auto_generate_confidence"],
-        evidence_for=[f"exit!=0 with: {error_sig[:100]}"],
+        evidence_for=["exit!=0 (outcome attribution)"],
         created_at=now,
         last_tested=now,
         last_decay=now,
         source="command_failure",
         applies_to_sigs=[f"{binary}:*"],
         applies_to_tools=["Bash"],
+        trust_score=0.3,  # Command failures are purely reactive (outcome-only)
     )
     compass.hypotheses.append(hypothesis)
     compass.hypothesis_version += 1
@@ -472,14 +481,17 @@ def _test_hypotheses(
             hyp_keywords = set(hyp.claim.lower().split())
             event_keywords = set(error_sig.lower().split())
             if len(hyp_keywords & event_keywords) >= 2:
+                # Command failure is outcome attribution
+                decomp = SignalSourceDecomposition(signal_name=hyp.id, outcome_score=1.0)
                 update_hypothesis(
                     compass,
                     hyp.id,
                     "strengthen",
-                    f"Confirmed by: {error_sig[:80]}",
+                    f"Confirmed by failure: {decomp.to_summary()}",
                     now=now,
                     cfg=cfg,
                 )
+                hyp.trust_score = min(1.0, hyp.trust_score + 0.05)
         elif exit_code == 0:
             update_hypothesis(
                 compass,
@@ -759,17 +771,20 @@ def add_declared_hypothesis(
             return existing
 
     binary = sig.split(":")[0] if ":" in sig else sig
+    # Agent declaration boosts theory and pattern
+    decomp = SignalSourceDecomposition(signal_name=claim, theory_score=0.8, pattern_score=0.2)
     hypothesis = BehaviorHypothesis(
         id=hyp_id,
         claim=claim,
         confidence=0.5,
-        evidence_for=["Declared via constraint_check"],
+        evidence_for=[f"Declared via precheck: {decomp.to_summary()}"],
         created_at=now,
         last_tested=now,
         last_decay=now,
         source="precheck_declared",
         applies_to_sigs=[f"{binary}:*"] if binary != "unknown" else [],
         applies_to_tools=["Bash"],
+        trust_score=0.7,  # Declarations start with higher trust
     )
     compass.hypotheses.append(hypothesis)
     evict_overflow(compass, cfg)

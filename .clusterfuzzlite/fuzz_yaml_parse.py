@@ -2,7 +2,7 @@
 
 import sys
 
-import atheris
+import atheris  # type: ignore[import-not-found]  # fuzzing-only dependency
 
 
 def test_one_input(data: bytes) -> None:

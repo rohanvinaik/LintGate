@@ -292,7 +292,6 @@ def _ensure_entry(requirements: dict[str, dict[str, Any]], tool_name: str) -> No
                 entry[key] = []
 
 
-
 def _parse_requirement_entry(entry: str) -> tuple[str, str] | None:
     """Parse a requirement string into tracked-tool name and specifier."""
     line = entry.strip()

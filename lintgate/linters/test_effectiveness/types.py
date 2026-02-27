@@ -13,6 +13,44 @@ from enum import Enum
 from typing import Any
 
 
+class EffectivenessWeakness(str, Enum):
+    """Semantic weakness taxonomy for test effectiveness.
+
+    Waterfall priority (first match wins):
+    1. UNTESTED: No mappings found.
+    2. GENUINELY_WEAK: Low semantic ratio (<0.3), low effectiveness (<0.4).
+    3. SENTINEL_HEAVY: High sentinel count (>30%) but isolated from value checks.
+    4. BOOLEAN_CONTRACT_HEAVY: High reliance on boolean contracts without exact value checks.
+    5. STRUCTURAL_ONLY: Only isinstance or hasattr checks.
+    6. HEALTHY: High semantic ratio and variety.
+    """
+
+    UNTESTED = "untested"
+    GENUINELY_WEAK = "genuinely_weak"
+    SENTINEL_HEAVY = "sentinel_heavy"
+    BOOLEAN_CONTRACT_HEAVY = "boolean_contract_heavy"
+    STRUCTURAL_ONLY = "structural_only"
+    HEALTHY = "healthy"
+
+
+@dataclass
+class ConfidenceDerivation:
+    """Confidence metadata for effectiveness analysis."""
+
+    score: float = 0.0
+    derivation_methods: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ConfidenceDerivation:
+        return cls(
+            score=data.get("score", 0.0),
+            derivation_methods=data.get("derivation_methods", []),
+        )
+
+
 class AssertionKind(str, Enum):
     """Assertion classification by mutation-killing power.
 
@@ -100,7 +138,7 @@ STRENGTH_MAP: dict[AssertionKind, float] = {
 
 # Threshold for classifying an assertion as "semantic" (strong)
 SEMANTIC_STRENGTH_THRESHOLD = 0.7
-TEFF_SCHEMA_VERSION = "1.2.0"
+TEFF_SCHEMA_VERSION = "2.0.0"
 
 
 @dataclass
@@ -165,14 +203,27 @@ class FunctionEffectiveness:
     effectiveness_score: float = 0.0
     mutation_vulnerability: float = 1.0  # 1.0 = fully vulnerable (no tests)
     quality_profile: QualityProfile = field(default_factory=QualityProfile)
+    weakness_taxonomy: EffectivenessWeakness | None = None
+    confidence: ConfidenceDerivation | None = None
 
-    def compute_scores(self) -> None:
-        """Recompute ratios and scores from the current assertions list."""
+    def compute_scores(
+        self, derivation_methods: list[str] | None = None, has_isolated_sentinel: bool = False
+    ) -> None:
+        """Recompute ratios, scores, taxonomy and confidence from the current assertions list."""
+        if derivation_methods is None:
+            derivation_methods = ["ast_walk"]
+
         if not self.assertions:
             self.semantic_ratio = 0.0
             self.structural_ratio = 0.0
             self.effectiveness_score = 0.0
             self.mutation_vulnerability = 1.0
+            self.weakness_taxonomy = EffectivenessWeakness.UNTESTED
+
+            conf_score = 0.1
+            self.confidence = ConfidenceDerivation(
+                score=conf_score, derivation_methods=derivation_methods
+            )
             return
 
         total = len(self.assertions)
@@ -180,6 +231,7 @@ class FunctionEffectiveness:
         boundary_count = 0
         structural_count = 0
         paired_guards = 0
+        bool_contract_count = 0
         counts: dict[str, int] = {}
 
         # Define categories
@@ -189,37 +241,33 @@ class FunctionEffectiveness:
             AssertionKind.RANGE_CHECK,
         }
 
+        is_structural_only = True
+
         for a in self.assertions:
             counts[a.kind.value] = counts.get(a.kind.value, 0) + 1
             if a.strength >= SEMANTIC_STRENGTH_THRESHOLD:
                 semantic_count += 1
-                # If it's a boosted sentinel, it's a paired guard
-                if (
-                    a.kind
-                    in (
-                        AssertionKind.IS_NONE,
-                        AssertionKind.IS_NOT_NONE,
-                        AssertionKind.SENTINEL_CHECK,
-                    )
-                    and a.strength < 0.7
-                ):
-                    # This shouldn't happen with current 0.7 threshold and 0.5/0.6 pairings
-                    # But we treat paired guards as "translucent" in actionable_ratio
-                    pass
+                is_structural_only = False
 
-            # Count paired guards (those with strength 0.5 or 0.6)
+            if a.kind in (
+                AssertionKind.BOOLEAN_CONTRACT_CALL,
+                AssertionKind.BOOLEAN_CONTRACT_FIELD,
+            ):
+                bool_contract_count += 1
+
+            if a.kind in boundary_kinds:
+                boundary_count += 1
+                is_structural_only = False
+            elif a.strength < SEMANTIC_STRENGTH_THRESHOLD:
+                structural_count += 1
+
+            # Paired guard detection logic
             if (
                 a.kind
                 in (AssertionKind.IS_NONE, AssertionKind.IS_NOT_NONE, AssertionKind.SENTINEL_CHECK)
                 and a.strength >= 0.5
             ):
-                # 0.5 = paired is_not_none, 0.6 = sentinel_check
                 paired_guards += 1
-
-            if a.kind in boundary_kinds:
-                boundary_count += 1
-            elif a.strength < SEMANTIC_STRENGTH_THRESHOLD:
-                structural_count += 1
 
         self.semantic_ratio = semantic_count / total
         self.structural_ratio = structural_count / total
@@ -240,6 +288,29 @@ class FunctionEffectiveness:
         self.effectiveness_score = sum(a.strength for a in self.assertions) / total
         self.mutation_vulnerability = 1.0 - self.effectiveness_score
 
+        # Taxonomy Waterfall Priority
+        if self.semantic_ratio < 0.3 and self.effectiveness_score < 0.4:
+            self.weakness_taxonomy = EffectivenessWeakness.GENUINELY_WEAK
+        elif has_isolated_sentinel:
+            self.weakness_taxonomy = EffectivenessWeakness.SENTINEL_HEAVY
+        elif (bool_contract_count / total) > 0.4:
+            self.weakness_taxonomy = EffectivenessWeakness.BOOLEAN_CONTRACT_HEAVY
+        elif is_structural_only:
+            self.weakness_taxonomy = EffectivenessWeakness.STRUCTURAL_ONLY
+        else:
+            self.weakness_taxonomy = EffectivenessWeakness.HEALTHY
+
+        # Confidence Derivation
+        conf_score = 0.8  # Default for AST walk
+        if "mutation_calibration" in derivation_methods:
+            conf_score = 0.95
+        if total < 2:
+            conf_score -= 0.2
+
+        self.confidence = ConfidenceDerivation(
+            score=round(max(0.1, conf_score), 2), derivation_methods=derivation_methods
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "function_name": self.function_name,
@@ -250,6 +321,8 @@ class FunctionEffectiveness:
             "effectiveness_score": round(self.effectiveness_score, 3),
             "mutation_vulnerability": round(self.mutation_vulnerability, 3),
             "quality_profile": self.quality_profile.to_dict(),
+            "weakness_taxonomy": self.weakness_taxonomy.value if self.weakness_taxonomy else None,
+            "confidence": self.confidence.to_dict() if self.confidence else None,
         }
 
     @classmethod
@@ -263,6 +336,12 @@ class FunctionEffectiveness:
             effectiveness_score=data.get("effectiveness_score", 0.0),
             mutation_vulnerability=data.get("mutation_vulnerability", 1.0),
             quality_profile=QualityProfile(**data.get("quality_profile", {})),
+            weakness_taxonomy=EffectivenessWeakness(data["weakness_taxonomy"])
+            if data.get("weakness_taxonomy")
+            else None,
+            confidence=ConfidenceDerivation.from_dict(data["confidence"])
+            if data.get("confidence")
+            else None,
         )
         return fe
 
@@ -346,6 +425,7 @@ class MappingDiagnostics:
     symbol_stats: SymbolStats = field(default_factory=SymbolStats)
     drop_analysis: DropAnalysis = field(default_factory=DropAnalysis)
     strategy_breakdown: dict[str, StrategyDiagnostics] = field(default_factory=dict)
+    scope_provenance: dict[str, Any] = field(default_factory=dict)
 
     _attempted_symbols: set[str] = field(default_factory=set, repr=False, init=False)
     _mapped_symbols: set[str] = field(default_factory=set, repr=False, init=False)
@@ -413,6 +493,7 @@ class MappingDiagnostics:
             "test_functions_examined": self.test_functions_examined,
             "dominant_drop_reason": self.dominant_drop_reason,
             "dominant_drop_pct": self.dominant_drop_pct,
+            "scope_provenance": self.scope_provenance,
         }
 
     @classmethod
@@ -451,6 +532,7 @@ class MappingDiagnostics:
             counts=counts,
             symbol_stats=symbol_stats,
             drop_analysis=drop_analysis,
+            scope_provenance=data.get("scope_provenance", {}),
         )
         for k, v in data.get("strategy_breakdown", {}).items():
             obj.strategy_breakdown[k] = StrategyDiagnostics.from_dict(v)

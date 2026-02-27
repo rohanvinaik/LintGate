@@ -11,7 +11,7 @@ modification until dynamic methods are added.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -30,6 +30,8 @@ class HostCapabilities:
     rule_file_extension: str = ".md"  # ".md" or ".mdc"
     max_rule_files: int = 10  # Practical limit on rule files
     system_prompt_token_budget: int = 8000  # Approximate tokens for rules
+    preferred_delivery_channels: list[str] = field(default_factory=list)
+    supports_intervention: bool = False
 
 
 # ── Capability presets ───────────────────────────────────────────────
@@ -41,6 +43,8 @@ CLAUDE_CAPABILITIES = HostCapabilities(
     supports_frontmatter=True,
     rule_file_extension=".md",
     system_prompt_token_budget=12000,
+    preferred_delivery_channels=["hook_text", "mcp_status"],
+    supports_intervention=True,
 )
 
 CURSOR_CAPABILITIES = HostCapabilities(
@@ -50,6 +54,8 @@ CURSOR_CAPABILITIES = HostCapabilities(
     supports_frontmatter=True,
     rule_file_extension=".mdc",
     system_prompt_token_budget=8000,
+    preferred_delivery_channels=["rule_file"],
+    supports_intervention=False,
 )
 
 COPILOT_CAPABILITIES = HostCapabilities(
@@ -59,6 +65,8 @@ COPILOT_CAPABILITIES = HostCapabilities(
     supports_frontmatter=False,
     rule_file_extension=".md",
     system_prompt_token_budget=4000,
+    preferred_delivery_channels=["mcp_status"],
+    supports_intervention=False,
 )
 
 WINDSURF_CAPABILITIES = HostCapabilities(
@@ -68,6 +76,8 @@ WINDSURF_CAPABILITIES = HostCapabilities(
     supports_frontmatter=False,
     rule_file_extension=".md",
     system_prompt_token_budget=8000,
+    preferred_delivery_channels=["rule_file", "mcp_status"],
+    supports_intervention=False,
 )
 
 CLINE_CAPABILITIES = HostCapabilities(
@@ -77,6 +87,8 @@ CLINE_CAPABILITIES = HostCapabilities(
     supports_frontmatter=False,
     rule_file_extension=".md",
     system_prompt_token_budget=8000,
+    preferred_delivery_channels=["cline_mcp", "rule_file"],
+    supports_intervention=True,
 )
 
 AIDER_CAPABILITIES = HostCapabilities(
@@ -86,6 +98,8 @@ AIDER_CAPABILITIES = HostCapabilities(
     supports_frontmatter=False,
     rule_file_extension=".md",
     system_prompt_token_budget=4000,
+    preferred_delivery_channels=["mcp_status"],
+    supports_intervention=False,
 )
 
 GENERIC_CAPABILITIES = HostCapabilities(
@@ -95,6 +109,8 @@ GENERIC_CAPABILITIES = HostCapabilities(
     supports_frontmatter=False,
     rule_file_extension=".md",
     system_prompt_token_budget=4000,
+    preferred_delivery_channels=["mcp_status"],
+    supports_intervention=False,
 )
 
 MCP_ONLY_CAPABILITIES = HostCapabilities(
@@ -104,6 +120,30 @@ MCP_ONLY_CAPABILITIES = HostCapabilities(
     supports_frontmatter=False,
     rule_file_extension=".md",
     system_prompt_token_budget=4000,
+    preferred_delivery_channels=["mcp_status"],
+    supports_intervention=False,
+)
+
+GEMINI_CAPABILITIES = HostCapabilities(
+    supports_rules=False,
+    supports_hooks=True,
+    supports_mcp=True,
+    supports_frontmatter=False,
+    rule_file_extension=".md",
+    system_prompt_token_budget=8000,
+    preferred_delivery_channels=["gemini_cli", "mcp_status"],
+    supports_intervention=True,
+)
+
+OPENWEIGHT_CAPABILITIES = HostCapabilities(
+    supports_rules=True,
+    supports_hooks=False,
+    supports_mcp=False,
+    supports_frontmatter=False,
+    rule_file_extension=".md",
+    system_prompt_token_budget=4000,
+    preferred_delivery_channels=["system_prompt"],
+    supports_intervention=True,
 )
 
 
@@ -135,3 +175,8 @@ class HostAdapter(Protocol):
     def cleanup_dynamic(self, project_root: str) -> list[str]:
         """Remove session-scoped dynamic files. Returns deleted paths."""
         ...
+
+
+def resolve_delivery_channels(host: HostCapabilities) -> list[str]:
+    """Resolve preferred delivery channels for a host, ordered by preference."""
+    return host.preferred_delivery_channels

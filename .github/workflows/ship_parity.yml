@@ -2,6 +2,7 @@ name: Ship Gate Parity Guard
 
 on:
     push:
+        branches: [main]
         paths:
             - ".githooks/pre-push"
             - "scripts/ship_main.py"

@@ -74,14 +74,23 @@ class TestOperatorRelevanceMatrix:
 
         # Exclude ARITHMETIC
         cats = OperatorRelevanceMatrix.get_prioritized_categories(
-            is_pure=True, branch_count=0, has_strings=False, has_numbers=True,
-            covered_categories={MutationOperatorCategory.ARITHMETIC}
+            is_pure=True,
+            branch_count=0,
+            has_strings=False,
+            has_numbers=True,
+            covered_categories={MutationOperatorCategory.ARITHMETIC},
         )
         assert MutationOperatorCategory.ARITHMETIC not in cats
         assert MutationOperatorCategory.NUMBER in cats
 
     def test_mutmut_type_mapping(self):
-        assert OperatorRelevanceMatrix.map_mutmut_type_to_category("operator") == MutationOperatorCategory.ARITHMETIC
-        assert OperatorRelevanceMatrix.map_mutmut_type_to_category("string") == MutationOperatorCategory.STRING
+        assert (
+            OperatorRelevanceMatrix.map_mutmut_type_to_category("operator")
+            == MutationOperatorCategory.ARITHMETIC
+        )
+        assert (
+            OperatorRelevanceMatrix.map_mutmut_type_to_category("string")
+            == MutationOperatorCategory.STRING
+        )
         assert OperatorRelevanceMatrix.map_mutmut_type_to_category("annassign") is None
         assert OperatorRelevanceMatrix.map_mutmut_type_to_category("unknown_type") is None

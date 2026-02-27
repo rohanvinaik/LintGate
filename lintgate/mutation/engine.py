@@ -75,7 +75,9 @@ class MutationEngine:
         results = []
         for file_path in target_files:
             # Check budgets
-            if telemetry.inline_time_ms_spent >= self.budget.max_inline_ms_per_function * len(target_files):
+            if telemetry.inline_time_ms_spent >= self.budget.max_inline_ms_per_function * len(
+                target_files
+            ):
                 logger.warning(f"Mutation inline budget exhausted. Skipping {file_path}")
                 break
 
@@ -140,7 +142,9 @@ class MutationEngine:
             # Test-impact selection requirement (Item 6)
             test_filter = " ".join(relevant_tests) if relevant_tests else None
             if not test_filter:
-                logger.info(f"Fallback reason: No test impact mapping found for {file_path}. Running full suite.")
+                logger.info(
+                    f"Fallback reason: No test impact mapping found for {file_path}. Running full suite."
+                )
 
             # Compute relevance for background profiling as well
             relevant_categories = None
@@ -198,60 +202,105 @@ class MutationEngine:
             original_pyproject = pyproject_path.read_text("utf-8")
 
         try:
-            # Determine if we can do pre-execution filtering
-            mutants_to_run = []
-            filter_active = False
-
-            if relevant_categories is not None and cst:
-                filter_active = True
-                for path in paths:
-                    try:
-                        source = Path(path).read_text("utf-8")
-                        cat_map = self._build_mutant_category_map(path, source)
-                        for mutant_id, cat in cat_map.items():
-                            if cat in relevant_categories:
-                                mutants_to_run.append(mutant_id)
-                            else:
-                                if telemetry:
-                                    telemetry.mutants_skipped_policy += 1
-                    except Exception as e:
-                        logger.debug(f"Failed to generate explicit mutant list for {path}: {e}")
-                        filter_active = False
-                        break
-
-            # Rewrite [tool.mutmut] paths_to_mutate to scope to target files
-            if original_pyproject and paths:
-                scoped_paths = json.dumps(paths)
-                new_content = _re.sub(
-                    r'(paths_to_mutate\s*=\s*)\[[^\]]*\]',
-                    f'paths_to_mutate = {scoped_paths}',
-                    original_pyproject,
-                )
-                pyproject_path.write_text(new_content, "utf-8")
-
-            max_children = min(self.budget.max_workers, 2)
-            cmd = ["mutmut", "run", "--max-children", str(max_children)]
-
-            if filter_active:
-                if not mutants_to_run:
-                    # Everything was filtered out! We don't even need to run mutmut.
-                    return True
-                cmd.extend(mutants_to_run)
-
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False, timeout=300
+            mutants_to_run, filter_active = self._filter_mutants_by_category(
+                paths, relevant_categories, telemetry
             )
-            # mutmut v3: 0 = all killed, 2 = survivors found, 1 = other
-            if proc.returncode in (0, 1, 2):
-                if telemetry and filter_active:
-                    telemetry.mutants_executed += len(mutants_to_run)
+
+            self._scope_pyproject_paths(pyproject_path, original_pyproject, paths)
+
+            cmd = self._build_mutmut_command(filter_active, mutants_to_run)
+            if cmd is None:
+                # Everything was filtered out; nothing to run.
                 return True
-            return False
+
+            return self._run_mutmut_subprocess(cmd, telemetry, filter_active, mutants_to_run)
         except (subprocess.SubprocessError, FileNotFoundError):
             return False
         finally:
             if original_pyproject is not None:
                 pyproject_path.write_text(original_pyproject, "utf-8")
+
+    def _filter_mutants_by_category(
+        self,
+        paths: list[str],
+        relevant_categories: set[MutationOperatorCategory] | None,
+        telemetry: MutationTelemetry | None,
+    ) -> tuple[list[str], bool]:
+        """Pre-execution filtering: select mutants whose category is relevant.
+
+        Returns (mutants_to_run, filter_active).
+        """
+        if relevant_categories is None or not cst:
+            return [], False
+
+        mutants_to_run: list[str] = []
+        for path in paths:
+            try:
+                source = Path(path).read_text("utf-8")
+                cat_map = self._build_mutant_category_map(path, source)
+                for mutant_id, cat in cat_map.items():
+                    if cat in relevant_categories:
+                        mutants_to_run.append(mutant_id)
+                    elif telemetry:
+                        telemetry.mutants_skipped_policy += 1
+            except Exception as e:
+                logger.debug(f"Failed to generate explicit mutant list for {path}: {e}")
+                return [], False
+
+        return mutants_to_run, True
+
+    @staticmethod
+    def _scope_pyproject_paths(
+        pyproject_path: Path,
+        original_pyproject: str | None,
+        paths: list[str],
+    ) -> None:
+        """Rewrite [tool.mutmut] paths_to_mutate to scope to target files."""
+        if not original_pyproject or not paths:
+            return
+        scoped_paths = json.dumps(paths)
+        new_content = _re.sub(
+            r"(paths_to_mutate\s*=\s*)\[[^\]]*\]",
+            f"paths_to_mutate = {scoped_paths}",
+            original_pyproject,
+        )
+        pyproject_path.write_text(new_content, "utf-8")
+
+    def _build_mutmut_command(
+        self,
+        filter_active: bool,
+        mutants_to_run: list[str],
+    ) -> list[str] | None:
+        """Build the mutmut CLI command.
+
+        Returns None when all mutants have been filtered out (nothing to run).
+        """
+        max_children = min(self.budget.max_workers, 2)
+        cmd = ["mutmut", "run", "--max-children", str(max_children)]
+
+        if filter_active:
+            if not mutants_to_run:
+                return None
+            cmd.extend(mutants_to_run)
+
+        return cmd
+
+    @staticmethod
+    def _run_mutmut_subprocess(
+        cmd: list[str],
+        telemetry: MutationTelemetry | None,
+        filter_active: bool,
+        mutants_to_run: list[str],
+    ) -> bool:
+        """Run mutmut subprocess and interpret exit code."""
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=300)
+        # mutmut v3: 0 = all killed, 2 = survivors found, 1 = other
+        if proc.returncode not in (0, 1, 2):
+            return False
+
+        if telemetry and filter_active:
+            telemetry.mutants_executed += len(mutants_to_run)
+        return True
 
     def _compute_relevant_categories(
         self,
@@ -264,6 +313,7 @@ class MutationEngine:
         is_pure = False
         if algebra_manifest:
             from lintgate.linters.performance_checks.algebra_types import PropertyKind
+
             for key, props in algebra_manifest.functions.items():
                 if key.endswith(f"::{func_name}"):
                     is_pure = any(p.kind == PropertyKind.PURE for p in props.properties)
@@ -278,7 +328,10 @@ class MutationEngine:
                 source = Path(file_path).read_text("utf-8")
                 tree = ast.parse(source)
                 for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
+                    if (
+                        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.name == func_name
+                    ):
                         visitor = FunctionCharacteristicVisitor()
                         visitor.visit(node)
                         branch_count = visitor.branch_count
@@ -301,7 +354,7 @@ class MutationEngine:
             branch_count=branch_count,
             has_strings=has_strings,
             has_numbers=has_numbers,
-            covered_categories=covered_categories
+            covered_categories=covered_categories,
         )
 
     def _parse_mutmut_results(self, paths: list[str]) -> dict[str, FunctionMutationState]:
@@ -313,27 +366,44 @@ class MutationEngine:
         We demangle the function name, aggregate per-function, and filter to
         only the requested paths.
         """
+        output = self._fetch_mutmut_output()
+        if output is None:
+            return {}
+
+        mutant_category_map = self._collect_category_maps(paths)
+        func_counts = self._aggregate_func_counts(output, mutant_category_map)
+        return self._build_function_states(func_counts, paths)
+
+    @staticmethod
+    def _fetch_mutmut_output() -> str | None:
+        """Run ``mutmut results`` and return stdout, or None on failure."""
         cmd = ["mutmut", "results", "--all", "true"]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if proc.returncode != 0:
-                return {}
-            output = proc.stdout
+                return None
+            return proc.stdout
         except (subprocess.SubprocessError, FileNotFoundError):
-            return {}
+            return None
 
-        # 0. Build a category map for mutants in these paths.
-        #    Uses mutmut+libcst when available, with a built-in AST fallback.
+    def _collect_category_maps(self, paths: list[str]) -> dict[str, str]:
+        """Build a merged mutant-id -> category map for all requested paths."""
         mutant_category_map: dict[str, str] = {}
         for path in paths:
-            if os.path.exists(path):
-                try:
-                    source = Path(path).read_text("utf-8")
-                    mutant_category_map.update(self._build_mutant_category_map(path, source))
-                except Exception as e:
-                    logger.debug(f"Failed to build category map for {path}: {e}")
+            if not os.path.exists(path):
+                continue
+            try:
+                source = Path(path).read_text("utf-8")
+                mutant_category_map.update(self._build_mutant_category_map(path, source))
+            except Exception as e:
+                logger.debug(f"Failed to build category map for {path}: {e}")
+        return mutant_category_map
 
-        # Parse mutmut v3 output lines and aggregate per function
+    @staticmethod
+    def _aggregate_func_counts(
+        output: str, mutant_category_map: dict[str, str]
+    ) -> dict[str, dict[str, Any]]:
+        """Parse mutmut v3 output lines and aggregate counts per mangled function."""
         func_counts: dict[str, dict[str, Any]] = {}
 
         for line in output.splitlines():
@@ -348,7 +418,6 @@ class MutationEngine:
             if status == "not checked":
                 continue
 
-            # Strip __mutmut_N suffix to get the mangled function name
             func_mangled = _re.sub(r"__mutmut_\d+$", "", name_part)
 
             if func_mangled not in func_counts:
@@ -357,48 +426,34 @@ class MutationEngine:
                     "survived": 0,
                     "timeout": 0,
                     "total": 0,
-                    "survived_by_category": {}
+                    "survived_by_category": {},
                 }
 
-            func_counts[func_mangled]["total"] += 1
-            if status == "killed":
-                func_counts[func_mangled]["killed"] += 1
-            elif status == "survived":
-                func_counts[func_mangled]["survived"] += 1
-                # Try to lookup category
-                cat = mutant_category_map.get(name_part)
-                if cat:
-                    func_counts[func_mangled]["survived_by_category"][cat] = \
-                        func_counts[func_mangled]["survived_by_category"].get(cat, 0) + 1
-            elif status == "timeout":
-                func_counts[func_mangled]["timeout"] += 1
+            entry = func_counts[func_mangled]
+            entry["total"] += 1
+            _tally_status(entry, status, name_part, mutant_category_map)
 
-        # Demangle and filter to requested paths
+        return func_counts
+
+    @staticmethod
+    def _build_function_states(
+        func_counts: dict[str, dict[str, Any]],
+        paths: list[str],
+    ) -> dict[str, FunctionMutationState]:
+        """Demangle aggregated counts, filter to requested paths, and build states."""
         states: dict[str, FunctionMutationState] = {}
 
         for mangled, counts in func_counts.items():
             if counts["total"] == 0:
                 continue
 
-            # Demangle and filter to requested paths
             file_path, func_name = _demangle_mutmut_name(mangled)
             if not file_path or not func_name:
                 continue
 
-            # Map the demangled file_path back to an entry in 'paths'
-            matched_path = None
-            if paths:
-                for p in paths:
-                    abs_p = os.path.abspath(p)
-                    # Use endswith check to handle absolute vs relative or missing leading slash
-                    if abs_p.endswith(os.path.normpath(file_path)):
-                        matched_path = abs_p
-                        break
-
-                if not matched_path:
-                    continue
-            else:
-                matched_path = file_path
+            matched_path = _match_path(file_path, paths)
+            if matched_path is None:
+                continue
 
             code_content = ""
             if os.path.exists(matched_path):
@@ -416,7 +471,7 @@ class MutationEngine:
                 survived=counts["survived"],
                 timeout=counts["timeout"],
                 total=counts["total"],
-                survived_by_category=counts["survived_by_category"]
+                survived_by_category=counts["survived_by_category"],
             )
 
         return states
@@ -439,7 +494,9 @@ class MutationEngine:
         # Fallback path: ensure deterministic category mapping even without mutmut/libcst.
         return self._build_mutant_category_map_with_ast(module_name, source)
 
-    def _build_mutant_category_map_with_mutmut(self, module_name: str, source: str) -> dict[str, str]:
+    def _build_mutant_category_map_with_mutmut(
+        self, module_name: str, source: str
+    ) -> dict[str, str]:
         if not cst:
             return {}
         try:
@@ -456,25 +513,29 @@ class MutationEngine:
             # but for category mapping, we just need to know which operator was applied.
 
             class MappingVisitor(cst.CSTVisitor):
-                METADATA_DEPENDENCIES = (PositionProvider, )
+                METADATA_DEPENDENCIES = (PositionProvider,)
 
                 def __init__(self, operators):
-                    self.mutants: list[tuple[str, str]] = [] # (mangled_base, category)
+                    self.mutants: list[tuple[str, str]] = []  # (mangled_base, category)
                     self._operators = operators
-                    self._stack: list[tuple[str, str | None]] = [] # (type, name)
+                    self._stack: list[tuple[str, str | None]] = []  # (type, name)
 
                 def on_visit(self, node: cst.CSTNode) -> bool:
                     if isinstance(node, cst.ClassDef):
                         self._stack.append(("class", node.name.value))
                     elif isinstance(node, cst.FunctionDef):
-                        class_name = next((s[1] for s in reversed(self._stack) if s[0] == "class"), None)
+                        class_name = next(
+                            (s[1] for s in reversed(self._stack) if s[0] == "class"), None
+                        )
                         mangled = mangle_function_name(name=node.name.value, class_name=class_name)
                         self._stack.append(("func", mangled))
 
                     if isinstance(node, (cst.Annotation, cst.Decorator)):
                         return False
 
-                    current_func = next((s[1] for s in reversed(self._stack) if s[0] == "func"), None)
+                    current_func = next(
+                        (s[1] for s in reversed(self._stack) if s[0] == "func"), None
+                    )
                     if current_func:
                         for t, operator in self._operators:
                             if isinstance(node, t):
@@ -526,7 +587,9 @@ class MutationEngine:
 
             return id_map
         except Exception as e:
-            logger.debug(f"Exception in _build_mutant_category_map_with_mutmut for {module_name}: {e}")
+            logger.debug(
+                f"Exception in _build_mutant_category_map_with_mutmut for {module_name}: {e}"
+            )
             return {}
 
     def _build_mutant_category_map_with_ast(self, module_name: str, source: str) -> dict[str, str]:
@@ -564,7 +627,9 @@ class MutationEngine:
         def _iter_function_nodes(node: ast.AST):
             for child in ast.iter_child_nodes(node):
                 # Skip nested functions/classes so each function gets its own IDs.
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                if isinstance(
+                    child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+                ):
                     continue
                 yield child
                 yield from _iter_function_nodes(child)
@@ -614,6 +679,43 @@ class MutationEngine:
             return {}
 
 
+def _tally_status(
+    entry: dict[str, Any],
+    status: str,
+    name_part: str,
+    mutant_category_map: dict[str, str],
+) -> None:
+    """Increment the appropriate counter in *entry* based on *status*."""
+    if status == "killed":
+        entry["killed"] += 1
+    elif status == "survived":
+        entry["survived"] += 1
+        cat = mutant_category_map.get(name_part)
+        if cat:
+            entry["survived_by_category"][cat] = entry["survived_by_category"].get(cat, 0) + 1
+    elif status == "timeout":
+        entry["timeout"] += 1
+
+
+def _match_path(file_path: str, paths: list[str]) -> str | None:
+    """Map a demangled *file_path* back to an entry in *paths*.
+
+    Returns the absolute matched path, or None when *paths* is non-empty and
+    no match is found.  When *paths* is empty the demangled path is returned
+    as-is.
+    """
+    if not paths:
+        return file_path
+
+    for p in paths:
+        abs_p = os.path.abspath(p)
+        # Use endswith check to handle absolute vs relative or missing leading slash
+        if abs_p.endswith(os.path.normpath(file_path)):
+            return abs_p
+
+    return None
+
+
 def _demangle_mutmut_name(mangled: str) -> tuple[str, str]:
     """Convert mutmut v3 mangled name to (file_path, function_name).
 
@@ -638,7 +740,7 @@ def _demangle_mutmut_name(mangled: str) -> tuple[str, str]:
     class_idx = mangled.rfind(".x" + class_sep)
     if class_idx != -1:
         module_dotted = mangled[:class_idx]
-        remainder = mangled[class_idx + 2:]  # skip '.x'
+        remainder = mangled[class_idx + 2 :]  # skip '.x'
         # remainder is like 'ǁClassǁmethod' — split on separator
         parts = remainder.split(class_sep)
         # parts = ['', 'ClassName', 'method_name']
@@ -652,7 +754,7 @@ def _demangle_mutmut_name(mangled: str) -> tuple[str, str]:
     if idx == -1:
         return ("", "")
     module_dotted = mangled[:idx]
-    func_name = mangled[idx + 3:]  # skip '.x_'
+    func_name = mangled[idx + 3 :]  # skip '.x_'
     file_path = module_dotted.replace(".", "/") + ".py"
     return (file_path, func_name)
 
@@ -688,8 +790,8 @@ class FunctionCharacteristicVisitor(ast.NodeVisitor):
         elif isinstance(node.value, (int, float)):
             self.has_numbers = True
 
-    def visit_Str(self, node: ast.Str): # Support Python < 3.8
+    def visit_Str(self, node: ast.Str):  # Support Python < 3.8
         self.has_strings = True
 
-    def visit_Num(self, node: ast.Num): # Support Python < 3.8
+    def visit_Num(self, node: ast.Num):  # Support Python < 3.8
         self.has_numbers = True

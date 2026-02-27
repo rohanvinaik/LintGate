@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
 from typing import Any
 
 from lintgate.state import PERF_CACHE_DIR
@@ -20,7 +21,7 @@ from .test_analyzer import (
     _discover_test_files,
     analyze_effectiveness,
 )
-from .types import TestEffectivenessManifest
+from .types import AssertionKind, TestEffectivenessManifest
 
 # Increment this constant whenever the cache schema changes in a backward-
 # incompatible way (e.g. new required keys, changed field semantics).
@@ -96,6 +97,7 @@ def build_test_effectiveness_manifest(
     project_root: str,
     python_files: list[str] | None = None,
     test_files: list[str] | None = None,
+    effective_weights: dict[AssertionKind, float] | None = None,
 ) -> TestEffectivenessManifest:
     """Build a TestEffectivenessManifest with incremental caching.
 
@@ -123,10 +125,14 @@ def build_test_effectiveness_manifest(
     scope_payload = ",".join(sorted(python_files)) + ":" + ",".join(sorted(test_files))
     scope_fingerprint = hashlib.sha256(scope_payload.encode()).hexdigest()
 
-    # Check if cache is still valid (all files unchanged AND scope matches)
-    cached_manifest, cache_metadata = _load_manifest_cache(
-        cache_path, expected_scope_fingerprint=scope_fingerprint
-    )
+    # (#86) If dynamic weights are provided, we always rebuild to ensure they are applied.
+    # Otherwise, check if cache is still valid.
+    if effective_weights is None:
+        cached_manifest, cache_metadata = _load_manifest_cache(
+            cache_path, expected_scope_fingerprint=scope_fingerprint
+        )
+    else:
+        cached_manifest, cache_metadata = TestEffectivenessManifest(), {}
 
     all_files = python_files + test_files
     any_changed = False
@@ -150,9 +156,18 @@ def build_test_effectiveness_manifest(
         return cached_manifest
 
     # Rebuild from scratch (test mapping is holistic, not per-file incremental)
-    effectiveness, diagnostics = analyze_effectiveness(project_root, python_files, test_files)
+    effectiveness, diagnostics = analyze_effectiveness(
+        project_root, python_files, test_files, effective_weights=effective_weights
+    )
 
     manifest = TestEffectivenessManifest(functions=effectiveness, diagnostics=diagnostics)
+    manifest.diagnostics.scope_provenance = {
+        "source_files": [os.path.relpath(f, project_root) for f in python_files],
+        "test_files": [os.path.relpath(f, project_root) for f in test_files],
+        "total_source_discovered": len(python_files),
+        "total_test_discovered": len(test_files),
+        "truncation_reason": None,  # Add logic here if truncation is implemented later
+    }
 
     manifest.file_scores = {}
 

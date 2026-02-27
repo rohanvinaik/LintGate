@@ -24,6 +24,7 @@ def _build_posttooluse_context(
     delta: dict[str, Any] | None = None,
     baseline_delta: dict[str, Any] | None = None,
     resurfaced_count: int = 0,
+    cycle_alerts: list[str] | None = None,
 ) -> str:
     """Build compact additional context for Claude PostToolUse hooks.
 
@@ -84,6 +85,9 @@ def _build_posttooluse_context(
     # 12. resurface (> 0)
     if resurfaced_count > 0:
         pairs.append(("resurface", str(resurfaced_count)))
+    # 13. cycles (if any)
+    if cycle_alerts:
+        pairs.append(("cycles", ",".join(cycle_alerts)))
 
     # Serialize with max length enforcement (300 chars)
     max_context_len = 300

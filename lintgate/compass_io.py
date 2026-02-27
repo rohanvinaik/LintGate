@@ -49,7 +49,13 @@ def load_compass(project_root: str) -> CompassState | None:
     try:
         with open(path) as f:
             data = yaml.safe_load(f) or {}
-        return CompassState.from_dict(data)
+        if not isinstance(data, dict):
+            return None
+        state = CompassState.from_dict(data)
+        # Runtime validation vs schema
+        if not state.axes:
+            return None
+        return state
     except Exception:
         return None
 
@@ -57,11 +63,19 @@ def load_compass(project_root: str) -> CompassState | None:
 def save_compass(project_root: str, state: CompassState) -> Path:
     """Save compass state to .claude/compass.yaml.
 
-    Creates .claude/ directory if needed. Returns the written path.
+    Updates forged_at timestamp, performs schema validation, and creates
+    .claude/ directory if needed. Returns the written path.
     """
     if not _YAML_AVAILABLE:
         msg = "PyYAML is required for compass persistence"
         raise RuntimeError(msg)
+
+    # Hardening: Update timestamp and validate basic invariants
+    state.forged_at = time.time()
+    if not state.axes:
+        msg = "Refusing to save empty CompassState (must have axes)"
+        raise ValueError(msg)
+
     path = Path(project_root) / COMPASS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:

@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from lintgate.linters.test_effectiveness.types import TEFF_SCHEMA_VERSION
+from lintgate.linters.test_effectiveness.types import (
+    TEFF_SCHEMA_VERSION,
+    EffectivenessWeakness,
+    FunctionEffectiveness,
+    MappingDiagnostics,
+    QualityProfile,
+    TestEffectivenessManifest,
+)
 
 
 def test_teff_schema_version_is_current():
-    assert TEFF_SCHEMA_VERSION == "1.2.0"
+    assert TEFF_SCHEMA_VERSION == "2.0.0"
+
 
 def test_analyze_test_strength_schema_contract(tmp_path):
     """Verify analyze_test_strength output schema hasn't regressed and includes Phase 2 fields."""
@@ -22,28 +30,48 @@ def test_analyze_test_strength_schema_contract(tmp_path):
 
     tests = tmp_path / "tests"
     tests.mkdir()
-    (tests / "test_app.py").write_text("from src.app import hello\\ndef test_hello(): assert hello() == 1")
+    (tests / "test_app.py").write_text(
+        "from src.app import hello\\ndef test_hello(): assert hello() == 1"
+    )
 
-    # We mock out the actual mapping/parsing logic to force a valid response
-
-    manifest_mock = MagicMock()
-    manifest_mock.functions = {"hello": MagicMock(mutation_vulnerability=0.8, test_count=1, effectiveness_score=0.9, assertions=[], quality_profile=MagicMock(semantic_ratio=1.0))}
-    manifest_mock.project_score = 0.95
-    manifest_mock.functions_analyzed = 1
-    manifest_mock.mutation_vulnerable_count = 1
+    # Build a realistic manifest with proper types for JSON serialization
+    fe = FunctionEffectiveness(
+        function_name="hello",
+        test_count=1,
+        effectiveness_score=0.9,
+        mutation_vulnerability=0.8,
+        assertions=[],
+        quality_profile=QualityProfile(semantic_ratio=1.0),
+        weakness_taxonomy=EffectivenessWeakness.HEALTHY,
+    )
+    manifest = TestEffectivenessManifest(
+        functions={"hello": fe},
+        project_score=0.95,
+        functions_analyzed=1,
+        mutation_vulnerable_count=1,
+        diagnostics=MappingDiagnostics(),
+    )
 
     helpers = {
         "_validate_project_root": lambda p: str(tmp_path),
-        "_json_dumps": lambda d, output_mode="": json.dumps(d)
+        "_json_dumps": lambda d, output_mode="": json.dumps(d),
     }
 
-    with patch("mcp_tools.test_effectiveness_tools.build_manifest_for_project", return_value=(manifest_mock, [str(src/"app.py")], [str(tests/"test_app.py")], [str(src/"app.py")])):
+    with patch(
+        "mcp_tools.test_effectiveness_tools.build_manifest_for_project",
+        return_value=(
+            manifest,
+            [str(src / "app.py")],
+            [str(tests / "test_app.py")],
+            [str(src / "app.py")],
+        ),
+    ):
         result_json = _analyze_test_strength_impl(str(tmp_path), helpers)
 
     result = json.loads(result_json)
 
     assert result["state"] == "success"
-    assert result["schema_version"] == "1.2.0"
+    assert result["schema_version"] == "2.0.0"
 
     # --- Phase 2 Additions ---
     assert "mutation_ci_context" in result
@@ -95,18 +123,20 @@ def test_inspect_test_assertions_schema_contract(tmp_path):
 
     tests = tmp_path / "tests"
     tests.mkdir()
-    (tests / "test_app.py").write_text("from src.app import hello\\ndef test_hello(): assert hello() == 1")
+    (tests / "test_app.py").write_text(
+        "from src.app import hello\\ndef test_hello(): assert hello() == 1"
+    )
 
     helpers = {
         "_validate_project_root": lambda p: str(tmp_path),
-        "_json_dumps": lambda d, output_mode="": json.dumps(d)
+        "_json_dumps": lambda d, output_mode="": json.dumps(d),
     }
 
     # Use actual classifer which will find 0 assertions in our dummy file, but still output schema
     result_json = _inspect_test_assertions_impl(str(tmp_path), "tests/test_app.py", helpers)
     result = json.loads(result_json)
 
-    assert result["schema_version"] == "1.2.0"
+    assert result["schema_version"] == "2.0.0"
     assert "test_functions" in result
     assert "summary" in result
 

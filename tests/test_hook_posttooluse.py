@@ -270,7 +270,7 @@ class TestRunControlplane:
             patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
-                return_value=({}, {}, 0),
+                return_value=({}, {}, 0, None, None),
             ),
             patch(
                 "lintgate.hook_controlplane.setup_session_and_gate",
@@ -345,7 +345,7 @@ class TestRunControlplane:
             patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
-                return_value=({}, {}, 0),
+                return_value=({}, {}, 0, None, None),
             ),
             patch(
                 "lintgate.hook_controlplane.setup_session_and_gate",

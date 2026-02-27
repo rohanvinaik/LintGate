@@ -304,7 +304,7 @@ class TestPrematureAction:
 
         pa_findings = [f for f in result.findings if f.kind == "premature_action"]
         assert len(pa_findings) == 1
-        assert pa_findings[0].severity == "informational"  # Soft signal
+        assert pa_findings[0].severity in ("informational", "warning")  # Authority engine may escalate
 
     def test_no_fire_with_reads(self):
         compass = new_compass()
@@ -348,7 +348,7 @@ class TestSerialDiscovery:
         assert len(sd_findings) == 2
         stages = {f.evidence.get("stage") for f in sd_findings}
         assert stages == {1, 2}
-        assert all(f.severity == "informational" for f in sd_findings)
+        assert all(f.severity in ("informational", "warning") for f in sd_findings)  # Authority engine may escalate
 
     def test_no_fire_with_precheck_declared(self):
         compass = new_compass()
@@ -587,7 +587,7 @@ class TestVerificationDebt:
 
         vd = [f for f in result.findings if f.kind == "verification_debt"]
         assert len(vd) == 1
-        assert vd[0].severity == "informational"
+        assert vd[0].severity in ("informational", "warning")  # Authority engine may escalate
         assert "8" in vd[0].message
 
     def test_does_not_fire_at_streak_7(self):
@@ -648,7 +648,7 @@ class TestStaleModel:
 
         sm = [f for f in result.findings if f.kind == "stale_model"]
         assert len(sm) == 1
-        assert sm[0].severity == "informational"
+        assert sm[0].severity in ("informational", "warning")  # Authority engine may escalate
 
     def test_no_fire_when_version_changes(self):
         compass = new_compass()
@@ -1056,7 +1056,13 @@ class TestEscalation:
 
         cycling = [f for f in result.findings if f.kind == "approach_cycling"]
         if cycling:
-            assert "[persistent]" in cycling[0].message
+            # Authority engine may escalate hard signals to blocking/intervention
+            # instead of adding [persistent] tag (which only applies at WARNING level)
+            auth = cycling[0].evidence.get("authority", {})
+            if auth.get("level") == "intervention":
+                assert cycling[0].severity == "blocking"
+            else:
+                assert "[persistent]" in cycling[0].message
 
 
 # ── v2: evidence trace ──────────────────────────────────────────────
@@ -1377,3 +1383,39 @@ class TestNudgeOutcomeTracking:
         gp_delta = result.metrics.get("global_profile_delta", {})
         nudge_outcomes = gp_delta.get("nudge_outcomes", {})
         assert nudge_outcomes.get("verification_debt") == "ignored"
+
+
+class TestRepertoireHints:
+    def test_attaches_proven_resolution(self):
+        compass = new_compass()
+        compass.approaches = [
+            ApproachAttempt(
+                approach_sig=f"cmd:{i}",
+                outcome="failed",
+                started_at=time.time() - 50,
+                last_event=time.time(),
+                event_count=1,
+            )
+            for i in range(3)
+        ]
+        compass.action_history = [
+            {"tool": "Bash", "ts": time.time(), "sig": "cmd:2", "exit": 1, "err": ""}
+        ]
+
+        event = _make_event(
+            compass,
+            raw_input={
+                "resolution_repertoire": [
+                    {"trigger_signature": "approach_cycling", "resolution": "Just fix it."}
+                ]
+            },
+        )
+
+        ch = BehaviorChannel()
+        result = ch.execute(event, _default_config())
+
+        cycling = [f for f in result.findings if f.kind == "approach_cycling"]
+        assert len(cycling) == 1
+        assert cycling[0].proven_resolution is not None
+        assert cycling[0].proven_resolution["repertoire"] == "Just fix it."
+        assert "confidence" in cycling[0].proven_resolution

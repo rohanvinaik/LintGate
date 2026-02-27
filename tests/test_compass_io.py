@@ -73,13 +73,18 @@ class TestLoadCompass:
 
 class TestSaveCompass:
     def test_saves_and_creates_directory(self, tmp_path):
-        state = CompassState(version=1, forged_at=12345.0)
+        state = CompassState(
+            version=1,
+            forged_at=12345.0,
+            axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
+        )
         path = save_compass(str(tmp_path), state)
         assert path.exists()
         with open(path) as f:
             data = yaml.safe_load(f)
         assert data["version"] == 1
-        assert data["forged_at"] == 12345.0
+        # save_compass updates forged_at to time.time()
+        assert data["forged_at"] > 12345.0
 
     def test_raises_when_yaml_unavailable(self, tmp_path, monkeypatch):
         import lintgate.compass_io as cio
@@ -119,7 +124,10 @@ class TestResetCompass:
         assert result is None
 
     def test_deletes_existing_file(self, tmp_path):
-        state = CompassState(version=1)
+        state = CompassState(
+            version=1,
+            axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
+        )
         save_compass(str(tmp_path), state)
         compass_path = tmp_path / ".claude" / "compass.yaml"
         assert compass_path.exists()

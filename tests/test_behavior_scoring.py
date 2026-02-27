@@ -445,7 +445,7 @@ class TestSignalCoordinator:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         nudge = {"tool": "constraint_check", "reason": "cycling"}
         coord.add_finding("approach_cycling", finding, is_hard=True, precheck_nudge=nudge)
-        findings, actions, nudge_signals = coord.finalize()
+        findings, actions, nudge_signals, _suppressed = coord.finalize()
         assert len(findings) == 1
         assert len(actions) == 1
         assert "approach_cycling" in nudge_signals
@@ -459,7 +459,7 @@ class TestSignalCoordinator:
         # Add lower priority first
         coord.add_finding("serial_discovery_early", f1, is_hard=False, precheck_nudge=nudge_low)
         coord.add_finding("approach_cycling", f2, is_hard=True, precheck_nudge=nudge_high)
-        _, actions, _ = coord.finalize()
+        _, actions, _, _suppressed = coord.finalize()
         assert len(actions) == 1
         assert actions[0]["reason"] == "cycling"
 
@@ -467,7 +467,7 @@ class TestSignalCoordinator:
         coord = self._make_coordinator(event_counter=0)
         nudge = {"tool": "constraint_check", "reason": "early"}
         coord.register_nudge_only("serial_discovery_early", nudge)
-        findings, actions, nudge_signals = coord.finalize()
+        findings, actions, nudge_signals, _suppressed = coord.finalize()
         assert len(findings) == 0
         assert len(actions) == 1
         assert "serial_discovery_early" in nudge_signals
@@ -481,13 +481,13 @@ class TestSignalCoordinator:
         )
         nudge = {"tool": "constraint_check"}
         coord.register_nudge_only("serial_discovery_early", nudge)
-        _, actions, signals = coord.finalize()
+        _, actions, signals, _suppressed = coord.finalize()
         assert len(actions) == 0
         assert len(signals) == 0
 
     def test_finalize_no_nudge(self) -> None:
         coord = self._make_coordinator(event_counter=0)
-        findings, actions, signals = coord.finalize()
+        findings, actions, signals, _suppressed = coord.finalize()
         assert findings == []
         assert actions == []
         assert signals == []
@@ -507,9 +507,9 @@ class TestSignalCoordinator:
             recent_codas=recent_codas,
         )
         finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
-        # Mock _ground_finding_in_theory to return the same coda
+        # Mock _ground_finding_in_theory to return the same coda (now a 2-tuple)
         with patch("lintgate.channels.behavior_scoring._ground_finding_in_theory") as mock_ground:
-            mock_ground.return_value = " Theory: 'some claim'."
+            mock_ground.return_value = (" Theory: 'some claim'.", 1.0)
             finding.message = "cycling detected Theory: 'some claim'."
             finding.evidence = {"theory_context": ["some claim"]}
             coord.add_finding("approach_cycling", finding, is_hard=True)
@@ -546,25 +546,28 @@ class TestGroundFindingInTheory:
             mock_ctx.return_value = {
                 "claims": [{"claim": "decompose before solving", "relevance_score": 0.9}]
             }
-            coda = _ground_finding_in_theory(finding, "approach_cycling", theory)
-        assert coda is not None
+            result = _ground_finding_in_theory(finding, "approach_cycling", theory)
+        assert result is not None
+        coda, score = result
         assert "Theory:" in finding.message
         assert "theory_context" in finding.evidence
+        assert score > 0
 
     def test_no_claims_found(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
             mock_ctx.return_value = {"claims": []}
-            coda = _ground_finding_in_theory(finding, "approach_cycling", {"x": "y"})
-        assert coda is None
+            result = _ground_finding_in_theory(finding, "approach_cycling", {"x": "y"})
+        assert result is None
 
     def test_claim_truncation(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         long_claim = "x" * 100
         with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
             mock_ctx.return_value = {"claims": [{"claim": long_claim, "relevance_score": 1.0}]}
-            coda = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
-        assert coda is not None
+            result = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
+        assert result is not None
+        coda, _score = result
         # The claim should have been truncated to 77 + "..."
         assert "..." in coda
 
@@ -579,8 +582,8 @@ class TestGroundFindingInTheory:
                     {"claim": "different claim", "relevance_score": 0.5},
                 ]
             }
-            coda = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
-        assert coda is not None
+            result = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
+        assert result is not None
         # Should only contain each claim once
         assert finding.message.count("same claim") == 1
 

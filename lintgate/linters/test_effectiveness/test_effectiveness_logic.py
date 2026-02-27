@@ -6,15 +6,18 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from .manifest import build_test_effectiveness_manifest
-from .test_analyzer import _discover_source_files, _discover_test_files
+from .test_analyzer import (
+    _discover_source_files,
+    _discover_test_files,
+)
+from .test_analyzer import (
+    analyze_function_effectiveness as _analyze,
+)
 from .types import (
     SEMANTIC_STRENGTH_THRESHOLD,
-    STRENGTH_MAP,
     TEFF_SCHEMA_VERSION,
     AnalysisState,
-    AssertionInfo,
     AssertionKind,
-    FunctionEffectiveness,
 )
 
 if TYPE_CHECKING:
@@ -23,6 +26,7 @@ if TYPE_CHECKING:
 
 def build_manifest_for_project(
     project_root: str,
+    effective_weights: dict[AssertionKind, float] | None = None,
 ) -> tuple[TestEffectivenessManifest | None, list[str], list[str], list[str]]:
     """Common setup: validate project, discover files, build manifest."""
     from lintgate.channels.structure_channel import _discover_python_files
@@ -32,14 +36,16 @@ def build_manifest_for_project(
     source_files = _discover_source_files(project_root)
 
     manifest = (
-        build_test_effectiveness_manifest(project_root, source_files, test_files)
+        build_test_effectiveness_manifest(
+            project_root, source_files, test_files, effective_weights=effective_weights
+        )
         if py_files and test_files
         else None
     )
     return manifest, py_files, test_files, source_files
 
 
-def build_summary(manifest: Any, project_root: str) -> dict[str, Any]:
+def build_summary(manifest: TestEffectivenessManifest, project_root: str) -> dict[str, Any]:
     """Build a compact summary of the effectiveness manifest."""
     vulnerable = sorted(
         (
@@ -51,8 +57,9 @@ def build_summary(manifest: Any, project_root: str) -> dict[str, Any]:
         reverse=True,
     )
 
-    top_vulnerable = [
-        {
+    top_vulnerable = []
+    for name, fe in vulnerable[:10]:
+        v_data = {
             "function": name,
             "vulnerability": round(fe.mutation_vulnerability, 3),
             "effectiveness": round(fe.effectiveness_score, 3),
@@ -60,13 +67,21 @@ def build_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             "test_count": fe.test_count,
             "assertion_count": len(fe.assertions),
         }
-        for name, fe in vulnerable[:10]
-    ]
+        if fe.weakness_taxonomy:
+            v_data["weakness"] = fe.weakness_taxonomy.value
+        top_vulnerable.append(v_data)
 
     untested = sorted(
         (name for name, fe in manifest.functions.items() if fe.test_count == 0),
         key=lambda x: x,
     )
+
+    # Aggregate taxonomy counts
+    taxonomy_counts: dict[str, int] = {}
+    for fe in manifest.functions.values():
+        if fe.weakness_taxonomy:
+            tag = fe.weakness_taxonomy.value
+            taxonomy_counts[tag] = taxonomy_counts.get(tag, 0) + 1
 
     return {
         "project": project_root,
@@ -76,14 +91,16 @@ def build_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             "functions_analyzed": manifest.functions_analyzed,
             "mutation_vulnerable_count": manifest.mutation_vulnerable_count,
             "untested_count": len(untested),
+            "weakness_taxonomy_counts": taxonomy_counts,
         },
         "top_vulnerable": top_vulnerable,
         "untested_functions": untested[:20],
+        "diagnostics": manifest.diagnostics.to_dict(),
     }
 
 
 def handle_no_mapped_functions(
-    manifest: Any, source_files: list[str], test_files: list[str]
+    manifest: TestEffectivenessManifest, source_files: list[str], test_files: list[str]
 ) -> str:
     """Handle the case where no functions were mapped to tests."""
     diag = manifest.diagnostics
@@ -102,27 +119,25 @@ def handle_no_mapped_functions(
     else:
         hint = "Check your project root and if source functions are actually public/imported correctly."
 
-    return json.dumps(
-        {
-            "note": "No mapped functions analyzed.",
-            "details": f"Scanned {len(source_files)} source files and {len(test_files)} test files. (Mapped: {diag.mapped} / Attempted: {diag.attempted})",
-            "hint": hint,
-            "state": state,
-            "diagnostics": diag.to_dict(),
-        }
-    )
+    result = {
+        "note": "No mapped functions analyzed.",
+        "details": f"Scanned {len(source_files)} source files and {len(test_files)} test files. (Mapped: {diag.mapped} / Attempted: {diag.attempted})",
+        "hint": hint,
+        "state": state,
+        "diagnostics": diag.to_dict(),
+        "schema_version": TEFF_SCHEMA_VERSION,
+    }
+    return json.dumps(result)
 
 
-def build_assertion_upgrades(manifest: Any) -> list[dict[str, str]]:
+def build_assertion_upgrades(manifest: TestEffectivenessManifest) -> list[dict[str, str]]:
     """Identify high-leverage assertion upgrade opportunities."""
     upgrades: list[dict[str, str]] = []
     seen_patterns = set()
 
-    # Find functions with low semantic ratio but high vulnerability
     for _name, fe in manifest.functions.items():
         for a in fe.assertions:
             if a.confidence == "structural" and a.strength < 0.5:
-                # Propose upgrade to equality if it's a bare assert or isinstance
                 pattern = (a.kind.value, a.target_expression)
                 if pattern in seen_patterns:
                     continue
@@ -203,174 +218,72 @@ def apply_filters(
         result["function_filter"] = function_filter
 
 
-def detect_sentinel_patterns(
-    assertions: list[AssertionInfo], func_name: str
-) -> tuple[list[AssertionInfo], set[str], set[str]]:
-    """Apply sentinel pairing and return-type inference."""
-    semantic_roots = set()
-    for a in assertions:
-        if a.strength >= SEMANTIC_STRENGTH_THRESHOLD:
-            semantic_roots.add(a.target_root)
+def reconcile_with_coverage(
+    manifest: TestEffectivenessManifest, coverage_data: dict[str, Any]
+) -> dict[str, Any]:
+    """Reconcile test effectiveness manifest with coverage data."""
+    report = {
+        "high_coverage_low_semantic": [],
+        "low_coverage_high_semantic": [],
+        "coverage_source": "json",
+    }
 
-    updated_assertions = []
-    sentinel_targets = set()
-    for a in assertions:
-        new_a = a
-        if a.kind == AssertionKind.IS_NOT_NONE:
-            sentinel_targets.add(a.target_root)
-            if a.target_root in semantic_roots:
-                new_a.strength = 0.5
-        elif a.kind == AssertionKind.IS_NONE:
-            sentinel_targets.add(a.target_root)
-        updated_assertions.append(new_a)
+    coverage_files = coverage_data.get("files", {})
 
-    if len(updated_assertions) == 1:
-        a = updated_assertions[0]
-        if a.kind in (AssertionKind.IS_NONE, AssertionKind.IS_NOT_NONE):
-            name_match = any(
-                p in func_name.lower() or p in a.target_expression.lower()
-                for p in ("check_", "validate_", "detect_")
-            )
-            if name_match:
-                a.kind = AssertionKind.SENTINEL_CHECK
-                a.strength = STRENGTH_MAP[AssertionKind.SENTINEL_CHECK]
-                a.confidence = "heuristic"
+    for full_name, fe in manifest.functions.items():
+        rel_path, _ = full_name.split("::", 1) if "::" in full_name else (None, full_name)
+        if not rel_path:
+            continue
 
-    return updated_assertions, sentinel_targets, semantic_roots
+        file_cov = coverage_files.get(rel_path, {})
+        percent = file_cov.get("summary", {}).get("percent_covered", 0.0)
 
-
-def detect_isolated_sentinels(
-    assertions: list[AssertionInfo],
-    sentinel_targets: set[str],
-    semantic_roots: set[str],
-) -> list[dict[str, Any]]:
-    """Detect isolated sentinels and generate warnings."""
-    warnings: list[dict[str, Any]] = []
-    for root in sentinel_targets:
-        if (
-            root
-            and root not in semantic_roots
-            and root not in ("True", "False", "None")
-        ):
-            guard_line = next(
-                (
-                    a.line
-                    for a in assertions
-                    if a.kind in (AssertionKind.IS_NOT_NONE, AssertionKind.IS_NONE)
-                    and a.target_root == root
-                ),
-                None,
-            )
-            msg = f"Anti-pattern: isolated sentinel guard on '{root}'. No semantic value checks found for this target."
-            warnings.append(
+        if percent > 80.0 and fe.quality_profile.semantic_ratio < 0.3:
+            report["high_coverage_low_semantic"].append(
                 {
-                    "kind": "isolated_sentinel",
-                    "message": msg,
-                    "remediation": f"Verify the state of '{root}' after checking existence.",
-                    "missing_followup_pattern": {
-                        "expected_followup": f"assert {root}.<field> == <value>",
-                        "guard_line": guard_line,
-                    },
+                    "function": full_name,
+                    "coverage": round(percent, 1),
+                    "semantic_ratio": round(fe.quality_profile.semantic_ratio, 3),
+                    "recommendation": "High coverage but weak assertions. Add equality checks to catch value mutations.",
                 }
             )
-    return warnings
 
+        if percent < 20.0 and fe.quality_profile.semantic_ratio > 0.7:
+            report["low_coverage_high_semantic"].append(
+                {
+                    "function": full_name,
+                    "coverage": round(percent, 1),
+                    "semantic_ratio": round(fe.quality_profile.semantic_ratio, 3),
+                    "recommendation": "Strong assertions found but coverage is low. Expand test inputs to reach more branches.",
+                }
+            )
 
-def detect_hasattr_chains(assertions: list[AssertionInfo]) -> list[dict[str, Any]]:
-    """Detect hasattr chain anti-patterns."""
-    warnings: list[dict[str, Any]] = []
-    hasattr_chains: dict[str, list[int]] = {}
-    current_target_expr = None
-    current_lines = []
-
-    for a in assertions:
-        if a.kind == AssertionKind.HASATTR_CHECK:
-            if a.target_expression == current_target_expr:
-                current_lines.append(a.line)
-            else:
-                if len(current_lines) >= 3:
-                    hasattr_chains[current_target_expr] = current_lines[:]  # type: ignore
-                current_target_expr = a.target_expression
-                current_lines = [a.line]
-        else:
-            if len(current_lines) >= 3:
-                hasattr_chains[current_target_expr] = current_lines[:]  # type: ignore
-            current_target_expr = None
-            current_lines = []
-
-    if len(current_lines) >= 3:
-        hasattr_chains[current_target_expr] = current_lines[:]  # type: ignore
-
-    for target, lines in hasattr_chains.items():
-        warnings.append(
-            {
-                "kind": "hasattr_chain",
-                "message": f"Anti-pattern: chain of {len(lines)} hasattr checks on '{target}' (lines {lines[0]}-{lines[-1]}).",
-                "remediation": f"Replace with attribute equality: assert {target}.field == expected",
-            }
-        )
-    return warnings
+    return report
 
 
 def analyze_function_effectiveness(
     func_name: str,
-    assertions: list[AssertionInfo],
+    assertions: list[Any],
+    derivation_methods: list[str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
-    """Analyze a single test function's assertions."""
-    updated_assertions, sentinel_targets, semantic_roots = detect_sentinel_patterns(
-        assertions, func_name
+    """Analyze a single test function's assertions (wrapper for MCP tool)."""
+    fe, anti_patterns = _analyze(func_name, assertions, derivation_methods)
+
+    # Convert fe object to legacy dict format for backward compatibility
+    func_data = fe.to_dict()
+    sem_count = sum(1 for a in fe.assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD)
+
+    has_isolated_sentinel = any(
+        w.get("kind") == "isolated_sentinel" for w in anti_patterns
     )
 
-    warnings = detect_isolated_sentinels(
-        updated_assertions, sentinel_targets, semantic_roots
-    )
-    warnings.extend(detect_hasattr_chains(updated_assertions))
-
-    func_data = {
-        "assertions": [a.to_dict() for a in updated_assertions],
-        "count": len(updated_assertions),
-        "warnings": warnings,
-        "has_isolated_sentinel": any(
-            w["kind"] == "isolated_sentinel" for w in warnings
-        ),
-    }
-
-    anti_patterns = []
-    is_structural_only = all(
-        a.kind
-        in (
-            AssertionKind.HASATTR_CHECK,
-            AssertionKind.ISINSTANCE_CHECK,
-            AssertionKind.IS_TRUE,
-            AssertionKind.IS_NONE,
-            AssertionKind.IS_NOT_NONE,
-        )
-        for a in updated_assertions
-    )
-    has_hasattr = any(
-        a.kind == AssertionKind.HASATTR_CHECK for a in updated_assertions
-    )
-    if is_structural_only and has_hasattr and len(updated_assertions) > 0:
-        anti_patterns.append(
-            {
-                "function": func_name,
-                "reason": "Exclusively hasattr/isinstance checks with no value assertions.",
-                "remediation": "This test verifies interface existence but not state. Add equality assertions.",
-            }
-        )
-
-    fe = FunctionEffectiveness(function_name=func_name, assertions=updated_assertions)
-    fe.compute_scores()
-
-    sem_count = sum(
-        1 for a in updated_assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD
-    )
     func_data.update(
         {
             "semantic_count": sem_count,
-            "structural_count": len(updated_assertions) - sem_count,
-            "effectiveness_score": fe.effectiveness_score,
-            "quality_profile": fe.quality_profile.to_dict(),
+            "structural_count": len(fe.assertions) - sem_count,
+            "count": len(fe.assertions),
+            "warnings": anti_patterns,
+            "has_isolated_sentinel": has_isolated_sentinel,
         }
     )
 

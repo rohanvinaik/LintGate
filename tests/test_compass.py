@@ -281,7 +281,8 @@ def test_load_save_roundtrip(tmp_path: Path):
     assert loaded is not None
     assert loaded.version == 1 and "problem" in loaded.axes
     assert loaded.axes["problem"].claims[0].text == "test first"
-    assert loaded.forged_at == 1700000000.0
+    # save_compass updates forged_at to time.time(), so just check it's recent
+    assert loaded.forged_at > 1700000000.0
 
 
 def test_load_compass_missing(tmp_path: Path):
@@ -290,7 +291,10 @@ def test_load_compass_missing(tmp_path: Path):
 
 def test_save_creates_directory(tmp_path: Path):
     nested = tmp_path / "deep" / "nested"
-    state = CompassState(forged_at=1.0)
+    state = CompassState(
+        forged_at=1.0,
+        axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
+    )
     path = save_compass(str(nested), state)
     assert path.exists()
 
@@ -345,7 +349,10 @@ def test_hash_changes_on_mutation():
 
 
 def test_reset_compass_deletes(tmp_path: Path):
-    state = CompassState(forged_at=1.0)
+    state = CompassState(
+        forged_at=1.0,
+        axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
+    )
     save_compass(str(tmp_path), state)
     path = tmp_path / ".claude" / "compass.yaml"
     assert path.exists()
