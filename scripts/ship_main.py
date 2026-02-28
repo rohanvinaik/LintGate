@@ -114,11 +114,15 @@ def _check_mergeability(
     if result.returncode == 0:
         return True, "Branch merges cleanly into base"
 
-    # Parse conflict info from stderr/stdout
+    # Parse conflict info from stderr/stdout.
+    # git merge-tree emits conflicts as "CONFLICT (type): ..." lines.
+    # Match only lines starting with "CONFLICT" to avoid false positives
+    # from file content that happens to contain the word (e.g., this script).
     conflicts = []
     for line in (result.stdout + result.stderr).splitlines():
-        if "CONFLICT" in line or "conflict" in line:
-            conflicts.append(line.strip())
+        stripped = line.strip()
+        if stripped.startswith("CONFLICT ("):
+            conflicts.append(stripped)
 
     if conflicts:
         detail = "Merge conflicts detected:\n" + "\n".join(f"  - {c}" for c in conflicts[:10])
@@ -445,6 +449,13 @@ def _merge_pr(repo_root: str, pr_number: int) -> None:
     )
 
 
+def _sync_local_after_merge(base_branch: str, repo_root: str) -> None:
+    """Switch to base branch and pull after merge completes."""
+    print(f"[ship] Syncing local: switching to {base_branch} and pulling")
+    _run(["git", "switch", base_branch], cwd=repo_root, check=True)
+    _run(["git", "pull", "--ff-only"], cwd=repo_root, check=True)
+
+
 def _prune_merged_local_branches(repo_root: str, base_branch: str, current_branch: str) -> None:
     protected = {base_branch, current_branch}
     out = _git_output(repo_root, "for-each-ref", "refs/heads", "--format=%(refname:short)")
@@ -602,6 +613,7 @@ def main() -> int:
 
     if not args.no_merge:
         _merge_pr(repo_root, pr_number)
+        _sync_local_after_merge(args.base, repo_root)
         if args.prune_merged:
             _run(["git", "fetch", "--prune", args.remote], cwd=repo_root)
             _prune_merged_local_branches(repo_root, args.base, branch)

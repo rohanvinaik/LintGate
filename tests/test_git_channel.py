@@ -26,6 +26,7 @@ from lintgate.channels.git_channel import (
     _check_lockfile_freshness,
     _check_quality_infrastructure,
     _check_sensitive_files,
+    _check_working_tree_scope,
     _is_git_repo,
 )
 from lintgate.controlplane.channel import Channel
@@ -372,3 +373,62 @@ def test_check5_skipped_on_hooks(tmp_path: Path) -> None:
     result = channel.execute(event, ControlPlaneConfig())
     # quality_infra_findings should be 0 since Check 5 is skipped on hooks
     assert result.metrics.get("quality_infra_findings", 0) == 0
+
+
+# ── Check 0: Working tree scope advisory ────────────────────────────────
+
+
+class TestWorkingTreeScope:
+    """Tests for _check_working_tree_scope advisory."""
+
+    def test_advisory_fires_above_threshold(self) -> None:
+        """15 files (10 modified + 5 untracked) → finding emitted."""
+        modified_lines = [f" M file{i}.py" for i in range(10)]
+        untracked_lines = [f"?? newfile{i}.py" for i in range(5)]
+        porcelain = "\n".join(modified_lines + untracked_lines) + "\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=porcelain)
+            findings = _check_working_tree_scope("/fake/repo")
+
+        assert len(findings) == 1
+        assert findings[0].kind == "wide_working_tree"
+        assert findings[0].severity == "informational"
+        assert findings[0].evidence["modified_count"] == 10
+        assert findings[0].evidence["untracked_count"] == 5
+        assert findings[0].evidence["total"] == 15
+
+    def test_under_threshold_no_finding(self) -> None:
+        """5 files → no finding."""
+        porcelain = "\n".join(f" M file{i}.py" for i in range(5)) + "\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=porcelain)
+            findings = _check_working_tree_scope("/fake/repo")
+
+        assert len(findings) == 0
+
+    def test_skipped_on_hook(self, tmp_path: Path) -> None:
+        """surface='hook' → Check 0 not run."""
+        # Create a git repo so the channel doesn't skip entirely
+        (tmp_path / ".git").mkdir()
+
+        classification = ChangeClassification(
+            files_changed=["test.py"],
+            change_kind="logic",
+            risk_level="moderate",
+        )
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            tool_name="Edit",
+            files_changed=classification.files_changed,
+            change_classification=classification,
+            surface="hook",
+        )
+
+        with patch(
+            "lintgate.channels.git_channel._check_working_tree_scope"
+        ) as mock_scope:
+            channel = GitChannel()
+            channel.execute(event, ControlPlaneConfig())
+            mock_scope.assert_not_called()

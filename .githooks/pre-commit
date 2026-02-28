@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${LINTGATE_SKIP_PRE_COMMIT:-0}" = "1" ]; then
+  echo "[lintgate] skipping pre-commit checks"
+  exit 0
+fi
+
+# Ensure qlty is discoverable
+if [ -d "$HOME/.qlty/bin" ]; then
+  export PATH="$HOME/.qlty/bin:$PATH"
+fi
+
+# Check if there are staged files matching our patterns.
+# Use newline-delimited for the emptiness check (command substitution strips NULs).
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.sh' '*.yaml' '*.yml' '*.toml')
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+echo "[lintgate] running qlty on staged files"
+# Pipe NUL-delimited output directly to xargs (avoids $() stripping NULs)
+git diff --cached --name-only -z --diff-filter=ACMR -- '*.py' '*.sh' '*.yaml' '*.yml' '*.toml' | xargs -0 qlty check

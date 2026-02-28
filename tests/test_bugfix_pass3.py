@@ -176,7 +176,7 @@ class TestPERF001ParameterConfidence:
         tree = ast.parse(code)
         issues = list(check_quadratic_membership(tree, "test.py"))
         if issues:
-            assert issues[0].confidence == 0.40
+            assert issues[0].confidence == 0.25
 
     def test_list_parameter_full_confidence(self) -> None:
         code = (

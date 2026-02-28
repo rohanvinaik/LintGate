@@ -906,3 +906,73 @@ def test_main_mergeability_failure_raises(ship_main, monkeypatch):
 
     # Gates should NOT have run since mergeability check failed first
     assert seen["gate_ran"] is False
+
+
+# ── Merge-tree edge cases (bug fix validation) ──────────────────────
+
+
+def test_mergeability_conflict_in_source_not_flagged(ship_main, monkeypatch):
+    """merge-tree output contains 'CONFLICT' as file content, not as a real conflict.
+
+    The word CONFLICT can appear in file diffs (e.g., the ship script itself
+    contains the word). Only lines starting with 'CONFLICT (' are real conflicts.
+    """
+    monkeypatch.setattr(
+        ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0)
+    )
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: "abc123")
+    # merge-tree returns 0 (clean merge) but stdout has "CONFLICT" as content
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [],
+            0,
+            stdout='        if "CONFLICT" in line or "conflict" in line:\n',
+            stderr="",
+        ),
+    )
+    ok, detail = ship_main._check_mergeability("/repo", "feat/x", "main", "origin")
+    assert ok is True
+    assert "cleanly" in detail
+
+
+def test_mergeability_no_common_ancestor(ship_main, monkeypatch):
+    """merge-tree returns nonzero with empty stdout → error, not conflict list."""
+    monkeypatch.setattr(
+        ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0)
+    )
+    monkeypatch.setattr(ship_main, "_git_output", lambda *_: "abc123")
+    monkeypatch.setattr(
+        ship_main.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1, stdout="", stderr=""),
+    )
+    ok, detail = ship_main._check_mergeability("/repo", "feat/x", "main", "origin")
+    # Nonzero exit with no CONFLICT lines → not mergeable, but no specific conflicts listed.
+    # The implementation correctly returns False with exit-code detail.
+    assert ok is False
+    assert "exit code" in detail
+
+
+# ── _sync_local_after_merge ─────────────────────────────────────────
+
+
+def test_sync_local_after_merge(ship_main, monkeypatch):
+    """Verify switch + pull are invoked in order with check=True."""
+    calls = []
+
+    def fake_run(cmd, *, cwd, check=True, capture=False):
+        calls.append((cmd, cwd, check))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(ship_main, "_run", fake_run)
+    ship_main._sync_local_after_merge("main", "/repo")
+
+    assert len(calls) == 2
+    assert calls[0][0] == ["git", "switch", "main"]
+    assert calls[0][1] == "/repo"
+    assert calls[0][2] is True
+    assert calls[1][0] == ["git", "pull", "--ff-only"]
+    assert calls[1][1] == "/repo"
+    assert calls[1][2] is True

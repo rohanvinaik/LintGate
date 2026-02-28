@@ -190,6 +190,52 @@ class TestPERF001:
         )
         assert len(issues) == 0
 
+    def test_untyped_param_low_confidence(self):
+        """Untyped function parameter → confidence 0.25."""
+        issues = _parse_and_check(
+            """
+            def process(items):
+                for x in range(100):
+                    if x in items:
+                        pass
+        """,
+            check_quadratic_membership,
+        )
+        assert len(issues) == 1
+        assert issues[0].confidence == 0.25
+        assert "untyped parameter" in issues[0].message
+        assert issues[0].evidence["param_type"] == "untyped"
+
+    def test_no_param_medium_confidence(self):
+        """Module-level variable (not a param) → confidence 0.50."""
+        issues = _parse_and_check(
+            """
+            items = [1, 2, 3, 4, 5, 6]
+            for x in range(100):
+                if x in items:
+                    pass
+        """,
+            check_quadratic_membership,
+        )
+        assert len(issues) == 1
+        assert issues[0].confidence == 0.50
+        assert issues[0].evidence["param_type"] is None
+
+    def test_typed_slow_full_confidence(self):
+        """list-typed param → confidence 0.60."""
+        issues = _parse_and_check(
+            """
+            def process(items: list):
+                for x in range(100):
+                    if x in items:
+                        pass
+        """,
+            check_quadratic_membership,
+        )
+        assert len(issues) == 1
+        assert issues[0].confidence == 0.60
+        assert issues[0].evidence["param_type"] == "typed_slow"
+
 
 # ─── PERF002: re.compile inside function ─────────────────────────────
 
@@ -344,6 +390,38 @@ class TestPERF004:
             check_string_concat_in_loop,
         )
         assert len(issues) == 0
+
+    def test_per_iteration_reset_low_confidence(self):
+        """Accumulator consumed/reset after += → confidence 0.40."""
+        issues = _parse_and_check(
+            """
+            for item in items:
+                msg = ""
+                msg += f"prefix: "
+                msg += f"{item}"
+                log(msg)
+                msg = ""
+        """,
+            check_string_concat_in_loop,
+        )
+        assert len(issues) >= 1
+        for issue in issues:
+            assert issue.confidence == 0.40
+
+    def test_normal_concat_high_confidence(self):
+        """Standard string concat with no reset/consumption → confidence 0.90."""
+        issues = _parse_and_check(
+            """
+            result = ""
+            for item in items:
+                result += " "
+                x = 1
+                y = 2
+        """,
+            check_string_concat_in_loop,
+        )
+        assert len(issues) == 1
+        assert issues[0].confidence == 0.9
 
 
 # ─── PERF005: Unnecessary list() in for-loop ─────────────────────────

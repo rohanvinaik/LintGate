@@ -86,6 +86,10 @@ class GitChannel:
 
         is_hook = event.surface == "hook"
 
+        # Check 0: Working tree scope — skip on hooks
+        if not is_hook:
+            findings.extend(_check_working_tree_scope(project_root))
+
         # Check 1: Large uncommitted changes — skip on hooks (always true during dev)
         if not is_hook:
             findings.extend(_check_large_changes(project_root))
@@ -133,9 +137,10 @@ class GitChannel:
             metrics={
                 "checks_run": (
                     2
-                    + (0 if is_hook else 1)
-                    + (1 if run_lockfile_check else 0)
-                    + (0 if is_hook else 1)
+                    + (0 if is_hook else 1)  # Check 0: working tree scope
+                    + (0 if is_hook else 1)  # Check 1: large changes
+                    + (1 if run_lockfile_check else 0)  # Check 2
+                    + (0 if is_hook else 1)  # Check 5: quality infra
                 ),
                 "issue_count": len(findings),
                 "secrets_found": secrets_count,
@@ -165,6 +170,58 @@ def _is_git_repo(project_root: str) -> bool:
         return result.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         return False
+
+
+def _check_working_tree_scope(project_root: str) -> list[LintIssue]:
+    """Advisory when working tree has many uncommitted changes (>10 files).
+
+    Counts both modified/staged files and untracked files separately.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=project_root,
+        )
+        if result.returncode != 0:
+            return []
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+
+    modified_count = 0
+    untracked_count = 0
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("??"):
+            untracked_count += 1
+        else:
+            modified_count += 1
+
+    total = modified_count + untracked_count
+    if total <= 10:
+        return []
+
+    return [
+        LintIssue(
+            linter="git_channel",
+            kind="wide_working_tree",
+            message=(
+                f"Working tree has {total} uncommitted files "
+                f"({modified_count} modified, {untracked_count} untracked). "
+                "Consider committing or stashing unrelated changes "
+                "to narrow the analysis scope."
+            ),
+            severity="informational",
+            evidence={
+                "modified_count": modified_count,
+                "untracked_count": untracked_count,
+                "total": total,
+            },
+        )
+    ]
 
 
 def _parse_diff_stat_totals(stat_output: str) -> tuple[int, int]:
