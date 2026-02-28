@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772235967346,
+  "lastUpdate": 1772304532352,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -946,6 +946,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.000027957278981069613",
             "extra": "mean: 654.5805750372053 usec\nrounds: 633"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "107649273+rohanvinaik@users.noreply.github.com",
+            "name": "Rohan Vinaik",
+            "username": "rohanvinaik"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "773741c7ff65e61c906bc3648906220691082b92",
+          "message": "chore: ship beta-hardening-pass to main (#187)\n\n* feat: beta hardening pass — #179 #180 #181 #186\n\nPERF001: three-tier confidence (0.25/0.50/0.60) based on parameter type\nclassification, uncertainty note for untyped params, param_type in evidence.\n\nPERF004: per-iteration consumption heuristic — detects accumulator\nreset/consumption after += and downgrades confidence from 0.9 to 0.40.\nRestructured from ast.walk to statement-index iteration.\n\nGit channel: working-tree scope advisory (Check 0) fires when >10\nuncommitted files, separates modified/untracked counts, skipped on hooks.\n\nShip pipeline: post-merge local sync (git switch + pull --ff-only),\npre-commit hook with NUL-delimited file passing, LINTGATE_GATE_ID\nenv-var gate selection in pre-push hook.\n\nControlPlane MCP self-test: 5 structural validity smoke tests on the\nMCP wrapper layer (valid JSON, run_id, channels, drilldown, no crash).\n\n5201 tests pass, 0 failures.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: isolate test_channel subprocess coverage from parent pytest-cov\n\nThe test_channel subprocess runs pytest with --cov-branch, writing\nbranch-mode .coverage data. When a parent pytest-cov collects\nstatement-only coverage (no branch=true in .coveragerc), the combine\nstep crashes with DataError. Fix: set COVERAGE_FILE env var to redirect\nthe subprocess .coverage database to the existing temp directory.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-02-28T18:48:14Z",
+          "tree_id": "ef9094b6c75fe7323730372b09fe8c9d4f3c23e3",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/773741c7ff65e61c906bc3648906220691082b92"
+        },
+        "date": 1772304531080,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 139.27317424082088,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001425255811179565",
+            "extra": "mean: 7.180133614753935 msec\nrounds: 122"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 212333.36099228196,
+            "unit": "iter/sec",
+            "range": "stddev: 8.390206999525602e-7",
+            "extra": "mean: 4.709575524669195 usec\nrounds: 54128"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5446.205189598366,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002132904597329615",
+            "extra": "mean: 183.61408819298373 usec\nrounds: 3481"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 14432.06870213095,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000015881435266806206",
+            "extra": "mean: 69.29013578298351 usec\nrounds: 9471"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1484.2658423645046,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004166697316251185",
+            "extra": "mean: 673.7337554079621 usec\nrounds: 601"
           }
         ]
       }
