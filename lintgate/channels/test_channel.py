@@ -654,6 +654,15 @@ def run_tests(
             ]
         )
 
+    # Isolate subprocess coverage data from any parent pytest-cov process.
+    # Without this, --cov-branch writes .coverage with branch data into the
+    # project root, which collides with a parent's statement-only .coverage
+    # during the combine step (coverage.exceptions.DataError).
+    sub_env: dict[str, str] | None = None
+    if measure_coverage and coverage_tmpdir is not None:
+        sub_env = os.environ.copy()
+        sub_env["COVERAGE_FILE"] = os.path.join(coverage_tmpdir.name, ".coverage")
+
     try:
         result = subprocess.run(
             cmd,
@@ -661,6 +670,7 @@ def run_tests(
             text=True,
             timeout=timeout_ms / 1000.0,
             cwd=project_root,
+            env=sub_env,
         )
         parsed = _parse_pytest_output(result.stdout, result.stderr, result.returncode)
 

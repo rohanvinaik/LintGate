@@ -52,7 +52,19 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                 param_type = _classify_function_parameter(container_name, tree)
                 if param_type == "typed_fast":
                     continue  # dict/set/frozenset/str param — already O(1)
-                confidence = 0.40 if param_type == "untyped" else 0.60
+                if param_type == "untyped":
+                    confidence = 0.25
+                elif param_type is None:
+                    confidence = 0.50  # not a function param — moderate
+                else:  # typed_slow (list/tuple)
+                    confidence = 0.60
+
+                uncertainty_note = (
+                    f" (container `{container_name}` is an untyped parameter"
+                    " — add a type annotation to suppress or confirm)"
+                    if param_type == "untyped"
+                    else ""
+                )
 
                 yield LintIssue(
                     linter="performance_checker",
@@ -60,7 +72,7 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                     message=(
                         f"Membership test `in {container_name}` inside loop is "
                         f"O(n²) for lists. Convert `{container_name}` to a set "
-                        f"before the loop for O(n) lookup."
+                        f"before the loop for O(n) lookup.{uncertainty_note}"
                     ),
                     file=file_path,
                     line=node.lineno,
@@ -69,6 +81,7 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
                     evidence={
                         "container": container_name,
                         "check": "PERF001",
+                        "param_type": param_type,
                     },
                     suggestions=[
                         f"Add `{container_name}_set = set({container_name})` before the loop.",
