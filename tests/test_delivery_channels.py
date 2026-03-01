@@ -48,7 +48,9 @@ def test_delivery_channel_protocol():
     assert channel.reliability == RELIABILITY_HIGH
     assert channel.latency == 0.0
     assert channel.format_finding({"message": "test"}) == "FINDING: test"
-    assert channel.format_repertoire_hint({"repertoire": "test_hint"}) == "HINT: test_hint"
+    assert (
+        channel.format_repertoire_hint({"repertoire": "test_hint"}) == "HINT: test_hint"
+    )
     assert channel.supports_proactive_push() is True
 
 
@@ -81,7 +83,8 @@ def test_claude_code_channel():
     assert "🔍 Behavioral observation: Use focus_on_file" in payload
     assert "💡 Hint: Reduces context noise" in payload
     assert (
-        "[lintgate metadata | authority: nudge | channel: hook_text | reliability: 1.0]" in payload
+        "[lintgate metadata | authority: nudge | channel: hook_text | reliability: 1.0]"
+        in payload
     )
 
 
@@ -93,7 +96,8 @@ def test_cursor_channel():
     assert "### 🔍 Behavioral observation" in payload
     assert "Too many files open" in payload
     assert (
-        "[lintgate metadata | authority: nudge | channel: rule_file | reliability: 0.7]" in payload
+        "[lintgate metadata | authority: nudge | channel: rule_file | reliability: 0.7]"
+        in payload
     )
 
 

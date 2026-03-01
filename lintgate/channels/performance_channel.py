@@ -102,7 +102,11 @@ def _analyze_optimization_opportunities(
                         file=source,
                         severity="informational",
                         confidence=0.8,
-                        evidence={"code": "PERFCH003", "function": func_name, "hints": hints_list},
+                        evidence={
+                            "code": "PERFCH003",
+                            "function": func_name,
+                            "hints": hints_list,
+                        },
                         suggestions=[
                             "Use multiprocessing.Pool.map or thread pools safely on this function."
                         ],
@@ -125,7 +129,9 @@ def _analyze_optimization_opportunities(
                         severity="informational",
                         confidence=0.8,
                         evidence={"code": "PERFCH004", "function": func_name},
-                        suggestions=["Decorate with @functools.lru_cache or @functools.cache"],
+                        suggestions=[
+                            "Decorate with @functools.lru_cache or @functools.cache"
+                        ],
                     )
                 )
         elif "cacheable" in hints:
@@ -204,7 +210,9 @@ def _emit_telemetry(
             "pure_functions_found": manifest.pure_count,
             "impure_functions_found": manifest.impure_count,
             "purity_ratio": round(purity_ratio, 3),
-            "properties_detected": {k.value: v for k, v in manifest.property_distribution.items()},
+            "properties_detected": {
+                k.value: v for k, v in manifest.property_distribution.items()
+            },
             "optimization_opportunities": len(manifest.optimization_potential),
             "findings_count": len(findings),
             "blocking_count": sum(1 for f in findings if f.severity == "blocking"),
@@ -229,7 +237,9 @@ class PerformanceChannel:
         """Run when Python files are present in the project."""
         return bool(event.project_root)
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Execute performance analysis using the algebraic properties bridge."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -258,7 +268,9 @@ class PerformanceChannel:
         # from a previous project would cause false positives.
         _clear_perf011 = _inject_manifest_into_perf011(manifest)
         try:
-            return self._analyze_and_report(manifest, project_root, py_files, findings, start)
+            return self._analyze_and_report(
+                manifest, project_root, py_files, findings, start
+            )
         finally:
             _clear_perf011()
 
@@ -275,20 +287,38 @@ class PerformanceChannel:
         purity_ratio = manifest.pure_count / max(total_funcs, 1)
 
         # 3. Run analyses
-        findings.extend(_analyze_purity_summary(manifest, total_funcs, purity_ratio, project_root))
+        findings.extend(
+            _analyze_purity_summary(manifest, total_funcs, purity_ratio, project_root)
+        )
         findings.extend(_analyze_optimization_opportunities(manifest, project_root))
 
         elapsed_ms = (time.perf_counter() - start) * 1000
+
+        # #209: Export pure function list for cross-channel coherence
+        pure_function_list = [
+            {
+                "name": name,
+                "file": func.source_file,
+                "hints": list(func.optimization_hints),
+            }
+            for name, func in manifest.functions.items()
+            if func.purity.is_pure
+        ]
 
         metrics = {
             "pure_functions": manifest.pure_count,
             "impure_functions": manifest.impure_count,
             "purity_ratio": round(purity_ratio, 3),
-            "properties_detected": {k.value: v for k, v in manifest.property_distribution.items()},
+            "properties_detected": {
+                k.value: v for k, v in manifest.property_distribution.items()
+            },
             "optimization_opportunities": len(manifest.optimization_potential),
+            "pure_function_list": pure_function_list,
         }
 
-        _emit_telemetry(manifest, project_root, purity_ratio, findings, elapsed_ms, len(py_files))
+        _emit_telemetry(
+            manifest, project_root, purity_ratio, findings, elapsed_ms, len(py_files)
+        )
 
         status: Literal["pass", "fail"] = "fail" if findings else "pass"
         severity: Literal["blocking", "warning", "informational", "none"] = "none"

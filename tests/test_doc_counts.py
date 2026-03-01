@@ -31,7 +31,9 @@ def _docstring_lines(source: str) -> set[int]:
     except SyntaxError:
         return lines
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)) and (
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
+        ) and (
             node.body
             and isinstance(node.body[0], ast.Expr)
             and isinstance(node.body[0].value, ast.Constant)
@@ -94,7 +96,9 @@ class TestLinterCount:
     def test_linter_count_in_project_structure(self):
         """Project structure comments should reference 18 linter implementations."""
         readme = _read_file("README.md")
-        assert "18 linter" in readme, "README.md project structure doesn't mention '18 linter'"
+        assert "18 linter" in readme, (
+            "README.md project structure doesn't mention '18 linter'"
+        )
 
 
 class TestMCPToolCount:
@@ -109,7 +113,9 @@ class TestMCPToolCount:
         # README and AGENTS should reference the actual count
         count_str = str(actual_count)
         assert (
-            f"{count_str} " in readme or f"({count_str})" in readme or f"{count_str} " in agents
+            f"{count_str} " in readme
+            or f"({count_str})" in readme
+            or f"{count_str} " in agents
         ), (
             f"MCP tool count is {actual_count} but docs don't match. "
             f"Run: grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l"
@@ -132,10 +138,10 @@ class TestMCPToolCount:
         )
         assert "$TOOL_COUNT tools by cognitive mode" in integrate
 
-    def test_mcp_tool_count_is_68(self):
-        """Sanity check: we currently have 68 MCP tools."""
+    def test_mcp_tool_count_is_76(self):
+        """Sanity check: we currently have 76 MCP tools."""
         actual = _count_mcp_tools()
-        assert actual == 68, f"Expected 68 MCP tools, got {actual}"
+        assert actual == 76, f"Expected 76 MCP tools, got {actual}"
 
     def test_reference_md_lists_all_tools(self):
         """docs/reference.md tool tables should list all MCP tools."""

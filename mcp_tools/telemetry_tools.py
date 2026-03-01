@@ -42,7 +42,9 @@ def register(mcp, helpers):
         with contextlib.suppress(Exception):
             from lintgate.telemetry import compute_quality_economics_summary
 
-            quality_economics = compute_quality_economics_summary(project_root, period=period)
+            quality_economics = compute_quality_economics_summary(
+                project_root, period=period
+            )
             if quality_economics.get("has_data", False):
                 summary["quality_economics"] = quality_economics
 

@@ -6,7 +6,11 @@ from lintgate.channels.lint_channel import (
     _apply_mcp_strictness_override,
     _compute_dynamic_timeout_ms,
 )
-from lintgate.controlplane.types import ChannelConfig, ControlPlaneConfig, SupervisionEvent
+from lintgate.controlplane.types import (
+    ChannelConfig,
+    ControlPlaneConfig,
+    SupervisionEvent,
+)
 from lintgate.types import LintTier
 
 

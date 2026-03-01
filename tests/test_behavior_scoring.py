@@ -279,7 +279,11 @@ class TestIntentBiasScorer:
         )
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="t", confidence=0.3, source="command_failure", status="active"
+                id="h1",
+                claim="t",
+                confidence=0.3,
+                source="command_failure",
+                status="active",
             )
         ]
         scorer = IntentBiasScorer(compass, {})
@@ -289,9 +293,15 @@ class TestIntentBiasScorer:
     def test_stale_model_fires(self) -> None:
         compass = _make_compass(event_counter=20)
         compass.approaches = [
-            ApproachAttempt(approach_sig="sig1", started_at=1.0, hyp_version_at_start=0),
-            ApproachAttempt(approach_sig="sig2", started_at=2.0, hyp_version_at_start=0),
-            ApproachAttempt(approach_sig="sig3", started_at=3.0, hyp_version_at_start=0),
+            ApproachAttempt(
+                approach_sig="sig1", started_at=1.0, hyp_version_at_start=0
+            ),
+            ApproachAttempt(
+                approach_sig="sig2", started_at=2.0, hyp_version_at_start=0
+            ),
+            ApproachAttempt(
+                approach_sig="sig3", started_at=3.0, hyp_version_at_start=0
+            ),
         ]
         scorer = IntentBiasScorer(compass, {"stale_model_approach_changes": 2})
         delta, terms = scorer.stale_model_bias()
@@ -301,7 +311,9 @@ class TestIntentBiasScorer:
     def test_stale_model_no_fire_few_approaches(self) -> None:
         compass = _make_compass(event_counter=10)
         compass.approaches = [
-            ApproachAttempt(approach_sig="sig1", started_at=1.0, hyp_version_at_start=0),
+            ApproachAttempt(
+                approach_sig="sig1", started_at=1.0, hyp_version_at_start=0
+            ),
         ]
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.stale_model_bias()
@@ -310,9 +322,15 @@ class TestIntentBiasScorer:
     def test_stale_model_no_fire_version_changes(self) -> None:
         compass = _make_compass(event_counter=20)
         compass.approaches = [
-            ApproachAttempt(approach_sig="sig1", started_at=1.0, hyp_version_at_start=0),
-            ApproachAttempt(approach_sig="sig2", started_at=2.0, hyp_version_at_start=1),
-            ApproachAttempt(approach_sig="sig3", started_at=3.0, hyp_version_at_start=2),
+            ApproachAttempt(
+                approach_sig="sig1", started_at=1.0, hyp_version_at_start=0
+            ),
+            ApproachAttempt(
+                approach_sig="sig2", started_at=2.0, hyp_version_at_start=1
+            ),
+            ApproachAttempt(
+                approach_sig="sig3", started_at=3.0, hyp_version_at_start=2
+            ),
         ]
         scorer = IntentBiasScorer(compass, {"stale_model_approach_changes": 2})
         delta, terms = scorer.stale_model_bias()
@@ -341,7 +359,9 @@ class TestIntentBiasScorer:
             "decay_horizon": 50,
             "computed_bias_adjustments": {"verification_debt": 0.1},
         }
-        scorer = IntentBiasScorer(compass, {"verification_debt_streak": 8}, global_priors)
+        scorer = IntentBiasScorer(
+            compass, {"verification_debt_streak": 8}, global_priors
+        )
         assert scorer._alpha > 0
         trace = scorer.build_evidence_trace()
         assert "global_alpha" in trace
@@ -422,7 +442,9 @@ class TestSignalCoordinator:
             compass=compass,
             thresholds={"signal_cooldown": 10, "escalation_threshold": 3},
         )
-        finding = LintIssue(linter="behavior", kind="approach_cycling", message="cycling detected")
+        finding = LintIssue(
+            linter="behavior", kind="approach_cycling", message="cycling detected"
+        )
         coord.add_finding("approach_cycling", finding, is_hard=True)
         assert len(coord.findings) == 1
         assert coord.findings[0].message.startswith("[persistent]")
@@ -444,7 +466,9 @@ class TestSignalCoordinator:
         coord = self._make_coordinator(event_counter=0)
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         nudge = {"tool": "constraint_check", "reason": "cycling"}
-        coord.add_finding("approach_cycling", finding, is_hard=True, precheck_nudge=nudge)
+        coord.add_finding(
+            "approach_cycling", finding, is_hard=True, precheck_nudge=nudge
+        )
         findings, actions, nudge_signals, _suppressed = coord.finalize()
         assert len(findings) == 1
         assert len(actions) == 1
@@ -457,8 +481,12 @@ class TestSignalCoordinator:
         nudge_low = {"tool": "constraint_check", "reason": "serial"}
         nudge_high = {"tool": "constraint_check", "reason": "cycling"}
         # Add lower priority first
-        coord.add_finding("serial_discovery_early", f1, is_hard=False, precheck_nudge=nudge_low)
-        coord.add_finding("approach_cycling", f2, is_hard=True, precheck_nudge=nudge_high)
+        coord.add_finding(
+            "serial_discovery_early", f1, is_hard=False, precheck_nudge=nudge_low
+        )
+        coord.add_finding(
+            "approach_cycling", f2, is_hard=True, precheck_nudge=nudge_high
+        )
         _, actions, _, _suppressed = coord.finalize()
         assert len(actions) == 1
         assert actions[0]["reason"] == "cycling"
@@ -501,14 +529,20 @@ class TestSignalCoordinator:
             thresholds={"signal_cooldown": 10, "escalation_threshold": 3},
             theory_profile={
                 "facets": {
-                    "problem_solving": {"claims": [{"claim": "some claim", "relevance_score": 1.0}]}
+                    "problem_solving": {
+                        "claims": [{"claim": "some claim", "relevance_score": 1.0}]
+                    }
                 }
             },
             recent_codas=recent_codas,
         )
-        finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
+        finding = LintIssue(
+            linter="behavior", kind="cycling", message="cycling detected"
+        )
         # Mock _ground_finding_in_theory to return the same coda (now a 2-tuple)
-        with patch("lintgate.channels.behavior_scoring._ground_finding_in_theory") as mock_ground:
+        with patch(
+            "lintgate.channels.behavior_scoring._ground_finding_in_theory"
+        ) as mock_ground:
             mock_ground.return_value = (" Theory: 'some claim'.", 1.0)
             finding.message = "cycling detected Theory: 'some claim'."
             finding.evidence = {"theory_context": ["some claim"]}
@@ -529,10 +563,15 @@ class TestGroundFindingInTheory:
 
     def test_unknown_signal(self) -> None:
         finding = LintIssue(linter="behavior", kind="unknown", message="msg")
-        assert _ground_finding_in_theory(finding, "nonexistent_signal", {"facets": {}}) is None
+        assert (
+            _ground_finding_in_theory(finding, "nonexistent_signal", {"facets": {}})
+            is None
+        )
 
     def test_grounding_applied(self) -> None:
-        finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
+        finding = LintIssue(
+            linter="behavior", kind="cycling", message="cycling detected"
+        )
         theory = {
             "facets": {
                 "problem_solving": {
@@ -542,9 +581,13 @@ class TestGroundFindingInTheory:
                 }
             }
         }
-        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
+        with patch(
+            "lintgate.theory_extractor.get_theory_context_from_profile"
+        ) as mock_ctx:
             mock_ctx.return_value = {
-                "claims": [{"claim": "decompose before solving", "relevance_score": 0.9}]
+                "claims": [
+                    {"claim": "decompose before solving", "relevance_score": 0.9}
+                ]
             }
             result = _ground_finding_in_theory(finding, "approach_cycling", theory)
         assert result is not None
@@ -555,7 +598,9 @@ class TestGroundFindingInTheory:
 
     def test_no_claims_found(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
-        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
+        with patch(
+            "lintgate.theory_extractor.get_theory_context_from_profile"
+        ) as mock_ctx:
             mock_ctx.return_value = {"claims": []}
             result = _ground_finding_in_theory(finding, "approach_cycling", {"x": "y"})
         assert result is None
@@ -563,9 +608,15 @@ class TestGroundFindingInTheory:
     def test_claim_truncation(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         long_claim = "x" * 100
-        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
-            mock_ctx.return_value = {"claims": [{"claim": long_claim, "relevance_score": 1.0}]}
-            result = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
+        with patch(
+            "lintgate.theory_extractor.get_theory_context_from_profile"
+        ) as mock_ctx:
+            mock_ctx.return_value = {
+                "claims": [{"claim": long_claim, "relevance_score": 1.0}]
+            }
+            result = _ground_finding_in_theory(
+                finding, "approach_cycling", {"facets": {}}
+            )
         assert result is not None
         coda, _score = result
         # The claim should have been truncated to 77 + "..."
@@ -573,7 +624,9 @@ class TestGroundFindingInTheory:
 
     def test_dedup_claims(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
-        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
+        with patch(
+            "lintgate.theory_extractor.get_theory_context_from_profile"
+        ) as mock_ctx:
             # Return duplicate claims from different facets
             mock_ctx.return_value = {
                 "claims": [
@@ -582,7 +635,9 @@ class TestGroundFindingInTheory:
                     {"claim": "different claim", "relevance_score": 0.5},
                 ]
             }
-            result = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
+            result = _ground_finding_in_theory(
+                finding, "approach_cycling", {"facets": {}}
+            )
         assert result is not None
         # Should only contain each claim once
         assert finding.message.count("same claim") == 1

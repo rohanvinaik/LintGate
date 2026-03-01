@@ -77,7 +77,9 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(tools["hygiene_check"](path=str(tmp_path), planned_action="echo hello"))
+        result = json.loads(
+            tools["hygiene_check"](path=str(tmp_path), planned_action="echo hello")
+        )
         assert result["status"] == "no_checks_applicable"
         assert result["next_actions"] == []
 
@@ -97,7 +99,9 @@ class TestHygieneCheck:
 
         tools = _register(tmp_path)
         result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="pip install requests")
+            tools["hygiene_check"](
+                path=str(tmp_path), planned_action="pip install requests"
+            )
         )
         assert result["status"] == "pass"
         assert result["command_class"] == "pip_install"
@@ -126,7 +130,9 @@ class TestHygieneCheck:
 
         tools = _register(tmp_path)
         result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="pip install requests")
+            tools["hygiene_check"](
+                path=str(tmp_path), planned_action="pip install requests"
+            )
         )
         assert result["status"] == "warnings"
         assert len(result["warnings"]) == 1
@@ -641,7 +647,9 @@ class TestGlobalMemoryStatus:
 
         profile = GlobalBehaviorProfile(
             session_count=5,
-            signal_priors={"approach_cycling": {"total_firings": 3, "sessions_present": 2}},
+            signal_priors={
+                "approach_cycling": {"total_firings": 3, "sessions_present": 2}
+            },
             intent_ratios={"inspect": 10, "modify": 5},
             nudge_outcomes={
                 "approach_cycling": {"accepted": 2, "ignored": 1},

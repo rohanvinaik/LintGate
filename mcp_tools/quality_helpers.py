@@ -74,7 +74,6 @@ from mcp_tools.quality.workflow_gen import (
     _generate_tests_workflow as _new_generate_tests_workflow,
 )
 
-# Constants used in facade
 _REQUIRED_ARTIFACTS = {
     "codeclimate": ".codeclimate.yml",
     "sonar": "sonar-project.properties",
@@ -251,7 +250,10 @@ def _detect_subprocess_usage(root_path: str) -> bool:
         try:
             with open(f, encoding="utf-8", errors="ignore") as fd:
                 content = fd.read()
-                if "import subprocess" in content or "from subprocess import" in content:
+                if (
+                    "import subprocess" in content
+                    or "from subprocess import" in content
+                ):
                     return True
         except OSError:
             continue

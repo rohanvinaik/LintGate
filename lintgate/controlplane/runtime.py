@@ -22,12 +22,14 @@ at the channel level instead of the linter level.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
 from .types import (
     ChannelResult,
+    CoherenceResult,
     ControlPlaneConfig,
     MeshResult,
     SupervisionEvent,
@@ -117,24 +119,14 @@ def run_mesh(
             if result.status == "timeout":
                 incomplete.append(ch_name)
 
-    # Phase 3: Run coherence engine (with history if session available)
-    from .coherence import compute_coherence, compute_coherence_with_history
+    # Phase 2b: Collect git working tree context (#179)
+    git_context = _collect_git_context(event, channel_results)
 
-    sw = config.severity_weighted_coherence
-    cw = config.coherence_channel_weights
-    fc = list(event.files_changed) if event.files_changed else None
-    if session is not None:
-        coherence = compute_coherence_with_history(
-            channel_results,
-            session,
-            severity_weighted=sw,
-            channel_weights=cw,
-            files_changed=fc,
-        )
-    else:
-        coherence = compute_coherence(
-            channel_results, severity_weighted=sw, channel_weights=cw, files_changed=fc
-        )
+    # Phase 2c: Cross-channel coherence pass (#209)
+    _run_cross_channel_coherence(channel_results)
+
+    # Phase 3: Run coherence engine
+    coherence = _compute_final_coherence(channel_results, config, event, session)
 
     elapsed_ms = (time.perf_counter() - start) * 1000
     return MeshResult(
@@ -144,6 +136,118 @@ def run_mesh(
         duration_ms=round(elapsed_ms, 1),
         incomplete_channels=incomplete,
         partial=len(incomplete) > 0,
+        git_context=git_context,
+    )
+
+
+def _collect_git_context(
+    event: SupervisionEvent,
+    channel_results: list[ChannelResult],
+) -> dict:
+    """Collect git working tree context and annotate findings with scope."""
+    if not event.project_root:
+        return {}
+
+    from lintgate.channels.git_channel import (
+        classify_finding_scope,
+        collect_working_tree_context,
+    )
+
+    git_context = collect_working_tree_context(event.project_root)
+    if git_context.get("modified_files") or git_context.get("untracked_files"):
+        mod = git_context.get("modified_files", [])
+        untracked = git_context.get("untracked_files", [])
+        for cr in channel_results:
+            for finding in cr.findings:
+                scope = classify_finding_scope(
+                    finding.file, mod, untracked, event.project_root
+                )
+                finding.evidence = dict(finding.evidence) if finding.evidence else {}
+                finding.evidence["scope"] = scope
+    return git_context
+
+
+def _run_cross_channel_coherence(channel_results: list[ChannelResult]) -> None:
+    """Run cross-channel coherence pass and append synthetic channel result."""
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        from .cross_channel import cross_channel_coherence
+
+        coh_findings = cross_channel_coherence(channel_results)
+        if coh_findings:
+            sev_order = {"blocking": 3, "warning": 2, "informational": 1, "none": 0}
+            has_actionable = any(
+                f.severity in ("blocking", "warning") for f in coh_findings
+            )
+            worst_sev: str = max(
+                (f.severity for f in coh_findings),
+                key=lambda s: sev_order.get(s, 0),
+            )
+            channel_results.append(
+                ChannelResult(
+                    channel="coherence",
+                    status="fail" if has_actionable else "pass",
+                    severity=worst_sev,  # type: ignore[arg-type]
+                    findings=coh_findings,
+                    metrics={"cross_channel_findings": len(coh_findings)},
+                    duration_ms=0,
+                )
+            )
+
+        with contextlib.suppress(Exception):
+            from lintgate.convergence.integration import (
+                convergence_to_metrics,
+                extract_all_evidence,
+            )
+
+            convergence_results = extract_all_evidence(channel_results)
+            if convergence_results:
+                for cr in channel_results:
+                    if cr.channel == "coherence":
+                        cr.metrics["convergence"] = convergence_to_metrics(
+                            convergence_results
+                        )
+                        break
+
+        with contextlib.suppress(Exception):
+            from lintgate.convergence.integration import (
+                extract_file_evidence,
+                file_convergence_to_metrics,
+            )
+
+            file_conv = extract_file_evidence(channel_results)
+            if file_conv:
+                for cr in channel_results:
+                    if cr.channel == "structure":
+                        cr.metrics["file_convergence"] = file_convergence_to_metrics(
+                            file_conv
+                        )
+                        break
+
+
+def _compute_final_coherence(
+    channel_results: list[ChannelResult],
+    config: ControlPlaneConfig,
+    event: SupervisionEvent,
+    session: SessionMemory | None,
+) -> CoherenceResult:
+    """Run coherence engine, optionally with session history."""
+    from .coherence import compute_coherence, compute_coherence_with_history
+
+    sw = config.severity_weighted_coherence
+    cw = config.coherence_channel_weights
+    fc = list(event.files_changed) if event.files_changed else None
+    if session is not None:
+        return compute_coherence_with_history(
+            channel_results,
+            session,
+            severity_weighted=sw,
+            channel_weights=cw,
+            files_changed=fc,
+        )
+    return compute_coherence(
+        channel_results, severity_weighted=sw, channel_weights=cw, files_changed=fc
     )
 
 
@@ -172,7 +276,9 @@ def _execute_parallel(
 
         done_futures: set[Future] = set()
         try:
-            for future in as_completed(futures, timeout=remaining if remaining > 0 else 0.1):
+            for future in as_completed(
+                futures, timeout=remaining if remaining > 0 else 0.1
+            ):
                 done_futures.add(future)
                 ch = futures[future]
                 try:

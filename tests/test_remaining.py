@@ -89,7 +89,9 @@ class TestImplAgentFeedbackNoDisagreement:
             ),
         ):
             result = json.loads(
-                _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
+                _impl_controlplane_agent_feedback(
+                    "/tmp", None, None, None, None, _stub_helpers()
+                )
             )
 
         assert result["total_disagreements"] == 0
@@ -172,8 +174,16 @@ class TestProcessAcceptedConstraintsBranches:
 
         session = mock.MagicMock()
         session.proposed_constraints = [
-            {"pattern_key": "ruff|F821", "status": "accepted", "proposed_rule": "No F821"},
-            {"pattern_key": "ruff|E501", "status": "proposed", "proposed_rule": "Wrap lines"},
+            {
+                "pattern_key": "ruff|F821",
+                "status": "accepted",
+                "proposed_rule": "No F821",
+            },
+            {
+                "pattern_key": "ruff|E501",
+                "status": "proposed",
+                "proposed_rule": "Wrap lines",
+            },
         ]
         actions: list[str] = []
 
@@ -287,7 +297,9 @@ class TestRegisterControlplaneToolClosures:
             ),
             mock.patch("os.path.exists", return_value=True),
         ):
-            result = json.loads(skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py"))
+            result = json.loads(
+                skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py")
+            )
             assert result["source_file"] == "/tmp/proj/foo.py"
 
 
@@ -312,7 +324,11 @@ class TestFilterToSourcePackages:
     def test_filters_to_matching_packages(self):
         from lintgate.channels.test_channel import _filter_to_source_packages
 
-        files = ["/proj/lintgate/foo.py", "/proj/tests/test_foo.py", "/proj/mcp_tools/bar.py"]
+        files = [
+            "/proj/lintgate/foo.py",
+            "/proj/tests/test_foo.py",
+            "/proj/mcp_tools/bar.py",
+        ]
         result = _filter_to_source_packages(files, ["lintgate", "mcp_tools"], "/proj")
         assert result == ["/proj/lintgate/foo.py", "/proj/mcp_tools/bar.py"]
 
@@ -423,5 +439,7 @@ class TestRegisterOnboardingClaudeMdExists:
             result = json.loads(getting_started(path=str(tmp_path)))
 
         actions = result.get("next_actions", [])
-        bootstrap_actions = [a for a in actions if a.get("tool") == "bootstrap_context_files"]
+        bootstrap_actions = [
+            a for a in actions if a.get("tool") == "bootstrap_context_files"
+        ]
         assert bootstrap_actions == []

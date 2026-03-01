@@ -160,7 +160,9 @@ class TestBuildCpNextActions:
         assert "controlplane_get_details" in tools
         assert "controlplane_run" in tools
         assert "controlplane_apply_repairs" in tools
-        repair_action = next(a for a in actions if a["tool"] == "controlplane_apply_repairs")
+        repair_action = next(
+            a for a in actions if a["tool"] == "controlplane_apply_repairs"
+        )
         assert repair_action["priority"] == 4
 
     def test_warnings_action(self) -> None:

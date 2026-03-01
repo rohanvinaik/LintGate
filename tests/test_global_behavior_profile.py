@@ -37,7 +37,9 @@ class TestGlobalBehaviorProfile:
             session_count=5,
             last_session_id="abc123",
             seen_session_ids=["abc123", "def456"],
-            signal_priors={"verification_debt": {"total_firings": 10, "sessions_present": 3}},
+            signal_priors={
+                "verification_debt": {"total_firings": 10, "sessions_present": 3}
+            },
             intent_ratios={"execute": 100, "verify": 50},
             nudge_outcomes={"verification_debt": {"accepted": 3, "ignored": 1}},
             computed_bias_adjustments={"verification_debt": 0.05},
@@ -61,7 +63,9 @@ class TestGlobalBehaviorProfile:
         assert p.nudge_outcomes == {}
 
     def test_from_dict_partial_data(self):
-        p = GlobalBehaviorProfile.from_dict({"session_count": 7, "intent_ratios": {"modify": 42}})
+        p = GlobalBehaviorProfile.from_dict(
+            {"session_count": 7, "intent_ratios": {"modify": 42}}
+        )
         assert p.session_count == 7
         assert p.intent_ratios == {"modify": 42}
         assert p.signal_priors == {}
@@ -102,12 +106,16 @@ class TestComputeAlpha:
 class TestComputeBiasAdjustments:
     def test_returns_empty_below_min_sample_size(self):
         p = GlobalBehaviorProfile(session_count=MIN_SAMPLE_SIZE - 1)
-        p.signal_priors = {"verification_debt": {"total_firings": 10, "sessions_present": 2}}
+        p.signal_priors = {
+            "verification_debt": {"total_firings": 10, "sessions_present": 2}
+        }
         assert compute_bias_adjustments(p) == {}
 
     def test_high_frequency_signal_gets_boost(self):
         p = GlobalBehaviorProfile(session_count=5)
-        p.signal_priors = {"verification_debt": {"total_firings": 12, "sessions_present": 4}}
+        p.signal_priors = {
+            "verification_debt": {"total_firings": 12, "sessions_present": 4}
+        }
         adj = compute_bias_adjustments(p)
         # freq = 12/5 = 2.4 >= 2.0 → +0.05
         assert adj["verification_debt"] == pytest.approx(0.05)
@@ -121,7 +129,9 @@ class TestComputeBiasAdjustments:
 
     def test_high_nudge_acceptance_adds_boost(self):
         p = GlobalBehaviorProfile(session_count=5)
-        p.signal_priors = {"verification_debt": {"total_firings": 12, "sessions_present": 4}}
+        p.signal_priors = {
+            "verification_debt": {"total_firings": 12, "sessions_present": 4}
+        }
         p.nudge_outcomes = {"verification_debt": {"accepted": 4, "ignored": 1}}
         adj = compute_bias_adjustments(p)
         # freq boost = +0.05, nudge acceptance (4/5 = 0.8 >= 0.6) = +0.03 → total 0.08
@@ -129,7 +139,9 @@ class TestComputeBiasAdjustments:
 
     def test_low_nudge_acceptance_dampens(self):
         p = GlobalBehaviorProfile(session_count=5)
-        p.signal_priors = {"failure_amnesia": {"total_firings": 12, "sessions_present": 4}}
+        p.signal_priors = {
+            "failure_amnesia": {"total_firings": 12, "sessions_present": 4}
+        }
         p.nudge_outcomes = {"failure_amnesia": {"accepted": 0, "ignored": 5}}
         adj = compute_bias_adjustments(p)
         # freq boost = +0.05, nudge rejection (0/5 = 0.0 <= 0.2) = -0.05 → total 0.0
@@ -153,7 +165,9 @@ class TestComputeBiasAdjustments:
     def test_nudge_outcomes_below_threshold_ignored(self):
         """Need >= 3 nudge outcomes to factor in acceptance rate."""
         p = GlobalBehaviorProfile(session_count=5)
-        p.signal_priors = {"verification_debt": {"total_firings": 12, "sessions_present": 4}}
+        p.signal_priors = {
+            "verification_debt": {"total_firings": 12, "sessions_present": 4}
+        }
         p.nudge_outcomes = {"verification_debt": {"accepted": 0, "ignored": 2}}
         adj = compute_bias_adjustments(p)
         # Only frequency boost, nudge not counted (total_nudges=2 < 3)
@@ -166,13 +180,17 @@ class TestComputeBiasAdjustments:
 class TestApplySessionDelta:
     def test_merges_signal_fire_counts(self):
         p = GlobalBehaviorProfile()
-        apply_session_delta(p, {"signal_fire_counts": {"approach_cycling": 3}}, session_id="s1")
+        apply_session_delta(
+            p, {"signal_fire_counts": {"approach_cycling": 3}}, session_id="s1"
+        )
         assert p.signal_priors["approach_cycling"]["total_firings"] == 3
         assert p.signal_priors["approach_cycling"]["sessions_present"] == 1
 
     def test_merges_intent_counts(self):
         p = GlobalBehaviorProfile()
-        apply_session_delta(p, {"intent_summary": {"execute": 10, "verify": 5}}, session_id="s1")
+        apply_session_delta(
+            p, {"intent_summary": {"execute": 10, "verify": 5}}, session_id="s1"
+        )
         assert p.intent_ratios["execute"] == 10
         assert p.intent_ratios["verify"] == 5
         # Second session adds

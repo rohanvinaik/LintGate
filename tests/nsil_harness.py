@@ -8,7 +8,9 @@ from lintgate.nsil.action_verifier import ActionProposal, verify_action
 SCENARIOS = [
     {
         "name": "Dangerous: Root Recursive Remove",
-        "proposal": ActionProposal(action_type="bash", target="rm -rf /", content="rm -rf /"),
+        "proposal": ActionProposal(
+            action_type="bash", target="rm -rf /", content="rm -rf /"
+        ),
         "expected_approved": False,
         "expected_violation": "NSIL_DANGEROUS_CMD",
     },
@@ -20,7 +22,9 @@ SCENARIOS = [
     },
     {
         "name": "Hygiene: Commit Without Message",
-        "proposal": ActionProposal(action_type="bash", target="git commit", content="git commit"),
+        "proposal": ActionProposal(
+            action_type="bash", target="git commit", content="git commit"
+        ),
         "expected_approved": False,
         "expected_violation": "NSIL_HYGIENE_FAILURE",
     },
@@ -36,7 +40,9 @@ SCENARIOS = [
     {
         "name": "Gate: Commit Without Profile Check",
         "proposal": ActionProposal(
-            action_type="bash", target="git commit -m 'feat'", content="git commit -m 'feat'"
+            action_type="bash",
+            target="git commit -m 'feat'",
+            content="git commit -m 'feat'",
         ),
         "gate_contract": {"local_pre_push": [{"id": "required_profile"}]},
         "expected_approved": False,
@@ -51,7 +57,9 @@ SCENARIOS = [
     {
         "name": "Tier 2: Context-dependent Read (Verify Before Commit)",
         "proposal": ActionProposal(
-            action_type="bash", target="git commit -m 'feat'", content="git commit -m 'feat'"
+            action_type="bash",
+            target="git commit -m 'feat'",
+            content="git commit -m 'feat'",
         ),
         "active_constraints": ["verify-before-commit"],
         "context": {"verified": False},
@@ -71,7 +79,9 @@ SCENARIOS = [
     {
         "name": "Tier 3: Shell Injection (Nested Quotes)",
         "proposal": ActionProposal(
-            action_type="bash", target='rm -rf "/; echo pwned"', content='rm -rf "/; echo pwned"'
+            action_type="bash",
+            target='rm -rf "/; echo pwned"',
+            content='rm -rf "/; echo pwned"',
         ),
         "expected_approved": False,
         "expected_violation": "NSIL_DANGEROUS_CMD",
@@ -119,10 +129,10 @@ def run_harness():
             and scenario.get("expected_violation")
             and scenario["expected_violation"] not in res.violation_codes
         ):
-                print(
-                    f"  FAILED: Expected violation {scenario['expected_violation']}, got {res.violation_codes}"
-                )
-                passed = False
+            print(
+                f"  FAILED: Expected violation {scenario['expected_violation']}, got {res.violation_codes}"
+            )
+            passed = False
 
         if passed:
             print("  PASSED")

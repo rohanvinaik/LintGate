@@ -113,14 +113,18 @@ def _run_legacy_pipeline(
         with contextlib.suppress(Exception):
             from lintgate.dependency_health import quick_dependency_check
 
-            dep_warnings = quick_dependency_check(cwd, classification.change_kind, tool_input)
+            dep_warnings = quick_dependency_check(
+                cwd, classification.change_kind, tool_input
+            )
 
     tier = select_tier(classification, config)
     if tier.skip:
         _exit_clean()
 
     registry = build_registry(config)
-    remaining_ms = max(config.total_timeout_ms - int((time.perf_counter() - start) * 1000), 2000)
+    remaining_ms = max(
+        config.total_timeout_ms - int((time.perf_counter() - start) * 1000), 2000
+    )
     linter_results = run_linters(tier, config, registry, timeout_ms=remaining_ms)
 
     aggregated = aggregate_results(
@@ -128,11 +132,18 @@ def _run_legacy_pipeline(
     )
 
     all_issues = [*aggregated.blocking, *aggregated.warnings, *aggregated.informational]
-    recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
+    recurrence = {
+        "repeated_issue_count": 0,
+        "unique_signatures_tracked": 0,
+        "top_repeated": [],
+    }
     with contextlib.suppress(Exception):
         recurrence = update_issue_memory(cwd, all_issues)
 
-    pattern_report: dict[str, list[str]] = {"alerted_patterns": [], "top_categories": []}
+    pattern_report: dict[str, list[str]] = {
+        "alerted_patterns": [],
+        "top_categories": [],
+    }
     with contextlib.suppress(Exception):
         from lintgate.pattern_bank import update_pattern_bank
 
@@ -169,8 +180,14 @@ def _run_legacy_pipeline(
         report = report or {}
         dep_msg = "\n".join(dep_warnings)
         existing = report.get("systemMessage", "")
-        sep = "\n\n--- Dependency Health ---\n" if existing else "--- Dependency Health ---\n"
-        report["systemMessage"] = (existing + sep + dep_msg) if existing else sep + dep_msg
+        sep = (
+            "\n\n--- Dependency Health ---\n"
+            if existing
+            else "--- Dependency Health ---\n"
+        )
+        report["systemMessage"] = (
+            (existing + sep + dep_msg) if existing else sep + dep_msg
+        )
 
     print(json.dumps(report if report else {}))
     sys.exit(0)
@@ -187,6 +204,21 @@ def main() -> None:
     tool_name, tool_input, tool_output, cwd = _normalize_fields(input_data)
 
     try:
+        # Record meta-tool events for behavioral tracking before early exit
+        if tool_name in ("Agent", "EnterPlanMode", "Task"):
+            try:
+                from lintgate.config import load_controlplane_config
+                from lintgate.hook_habit import record_behavior_event
+
+                cp_config = load_controlplane_config(cwd)
+                if cp_config and cp_config.enabled:
+                    record_behavior_event(
+                        cp_config, cwd, tool_name, tool_input, tool_output
+                    )
+            except Exception:
+                pass
+            _exit_clean()
+
         if tool_name not in ("Write", "Edit", "MultiEdit", "Bash"):
             _exit_clean()
 
@@ -256,7 +288,9 @@ def _log_controlplane_metric(
         "change_kind": classification.change_kind,
         "risk_level": classification.risk_level,
         "coherence_state": mesh_result.coherence.state,
-        "channels_run": sum(1 for r in mesh_result.channel_results if r.status != "skip"),
+        "channels_run": sum(
+            1 for r in mesh_result.channel_results if r.status != "skip"
+        ),
         "partial": mesh_result.partial,
         "duration_ms": round(elapsed_ms, 1),
         "session_active": session is not None,
@@ -278,7 +312,9 @@ def _finalize_report(
 
     if advisory and report:
         existing_msg = report.get("systemMessage", "")
-        report["systemMessage"] = (advisory + "\n\n" + existing_msg) if existing_msg else advisory
+        report["systemMessage"] = (
+            (advisory + "\n\n" + existing_msg) if existing_msg else advisory
+        )
 
     session_data = session.behavior_compass if session else {}
     if not isinstance(session_data, dict):
@@ -303,7 +339,10 @@ def _run_controlplane(
         save_run_details,
         setup_session_and_gate,
     )
-    from lintgate.hook_habit import record_behavior_event, record_habit_event_lightweight
+    from lintgate.hook_habit import (
+        record_behavior_event,
+        record_habit_event_lightweight,
+    )
 
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
@@ -359,9 +398,11 @@ def _run_controlplane(
         try:
             from lintgate.orchestration.compliance import ComplianceManager
 
+            import dataclasses
+
             cm = ComplianceManager(session.behavior_compass)
             compliance_outcome = cm.evaluate_and_record(
-                event.to_dict(),
+                dataclasses.asdict(event),
                 last_disposition=last_disposition,
                 last_nudge=last_nudge,
             )
@@ -381,19 +422,21 @@ def _run_controlplane(
     # 1. Collect Disposition Nudges (#155)
     disposition: str | None = None
     try:
-        from dataclasses import asdict
-
         from lintgate.orchestration.disposition_enforcer import DispositionEnforcer
 
         enforcer = DispositionEnforcer(cp_config, session=session)
-        disposition, rule_id = enforcer.evaluate(asdict(event))
+        disposition, rule_id = enforcer.evaluate(event)
         if disposition and rule_id:
             bus.collect(disposition_nudge_to_item(disposition, rule_id))
     except Exception:
         pass
 
     # 2. Collect Cycle Interventions (#147)
-    if session and hasattr(session, "behavior_compass") and isinstance(session.behavior_compass, dict):
+    if (
+        session
+        and hasattr(session, "behavior_compass")
+        and isinstance(session.behavior_compass, dict)
+    ):
         cycle_results = session.behavior_compass.get("cycle_detections")
         if isinstance(cycle_results, list):
             for cr_data in cycle_results:
@@ -411,7 +454,8 @@ def _run_controlplane(
 
     # 3. Collect Behavior Findings from Mesh (#159)
     behavior_findings = next(
-        (cr.findings for cr in mesh_result.channel_results if cr.channel == "behavior"), []
+        (cr.findings for cr in mesh_result.channel_results if cr.channel == "behavior"),
+        [],
     )
     for f in behavior_findings:
         bus.collect(lint_finding_to_item(f))
@@ -452,8 +496,19 @@ def _run_controlplane(
     except Exception:
         pass
 
+    # Incremental test signal — detect new functions from edits (Gap 7)
+    with contextlib.suppress(Exception):
+        new_funcs = _detect_new_functions(tool_name, tool_input, cwd)
+        if new_funcs and report:
+            report["test_generation_hint"] = {
+                "new_functions": new_funcs,
+                "suggestion": "Consider bootstrap_tests or controlplane_test_skeleton for new functions",
+            }
+
     accumulate_session_telemetry(report, session)
-    refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
+    refresh_runtime_after_run(
+        cwd, session, cp_config, mesh_result, tool_name, tool_input
+    )
 
     report, telemetry = _finalize_report(report, advisory, session, cp_config)
 
@@ -469,6 +524,82 @@ def _run_controlplane(
 
     print(json.dumps(report if report else {}))
     sys.exit(0)
+
+
+def _detect_new_functions(
+    tool_name: str,
+    tool_input: dict,
+    cwd: str,
+) -> list[dict] | None:
+    """Detect newly added functions from Write/Edit tool use.
+
+    For Write: parse full file content, all top-level defs are "new".
+    For Edit: check if new_string contains 'def ' not in old_string.
+
+    Returns list of {"name": str, "file": str, "line": int} or None.
+    Lightweight: string search + optional partial AST parse.
+    """
+    import ast as _ast
+
+    if tool_name == "Write":
+        content = tool_input.get("content", "")
+        filepath = tool_input.get("file_path", "")
+        if not content or not filepath:
+            return None
+        if not filepath.endswith(".py"):
+            return None
+        try:
+            tree = _ast.parse(content)
+        except SyntaxError:
+            return None
+        results = []
+        for node in tree.body:
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                results.append(
+                    {
+                        "name": node.name,
+                        "file": filepath,
+                        "line": node.lineno,
+                    }
+                )
+        return results if results else None
+
+    if tool_name == "Edit":
+        old_string = tool_input.get("old_string", "")
+        new_string = tool_input.get("new_string", "")
+        filepath = tool_input.get("file_path", "")
+        if not new_string or not filepath:
+            return None
+        if not filepath.endswith(".py"):
+            return None
+
+        # Quick check: does new_string introduce a 'def ' not in old_string?
+        new_lines = new_string.splitlines()
+        old_lines = set(old_string.splitlines())
+        results = []
+        for i, line in enumerate(new_lines, 1):
+            stripped = line.lstrip()
+            if (
+                stripped.startswith("def ") or stripped.startswith("async def ")
+            ) and line not in old_lines:
+                # Extract function name
+                name_part = stripped
+                if name_part.startswith("async def "):
+                    name_part = name_part[len("async def ") :]
+                elif name_part.startswith("def "):
+                    name_part = name_part[len("def ") :]
+                func_name = name_part.split("(")[0].strip()
+                if func_name:
+                    results.append(
+                        {
+                            "name": func_name,
+                            "file": filepath,
+                            "line": i,  # Line within the edit
+                        }
+                    )
+        return results if results else None
+
+    return None
 
 
 def _fallback_config(cwd: str) -> Any:

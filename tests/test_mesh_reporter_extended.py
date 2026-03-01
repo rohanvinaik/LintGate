@@ -96,7 +96,10 @@ def test_posttooluse_context_includes_channel_statuses() -> None:
     mesh = _make_mesh(
         [
             ChannelResult(
-                channel="lint", status="fail", severity="warning", findings=[_make_issue("warning")]
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[_make_issue("warning")],
             ),
             ChannelResult(channel="tests", status="pass"),
             ChannelResult(channel="deps", status="skip"),
@@ -244,7 +247,8 @@ def test_duration_in_header() -> None:
     )
     report = format_mesh_report(mesh)
     assert (
-        'duration="42ms"' in report["systemMessage"] or 'duration="43ms"' in report["systemMessage"]
+        'duration="42ms"' in report["systemMessage"]
+        or 'duration="43ms"' in report["systemMessage"]
     )
 
 

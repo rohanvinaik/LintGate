@@ -209,7 +209,9 @@ def test_build_manifest_empty_file_lists_returns_empty():
     """Empty python_files or test_files returns empty manifest immediately."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Both empty
-        result = build_test_effectiveness_manifest(tmpdir, python_files=[], test_files=[])
+        result = build_test_effectiveness_manifest(
+            tmpdir, python_files=[], test_files=[]
+        )
         assert result.functions == {}
 
         # python_files empty, test_files provided

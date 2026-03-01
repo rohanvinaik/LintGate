@@ -35,7 +35,9 @@ _REQUIRED_ARTIFACTS: dict[str, str] = {
     "workflow_security": os.path.join(".github", "workflows", "security-lite.yml"),
     "workflow_scorecard": os.path.join(".github", "workflows", "scorecard.yml"),
     "workflow_codeql": os.path.join(".github", "workflows", "codeql.yml"),
-    "workflow_quality_gate": os.path.join(".github", "workflows", "quality-infra-gate.yml"),
+    "workflow_quality_gate": os.path.join(
+        ".github", "workflows", "quality-infra-gate.yml"
+    ),
     "pre_push_hook": os.path.join(".githooks", "pre-push"),
     "qlty_toml": os.path.join(".qlty", "qlty.toml"),
     "dependabot": os.path.join(".github", "dependabot.yml"),
@@ -267,7 +269,8 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         extra_remote = sorted(set(remote_checks) - set(required_checks))
         if missing_remote:
             errors.append(
-                "Branch protection missing contract required check(s): " + ", ".join(missing_remote)
+                "Branch protection missing contract required check(s): "
+                + ", ".join(missing_remote)
             )
         if extra_remote:
             errors.append(

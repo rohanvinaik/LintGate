@@ -167,7 +167,9 @@ class TestLoadGlobalPriors:
                 "lintgate.controlplane.global_behavior_profile.load_global_profile",
                 return_value=gp,
             ),
-            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3
+            ),
         ):
             result = load_global_priors(cfg)
         assert result is not None
@@ -187,7 +189,9 @@ class TestLoadGlobalPriors:
                 "lintgate.controlplane.global_behavior_profile.load_global_profile",
                 return_value=gp,
             ),
-            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3
+            ),
         ):
             result = load_global_priors(cfg)
         assert result is None
@@ -201,7 +205,9 @@ class TestSetupSessionAndGate:
         cfg.inquiry.any_enabled.return_value = False
         cfg.inquiry.session_gate = False
 
-        session, advisory = setup_session_and_gate(cfg, "/tmp", "Read", mock.MagicMock(), [], None)
+        session, advisory = setup_session_and_gate(
+            cfg, "/tmp", "Read", mock.MagicMock(), [], None
+        )
         assert session is None
         assert advisory is None
 
@@ -221,7 +227,9 @@ class TestSetupSessionAndGate:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=fake_session,
         ):
-            session, advisory = setup_session_and_gate(cfg, "/tmp", "Read", event, [], None)
+            session, advisory = setup_session_and_gate(
+                cfg, "/tmp", "Read", event, [], None
+            )
         assert session is fake_session
 
     def test_session_gate_fires_advisory(self):
@@ -257,7 +265,9 @@ class TestSetupSessionAndGate:
             ),
         ):
             channels = [mock.MagicMock(name="behavior")]
-            session, advisory = setup_session_and_gate(cfg, "/tmp", "Write", event, channels, None)
+            session, advisory = setup_session_and_gate(
+                cfg, "/tmp", "Write", event, channels, None
+            )
         assert advisory is not None
         assert "Advisory" in advisory
 
@@ -280,7 +290,9 @@ class TestRecordSnapshotBehavior:
                 return_value="",
             ),
         ):
-            record_snapshot_behavior(snapshot, "Bash", {"command": "pytest"}, "exit_code: 0")
+            record_snapshot_behavior(
+                snapshot, "Bash", {"command": "pytest"}, "exit_code: 0"
+            )
         assert snapshot.behavior.action_type == "bash"
         assert snapshot.behavior.exit_code == 0
 

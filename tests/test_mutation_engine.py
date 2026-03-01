@@ -4,8 +4,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from lintgate.mutation.engine import MutationEngine
-from lintgate.mutation.policy import MutationOperatorCategory, MutationTelemetry, RuntimeBudget
-from lintgate.mutation.state import CoverageDepth, FunctionMutationState, MutationStateManager
+from lintgate.mutation.policy import (
+    MutationOperatorCategory,
+    MutationTelemetry,
+    RuntimeBudget,
+)
+from lintgate.mutation.state import (
+    CoverageDepth,
+    FunctionMutationState,
+    MutationStateManager,
+)
 
 
 @pytest.fixture
@@ -66,7 +74,9 @@ def test_mutation_engine_background_profiling_test_impact(mock_state_manager, bu
     test_mapping = {"src/a.py": ["tests/test_a.py::test_foo"]}
 
     with patch.object(engine, "_execute_mutmut", return_value=True) as mock_exec:
-        engine.run_background_profiling(["src/a.py", "src/b.py"], test_mapping, telemetry)
+        engine.run_background_profiling(
+            ["src/a.py", "src/b.py"], test_mapping, telemetry
+        )
 
         # a.py has a mapping
         mock_exec.assert_any_call(
@@ -103,7 +113,9 @@ def test_mutation_engine_parse_mutmut_results(mock_state_manager, budget):
         mock_run.return_value = MagicMock(returncode=0, stdout=mock_output)
 
         with (
-            patch("lintgate.mutation.engine.compute_content_hash", return_value="hash1"),
+            patch(
+                "lintgate.mutation.engine.compute_content_hash", return_value="hash1"
+            ),
             patch("os.path.exists", return_value=True),
             patch("pathlib.Path.read_text", return_value=""),
         ):
@@ -117,7 +129,9 @@ def test_mutation_engine_parse_mutmut_results(mock_state_manager, budget):
             assert state.survived == 1
 
 
-def test_mutation_engine_compute_relevant_categories(mock_state_manager, budget, tmp_path):
+def test_mutation_engine_compute_relevant_categories(
+    mock_state_manager, budget, tmp_path
+):
     """Verify AST-based characteristic extraction."""
     engine = MutationEngine(mock_state_manager, budget)
 
@@ -134,7 +148,9 @@ def math_func(x):
     assert MutationOperatorCategory.STRING not in cats
 
 
-def test_mutation_engine_inline_sampling_with_filtering(mock_state_manager, budget, tmp_path):
+def test_mutation_engine_inline_sampling_with_filtering(
+    mock_state_manager, budget, tmp_path
+):
     """Verify filtering is wired into sampling."""
     engine = MutationEngine(mock_state_manager, budget)
     telemetry = MutationTelemetry("test")

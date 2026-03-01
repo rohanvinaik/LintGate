@@ -149,6 +149,8 @@ class MeshResult:
     duration_ms: float = 0.0
     incomplete_channels: list[str] = field(default_factory=list)
     partial: bool = False  # True if any channel was shed due to timeout
+    # Git-aware scope signaling (#179): working tree context for scope annotation
+    git_context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

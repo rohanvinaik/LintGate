@@ -69,8 +69,12 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         advisory_default=cp_raw.get("advisory_default", True),
         session_memory=cp_raw.get("session_memory", False),
         session_max_age_hours=float(cp_raw.get("session_max_age_hours", 4.0)),
-        constraint_proposal_threshold=int(cp_raw.get("constraint_proposal_threshold", 5)),
-        severity_weighted_coherence=bool(cp_raw.get("severity_weighted_coherence", False)),
+        constraint_proposal_threshold=int(
+            cp_raw.get("constraint_proposal_threshold", 5)
+        ),
+        severity_weighted_coherence=bool(
+            cp_raw.get("severity_weighted_coherence", False)
+        ),
     )
 
     # Parse coherence channel weights (None = disabled)
@@ -78,15 +82,21 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     if isinstance(coherence_raw, dict):
         weights = coherence_raw.get("channel_weights")
         if isinstance(weights, dict):
-            cp_config.coherence_channel_weights = {str(k): float(v) for k, v in weights.items()}
+            cp_config.coherence_channel_weights = {
+                str(k): float(v) for k, v in weights.items()
+            }
 
     # Parse inquiry config (Architecture of Inquiry features)
     inquiry_raw = cp_raw.get("inquiry", {})
     if isinstance(inquiry_raw, dict):
         cp_config.inquiry = InquiryConfig(
-            theory_grounded_signals=bool(inquiry_raw.get("theory_grounded_signals", False)),
+            theory_grounded_signals=bool(
+                inquiry_raw.get("theory_grounded_signals", False)
+            ),
             prediction_tracking=bool(inquiry_raw.get("prediction_tracking", False)),
-            theory_coherence_check=bool(inquiry_raw.get("theory_coherence_check", False)),
+            theory_coherence_check=bool(
+                inquiry_raw.get("theory_coherence_check", False)
+            ),
             living_context=bool(inquiry_raw.get("living_context", False)),
             session_gate=bool(inquiry_raw.get("session_gate", False)),
         )
@@ -112,8 +122,12 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     if isinstance(habit_raw, dict):
         cp_config.habit_mode_enabled = habit_raw.get("enabled", True)
         cp_config.habit_mode_auto_detect = habit_raw.get("auto_detect", True)
-        cp_config.habit_mode_compact_threshold = float(habit_raw.get("compact_threshold", 0.25))
-        cp_config.habit_mode_token_api_interval = int(habit_raw.get("token_api_interval", 15))
+        cp_config.habit_mode_compact_threshold = float(
+            habit_raw.get("compact_threshold", 0.25)
+        )
+        cp_config.habit_mode_token_api_interval = int(
+            habit_raw.get("token_api_interval", 15)
+        )
         cp_config.habit_mode_enter_score = float(habit_raw.get("enter_score", 0.70))
         cp_config.habit_mode_exit_score = float(habit_raw.get("exit_score", 0.40))
         cp_config.habit_mode_sustain_calls = int(habit_raw.get("sustain_calls", 5))
@@ -121,13 +135,17 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     # Parse message arbitration config
     cp_config.hook_verbosity = str(cp_raw.get("hook_verbosity", "full"))
     cp_config.hook_pulse_interval = int(cp_raw.get("hook_pulse_interval", 5))
-    cp_config.hook_dispositions_enabled = bool(cp_raw.get("hook_dispositions_enabled", True))
+    cp_config.hook_dispositions_enabled = bool(
+        cp_raw.get("hook_dispositions_enabled", True)
+    )
 
     # Parse compass config
     compass_raw = cp_raw.get("compass", {})
     if isinstance(compass_raw, dict):
         cp_config.compass_enabled = compass_raw.get("enabled", False)
-        cp_config.compass_staleness_hours = float(compass_raw.get("staleness_hours", 24.0))
+        cp_config.compass_staleness_hours = float(
+            compass_raw.get("staleness_hours", 24.0)
+        )
 
     # Parse quality_gate config
     qg_raw = cp_raw.get("quality_gate", {})
@@ -145,8 +163,12 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     if isinstance(disp_raw, dict):
         cp_config.disposition_enforcement = DispositionEnforcementConfig(
             enabled=bool(disp_raw.get("enabled", True)),
-            max_ignores_before_blocking=int(disp_raw.get("max_ignores_before_blocking", 3)),
-            enforce_on_channels=disp_raw.get("enforce_on_channels", ["behavior", "lint"]),
+            max_ignores_before_blocking=int(
+                disp_raw.get("max_ignores_before_blocking", 3)
+            ),
+            enforce_on_channels=disp_raw.get(
+                "enforce_on_channels", ["behavior", "lint"]
+            ),
         )
 
     # Parse per-channel configs
@@ -299,7 +321,9 @@ def _parse_quality_policy(raw: dict) -> QualityPolicy:
         source_packages_raw = cov_raw.get("source_packages", ["lintgate", "mcp_tools"])
         source_packages = ["lintgate", "mcp_tools"]
         if isinstance(source_packages_raw, list):
-            cleaned = [str(pkg).strip() for pkg in source_packages_raw if str(pkg).strip()]
+            cleaned = [
+                str(pkg).strip() for pkg in source_packages_raw if str(pkg).strip()
+            ]
             if cleaned:
                 source_packages = cleaned
         elif isinstance(source_packages_raw, str) and source_packages_raw.strip():
@@ -345,7 +369,13 @@ def _detect_languages(cwd: str) -> list[str]:
     root = Path(cwd)
 
     # Python
-    python_markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"]
+    python_markers = [
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+        "Pipfile",
+    ]
     if any((root / m).exists() for m in python_markers) or list(root.glob("*.py")):
         languages.append("python")
 

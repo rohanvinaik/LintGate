@@ -152,7 +152,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("[Dry Run] Skipping active schema validation.")
         return 0
 
-    configured_command = _load_configured_server_command(getattr(profile, "config_path", None))
+    configured_command = _load_configured_server_command(
+        getattr(profile, "config_path", None)
+    )
     if configured_command and not _command_runnable(configured_command):
         print(f"[!] MCP server command is not runnable: {configured_command}")
         if getattr(args, "fix", False):
@@ -194,7 +196,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
         missing_expected = set(expected_tools) - set(tool_names)
         if missing_expected:
-            print(f"[!] DEGRADED: Missing expected tools defined in contract: {missing_expected}")
+            print(
+                f"[!] DEGRADED: Missing expected tools defined in contract: {missing_expected}"
+            )
             if getattr(args, "fix", False):
                 print(
                     "  => --fix cannot dynamically write tool code. Please check mcp_tools registry."
@@ -216,14 +220,18 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Install command
-    p_install = subparsers.add_parser("install", help="Install config for a specific agent")
+    p_install = subparsers.add_parser(
+        "install", help="Install config for a specific agent"
+    )
     p_install.add_argument(
         "--agent", required=True, choices=list(PROFILES.keys()), help="Target agent"
     )
     p_install.add_argument("--dry-run", action="store_true", help="Preview mode")
 
     # Bootstrap command
-    p_bootstrap = subparsers.add_parser("bootstrap", help="Bootstrap everything to green")
+    p_bootstrap = subparsers.add_parser(
+        "bootstrap", help="Bootstrap everything to green"
+    )
     p_bootstrap.add_argument(
         "--agent", required=True, choices=list(PROFILES.keys()), help="Target agent"
     )

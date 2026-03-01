@@ -29,7 +29,11 @@ def _make_channel_results(
                 channel=name,
                 status="fail",
                 severity="warning",
-                findings=[LintIssue(linter=name, kind="E001", severity="warning", message="issue")],
+                findings=[
+                    LintIssue(
+                        linter=name, kind="E001", severity="warning", message="issue"
+                    )
+                ],
             )
         )
     for name in silent or []:
@@ -126,7 +130,9 @@ class TestRegressionDetection:
 
     def test_improvement_no_regression(self):
         session = _make_session_with_snapshots(
-            snapshots=[{"state": "coupled", "loud": ["lint", "tests"], "silent": ["deps"]}],
+            snapshots=[
+                {"state": "coupled", "loud": ["lint", "tests"], "silent": ["deps"]}
+            ],
             trajectory=["coupled"],
         )
         # Now only lint failing → isolated (improvement!)
@@ -172,7 +178,11 @@ class TestPersistentDetection:
         session = _make_session_with_snapshots(
             snapshots=[
                 {"state": "isolated", "loud": ["lint"], "silent": ["tests"]},
-                {"state": "stable", "loud": [], "silent": ["lint", "tests"]},  # lint was silent
+                {
+                    "state": "stable",
+                    "loud": [],
+                    "silent": ["lint", "tests"],
+                },  # lint was silent
                 {"state": "isolated", "loud": ["lint"], "silent": ["tests"]},
             ],
             trajectory=["isolated", "stable", "isolated"],
@@ -254,7 +264,9 @@ class TestCombinedAnnotations:
 class TestTradeoffDetection:
     """Detect refactoring tradeoff patterns between runs."""
 
-    def _make_session_with_findings(self, finding_index: dict[str, dict]) -> SessionMemory:
+    def _make_session_with_findings(
+        self, finding_index: dict[str, dict]
+    ) -> SessionMemory:
         """Build session with one snapshot containing a finding_index."""
         session = SessionMemory(project_root="/test")
         session.snapshots.append(
@@ -293,10 +305,16 @@ class TestTradeoffDetection:
                         message="CC=12",
                     ),
                     LintIssue(
-                        linter="ruff", kind="too_many_args", severity="warning", message="7 args"
+                        linter="ruff",
+                        kind="too_many_args",
+                        severity="warning",
+                        message="7 args",
                     ),
                     LintIssue(
-                        linter="ruff", kind="too_many_args", severity="warning", message="6 args"
+                        linter="ruff",
+                        kind="too_many_args",
+                        severity="warning",
+                        message="6 args",
                     ),
                 ],
             ),
@@ -334,7 +352,10 @@ class TestTradeoffDetection:
                         message="CC=12",
                     ),
                     LintIssue(
-                        linter="ruff", kind="too_many_args", severity="warning", message="7 args"
+                        linter="ruff",
+                        kind="too_many_args",
+                        severity="warning",
+                        message="7 args",
                     ),
                 ],
             ),
@@ -355,7 +376,10 @@ class TestTradeoffDetection:
                 severity="warning",
                 findings=[
                     LintIssue(
-                        linter="ruff", kind="too_many_args", severity="warning", message="7 args"
+                        linter="ruff",
+                        kind="too_many_args",
+                        severity="warning",
+                        message="7 args",
                     ),
                 ],
             ),
@@ -379,7 +403,10 @@ class TestTradeoffDetection:
                 severity="warning",
                 findings=[
                     LintIssue(
-                        linter="ruff", kind="file_too_long", severity="warning", message="350 lines"
+                        linter="ruff",
+                        kind="file_too_long",
+                        severity="warning",
+                        message="350 lines",
                     ),
                     LintIssue(
                         linter="ruff",
@@ -406,7 +433,11 @@ class TestTradeoffDetection:
     def test_tradeoff_does_not_change_severity(self):
         """Tradeoff annotation must not change finding severity or coherence state."""
         prev_index = {
-            "fp1": {"kind": "cyclomatic_complexity", "severity": "blocking", "count": 3},
+            "fp1": {
+                "kind": "cyclomatic_complexity",
+                "severity": "blocking",
+                "count": 3,
+            },
         }
         session = self._make_session_with_findings(prev_index)
 
@@ -417,7 +448,10 @@ class TestTradeoffDetection:
                 severity="blocking",
                 findings=[
                     LintIssue(
-                        linter="ruff", kind="too_many_args", severity="blocking", message="8 args"
+                        linter="ruff",
+                        kind="too_many_args",
+                        severity="blocking",
+                        message="8 args",
                     ),
                 ],
             ),

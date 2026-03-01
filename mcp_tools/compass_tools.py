@@ -41,7 +41,10 @@ def _load_mode_obj(project_root: str) -> Any:
 def _save_mode(project_root: str, mode_state: Any) -> None:
     """Persist ModeState to session memory."""
     try:
-        from lintgate.controlplane.session_memory import get_or_create_session, save_session
+        from lintgate.controlplane.session_memory import (
+            get_or_create_session,
+            save_session,
+        )
 
         session = get_or_create_session(project_root)
         session.behavior_compass["mode_state"] = mode_state.to_dict()
@@ -79,7 +82,9 @@ def _build_hooks_config() -> dict[str, list[dict[str, Any]]]:
     return {
         "SessionStart": [_entry("session_start", timeout_s=5, matcher="startup")],
         "UserPromptSubmit": [_entry("user_prompt", timeout_s=2)],
-        "PreToolUse": [_entry("pre_tool", timeout_s=3, matcher="Write|Edit|MultiEdit|Bash")],
+        "PreToolUse": [
+            _entry("pre_tool", timeout_s=3, matcher="Write|Edit|MultiEdit|Bash")
+        ],
         "PreCompact": [_entry("pre_compact", timeout_s=5, matcher="auto|manual")],
         "Stop": [_entry("stop_gate", timeout_s=3)],
         "SessionEnd": [_entry("session_end", timeout_s=10, async_hook=True)],
@@ -92,7 +97,9 @@ def _deep_merge(base: dict, override: dict) -> dict:
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
-        elif key in result and isinstance(result[key], list) and isinstance(value, list):
+        elif (
+            key in result and isinstance(result[key], list) and isinstance(value, list)
+        ):
             # Preserve existing user hooks and append new unique entries.
             merged = list(result[key])
             for item in value:
@@ -130,7 +137,9 @@ def _impl_status(project_root: str, path: str) -> dict[str, Any]:
         return {
             "status": "no_compass",
             "message": "No compass found. Run compass_update to extract.",
-            "next_actions": [{"tool": "compass_update", "args": {"path": path, "write": True}}],
+            "next_actions": [
+                {"tool": "compass_update", "args": {"path": path, "write": True}}
+            ],
         }
 
     axes_info = {}
@@ -182,11 +191,18 @@ def _impl_check(project_root: str, action: str) -> dict[str, Any]:
     }
 
 
-def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> dict[str, Any]:
+def _impl_update(
+    project_root: str, targets: list[str] | None, write: bool
+) -> dict[str, Any]:
     """Implementation for compass_update."""
     from lintgate.axis_extractor import extract_compass
     from lintgate.code_inference import infer_from_code
-    from lintgate.compass import AXIS_NAMES, FACET_TO_AXIS, CompassAxis, compute_compass_hash
+    from lintgate.compass import (
+        AXIS_NAMES,
+        FACET_TO_AXIS,
+        CompassAxis,
+        compute_compass_hash,
+    )
     from lintgate.compass_io import save_compass
     from lintgate.gap_detector import detect_gaps
 
@@ -203,7 +219,10 @@ def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> d
     result: dict[str, Any] = {
         "compass_hash": compute_compass_hash(state),
         "axes": {
-            name: {"depth": state.axes[name].depth, "claim_count": len(state.axes[name].claims)}
+            name: {
+                "depth": state.axes[name].depth,
+                "claim_count": len(state.axes[name].claims),
+            }
             for name in AXIS_NAMES
             if name in state.axes
         },
@@ -265,7 +284,9 @@ def _impl_interview(
     if compass is None:
         return {
             "error": "No compass found. Run compass_update first.",
-            "next_actions": [{"tool": "compass_update", "args": {"path": path, "write": True}}],
+            "next_actions": [
+                {"tool": "compass_update", "args": {"path": path, "write": True}}
+            ],
         }
     if skip:
         skip_interview(compass)
@@ -306,9 +327,16 @@ def _apply_answers(
     return applied
 
 
-def _impl_reset(project_root: str, path: str, scope: str, confirm: bool) -> dict[str, Any]:
+def _impl_reset(
+    project_root: str, path: str, scope: str, confirm: bool
+) -> dict[str, Any]:
     """Implementation for compass_reset."""
-    from lintgate.reset import reset_compass_only, reset_global, reset_project, reset_session_only
+    from lintgate.reset import (
+        reset_compass_only,
+        reset_global,
+        reset_project,
+        reset_session_only,
+    )
 
     dry_run = not confirm
     fns = {
@@ -324,7 +352,10 @@ def _impl_reset(project_root: str, path: str, scope: str, confirm: bool) -> dict
     result: dict[str, Any] = {"scope": scope, "dry_run": dry_run, **report.to_dict()}
     if dry_run and report.deleted:
         result["next_actions"] = [
-            {"tool": "compass_reset", "args": {"path": path, "scope": scope, "confirm": True}},
+            {
+                "tool": "compass_reset",
+                "args": {"path": path, "scope": scope, "confirm": True},
+            },
         ]
     return result
 
@@ -435,7 +466,9 @@ def register(mcp, helpers):
         if result.get("gap_report", {}).get("interview_recommended"):
             next_actions.append({"tool": "compass_interview", "args": {"path": path}})
         if not write:
-            next_actions.append({"tool": "compass_update", "args": {"path": path, "write": True}})
+            next_actions.append(
+                {"tool": "compass_update", "args": {"path": path, "write": True}}
+            )
         result["next_actions"] = next_actions
         return jd(result)
 

@@ -102,7 +102,11 @@ class VLLMAdapter:
             if risk_level := self._injected_state.get("risk_level"):
                 parts.append(f"Risk Level: {risk_level}")
             if blocking := self._injected_state.get("blocking_findings"):
-                findings = ", ".join(blocking[:3]) if isinstance(blocking, list) else str(blocking)
+                findings = (
+                    ", ".join(blocking[:3])
+                    if isinstance(blocking, list)
+                    else str(blocking)
+                )
                 parts.append(f"Blocking: {findings}")
             if constraints := self._injected_state.get("active_constraints"):
                 constr = (
@@ -124,7 +128,9 @@ class VLLMAdapter:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    def get_generation_stream(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
+    def get_generation_stream(
+        self, prompt: str, **kwargs: Any
+    ) -> Generator[str, None, None]:
         """Get streaming generation from vLLM.
 
         Args:
@@ -217,7 +223,9 @@ class VLLMAdapter:
         except Exception as e:
             yield f"[Error: {str(e)}]"
 
-    def get_generation_guarded(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
+    def get_generation_guarded(
+        self, prompt: str, **kwargs: Any
+    ) -> Generator[str, None, None]:
         """Get guarded streaming generation from vLLM.
 
         This wraps get_generation_stream with StreamingGuard.
@@ -327,7 +335,9 @@ class VLLMAdapter:
 
             regex = constraint["regex"]
             if regex and re.search(regex, text, re.IGNORECASE):
-                return True, constraint.get("explanation", "text matches prohibited pattern")
+                return True, constraint.get(
+                    "explanation", "text matches prohibited pattern"
+                )
 
         return False, ""
 

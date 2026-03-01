@@ -15,7 +15,9 @@ def route_finding(finding: dict[str, Any], channel: str) -> dict[str, Any]:
         "tool": "controlplane_get_details",
         "args": {},
         "rationale": "Unknown finding classification. Drill down for details.",
-        "remediation_sequence": [{"step": 1, "action": "Review finding details and context."}],
+        "remediation_sequence": [
+            {"step": 1, "action": "Review finding details and context."}
+        ],
     }
 
     # 1. Complexity findings
@@ -26,7 +28,10 @@ def route_finding(finding: dict[str, Any], channel: str) -> dict[str, Any]:
                 "args": {"files": [target_file]} if target_file != "unknown" else {},
                 "rationale": "High complexity detected. Consider refactoring into smaller, testable functions.",
                 "remediation_sequence": [
-                    {"step": 1, "action": "Extract long code blocks into helper functions."},
+                    {
+                        "step": 1,
+                        "action": "Extract long code blocks into helper functions.",
+                    },
                     {"step": 2, "action": "Verify refactor with lint_files."},
                 ],
             }
@@ -40,21 +45,29 @@ def route_finding(finding: dict[str, Any], channel: str) -> dict[str, Any]:
                 "args": {"files": [target_file]} if target_file != "unknown" else {},
                 "rationale": "File exceeded length thresholds. High risk of maintenance debt.",
                 "remediation_sequence": [
-                    {"step": 1, "action": "Identify logical components to move to new files."},
+                    {
+                        "step": 1,
+                        "action": "Identify logical components to move to new files.",
+                    },
                     {"step": 2, "action": "Split file and update imports."},
                 ],
             }
         )
 
     # 3. Import / Undefined-name / Syntax findings
-    elif any(k in kind.lower() for k in ["import", "undefined", "syntax", "name-error"]):
+    elif any(
+        k in kind.lower() for k in ["import", "undefined", "syntax", "name-error"]
+    ):
         route.update(
             {
                 "tool": "lint_files",
                 "args": {"files": [target_file]} if target_file != "unknown" else {},
                 "rationale": "Basic code integrity issue detected (import error or undefined name).",
                 "remediation_sequence": [
-                    {"step": 1, "action": f"Fix missing import or typo in {target_file}."},
+                    {
+                        "step": 1,
+                        "action": f"Fix missing import or typo in {target_file}.",
+                    },
                     {"step": 2, "action": "Run lint_files to confirm resolution."},
                 ],
             }
@@ -105,8 +118,14 @@ def route_finding(finding: dict[str, Any], channel: str) -> dict[str, Any]:
                 "args": {"strictness": "strict", "channels": "lint"},
                 "rationale": "Security-sensitive finding. Escalating to strict-mode scan.",
                 "remediation_sequence": [
-                    {"step": 1, "action": "Review vulnerability detail and OWASP context."},
-                    {"step": 2, "action": "Apply security patch and run strict health check."},
+                    {
+                        "step": 1,
+                        "action": "Review vulnerability detail and OWASP context.",
+                    },
+                    {
+                        "step": 2,
+                        "action": "Apply security patch and run strict health check.",
+                    },
                 ],
             }
         )

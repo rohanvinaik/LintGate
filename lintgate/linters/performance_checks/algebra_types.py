@@ -85,14 +85,18 @@ class AlgebraicProperty:
     confidence: float
     evidence: str  # What AST pattern triggered this classification
     bound_spec: BoundSpec | None = None  # Only populated if kind == BOUNDED
+    type_context: dict[str, str] | None = None  # Parameter type annotations when available
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "kind": self.kind.value,
             "confidence": self.confidence,
             "evidence": self.evidence,
             "bound_spec": asdict(self.bound_spec) if self.bound_spec else None,
         }
+        if self.type_context:
+            d["type_context"] = self.type_context
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AlgebraicProperty:
@@ -103,6 +107,7 @@ class AlgebraicProperty:
             confidence=data["confidence"],
             evidence=data["evidence"],
             bound_spec=bound_spec,
+            type_context=data.get("type_context"),
         )
 
 
@@ -112,14 +117,18 @@ class FunctionProperties:
 
     purity: PurityResult
     properties: tuple[AlgebraicProperty, ...]
-    optimization_hints: tuple[str, ...]  # e.g., "cacheable", "parallelizable", "foldable"
+    optimization_hints: tuple[
+        str, ...
+    ]  # e.g., "cacheable", "parallelizable", "foldable"
     source_file: str | None = None  # File path where this function was found
+    extraction_safety: str = "safe"  # "safe" | "needs_module_state" | "unsafe"
 
     def to_dict(self) -> dict[str, Any]:
         d = {
             "purity": self.purity.to_dict(),
             "properties": [p.to_dict() for p in self.properties],
             "optimization_hints": list(self.optimization_hints),
+            "extraction_safety": self.extraction_safety,
         }
         if self.source_file is not None:
             d["source_file"] = self.source_file
@@ -128,10 +137,13 @@ class FunctionProperties:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FunctionProperties:
         purity = PurityResult.from_dict(data["purity"])
-        properties = tuple(AlgebraicProperty.from_dict(p) for p in data.get("properties", []))
+        properties = tuple(
+            AlgebraicProperty.from_dict(p) for p in data.get("properties", [])
+        )
         return cls(
             purity=purity,
             properties=properties,
             optimization_hints=tuple(data.get("optimization_hints", [])),
             source_file=data.get("source_file"),
+            extraction_safety=data.get("extraction_safety", "safe"),
         )

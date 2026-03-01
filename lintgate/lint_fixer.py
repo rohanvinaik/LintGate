@@ -112,10 +112,14 @@ def run_safe_fixes(
             for fd in result.file_diffs:
                 diff_lines = fd["diff"].splitlines()
                 additions = sum(
-                    1 for ln in diff_lines if ln.startswith("+") and not ln.startswith("+++")
+                    1
+                    for ln in diff_lines
+                    if ln.startswith("+") and not ln.startswith("+++")
                 )
                 deletions = sum(
-                    1 for ln in diff_lines if ln.startswith("-") and not ln.startswith("---")
+                    1
+                    for ln in diff_lines
+                    if ln.startswith("-") and not ln.startswith("---")
                 )
                 content_lines = [
                     ln
@@ -162,7 +166,9 @@ def _preview_fixes(
         cmd.append("--unsafe-fixes")
     cmd.extend(files)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=30, env=env)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=30, env=env
+        )
         if proc.stdout.strip():
             parts.append("=== ruff check --fix diff ===")
             # Limit diff to first 2000 chars
@@ -174,7 +180,9 @@ def _preview_fixes(
     if fix_imports:
         cmd = [ruff, "check", "--select", "I", "--diff"] + files
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env)
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env
+            )
             if proc.stdout.strip():
                 parts.append("=== import sort diff ===")
                 parts.append(proc.stdout[:1000])
@@ -184,7 +192,9 @@ def _preview_fixes(
     # Format diff
     cmd = [ruff, "format", "--diff"] + files
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env
+        )
         if proc.stdout.strip():
             parts.append("=== ruff format diff ===")
             parts.append(proc.stdout[:1000])
@@ -208,7 +218,9 @@ def _apply_ruff_fix(
         cmd.append("--unsafe-fixes")
     cmd.extend(files)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=30, env=env)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=30, env=env
+        )
         # ruff returns 0 (all fixed) or 1 (some unfixed remain) — both are valid
         if proc.returncode in (0, 1):
             # Parse "Found X errors (Y fixed, Z remaining)." from stdout
@@ -229,7 +241,9 @@ def _apply_import_sort(
     """Sort imports via ruff."""
     cmd = [ruff, "check", "--select", "I", "--fix"] + files
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env
+        )
         if proc.returncode in (0, 1):
             _parse_ruff_fix_summary(proc.stdout, result, action="import_sort")
     except (subprocess.TimeoutExpired, OSError):
@@ -246,12 +260,16 @@ def _apply_ruff_format(
     """Apply ruff format."""
     cmd = [ruff, "format"] + files
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=15, env=env
+        )
         if proc.returncode == 0:
             # ruff format reports "1 file reformatted" on stderr
             for line in proc.stderr.splitlines():
                 if "reformatted" in line.lower():
-                    result.changes.append({"action": "format", "detail": line.strip()[:120]})
+                    result.changes.append(
+                        {"action": "format", "detail": line.strip()[:120]}
+                    )
     except (subprocess.TimeoutExpired, OSError):
         pass
 
@@ -275,7 +293,11 @@ def _collect_modified_files(
     """Compare mtime snapshots and record modified files."""
     for f, new_mtime in after.items():
         old_mtime = before.get(f)
-        if old_mtime is not None and new_mtime > old_mtime and f not in result.files_modified:
+        if (
+            old_mtime is not None
+            and new_mtime > old_mtime
+            and f not in result.files_modified
+        ):
             result.files_modified.append(f)
 
 
@@ -288,7 +310,9 @@ def _split_diff_by_file(diff_text: str) -> list[dict[str, str]]:
     for line in diff_text.splitlines():
         if line.startswith("--- "):
             if current_file and current_lines:
-                segments.append({"file": current_file, "diff": "\n".join(current_lines)})
+                segments.append(
+                    {"file": current_file, "diff": "\n".join(current_lines)}
+                )
             # Extract filename: strip "--- a/" or "--- " prefix
             raw = line[4:]
             if raw.startswith("a/"):

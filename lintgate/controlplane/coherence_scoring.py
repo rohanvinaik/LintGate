@@ -8,7 +8,12 @@ if TYPE_CHECKING:
     from .types import ChannelResult
 
 
-_SEVERITY_WEIGHT = {"blocking": 1.0, "warning": 0.55, "informational": 0.25, "none": 0.0}
+_SEVERITY_WEIGHT = {
+    "blocking": 1.0,
+    "warning": 0.55,
+    "informational": 0.25,
+    "none": 0.0,
+}
 
 # Severity count weights for volume-aware scoring.
 _BLOCKING_COUNT_WEIGHT = 1.0
@@ -73,7 +78,9 @@ def effective_failure_count(
 
 def ordered_failed_channels(failed_results: list[ChannelResult]) -> list[str]:
     """Return failing channels sorted by severity weight (highest first)."""
-    weighted = [(result.channel, channel_failure_weight(result)) for result in failed_results]
+    weighted = [
+        (result.channel, channel_failure_weight(result)) for result in failed_results
+    ]
     weighted.sort(key=lambda item: (-item[1], item[0]))
     return [name for name, _weight in weighted]
 

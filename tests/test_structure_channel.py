@@ -294,7 +294,9 @@ class TestOrphanDetection:
     def test_orphan_has_correct_code(self, tmp_path):
         graph = {}
         file_map = {"pkg.lonely": str(tmp_path / "pkg" / "lonely.py")}
-        findings = _check_orphans([file_map["pkg.lonely"]], graph, file_map, str(tmp_path))
+        findings = _check_orphans(
+            [file_map["pkg.lonely"]], graph, file_map, str(tmp_path)
+        )
         assert len(findings) == 1
         assert findings[0].kind == "STRUCT003"
         assert findings[0].confidence == 0.6
@@ -302,13 +304,17 @@ class TestOrphanDetection:
 
 class TestOrphanExclusions:
     def test_init_excluded(self, tmp_path):
-        assert _is_orphan_excluded(str(tmp_path / "pkg" / "__init__.py"), "pkg", str(tmp_path))
+        assert _is_orphan_excluded(
+            str(tmp_path / "pkg" / "__init__.py"), "pkg", str(tmp_path)
+        )
 
     def test_main_excluded(self, tmp_path):
         assert _is_orphan_excluded(str(tmp_path / "main.py"), "main", str(tmp_path))
 
     def test_conftest_excluded(self, tmp_path):
-        assert _is_orphan_excluded(str(tmp_path / "conftest.py"), "conftest", str(tmp_path))
+        assert _is_orphan_excluded(
+            str(tmp_path / "conftest.py"), "conftest", str(tmp_path)
+        )
 
     def test_migration_dir_excluded(self, tmp_path):
         assert _is_orphan_excluded(
@@ -316,7 +322,9 @@ class TestOrphanExclusions:
         )
 
     def test_test_file_excluded(self, tmp_path):
-        assert _is_orphan_excluded(str(tmp_path / "test_foo.py"), "test_foo", str(tmp_path))
+        assert _is_orphan_excluded(
+            str(tmp_path / "test_foo.py"), "test_foo", str(tmp_path)
+        )
 
     def test_test_suffix_file_excluded(self, tmp_path):
         assert _is_orphan_excluded(
@@ -831,7 +839,9 @@ class TestCheckOrphansWildcardAndAmbiguous:
         findings = _check_orphans(py_files, graph, file_map, str(tmp_path))
 
         # Should find the module as ambiguous re-export (confidence 0.3)
-        orphan_findings = [f for f in findings if f.evidence.get("module") == "pkg.orphan_mod"]
+        orphan_findings = [
+            f for f in findings if f.evidence.get("module") == "pkg.orphan_mod"
+        ]
         assert len(orphan_findings) == 1
         finding = orphan_findings[0]
         assert finding.confidence == 0.3
@@ -853,12 +863,18 @@ class TestCheckOrphansWildcardAndAmbiguous:
             "pkg.sub": str(pkg / "sub.py"),
             "pkg.other": str(pkg / "other.py"),
         }
-        py_files = [str(pkg / "__init__.py"), str(pkg / "sub.py"), str(pkg / "other.py")]
+        py_files = [
+            str(pkg / "__init__.py"),
+            str(pkg / "sub.py"),
+            str(pkg / "other.py"),
+        ]
 
         findings = _check_orphans(py_files, graph, file_map, str(tmp_path))
 
         sub_findings = [f for f in findings if f.evidence.get("module") == "pkg.sub"]
-        other_findings = [f for f in findings if f.evidence.get("module") == "pkg.other"]
+        other_findings = [
+            f for f in findings if f.evidence.get("module") == "pkg.other"
+        ]
 
         # pkg.sub: wildcard re-export → ambiguous → confidence 0.3
         assert len(sub_findings) == 1

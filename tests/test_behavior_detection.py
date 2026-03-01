@@ -64,10 +64,16 @@ class TestDetectApproachCycling:
         compass = _fresh_compass(
             approaches=[
                 ApproachAttempt(
-                    approach_sig="cmd1", outcome="failed", last_event=now, started_at=now
+                    approach_sig="cmd1",
+                    outcome="failed",
+                    last_event=now,
+                    started_at=now,
                 ),
                 ApproachAttempt(
-                    approach_sig="cmd2", outcome="failed", last_event=now, started_at=now
+                    approach_sig="cmd2",
+                    outcome="failed",
+                    last_event=now,
+                    started_at=now,
                 ),
             ],
             action_history=[{"ts": now}],
@@ -96,7 +102,10 @@ class TestDetectApproachCycling:
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
         detect_approach_cycling(
-            compass, {"approach_cycling_count": 3, "approach_cycling_window_min": 30}, coord, scorer
+            compass,
+            {"approach_cycling_count": 3, "approach_cycling_window_min": 30},
+            coord,
+            scorer,
         )
         findings, actions, _, _ = coord.finalize()
         assert len(findings) == 1
@@ -123,7 +132,10 @@ class TestDetectApproachCycling:
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
         detect_approach_cycling(
-            compass, {"approach_cycling_count": 3, "approach_cycling_window_min": 30}, coord, scorer
+            compass,
+            {"approach_cycling_count": 3, "approach_cycling_window_min": 30},
+            coord,
+            scorer,
         )
         findings, _, _, _ = coord.finalize()
         assert findings == []
@@ -202,7 +214,9 @@ class TestDetectAmnesiaFromErrorMemory:
     def test_returns_false_when_count_below_2(self):
         err = "ImportError: missing module"
         key = error_memory_key(err)
-        compass = _fresh_compass(error_memory={key: {"count": 1, "first_seen": 0, "last_seen": 0}})
+        compass = _fresh_compass(
+            error_memory={key: {"count": 1, "first_seen": 0, "last_seen": 0}}
+        )
         coord = _make_coord(compass)
         result = _detect_amnesia_from_error_memory(compass, err, {}, coord)
         assert result is False
@@ -259,7 +273,9 @@ class TestDetectAmnesiaFromHypotheses:
         compass = _fresh_compass(hypotheses=[hyp])
         coord = _make_coord(compass)
         evidence = {}
-        _detect_amnesia_from_hypotheses(compass, "connection refused timeout", evidence, coord)
+        _detect_amnesia_from_hypotheses(
+            compass, "connection refused timeout", evidence, coord
+        )
         findings, _, _, _ = coord.finalize()
         assert len(findings) == 1
         assert findings[0].kind == "failure_amnesia"
@@ -279,20 +295,28 @@ class TestDetectBruteForceEscalation:
 
     def test_fires_when_gap_exceeds_threshold(self):
         compass = _fresh_compass()
-        compass.coverage = CoverageMetrics(approaches_attempted=4, constraints_verified=1)
+        compass.coverage = CoverageMetrics(
+            approaches_attempted=4, constraints_verified=1
+        )
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_brute_force_escalation(compass, {"brute_force_approach_gap": 2}, coord, scorer)
+        detect_brute_force_escalation(
+            compass, {"brute_force_approach_gap": 2}, coord, scorer
+        )
         findings, _, _, _ = coord.finalize()
         assert len(findings) == 1
         assert findings[0].kind == "brute_force_escalation"
 
     def test_no_gap_no_finding(self):
         compass = _fresh_compass()
-        compass.coverage = CoverageMetrics(approaches_attempted=3, constraints_verified=3)
+        compass.coverage = CoverageMetrics(
+            approaches_attempted=3, constraints_verified=3
+        )
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_brute_force_escalation(compass, {"brute_force_approach_gap": 0}, coord, scorer)
+        detect_brute_force_escalation(
+            compass, {"brute_force_approach_gap": 0}, coord, scorer
+        )
         findings, _, _, _ = coord.finalize()
         assert findings == []
 
@@ -418,7 +442,10 @@ class TestDetectToolRepetition:
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
         detect_tool_repetition(
-            compass, {"tool_repetition_count": 4, "tool_repetition_window_min": 30}, coord, scorer
+            compass,
+            {"tool_repetition_count": 4, "tool_repetition_window_min": 30},
+            coord,
+            scorer,
         )
         findings, _, _, _ = coord.finalize()
         assert len(findings) == 1
@@ -432,7 +459,10 @@ class TestDetectToolRepetition:
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
         detect_tool_repetition(
-            compass, {"tool_repetition_count": 4, "tool_repetition_window_min": 30}, coord, scorer
+            compass,
+            {"tool_repetition_count": 4, "tool_repetition_window_min": 30},
+            coord,
+            scorer,
         )
         findings, _, _, _ = coord.finalize()
         assert findings == []
@@ -459,7 +489,9 @@ class TestDetectConsecutiveFailures:
         compass = _fresh_compass(action_history=history)
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_consecutive_failures(compass, {"consecutive_bash_failures": 3}, coord, scorer)
+        detect_consecutive_failures(
+            compass, {"consecutive_bash_failures": 3}, coord, scorer
+        )
         findings, actions, _, _ = coord.finalize()
         # consecutive_failures produces nudge only, no finding
         assert findings == []
@@ -474,7 +506,9 @@ class TestDetectConsecutiveFailures:
         compass = _fresh_compass(action_history=history)
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_consecutive_failures(compass, {"consecutive_bash_failures": 3}, coord, scorer)
+        detect_consecutive_failures(
+            compass, {"consecutive_bash_failures": 3}, coord, scorer
+        )
         findings, actions, _, _ = coord.finalize()
         assert actions == []
 
@@ -488,7 +522,9 @@ class TestDetectVerificationDebt:
         compass.intent_history = ["execute"] * 5
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_verification_debt(compass, {"verification_debt_streak": 8}, coord, scorer)
+        detect_verification_debt(
+            compass, {"verification_debt_streak": 8}, coord, scorer
+        )
         findings, _, _, _ = coord.finalize()
         assert findings == []
 
@@ -497,7 +533,9 @@ class TestDetectVerificationDebt:
         compass.intent_history = ["execute"] * 10
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_verification_debt(compass, {"verification_debt_streak": 8}, coord, scorer)
+        detect_verification_debt(
+            compass, {"verification_debt_streak": 8}, coord, scorer
+        )
         findings, actions, _, _ = coord.finalize()
         assert len(findings) == 1
         assert findings[0].kind == "verification_debt"
@@ -508,7 +546,9 @@ class TestDetectVerificationDebt:
         compass.intent_history = ["execute"] * 5 + ["verify"] + ["execute"] * 5
         coord = _make_coord(compass)
         scorer = _make_scorer(compass)
-        detect_verification_debt(compass, {"verification_debt_streak": 8}, coord, scorer)
+        detect_verification_debt(
+            compass, {"verification_debt_streak": 8}, coord, scorer
+        )
         findings, _, _, _ = coord.finalize()
         assert findings == []
 

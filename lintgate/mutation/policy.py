@@ -27,7 +27,9 @@ class MutationOperatorCategory(str, Enum):
 class RuntimeBudget:
     """Hard constraints for mutation execution."""
 
-    max_inline_ms_per_function: int = 5000  # 5 seconds per function max for inline profiling
+    max_inline_ms_per_function: int = (
+        5000  # 5 seconds per function max for inline profiling
+    )
     max_mutants_per_function_inline: int = 15  # Sample limit
     max_mutants_per_function_background: int = 100  # Deep sweep limit
     max_workers: int = 4
@@ -70,11 +72,15 @@ class CalibratedPolicy:
     # Penalty for uncertain equivalent mutants (extreme survival often implies equivalence)
     equivalent_mutant_penalty: float = 0.15
 
-    def get_thresholds(self, state: Any, all_states: dict[str, Any]) -> tuple[float, float]:
+    def get_thresholds(
+        self, state: Any, all_states: dict[str, Any]
+    ) -> tuple[float, float]:
         """Returns (warning_threshold, blocking_threshold)."""
         valid_states = [s for s in all_states.values() if getattr(s, "total", 0) > 0]
         if len(valid_states) > 5:
-            avg_survival = sum(s.survival_rate for s in valid_states) / len(valid_states)
+            avg_survival = sum(s.survival_rate for s in valid_states) / len(
+                valid_states
+            )
             # Block aggressively if way worse than average, warn if worse than average
             warning = max(0.15, min(avg_survival + 0.10, 0.50))
             blocking = max(warning + 0.20, min(avg_survival + 0.30, 0.80))
@@ -89,7 +95,9 @@ class CalibratedPolicy:
         from lintgate.mutation.state import CoverageDepth
 
         base_confidence = (
-            0.8 if getattr(state, "depth", CoverageDepth.NONE) == CoverageDepth.PROFILED else 0.5
+            0.8
+            if getattr(state, "depth", CoverageDepth.NONE) == CoverageDepth.PROFILED
+            else 0.5
         )
 
         rate = getattr(state, "survival_rate", 0.0)
@@ -149,7 +157,9 @@ class OperatorRelevanceMatrix:
         return relevant
 
     @staticmethod
-    def map_mutmut_type_to_category(mutmut_type: str) -> MutationOperatorCategory | None:
+    def map_mutmut_type_to_category(
+        mutmut_type: str,
+    ) -> MutationOperatorCategory | None:
         """Map mutmut's internal mutation names to our broad categories."""
         mapping = {
             "operator": MutationOperatorCategory.ARITHMETIC,

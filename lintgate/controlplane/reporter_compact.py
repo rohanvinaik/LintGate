@@ -53,6 +53,27 @@ def format_mesh_report_compact(
     _attach_delta_or_blocking(compact, current_index, previous_finding_index, config)
     compact["channels"] = _build_channel_summary(mesh_result)
 
+    # Git-aware scope signaling (#179): surface working tree context
+    git_ctx = getattr(mesh_result, "git_context", None)
+    if git_ctx and (git_ctx.get("modified_count") or git_ctx.get("untracked_count")):
+        compact["git_context"] = {
+            "branch": git_ctx.get("branch", ""),
+            "modified_count": git_ctx.get("modified_count", 0),
+            "untracked_count": git_ctx.get("untracked_count", 0),
+            "uncommitted_loc_delta": git_ctx.get("uncommitted_loc_delta", 0),
+        }
+        if git_ctx.get("large_uncommitted_diff"):
+            compact["git_context"]["advisory"] = (
+                f"Large uncommitted diff: {git_ctx['modified_count']} modified, "
+                f"{git_ctx['untracked_count']} untracked files. "
+                "Working tree appears to be the active design surface."
+            )
+
+    # Bootstrap progress — insert when test channel signals bootstrap needed/running
+    bootstrap_progress = _build_bootstrap_progress(mesh_result)
+    if bootstrap_progress:
+        compact["bootstrap"] = bootstrap_progress
+
     if ship_gate_parity is not None:
         compact["ship_gate_parity"] = ship_gate_parity
 
@@ -63,17 +84,52 @@ def format_mesh_report_compact(
         compact["proven_resolutions"] = proven_resolutions
 
     compact["next_actions"] = _build_cp_next_actions(
-        run_id, counts, symbol_blockers, ship_gate_parity
+        run_id,
+        counts,
+        symbol_blockers,
+        ship_gate_parity,
+        bootstrap_progress=bootstrap_progress,
     )
 
     if symbol_blockers:
         compact["remediation_loop"] = _build_remediation_loop(symbol_blockers)
 
     compact["finding_index"] = current_index
+
+    # Work queue: dependency-ordered finding execution (#192)
+    try:
+        from lintgate.controlplane.work_queue import build_work_queue
+
+        import_graph, file_map = _extract_import_graph(mesh_result)
+        finding_list = list(current_index.values())
+        if finding_list:
+            wq = build_work_queue(finding_list, import_graph, file_map)
+            if wq.items:
+                compact["work_queue"] = wq.to_dict()
+    except Exception:
+        pass  # Non-fatal: work queue is advisory
+
     return compact
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
+
+
+def _extract_import_graph(
+    mesh_result: MeshResult,
+) -> tuple[dict[str, list[str] | set[str]], dict[str, str]]:
+    """Extract import graph data from the structure channel result.
+
+    Returns (import_graph, file_map). Both empty if the structure channel
+    didn't run or didn't expose graph data.
+    """
+    for cr in mesh_result.channel_results:
+        if cr.channel == "structure" and isinstance(cr.metrics, dict):
+            ig = cr.metrics.get("_import_graph", {})
+            fm = cr.metrics.get("_file_map", {})
+            if isinstance(ig, dict) and isinstance(fm, dict):
+                return ig, fm
+    return {}, {}
 
 
 def _count_findings_by_severity(
@@ -206,17 +262,46 @@ def _build_cp_next_actions(
     counts: dict[str, int],
     symbol_blockers: list[dict[str, Any]] | None = None,
     ship_gate_parity: dict[str, Any] | None = None,
+    bootstrap_progress: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build next_actions for ControlPlane compact output."""
     actions: list[dict[str, Any]] = []
     symbol_count = len(symbol_blockers or [])
+
+    # Bootstrap action — when test files are missing, suggest bootstrap_tests
+    if bootstrap_progress and bootstrap_progress.get("needed"):
+        bs_status = bootstrap_progress.get("status")
+        if bs_status in (None, "idle", "failed"):
+            actions.append(
+                {
+                    "tool": "bootstrap_tests",
+                    "args": {"path": "."},
+                    "reason": "No test files detected. Run bootstrap to generate test scaffolding.",
+                    "priority": 1,
+                }
+            )
+        elif bs_status == "running":
+            actions.append(
+                {
+                    "tool": "bootstrap_status",
+                    "args": {"path": "."},
+                    "reason": (
+                        f"Bootstrap pipeline running "
+                        f"(phase: {bootstrap_progress.get('phase', 'unknown')}). "
+                        f"Check progress."
+                    ),
+                    "priority": 1,
+                }
+            )
 
     parity_status = ship_gate_parity.get("status") if ship_gate_parity else None
     parity_failing = parity_status in ("fail", "error")
     parity_missing = parity_status in ("unknown", "skipped", "stale")
 
     # Only emit parity actions when parity data is explicitly present.
-    if ship_gate_parity and (parity_failing or (parity_missing and counts.get("blocking", 0) > 0)):
+    if ship_gate_parity and (
+        parity_failing or (parity_missing and counts.get("blocking", 0) > 0)
+    ):
         actions.append(
             {
                 "tool": "controlplane_run" if parity_missing else "terminal",
@@ -286,6 +371,54 @@ def _build_cp_next_actions(
     return actions
 
 
+# ── Bootstrap Progress ───────────────────────────────────────────────────
+
+
+def _build_bootstrap_progress(mesh_result: MeshResult) -> dict[str, Any] | None:
+    """Build bootstrap progress section if test channel signals bootstrap needed.
+
+    Checks both the test channel metrics (for the trigger signal) and the
+    persistent bootstrap state (for phase progress).
+    """
+    for cr in mesh_result.channel_results:
+        if cr.channel != "tests":
+            continue
+        metrics = cr.metrics if isinstance(cr.metrics, dict) else {}
+        if not metrics.get("bootstrap_needed"):
+            return None
+
+        # Bootstrap is needed — check persistent state for progress
+        progress: dict[str, Any] = {
+            "needed": True,
+            "reason": metrics.get("bootstrap_reason", "zero_test_files"),
+        }
+
+        try:
+            from lintgate.orchestration.bootstrap_state import PHASES, BootstrapState
+
+            project_root = metrics.get("project_root", "")
+            if project_root:
+                state = BootstrapState.load(project_root)
+                if state.status != "idle":
+                    phase_idx = (
+                        PHASES.index(state.phase) if state.phase in PHASES else 0
+                    )
+                    total_phases = len(PHASES) - 1  # exclude "not_started"
+                    progress["status"] = state.status
+                    progress["phase"] = state.phase
+                    progress["phase_progress"] = f"{phase_idx}/{total_phases}"
+                    progress["files_processed"] = len(state.files_processed)
+                    progress["tests_generated"] = state.tests_generated
+                    if state.error:
+                        progress["error"] = state.error
+        except Exception:
+            pass  # Graceful degradation — bootstrap state is optional
+
+        return progress
+
+    return None
+
+
 # ── Symbol Coverage Blockers ─────────────────────────────────────────────
 
 
@@ -303,7 +436,9 @@ def _collect_symbol_coverage_blockers(mesh_result: MeshResult) -> list[dict[str,
                 continue
 
             evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
-            symbol_key = str(evidence.get("symbol_key") or evidence.get("symbol") or "").strip()
+            symbol_key = str(
+                evidence.get("symbol_key") or evidence.get("symbol") or ""
+            ).strip()
             if not symbol_key:
                 symbol_key = str(finding.message or "").strip()[:200]
 

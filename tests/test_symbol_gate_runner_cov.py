@@ -44,7 +44,9 @@ class TestToBool:
 class TestRunGitList:
     def test_success(self):
         with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock.MagicMock(returncode=0, stdout="foo.py\nbar.py\n")
+            mock_run.return_value = mock.MagicMock(
+                returncode=0, stdout="foo.py\nbar.py\n"
+            )
             result = _run_git_list("/tmp", ["diff", "--name-only"])
         assert result == ["foo.py", "bar.py"]
 
@@ -57,7 +59,9 @@ class TestRunGitList:
     def test_timeout(self):
         import subprocess
 
-        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 10)):
+        with mock.patch(
+            "subprocess.run", side_effect=subprocess.TimeoutExpired("git", 10)
+        ):
             result = _run_git_list("/tmp", ["status"])
         assert result is None
 
@@ -103,7 +107,9 @@ class TestCollectChangedPythonFiles:
             "lintgate.symbol_gate_runner._run_git_list",
             return_value=["bar.py"],
         ):
-            result = collect_changed_python_files(str(tmp_path), base="main", head="feature")
+            result = collect_changed_python_files(
+                str(tmp_path), base="main", head="feature"
+            )
         assert any("bar.py" in r for r in result)
 
     def test_base_only(self, tmp_path):

@@ -36,8 +36,9 @@ def _cleanup_session_state(project_root: str) -> None:
         for host_name in registry.list_available():
             renderer = registry.get(host_name)
             if renderer is not None and hasattr(renderer, "cleanup_dynamic"):
+                cleanup_fn = getattr(renderer, "cleanup_dynamic")
                 with contextlib.suppress(Exception):
-                    renderer.cleanup_dynamic(project_root)
+                    cleanup_fn(project_root)
 
         # Delete RuntimeState file
         delete_runtime_state(project_root)

@@ -20,7 +20,9 @@ class TestQualityPolicyDataclasses:
         assert cp.source_packages == ["lintgate", "mcp_tools"]
 
     def test_coverage_policy_custom(self):
-        cp = CoveragePolicy(global_threshold=90, diff_threshold=85, source_packages=["mylib"])
+        cp = CoveragePolicy(
+            global_threshold=90, diff_threshold=85, source_packages=["mylib"]
+        )
         assert cp.global_threshold == 90
         assert cp.diff_threshold == 85
         assert cp.source_packages == ["mylib"]

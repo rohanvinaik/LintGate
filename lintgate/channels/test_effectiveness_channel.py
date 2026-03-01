@@ -29,7 +29,9 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
-from lintgate.linters.test_effectiveness.manifest import build_test_effectiveness_manifest
+from lintgate.linters.test_effectiveness.manifest import (
+    build_test_effectiveness_manifest,
+)
 from lintgate.linters.test_effectiveness.types import (
     SEMANTIC_STRENGTH_THRESHOLD,
     TestEffectivenessManifest,
@@ -38,6 +40,10 @@ from lintgate.types import LintIssue
 
 # Cap per-code findings to avoid flooding
 _TOP_N_FINDINGS = 5
+
+# Sampling thresholds (#203)
+_MAX_TEST_FILES_DEFAULT = 200
+_ESTIMATED_PER_FILE_SECONDS = 0.3
 
 
 def _discover_python_files(project_root: str) -> list[str]:
@@ -54,6 +60,71 @@ def _discover_test_files(project_root: str) -> list[str]:
     )
 
     return discover(project_root)
+
+
+def _select_test_files_for_analysis(
+    all_test_files: list[str],
+    project_root: str,
+    budget_seconds: float = 90.0,
+    estimated_per_file_seconds: float = _ESTIMATED_PER_FILE_SECONDS,
+) -> tuple[list[str], bool]:
+    """Select a representative sample of test files within budget.
+
+    Returns (selected_files, was_sampled).
+
+    Priority sampling order:
+    1. Recently changed test files (git)
+    2. Largest test files (most likely to have quality issues)
+    3. Remaining in alphabetical order
+    """
+    max_files = int(budget_seconds / estimated_per_file_seconds)
+
+    if len(all_test_files) <= max_files:
+        return all_test_files, False
+
+    selected: list[str] = []
+    selected_set: set[str] = set()
+
+    def _add(path: str) -> None:
+        if path not in selected_set and len(selected) < max_files:
+            selected.append(path)
+            selected_set.add(path)
+
+    # Priority 1: recently changed test files
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD~5"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            changed = set(result.stdout.strip().splitlines())
+            for tf in all_test_files:
+                rel = os.path.relpath(tf, project_root)
+                if rel in changed:
+                    _add(tf)
+    except Exception:
+        pass
+
+    # Priority 2: largest test files
+    try:
+        by_size = sorted(
+            all_test_files,
+            key=lambda f: os.path.getsize(f),
+            reverse=True,
+        )
+        for tf in by_size:
+            _add(tf)
+    except Exception:
+        # Fallback: just take first N
+        for tf in all_test_files:
+            _add(tf)
+
+    return selected, True
 
 
 # ── Finding generators ────────────────────────────────────────────────
@@ -405,15 +476,17 @@ class TestEffectivenessChannel:
         """Run when the project has Python files."""
         return bool(event.project_root)
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Execute test effectiveness analysis."""
         start = time.perf_counter()
 
         project_root = event.project_root
         py_files = _discover_python_files(project_root)
-        test_files = _discover_test_files(project_root)
+        all_test_files = _discover_test_files(project_root)
 
-        if not py_files or not test_files:
+        if not py_files or not all_test_files:
             return ChannelResult(
                 channel=self.name,
                 status="skip",
@@ -421,6 +494,11 @@ class TestEffectivenessChannel:
                 metrics={"reason": "no_python_or_test_files"},
                 duration_ms=(time.perf_counter() - start) * 1000,
             )
+
+        # Sample test files if codebase is large (#203)
+        test_files, was_sampled = _select_test_files_for_analysis(
+            all_test_files, project_root
+        )
 
         # Build the effectiveness manifest
         manifest = build_test_effectiveness_manifest(project_root, py_files, test_files)
@@ -460,6 +538,15 @@ class TestEffectivenessChannel:
             "functions_analyzed": manifest.functions_analyzed,
             "mutation_vulnerable_count": manifest.mutation_vulnerable_count,
         }
+
+        if was_sampled:
+            metrics["sampled"] = True
+            metrics["sample_size"] = len(test_files)
+            metrics["total_test_files"] = len(all_test_files)
+            coverage_pct = round(len(test_files) / len(all_test_files) * 100, 1)
+            metrics["sample_coverage"] = (
+                f"{len(test_files)}/{len(all_test_files)} test files analyzed ({coverage_pct}%)"
+            )
 
         # Emit telemetry
         _emit_telemetry(

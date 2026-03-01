@@ -15,7 +15,9 @@ from lintgate.types import LinterContext
 
 
 def test_test_dir(tmp_path):
-    assert _is_test_or_docs_context(str(tmp_path / "tests" / "test_foo.py"), str(tmp_path))
+    assert _is_test_or_docs_context(
+        str(tmp_path / "tests" / "test_foo.py"), str(tmp_path)
+    )
 
 
 def test_docs_dir(tmp_path):
@@ -27,7 +29,9 @@ def test_src_dir_not_test(tmp_path):
 
 
 def test_nested_test_dir(tmp_path):
-    assert _is_test_or_docs_context(str(tmp_path / "src" / "tests" / "t.py"), str(tmp_path))
+    assert _is_test_or_docs_context(
+        str(tmp_path / "src" / "tests" / "t.py"), str(tmp_path)
+    )
 
 
 # ── BanditLinter ─────────────────────────────────────────────────────
@@ -160,7 +164,9 @@ def test_bad_json(tmp_path):
 
 
 def test_extra_args(tmp_path):
-    ctx = _make_ctx(tmp_path, files=["a.py"], config={"extra_args": ["-c", "bandit.yaml"]})
+    ctx = _make_ctx(
+        tmp_path, files=["a.py"], config={"extra_args": ["-c", "bandit.yaml"]}
+    )
     linter = BanditLinter()
     mock_result = MagicMock(stdout=_bandit_json([]))
     with patch.object(linter, "run_command", return_value=mock_result) as mock_cmd:

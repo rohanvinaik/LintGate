@@ -291,7 +291,8 @@ class TestInstalledVersion:
 
         spec = ToolSpec(tool="python", package=None, executable=None)
         with mock.patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="python", timeout=5)
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="python", timeout=5),
         ):
             result = _installed_version(spec, project_root=str(tmp_path))
         expected = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -373,7 +374,8 @@ class TestWhich:
 class TestCollectFromPyproject:
     def _empty_reqs(self):
         return {
-            tool: {"specifiers": [], "sources": [], "is_optional": []} for tool in _TRACKED_TOOLS
+            tool: {"specifiers": [], "sources": [], "is_optional": []}
+            for tool in _TRACKED_TOOLS
         }
 
     def test_no_pyproject(self, tmp_path):
@@ -383,14 +385,18 @@ class TestCollectFromPyproject:
             assert reqs[tool]["specifiers"] == []
 
     def test_requires_python(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.10"\n')
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nrequires-python = ">=3.10"\n'
+        )
         reqs = self._empty_reqs()
         _collect_from_pyproject(tmp_path, reqs)
         assert ">=3.10" in reqs["python"]["specifiers"]
         assert any("pyproject.toml" in s for s in reqs["python"]["sources"])
 
     def test_project_dependencies(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["ruff>=0.4"]\n')
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\ndependencies = ["ruff>=0.4"]\n'
+        )
         reqs = self._empty_reqs()
         _collect_from_pyproject(tmp_path, reqs)
         assert any(">=0.4" in s for s in reqs["ruff"]["specifiers"])
@@ -418,7 +424,8 @@ class TestCollectFromPyproject:
 class TestCollectFromRequirementsFiles:
     def _empty_reqs(self):
         return {
-            tool: {"specifiers": [], "sources": [], "is_optional": []} for tool in _TRACKED_TOOLS
+            tool: {"specifiers": [], "sources": [], "is_optional": []}
+            for tool in _TRACKED_TOOLS
         }
 
     def test_requirements_txt(self, tmp_path):
@@ -517,7 +524,9 @@ class TestInspectToolVersions:
             return "0.4.0" if spec.tool == "ruff" else "1.0.0"
 
         with (
-            mock.patch("lintgate.versioning._installed_version", side_effect=mock_version),
+            mock.patch(
+                "lintgate.versioning._installed_version", side_effect=mock_version
+            ),
             mock.patch("lintgate.versioning._which", return_value="/usr/bin/tool"),
         ):
             observations = inspect_tool_versions(reqs)
@@ -537,7 +546,9 @@ class TestInspectToolVersions:
             return None
 
         with (
-            mock.patch("lintgate.versioning._installed_version", side_effect=mock_version),
+            mock.patch(
+                "lintgate.versioning._installed_version", side_effect=mock_version
+            ),
             mock.patch("lintgate.versioning._which", side_effect=mock_which),
         ):
             observations = inspect_tool_versions(reqs)
@@ -575,7 +586,9 @@ class TestAttemptRepairs:
         assert "timed out" in fixes[0]["error"]
 
     def test_skips_python(self):
-        issues = [{"tool": "python", "status": "mismatch", "required_specifier": ">=3.10"}]
+        issues = [
+            {"tool": "python", "status": "mismatch", "required_specifier": ">=3.10"}
+        ]
         fixes = _attempt_repairs(issues, "/usr/bin/python")
         assert fixes == []
 
@@ -585,7 +598,9 @@ class TestAttemptRepairs:
         assert fixes == []
 
     def test_no_specifier(self):
-        issues = [{"tool": "ruff", "status": "missing-executable", "required_specifier": ""}]
+        issues = [
+            {"tool": "ruff", "status": "missing-executable", "required_specifier": ""}
+        ]
         fake_proc = SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
         with mock.patch("subprocess.run", return_value=fake_proc):
             fixes = _attempt_repairs(issues, "/usr/bin/python")
@@ -604,7 +619,9 @@ class TestVerifyEnvironment:
         assert result["ok"] is True
 
     def test_failed_check(self):
-        fake_proc = SimpleNamespace(returncode=1, stdout="broken dep\n", stderr="warning\n")
+        fake_proc = SimpleNamespace(
+            returncode=1, stdout="broken dep\n", stderr="warning\n"
+        )
         with mock.patch("subprocess.run", return_value=fake_proc):
             result = _verify_environment("/usr/bin/python")
         assert result["ok"] is False
@@ -683,7 +700,9 @@ class TestRunVersionAudit:
                 return_value=[],
             ),
         ):
-            result = run_version_audit(str(tmp_path), auto_fix=True, verify_after_fix=False)
+            result = run_version_audit(
+                str(tmp_path), auto_fix=True, verify_after_fix=False
+            )
         assert result["verification"] is None
 
 

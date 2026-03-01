@@ -75,10 +75,13 @@ class MutationEngine:
         results = []
         for file_path in target_files:
             # Check budgets
-            if telemetry.inline_time_ms_spent >= self.budget.max_inline_ms_per_function * len(
-                target_files
+            if (
+                telemetry.inline_time_ms_spent
+                >= self.budget.max_inline_ms_per_function * len(target_files)
             ):
-                logger.warning(f"Mutation inline budget exhausted. Skipping {file_path}")
+                logger.warning(
+                    f"Mutation inline budget exhausted. Skipping {file_path}"
+                )
                 break
 
             # Heuristic: discover functions in file to compute relevance
@@ -213,7 +216,9 @@ class MutationEngine:
                 # Everything was filtered out; nothing to run.
                 return True
 
-            return self._run_mutmut_subprocess(cmd, telemetry, filter_active, mutants_to_run)
+            return self._run_mutmut_subprocess(
+                cmd, telemetry, filter_active, mutants_to_run
+            )
         except (subprocess.SubprocessError, FileNotFoundError):
             return False
         finally:
@@ -293,7 +298,9 @@ class MutationEngine:
         mutants_to_run: list[str],
     ) -> bool:
         """Run mutmut subprocess and interpret exit code."""
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=300)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=300
+        )
         # mutmut v3: 0 = all killed, 2 = survivors found, 1 = other
         if proc.returncode not in (0, 1, 2):
             return False
@@ -357,7 +364,9 @@ class MutationEngine:
             covered_categories=covered_categories,
         )
 
-    def _parse_mutmut_results(self, paths: list[str]) -> dict[str, FunctionMutationState]:
+    def _parse_mutmut_results(
+        self, paths: list[str]
+    ) -> dict[str, FunctionMutationState]:
         """Parse mutmut v3 results and return per-function state.
 
         mutmut v3 output format:
@@ -394,7 +403,9 @@ class MutationEngine:
                 continue
             try:
                 source = Path(path).read_text("utf-8")
-                mutant_category_map.update(self._build_mutant_category_map(path, source))
+                mutant_category_map.update(
+                    self._build_mutant_category_map(path, source)
+                )
             except Exception as e:
                 logger.debug(f"Failed to build category map for {path}: {e}")
         return mutant_category_map
@@ -525,9 +536,12 @@ class MutationEngine:
                         self._stack.append(("class", node.name.value))
                     elif isinstance(node, cst.FunctionDef):
                         class_name = next(
-                            (s[1] for s in reversed(self._stack) if s[0] == "class"), None
+                            (s[1] for s in reversed(self._stack) if s[0] == "class"),
+                            None,
                         )
-                        mangled = mangle_function_name(name=node.name.value, class_name=class_name)
+                        mangled = mangle_function_name(
+                            name=node.name.value, class_name=class_name
+                        )
                         self._stack.append(("func", mangled))
 
                     if isinstance(node, (cst.Annotation, cst.Decorator)):
@@ -543,7 +557,9 @@ class MutationEngine:
                                     inventions = list(operator(node))
                                     if inventions:
                                         op_name = operator.__name__
-                                        cat = self._map_op_name_to_category(op_name, node)
+                                        cat = self._map_op_name_to_category(
+                                            op_name, node
+                                        )
                                         for _ in inventions:
                                             self.mutants.append((current_func, cat))
                                 except Exception:
@@ -551,7 +567,10 @@ class MutationEngine:
                     return True
 
                 def on_leave(self, node: cst.CSTNode):
-                    if isinstance(node, (cst.ClassDef, cst.FunctionDef)) and self._stack:
+                    if (
+                        isinstance(node, (cst.ClassDef, cst.FunctionDef))
+                        and self._stack
+                    ):
                         self._stack.pop()
 
                 def _map_op_name_to_category(self, op_name: str, node: Any) -> str:
@@ -567,7 +586,14 @@ class MutationEngine:
                         # This is a bit deep, but we can guess
                         if isinstance(
                             node.operator,
-                            (cst.Plus, cst.Minus, cst.Add, cst.Subtract, cst.Multiply, cst.Divide),
+                            (
+                                cst.Plus,
+                                cst.Minus,
+                                cst.Add,
+                                cst.Subtract,
+                                cst.Multiply,
+                                cst.Divide,
+                            ),
                         ):
                             return "arithmetic"
                         return "conditional"
@@ -592,7 +618,9 @@ class MutationEngine:
             )
             return {}
 
-    def _build_mutant_category_map_with_ast(self, module_name: str, source: str) -> dict[str, str]:
+    def _build_mutant_category_map_with_ast(
+        self, module_name: str, source: str
+    ) -> dict[str, str]:
         """Approximate mutmut category IDs using plain AST traversal."""
 
         class_sep = "\u01c1"
@@ -604,7 +632,8 @@ class MutationEngine:
 
         def _infer_category(node: ast.AST) -> str | None:
             if isinstance(node, ast.BinOp) and isinstance(
-                node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
+                node.op,
+                (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow),
             ):
                 if _is_string_expr(node.left) or _is_string_expr(node.right):
                     return "string"
@@ -613,7 +642,9 @@ class MutationEngine:
                 return "conditional"
             if isinstance(node, ast.Compare):
                 return "conditional"
-            if isinstance(node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.Match)):
+            if isinstance(
+                node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.Match)
+            ):
                 return "conditional"
             if isinstance(node, ast.Constant):
                 if isinstance(node.value, str):
@@ -628,7 +659,8 @@ class MutationEngine:
             for child in ast.iter_child_nodes(node):
                 # Skip nested functions/classes so each function gets its own IDs.
                 if isinstance(
-                    child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+                    child,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
                 ):
                     continue
                 yield child
@@ -645,7 +677,9 @@ class MutationEngine:
                 self.generic_visit(node)
                 self.class_stack.pop()
 
-            def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            def _visit_function(
+                self, node: ast.FunctionDef | ast.AsyncFunctionDef
+            ) -> None:
                 if self.class_stack:
                     base = f"x{class_sep}{self.class_stack[-1]}{class_sep}{node.name}"
                 else:
@@ -675,7 +709,9 @@ class MutationEngine:
             visitor.visit(tree)
             return visitor.id_map
         except (SyntaxError, ValueError, TypeError) as e:
-            logger.debug(f"Exception in _build_mutant_category_map_with_ast for {module_name}: {e}")
+            logger.debug(
+                f"Exception in _build_mutant_category_map_with_ast for {module_name}: {e}"
+            )
             return {}
 
 
@@ -692,7 +728,9 @@ def _tally_status(
         entry["survived"] += 1
         cat = mutant_category_map.get(name_part)
         if cat:
-            entry["survived_by_category"][cat] = entry["survived_by_category"].get(cat, 0) + 1
+            entry["survived_by_category"][cat] = (
+                entry["survived_by_category"].get(cat, 0) + 1
+            )
     elif status == "timeout":
         entry["timeout"] += 1
 

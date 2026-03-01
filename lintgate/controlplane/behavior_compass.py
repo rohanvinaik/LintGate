@@ -60,7 +60,9 @@ _make_hypothesis_id = make_hypothesis_id
 
 # ── Prediction checking ──────────────────────────────────────────────────
 
-_PREDICTION_EXPIRY_EVENTS = 20  # Expire predictions after this many events without check
+_PREDICTION_EXPIRY_EVENTS = (
+    20  # Expire predictions after this many events without check
+)
 
 
 def _evaluate_prediction_match(
@@ -113,7 +115,9 @@ def _apply_prediction_to_hypothesis(
         elif pred.status == "falsified":
             delta = cfg.get("weaken_delta", 0.1)
             hyp.confidence = max(hyp.confidence - delta, 0.0)
-            hyp.evidence_against.append(f"prediction falsified at event {compass.event_counter}")
+            hyp.evidence_against.append(
+                f"prediction falsified at event {compass.event_counter}"
+            )
         compass.hypothesis_version += 1
         break
 
@@ -162,7 +166,9 @@ def _check_predictions(
             continue
 
         # Evaluate and record outcome
-        matched = _evaluate_prediction_match(pred.expected, exit_code, error_sig, output_str)
+        matched = _evaluate_prediction_match(
+            pred.expected, exit_code, error_sig, output_str
+        )
         pred.status = "confirmed" if matched else "falsified"
         pred.checked_at_event = compass.event_counter
         pred.actual_outcome = f"exit={exit_code}, err={error_sig[:50]}"
@@ -278,6 +284,9 @@ def record_tool_event(
         )
         if exit_code != 0:
             _update_error_memory(compass, error_sig, now)
+    elif tool_name in ("Agent", "Task") and isinstance(tool_input, dict):
+        # Capture description for delegation detection
+        command_sig = str(tool_input.get("description", ""))[:80]
 
     # Resolve and track intent
     intent = resolve_intent(tool_name, command_sig)
@@ -308,7 +317,9 @@ def record_tool_event(
         _test_hypotheses(compass, command_sig, exit_code, error_sig, now, cfg)
 
     # Check pending predictions against actual outcomes (Bash events only)
-    _check_predictions(compass, tool_name, command_sig, exit_code, error_sig, output_str, cfg)
+    _check_predictions(
+        compass, tool_name, command_sig, exit_code, error_sig, output_str, cfg
+    )
 
     # Auto-generate hypothesis from Bash failure
     if tool_name == "Bash" and exit_code is not None and exit_code != 0 and error_sig:
@@ -448,7 +459,9 @@ def _auto_generate_hypothesis(
     evict_overflow(compass, cfg)
 
 
-def _hypothesis_matches_sig(hyp: BehaviorHypothesis, command_sig: str, binary: str) -> bool:
+def _hypothesis_matches_sig(
+    hyp: BehaviorHypothesis, command_sig: str, binary: str
+) -> bool:
     """Check if a hypothesis applies to a given command signature."""
     for sig_pattern in hyp.applies_to_sigs:
         if sig_pattern.endswith(":*") and binary == sig_pattern[:-2]:
@@ -482,7 +495,9 @@ def _test_hypotheses(
             event_keywords = set(error_sig.lower().split())
             if len(hyp_keywords & event_keywords) >= 2:
                 # Command failure is outcome attribution
-                decomp = SignalSourceDecomposition(signal_name=hyp.id, outcome_score=1.0)
+                decomp = SignalSourceDecomposition(
+                    signal_name=hyp.id, outcome_score=1.0
+                )
                 update_hypothesis(
                     compass,
                     hyp.id,
@@ -639,7 +654,9 @@ def compute_coverage(
     bash_count = sum(1 for e in recent if e.get("tool") == "Bash")
     read_count = sum(1 for e in recent if e.get("tool") in ("Read", "Grep", "Glob"))
 
-    surprise = sum(1 for h in active_hyps if h.source == "command_failure" and h.confidence >= 0.5)
+    surprise = sum(
+        1 for h in active_hyps if h.source == "command_failure" and h.confidence >= 0.5
+    )
     total_discovered = predicted + surprise
     recall = predicted / total_discovered if total_discovered > 0 else 0.0
 
@@ -772,7 +789,9 @@ def add_declared_hypothesis(
 
     binary = sig.split(":")[0] if ":" in sig else sig
     # Agent declaration boosts theory and pattern
-    decomp = SignalSourceDecomposition(signal_name=claim, theory_score=0.8, pattern_score=0.2)
+    decomp = SignalSourceDecomposition(
+        signal_name=claim, theory_score=0.8, pattern_score=0.2
+    )
     hypothesis = BehaviorHypothesis(
         id=hyp_id,
         claim=claim,

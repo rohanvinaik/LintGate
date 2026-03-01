@@ -9,13 +9,17 @@ from mcp_tools.nsil_tools import register
 def test_nsil_inference_snapshot_no_session():
     mcp = mock.MagicMock()
     mcp.tool = lambda *args, **kwargs: lambda f: f
-    helpers = {"_validate_project_root": lambda p: "/tmp", "_json_dumps": lambda x: json.dumps(x)}
+    helpers = {
+        "_validate_project_root": lambda p: "/tmp",
+        "_json_dumps": lambda x: json.dumps(x),
+    }
     tools = register(mcp, helpers)
     snapshot_tool = tools["nsil_inference_snapshot"]
 
     with (
         mock.patch(
-            "mcp_tools.nsil_tools.load_controlplane_config", return_value=ControlPlaneConfig()
+            "mcp_tools.nsil_tools.load_controlplane_config",
+            return_value=ControlPlaneConfig(),
         ),
         mock.patch("mcp_tools.nsil_tools.load_session", return_value=None),
     ):
@@ -26,7 +30,10 @@ def test_nsil_inference_snapshot_no_session():
 def test_nsil_inference_snapshot_with_session():
     mcp = mock.MagicMock()
     mcp.tool = lambda *args, **kwargs: lambda f: f
-    helpers = {"_validate_project_root": lambda p: "/tmp", "_json_dumps": lambda x: json.dumps(x)}
+    helpers = {
+        "_validate_project_root": lambda p: "/tmp",
+        "_json_dumps": lambda x: json.dumps(x),
+    }
     tools = register(mcp, helpers)
     snapshot_tool = tools["nsil_inference_snapshot"]
 
@@ -34,7 +41,8 @@ def test_nsil_inference_snapshot_with_session():
 
     with (
         mock.patch(
-            "mcp_tools.nsil_tools.load_controlplane_config", return_value=ControlPlaneConfig()
+            "mcp_tools.nsil_tools.load_controlplane_config",
+            return_value=ControlPlaneConfig(),
         ),
         mock.patch("mcp_tools.nsil_tools.load_session", return_value=session),
     ):

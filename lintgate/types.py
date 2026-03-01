@@ -147,6 +147,66 @@ class ChangeClassification:
     timestamp: float = field(default_factory=time.time)
 
 
+# ─── Prescriptions ────────────────────────────────────────────────────────
+
+
+@dataclass
+class Prescription:
+    """A structured, actionable recommendation from any prescriptive subsystem.
+
+    Shared output schema for lint, structure, mutation, and bootstrap
+    subsystems.  Prevents "diagnosis to prescription" from staying
+    fragmented across subsystems.
+    """
+
+    kind: str  # "extract_function" | "split_file" | "add_test" | "fix_import" | "decompose_register" | ...
+    target: str  # file::function or file path
+    action: str  # human-readable description of what to do
+    source: str  # "static" | "dynamic" | "lint" | "bootstrap"
+    confidence: float = 0.5  # 0.0–1.0
+    lines: tuple[int, int] | None = None  # affected line range
+    proposed_name: str | None = None  # suggested name for extracted entity
+    inputs: list[str] = field(default_factory=list)  # parameters / shared variables
+    outputs: list[str] = field(default_factory=list)  # return values / side effects
+    basis: list[str] = field(default_factory=list)  # evidence keys
+    expected_delta: dict[str, Any] = field(
+        default_factory=dict
+    )  # e.g. {"cc_reduction": 15}
+    evidence_sources: list[str] = field(default_factory=list)  # which lenses contributed
+    converged: bool = False  # whether multiple lenses agree
+    lens_contributions: dict[str, float] = field(
+        default_factory=dict
+    )  # per-lens confidence map
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for JSON output."""
+        d: dict[str, Any] = {
+            "kind": self.kind,
+            "target": self.target,
+            "action": self.action,
+            "source": self.source,
+            "confidence": self.confidence,
+            "basis": self.basis,
+        }
+        if self.lines is not None:
+            d["lines"] = list(self.lines)
+        if self.proposed_name is not None:
+            d["proposed_name"] = self.proposed_name
+        if self.inputs:
+            d["inputs"] = self.inputs
+        if self.outputs:
+            d["outputs"] = self.outputs
+        if self.expected_delta:
+            d["expected_delta"] = self.expected_delta
+        if self.evidence_sources:
+            d["evidence_sources"] = self.evidence_sources
+        if self.converged:
+            d["converged"] = self.converged
+        if self.lens_contributions:
+            d["lens_contributions"] = self.lens_contributions
+        return d
+
+
 # ─── Lint Tiers ───────────────────────────────────────────────────────────
 
 
@@ -220,7 +280,9 @@ class CoveragePolicy:
 
     global_threshold: int = 80  # --cov-fail-under
     diff_threshold: int = 80  # diff-cover --fail-under
-    source_packages: list[str] = field(default_factory=lambda: ["lintgate", "mcp_tools"])
+    source_packages: list[str] = field(
+        default_factory=lambda: ["lintgate", "mcp_tools"]
+    )
 
 
 @dataclass
@@ -237,7 +299,9 @@ class ToleratedFalsePositive:
 class SecurityPolicy:
     """Security gate policy."""
 
-    tolerated_false_positives: list[ToleratedFalsePositive] = field(default_factory=list)
+    tolerated_false_positives: list[ToleratedFalsePositive] = field(
+        default_factory=list
+    )
 
 
 @dataclass

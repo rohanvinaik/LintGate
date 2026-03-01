@@ -16,7 +16,10 @@ def register(mcp, helpers):
         files: list[str] | None = None,
     ) -> str:
         """Summarize context guidance and machine-usable rules for a project."""
-        from lintgate.context_guidance import build_context_guidance, summarize_context_guidance
+        from lintgate.context_guidance import (
+            build_context_guidance,
+            summarize_context_guidance,
+        )
 
         project_root = helpers["_validate_project_root"](path)
         guidance = build_context_guidance(project_root, files=files)
@@ -66,7 +69,9 @@ def register(mcp, helpers):
         agent can cheaply resolve. Returns `quick_wins` — concrete next steps.
         Returns `agent_instructions` — ordered workflow for what to do with the result.
         """
-        from lintgate.context_bootstrap import bootstrap_context_files as _bootstrap_context_files
+        from lintgate.context_bootstrap import (
+            bootstrap_context_files as _bootstrap_context_files,
+        )
 
         project_root = helpers["_validate_project_root"](path)
 
@@ -111,7 +116,11 @@ def register(mcp, helpers):
         project_root = helpers["_validate_project_root"](path)
         session = get_or_create_session(project_root)
 
-        pending = [p for p in session.pending_patches if p.get("status", "pending") == "pending"]
+        pending = [
+            p
+            for p in session.pending_patches
+            if p.get("status", "pending") == "pending"
+        ]
 
         if not pending:
             return json.dumps(
@@ -189,18 +198,27 @@ def register(mcp, helpers):
             apply_context_patch,
             generate_context_patch,
         )
-        from lintgate.controlplane.session_memory import get_or_create_session, save_session
+        from lintgate.controlplane.session_memory import (
+            get_or_create_session,
+            save_session,
+        )
 
         project_root = helpers["_validate_project_root"](path)
         session = get_or_create_session(project_root)
 
-        pending = [p for p in session.pending_patches if p.get("status", "pending") == "pending"]
+        pending = [
+            p
+            for p in session.pending_patches
+            if p.get("status", "pending") == "pending"
+        ]
 
         if patch_ids is not None:
             pending = [p for p in pending if p.get("patch_id") in patch_ids]
 
         if not pending:
-            return json.dumps({"applied": 0, "message": "No matching pending patches."}, indent=2)
+            return json.dumps(
+                {"applied": 0, "message": "No matching pending patches."}, indent=2
+            )
 
         results = []
         for p_dict in pending:

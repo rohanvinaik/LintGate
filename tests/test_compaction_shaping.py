@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 import json
+import re
 
 from lintgate.hooks.pre_compact import handle
 from lintgate.runtime_state import RuntimeState, save_runtime_state
+
+
+def _extract_capsule(result: dict) -> dict:
+    """Extract capsule dict from systemMessage's <lintgate-compact-state> tag."""
+    msg = result["systemMessage"]
+    m = re.search(
+        r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL
+    )
+    assert m, f"No <lintgate-compact-state> tag in systemMessage: {msg!r}"
+    return json.loads(m.group(1))
+
+
+def _extract_capsule_str(result: dict) -> str:
+    """Extract raw capsule JSON string from systemMessage."""
+    msg = result["systemMessage"]
+    m = re.search(
+        r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL
+    )
+    assert m, f"No <lintgate-compact-state> tag in systemMessage: {msg!r}"
+    return m.group(1)
 
 
 class TestHandleWithRuntimeState:
@@ -36,10 +57,9 @@ class TestHandleWithRuntimeState:
 
         assert result["continue"] is True
         assert "systemMessage" in result
-        assert "hookSpecificOutput" in result
-        assert result["hookSpecificOutput"]["hookEventName"] == "PreCompact"
+        assert "<lintgate-compact-state>" in result["systemMessage"]
 
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         assert "compass_capsule" in capsule
         assert "session_state" in capsule
         assert "behavioral" in capsule
@@ -55,7 +75,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         compass = capsule["compass_capsule"]
 
         assert compass["true_north"] == "Ship quality code"
@@ -74,7 +94,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         session = capsule["session_state"]
 
         assert session["mode"] == "habit"
@@ -92,7 +112,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         behavioral = capsule["behavioral"]
 
         assert behavioral["approach_failures"] == 2
@@ -108,7 +128,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         token = capsule["token_state"]
 
         assert token["pct_used"] == 65.3
@@ -125,7 +145,7 @@ class TestHandleWithRuntimeState:
         # But save_runtime_state increments generation, not compaction_count
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
 
         # The hook increments compaction_count by 1 from whatever is on disk
         # On disk after save: compaction_count=5
@@ -171,7 +191,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         assert capsule["session_state"]["focus_files"] == ["main.py", "utils.py"]
 
     def test_focus_files_capped_at_5(self, tmp_path):
@@ -179,7 +199,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         assert len(capsule["session_state"]["focus_files"]) == 5
 
     def test_toward_capped_at_6(self, tmp_path):
@@ -187,7 +207,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         assert len(capsule["compass_capsule"]["toward"]) == 6
 
     def test_true_north_truncated(self, tmp_path):
@@ -195,7 +215,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         assert len(capsule["compass_capsule"]["true_north"]) == 120
 
     def test_capsule_token_budget(self, tmp_path):
@@ -221,7 +241,7 @@ class TestHandleWithRuntimeState:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        capsule_str = result["hookSpecificOutput"]["additionalContext"]
+        capsule_str = _extract_capsule_str(result)
         # ~800 tokens ≈ 3200 chars — give some margin
         assert len(capsule_str) < 4000
 
@@ -250,9 +270,9 @@ class TestHandleEdgeCases:
 
         result = handle({"cwd": str(tmp_path)})
         assert result["continue"] is True
-        assert "hookSpecificOutput" in result
+        assert "<lintgate-compact-state>" in result["systemMessage"]
 
-        capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+        capsule = _extract_capsule(result)
         assert capsule["session_state"]["mode"] == "normal"
         assert capsule["session_state"]["focus_files"] == []
         assert capsule["session_state"]["test_status"] == ""
@@ -281,10 +301,8 @@ class TestHandleEdgeCases:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        ctx = result["hookSpecificOutput"]["additionalContext"]
-        # Should not raise
-        parsed = json.loads(ctx)
-        assert isinstance(parsed, dict)
+        capsule = _extract_capsule(result)
+        assert isinstance(capsule, dict)
 
     def test_consecutive_compactions_increment_correctly(self, tmp_path):
         """Multiple PreCompact calls should monotonically increment."""
@@ -294,7 +312,7 @@ class TestHandleEdgeCases:
         counts = []
         for _ in range(3):
             result = handle({"cwd": str(tmp_path)})
-            capsule = json.loads(result["hookSpecificOutput"]["additionalContext"])
+            capsule = _extract_capsule(result)
             counts.append(capsule["token_state"]["compaction_number"])
 
         # Each call increments by 1
@@ -386,10 +404,12 @@ class TestDualWriteStrategy:
         save_runtime_state(str(tmp_path), state)
 
         result = handle({"cwd": str(tmp_path)})
-        assert "hookSpecificOutput" in result
+        assert "<lintgate-compact-state>" in result["systemMessage"]
 
         # Read generation from file
-        file_gen = read_generation_from_file(str(tmp_path), ".claude/rules/lg_session.md")
+        file_gen = read_generation_from_file(
+            str(tmp_path), ".claude/rules/lg_session.md"
+        )
         assert file_gen is not None
 
     def test_no_dynamic_files_without_host_dir(self, tmp_path):

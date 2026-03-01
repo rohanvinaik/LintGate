@@ -22,7 +22,11 @@ def test_track_event_file_edits():
     for _ in range(3):
         state = track_event(
             state,
-            {"tool_name": "replace_file_content", "target_file": "foo.py", "status": "success"},
+            {
+                "tool_name": "replace_file_content",
+                "target_file": "foo.py",
+                "status": "success",
+            },
         )
 
     assert state.file_edit_counts.get("foo.py") == 3
@@ -36,14 +40,24 @@ def test_track_event_consecutive_replace_failures():
     state = EditCycleState()
     for _ in range(2):
         state = track_event(
-            state, {"tool_name": "replace_file_content", "status": "error", "target_file": "foo.py"}
+            state,
+            {
+                "tool_name": "replace_file_content",
+                "status": "error",
+                "target_file": "foo.py",
+            },
         )
 
     assert state.consecutive_replace_failures == 2
 
     # A successful edit resets the consecutive failures
     state = track_event(
-        state, {"tool_name": "replace_file_content", "status": "success", "target_file": "foo.py"}
+        state,
+        {
+            "tool_name": "replace_file_content",
+            "status": "success",
+            "target_file": "foo.py",
+        },
     )
     assert state.consecutive_replace_failures == 0
 
@@ -65,7 +79,11 @@ def test_track_event_finding_persistence():
     # Prunes resolved findings
     state = track_event(
         state,
-        {"tool_name": "controlplane_run", "status": "success", "findings": [{"fingerprint": "Y"}]},
+        {
+            "tool_name": "controlplane_run",
+            "status": "success",
+            "findings": [{"fingerprint": "Y"}],
+        },
     )
 
     assert "X" not in state.finding_persistence
@@ -93,7 +111,9 @@ def test_detect_cycles_thresholds():
     assert results[0].reason == CYCLE_REPLACE_FAIL
 
     # Escalation
-    state = EditCycleState(consecutive_replace_failures=THRESHOLD_REPLACE_FAIL, total_detections=3)
+    state = EditCycleState(
+        consecutive_replace_failures=THRESHOLD_REPLACE_FAIL, total_detections=3
+    )
     results = detect_cycles(state)
     assert results[0].escalation_level == "enforced"
 

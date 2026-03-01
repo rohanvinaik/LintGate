@@ -45,7 +45,9 @@ def test_analyze_optimization_opportunities():
         ("func3", ["cacheable"]),
     ]
     # Mock _resolve_file
-    with patch("lintgate.channels.performance_channel._resolve_file", return_value="file.py"):
+    with patch(
+        "lintgate.channels.performance_channel._resolve_file", return_value="file.py"
+    ):
         issues = _analyze_optimization_opportunities(manifest, "/root")
 
     kinds = [i.kind for i in issues]

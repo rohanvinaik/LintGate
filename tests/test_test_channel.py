@@ -264,7 +264,9 @@ def test_run_tests_preserves_coverage_json_for_symbol_gate(mock_run: MagicMock) 
                 cov_json = arg.split(":", 1)[1]
         assert cov_xml is not None
         assert cov_json is not None
-        Path(cov_xml).write_text('<coverage line-rate="0.80"></coverage>', encoding="utf-8")
+        Path(cov_xml).write_text(
+            '<coverage line-rate="0.80"></coverage>', encoding="utf-8"
+        )
         Path(cov_json).write_text(
             '{"files":{"app.py":{"executed_lines":[1],"missing_lines":[],"excluded_lines":[],"missing_branches":[]}}}',
             encoding="utf-8",
@@ -479,7 +481,9 @@ def test_partial_run_confidence_reduced():
     _emit_symbol_findings(gate, findings, is_partial_run=True, coverage_ok=True)
     assert findings[0].severity == "warning"
     assert getattr(findings[0], "confidence", 1.0) == 0.6
-    assert "downgraded: partial test run with healthy line coverage" in findings[0].message
+    assert (
+        "downgraded: partial test run with healthy line coverage" in findings[0].message
+    )
 
 
 def test_full_run_confidence_1():

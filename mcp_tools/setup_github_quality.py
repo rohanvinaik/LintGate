@@ -83,8 +83,16 @@ def setup_github_quality(
             _generate_security_workflow(),
             "security_workflow",
         ),
-        (".github/workflows/scorecard.yml", _generate_scorecard_workflow(), "scorecard_workflow"),
-        (".github/workflows/codeql.yml", _generate_codeql_workflow(), "codeql_workflow"),
+        (
+            ".github/workflows/scorecard.yml",
+            _generate_scorecard_workflow(),
+            "scorecard_workflow",
+        ),
+        (
+            ".github/workflows/codeql.yml",
+            _generate_codeql_workflow(),
+            "codeql_workflow",
+        ),
         (
             ".github/workflows/cif.yml",
             _generate_clusterfuzzlite_workflow(),
@@ -102,7 +110,11 @@ def setup_github_quality(
         ),
         (".github/dependabot.yml", _generate_dependabot_yml(), "dependabot"),
         ("SECURITY.md", _generate_security_md(github), "security_md"),
-        (".qlty/qlty.toml", _generate_qlty_toml(layout, is_tool_runner=is_tool_runner), "qlty"),
+        (
+            ".qlty/qlty.toml",
+            _generate_qlty_toml(layout, is_tool_runner=is_tool_runner),
+            "qlty",
+        ),
         (".qlty/.gitignore", "*\n!.gitignore\n!qlty.toml\n", "qlty_gitignore"),
     ]
 
@@ -110,7 +122,9 @@ def setup_github_quality(
     results: dict[str, Any] = {}
     for rel_path, content, key in artifact_definitions:
         full_path = os.path.join(project_root, rel_path)
-        results[key] = _apply_managed_artifact(full_path, content, os.path.exists(full_path), write)
+        results[key] = _apply_managed_artifact(
+            full_path, content, os.path.exists(full_path), write
+        )
 
     # 3. Handle special artifacts (git hooks, gitignore, badges)
     results["pre_push_hook"] = _write_pre_push_hook(project_root, write)

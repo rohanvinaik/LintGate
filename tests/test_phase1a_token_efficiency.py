@@ -35,7 +35,11 @@ from lintgate.types import (
 class TestIssueIds:
     def test_compute_issue_id_is_deterministic(self) -> None:
         issue = LintIssue(
-            linter="ruff", kind="F821", message="undefined name 'foo'", file="test.py", line=10
+            linter="ruff",
+            kind="F821",
+            message="undefined name 'foo'",
+            file="test.py",
+            line=10,
         )
         id1 = issue.compute_issue_id()
         id2 = issue.compute_issue_id()
@@ -44,10 +48,18 @@ class TestIssueIds:
 
     def test_different_issues_get_different_ids(self) -> None:
         issue1 = LintIssue(
-            linter="ruff", kind="F821", message="undefined name 'foo'", file="a.py", line=10
+            linter="ruff",
+            kind="F821",
+            message="undefined name 'foo'",
+            file="a.py",
+            line=10,
         )
         issue2 = LintIssue(
-            linter="ruff", kind="F821", message="undefined name 'bar'", file="a.py", line=20
+            linter="ruff",
+            kind="F821",
+            message="undefined name 'bar'",
+            file="a.py",
+            line=20,
         )
         assert issue1.compute_issue_id() != issue2.compute_issue_id()
 
@@ -90,7 +102,9 @@ class TestIssueIds:
         result = aggregate_results([lr], config)
         all_issues = [*result.blocking, *result.warnings, *result.informational]
         for issue in all_issues:
-            assert issue.issue_id != "", f"issue_id should be set, got empty for {issue.kind}"
+            assert issue.issue_id != "", (
+                f"issue_id should be set, got empty for {issue.kind}"
+            )
             assert len(issue.issue_id) == 12
 
     def test_issue_id_excluded_from_to_dict_when_empty(self) -> None:
@@ -100,7 +114,9 @@ class TestIssueIds:
         assert "issue_id" not in d
 
     def test_issue_id_included_in_to_dict_when_set(self) -> None:
-        issue = LintIssue(linter="ruff", kind="F821", message="test", issue_id="abc123def456")
+        issue = LintIssue(
+            linter="ruff", kind="F821", message="test", issue_id="abc123def456"
+        )
         d = issue.to_dict()
         assert d["issue_id"] == "abc123def456"
 
@@ -163,7 +179,9 @@ class TestOutputModes:
     """Test that _run_lint output varies by mode."""
 
     @staticmethod
-    def _make_mock_aggregated(blocking_count: int = 2, warning_count: int = 3, info_count: int = 5):
+    def _make_mock_aggregated(
+        blocking_count: int = 2, warning_count: int = 3, info_count: int = 5
+    ):
         """Create a mock AggregatedResult."""
         blocking = [
             LintIssue(
@@ -269,8 +287,18 @@ class TestOutputModes:
             "informational": 3,
             "fixable": 1,
             "blocking_issues": [
-                {"id": "blk1", "kind": "F821", "loc": "mod.py:10", "msg": "undefined name"},
-                {"id": "blk2", "kind": "F841", "loc": "mod.py:20", "msg": "unused variable"},
+                {
+                    "id": "blk1",
+                    "kind": "F821",
+                    "loc": "mod.py:10",
+                    "msg": "undefined name",
+                },
+                {
+                    "id": "blk2",
+                    "kind": "F841",
+                    "loc": "mod.py:20",
+                    "msg": "unused variable",
+                },
             ],
         }
         compact = _json_dumps(data, "compact")
@@ -355,7 +383,9 @@ class TestSchemaStability:
                 "tier": "tier_2_manual",
                 "project": "/tmp/project",
                 "duration_ms": 150.0,
-                "blocking_issues": [{"kind": "F821", "message": "undef", "severity": "blocking"}],
+                "blocking_issues": [
+                    {"kind": "F821", "message": "undef", "severity": "blocking"}
+                ],
                 "warning_issues": [
                     {"kind": "E501", "message": "line too long", "severity": "warning"}
                 ],

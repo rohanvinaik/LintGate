@@ -39,7 +39,9 @@ from lintgate.types import LintIssue
 
 
 def _issue(kind="E001", severity="warning", file="a.py", message="issue"):
-    return LintIssue(linter="test", kind=kind, severity=severity, file=file, message=message)
+    return LintIssue(
+        linter="test", kind=kind, severity=severity, file=file, message=message
+    )
 
 
 def _channel(name, status="fail", severity="warning", findings=None):
@@ -77,20 +79,31 @@ def test_systemic_cross_domain_two_channels_severity_weighted():
     # One infra channel (git) + one code channel (lint) = cross-domain.
     # Each needs enough weighted score for effective_failure_count >= 1.25
     # (blocking=1.0 per finding, so 2 blocking findings across 2 channels = 2.0 >= 1.25).
-    git_ch = _channel("git", severity="blocking", findings=[_issue(severity="blocking")])
-    lint_ch = _channel("lint", severity="blocking", findings=[_issue(severity="blocking")])
+    git_ch = _channel(
+        "git", severity="blocking", findings=[_issue(severity="blocking")]
+    )
+    lint_ch = _channel(
+        "lint", severity="blocking", findings=[_issue(severity="blocking")]
+    )
     failed = [git_ch, lint_ch]
     loud = ["git", "lint"]
     silent = ["tests"]
 
     result = _classify_systemic_failure(
-        failed, loud, silent, demoted_notes=[], severity_weighted=True, channel_weights=None
+        failed,
+        loud,
+        silent,
+        demoted_notes=[],
+        severity_weighted=True,
+        channel_weights=None,
     )
     assert result is not None
     assert result.state == "systemic"
     assert result.confidence == 0.7
     # Line 292: the severity-weighted note should be present
-    assert any("severity-weighted failure score=" in n for n in result.classification_notes)
+    assert any(
+        "severity-weighted failure score=" in n for n in result.classification_notes
+    )
 
 
 # ── coherence.py: _apply_edit_scope lines 645, 652 ──────────────────────
@@ -229,7 +242,10 @@ def test_format_mesh_report_delta_escalated_and_resolved():
 def test_format_mesh_report_tight_budget_reduced_blocking():
     """Lines 252-253: budget tight, blocking findings reduced to cap."""
     # Create many blocking findings to exceed budget
-    findings = [_issue(severity="blocking", kind=f"E{i:03d}", file=f"f{i}.py") for i in range(10)]
+    findings = [
+        _issue(severity="blocking", kind=f"E{i:03d}", file=f"f{i}.py")
+        for i in range(10)
+    ]
     ch = _channel("lint", severity="blocking", findings=findings)
     mesh = _mesh(channel_results=[ch], coherence_state="systemic")
 
@@ -387,7 +403,9 @@ def test_save_session_oserror_is_nonfatal(tmp_path):
     session = SessionMemory(project_root=str(tmp_path / "project"))
 
     # Patch SESSION_DIR to a path that will cause an OSError on open
-    with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "sessions"):
+    with patch(
+        "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "sessions"
+    ):
         # Create the directory first so mkdir succeeds
         (tmp_path / "sessions").mkdir()
         # Patch _session_path to return a path that is a directory (can't open for writing)

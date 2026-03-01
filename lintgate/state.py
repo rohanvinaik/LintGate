@@ -31,9 +31,18 @@ MUTATION_CACHE_DIR = Path.home() / ".claude" / "lintgate" / "mutation_cache"
 
 
 def save_run(cwd: str, result: AggregatedResult) -> None:
-    """Save current run metrics for future delta comparison."""
+    """Save current run metrics and finding index for future delta comparison."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     state_file = STATE_DIR / _project_hash(cwd)
+
+    # Build finding index for delta computation on next run
+    finding_index: dict[str, Any] = {}
+    try:
+        from lintgate.lint_delta import build_lint_finding_index
+
+        finding_index = build_lint_finding_index(result)
+    except Exception:
+        pass
 
     data = {
         "timestamp": time.time(),
@@ -44,6 +53,7 @@ def save_run(cwd: str, result: AggregatedResult) -> None:
         "total_issues": result.metrics.get("total_issues", 0),
         "fixable_count": result.metrics.get("fixable_count", 0),
         "duration_ms": result.total_duration_ms,
+        "finding_index": finding_index,
     }
 
     with open(state_file, "w") as f:
@@ -112,7 +122,12 @@ def save_controlplane_run(run_id: str, data: dict[str, Any]) -> None:
     try:
         RUNS_DIR.mkdir(parents=True, exist_ok=True)
         run_file = RUNS_DIR / f"cp_{run_id}.json"
-        payload = {"run_id": run_id, "timestamp": time.time(), "type": "controlplane", **data}
+        payload = {
+            "run_id": run_id,
+            "timestamp": time.time(),
+            "type": "controlplane",
+            **data,
+        }
         with open(run_file, "w") as f:
             json.dump(payload, f)
         _prune_runs_dir(max_keep=50, run_type="controlplane")
@@ -309,7 +324,8 @@ def log_version_event(data: dict[str, Any]) -> None:
     """Append a version-audit event to a daily JSONL file."""
     VERSION_EVENTS_DIR.mkdir(parents=True, exist_ok=True)
     events_path = (
-        VERSION_EVENTS_DIR / f"lintgate_versions_{datetime.now().strftime('%Y%m%d')}.jsonl"
+        VERSION_EVENTS_DIR
+        / f"lintgate_versions_{datetime.now().strftime('%Y%m%d')}.jsonl"
     )
     entry = {
         "timestamp": datetime.now().isoformat(),

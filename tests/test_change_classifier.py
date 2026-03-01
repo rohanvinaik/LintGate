@@ -130,7 +130,9 @@ def test_resolve_path_invalid_input():
 
     assert _resolve_path(None, "/tmp") == ""
     assert _resolve_path("", "/tmp") == ""
-    assert _resolve_path("foo.py", None) == os.path.normpath(os.path.join(os.getcwd(), "foo.py"))
+    assert _resolve_path("foo.py", None) == os.path.normpath(
+        os.path.join(os.getcwd(), "foo.py")
+    )
 
 
 # ── _matches_pipeline_path ───────────────────────────────────────────
@@ -265,7 +267,11 @@ def test_classify_import_change(tmp_path):
     f.write_text("import os\n")
     r = classify_change(
         tool_name="Edit",
-        tool_input={"file_path": str(f), "old_string": "import os", "new_string": "import sys"},
+        tool_input={
+            "file_path": str(f),
+            "old_string": "import os",
+            "new_string": "import sys",
+        },
         tool_output="ok",
         cwd=str(tmp_path),
     )
@@ -277,7 +283,11 @@ def test_classify_structural_change(tmp_path):
     f.write_text("def old(): pass\n")
     r = classify_change(
         tool_name="Edit",
-        tool_input={"file_path": str(f), "old_string": "def old():", "new_string": "def new():"},
+        tool_input={
+            "file_path": str(f),
+            "old_string": "def old():",
+            "new_string": "def new():",
+        },
         tool_output="ok",
         cwd=str(tmp_path),
     )

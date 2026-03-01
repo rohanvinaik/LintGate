@@ -106,7 +106,9 @@ class TestExtractConstraints:
 class TestBuildTheoryPackUncoveredLines:
     """Cover specific uncovered branches in build_theory_pack."""
 
-    def test_facet_with_entries_but_empty_claims_gives_no_content(self, tmp_path: Path) -> None:
+    def test_facet_with_entries_but_empty_claims_gives_no_content(
+        self, tmp_path: Path
+    ) -> None:
         """Line 395: entries exist but all_claims is empty -> '(no theory content found)'."""
         _write_theory_project(tmp_path)
 
@@ -132,7 +134,9 @@ class TestBuildTheoryPackUncoveredLines:
             "summary": {},
             "validity": {},
         }
-        with patch("lintgate.theory_extractor.extract_theory", return_value=fake_result):
+        with patch(
+            "lintgate.theory_extractor.extract_theory", return_value=fake_result
+        ):
             pack = build_theory_pack(str(tmp_path))
         assert pack["facet_summaries"]["core_theory"] == "(no theory content found)"
 
@@ -158,7 +162,9 @@ class TestBuildTheoryPackUncoveredLines:
             "summary": {},
             "validity": {},
         }
-        with patch("lintgate.theory_extractor.extract_theory", return_value=fake_result):
+        with patch(
+            "lintgate.theory_extractor.extract_theory", return_value=fake_result
+        ):
             pack = build_theory_pack(str(tmp_path))
         assert "5 active rules enforced by linter" in pack["digest_text"]
 
@@ -308,7 +314,9 @@ class TestHasFrontmatterOptOut:
     def test_unclosed_frontmatter_returns_false(self, tmp_path: Path) -> None:
         """Line 690: frontmatter with opening --- but no closing --- returns False."""
         unclosed = tmp_path / "unclosed.md"
-        unclosed.write_text("---\ntheory_scope: false\ntitle: test\n# Heading\n\nBody text.\n")
+        unclosed.write_text(
+            "---\ntheory_scope: false\ntitle: test\n# Heading\n\nBody text.\n"
+        )
         result = _has_frontmatter_opt_out(str(unclosed))
         assert result is False
 
@@ -553,9 +561,15 @@ class TestBuildValidityReportPartial:
         # Build a profile with all required facets having claims (>=6 total),
         # but with low claim density that triggers a warning.
         profile = {
-            "core_theory": [{"heading": "CT", "source": "a.md:1", "claims": ["c1", "c2"]}],
-            "problem_solving": [{"heading": "PS", "source": "a.md:5", "claims": ["c3", "c4"]}],
-            "alignment": [{"heading": "AL", "source": "a.md:10", "claims": ["c5", "c6"]}],
+            "core_theory": [
+                {"heading": "CT", "source": "a.md:1", "claims": ["c1", "c2"]}
+            ],
+            "problem_solving": [
+                {"heading": "PS", "source": "a.md:5", "claims": ["c3", "c4"]}
+            ],
+            "alignment": [
+                {"heading": "AL", "source": "a.md:10", "claims": ["c5", "c6"]}
+            ],
             "architecture": [],
             "anti_patterns": [],
             "abstractions": [],
@@ -588,7 +602,9 @@ class TestScoreClaimAlignmentObjective:
 
     def test_alignment_primary_objective(self) -> None:
         """Line 925: 'primary objective' in alignment facet."""
-        score = _score_claim("The primary objective is ensuring code quality.", "alignment")
+        score = _score_claim(
+            "The primary objective is ensuring code quality.", "alignment"
+        )
         assert score > 0
 
 
@@ -597,13 +613,16 @@ class TestScoreClaimArchitectureFacet:
 
     def test_architecture_why_not_pattern(self) -> None:
         """Line 928: 'why ... not/over/instead' pattern."""
-        score = _score_claim("This is why we chose X over Y for the design.", "architecture")
+        score = _score_claim(
+            "This is why we chose X over Y for the design.", "architecture"
+        )
         assert score > 0
 
     def test_architecture_rationale_pattern(self) -> None:
         """Line 932: '**Rationale**' markdown pattern."""
         score = _score_claim(
-            "**Rationale** We chose this approach because of simplicity.", "architecture"
+            "**Rationale** We chose this approach because of simplicity.",
+            "architecture",
         )
         assert score > 0
 
@@ -620,7 +639,9 @@ class TestScoreClaimAntiPatternsFacet:
 
     def test_anti_patterns_trying_harder(self) -> None:
         """Line 947: 'trying harder/premature' pattern."""
-        score = _score_claim("Premature optimization leads to worse code quality.", "anti_patterns")
+        score = _score_claim(
+            "Premature optimization leads to worse code quality.", "anti_patterns"
+        )
         assert score > 0
 
 

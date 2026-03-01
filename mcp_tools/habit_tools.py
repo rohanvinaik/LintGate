@@ -238,15 +238,22 @@ def register(mcp, helpers):
         if token_api_interval is not None:
             overrides["token_api_interval"] = max(5, min(100, token_api_interval))
         if context_window_size is not None:
-            overrides["context_window_size"] = max(10000, min(500000, context_window_size))
+            overrides["context_window_size"] = max(
+                10000, min(500000, context_window_size)
+            )
 
         # Try to store in session memory, else use standalone
         stored = False
         try:
-            from lintgate.controlplane.session_memory import get_or_create_session, save_session
+            from lintgate.controlplane.session_memory import (
+                get_or_create_session,
+                save_session,
+            )
 
             session = get_or_create_session(project_root)
-            session.behavior_compass.setdefault("habit_config_overrides", {}).update(overrides)
+            session.behavior_compass.setdefault("habit_config_overrides", {}).update(
+                overrides
+            )
             save_session(session)
             stored = True
         except Exception:
@@ -310,7 +317,10 @@ def register(mcp, helpers):
 
         # Try session-backed first
         try:
-            from lintgate.controlplane.session_memory import get_or_create_session, save_session
+            from lintgate.controlplane.session_memory import (
+                get_or_create_session,
+                save_session,
+            )
             from lintgate.habit_mode import load_habit_state, save_habit_state
             from lintgate.token_tracker import load_tracker_state, save_tracker_state
 
@@ -321,7 +331,9 @@ def register(mcp, helpers):
 
             # Guard: if session has no habit data, don't return empty state —
             # the hook writes to a different process's session, so try standalone.
-            if abs(state.habit_score) < 1e-12 and not session.behavior_compass.get("habit_mode"):
+            if abs(state.habit_score) < 1e-12 and not session.behavior_compass.get(
+                "habit_mode"
+            ):
                 raise ValueError("No habit data in session")  # Falls through to Path B
 
             def save_fn(s, t):

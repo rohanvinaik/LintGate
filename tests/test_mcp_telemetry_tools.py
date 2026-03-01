@@ -84,7 +84,9 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ) as mock_fn:
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="30d"))
+            result = json.loads(
+                tools["telemetry_summary"](path=str(tmp_path), period="30d")
+            )
         mock_fn.assert_called_once_with(str(tmp_path), period="30d")
         assert result["period"] == "30d"
 
@@ -95,7 +97,9 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="1d"))
+            result = json.loads(
+                tools["telemetry_summary"](path=str(tmp_path), period="1d")
+            )
         assert result["period"] == "1d"
 
     def test_period_all(self, tmp_path: Path) -> None:
@@ -105,7 +109,9 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="all"))
+            result = json.loads(
+                tools["telemetry_summary"](path=str(tmp_path), period="all")
+            )
         assert result["total_runs"] == 100
 
 

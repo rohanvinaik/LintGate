@@ -6,7 +6,10 @@ import ast
 from typing import TYPE_CHECKING
 
 from lintgate.linters.performance_checks._helpers import find_loop_bodies, get_name
-from lintgate.linters.performance_checks.purity import _KNOWN_PURE_BUILTINS, analyze_purity
+from lintgate.linters.performance_checks.purity import (
+    _KNOWN_PURE_BUILTINS,
+    analyze_purity,
+)
 
 from ...types import LintIssue
 
@@ -42,7 +45,9 @@ def _analyze_file_purity(tree: ast.AST) -> set[str]:
     return {name for name, result in results.items() if result.is_pure}
 
 
-def _is_known_pure(func_name: str, local_pure_names: set[str] | None = None) -> tuple[bool, str]:
+def _is_known_pure(
+    func_name: str, local_pure_names: set[str] | None = None
+) -> tuple[bool, str]:
     """Check if a function is known-pure. Returns (is_pure, source).
 
     Source is one of ``"builtin"``, ``"manifest"``, or ``"local_purity"``.
@@ -111,12 +116,16 @@ def _collect_loop_assignments(body: list[ast.stmt]) -> set[str]:
     return assigned
 
 
-def _check_positional_args_invariant(args: list[ast.expr], loop_targets: set[str]) -> bool:
+def _check_positional_args_invariant(
+    args: list[ast.expr], loop_targets: set[str]
+) -> bool:
     """Return True if all positional args are loop-invariant."""
     return all(_is_loop_invariant(arg, loop_targets) for arg in args)
 
 
-def _check_keyword_args_invariant(keywords: list[ast.keyword], loop_targets: set[str]) -> bool:
+def _check_keyword_args_invariant(
+    keywords: list[ast.keyword], loop_targets: set[str]
+) -> bool:
     """Return True if all keyword args are loop-invariant."""
     return all(_is_loop_invariant(kwarg.value, loop_targets) for kwarg in keywords)
 
@@ -183,7 +192,9 @@ def _analyze_loop_body_for_uncached_calls(
     for stmt in body:
         for node in ast.walk(stmt):
             if isinstance(node, ast.Call):
-                issue = _check_call_in_loop(node, loop_targets, file_path, local_pure_names)
+                issue = _check_call_in_loop(
+                    node, loop_targets, file_path, local_pure_names
+                )
                 if issue is not None:
                     yield issue
 
@@ -208,7 +219,9 @@ def check_pure_uncached_in_loop(tree: ast.AST, file_path: str) -> Iterable[LintI
         local_pure_names = _analyze_file_purity(tree)
 
     for loop_node, body in find_loop_bodies(tree):
-        loop_targets_list = _get_loop_targets(loop_node) | _collect_loop_assignments(body)
+        loop_targets_list = _get_loop_targets(loop_node) | _collect_loop_assignments(
+            body
+        )
         loop_targets = set(loop_targets_list)  # Convert to set for O(1) average lookup
         yield from _analyze_loop_body_for_uncached_calls(
             body, loop_targets, file_path, local_pure_names

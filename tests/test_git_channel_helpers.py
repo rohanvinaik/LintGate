@@ -81,7 +81,9 @@ def test_large_changes_timeout(tmp_path: Path) -> None:
 
 
 def test_match_secret_aws_key(tmp_path: Path) -> None:
-    finding = _match_secret_pattern("AWS_KEY=AKIAIOSFODNN7EXAMPLE", "config.py", 10, str(tmp_path))
+    finding = _match_secret_pattern(
+        "AWS_KEY=AKIAIOSFODNN7EXAMPLE", "config.py", 10, str(tmp_path)
+    )
     assert finding is not None
     assert finding.kind == "secret_in_diff"
     assert finding.severity == "warning"
@@ -162,7 +164,9 @@ def test_iter_diff_additions_removal_and_context_lines_ignored() -> None:
 
 
 def test_iter_diff_additions_multiple_hunks() -> None:
-    diff = "+++ b/app.py\n@@ -1,2 +1,2 @@\n-old\n+new1\n@@ -10,2 +10,2 @@\n-old2\n+new2\n"
+    diff = (
+        "+++ b/app.py\n@@ -1,2 +1,2 @@\n-old\n+new1\n@@ -10,2 +10,2 @@\n-old2\n+new2\n"
+    )
     additions = _iter_diff_additions(diff)
     assert len(additions) == 2
     assert additions[0] == ("app.py", "new1", 1)
@@ -228,7 +232,9 @@ def _init_git_repo(tmp_path: Path, files: dict[str, str] | None = None) -> None:
     for name, content in (files or {"app.py": "x = 1\n"}).items():
         (tmp_path / name).write_text(content)
     subprocess.run(["git", "add", "."], capture_output=True, cwd=str(tmp_path))
-    subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path)
+    )
 
 
 def test_execute_mcp_runs_all_checks(tmp_path: Path) -> None:
@@ -313,7 +319,9 @@ def test_execute_informational_only_severity(tmp_path: Path) -> None:
     manifest = tmp_path / "pyproject.toml"
     manifest.write_text("[project]\nname = 'test'\n")
     subprocess.run(["git", "add", "."], capture_output=True, cwd=str(tmp_path))
-    subprocess.run(["git", "commit", "-m", "add manifest"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "commit", "-m", "add manifest"], capture_output=True, cwd=str(tmp_path)
+    )
 
     event = SupervisionEvent(
         project_root=str(tmp_path),

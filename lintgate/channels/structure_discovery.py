@@ -5,6 +5,7 @@ Extracted from structure_logic.py for module size compliance.
 
 from __future__ import annotations
 
+import ast
 import os
 from collections import defaultdict
 
@@ -109,7 +110,12 @@ def _discover_python_files(
         ]
         for fn in filenames:
             if fn.endswith(".py"):
-                py_files.append(os.path.join(dirpath, fn))
+                full = os.path.join(dirpath, fn)
+                # Skip external packages (site-packages, dist-packages)
+                resolved = os.path.realpath(full)
+                if "/site-packages/" in resolved or "/dist-packages/" in resolved:
+                    continue
+                py_files.append(full)
 
     return py_files
 
@@ -119,13 +125,15 @@ def _discover_python_files(
 
 def _build_import_graph(
     py_files: list[str], project_root: str
-) -> tuple[dict[str, set[str]], dict[str, str], dict[str, int]]:
+) -> tuple[dict[str, set[str]], dict[str, str], dict[str, int], set[tuple[str, str]]]:
     """Build the project import graph and collect LOC per file.
 
     Returns:
         import_graph: module_name -> set of imported module_names
         file_map: module_name -> file_path
         file_loc: file_path -> line_count
+        deferred_edges: set of (source_module, target_module) pairs where
+            the import is inside a function body (deferred/lazy import)
     """
     from lintgate.linters.architecture_checks._helpers import (
         extract_imports,
@@ -136,6 +144,7 @@ def _build_import_graph(
     import_graph: dict[str, set[str]] = defaultdict(set)
     file_map: dict[str, str] = {}
     file_loc: dict[str, int] = {}
+    deferred_edges: set[tuple[str, str]] = set()
 
     for filepath in py_files:
         module = filepath_to_module(filepath, project_root)
@@ -146,12 +155,43 @@ def _build_import_graph(
         loc = _count_loc(filepath)
         file_loc[filepath] = loc
 
-        imports = extract_imports(filepath)
-        for imp_module, _ in imports:
+        imports = extract_imports(filepath, file_module=module)
+        deferred_lines = _find_deferred_import_lines(filepath)
+        for imp_module, lineno in imports:
             if is_project_local(imp_module, project_root):
                 import_graph[module].add(imp_module)
+                if lineno in deferred_lines:
+                    deferred_edges.add((module, imp_module))
 
-    return dict(import_graph), file_map, file_loc
+    return dict(import_graph), file_map, file_loc, deferred_edges
+
+
+def _find_deferred_import_lines(filepath: str) -> frozenset[int]:
+    """Return line numbers of imports that are inside function bodies (deferred).
+
+    An import is deferred if any of its ancestor nodes is a FunctionDef or
+    AsyncFunctionDef — meaning it runs at call time, not at module load time.
+    """
+    try:
+        with open(filepath) as f:
+            source = f.read()
+        tree = ast.parse(source, filename=filepath)
+    except (OSError, SyntaxError):
+        return frozenset()
+
+    deferred: set[int] = set()
+    _walk_for_deferred(tree, in_function=False, deferred=deferred)
+    return frozenset(deferred)
+
+
+def _walk_for_deferred(node: ast.AST, *, in_function: bool, deferred: set[int]) -> None:
+    """Recursively walk AST tracking function scope for import detection."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        in_function = True
+    if in_function and isinstance(node, (ast.Import, ast.ImportFrom)):
+        deferred.add(node.lineno)
+    for child in ast.iter_child_nodes(node):
+        _walk_for_deferred(child, in_function=in_function, deferred=deferred)
 
 
 def _count_loc(filepath: str) -> int:

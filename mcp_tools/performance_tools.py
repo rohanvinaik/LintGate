@@ -23,6 +23,7 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             "name": name,
             "is_pure": func.purity.is_pure,
             "confidence": effective_conf,
+            "extraction_safety": func.extraction_safety,
         }
         if func.properties:
             entry["properties"] = [p.kind.value for p in func.properties]
@@ -35,6 +36,16 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             entry["hints"] = list(func.optimization_hints)
         by_file.setdefault(source, []).append(entry)
 
+    # Build pure_functions_by_file from manifest
+    pure_by_file = manifest.get_pure_functions_by_file()
+
+    # Compute extraction_safety distribution
+    safety_dist: dict[str, int] = {"safe": 0, "needs_module_state": 0, "unsafe": 0}
+    for func in manifest.functions.values():
+        safety_dist[func.extraction_safety] = (
+            safety_dist.get(func.extraction_safety, 0) + 1
+        )
+
     return {
         "project": project_root,
         "summary": {
@@ -42,12 +53,18 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             "pure_functions": manifest.pure_count,
             "impure_functions": manifest.impure_count,
             "purity_ratio": round(
-                manifest.pure_count / max(manifest.pure_count + manifest.impure_count, 1), 3
+                manifest.pure_count
+                / max(manifest.pure_count + manifest.impure_count, 1),
+                3,
             ),
             "property_distribution": {
                 k.value: v for k, v in manifest.property_distribution.items()
             },
             "optimization_opportunities": len(manifest.optimization_potential),
+            "extraction_safety": safety_dist,
+        },
+        "pure_functions_by_file": {
+            k: sorted(v) for k, v in sorted(pure_by_file.items())
         },
         "files": dict(sorted(by_file.items())),
     }
@@ -65,7 +82,11 @@ def _matches_filter(
     entry: dict[str, Any], filter_type: str | None, func_filter: str | None
 ) -> bool:
     """Check if a single function entry passes the requested filters."""
-    if filter_type and filter_type in _FILTER_CHECKS and not _FILTER_CHECKS[filter_type](entry):
+    if (
+        filter_type
+        and filter_type in _FILTER_CHECKS
+        and not _FILTER_CHECKS[filter_type](entry)
+    ):
         return False
     return not (func_filter and func_filter.lower() not in entry["name"].lower())
 
@@ -88,6 +109,88 @@ def _filter_manifest(
     manifest_data["files"] = filtered_files
     manifest_data["filter_applied"] = {"type": filter_type, "name": func_filter}
     return manifest_data
+
+
+def _generate_from_prescriptions(
+    path: str,
+    function: str | None,
+    max_functions: int,
+    helpers: Any,
+) -> str:
+    """Generate tests from mutation prescription data (#210).
+
+    Runs mutation_prescribe internally, collects prescriptions with
+    suggested_test_template, and returns them as structured output.
+    """
+    import contextlib
+
+    from lintgate.mutation.prescriptions import PrescriptionEngine
+    from lintgate.mutation.state import MutationStateManager
+    from lintgate.state import MUTATION_CACHE_DIR
+
+    helpers["_validate_project_root"](path)
+
+    state_path = os.path.join(MUTATION_CACHE_DIR, "state.json")
+    try:
+        state_manager = MutationStateManager(str(state_path))
+    except (OSError, ValueError):
+        return json.dumps(
+            {"error": "No mutation state found. Run mutation_run_sampling first."}
+        )
+
+    with contextlib.suppress(OSError, ValueError):
+        state_manager.load()
+
+    if not state_manager.state:
+        return json.dumps(
+            {"error": "No mutation state found. Run mutation_run_sampling first."}
+        )
+
+    p_engine = PrescriptionEngine()
+    templates: list[dict[str, Any]] = []
+    count = 0
+
+    for _key, state in state_manager.state.items():
+        if function and state.function_name != function:
+            continue
+        if state.total == 0:
+            continue
+
+        diag = p_engine.diagnose(state)
+        for p in diag.prescriptions:
+            if p.suggested_test_template:
+                templates.append(
+                    {
+                        "function": f"{state.file_path}::{state.function_name}",
+                        "survivor_category": p.survivor_category,
+                        "prescription_category": p.category.value,
+                        "suggested_action": p.suggested_action,
+                        "test_template": p.suggested_test_template,
+                        "gate_lift_projection_percent": p.gate_lift_projection_percent,
+                    }
+                )
+                count += 1
+        if count >= max_functions:
+            break
+
+    if not templates:
+        return json.dumps(
+            {
+                "note": "No templateable prescriptions found.",
+                "suggestion": "Run mutation_run_sampling first, then mutation_prescribe to see prescriptions.",
+            }
+        )
+
+    return json.dumps(
+        {
+            "generated_from": "prescriptions",
+            "templates": templates,
+            "count": len(templates),
+            "note": "Review and customize generated code before saving. Use Write tool to create test files.",
+            "next_actions": ["mutation_refactor_loop"],
+        },
+        indent=2,
+    )
 
 
 def _build_manifest_for_project(path: str, helpers: Any) -> tuple[str, Any, list[str]]:
@@ -124,7 +227,9 @@ def _select_property_candidates(
         # Note: manifest name is fully qualified (e.g. "src.file.func"), but hotspots from
         # line-based mutmut exports generally only have the base function name via AST.
         base_name = name.split(".")[-1]
-        if hotspot_functions and (name in hotspot_functions or base_name in hotspot_functions):
+        if hotspot_functions and (
+            name in hotspot_functions or base_name in hotspot_functions
+        ):
             interesting += 100
 
         candidates.append((name, func, interesting))
@@ -153,6 +258,178 @@ def _build_test_entry(name: str, func: Any) -> dict[str, Any]:
         entry["icontract_decorators"] = decorators
 
     return entry
+
+
+def _prepare_hypothesis_template(
+    function: str, func: Any, max_examples: int, deadline_ms: int
+) -> str | None:
+    """Prepare a Hypothesis test template with correct imports and settings."""
+    from lintgate.integrations.hypothesis_bridge import generate_hypothesis_template
+
+    template = generate_hypothesis_template(function.split(".")[-1], func)
+    if not template:
+        return None
+
+    module_path = function.rsplit(".", 1)[0]
+    template = template.replace("# TODO: fix import path", "")
+    template = template.replace(
+        f"from ... import {function.split('.')[-1]}",
+        f"from {module_path} import {function.split('.')[-1]}",
+    )
+
+    settings_block = (
+        f"\nfrom hypothesis import settings\n"
+        f"settings.register_profile('lintgate', max_examples={max_examples}, "
+        f"deadline={deadline_ms})\n"
+        f"settings.load_profile('lintgate')\n"
+    )
+    return settings_block + template
+
+
+def _parse_property_test_output(
+    output: str,
+) -> tuple[list[str], str | None]:
+    """Extract refinement hints and counterexample from pytest output."""
+    refinement_hints: list[str] = []
+    counterexample: str | None = None
+
+    match = re.search(r"Falsifying example:.*\n(.*)", output)
+    if match:
+        counterexample = match.group(1).strip()
+
+    _HINT_PATTERNS = {
+        ("Idempotent", "test_is_idempotent"): (
+            "Idempotency violated - check if function has hidden state or precision issues."
+        ),
+        ("Commutative", "test_is_commutative"): (
+            "Commutativity violated - check if argument order matters for internal logic."
+        ),
+        ("Bounded", "test_is_bounded"): (
+            "Bounds violated - check for edge cases at extremes (min/max)."
+        ),
+    }
+
+    for keywords, hint in _HINT_PATTERNS.items():
+        if any(kw in output for kw in keywords):
+            refinement_hints.append(hint)
+
+    if not refinement_hints:
+        refinement_hints.append(
+            "Property violated - consider refining the property hypothesis or fixing the implementation."
+        )
+
+    return refinement_hints, counterexample
+
+
+def _execute_property_tests(
+    template: str, project_root: str, function: str
+) -> dict[str, Any]:
+    """Write template to temp file, execute via pytest, and return structured result."""
+    with tempfile.NamedTemporaryFile(
+        suffix=".py", mode="w", dir=project_root, delete=False
+    ) as tmp:
+        tmp.write(template)
+        tmp_path = tmp.name
+
+    try:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
+
+        proc = subprocess.run(
+            ["pytest", tmp_path, "-v", "--tb=short"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=15,
+        )
+
+        success = proc.returncode == 0
+        output = proc.stdout + proc.stderr
+
+        result: dict[str, Any] = {
+            "success": success,
+            "function": function,
+            "output": output,
+            "refinement_hints": [],
+        }
+
+        if not success:
+            hints, counterexample = _parse_property_test_output(output)
+            result["refinement_hints"] = hints
+            if counterexample is not None:
+                result["counterexample"] = counterexample
+
+        return result
+
+    except subprocess.TimeoutExpired:
+        return {
+            "error": "Hypothesis execution timed out (15s budget exceeded).",
+            "suggestion": "Try reducing max_examples or increasing deadline_ms.",
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def _impl_generate_property_tests(
+    path: str,
+    function: str | None,
+    max_functions: int,
+    prefer_mutation_hotspots: bool,
+    from_prescriptions: bool,
+    helpers: Any,
+) -> str:
+    """Implementation for generate_property_tests."""
+    from lintgate.linters.performance_checks.algebra_types import PropertyKind
+
+    if from_prescriptions:
+        return _generate_from_prescriptions(path, function, max_functions, helpers)
+
+    from lintgate.mutation.ci_stats import load_mutation_hotspots
+
+    project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
+    if not py_files or manifest is None:
+        return json.dumps({"error": "No Python files found in project"})
+
+    hotspot_functions = None
+    if prefer_mutation_hotspots:
+        survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
+        hotspots = load_mutation_hotspots(survivors_path)
+        hotspot_functions = {str(h["function"]) for h in hotspots if h.get("function")}
+
+    candidates = _select_property_candidates(
+        manifest, function, max_functions, hotspot_functions
+    )
+
+    if not candidates:
+        note = "No pure functions with algebraic properties found"
+        if function:
+            note += f" matching '{function}'"
+        return json.dumps(
+            {"note": note, "suggestion": "Run inspect_algebra to see all functions"}
+        )
+
+    results = [_build_test_entry(name, func) for name, func in candidates]
+
+    total_with_props = sum(
+        1
+        for f in manifest.functions.values()
+        if f.purity.is_pure and any(p.kind != PropertyKind.PURE for p in f.properties)
+    )
+
+    output: dict[str, Any] = {
+        "generated_for": len(results),
+        "total_pure_with_properties": total_with_props,
+        "functions": results,
+        "note": "Review and customize generated code before saving. Use Write tool to create test files.",
+    }
+
+    return helpers["_json_dumps"](output)
+
+
+# ---------------------------------------------------------------------------
+# MCP registration — thin wrappers delegating to impl/helper functions above
+# ---------------------------------------------------------------------------
 
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
@@ -194,6 +471,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         function: str | None = None,
         max_functions: int = 5,
         prefer_mutation_hotspots: bool = False,
+        from_prescriptions: bool = False,
     ) -> str:
         """Generate Hypothesis property-based test templates from algebraic properties.
 
@@ -204,8 +482,12 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         Also generates icontract decorator suggestions for runtime enforcement.
 
+        When from_prescriptions=True, generates tests targeting specific survivor
+        categories identified by mutation_prescribe instead of algebraic properties.
+
         Example: generate_property_tests(path="/my/project")
         Example: generate_property_tests(path="/my/project", function="compute_score")
+        Example: generate_property_tests(path="/my/project", from_prescriptions=True)
 
         Args:
             path: Project root path.
@@ -213,51 +495,16 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                 generates for the top functions with the most algebraic properties.
             max_functions: Max number of functions to generate tests for (default 5).
             prefer_mutation_hotspots: If True, prioritizes generation for pure functions that have surviving mutations.
+            from_prescriptions: If True, generate tests from mutation prescription data targeting specific survivor categories.
         """
-        import os
-
-        from lintgate.linters.performance_checks.algebra_types import PropertyKind
-        from lintgate.mutation.ci_stats import load_mutation_hotspots
-
-        project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
-        if not py_files or manifest is None:
-            return json.dumps({"error": "No Python files found in project"})
-
-        hotspot_functions = None
-        if prefer_mutation_hotspots:
-            survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
-            hotspots = load_mutation_hotspots(survivors_path)
-            # `name` from manifest contains the fully-qualified name, we extract baseline function name
-            hotspot_functions = {h.get("function") for h in hotspots if h.get("function")}
-
-        candidates = _select_property_candidates(
-            manifest, function, max_functions, hotspot_functions
+        return _impl_generate_property_tests(
+            path,
+            function,
+            max_functions,
+            prefer_mutation_hotspots,
+            from_prescriptions,
+            helpers,
         )
-
-        if not candidates:
-            note = "No pure functions with algebraic properties found"
-            if function:
-                note += f" matching '{function}'"
-            return json.dumps(
-                {"note": note, "suggestion": "Run inspect_algebra to see all functions"}
-            )
-
-        results = [_build_test_entry(name, func) for name, func in candidates]
-
-        total_with_props = sum(
-            1
-            for f in manifest.functions.values()
-            if f.purity.is_pure and any(p.kind != PropertyKind.PURE for p in f.properties)
-        )
-
-        output: dict[str, Any] = {
-            "generated_for": len(results),
-            "total_pure_with_properties": total_with_props,
-            "functions": results,
-            "note": "Review and customize generated code before saving. Use Write tool to create test files.",
-        }
-
-        return helpers["_json_dumps"](output)
 
     @mcp.tool()
     def run_property_tests(
@@ -279,7 +526,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             deadline_ms: Hypothesis deadline setting in milliseconds.
         """
         project_root = helpers["_validate_project_root"](path)
-        _, manifest, py_files = _build_manifest_for_project(path, helpers)
+        _, manifest, _py_files = _build_manifest_for_project(path, helpers)
 
         if not manifest or function not in manifest.functions:
             return json.dumps(
@@ -287,93 +534,16 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             )
 
         func = manifest.functions[function]
-        from lintgate.integrations.hypothesis_bridge import generate_hypothesis_template
-
-        template = generate_hypothesis_template(function.split(".")[-1], func)
-
-        if not template:
-            return json.dumps({"error": "Failed to generate Hypothesis template for function."})
-
-        # Refine template: fix import and settings
-        # Hypothesisbridge uses 'from ... import {func_name}  # TODO: fix import path'
-        # We replace it with the actual module path relative to project root
-        module_path = function.rsplit(".", 1)[0]
-        template = template.replace("# TODO: fix import path", "")
-        template = template.replace(
-            f"from ... import {function.split('.')[-1]}",
-            f"from {module_path} import {function.split('.')[-1]}",
+        template = _prepare_hypothesis_template(
+            function, func, max_examples, deadline_ms
         )
 
-        # Inject settings
-        settings_block = f"\nfrom hypothesis import settings\nsettings.register_profile('lintgate', max_examples={max_examples}, deadline={deadline_ms})\nsettings.load_profile('lintgate')\n"
-        template = settings_block + template
-
-        with tempfile.NamedTemporaryFile(
-            suffix=".py", mode="w", dir=project_root, delete=False
-        ) as tmp:
-            tmp.write(template)
-            tmp_path = tmp.name
-
-        try:
-            # Run pytest on the temporary file
-            env = os.environ.copy()
-            env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
-
-            proc = subprocess.run(
-                ["pytest", tmp_path, "-v", "--tb=short"],
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=15,  # Hard timeout
-            )
-
-            success = proc.returncode == 0
-            output = proc.stdout + proc.stderr
-
-            result = {
-                "success": success,
-                "function": function,
-                "output": output,
-                "refinement_hints": [],
-            }
-
-            if not success:
-                # Extract counterexample if available (Falsifying example)
-                match = re.search(r"Falsifying example:.*\n(.*)", output)
-                if match:
-                    result["counterexample"] = match.group(1).strip()
-
-                # Generate refinement hints based on failure type
-                if "Idempotent" in output or "test_is_idempotent" in output:
-                    result["refinement_hints"].append(
-                        "Idempotency violated - check if function has hidden state or precision issues."
-                    )
-                if "Commutative" in output or "test_is_commutative" in output:
-                    result["refinement_hints"].append(
-                        "Commutativity violated - check if argument order matters for internal logic."
-                    )
-                if "Bounded" in output or "test_is_bounded" in output:
-                    result["refinement_hints"].append(
-                        "Bounds violated - check for edge cases at extremes (min/max)."
-                    )
-
-                if not result["refinement_hints"]:
-                    result["refinement_hints"].append(
-                        "Property violated - consider refining the property hypothesis or fixing the implementation."
-                    )
-
-            return json.dumps(result)
-
-        except subprocess.TimeoutExpired:
+        if not template:
             return json.dumps(
-                {
-                    "error": "Hypothesis execution timed out (15s budget exceeded).",
-                    "suggestion": "Try reducing max_examples or increasing deadline_ms.",
-                }
+                {"error": "Failed to generate Hypothesis template for function."}
             )
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+
+        return json.dumps(_execute_property_tests(template, project_root, function))
 
     return {
         "inspect_algebra": inspect_algebra,

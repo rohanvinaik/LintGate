@@ -34,12 +34,19 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float, str]] = [
         1.0,
         "blocking",
     ),
-    ("github_token", re.compile(r"(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]{20,}"), 0.98, "warning"),
+    (
+        "github_token",
+        re.compile(r"(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]{20,}"),
+        0.98,
+        "warning",
+    ),
     ("slack_token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{20,}"), 0.95, "warning"),
     ("stripe_secret", re.compile(r"sk_live_[A-Za-z0-9]{16,}"), 0.98, "warning"),
     (
         "generic_secret_assignment",
-        re.compile(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"),
+        re.compile(
+            r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"
+        ),
         0.80,
         "informational",
     ),

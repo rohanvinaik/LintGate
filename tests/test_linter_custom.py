@@ -22,7 +22,9 @@ def _make_ctx(tmp_path, config=None):
 
 
 def test_init_sets_fields():
-    c = CustomLinter("my_lint", "python -m my_lint", tier=2, severity_default="blocking")
+    c = CustomLinter(
+        "my_lint", "python -m my_lint", tier=2, severity_default="blocking"
+    )
     assert c.name == "my_lint"
     assert c.tier == 2
     assert c._severity_default == "blocking"
@@ -104,7 +106,9 @@ def test_parse_lines_skips_blank():
 def test_run_jsonl_mode(tmp_path):
     ctx = _make_ctx(tmp_path)
     c = CustomLinter("my_lint", "my_lint run", parse_mode="jsonl")
-    output = json.dumps({"kind": "error", "message": "bad thing", "file": "a.py", "line": 5})
+    output = json.dumps(
+        {"kind": "error", "message": "bad thing", "file": "a.py", "line": 5}
+    )
     mock_result = MagicMock(stdout=output + "\n")
     with patch.object(c, "run_command", return_value=mock_result):
         issues = list(c.run(ctx))

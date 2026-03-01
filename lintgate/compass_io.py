@@ -151,18 +151,24 @@ def _derive_directives(
     for ap in full_result.get("anti_patterns", []):
         text = _extract_text_from_item(ap, "pattern", "text")
         if text:
-            directives.append(CompassDirective(kind="away", text=text, source="anti_patterns"))
+            directives.append(
+                CompassDirective(kind="away", text=text, source="anti_patterns")
+            )
 
     for rule in full_result.get("enforceable_rules", []):
         text = _extract_text_from_item(rule, "pattern", "text")
         rule_type = rule.get("type", "forbid") if isinstance(rule, dict) else "forbid"
         if text:
             kind = "forbidden" if rule_type == "forbid" else "toward"
-            directives.append(CompassDirective(kind=kind, text=text, source="enforceable_rules"))
+            directives.append(
+                CompassDirective(kind=kind, text=text, source="enforceable_rules")
+            )
 
     for claim in solution_claims[:5]:
         if claim.origin_facet in ("problem_solving", "architecture"):
-            directives.append(CompassDirective(kind="toward", text=claim.text, source="solution"))
+            directives.append(
+                CompassDirective(kind="toward", text=claim.text, source="solution")
+            )
 
     return directives
 

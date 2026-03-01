@@ -151,7 +151,12 @@ class TestParseQualityPolicy:
         raw = {
             "security": {
                 "tolerated_false_positives": [
-                    {"rule": "S2083", "file": "foo.py", "scope": "*.py", "reason": "safe"},
+                    {
+                        "rule": "S2083",
+                        "file": "foo.py",
+                        "scope": "*.py",
+                        "reason": "safe",
+                    },
                 ]
             }
         }

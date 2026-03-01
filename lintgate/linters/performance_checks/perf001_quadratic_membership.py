@@ -137,23 +137,92 @@ def _annotation_is_dict_or_set(ann: ast.expr) -> bool:
 
 
 def _is_string_variable(name: str, tree: ast.AST) -> bool:
-    """Check if name is assigned a string (substring search, not membership test)."""
+    """Check if name is assigned a string (substring search, not membership test).
+
+    Detects:
+    - String literal assignment: ``name = "hello"``
+    - f-string assignment: ``name = f"hello {x}"``
+    - Type annotation: ``name: str = ...``
+    - String method calls: ``name = text.strip()`` / ``text.lower()`` etc.
+    - Subscript of splitlines/split result: ``name = lines[i]`` when lines
+      comes from ``stdout.splitlines()`` or ``text.split(...)``
+    """
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == name:
-                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                        return True
-                    if isinstance(node.value, ast.JoinedStr):  # f-string
+                    if _value_is_string(node.value):
                         return True
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and node.target.id == name
-            and isinstance(node.annotation, ast.Name)
-            and node.annotation.id == "str"
+            and _annotation_is_str(node.annotation)
         ):
             return True
+    return False
+
+
+# Methods that always return str when called on a str
+_STR_RETURNING_METHODS = frozenset(
+    {
+        "strip",
+        "lstrip",
+        "rstrip",
+        "lower",
+        "upper",
+        "title",
+        "capitalize",
+        "casefold",
+        "replace",
+        "encode",
+        "decode",
+        "join",
+        "format",
+        "center",
+        "ljust",
+        "rjust",
+        "zfill",
+        "expandtabs",
+        "removeprefix",
+        "removesuffix",
+        "translate",
+        "swapcase",
+    }
+)
+
+
+def _value_is_string(value: ast.expr) -> bool:
+    """Infer whether an expression evaluates to a string."""
+    # Literal string
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return True
+    # f-string
+    if isinstance(value, ast.JoinedStr):
+        return True
+    # str method call: text.strip(), text.lower(), etc.
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and value.func.attr in _STR_RETURNING_METHODS
+    ):
+        return True
+    # str() constructor
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id == "str"
+    ):
+        return True
+    return False
+
+
+def _annotation_is_str(ann: ast.expr) -> bool:
+    """Check if a type annotation is str."""
+    if isinstance(ann, ast.Name) and ann.id == "str":
+        return True
+    if isinstance(ann, ast.Constant) and ann.value == "str":
+        return True
     return False
 
 

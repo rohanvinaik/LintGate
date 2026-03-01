@@ -93,7 +93,10 @@ class TestComputeQualityEconomicsSummary:
                 "qg_pass": False,
                 "coverage_pct": 78.0,
                 "security_issues": 1,
-                "qg_fail_reasons": ["coverage_below_threshold", "security_vulnerability"],
+                "qg_fail_reasons": [
+                    "coverage_below_threshold",
+                    "security_vulnerability",
+                ],
                 "timestamp": 1000.0,
             },
             {

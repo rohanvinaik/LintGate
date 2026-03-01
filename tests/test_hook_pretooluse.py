@@ -120,7 +120,10 @@ def test_main_non_bash_tool_is_ignored(monkeypatch, capsys):
 def test_main_override_bypasses_block(monkeypatch, capsys):
     code, payload = _invoke_hook(
         json.dumps(
-            {"tool_name": "Bash", "tool_input": {"command": "brew install jq # lintgate-override"}}
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "brew install jq # lintgate-override"},
+            }
         ),
         monkeypatch,
         capsys,

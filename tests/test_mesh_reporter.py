@@ -267,7 +267,9 @@ def test_token_budget_truncation() -> None:
     """Report with many findings truncates within token budget."""
     # Create 50 blocking findings
     findings = [
-        _make_issue("blocking", message=f"Issue number {i} with a long description text")
+        _make_issue(
+            "blocking", message=f"Issue number {i} with a long description text"
+        )
         for i in range(50)
     ]
     mesh = _make_mesh(
@@ -299,7 +301,9 @@ def test_token_budget_truncation() -> None:
 def test_dynamic_budget_hard_cap() -> None:
     """Dynamic budget should grow with findings but stay under hard cap."""
     findings = [
-        _make_issue("blocking", message=f"Issue number {i} with long payload for budget stress")
+        _make_issue(
+            "blocking", message=f"Issue number {i} with long payload for budget stress"
+        )
         for i in range(2000)
     ]
     mesh = _make_mesh(
@@ -330,7 +334,9 @@ def test_truncation_metadata_present() -> None:
                 status="fail",
                 severity="warning",
                 findings=findings,
-                repairs=[RepairAction(channel="lint", summary=f"Fix {i}") for i in range(10)],
+                repairs=[
+                    RepairAction(channel="lint", summary=f"Fix {i}") for i in range(10)
+                ],
             ),
         ]
     )

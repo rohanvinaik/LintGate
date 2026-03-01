@@ -194,7 +194,11 @@ def test_foo():
     assertions = result["test_foo"]
     assert len(assertions) == 3
     kinds = [a.kind for a in assertions]
-    assert kinds == [AssertionKind.IS_NOT_NONE, AssertionKind.EQUALITY, AssertionKind.LENGTH_CHECK]
+    assert kinds == [
+        AssertionKind.IS_NOT_NONE,
+        AssertionKind.EQUALITY,
+        AssertionKind.LENGTH_CHECK,
+    ]
 
 
 def test_class_method_test():
@@ -451,7 +455,9 @@ def test_classify_test_file_from_path_success():
 def test_hello():
     assert 1 == 1
 """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8"
+    ) as f:
         f.write(source)
         f.flush()
         path = f.name

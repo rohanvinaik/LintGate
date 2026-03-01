@@ -142,16 +142,14 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
         mode = session.get("mode", "normal")
         compaction_num = capsule.get("token_state", {}).get("compaction_number", 0)
 
+        capsule_str = json.dumps(capsule, ensure_ascii=False)
         return {
             "continue": True,
             "systemMessage": (
                 f"[LG] Pre-compact #{compaction_num} — mode={mode},"
-                f" {n_toward} toward, {n_away} away, {n_forbidden} forbidden"
+                f" {n_toward} toward, {n_away} away, {n_forbidden} forbidden\n"
+                f"<lintgate-compact-state>{capsule_str}</lintgate-compact-state>"
             ),
-            "hookSpecificOutput": {
-                "hookEventName": "PreCompact",
-                "additionalContext": json.dumps(capsule, ensure_ascii=False),
-            },
         }
 
     # Fallback: compass-only capsule (legacy behavior)
@@ -160,22 +158,28 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
         return {"continue": True}
 
     compass_capsule = legacy.get("compass_capsule", {})
-    n_toward = len(compass_capsule.get("toward", [])) if isinstance(compass_capsule, dict) else 0
-    n_away = len(compass_capsule.get("away", [])) if isinstance(compass_capsule, dict) else 0
+    n_toward = (
+        len(compass_capsule.get("toward", []))
+        if isinstance(compass_capsule, dict)
+        else 0
+    )
+    n_away = (
+        len(compass_capsule.get("away", [])) if isinstance(compass_capsule, dict) else 0
+    )
     n_forbidden = (
-        len(compass_capsule.get("forbidden", [])) if isinstance(compass_capsule, dict) else 0
+        len(compass_capsule.get("forbidden", []))
+        if isinstance(compass_capsule, dict)
+        else 0
     )
 
+    legacy_str = json.dumps(legacy, ensure_ascii=False)
     return {
         "continue": True,
         "systemMessage": (
             f"[Compass] Pre-compact checkpoint — {n_toward} toward,"
-            f" {n_away} away, {n_forbidden} forbidden directives preserved."
+            f" {n_away} away, {n_forbidden} forbidden directives preserved.\n"
+            f"<lintgate-compact-state>{legacy_str}</lintgate-compact-state>"
         ),
-        "hookSpecificOutput": {
-            "hookEventName": "PreCompact",
-            "additionalContext": json.dumps(legacy, ensure_ascii=False),
-        },
     }
 
 

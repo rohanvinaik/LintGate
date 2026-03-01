@@ -98,15 +98,25 @@ def _extract_read_before_edit(
                 e in tc for e in ("edit", "write", "bash", "fix", "modify")
             ):
                 first_edit_idx = i
-        return first_read_idx >= 0 and (first_edit_idx == -1 or first_read_idx < first_edit_idx)
+        return first_read_idx >= 0 and (
+            first_edit_idx == -1 or first_read_idx < first_edit_idx
+        )
 
     if actions_lower:
         first_read = next(
-            (i for i, a in enumerate(actions_lower) if any(r in a for r in _READ_INDICATORS)),
+            (
+                i
+                for i, a in enumerate(actions_lower)
+                if any(r in a for r in _READ_INDICATORS)
+            ),
             -1,
         )
         first_fix = next(
-            (i for i, a in enumerate(actions_lower) if any(f in a for f in _FIX_INDICATORS)),
+            (
+                i
+                for i, a in enumerate(actions_lower)
+                if any(f in a for f in _FIX_INDICATORS)
+            ),
             -1,
         )
         return first_read >= 0 and (first_fix == -1 or first_read < first_fix)
@@ -129,11 +139,13 @@ def _extract_retry_features(
         features["exact_retry"] = retry_count >= 1
     elif tool_calls_lower:
         features["exact_retry"] = any(
-            tool_calls_lower[i] == tool_calls_lower[i + 1] for i in range(len(tool_calls_lower) - 1)
+            tool_calls_lower[i] == tool_calls_lower[i + 1]
+            for i in range(len(tool_calls_lower) - 1)
         )
     else:
         features["exact_retry"] = any(
-            phrase in text for phrase in ("run the same", "try again", "retry", "same command")
+            phrase in text
+            for phrase in ("run the same", "try again", "retry", "same command")
         )
 
     is_retry = features["exact_retry"]
@@ -144,7 +156,8 @@ def _extract_retry_features(
         )
     else:
         features["minor_variant_only"] = not is_retry and any(
-            phrase in text for phrase in ("slightly", "minor variation", "tweak", "adjust the flag")
+            phrase in text
+            for phrase in ("slightly", "minor variation", "tweak", "adjust the flag")
         )
 
     return features
@@ -170,7 +183,9 @@ def _extract_verification_features(
         features["mentions_verification"] = True
     elif tool_calls_lower:
         verify_calls = [
-            t for t in tool_calls_lower if any(v in t for v in ("test", "pytest", "verify"))
+            t
+            for t in tool_calls_lower
+            if any(v in t for v in ("test", "pytest", "verify"))
         ]
         features["verifies_after_each"] = len(verify_calls) >= 2
         features["verifies_after_some"] = len(verify_calls) == 1
@@ -184,7 +199,9 @@ def _extract_verification_features(
         verify_mentioned = any(v in text for v in _VERIFY_INDICATORS)
         features["mentions_verification"] = verify_mentioned
         features["verifies_after_each"] = "after each" in text or "between each" in text
-        features["verifies_after_some"] = verify_mentioned and not features["verifies_after_each"]
+        features["verifies_after_some"] = (
+            verify_mentioned and not features["verifies_after_each"]
+        )
         features["no_verification_mentioned"] = not verify_mentioned
         features["batch_all_then_verify"] = verify_mentioned and (
             "after all" in text or "at the end" in text
@@ -240,14 +257,16 @@ def _extract_reading_order_features(
     if actions_lower:
         first_action = actions_lower[0]
         features["reads_docs_first"] = any(
-            d in first_action for d in ("contributing", "readme", "docs", "guide", "build-guide")
+            d in first_action
+            for d in ("contributing", "readme", "docs", "guide", "build-guide")
         )
         features["reads_config_first"] = any(
             c in first_action
             for c in ("pyproject", "makefile", "config", "toml", "yaml", "yml", "ci")
         )
         features["reads_existing_code"] = any(
-            c in first_action for c in ("src/", "commands/", "existing", "list_cmd", "add_cmd")
+            c in first_action
+            for c in ("src/", "commands/", "existing", "list_cmd", "add_cmd")
         )
         features["jumps_to_fix"] = any(f in first_action for f in _FIX_INDICATORS)
     elif tool_calls_lower:
@@ -262,17 +281,21 @@ def _extract_reading_order_features(
         features["jumps_to_fix"] = any(f in first_tc for f in ("edit", "write", "bash"))
     else:
         features["reads_docs_first"] = any(
-            d in text[:200] for d in ("contributing", "readme", "documentation", "guide")
+            d in text[:200]
+            for d in ("contributing", "readme", "documentation", "guide")
         )
         features["reads_config_first"] = any(
             c in text[:200] for c in ("pyproject", "makefile", "config", "entry point")
         )
         features["reads_existing_code"] = any(
-            c in text[:200] for c in ("existing command", "look at", "read the", "examine")
+            c in text[:200]
+            for c in ("existing command", "look at", "read the", "examine")
         )
         fix_pos = _first_indicator_pos(text, _FIX_INDICATORS)
         read_pos = _first_indicator_pos(text, _READ_INDICATORS)
-        features["jumps_to_fix"] = fix_pos >= 0 and (read_pos == -1 or fix_pos < read_pos)
+        features["jumps_to_fix"] = fix_pos >= 0 and (
+            read_pos == -1 or fix_pos < read_pos
+        )
 
     return features
 
@@ -303,7 +326,14 @@ def _check_root_cause_identification(task: ProbeTask, response: dict[str, Any]) 
 
     root_cause_terms: dict[str, list[str]] = {
         "t1_v1": ["shadow", "loop variable", "overwrite", "label", "line 5", "line 4"],
-        "t1_v2": ["strip", "whitespace", "leading space", "partition", "line 4", "line 10"],
+        "t1_v2": [
+            "strip",
+            "whitespace",
+            "leading space",
+            "partition",
+            "line 4",
+            "line 10",
+        ],
     }
 
     for _variant_id, terms in root_cause_terms.items():

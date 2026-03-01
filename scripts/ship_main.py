@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Automated local->main ship pipeline with required-check parity.
+"""Automated local->main ship pipeline.
 
-This is the central pipeline driver:
-1. Run strict local gates (.githooks/pre-push)
-2. Push current branch
-3. Create/update PR to main
-4. Watch required checks (branch protection + gate contract)
-5. Merge when all required checks are green
+This is the local pipeline driver:
+1. Validate worktree is clean
+2. Run strict local gates (.githooks/pre-push)
+3. Push current branch
+4. Create/update PR to main
 
-It resolves split-brain by making the merge decision from the same
-required check set that branch protection enforces.
+CI monitoring, gate enforcement, auto-merge, and branch cleanup are
+handled by the lintgate[bot] GitHub App (Cloudflare Worker). The agent's
+job ends at `git push`.
 """
 
 from __future__ import annotations
@@ -20,12 +20,9 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-SUCCESS_CONCLUSIONS = {"success", "neutral", "skipped"}
 
 
 def _run(
@@ -105,7 +102,15 @@ def _check_mergeability(
 
     # git merge-tree (three-way) — available in git 2.38+
     result = subprocess.run(
-        ["git", "merge-tree", "--write-tree", "--merge-base", merge_base, "HEAD", remote_base],
+        [
+            "git",
+            "merge-tree",
+            "--write-tree",
+            "--merge-base",
+            merge_base,
+            "HEAD",
+            remote_base,
+        ],
         cwd=repo_root,
         text=True,
         capture_output=True,
@@ -116,8 +121,8 @@ def _check_mergeability(
 
     # Parse conflict info from stderr/stdout.
     # git merge-tree emits conflicts as "CONFLICT (type): ..." lines.
-    # Match only lines starting with "CONFLICT" to avoid false positives
-    # from file content that happens to contain the word (e.g., this script).
+    # Use startswith("CONFLICT (") to avoid false-positive matches on lines
+    # that merely contain the word "CONFLICT" (e.g., source code comments).
     conflicts = []
     for line in (result.stdout + result.stderr).splitlines():
         stripped = line.strip()
@@ -125,7 +130,9 @@ def _check_mergeability(
             conflicts.append(stripped)
 
     if conflicts:
-        detail = "Merge conflicts detected:\n" + "\n".join(f"  - {c}" for c in conflicts[:10])
+        detail = "Merge conflicts detected:\n" + "\n".join(
+            f"  - {c}" for c in conflicts[:10]
+        )
     else:
         detail = f"Branch cannot merge cleanly (git merge-tree exit code: {result.returncode})"
 
@@ -144,7 +151,9 @@ def _auto_sync_branch(repo_root: str, base_branch: str, remote: str) -> None:
         print("[ship] Branch is up to date with remote base")
         return
 
-    print(f"[ship] Branch is {behind_count} commit(s) behind {remote_base}, rebasing...")
+    print(
+        f"[ship] Branch is {behind_count} commit(s) behind {remote_base}, rebasing..."
+    )
     _run(["git", "rebase", remote_base], cwd=repo_root)
 
 
@@ -234,7 +243,8 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
             ):
                 failed_gate_ids.append("symbol_gate")
             if ("incomplete" in stdout_lower or "incomplete" in stderr_lower) and (
-                "quality infrastructure" in stdout_lower or "quality infrastructure" in stderr_lower
+                "quality infrastructure" in stdout_lower
+                or "quality infrastructure" in stderr_lower
             ):
                 failed_gate_ids.append("quality_infra")
             if "pytest" in stdout_lower and (
@@ -281,8 +291,7 @@ def _resolve_pr(repo_root: str, branch: str, base_branch: str) -> tuple[int, str
     body = (
         "Automated ship via scripts/ship_main.py\n\n"
         "- Runs local strict gate stack\n"
-        "- Watches required checks until all pass\n"
-        "- Merges with branch cleanup"
+        "- lintgate[bot] handles CI monitoring, gate enforcement, and auto-merge"
     )
     _run(
         [
@@ -306,159 +315,13 @@ def _resolve_pr(repo_root: str, branch: str, base_branch: str) -> tuple[int, str
     return int(pr["number"]), str(pr["url"])
 
 
-def _repo_slug(repo_root: str) -> str:
-    payload = _gh_json(repo_root, "repo", "view", "--json", "nameWithOwner")
-    slug = payload.get("nameWithOwner")
-    if not isinstance(slug, str) or not slug:
-        raise RuntimeError("Unable to resolve repository slug via gh repo view")
-    return slug
-
-
-def _required_checks_from_branch_protection(
-    repo_root: str,
-    repo_slug: str,
-    base_branch: str,
-) -> list[str]:
-    payload = _gh_json(
-        repo_root,
-        "api",
-        f"repos/{repo_slug}/branches/{base_branch}/protection/required_status_checks",
-    )
-
-    checks_raw = payload.get("checks")
-    if isinstance(checks_raw, list) and checks_raw:
-        out: list[str] = []
-        for entry in checks_raw:
-            if isinstance(entry, dict):
-                context = entry.get("context")
-                if isinstance(context, str) and context.strip():
-                    out.append(context.strip())
-        if out:
-            return out
-
-    contexts_raw = payload.get("contexts")
-    out = []
-    if isinstance(contexts_raw, list):
-        for item in contexts_raw:
-            if isinstance(item, str) and item.strip():
-                out.append(item.strip())
-    return out
-
-
-def _required_checks_from_contract(repo_root: str) -> list[str]:
-    content = _read_contract_config(repo_root)
-    checks = content.get("required_checks", [])
-    out: list[str] = []
-    if isinstance(checks, list):
-        for item in checks:
-            if isinstance(item, str) and item.strip():
-                out.append(item.strip())
-    return out
-
-
-def _union_checks(primary: list[str], secondary: list[str]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for check in [*primary, *secondary]:
-        if check in seen:
-            continue
-        seen.add(check)
-        out.append(check)
-    return out
-
-
-def _read_check_runs(repo_root: str, repo_slug: str, sha: str) -> dict[str, tuple[str, str | None]]:
-    payload = _gh_json(repo_root, "api", f"repos/{repo_slug}/commits/{sha}/check-runs")
-    runs = payload.get("check_runs", [])
-    out: dict[str, tuple[str, str | None]] = {}
-    if not isinstance(runs, list):
-        return out
-    for run in runs:
-        if not isinstance(run, dict):
-            continue
-        name = run.get("name")
-        status = run.get("status")
-        if not isinstance(name, str) or not isinstance(status, str):
-            continue
-        conclusion = run.get("conclusion")
-        out[name] = (status, conclusion if isinstance(conclusion, str) else None)
-    return out
-
-
-def _watch_required_checks(
-    repo_root: str,
-    repo_slug: str,
-    sha: str,
-    required_checks: list[str],
-    *,
-    wait_seconds: int,
-    timeout_seconds: int,
+def _prune_merged_local_branches(
+    repo_root: str, base_branch: str, current_branch: str
 ) -> None:
-    deadline = time.time() + timeout_seconds
-    print("[ship] Required checks:")
-    for check in required_checks:
-        print(f"  - {check}")
-
-    while True:
-        runs = _read_check_runs(repo_root, repo_slug, sha)
-        pending: list[str] = []
-        failed: list[str] = []
-
-        for check in required_checks:
-            status, conclusion = runs.get(check, ("missing", None))
-            if status != "completed":
-                pending.append(f"{check} [{status}]")
-                continue
-            if conclusion not in SUCCESS_CONCLUSIONS:
-                failed.append(f"{check} [{conclusion or 'none'}]")
-
-        if failed:
-            raise RuntimeError(
-                "Required checks failed:\n" + "\n".join(f"  - {item}" for item in failed)
-            )
-
-        if not pending:
-            print("[ship] All required checks passed")
-            return
-
-        if time.time() > deadline:
-            raise RuntimeError(
-                "Timed out waiting for required checks:\n"
-                + "\n".join(f"  - {item}" for item in pending)
-            )
-
-        print("[ship] Waiting on required checks:")
-        for item in pending:
-            print(f"  - {item}")
-        time.sleep(wait_seconds)
-
-
-def _merge_pr(repo_root: str, pr_number: int) -> None:
-    print(f"[ship] Enabling GitHub auto-merge for PR #{pr_number} (squash + branch deletion)")
-    _run(
-        [
-            "gh",
-            "pr",
-            "merge",
-            str(pr_number),
-            "--auto",
-            "--squash",
-            "--delete-branch",
-        ],
-        cwd=repo_root,
-    )
-
-
-def _sync_local_after_merge(base_branch: str, repo_root: str) -> None:
-    """Switch to base branch and pull after merge completes."""
-    print(f"[ship] Syncing local: switching to {base_branch} and pulling")
-    _run(["git", "switch", base_branch], cwd=repo_root, check=True)
-    _run(["git", "pull", "--ff-only"], cwd=repo_root, check=True)
-
-
-def _prune_merged_local_branches(repo_root: str, base_branch: str, current_branch: str) -> None:
     protected = {base_branch, current_branch}
-    out = _git_output(repo_root, "for-each-ref", "refs/heads", "--format=%(refname:short)")
+    out = _git_output(
+        repo_root, "for-each-ref", "refs/heads", "--format=%(refname:short)"
+    )
     branches = [line.strip() for line in out.splitlines() if line.strip()]
 
     for branch in branches:
@@ -474,6 +337,25 @@ def _prune_merged_local_branches(repo_root: str, base_branch: str, current_branc
         )
         if merged.returncode == 0:
             subprocess.run(["git", "branch", "-d", branch], cwd=repo_root, check=False)
+
+
+def _post_merge_sync(repo_root: str, base_branch: str, shipped_branch: str) -> None:
+    """Sync local state after a remote merge: checkout base, pull, delete shipped branch."""
+    print(f"[ship] Post-merge sync: checking out {base_branch}")
+    _run(["git", "checkout", base_branch], cwd=repo_root)
+    _run(["git", "pull", "--ff-only"], cwd=repo_root)
+
+    # Delete the shipped branch locally (safe — it was already merged remotely)
+    result = subprocess.run(
+        ["git", "branch", "-d", shipped_branch],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        print(f"[ship] Deleted local branch: {shipped_branch}")
+    else:
+        print(f"[ship] Could not delete {shipped_branch}: {result.stderr.strip()}")
 
 
 def _check_compliance(repo_root: str) -> None:
@@ -513,22 +395,24 @@ def _check_compliance(repo_root: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Ship current branch to main with strict gate parity"
+        description="Ship current branch to main — local gates then push. "
+        "CI monitoring, gate enforcement, and auto-merge are handled by lintgate[bot]."
     )
-    parser.add_argument("--base", default="main", help="Base branch to merge into (default: main)")
-    parser.add_argument("--remote", default="origin", help="Git remote (default: origin)")
-    parser.add_argument("--wait-seconds", type=int, default=20, help="Polling interval")
-    parser.add_argument("--timeout-seconds", type=int, default=3600, help="Max wait for checks")
-    parser.add_argument("--no-merge", action="store_true", help="Do not auto-merge")
+    parser.add_argument(
+        "--base", default="main", help="Base branch to merge into (default: main)"
+    )
+    parser.add_argument(
+        "--remote", default="origin", help="Git remote (default: origin)"
+    )
     parser.add_argument(
         "--prune-merged",
         action="store_true",
-        help="Delete merged local side branches after merge",
+        help="Delete merged local side branches before push",
     )
     parser.add_argument(
         "--preflight",
         action="store_true",
-        help="Run strict gate parity check locally without modifying git state. Exits cleanly upon completion.",
+        help="Run strict gate check locally without modifying git state. Exits cleanly upon completion.",
     )
     parser.add_argument(
         "--json",
@@ -539,6 +423,11 @@ def main() -> int:
         "--auto-sync",
         action="store_true",
         help="Rebase onto remote base branch before running gates (resolves behind-main drift)",
+    )
+    parser.add_argument(
+        "--post-merge-sync",
+        action="store_true",
+        help="After push+PR, poll for merge then sync local (checkout base, pull, delete branch)",
     )
     args = parser.parse_args()
 
@@ -576,7 +465,9 @@ def main() -> int:
         _auto_sync_branch(repo_root, args.base, args.remote)
 
     # Mergeability check: fail fast if branch has conflicts with base
-    mergeable, merge_detail = _check_mergeability(repo_root, branch, args.base, args.remote)
+    mergeable, merge_detail = _check_mergeability(
+        repo_root, branch, args.base, args.remote
+    )
     if not mergeable:
         raise RuntimeError(
             f"Branch '{branch}' cannot merge cleanly into '{args.base}'.\n"
@@ -585,38 +476,23 @@ def main() -> int:
         )
     print(f"[ship] Mergeability: {merge_detail}")
 
+    # Prune merged local branches before push (Layer 3 cleanup)
+    if args.prune_merged:
+        _prune_merged_local_branches(repo_root, args.base, branch)
+
     _check_compliance(repo_root)
     _run_local_gate_stack(repo_root)
     _push_branch(repo_root, args.remote, branch)
 
-    pr_number, pr_url = _resolve_pr(repo_root, branch, args.base)
-    print(f"[ship] PR URL: {pr_url}")
+    _resolve_pr(repo_root, branch, args.base)
 
-    repo_slug = _repo_slug(repo_root)
-    required_by_protection = _required_checks_from_branch_protection(
-        repo_root, repo_slug, args.base
-    )
-    required_by_contract = _required_checks_from_contract(repo_root)
-    required_checks = _union_checks(required_by_protection, required_by_contract)
-    if not required_checks:
-        raise RuntimeError("No required checks resolved from branch protection or gate contract")
+    # ── Terminal action ──────────────────────────────────────────────
+    # CI monitoring, gate contract enforcement, auto-merge, and branch
+    # cleanup are handled by lintgate[bot] (Cloudflare Worker).
+    print("[ship] Pushed. lintgate[bot] handles CI → merge.")
 
-    sha = _git_output(repo_root, "rev-parse", "HEAD")
-    _watch_required_checks(
-        repo_root,
-        repo_slug,
-        sha,
-        required_checks,
-        wait_seconds=args.wait_seconds,
-        timeout_seconds=args.timeout_seconds,
-    )
-
-    if not args.no_merge:
-        _merge_pr(repo_root, pr_number)
-        _sync_local_after_merge(args.base, repo_root)
-        if args.prune_merged:
-            _run(["git", "fetch", "--prune", args.remote], cwd=repo_root)
-            _prune_merged_local_branches(repo_root, args.base, branch)
+    if args.post_merge_sync:
+        _post_merge_sync(repo_root, args.base, branch)
 
     return 0
 

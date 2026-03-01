@@ -7,8 +7,17 @@ import os
 from typing import Any
 
 
-def extract_imports(filepath: str) -> list[tuple[str, int]]:
+def extract_imports(
+    filepath: str, file_module: str | None = None
+) -> list[tuple[str, int]]:
     """Extract all import module names and line numbers from a file.
+
+    Args:
+        filepath: Path to the Python file.
+        file_module: Dotted module name of the file (e.g. ``"pkg.sub.mod"``).
+            When provided, relative imports (``from .sibling import ...``) are
+            resolved to absolute module names.  Without this, relative imports
+            are silently skipped (backward-compatible).
 
     Returns list of (module_name, lineno) tuples.
     """
@@ -29,10 +38,38 @@ def extract_imports(filepath: str) -> list[tuple[str, int]]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append((alias.name, node.lineno))
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            imports.append((node.module, node.lineno))
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                imports.append((node.module, node.lineno))
+            elif node.level > 0 and file_module:
+                resolved = _resolve_relative_import(
+                    file_module, node.level, node.module
+                )
+                if resolved:
+                    imports.append((resolved, node.lineno))
 
     return imports
+
+
+def _resolve_relative_import(
+    file_module: str, level: int, module: str | None
+) -> str | None:
+    """Resolve a relative import to an absolute module name.
+
+    ``from .sibling import X`` in ``pkg.sub.mod`` → ``pkg.sub.sibling``
+    ``from ..other import Y`` in ``pkg.sub.mod`` → ``pkg.other``
+    ``from . import Z``       in ``pkg.sub.mod`` → ``pkg.sub``
+    """
+    parts = file_module.split(".")
+    # level=1 means "current package" — drop the module name to get the package
+    # level=2 means "parent package" — drop one more, etc.
+    if level > len(parts):
+        return None  # invalid relative import (too many dots)
+    package_parts = parts[:-level]
+    if module:
+        return ".".join(package_parts) + "." + module if package_parts else module
+    # ``from . import name`` — the import target is the package itself
+    return ".".join(package_parts) if package_parts else None
 
 
 def filepath_to_module(filepath: str, project_root: str) -> str | None:

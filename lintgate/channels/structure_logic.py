@@ -70,12 +70,17 @@ def _check_import_cycles(
     import_graph: dict[str, set[str]],
     file_map: dict[str, str],
     project_root: str,
+    deferred_edges: set[tuple[str, str]] | None = None,
 ) -> list[LintIssue]:
-    """Detect import cycles using DFS.
+    """Detect import cycles using DFS and classify as hard or soft.
 
-    Reuses the cycle-detection algorithm from architecture_checks but
-    emits structure-channel finding codes (STRUCT001).
+    Hard cycles: all edges are module-level imports — will crash at import time.
+    Soft cycles: at least one edge is a deferred import (inside a function body)
+    — the code runs fine but the cycle indicates structural coupling.
+
+    Soft cycles are downgraded to informational with lower confidence.
     """
+    deferred_edges = deferred_edges or set()
     cycles = _find_cycles(import_graph)
     findings: list[LintIssue] = []
     seen_cycles: set[frozenset[str]] = set()
@@ -93,28 +98,70 @@ def _check_import_cycles(
         cycle_str = " → ".join(cycle + [cycle[0]])
         filepath = file_map.get(relevant_files[0], "")
 
+        classification, deferred_info = _classify_cycle(cycle, deferred_edges)
+
+        if classification == "soft":
+            message = f"Soft import cycle (deferred import): {cycle_str}"
+            severity = "informational"
+            confidence = 0.5
+            evidence: dict[str, object] = {
+                "cycle": cycle,
+                "length": len(cycle),
+                "code": "STRUCT001",
+                "classification": "soft",
+                "deferred_edges": deferred_info,
+            }
+            suggestions = [
+                "Soft cycle — code runs fine but indicates structural coupling",
+                "Consider extracting shared types to break the dependency",
+            ]
+        else:
+            message = f"Import cycle detected: {cycle_str}"
+            severity = "warning" if len(cycle) > 2 else "informational"
+            confidence = 0.9
+            evidence = {
+                "cycle": cycle,
+                "length": len(cycle),
+                "code": "STRUCT001",
+                "classification": "hard",
+            }
+            suggestions = [
+                "Break the cycle by extracting shared types to a common module",
+                "Use lazy imports (import inside function) if unavoidable",
+                "Consider dependency injection to decouple modules",
+            ]
+
         findings.append(
             LintIssue(
                 linter="structure_channel",
                 kind="STRUCT001",
-                message=f"Import cycle detected: {cycle_str}",
+                message=message,
                 file=filepath,
-                severity="informational",
-                confidence=0.9,
-                evidence={
-                    "cycle": cycle,
-                    "length": len(cycle),
-                    "code": "STRUCT001",
-                },
-                suggestions=[
-                    "Break the cycle by extracting shared types to a common module",
-                    "Use lazy imports (import inside function) if unavoidable",
-                    "Consider dependency injection to decouple modules",
-                ],
+                severity=severity,
+                confidence=confidence,
+                evidence=evidence,
+                suggestions=suggestions,
             )
         )
 
     return findings
+
+
+def _classify_cycle(
+    cycle: list[str], deferred_edges: set[tuple[str, str]]
+) -> tuple[str, list[str]]:
+    """Classify an import cycle as 'hard' or 'soft'.
+
+    Returns (classification, deferred_edge_descriptions).
+    A cycle is 'soft' if at least one edge is a deferred import.
+    """
+    deferred_info: list[str] = []
+    for i, module in enumerate(cycle):
+        next_module = cycle[(i + 1) % len(cycle)]
+        if (module, next_module) in deferred_edges:
+            deferred_info.append(f"{module} → {next_module}")
+    classification = "soft" if deferred_info else "hard"
+    return classification, deferred_info
 
 
 def _find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
@@ -166,7 +213,9 @@ def _check_module_size_distribution(
     findings: list[LintIssue] = []
 
     # Filter to files with meaningful content
-    meaningful_locs = {fp: loc for fp, loc in file_loc.items() if loc >= _ABSOLUTE_LOC_FLOOR}
+    meaningful_locs = {
+        fp: loc for fp, loc in file_loc.items() if loc >= _ABSOLUTE_LOC_FLOOR
+    }
 
     if len(meaningful_locs) < _MIN_FILES_FOR_SIZE_ANALYSIS:
         return findings
@@ -286,7 +335,11 @@ def _check_package_cohesion(
         for module in pkg_modules:
             imports = import_graph.get(module, set())
             for imp in imports:
-                if imp in pkg_module_set or imp.startswith(pkg_prefix) or imp == pkg_name:
+                if (
+                    imp in pkg_module_set
+                    or imp.startswith(pkg_prefix)
+                    or imp == pkg_name
+                ):
                     intra_count += 1
                 else:
                     inter_count += 1
@@ -344,6 +397,8 @@ def _build_structure_snapshot(
     orphan_findings: list[LintIssue],
     cohesion_findings: list[LintIssue],
     project_root: str,
+    *,
+    module_fan_in: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Build a compact structure snapshot for controlplane_run output.
 
@@ -386,5 +441,14 @@ def _build_structure_snapshot(
         "low_cohesion_packages": len(cohesion_findings),
         "checks_run": 4,
     }
+
+    # Fan-in enrichment (Gap 1 — import fan-in surfaced)
+    if module_fan_in:
+        snapshot["zero_fan_in_count"] = sum(1 for v in module_fan_in.values() if v == 0)
+        snapshot["high_fan_in_modules"] = [
+            {"module": m, "fan_in": fi}
+            for m, fi in sorted(module_fan_in.items(), key=lambda x: -x[1])[:3]
+            if fi >= 2
+        ]
 
     return snapshot

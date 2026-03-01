@@ -11,13 +11,21 @@ if [ "${LINTGATE_SKIP_PRE_PUSH:-0}" = "1" ]; then
   exit 0
 fi
 
-# Gate selection: LINTGATE_GATE_ID=toolchain,qlty,secrets,tests,audit,sonar,infra
-# Empty = run all gates (default). Phase 0: env-var only.
-_GATE_ID="${LINTGATE_GATE_ID:-}"
+# Gate selection: LINTGATE_GATE_ID env var OR --gate-id flag
+# Valid gate IDs: quality_infra, qlty, secrets, tests, pip_audit, sonar
+# Empty = run all gates (default).
+GATE_ID="${LINTGATE_GATE_ID:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --gate-id) GATE_ID="$2"; shift 2 ;;
+    --gate-id=*) GATE_ID="${1#--gate-id=}"; shift ;;
+    *) shift ;;
+  esac
+done
 
-_should_run_gate() {
-  [ -z "$_GATE_ID" ] && return 0
-  echo ",$_GATE_ID," | grep -q ",$1,"
+_should_run() {
+  # Run gate if no filter specified, or if gate matches the filter
+  [ -z "$GATE_ID" ] || [ "$GATE_ID" = "$1" ]
 }
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -29,25 +37,27 @@ if [ -f "$REPO_ROOT/.env" ]; then
   . "$REPO_ROOT/.env"
 fi
 
-echo "[lintgate] running local quality checks before push"
+if [ -z "$GATE_ID" ]; then
+  echo "[lintgate] running local quality checks before push"
+else
+  echo "[lintgate] running gate: $GATE_ID"
+fi
 
 # Toolchain verification: check required tools before running gates.
 # Reads from gate_contract.yaml manifest — self-managing source of truth.
-if _should_run_gate toolchain; then
-  if command -v python >/dev/null 2>&1; then
-    MISSING_TOOLS="$(python -m lintgate.tool_manifest --check-required --project-root "$REPO_ROOT" 2>/dev/null || true)"
-    if [ -n "$MISSING_TOOLS" ]; then
-      echo "[lintgate] WARNING: missing required tools from toolchain manifest:"
-      echo "$MISSING_TOOLS"
-      echo "[lintgate] Run: python -m lintgate.tool_manifest --install --project-root $REPO_ROOT"
-      echo "[lintgate] Or:  toolchain_health_check(path='$REPO_ROOT', install_missing=True)"
-      # Non-blocking warning — tools may still work via alternate paths
-    fi
+if [ -z "$GATE_ID" ] && command -v python >/dev/null 2>&1; then
+  MISSING_TOOLS="$(python -m lintgate.tool_manifest --check-required --project-root "$REPO_ROOT" 2>/dev/null || true)"
+  if [ -n "$MISSING_TOOLS" ]; then
+    echo "[lintgate] WARNING: missing required tools from toolchain manifest:"
+    echo "$MISSING_TOOLS"
+    echo "[lintgate] Run: python -m lintgate.tool_manifest --install --project-root $REPO_ROOT"
+    echo "[lintgate] Or:  toolchain_health_check(path='$REPO_ROOT', install_missing=True)"
+    # Non-blocking warning — tools may still work via alternate paths
   fi
 fi
 
 # Quality infrastructure gate (hard fail)
-if _should_run_gate infra; then
+if _should_run quality_infra; then
   echo "[lintgate] checking quality infrastructure completeness"
   if LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1 python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
     echo "[lintgate] quality infrastructure: complete"
@@ -58,7 +68,7 @@ if _should_run_gate infra; then
 fi
 
 # qlty analysis (mirrors CI qlty.yml — init parity + shellcheckrc safety)
-if _should_run_gate qlty; then
+if _should_run qlty; then
   # Handle .shellcheckrc symlink collision (qlty init may create .shellcheckrc symlink).
   if [ -f "$REPO_ROOT/.shellcheckrc" ] && [ ! -L "$REPO_ROOT/.shellcheckrc" ]; then
     cp "$REPO_ROOT/.shellcheckrc" "$REPO_ROOT/.shellcheckrc.bak"
@@ -81,7 +91,7 @@ if _should_run_gate qlty; then
 fi
 
 # Secrets scan (mirrors CI gitleaks check)
-if _should_run_gate secrets; then
+if _should_run secrets; then
   echo "[lintgate] scanning for secrets (gitleaks)"
   if ! gitleaks detect --source . --no-banner --redact; then
     echo "[lintgate] BLOCKED: secrets detected — fix before pushing."
@@ -90,13 +100,12 @@ if _should_run_gate secrets; then
 fi
 
 # Tests + coverage + symbol gate
-if _should_run_gate tests; then
-  if [ -d tests ] || [ -d test ]; then
-    if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi
-    echo "[lintgate] running tests with coverage + symbol gate"
-    python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
-      --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
-      --tb=short -q
+if _should_run tests && { [ -d tests ] || [ -d test ]; }; then
+  if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi
+  echo "[lintgate] running tests with coverage + symbol gate"
+  python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
+    --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
+    --tb=short -q
 
     BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
 
@@ -169,18 +178,16 @@ except Exception:
 fi
 
 # pip-audit (mirrors CI security-lite.yml)
-if _should_run_gate audit; then
-  if command -v pip-audit >/dev/null 2>&1; then
-    if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then
-      echo "[lintgate] running pip-audit (supply-chain scan)"
-      pip-audit
-    fi
+if _should_run pip_audit && command -v pip-audit >/dev/null 2>&1; then
+  if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then
+    echo "[lintgate] running pip-audit (supply-chain scan)"
+    pip-audit
   fi
 fi
 
 # Sonar local mode from contract (default: ci_only).
 # ci_only prevents stale-read split-brain; CI check-runs are authoritative.
-if _should_run_gate sonar; then
+if _should_run sonar; then
   SONAR_LOCAL_MODE="${SONAR_LOCAL_MODE:-ci_only}"
   if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
     _CONTRACT_MODE="$(python -c "

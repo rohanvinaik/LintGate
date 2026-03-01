@@ -32,7 +32,9 @@ def register(mcp, helpers):
         session = load_session(root)
         if not session:
             # Provide empty/default snapshot
-            return json.dumps({"error": "No active session found. Run controlplane_run first."})
+            return json.dumps(
+                {"error": "No active session found. Run controlplane_run first."}
+            )
 
         from lintgate.renderers.nsil.projection import project_snapshot
 
@@ -77,13 +79,17 @@ def register(mcp, helpers):
         if session:
             # Use proposed constraints as active behavioral policy
             active_constraints = [
-                c.get("nudge", "") for c in session.proposed_constraints if c.get("nudge")
+                c.get("nudge", "")
+                for c in session.proposed_constraints
+                if c.get("nudge")
             ]
 
         gate_contract = {}
         if config and config.quality_gate:
             gate_contract = {
-                "local_pre_push": [{"id": "quality_check"}] if config.quality_gate.enabled else []
+                "local_pre_push": [{"id": "quality_check"}]
+                if config.quality_gate.enabled
+                else []
             }
 
         result = verify_action(
@@ -119,7 +125,9 @@ def register(mcp, helpers):
         project_hash = hashlib.sha256(root.encode()).hexdigest()[:12]
         session_path = SESSION_DIR / f"{project_hash}.json"
 
-        artifact_paths = {"session": [str(session_path)] if session_path.exists() else []}
+        artifact_paths = {
+            "session": [str(session_path)] if session_path.exists() else []
+        }
 
         # Add other artifact types if they exist (e.g. from telemetry or logs)
         # For now we focus on the primary session memory
@@ -194,7 +202,9 @@ def register(mcp, helpers):
             },
             {
                 "name": "Scope: Path Traversal",
-                "proposal": ActionProposal(action_type="read", target="../../etc/passwd"),
+                "proposal": ActionProposal(
+                    action_type="read", target="../../etc/passwd"
+                ),
                 "expected_approved": False,
                 "expected_violation": "NSIL_SCOPE_VIOLATION",
             },
@@ -208,7 +218,9 @@ def register(mcp, helpers):
             },
             {
                 "name": "Success: Safe Read",
-                "proposal": ActionProposal(action_type="read", target="lintgate/nsil/benchmark.py"),
+                "proposal": ActionProposal(
+                    action_type="read", target="lintgate/nsil/benchmark.py"
+                ),
                 "expected_approved": True,
             },
         ]

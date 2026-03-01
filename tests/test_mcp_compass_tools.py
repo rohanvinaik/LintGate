@@ -161,14 +161,18 @@ class TestLoadModeDict:
 
 
 class TestLoadModeObj:
-    @patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "theory"})
+    @patch(
+        "mcp_tools.compass_tools._load_mode_dict", return_value={"current": "theory"}
+    )
     def test_returns_theory_mode_object(self, _mock: MagicMock) -> None:
         from lintgate.modes.mode_state import CognitiveMode
 
         result = _load_mode_obj("/fake")
         assert result.current == CognitiveMode.THEORY
 
-    @patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"})
+    @patch(
+        "mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}
+    )
     def test_returns_normal_mode_object(self, _mock: MagicMock) -> None:
         from lintgate.modes.mode_state import CognitiveMode
 
@@ -187,7 +191,8 @@ class TestSaveMode:
         mode_state = SimpleNamespace(to_dict=lambda: {"current": "theory"})
         with (
             patch(
-                "lintgate.controlplane.session_memory.get_or_create_session", return_value=session
+                "lintgate.controlplane.session_memory.get_or_create_session",
+                return_value=session,
             ),
             patch("lintgate.controlplane.session_memory.save_session") as mock_save,
         ):
@@ -348,7 +353,10 @@ class TestImplStatus:
     def test_no_compass_returns_no_compass_status(self) -> None:
         with (
             patch("lintgate.compass_io.load_compass", return_value=None),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch(
+                "mcp_tools.compass_tools._load_mode_dict",
+                return_value={"current": "normal"},
+            ),
         ):
             result = _impl_status("/fake", "/fake")
         assert result["status"] == "no_compass"
@@ -367,7 +375,10 @@ class TestImplStatus:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.5),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "theory"}),
+            patch(
+                "mcp_tools.compass_tools._load_mode_dict",
+                return_value={"current": "theory"},
+            ),
         ):
             result = _impl_status("/fake", "/fake")
 
@@ -382,7 +393,10 @@ class TestImplStatus:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.9),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch(
+                "mcp_tools.compass_tools._load_mode_dict",
+                return_value={"current": "normal"},
+            ),
         ):
             result = _impl_status("/fake", "/fake")
 
@@ -392,11 +406,16 @@ class TestImplStatus:
 
     def test_fresh_compass_no_next_actions(self) -> None:
         gap = _make_gap_report(interview_recommended=False)
-        compass = _make_compass_state(axes={}, directives=[], gap_report=gap, frozen=True)
+        compass = _make_compass_state(
+            axes={}, directives=[], gap_report=gap, frozen=True
+        )
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.3),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch(
+                "mcp_tools.compass_tools._load_mode_dict",
+                return_value={"current": "normal"},
+            ),
         ):
             result = _impl_status("/fake", "/fake")
 
@@ -428,7 +447,9 @@ class TestImplCheck:
         from lintgate.compass import CompassDirective, CompassState
 
         compass = CompassState(
-            directives=[CompassDirective(kind="forbidden", text="Never disable linting")]
+            directives=[
+                CompassDirective(kind="forbidden", text="Never disable linting")
+            ]
         )
         with patch("lintgate.compass_io.load_compass", return_value=compass):
             result = _impl_check("/fake", "disable linting globally")
@@ -439,7 +460,9 @@ class TestImplCheck:
         from lintgate.compass import CompassAxis, CompassState
 
         long_summary = "A" * 200
-        compass = CompassState(axes={"problem": CompassAxis(name="problem", summary=long_summary)})
+        compass = CompassState(
+            axes={"problem": CompassAxis(name="problem", summary=long_summary)}
+        )
         with patch("lintgate.compass_io.load_compass", return_value=compass):
             result = _impl_check("/fake", "some action")
         assert len(result["true_north"]) <= 120
@@ -474,7 +497,9 @@ class TestImplUpdate:
             patch("lintgate.compass_io.save_compass"),
             patch("lintgate.gap_detector.detect_gaps"),
             patch("mcp_tools.compass_tools._refresh_axis_scores"),
-            patch("mcp_tools.compass_tools._render_targets", return_value=render_result),
+            patch(
+                "mcp_tools.compass_tools._render_targets", return_value=render_result
+            ),
         )
 
     def test_basic_no_write(self) -> None:
@@ -512,12 +537,18 @@ class TestImplUpdate:
     def test_with_render_targets(self) -> None:
         from lintgate.compass import CompassClaim
 
-        render_val = {"targets": ["claude"], "files": [".claude/CLAUDE.md"], "written": True}
+        render_val = {
+            "targets": ["claude"],
+            "files": [".claude/CLAUDE.md"],
+            "written": True,
+        }
         patches = self._patch_update_deps(
             inferred=[CompassClaim(text="inferred", origin_facet="core_theory")],
             render_result=render_val,
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[
+            5
+        ], patches[6]:
             result = _impl_update("/fake", ["claude"], write=True)
         assert result["rendered"] == render_val
         assert result["inferred_claims"] == 1
@@ -534,7 +565,9 @@ class TestImplUpdate:
                 CompassClaim(text="unknown", origin_facet="unknown_facet"),
             ],
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[
+            5
+        ], patches[6]:
             _impl_update("/fake", None, write=False)
 
         assert len(state.axes["problem"].claims) == 1
@@ -588,7 +621,10 @@ class TestRenderTargets:
         assert call_args[0][0] == ["claude", "generic"]
 
     def test_returns_error_on_exception(self) -> None:
-        with patch("lintgate.renderers.build_default_registry", side_effect=RuntimeError("boom")):
+        with patch(
+            "lintgate.renderers.build_default_registry",
+            side_effect=RuntimeError("boom"),
+        ):
             result = _render_targets("/fake", None, ["claude"], write=False)
         assert result is not None and "boom" in result["error"]
 
@@ -625,7 +661,9 @@ class TestImplInterview:
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("mcp_tools.compass_tools._apply_answers", return_value=applied),
         ):
-            result = _impl_interview("/fake", "/fake", {"problem:0": "answer"}, skip=False)
+            result = _impl_interview(
+                "/fake", "/fake", {"problem:0": "answer"}, skip=False
+            )
         assert result["applied"] == applied
 
     def test_no_answers_returns_questions(self) -> None:
@@ -652,12 +690,18 @@ class TestApplyAnswers:
         claim = SimpleNamespace(text="applied claim")
         compass = _make_compass_state()
         with (
-            patch("lintgate.gap_detector.apply_answer", return_value=claim) as mock_apply,
+            patch(
+                "lintgate.gap_detector.apply_answer", return_value=claim
+            ) as mock_apply,
             patch("lintgate.compass_io.save_compass") as mock_save,
         ):
             result = _apply_answers("/fake", compass, {"problem:0": "my answer"})
         assert len(result) == 1
-        assert result[0] == {"axis": "problem", "question_idx": 0, "claim": "applied claim"}
+        assert result[0] == {
+            "axis": "problem",
+            "question_idx": 0,
+            "claim": "applied claim",
+        }
         mock_apply.assert_called_once_with(compass, "problem", 0, "my answer")
         mock_save.assert_called_once()
 
@@ -681,7 +725,9 @@ class TestApplyAnswers:
             patch("lintgate.gap_detector.apply_answer", side_effect=[c1, c2]),
             patch("lintgate.compass_io.save_compass"),
         ):
-            result = _apply_answers("/fake", compass, {"problem:0": "a", "solution:1": "b"})
+            result = _apply_answers(
+                "/fake", compass, {"problem:0": "a", "solution:1": "b"}
+            )
         assert len(result) == 2
 
 
@@ -921,14 +967,18 @@ class TestRegister:
 
     def test_compass_status_delegates(self) -> None:
         tools, _ = self._register()
-        with patch("mcp_tools.compass_tools._impl_status", return_value={"status": "ok"}) as m:
+        with patch(
+            "mcp_tools.compass_tools._impl_status", return_value={"status": "ok"}
+        ) as m:
             raw = tools["compass_status"](path="/p")
         m.assert_called_once_with("/p", "/p")
         assert json.loads(raw) == {"status": "ok"}
 
     def test_compass_check_delegates(self) -> None:
         tools, _ = self._register()
-        with patch("mcp_tools.compass_tools._impl_check", return_value={"aligned": True}) as m:
+        with patch(
+            "mcp_tools.compass_tools._impl_check", return_value={"aligned": True}
+        ) as m:
             tools["compass_check"](path="/p", action="test")
         m.assert_called_once_with("/p", "test")
 
@@ -964,7 +1014,8 @@ class TestRegister:
     def test_setup_hooks_delegates(self) -> None:
         tools, _ = self._register()
         with patch(
-            "mcp_tools.compass_tools._impl_setup_hooks", return_value={"status": "preview"}
+            "mcp_tools.compass_tools._impl_setup_hooks",
+            return_value={"status": "preview"},
         ) as m:
             tools["setup_hooks"](path="/p", write=False)
         m.assert_called_once_with("/p", False)
@@ -972,7 +1023,8 @@ class TestRegister:
     def test_theory_mode_enter_delegates(self) -> None:
         tools, _ = self._register()
         with patch(
-            "mcp_tools.compass_tools._impl_theory_enter", return_value={"status": "entered"}
+            "mcp_tools.compass_tools._impl_theory_enter",
+            return_value={"status": "entered"},
         ) as m:
             tools["theory_mode_enter"](path="/p")
         m.assert_called_once_with("/p")
@@ -980,7 +1032,8 @@ class TestRegister:
     def test_theory_mode_freeze_delegates(self) -> None:
         tools, _ = self._register()
         with patch(
-            "mcp_tools.compass_tools._impl_theory_freeze", return_value={"status": "frozen"}
+            "mcp_tools.compass_tools._impl_theory_freeze",
+            return_value={"status": "frozen"},
         ) as m:
             tools["theory_mode_freeze"](path="/p")
         m.assert_called_once_with("/p")

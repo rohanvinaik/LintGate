@@ -16,7 +16,13 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
+from ..types import LintIssue
 from .base import BaseLinter
+from .structure_checks.ast_cache import (
+    FunctionAnalysisCache,
+    hash_file_imports,
+    hash_function_source,
+)
 from .structure_checks.class_checks import check_class
 from .structure_checks.file_checks import check_file_size, check_file_structure
 from .structure_checks.function_checks import check_function
@@ -24,7 +30,7 @@ from .structure_checks.function_checks import check_function
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from ..types import LinterContext, LintIssue
+    from ..types import LinterContext
 
 # ─── Default thresholds by strictness ────────────────────────────────────
 
@@ -82,6 +88,9 @@ class StructureChecker(BaseLinter):
     timeout_ms = 3000
     required_tool = None
 
+    # Session-scoped cache shared across all runs within the same process
+    _cache = FunctionAnalysisCache()
+
     def run(self, ctx: LinterContext) -> Iterable[LintIssue]:
         """Run all structure checks on specified files."""
         thresholds = _get_thresholds(ctx)
@@ -107,12 +116,31 @@ class StructureChecker(BaseLinter):
 
         lines = source.splitlines()
 
-        yield from check_file_size(filepath, lines, thresholds)
+        yield from check_file_size(filepath, lines, thresholds, tree=tree)
         yield from check_file_structure(filepath, tree, thresholds)
+
+        # Compute import hash for cache invalidation
+        import_hash = hash_file_imports(tree)
 
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                yield from check_function(filepath, node, thresholds)
+                func_hash = hash_function_source(node)
+                cached = self._cache.get(filepath, node.name, func_hash)
+                if cached:
+                    # Replay cached issues
+                    for issue_dict in cached.analysis.get("issues", []):
+                        yield LintIssue(**issue_dict)
+                else:
+                    # Analyze and cache
+                    issues = list(check_function(filepath, node, thresholds))
+                    self._cache.set(
+                        filepath,
+                        node.name,
+                        func_hash,
+                        {"issues": [i.to_dict() for i in issues]},
+                        import_hash=import_hash,
+                    )
+                    yield from issues
             elif isinstance(node, ast.ClassDef):
                 yield from check_class(filepath, node, thresholds)
 

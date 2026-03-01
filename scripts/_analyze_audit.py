@@ -38,7 +38,9 @@ print(f"Total files:         {len(results)}")
 print(f"Errors (skipped):    {len(errors)}")
 print(f"Zero assertions:     {len(no_assert)}")
 print(f"Files with data:     {len(has_data)}")
-print(f"Overall ratio:       {overall_ratio:.3f}  ({total_semantic}/{total_assertions} semantic)")
+print(
+    f"Overall ratio:       {overall_ratio:.3f}  ({total_semantic}/{total_assertions} semantic)"
+)
 print(f"P0 (<0.50):          {len(p0)}")
 print(f"P1 (0.50-0.70):      {len(p1)}")
 print(f"P2 (0.70-0.80):      {len(p2)}")
@@ -48,13 +50,17 @@ print()
 print("=== P0: ratio < 0.50 ===")
 for r in p0:
     fname = r["file"].rsplit("/", 1)[-1]
-    print(f"  {r['ratio']:.3f}  {r['structural']:3d}struct  {r['assertions']:4d}total  {fname}")
+    print(
+        f"  {r['ratio']:.3f}  {r['structural']:3d}struct  {r['assertions']:4d}total  {fname}"
+    )
 print()
 
 print("=== P1: ratio 0.50-0.70 ===")
 for r in p1:
     fname = r["file"].rsplit("/", 1)[-1]
-    print(f"  {r['ratio']:.3f}  {r['structural']:3d}struct  {r['assertions']:4d}total  {fname}")
+    print(
+        f"  {r['ratio']:.3f}  {r['structural']:3d}struct  {r['assertions']:4d}total  {fname}"
+    )
 print()
 
 print("=== ZERO-ASSERTION FILES ===")
@@ -72,7 +78,9 @@ print()
 fn_rows = []
 for r in has_data:
     for wf in r.get("weak_fns", []):
-        fn_rows.append((wf["structural"], r["file"].rsplit("/", 1)[-1], wf["fn"], wf["kinds"]))
+        fn_rows.append(
+            (wf["structural"], r["file"].rsplit("/", 1)[-1], wf["fn"], wf["kinds"])
+        )
 fn_rows.sort(reverse=True)
 print("=== TOP 25 WEAKEST TEST FUNCTIONS (by structural count) ===")
 for struct, fname, fn, kinds in fn_rows[:25]:

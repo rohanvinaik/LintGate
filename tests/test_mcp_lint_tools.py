@@ -327,7 +327,9 @@ class TestLintGetDetails:
     def test_filter_blocking(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", severity="blocking"))
+            result = json.loads(
+                tools["lint_get_details"](run_id="r1", severity="blocking")
+            )
             assert result["total_matching"] == 1
             assert result["issues"][0]["severity"] == "blocking"
         finally:
@@ -336,7 +338,9 @@ class TestLintGetDetails:
     def test_filter_warning(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", severity="warning"))
+            result = json.loads(
+                tools["lint_get_details"](run_id="r1", severity="warning")
+            )
             assert result["total_matching"] == 1
         finally:
             p.stop()
@@ -344,7 +348,9 @@ class TestLintGetDetails:
     def test_filter_informational(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", severity="informational"))
+            result = json.loads(
+                tools["lint_get_details"](run_id="r1", severity="informational")
+            )
             assert result["total_matching"] == 1
         finally:
             p.stop()
@@ -386,7 +392,9 @@ class TestLintGetDetails:
     def test_include_recurrence(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", include_recurrence=True))
+            result = json.loads(
+                tools["lint_get_details"](run_id="r1", include_recurrence=True)
+            )
             assert result["recurrence"] == {"E1": 3}
         finally:
             p.stop()
@@ -464,7 +472,9 @@ class TestAuditToolVersions:
 
         with (
             mock.patch("lintgate.config.load_config", return_value=fake_config),
-            mock.patch("lintgate.versioning.run_version_audit", return_value=fake_audit),
+            mock.patch(
+                "lintgate.versioning.run_version_audit", return_value=fake_audit
+            ),
             mock.patch(
                 "lintgate.versioning.format_version_audit_summary",
                 return_value={"issue_count": 0},

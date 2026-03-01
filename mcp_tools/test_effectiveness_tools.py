@@ -141,7 +141,9 @@ def _analyze_test_strength_impl(
         try:
             with open(coverage_path) as f:
                 coverage_data = json.load(f)
-            result["reconciliation_report"] = reconcile_with_coverage(manifest, coverage_data)
+            result["reconciliation_report"] = reconcile_with_coverage(
+                manifest, coverage_data
+            )
         except (json.JSONDecodeError, OSError):
             result["reconciliation_report"] = {"error": "Failed to parse coverage.json"}
     else:
@@ -210,12 +212,16 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
 
     # Filter hotspots to only include files we analyzed
     analyzed_relpaths = {os.path.relpath(f, project_root) for f in target_files}
-    result["mutation_hotspots"] = [h for h in all_hotspots if h.get("file") in analyzed_relpaths]
+    result["mutation_hotspots"] = [
+        h for h in all_hotspots if h.get("file") in analyzed_relpaths
+    ]
 
     return helpers["_json_dumps"](result)
 
 
-def _resolve_target_files(project_root: str, test_file: str) -> list[str] | dict[str, str]:
+def _resolve_target_files(
+    project_root: str, test_file: str
+) -> list[str] | dict[str, str]:
     """Resolve target test files for inspection."""
     from lintgate.linters.test_effectiveness.test_analyzer import _discover_test_files
 
@@ -232,7 +238,9 @@ def _resolve_target_files(project_root: str, test_file: str) -> list[str] | dict
     return {"error": f"Test file/directory not found: {test_file}"}
 
 
-def _process_test_files(target_files: list[str], project_root: str, result: dict[str, Any]) -> None:
+def _process_test_files(
+    target_files: list[str], project_root: str, result: dict[str, Any]
+) -> None:
     """Process a list of test files and update the result dict."""
     from lintgate.linters.test_effectiveness.assertion_classifier import (
         classify_test_file_from_path,
@@ -248,9 +256,13 @@ def _process_test_files(target_files: list[str], project_root: str, result: dict
 
             for func_name, assertions in file_assertions.items():
                 # Qualify name if in batch mode
-                full_func_name = f"{rel_path}::{func_name}" if len(target_files) > 1 else func_name
+                full_func_name = (
+                    f"{rel_path}::{func_name}" if len(target_files) > 1 else func_name
+                )
 
-                func_data, anti_patterns = analyze_function_effectiveness(func_name, assertions)
+                func_data, anti_patterns = analyze_function_effectiveness(
+                    func_name, assertions
+                )
                 result["contract_test_anti_patterns"].extend(
                     {**ap, "function": full_func_name} for ap in anti_patterns
                 )
@@ -258,7 +270,9 @@ def _process_test_files(target_files: list[str], project_root: str, result: dict
                 result["test_functions"][full_func_name] = func_data
                 result["summary"]["total_assertions"] += func_data["count"]
                 result["summary"]["semantic_assertions"] += func_data["semantic_count"]
-                result["summary"]["structural_assertions"] += func_data["structural_count"]
+                result["summary"]["structural_assertions"] += func_data[
+                    "structural_count"
+                ]
 
         except Exception as e:
             result["file_errors"][t_file] = {
@@ -273,7 +287,9 @@ def _truncate_results(result: dict[str, Any], max_funcs: int = 50) -> None:
     if len(result["test_functions"]) > max_funcs:
         all_sorted_keys = sorted(result["test_functions"].keys())
         truncated_keys = all_sorted_keys[:max_funcs]
-        result["test_functions"] = {k: result["test_functions"][k] for k in truncated_keys}
+        result["test_functions"] = {
+            k: result["test_functions"][k] for k in truncated_keys
+        }
         result["summary"]["note"] = (
             f"Results truncated to top {max_funcs} functions for performance. Use file_filter to narrow scope."
         )
@@ -299,7 +315,9 @@ def _compute_summary_metadata(result: dict[str, Any], target_files: list[str]) -
         1 for f in result["test_functions"].values() if f.get("has_isolated_sentinel")
     )
     result["summary"]["sentinel_ratio"] = (
-        round(isolated_count / analyzed_func_count, 3) if analyzed_func_count > 0 else 0.0
+        round(isolated_count / analyzed_func_count, 3)
+        if analyzed_func_count > 0
+        else 0.0
     )
 
     # (#85) file count metadata
@@ -332,15 +350,17 @@ def _compute_quality_profile(result: dict[str, Any]) -> None:
     ]
 
     if func_list:
-        avg_score = sum(f.compute_scores() or f.effectiveness_score for f in func_list) / len(
-            func_list
-        )
+        avg_score = sum(
+            f.compute_scores() or f.effectiveness_score for f in func_list
+        ) / len(func_list)
         result["summary"]["effectiveness_score"] = round(avg_score, 3)
 
         total_sem = result["summary"]["semantic_assertions"]
         result["summary"]["quality_profile"] = {
             "semantic_ratio": round(total_sem / total, 3) if total > 0 else 0.0,
-            "structural_ratio": round(result["summary"]["structural_assertions"] / total, 3)
+            "structural_ratio": round(
+                result["summary"]["structural_assertions"] / total, 3
+            )
             if total > 0
             else 0.0,
         }

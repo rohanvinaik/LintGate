@@ -11,11 +11,13 @@ from lintgate.linters.performance_checks.algebra_types import (
 
 
 def generate_hypothesis_template(
-    func_name: str, properties: FunctionProperties | tuple[PurityResult, list[AlgebraicProperty]]
+    func_name: str,
+    properties: FunctionProperties | tuple[PurityResult, list[AlgebraicProperty]],
 ) -> str | None:
     """Generate a Hypothesis property test template based on detected traits."""
     if isinstance(properties, tuple):
-        purity, props_list = properties
+        purity: PurityResult = properties[0]
+        props_list: list[AlgebraicProperty] = properties[1]
     else:
         purity = properties.purity
         props_list = list(properties.properties)
@@ -31,7 +33,11 @@ def generate_hypothesis_template(
 
     tests = []
 
-    args_list = ["x", "y", "z"][: purity.parameter_count] if purity.parameter_count > 0 else ["x"]
+    args_list = (
+        ["x", "y", "z"][: purity.parameter_count]
+        if purity.parameter_count > 0
+        else ["x"]
+    )
     args_str = ", ".join(f"{arg}=st.integers()" for arg in args_list)
     args_call = ", ".join(args_list)
 

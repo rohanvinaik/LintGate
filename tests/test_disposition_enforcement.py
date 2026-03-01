@@ -26,7 +26,10 @@ def test_load_disposition_enforcement_config(tmp_path):
     assert cp_config is not None
     assert cp_config.disposition_enforcement.enabled is False
     assert cp_config.disposition_enforcement.max_ignores_before_blocking == 5
-    assert cp_config.disposition_enforcement.enforce_on_channels == ["behavior", "security"]
+    assert cp_config.disposition_enforcement.enforce_on_channels == [
+        "behavior",
+        "security",
+    ]
 
 
 def test_load_disposition_enforcement_default(tmp_path):

@@ -45,7 +45,9 @@ def build_manifest_for_project(
     return manifest, py_files, test_files, source_files
 
 
-def build_summary(manifest: TestEffectivenessManifest, project_root: str) -> dict[str, Any]:
+def build_summary(
+    manifest: TestEffectivenessManifest, project_root: str
+) -> dict[str, Any]:
     """Build a compact summary of the effectiveness manifest."""
     vulnerable = sorted(
         (
@@ -107,7 +109,9 @@ def handle_no_mapped_functions(
     state = AnalysisState.NO_MAPPED_FUNCTIONS.value
 
     if diag.attempted == 0:
-        hint = "Check if source functions are public and tests follow naming conventions."
+        hint = (
+            "Check if source functions are public and tests follow naming conventions."
+        )
         state = AnalysisState.UNMAPPED_TESTS.value
     elif diag.dominant_drop_reason == "ambiguous":
         hint = f"Found {diag.dropped_ambiguous} ambiguous mapping candidates. Try using more specific imports or avoiding duplicate names across files."
@@ -130,7 +134,9 @@ def handle_no_mapped_functions(
     return json.dumps(result)
 
 
-def build_assertion_upgrades(manifest: TestEffectivenessManifest) -> list[dict[str, str]]:
+def build_assertion_upgrades(
+    manifest: TestEffectivenessManifest,
+) -> list[dict[str, str]]:
     """Identify high-leverage assertion upgrade opportunities."""
     upgrades: list[dict[str, str]] = []
     seen_patterns = set()
@@ -231,7 +237,9 @@ def reconcile_with_coverage(
     coverage_files = coverage_data.get("files", {})
 
     for full_name, fe in manifest.functions.items():
-        rel_path, _ = full_name.split("::", 1) if "::" in full_name else (None, full_name)
+        rel_path, _ = (
+            full_name.split("::", 1) if "::" in full_name else (None, full_name)
+        )
         if not rel_path:
             continue
 
@@ -271,7 +279,9 @@ def analyze_function_effectiveness(
 
     # Convert fe object to legacy dict format for backward compatibility
     func_data = fe.to_dict()
-    sem_count = sum(1 for a in fe.assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD)
+    sem_count = sum(
+        1 for a in fe.assertions if a.strength >= SEMANTIC_STRENGTH_THRESHOLD
+    )
 
     has_isolated_sentinel = any(
         w.get("kind") == "isolated_sentinel" for w in anti_patterns

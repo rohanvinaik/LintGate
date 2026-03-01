@@ -72,7 +72,9 @@ class AuthorityEscalationEngine:
         # 1. Normalize recurrence (log scale, cap at 5)
         import math
 
-        rec_score = min(1.0, math.log(recurrence_count + 1, 6)) if recurrence_count > 0 else 0.0
+        rec_score = (
+            min(1.0, math.log(recurrence_count + 1, 6)) if recurrence_count > 0 else 0.0
+        )
 
         # 2. Map model risk
         risk_map = {

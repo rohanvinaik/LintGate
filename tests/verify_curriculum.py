@@ -15,7 +15,11 @@ def test_curriculum_ordering():
             source="src1",
         ),
         TrainingExample(
-            prompt="step 1", completion="ls", reward=1.0, labels=("compliance",), source="src1"
+            prompt="step 1",
+            completion="ls",
+            reward=1.0,
+            labels=("compliance",),
+            source="src1",
         ),
         TrainingExample(
             prompt="step 3",

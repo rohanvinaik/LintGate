@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lintgate.habit_mode import HabitModeState, load_standalone_extras, save_habit_state_standalone
+from lintgate.habit_mode import (
+    HabitModeState,
+    load_standalone_extras,
+    save_habit_state_standalone,
+)
 from lintgate.token_tracker import TokenTrackerState
 
 

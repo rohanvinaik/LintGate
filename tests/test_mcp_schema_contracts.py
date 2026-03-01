@@ -43,7 +43,13 @@ class TestNextActionsSchema:
     def test_next_actions_tool_is_string(self) -> None:
         from mcp_server import _build_next_actions
 
-        context = {"blocking": 1, "fixable": 1, "run_id": "abc", "warnings": 0, "project": "/tmp"}
+        context = {
+            "blocking": 1,
+            "fixable": 1,
+            "run_id": "abc",
+            "warnings": 0,
+            "project": "/tmp",
+        }
         actions = _build_next_actions(context)
         for action in actions:
             assert isinstance(action["tool"], str)
@@ -52,7 +58,13 @@ class TestNextActionsSchema:
     def test_next_actions_args_is_dict(self) -> None:
         from mcp_server import _build_next_actions
 
-        context = {"blocking": 1, "fixable": 1, "run_id": "abc", "warnings": 0, "project": "/tmp"}
+        context = {
+            "blocking": 1,
+            "fixable": 1,
+            "run_id": "abc",
+            "warnings": 0,
+            "project": "/tmp",
+        }
         actions = _build_next_actions(context)
         for action in actions:
             assert isinstance(action["args"], dict)
@@ -60,7 +72,13 @@ class TestNextActionsSchema:
     def test_next_actions_safe_is_bool(self) -> None:
         from mcp_server import _build_next_actions
 
-        context = {"blocking": 1, "fixable": 1, "run_id": "abc", "warnings": 0, "project": "/tmp"}
+        context = {
+            "blocking": 1,
+            "fixable": 1,
+            "run_id": "abc",
+            "warnings": 0,
+            "project": "/tmp",
+        }
         actions = _build_next_actions(context)
         for action in actions:
             assert isinstance(action["safe"], bool)
@@ -68,7 +86,13 @@ class TestNextActionsSchema:
     def test_next_actions_priority_is_int(self) -> None:
         from mcp_server import _build_next_actions
 
-        context = {"blocking": 1, "fixable": 1, "run_id": "abc", "warnings": 0, "project": "/tmp"}
+        context = {
+            "blocking": 1,
+            "fixable": 1,
+            "run_id": "abc",
+            "warnings": 0,
+            "project": "/tmp",
+        }
         actions = _build_next_actions(context)
         for action in actions:
             assert isinstance(action["priority"], int)
@@ -76,7 +100,13 @@ class TestNextActionsSchema:
     def test_clean_run_produces_empty_next_actions(self) -> None:
         from mcp_server import _build_next_actions
 
-        context = {"blocking": 0, "fixable": 0, "run_id": "abc", "warnings": 0, "project": "/tmp"}
+        context = {
+            "blocking": 0,
+            "fixable": 0,
+            "run_id": "abc",
+            "warnings": 0,
+            "project": "/tmp",
+        }
         actions = _build_next_actions(context)
         assert actions == []
 
@@ -166,7 +196,10 @@ class TestTierParityContracts:
 
 class TestBehaviorMcpContracts:
     def test_behavior_precheck_recall_dedupes_matches(self, tmp_path: Path) -> None:
-        from lintgate.controlplane.behavior_compass import BehaviorHypothesis, new_compass
+        from lintgate.controlplane.behavior_compass import (
+            BehaviorHypothesis,
+            new_compass,
+        )
         from lintgate.controlplane.session_memory import (
             get_or_create_session,
             save_behavior_compass,
@@ -174,7 +207,9 @@ class TestBehaviorMcpContracts:
         )
         from mcp_server import behavior_precheck
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with patch(
+            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
+        ):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = new_compass()
             compass.hypotheses.append(
@@ -218,7 +253,9 @@ class TestBehaviorMcpContracts:
         )
         from mcp_server import behavior_precheck
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with patch(
+            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
+        ):
             behavior_precheck(
                 path=str(tmp_path),
                 planned_action="git status",
@@ -245,17 +282,24 @@ class TestBehaviorMcpContracts:
             "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with patch(
+            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
+        ):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = new_compass()
             # Seed state that deterministically fires approach_cycling.
+            # Use recent timestamps so approaches stay within the 30-min window
+            # even after controlplane_run records a synthetic event (#191).
+            import time as _time
+
+            now = _time.time()
             compass.event_counter = 12
             compass.approaches = [
                 ApproachAttempt(
                     approach_sig=f"cmd:{i}",
                     outcome="failed",
-                    started_at=100.0 + i,
-                    last_event=150.0 + i,
+                    started_at=now - 300 + i,
+                    last_event=now - 60 + i,
                     event_count=1,
                 )
                 for i in range(3)
@@ -263,7 +307,7 @@ class TestBehaviorMcpContracts:
             compass.action_history = [
                 {
                     "tool": "Bash",
-                    "ts": 200.0,
+                    "ts": now - 30,
                     "sig": "cmd:2",
                     "exit": 1,
                     "err": "fail",
@@ -282,7 +326,9 @@ class TestBehaviorMcpContracts:
         assert "approach_cycling" in updated.last_fired
         assert updated.signal_fire_counts.get("approach_cycling", 0) >= 1
 
-    def test_controlplane_run_uses_delta_after_clean_snapshot(self, tmp_path: Path) -> None:
+    def test_controlplane_run_uses_delta_after_clean_snapshot(
+        self, tmp_path: Path
+    ) -> None:
         from lintgate.controlplane.session_memory import (
             SessionSnapshot,
             get_or_create_session,
@@ -296,7 +342,9 @@ class TestBehaviorMcpContracts:
             "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with patch(
+            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
+        ):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             session.snapshots.append(SessionSnapshot(run_id="prev", finding_index={}))
             save_session(session)
@@ -539,7 +587,12 @@ class TestPayloadSizeRegression:
             "informational": 3,
             "fixable": 1,
             "blocking_issues": [
-                {"id": "blk1", "kind": "F821", "loc": "mod.py:10", "msg": "undefined name"},
+                {
+                    "id": "blk1",
+                    "kind": "F821",
+                    "loc": "mod.py:10",
+                    "msg": "undefined name",
+                },
             ],
         }
         compact = _json_dumps(data, "compact")
@@ -570,7 +623,10 @@ class TestProviderSchemaConstraints:
         This prevents Antigravity/Gemini HTTP 400 Invalid Arguments on startup.
         """
         import mcp_server
-        from lintgate.mcp_schema import ProviderSchemaError, compile_and_validate_schemas
+        from lintgate.mcp_schema import (
+            ProviderSchemaError,
+            compile_and_validate_schemas,
+        )
 
         tools = mcp_server.mcp._tool_manager.list_tools()
         try:
@@ -612,23 +668,33 @@ class TestIssueIdContracts:
     """Issue ID format and stability contracts."""
 
     def test_issue_id_length_is_12(self) -> None:
-        issue = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
+        issue = LintIssue(
+            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
+        )
         assert len(issue.compute_issue_id()) == 12
 
     def test_issue_id_is_hex(self) -> None:
-        issue = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
+        issue = LintIssue(
+            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
+        )
         issue_id = issue.compute_issue_id()
         assert all(c in "0123456789abcdef" for c in issue_id)
 
     def test_issue_id_deterministic(self) -> None:
-        issue = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
+        issue = LintIssue(
+            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
+        )
         id1 = issue.compute_issue_id()
         id2 = issue.compute_issue_id()
         assert id1 == id2
 
     def test_different_issues_different_ids(self) -> None:
-        issue1 = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
-        issue2 = LintIssue(linter="ruff", kind="F841", message="unused var", file="a.py", line=20)
+        issue1 = LintIssue(
+            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
+        )
+        issue2 = LintIssue(
+            linter="ruff", kind="F841", message="unused var", file="a.py", line=20
+        )
         assert issue1.compute_issue_id() != issue2.compute_issue_id()
 
 

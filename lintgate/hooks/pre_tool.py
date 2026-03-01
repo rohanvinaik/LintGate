@@ -127,7 +127,9 @@ def _collect_state_failures(state: Any, qg: Any, project_root: str) -> list[str]
     if age_s > qg.staleness_threshold_s:
         mins = int(age_s // 60)
         threshold_mins = int(qg.staleness_threshold_s // 60)
-        failures.append(f"Last quality run is {mins}min old (threshold: {threshold_mins}min).")
+        failures.append(
+            f"Last quality run is {mins}min old (threshold: {threshold_mins}min)."
+        )
 
     # Blocking issues
     if state.blocking_issues > 0:
@@ -142,7 +144,9 @@ def _collect_state_failures(state: Any, qg: Any, project_root: str) -> list[str]
                 "until blockers are zero."
             )
         else:
-            failures.append("Resolve blockers, then rerun `controlplane_run` before pushing.")
+            failures.append(
+                "Resolve blockers, then rerun `controlplane_run` before pushing."
+            )
 
     # Tests
     if state.last_test_status == "fail":
@@ -153,7 +157,9 @@ def _collect_state_failures(state: Any, qg: Any, project_root: str) -> list[str]
         try:
             secret_findings = _check_diff_secrets(project_root)
             if secret_findings:
-                failures.append(f"{len(secret_findings)} secret(s) detected in staged diff.")
+                failures.append(
+                    f"{len(secret_findings)} secret(s) detected in staged diff."
+                )
         except Exception:
             pass
 
@@ -198,7 +204,9 @@ def _check_quality_gate(command: str, project_root: str) -> QualityGateResult:
             return QualityGateResult()
         return QualityGateResult(
             should_block=True,
-            messages=["[QualityGate] BLOCKED: No quality run found. Run `controlplane_run` first."],
+            messages=[
+                "[QualityGate] BLOCKED: No quality run found. Run `controlplane_run` first."
+            ],
         )
 
     failures = _collect_state_failures(state, qg, project_root)
@@ -250,7 +258,9 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
             }
         return {"continue": True}
 
-    exec_compass = ExecutionCompass.from_compass_state(compass) if compass is not None else None
+    exec_compass = (
+        ExecutionCompass.from_compass_state(compass) if compass is not None else None
+    )
     messages: list[str] = list(gate_result.messages)
 
     # Add compass messages

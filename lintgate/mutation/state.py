@@ -83,6 +83,33 @@ class FunctionMutationState:
             return 1.0
         return self.survived / self.total
 
+    @property
+    def specification_strength(self) -> float:
+        """Ratio of assertion-kills to total kills.
+
+        0.0 = all crash-kills (proves crash-freedom only).
+        1.0 = all assertion-kills (proves specification completeness).
+        """
+        total_killed = self.killed_by_assertion + self.killed_by_crash
+        if total_killed == 0:
+            return 0.0
+        return self.killed_by_assertion / total_killed
+
+    @property
+    def is_gateable(self) -> bool:
+        """Whether this state has sufficient authority to gate optimization hints.
+
+        Full-depth profiled data always gates. Sampled data gates only with HIGH confidence.
+        """
+        if self.depth == CoverageDepth.PROFILED:
+            return True
+        if (
+            self.depth == CoverageDepth.SAMPLED
+            and self.confidence == ConfidenceLevel.HIGH
+        ):
+            return True
+        return False
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
         d = asdict(self)
@@ -210,7 +237,10 @@ class MutationStateManager:
             return True
 
         # If we want a deep profile but only have a sample, we must run.
-        return target_depth == CoverageDepth.PROFILED and st.depth != CoverageDepth.PROFILED
+        return (
+            target_depth == CoverageDepth.PROFILED
+            and st.depth != CoverageDepth.PROFILED
+        )
 
 
 def compute_content_hash(content: str) -> str:

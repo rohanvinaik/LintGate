@@ -53,7 +53,9 @@ def main():
     # Check for entanglement
     highly_entangled = 0
     for state in valid_states:
-        surviving_cats = [c for c, count in state.survived_by_category.items() if count > 0]
+        surviving_cats = [
+            c for c, count in state.survived_by_category.items() if count > 0
+        ]
         if state.survival_rate >= 0.50 and len(surviving_cats) >= 3:
             highly_entangled += 1
 

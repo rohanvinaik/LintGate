@@ -90,3 +90,79 @@ def test_detect_complex_associative():
     kinds = [p.kind for p in props.properties]
     assert PropertyKind.ASSOCIATIVE in kinds
     assert PropertyKind.COMMUTATIVE in kinds
+
+
+# ── A1: Type-aware commutativity/associativity ────────────────────────
+
+
+def test_str_concat_not_commutative():
+    """String concatenation is NOT commutative — should produce no comm/assoc."""
+    code = "def concat(a: str, b: str) -> str: return a + b"
+    node = _get_func_node(code)
+    purity = _mock_purity("concat", 2)
+    props = classify_properties(node, purity)
+    kinds = [p.kind for p in props.properties]
+    assert PropertyKind.COMMUTATIVE not in kinds
+    assert PropertyKind.ASSOCIATIVE not in kinds
+
+
+def test_list_concat_not_commutative():
+    """List concatenation is NOT commutative."""
+    code = "def merge(a: list, b: list) -> list: return a + b"
+    node = _get_func_node(code)
+    purity = _mock_purity("merge", 2)
+    props = classify_properties(node, purity)
+    kinds = [p.kind for p in props.properties]
+    assert PropertyKind.COMMUTATIVE not in kinds
+    assert PropertyKind.ASSOCIATIVE not in kinds
+
+
+def test_int_add_commutative_high_confidence():
+    """Annotated int addition → commutative with confidence >= 0.9."""
+    code = "def add(a: int, b: int) -> int: return a + b"
+    node = _get_func_node(code)
+    purity = _mock_purity("add", 2)
+    props = classify_properties(node, purity)
+    kinds = [p.kind for p in props.properties]
+    assert PropertyKind.COMMUTATIVE in kinds
+    assert PropertyKind.ASSOCIATIVE in kinds
+    comm_prop = [p for p in props.properties if p.kind == PropertyKind.COMMUTATIVE][0]
+    assert comm_prop.confidence >= 0.9
+    assert comm_prop.type_context is not None
+    assert comm_prop.type_context["a"] == "int"
+
+
+def test_set_union_commutative():
+    """Set union is commutative + associative."""
+    code = "def union(a: set, b: set) -> set: return a | b"
+    node = _get_func_node(code)
+    purity = _mock_purity("union", 2)
+    props = classify_properties(node, purity)
+    kinds = [p.kind for p in props.properties]
+    assert PropertyKind.COMMUTATIVE in kinds
+    assert PropertyKind.ASSOCIATIVE in kinds
+    comm_prop = [p for p in props.properties if p.kind == PropertyKind.COMMUTATIVE][0]
+    assert comm_prop.confidence >= 0.9
+
+
+def test_unannotated_add_reduced_confidence():
+    """Unannotated add → commutative with reduced confidence (0.6)."""
+    code = "def unknown(a, b): return a + b"
+    node = _get_func_node(code)
+    purity = _mock_purity("unknown", 2)
+    props = classify_properties(node, purity)
+    kinds = [p.kind for p in props.properties]
+    assert PropertyKind.COMMUTATIVE in kinds
+    comm_prop = [p for p in props.properties if p.kind == PropertyKind.COMMUTATIVE][0]
+    assert comm_prop.confidence == 0.6
+    assert comm_prop.type_context is None
+
+
+def test_type_context_populated():
+    """AlgebraicProperty.type_context populated when annotations available."""
+    code = "def mul(x: float, y: float) -> float: return x * y"
+    node = _get_func_node(code)
+    purity = _mock_purity("mul", 2)
+    props = classify_properties(node, purity)
+    comm_prop = [p for p in props.properties if p.kind == PropertyKind.COMMUTATIVE][0]
+    assert comm_prop.type_context == {"x": "float", "y": "float"}

@@ -24,7 +24,9 @@ def test_icontract_bridge_basic():
             return_annotation=None,
         ),
         properties=[
-            AlgebraicProperty(kind=PropertyKind.COMMUTATIVE, confidence=1.0, evidence=""),
+            AlgebraicProperty(
+                kind=PropertyKind.COMMUTATIVE, confidence=1.0, evidence=""
+            ),
             AlgebraicProperty(
                 kind=PropertyKind.BOUNDED,
                 confidence=1.0,

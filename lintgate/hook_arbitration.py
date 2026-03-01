@@ -159,7 +159,10 @@ def inject_dispositions(
     # Trigger 3: constraint_reorient -- consecutive failures
     trigger = _DISPOSITION_TRIGGERS[2]  # constraint_reorient
     last_fire = cooldowns.get(trigger["name"], 0)
-    if event_counter - last_fire >= trigger["cooldown_events"] and consecutive_failures >= 3:
+    if (
+        event_counter - last_fire >= trigger["cooldown_events"]
+        and consecutive_failures >= 3
+    ):
         fired.append(
             {
                 "disposition": f"{consecutive_failures} consecutive failures. Run constraint_check() to assess coverage",
@@ -252,8 +255,8 @@ def arbitrate_output(
 
     Returns the (possibly modified or suppressed) report dict.
     """
-    habit_active, habit_score, context_pressure, consecutive_failures = extract_habit_signals(
-        session_data
+    habit_active, habit_score, context_pressure, consecutive_failures = (
+        extract_habit_signals(session_data)
     )
 
     # Phase 1: Disposition injection (always evaluated, even if output suppressed)

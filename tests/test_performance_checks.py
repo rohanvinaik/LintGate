@@ -392,7 +392,7 @@ class TestPERF004:
         assert len(issues) == 0
 
     def test_per_iteration_reset_low_confidence(self):
-        """Accumulator consumed/reset after += → confidence 0.40."""
+        """Accumulator consumed/reset in same iteration → confidence 0.40."""
         issues = _parse_and_check(
             """
             for item in items:
@@ -408,13 +408,45 @@ class TestPERF004:
         for issue in issues:
             assert issue.confidence == 0.40
 
-    def test_normal_concat_high_confidence(self):
-        """Standard string concat with no reset/consumption → confidence 0.90."""
+    def test_per_iteration_reset_before_concat(self):
+        """Per-iteration building: variable reset inside loop before += → confidence 0.40."""
+        issues = _parse_and_check(
+            """
+            for item in items:
+                msg = ""
+                msg += f"Processing {item}"
+                x = 1
+                y = 2
+        """,
+            check_string_concat_in_loop,
+        )
+        assert len(issues) >= 1
+        for issue in issues:
+            assert issue.confidence == 0.40
+
+    def test_per_iteration_reset_string_literal(self):
+        """Per-iteration building with string literal concat → confidence 0.40."""
+        issues = _parse_and_check(
+            """
+            for item in items:
+                line = "prefix: "
+                line += " suffix"
+                x = 1
+                y = 2
+        """,
+            check_string_concat_in_loop,
+        )
+        assert len(issues) >= 1
+        for issue in issues:
+            assert issue.confidence == 0.40
+
+    def test_flags_cross_iteration_accumulation(self):
+        """Cross-iteration: variable initialized before loop, accumulates."""
         issues = _parse_and_check(
             """
             result = ""
             for item in items:
-                result += " "
+                result += f"{item}"
                 x = 1
                 y = 2
         """,
@@ -422,6 +454,7 @@ class TestPERF004:
         )
         assert len(issues) == 1
         assert issues[0].confidence == 0.9
+        assert issues[0].kind == "PERF004"
 
 
 # ─── PERF005: Unnecessary list() in for-loop ─────────────────────────

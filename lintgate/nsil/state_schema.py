@@ -10,11 +10,15 @@ RiskLevel = Literal["low", "medium", "high", "critical", "unknown"]
 # Protocol for compact serialization
 class CompactSerializer(Protocol):
     def serialize_compact(
-        self, output_format: Literal["structured_text", "json_flat", "kv_pairs"], budget: int
+        self,
+        output_format: Literal["structured_text", "json_flat", "kv_pairs"],
+        budget: int,
     ) -> str: ...
 
     @classmethod
-    def from_compact(cls, data: str, output_format: Literal["json_flat", "kv_pairs"]) -> Any: ...
+    def from_compact(
+        cls, data: str, output_format: Literal["json_flat", "kv_pairs"]
+    ) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -34,7 +38,9 @@ class InferenceStateSnapshot:
 
     def serialize_compact(
         self,
-        output_format: Literal["structured_text", "json_flat", "kv_pairs"] = "structured_text",
+        output_format: Literal[
+            "structured_text", "json_flat", "kv_pairs"
+        ] = "structured_text",
         budget: int = 4096,  # Default budget in characters
     ) -> str:
         """
@@ -74,7 +80,9 @@ class InferenceStateSnapshot:
         # Iteratively remove fields based on priority until budget is met
         for field_name_to_remove in removal_priority:
             # Check current size in characters
-            current_serialized = self._serialize_to_format(current_data_for_budgeting, format)
+            current_serialized = self._serialize_to_format(
+                current_data_for_budgeting, format
+            )
             if len(current_serialized) <= budget:
                 break
 
@@ -92,7 +100,9 @@ class InferenceStateSnapshot:
         return self._serialize_to_format(current_data_for_budgeting, format)
 
     def _serialize_to_format(
-        self, data: dict[str, Any], output_format: Literal["structured_text", "json_flat", "kv_pairs"]
+        self,
+        data: dict[str, Any],
+        output_format: Literal["structured_text", "json_flat", "kv_pairs"],
     ) -> str:
         """Helper to serialize data dictionary to the specified format."""
         if format == "json_flat":
@@ -108,7 +118,9 @@ class InferenceStateSnapshot:
                     )  # Ensure lists are sorted
                 elif isinstance(v, dict):
                     # For nested dicts, convert to flat k=v pairs or just repr
-                    pairs.append(f"{k}={json.dumps(v, sort_keys=True, separators=(',', ':'))}")
+                    pairs.append(
+                        f"{k}={json.dumps(v, sort_keys=True, separators=(',', ':'))}"
+                    )
                 else:
                     pairs.append(f"{k}={v}")
             return " ".join(pairs)
@@ -129,7 +141,9 @@ class InferenceStateSnapshot:
                 lines.append(
                     f"Active Constraints: {', '.join(sorted(data['active_constraints']))}"
                 )  # Ensure lists are sorted
-            lines.append(f"Prediction Accuracy: {data.get('prediction_accuracy', 0.0):.2f}")
+            lines.append(
+                f"Prediction Accuracy: {data.get('prediction_accuracy', 0.0):.2f}"
+            )
             lines.append(f"Token Count: {data.get('token_count', 0)}")
             return "\n".join(lines)
         else:

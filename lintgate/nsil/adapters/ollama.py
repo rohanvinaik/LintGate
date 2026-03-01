@@ -63,11 +63,15 @@ class OllamaAdapter:
         if risk_level := self._injected_state.get("risk_level"):
             parts.append(f"Risk Level: {risk_level}")
         if blocking := self._injected_state.get("blocking_findings"):
-            findings = ", ".join(blocking[:3]) if isinstance(blocking, list) else str(blocking)
+            findings = (
+                ", ".join(blocking[:3]) if isinstance(blocking, list) else str(blocking)
+            )
             parts.append(f"Blocking: {findings}")
         if constraints := self._injected_state.get("active_constraints"):
             constr = (
-                ", ".join(constraints[:3]) if isinstance(constraints, list) else str(constraints)
+                ", ".join(constraints[:3])
+                if isinstance(constraints, list)
+                else str(constraints)
             )
             parts.append(f"Constraints: {constr}")
 
@@ -76,7 +80,9 @@ class OllamaAdapter:
             return f"[NSIL State: {state_context}]\n\n{prompt}"
         return prompt
 
-    def get_generation_stream(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
+    def get_generation_stream(
+        self, prompt: str, **kwargs: Any
+    ) -> Generator[str, None, None]:
         """Get streaming generation from Ollama.
 
         Args:
@@ -157,7 +163,9 @@ class OllamaAdapter:
         except Exception as e:
             yield f"[Error: {str(e)}]"
 
-    def get_generation_guarded(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
+    def get_generation_guarded(
+        self, prompt: str, **kwargs: Any
+    ) -> Generator[str, None, None]:
         """Get guarded streaming generation from Ollama.
 
         This wraps get_generation_stream with StreamingGuard.

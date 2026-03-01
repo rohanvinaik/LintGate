@@ -50,7 +50,10 @@ def _collect_guarded_import_lines(tree: ast.AST) -> set[int]:
                 # Bare except — catches everything
                 catches_import_error = True
                 break
-            if isinstance(handler.type, ast.Name) and handler.type.id in _COMPAT_EXCEPTIONS:
+            if (
+                isinstance(handler.type, ast.Name)
+                and handler.type.id in _COMPAT_EXCEPTIONS
+            ):
                 catches_import_error = True
                 break
             # Handle `except (ImportError, ModuleNotFoundError):`
@@ -100,7 +103,9 @@ class ImportChecker(BaseLinter):
         for filepath in ctx.files:
             yield from self._check_file_imports(filepath, ctx)
 
-    def _check_file_imports(self, filepath: str, ctx: LinterContext) -> Iterable[LintIssue]:
+    def _check_file_imports(
+        self, filepath: str, ctx: LinterContext
+    ) -> Iterable[LintIssue]:
         """Parse a file's imports and verify they resolve."""
         try:
             with open(filepath) as f:

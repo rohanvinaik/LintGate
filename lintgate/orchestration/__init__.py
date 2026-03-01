@@ -5,7 +5,10 @@ Orchestration module for cross-architecture pattern pipeline.
 from lintgate.orchestration.attribution import SignalSourceDecomposition
 from lintgate.orchestration.authority import AuthorityEscalationEngine, AuthorityLevel
 from lintgate.orchestration.compliance import ComplianceManager, ComplianceStats
-from lintgate.orchestration.continuity import SessionTransferPacket, generate_transfer_packet
+from lintgate.orchestration.continuity import (
+    SessionTransferPacket,
+    generate_transfer_packet,
+)
 from lintgate.orchestration.cycle_detector import (
     CycleDetectionResult,
     EditCycleState,

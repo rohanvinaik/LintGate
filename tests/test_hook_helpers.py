@@ -160,7 +160,9 @@ class TestRunControlplane:
         }
         config = MagicMock()
         cp_config = MagicMock()
-        cp_config.channel_enabled.return_value = True  # Both structure + behavior enabled
+        cp_config.channel_enabled.return_value = (
+            True  # Both structure + behavior enabled
+        )
         cwd = str(tmp_path)
 
         mock_classification = MagicMock()

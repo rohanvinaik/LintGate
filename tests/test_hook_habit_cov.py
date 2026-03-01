@@ -115,18 +115,26 @@ class TestUpdateHabitModePathA:
         tracker = mock.MagicMock()
 
         with (
-            mock.patch("lintgate.habit_mode.load_habit_state", return_value=habit_state),
-            mock.patch("lintgate.token_tracker.load_tracker_state", return_value=tracker),
+            mock.patch(
+                "lintgate.habit_mode.load_habit_state", return_value=habit_state
+            ),
+            mock.patch(
+                "lintgate.token_tracker.load_tracker_state", return_value=tracker
+            ),
             mock.patch("lintgate.habit_mode.update_signals"),
             mock.patch("lintgate.habit_mode.track_active_files"),
             mock.patch("lintgate.token_tracker.estimate_tool_tokens"),
             mock.patch("lintgate.habit_mode.detect_test_result"),
             mock.patch("lintgate.habit_mode.update_mode", return_value=None),
             mock.patch("lintgate.hook_habit.check_habit_api_calibration"),
-            mock.patch("lintgate.hook_habit.try_habit_compaction", return_value=(False, None)),
+            mock.patch(
+                "lintgate.hook_habit.try_habit_compaction", return_value=(False, None)
+            ),
             mock.patch("lintgate.habit_mode.save_habit_state"),
             mock.patch("lintgate.token_tracker.save_tracker_state"),
-            mock.patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session"),
+            mock.patch(
+                "lintgate.hook_runtime_state.refresh_runtime_state_with_session"
+            ),
             mock.patch("lintgate.state.load_last_run", return_value=None),
             mock.patch("lintgate.state.log_feature_usage"),
             mock.patch("lintgate.state.log_metric"),
@@ -247,7 +255,9 @@ class TestDetectBashSignals:
 
     def test_bash_error_tracking(self):
         fires: dict[str, int] = {}
-        _detect_bash_signals("Bash", "Error: something broke", "", mock.MagicMock(), fires)
+        _detect_bash_signals(
+            "Bash", "Error: something broke", "", mock.MagicMock(), fires
+        )
         assert fires["command_failure"] == 1
 
 
@@ -263,7 +273,9 @@ class TestApplyPathBTelemetry:
         store.profiles = {"key": profile}
 
         with (
-            mock.patch("lintgate.controlplane.model_profiles.load_profiles", return_value=store),
+            mock.patch(
+                "lintgate.controlplane.model_profiles.load_profiles", return_value=store
+            ),
             mock.patch("lintgate.controlplane.model_profiles.apply_telemetry_update"),
             mock.patch("lintgate.controlplane.model_profiles.save_profiles"),
         ):
@@ -299,7 +311,9 @@ class TestRunModeTransition:
         cfg = mock.MagicMock()
         cfg.habit_mode_auto_detect = False
 
-        result = _run_mode_transition(habit_state, 50, {"auto_detect": False}, cfg, "/tmp")
+        result = _run_mode_transition(
+            habit_state, 50, {"auto_detect": False}, cfg, "/tmp"
+        )
         assert result is None
         assert habit_state.total_events_in_habit == 6
 

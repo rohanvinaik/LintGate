@@ -45,9 +45,9 @@ class TestCoherenceGoldenRegression:
             f"loud_channels changed from {expected['loud_channels']} "
             f"to {coherence.loud_channels}"
         )
-        assert sorted(coherence.silent_channels) == sorted(expected["silent_channels"]), (
-            f"Golden regression for '{scenario_name}': silent_channels changed"
-        )
+        assert sorted(coherence.silent_channels) == sorted(
+            expected["silent_channels"]
+        ), f"Golden regression for '{scenario_name}': silent_channels changed"
 
 
 class TestCoherenceContractInvariants:
@@ -58,7 +58,13 @@ class TestCoherenceContractInvariants:
         spec = SCENARIOS[scenario_name]
         results = _build_scenario(spec)
         coherence = compute_coherence(results)
-        assert coherence.state in {"stable", "isolated", "coupled", "systemic", "degraded"}
+        assert coherence.state in {
+            "stable",
+            "isolated",
+            "coupled",
+            "systemic",
+            "degraded",
+        }
 
     @pytest.mark.parametrize("scenario_name", sorted(SCENARIOS.keys()))
     def test_loud_channels_are_failing(self, scenario_name: str):

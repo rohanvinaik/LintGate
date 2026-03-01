@@ -129,6 +129,18 @@ def register(mcp, helpers):
         )
         if missing:
             result["missing_files"] = missing
+
+        # Refactor state integration (#199): auto-update per-file findings
+        try:
+            from lintgate.refactor_state import update_file_findings
+
+            issue_count = result.get("issue_count", 0)
+            for f in existing:
+                rel = os.path.relpath(f, resolved_project_root)
+                update_file_findings(resolved_project_root, rel, issue_count)
+        except Exception:
+            pass
+
         return helpers["_json_dumps"](result, "compact")
 
     @mcp.tool()
@@ -230,7 +242,10 @@ def register(mcp, helpers):
     def lint_status(path: str | None = None) -> str:
         """Show LintGate status: linters, run history, context, version audits, and today's metrics."""
         from lintgate.config import load_config
-        from lintgate.context_guidance import build_context_guidance, summarize_context_guidance
+        from lintgate.context_guidance import (
+            build_context_guidance,
+            summarize_context_guidance,
+        )
         from lintgate.registry import build_registry
         from lintgate.state import METRICS_DIR, load_last_run, load_last_version_audit
         from lintgate.versioning import format_version_audit_summary

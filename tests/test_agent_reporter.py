@@ -138,7 +138,9 @@ class TestFormatReport:
         last_run = {"blocking_count": 0, "total_issues": 3}
         recurrence = {
             "repeated_issue_count": 1,
-            "top_repeated": [{"file": "/src/foo.py", "line": 5, "message": "repeat", "count": 3}],
+            "top_repeated": [
+                {"file": "/src/foo.py", "line": 5, "message": "repeat", "count": 3}
+            ],
         }
         pattern = {
             "alerted_patterns": [
@@ -301,7 +303,9 @@ class TestAddWarningsSection:
 
     def test_warnings_capped_at_three(self) -> None:
         parts: list[str] = []
-        issues = [_make_issue(severity="warning", kind=f"W{i}", line=i) for i in range(6)]
+        issues = [
+            _make_issue(severity="warning", kind=f"W{i}", line=i) for i in range(6)
+        ]
         _add_warnings_section(parts, issues)
         joined = "\n".join(parts)
         assert "WARNINGS (6):" in joined
@@ -381,7 +385,9 @@ class TestAddDeltaSection:
         joined = "\n".join(parts)
         assert "IMPROVEMENT: 1 fewer blocking issue" in joined
         # Ensure singular (no trailing 's')
-        improvement_line = [line for line in joined.split("\n") if "IMPROVEMENT" in line][0]
+        improvement_line = [
+            line for line in joined.split("\n") if "IMPROVEMENT" in line
+        ][0]
         assert improvement_line.endswith("issue")
 
     def test_total_delta_shown_when_different_from_blocking(self) -> None:
@@ -487,7 +493,8 @@ class TestAddRecurrenceSection:
     def test_recurrence_caps_at_ten(self) -> None:
         parts: list[str] = []
         items = [
-            {"file": f"/f{i}.py", "line": i, "message": f"m{i}", "count": 1} for i in range(15)
+            {"file": f"/f{i}.py", "line": i, "message": f"m{i}", "count": 1}
+            for i in range(15)
         ]
         summary = {"repeated_issue_count": 15, "top_repeated": items}
         _add_recurrence_section(parts, summary)
@@ -498,7 +505,9 @@ class TestAddRecurrenceSection:
         parts: list[str] = []
         summary = {
             "repeated_issue_count": 1,
-            "top_repeated": [{"file": "/project/foo.py", "message": "something", "count": 2}],
+            "top_repeated": [
+                {"file": "/project/foo.py", "message": "something", "count": 2}
+            ],
         }
         _add_recurrence_section(parts, summary)
         joined = "\n".join(parts)
@@ -691,7 +700,9 @@ class TestComputeDelta:
     """Tests for _compute_delta."""
 
     def test_computes_all_deltas(self) -> None:
-        result = _make_result(metrics={"blocking_count": 5, "warning_count": 3, "total_issues": 10})
+        result = _make_result(
+            metrics={"blocking_count": 5, "warning_count": 3, "total_issues": 10}
+        )
         last_run = {"blocking_count": 2, "warning_count": 1, "total_issues": 4}
         delta = _compute_delta(result, last_run)
         assert delta["blocking_delta"] == 3
@@ -699,7 +710,9 @@ class TestComputeDelta:
         assert delta["total_delta"] == 6
 
     def test_negative_deltas(self) -> None:
-        result = _make_result(metrics={"blocking_count": 0, "warning_count": 0, "total_issues": 0})
+        result = _make_result(
+            metrics={"blocking_count": 0, "warning_count": 0, "total_issues": 0}
+        )
         last_run = {"blocking_count": 5, "warning_count": 3, "total_issues": 10}
         delta = _compute_delta(result, last_run)
         assert delta["blocking_delta"] == -5
