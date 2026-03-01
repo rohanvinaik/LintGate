@@ -59,6 +59,8 @@ mutants/
 .claude/CLAUDE.md
 .claude/rules/inquiry.md
 .claude/rules/theory.md
+.claude/rules/lg_focus.md
+.claude/rules/lg_session.md
 
 # Auto-generated agent config files (created by integrate.sh)
 # These are pointer files — AGENTS.md is the source of truth.
