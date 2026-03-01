@@ -334,7 +334,7 @@ def _build_generic_extraction_steps(
             target=candidate.target,
             detail={
                 "description": "Define extracted function based on convergence evidence",
-                "supporting_lenses": [l.value for l in candidate.supporting_lenses],
+                "supporting_lenses": [lk.value for lk in candidate.supporting_lenses],
             },
             rationale=f"Convergence ({candidate.net_confidence:.0%} net) across {len(candidate.supporting_lenses)} lenses supports extraction.",
         )
@@ -459,12 +459,11 @@ def _generate_warnings(candidate: ConvergenceResult) -> list[str]:
                     f"Warning: algebraic analysis flags unsafe extraction — {ev.detail}"
                 )
 
-        elif ev.lens == LensKind.IMPORT_TRACING:
-            if "io" in ev.detail.lower():
-                warnings.append(
-                    "Warning: module-level IO detected — "
-                    "extraction may change initialization order"
-                )
+        elif ev.lens == LensKind.IMPORT_TRACING and "io" in ev.detail.lower():
+            warnings.append(
+                "Warning: module-level IO detected — "
+                "extraction may change initialization order"
+            )
 
     return warnings
 

@@ -7,6 +7,8 @@ to files via the Write tool.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from lintgate.mutation.state import FunctionMutationState
 
 
@@ -113,8 +115,6 @@ def generate_string_template(state: FunctionMutationState) -> str:
 
 
 # Map survivor categories to template generators
-from collections.abc import Callable
-
 CATEGORY_GENERATORS: dict[str, Callable[[FunctionMutationState], str]] = {
     "arithmetic": generate_arithmetic_template,
     "conditional": generate_conditional_template,

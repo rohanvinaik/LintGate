@@ -334,8 +334,10 @@ class TestSessionReadinessWithGitContext:
             Path(os.path.join(tmpdir, "CLAUDE.md")).write_text(
                 "# Rules\n<!-- LINTGATE_FORBID_REGEX: foo -->\n"
             )
-            # Old call signature still works
+            # Old call signature (no git_context kwarg) still works
             result = check_session_readiness(
                 tmpdir, theory_profile=self._make_profile()
             )
             assert result.ready
+            # Backward compat: missing field should not appear
+            assert not any("theory_stale" in m for m in result.missing)

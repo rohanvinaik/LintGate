@@ -30,10 +30,10 @@ def _make_convergence(
 ) -> ConvergenceResult:
     ev = evidence or []
     supporting = sorted(
-        set(e.lens for e in ev if e.signal == "support"), key=lambda l: l.value
+        set(e.lens for e in ev if e.signal == "support"), key=lambda lk: lk.value
     )
     opposing = sorted(
-        set(e.lens for e in ev if e.signal == "oppose"), key=lambda l: l.value
+        set(e.lens for e in ev if e.signal == "oppose"), key=lambda lk: lk.value
     )
     return ConvergenceResult(
         target=target,

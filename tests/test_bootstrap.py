@@ -383,7 +383,7 @@ class TestBehavioralContracts:
 
         contracts = generate_contracts(str(tmp_path))
         # Should have at least the return type contract
-        assert len(contracts) >= 0  # May or may not produce depending on AST
+        assert isinstance(contracts, dict)  # May or may not produce depending on AST
         # If any produced, verify structure
         for path, content in contracts.items():
             assert "Auto-generated" in content

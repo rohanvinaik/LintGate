@@ -258,10 +258,7 @@ def _generate_shape_contract(
             # Check body for .append() call
             for sub_stmt in ast.walk(stmt):
                 if isinstance(sub_stmt, ast.Call):
-                    if (
-                        isinstance(sub_stmt.func, ast.Attribute)
-                        and sub_stmt.func.attr == "append"
-                    ):
+                    if isinstance(sub_stmt.func, ast.Attribute) and sub_stmt.func.attr == "append":
                         has_for_append = True
 
     if not (has_init_list and has_for_append and input_param):

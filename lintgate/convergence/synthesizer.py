@@ -182,9 +182,7 @@ def _topo_sort_weighted(
 
         # Find all nodes that depend on `node` and decrease their in-degree
         for dependent, deps in edges.items():
-            if node in deps and dependent not in result and dependent not in queue:
-                in_degree[dependent] -= 1
-            elif node in deps and dependent not in result:
+            if node in deps and dependent not in result:
                 in_degree[dependent] -= 1
 
         # Re-check for newly unblocked nodes

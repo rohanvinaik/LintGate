@@ -104,7 +104,7 @@ def enrich_decomposition_candidates(
         candidate.confidence = min(candidate.confidence + boost, 0.99)
 
         # Add convergence evidence
-        lens_names = [l.value for l in cr.supporting_lenses]
+        lens_names = [lk.value for lk in cr.supporting_lenses]
         candidate.evidence.append(f"convergence:{','.join(lens_names)}")
 
         # Upgrade actionability if convergence is stronger
