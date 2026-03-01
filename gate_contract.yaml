@@ -4,7 +4,7 @@ required_checks:
   - "Tests (3.11)"
   - "Tests (3.12)"
   - "Qlty"
-  - "SonarQube Cloud Scan"
+  - "SonarCloud Code Analysis"
 
 ci_workflows:
   - ".github/workflows/tests.yml"
