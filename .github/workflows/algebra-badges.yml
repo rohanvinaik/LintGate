@@ -51,7 +51,7 @@ jobs:
           PY
 
       - name: Generate Purity Badge
-        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        uses: emibcn/badge-action@808173dd03e2f30c980d03ee49e181626088eee8 # v2.0.3
         id: badge_pure
         with:
           label: "Side-Effect-Free"
@@ -60,7 +60,7 @@ jobs:
           path: ".github/badges/purity.svg"
 
       - name: Generate Property Badge
-        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        uses: emibcn/badge-action@808173dd03e2f30c980d03ee49e181626088eee8 # v2.0.3
         id: badge_prop
         with:
           label: "Algebraic Properties"
