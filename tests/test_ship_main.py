@@ -818,11 +818,11 @@ def test_mergeability_no_common_ancestor(ship_main, monkeypatch):
     assert "exit code" in detail
 
 
-# ── _sync_local_after_merge ─────────────────────────────────────────
+# ── _post_merge_sync ───────────────────────────────────────────────
 
 
-def test_sync_local_after_merge(ship_main, monkeypatch):
-    """Verify switch + pull are invoked in order with check=True."""
+def test_post_merge_sync(ship_main, monkeypatch):
+    """Verify checkout + pull + branch delete are invoked in order."""
     calls = []
 
     def fake_run(cmd, *, cwd, check=True, capture=False):
@@ -830,12 +830,14 @@ def test_sync_local_after_merge(ship_main, monkeypatch):
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(ship_main, "_run", fake_run)
-    ship_main._sync_local_after_merge("main", "/repo")
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0),
+    )
+    ship_main._post_merge_sync("/repo", "main", "codex/ship-test")
 
     assert len(calls) == 2
-    assert calls[0][0] == ["git", "switch", "main"]
+    assert calls[0][0] == ["git", "checkout", "main"]
     assert calls[0][1] == "/repo"
-    assert calls[0][2] is True
     assert calls[1][0] == ["git", "pull", "--ff-only"]
     assert calls[1][1] == "/repo"
-    assert calls[1][2] is True
