@@ -22,7 +22,6 @@ at the channel level instead of the linter level.
 
 from __future__ import annotations
 
-import contextlib
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
