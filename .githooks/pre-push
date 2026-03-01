@@ -103,8 +103,19 @@ fi
 if _should_run tests && { [ -d tests ] || [ -d test ]; }; then
   if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi
   echo "[lintgate] running tests with coverage + symbol gate"
-  # Use 50% of available cores for parallel test execution (min 1)
-  NCPU=$(python -c "import os; print(max(1, int(os.cpu_count() * 0.5)))" 2>/dev/null || echo "1")
+  # Use free CPU capacity for parallel tests — never saturate the machine.
+  # Reads 1-minute load average vs core count; claims half the idle headroom.
+  NCPU=$(python -c "
+import os
+cores = os.cpu_count() or 1
+try:
+    load = os.getloadavg()[0]          # 1-min avg
+except OSError:
+    load = cores * 0.5                 # conservative fallback
+idle = max(0, cores - load)
+workers = max(1, int(idle * 0.5))      # claim half the free headroom
+print(workers)
+" 2>/dev/null || echo "1")
   XDIST_FLAG=""
   if python -c "import xdist" 2>/dev/null; then
     XDIST_FLAG="-n $NCPU --dist worksteal"
