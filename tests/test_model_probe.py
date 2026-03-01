@@ -39,7 +39,9 @@ class TestProbeTaskStructure:
 
     def test_all_tasks_have_target_signals(self):
         for task in PROBE_TASKS:
-            assert len(task.target_signals) >= 1, f"Task {task.id} has no target_signals"
+            assert len(task.target_signals) >= 1, (
+                f"Task {task.id} has no target_signals"
+            )
 
     def test_unique_task_ids(self):
         ids = [t.id for t in PROBE_TASKS]
@@ -106,7 +108,9 @@ class TestGetProbeTasks:
         t1 = get_probe_tasks(seed=42)
         t2 = get_probe_tasks(seed=12345)
         # At least one task should have different context (different variant)
-        contexts_differ = any(t1[i]["context"] != t2[i]["context"] for i in range(len(t1)))
+        contexts_differ = any(
+            t1[i]["context"] != t2[i]["context"] for i in range(len(t1))
+        )
         # This is probabilistic but with 5 tasks and 2 variants each,
         # the chance of all matching is (1/2)^5 = 3.1% — very unlikely
         assert contexts_differ

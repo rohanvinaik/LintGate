@@ -57,7 +57,9 @@ class TestTokenTrackerState:
 class TestEstimateToolTokens:
     def test_basic_estimation(self):
         tracker = TokenTrackerState()
-        tokens = estimate_tool_tokens(tracker, "Read", {"file_path": "/a.py"}, "content here")
+        tokens = estimate_tool_tokens(
+            tracker, "Read", {"file_path": "/a.py"}, "content here"
+        )
         assert tokens > 0
         assert tracker.estimated_tokens_used == tokens
         assert tracker.tool_call_count == 1
@@ -77,7 +79,9 @@ class TestEstimateToolTokens:
 
     def test_lines_written_tracking(self):
         tracker = TokenTrackerState()
-        estimate_tool_tokens(tracker, "Write", {"content": "line1\nline2\nline3\n"}, "ok")
+        estimate_tool_tokens(
+            tracker, "Write", {"content": "line1\nline2\nline3\n"}, "ok"
+        )
         assert tracker.lines_written == 3
 
     def test_edit_lines_written(self):

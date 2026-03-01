@@ -106,7 +106,9 @@ def compute_finding_delta(
 
     for fp in sorted(new_fps):
         current = current_index[fp]
-        new_findings.append({**current, "fingerprint": fp, "count": int(current.get("count", 1))})
+        new_findings.append(
+            {**current, "fingerprint": fp, "count": int(current.get("count", 1))}
+        )
 
     for fp in resolved_fps:
         previous = previous_index[fp]

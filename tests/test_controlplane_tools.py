@@ -70,7 +70,11 @@ def test_extract_findings_filters_by_severity() -> None:
 def test_extract_findings_truncates_to_max() -> None:
     details = {
         "channels": {
-            "lint": {"findings": [{"severity": "warning", "message": f"w{i}"} for i in range(5)]}
+            "lint": {
+                "findings": [
+                    {"severity": "warning", "message": f"w{i}"} for i in range(5)
+                ]
+            }
         }
     }
     result = _extract_findings(details, None, None, 2)

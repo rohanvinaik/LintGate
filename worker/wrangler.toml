@@ -1,0 +1,15 @@
+name = "lintgate-app"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 7 * * 1"]  # Weekly Monday 07:00 UTC — stale branch cleanup
+
+[[kv_namespaces]]
+binding = "STATE"
+id = "0bcbde15180b4e9e95b136415afeea48"
+
+[vars]
+REPO_OWNER = "rohanvinaik"
+REPO_NAME = "lintgate"

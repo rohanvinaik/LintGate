@@ -1,4 +1,4 @@
-"""Behavioral drift detection rules — 9 signal detectors.
+"""Behavioral drift detection rules — 11 signal detectors.
 
 Hard signals (severity="warning", participate in coherence):
 1. approach_cycling: Repeatedly trying failed approaches without updating model
@@ -11,9 +11,11 @@ Soft signals (severity="informational", coherence-neutral):
 6. tool_repetition: Same command signature repeated excessively
 7. verification_debt: Long execute/modify streak with no verify/inspect
 8. stale_model: Approach changes without hypothesis model updates
+9. mass_delegation: 3+ Agent/Task spawns in short window during refactoring
+10. redundant_planning: EnterPlanMode after controlplane_run with findings
 
 Trigger-only (produces nudge but not finding):
-9. consecutive_failures: 3+ consecutive Bash failures
+11. consecutive_failures: 3+ consecutive Bash failures
 
 Extracted from behavior_channel.py for module size compliance.
 """
@@ -52,7 +54,9 @@ def detect_approach_cycling(
     cutoff = now - (window_min * 60)
 
     recent_failed = [
-        a for a in compass.approaches if a.outcome == "failed" and a.last_event >= cutoff
+        a
+        for a in compass.approaches
+        if a.outcome == "failed" and a.last_event >= cutoff
     ]
 
     if len(recent_failed) >= count_threshold:
@@ -583,4 +587,148 @@ def detect_stale_model(
             evidence=evidence,
         ),
         is_hard=False,
+    )
+
+
+# ── Agent Anti-Pattern Detectors (#191) ──────────────────────────────
+
+_REFACTORING_KEYWORDS = {
+    "fix",
+    "refactor",
+    "complexity",
+    "extract",
+    "split",
+    "simplify",
+    "clean",
+}
+
+
+def detect_mass_delegation(
+    compass: BehaviorCompass,
+    thresholds: dict[str, Any],
+    coord: SignalCoordinator,
+    scorer: IntentBiasScorer,
+) -> None:
+    """Detect mass sub-agent spawning for refactoring work. Soft signal.
+
+    Fires when 3+ Agent/Task tool calls appear in action_history within
+    a short window, especially with refactoring-related descriptions.
+    Parallel refactoring agents lack project context and produce
+    inconsistent results.
+    """
+    count_threshold = thresholds.get("mass_delegation_count", 3)
+    window_min = thresholds.get("mass_delegation_window_min", 10)
+
+    if not compass.action_history:
+        return
+
+    now = compass.action_history[-1]["ts"]
+    cutoff = now - (window_min * 60)
+
+    recent_delegations = [
+        e
+        for e in compass.action_history
+        if e.get("ts", 0) >= cutoff and e.get("tool") in ("Agent", "Task")
+    ]
+
+    if len(recent_delegations) < count_threshold:
+        return
+
+    # Check for refactoring-related keywords in descriptions
+    refactor_count = 0
+    for event in recent_delegations:
+        sig = str(event.get("sig", "")).lower()
+        if any(kw in sig for kw in _REFACTORING_KEYWORDS):
+            refactor_count += 1
+
+    # Fire if enough delegations exist (with or without refactoring keywords)
+    decomp = SignalSourceDecomposition(
+        signal_name="mass_delegation",
+        pattern_score=min(1.0, len(recent_delegations) / count_threshold),
+        outcome_score=0.5 if refactor_count == 0 else 1.0,
+    )
+
+    detail = ""
+    if refactor_count > 0:
+        detail = f" ({refactor_count} with refactoring-related descriptions)"
+
+    coord.add_finding(
+        "mass_delegation",
+        LintIssue(
+            linter="behavior_channel",
+            kind="mass_delegation",
+            message=(
+                f"{len(recent_delegations)} sub-agent spawns in {window_min}min"
+                f"{detail}. "
+                "Parallel refactoring agents produce inconsistent results. "
+                "Consider sequential file-by-file work with cumulative context."
+            ),
+            severity="informational",
+            evidence=scorer.build_evidence_trace(),
+        ),
+        is_hard=False,
+        precheck_nudge={
+            "tool": "controlplane_get_details",
+            "reason": "mass_delegation — use guided work queue instead of parallel agents",
+        },
+        decomposition=decomp,
+    )
+
+
+def detect_redundant_planning(
+    compass: BehaviorCompass,
+    thresholds: dict[str, Any],
+    coord: SignalCoordinator,
+    scorer: IntentBiasScorer,
+) -> None:
+    """Detect EnterPlanMode after controlplane_run has provided findings. Soft signal.
+
+    ControlPlane findings ARE the plan — re-articulating them in markdown
+    adds zero information and consumes context window. Fires when
+    EnterPlanMode appears after controlplane_run with findings.
+    """
+    if not compass.action_history:
+        return
+
+    # Walk action history to find the pattern:
+    # controlplane_run occurred, then EnterPlanMode occurred after it
+    cp_run_seen = False
+    plan_after_cp = False
+
+    for event in compass.action_history:
+        tool = event.get("tool", "")
+        if tool == "controlplane_run":
+            cp_run_seen = True
+        elif tool == "EnterPlanMode" and cp_run_seen:
+            plan_after_cp = True
+
+    if not plan_after_cp:
+        return
+
+    decomp = SignalSourceDecomposition(
+        signal_name="redundant_planning",
+        pattern_score=1.0,
+        outcome_score=0.7,
+    )
+
+    coord.add_finding(
+        "redundant_planning",
+        LintIssue(
+            linter="behavior_channel",
+            kind="redundant_planning",
+            message=(
+                "EnterPlanMode called after controlplane_run. "
+                "ControlPlane findings are your plan. Execute sequentially "
+                "(controlplane_get_details → fix → lint_files → repeat) "
+                "rather than re-planning."
+            ),
+            severity="informational",
+            evidence=scorer.build_evidence_trace(),
+        ),
+        is_hard=False,
+        precheck_nudge={
+            "tool": "controlplane_get_details",
+            "reason": "redundant_planning — drill into existing findings instead of re-planning",
+        },
+        decomposition=decomp,
     )

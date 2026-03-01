@@ -88,10 +88,16 @@ class SessionSnapshot:
         default_factory=dict
     )  # action_id → compact meta
     behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
-    finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
-    delivery_metrics: dict[str, Any] = field(default_factory=dict)  # channel health for this run
+    finding_index: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )  # fingerprint → summary
+    delivery_metrics: dict[str, Any] = field(
+        default_factory=dict
+    )  # channel health for this run
     disposition: str | None = None  # Behavioral nudge string from last run
-    last_nudge: dict[str, Any] | None = None  # Full nudge object for compliance analysis
+    last_nudge: dict[str, Any] | None = (
+        None  # Full nudge object for compliance analysis
+    )
     compliance_outcome: str | None = None  # followed | ignored | overridden | uncertain
 
     # Backward-compatible property accessors for behavior fields
@@ -170,10 +176,14 @@ class SessionMemory:
     snapshots: list[SessionSnapshot] = field(default_factory=list)
     coherence_trajectory: list[str] = field(default_factory=list)
     repair_outcomes: dict[str, str] = field(default_factory=dict)  # action_id → status
-    pattern_trend: dict[str, list[int]] = field(default_factory=dict)  # "linter|kind" → [counts]
+    pattern_trend: dict[str, list[int]] = field(
+        default_factory=dict
+    )  # "linter|kind" → [counts]
     proposed_constraints: list[dict[str, Any]] = field(default_factory=list)
     agent_disagreements: list[dict[str, Any]] = field(default_factory=list)
-    behavior_compass: dict[str, Any] = field(default_factory=dict)  # Serialized BehaviorCompass
+    behavior_compass: dict[str, Any] = field(
+        default_factory=dict
+    )  # Serialized BehaviorCompass
     # Architecture of Inquiry: cached theory profile for current mesh run (transient, not persisted)
     theory_profile_cache: dict[str, Any] | None = None
     # Architecture of Inquiry: pending context patches awaiting explicit apply
@@ -184,7 +194,9 @@ class SessionMemory:
     edit_cycle_state: dict[str, Any] = field(default_factory=dict)
     latest_transfer_packet: dict[str, Any] | None = None
     delivery_health_summary: dict[str, Any] = field(default_factory=dict)
-    knowledge_meta: dict[str, Any] = field(default_factory=dict)  # Staleness, survival, etc.
+    knowledge_meta: dict[str, Any] = field(
+        default_factory=dict
+    )  # Staleness, survival, etc.
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -251,7 +263,9 @@ class SessionMemory:
         """Hydrate session from a transfer packet (handoff)."""
         from dataclasses import asdict
 
-        self.latest_transfer_packet = asdict(packet) if hasattr(packet, "to_dict") else packet
+        self.latest_transfer_packet = (
+            asdict(packet) if hasattr(packet, "to_dict") else packet
+        )
 
         # Hydrate active finding history to maintain coherence across handoff
         active_findings = (
@@ -324,7 +338,9 @@ def save_session(session: SessionMemory) -> None:
         pass  # Non-fatal — session memory is observability, not correctness
 
 
-def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> SessionMemory:
+def get_or_create_session(
+    project_root: str, max_age_hours: float = 4.0
+) -> SessionMemory:
     """Load existing session or create a new one.
 
     If the existing session has expired, a fresh one is created.
@@ -345,7 +361,8 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
 
         # Check for pending transfer packet (#169)
         transfer_path = (
-            SESSION_DIR / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
+            SESSION_DIR
+            / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
         )
         if transfer_path.exists():
             try:
@@ -543,7 +560,10 @@ def detect_applied_repairs(
     # For now, we track repairs by their action_id status
     # A more sophisticated version would store finding-repair associations
     for _action_id, status in session.repair_outcomes.items():
-        if status == "pending" and last_snapshot.blocking_count < prev_snapshot.blocking_count:
+        if (
+            status == "pending"
+            and last_snapshot.blocking_count < prev_snapshot.blocking_count
+        ):
             # Mark as potentially applied (conservative: only if blocking decreased)
             pass  # Future: correlate specific findings with specific repairs
 
@@ -574,6 +594,120 @@ def save_behavior_compass(session: SessionMemory, compass: BehaviorCompass) -> N
 def get_habit_mode_active(session: SessionMemory) -> bool:
     """Quick check if habit mode is active without full deserialization."""
     return bool(session.behavior_compass.get("habit_mode", {}).get("active", False))
+
+
+# ── Persistent Test Failure Tracking (#205) ─────────────────────────
+
+
+def _extract_test_failure_keys(snapshot: SessionSnapshot) -> set[str]:
+    """Extract test failure fingerprints from a snapshot's finding index."""
+    keys: set[str] = set()
+    for fp, info in snapshot.finding_index.items():
+        kind = info.get("kind", "")
+        if kind in ("test_failure", "TEFF009"):
+            keys.add(fp)
+    return keys
+
+
+def escalate_persistent_failures(session: SessionMemory) -> list[dict[str, Any]]:
+    """TEFF008 — Identify test failures present from session start to now.
+
+    Compares the first snapshot's test failures with the latest snapshot.
+    Failures that persist without being addressed get escalated.
+
+    Returns a list of dicts suitable for building LintIssue findings.
+    """
+    if len(session.snapshots) < 2:
+        return []
+
+    initial = session.snapshots[0]
+    latest = session.snapshots[-1]
+
+    initial_failures = _extract_test_failure_keys(initial)
+    latest_failures = _extract_test_failure_keys(latest)
+
+    if not initial_failures:
+        return []
+
+    persistent = initial_failures & latest_failures
+    if not persistent:
+        return []
+
+    # Check which persistent failures were classified via agent feedback
+    classified = set()
+    for disagreement in session.agent_disagreements:
+        if disagreement.get("type") == "test_failure_classification":
+            classified.add(disagreement.get("fingerprint", ""))
+
+    uninvestigated = persistent - classified
+    if not uninvestigated:
+        return []
+
+    findings: list[dict[str, Any]] = []
+    for fp in sorted(uninvestigated):
+        info = latest.finding_index.get(fp, {})
+        findings.append(
+            {
+                "fingerprint": fp,
+                "kind": info.get("kind", "test_failure"),
+                "message": info.get("message", ""),
+                "file": info.get("file"),
+                "line": info.get("line"),
+                "snapshots_present": len(session.snapshots),
+            }
+        )
+
+    return findings
+
+
+def check_session_exit_gate(session: SessionMemory) -> list[str]:
+    """Return advisory messages for session exit.
+
+    Checks for unresolved test failures that persisted through the
+    entire session without investigation or classification.
+    This is advisory — it surfaces the gap but does not hard-block.
+    """
+    advisories: list[str] = []
+
+    persistent = escalate_persistent_failures(session)
+    if persistent:
+        advisories.append(
+            f"{len(persistent)} test failure{'s' if len(persistent) != 1 else ''} "
+            f"present at session start and not addressed. "
+            f"Classify each as stale/regression/flaky via "
+            f"controlplane_agent_feedback before completing session."
+        )
+
+    return advisories
+
+
+def record_test_failure_classification(
+    session: SessionMemory,
+    fingerprint: str,
+    classification: str,
+    rationale: str = "",
+) -> None:
+    """Record a structured classification for a test failure.
+
+    Valid classifications:
+    - stale_test: Tests reference deleted interfaces
+    - known_regression: Code is broken, tracked in an issue
+    - flaky: Non-deterministic failure
+    - out_of_scope: Explicitly deferred with rationale
+    """
+    valid = {"stale_test", "known_regression", "flaky", "out_of_scope"}
+    if classification not in valid:
+        return
+
+    session.agent_disagreements.append(
+        {
+            "type": "test_failure_classification",
+            "fingerprint": fingerprint,
+            "classification": classification,
+            "rationale": rationale,
+            "timestamp": time.time(),
+        }
+    )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

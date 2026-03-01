@@ -87,8 +87,12 @@ def check_class_methods(
     thresholds: dict[str, int],
 ) -> Iterable[LintIssue]:
     """Check method count (pylint R0904 — god class indicator)."""
-    methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    non_dunder = [m for m in methods if not (m.name.startswith("__") and m.name.endswith("__"))]
+    methods = [
+        n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    non_dunder = [
+        m for m in methods if not (m.name.startswith("__") and m.name.endswith("__"))
+    ]
 
     count = len(non_dunder)
     max_methods = thresholds["max_class_methods"]

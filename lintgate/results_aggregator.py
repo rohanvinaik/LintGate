@@ -12,6 +12,11 @@ from __future__ import annotations
 
 import os
 
+from .linters.import_pattern_detector import (
+    OptionalImportReport,
+    detect_optional_imports,
+    is_finding_on_guarded_import,
+)
 from .types import AggregatedResult, LinterResult, LintIssue, ProjectConfig
 
 
@@ -70,6 +75,9 @@ def aggregate_results(
     for issue in unique:
         issue.issue_id = issue.compute_issue_id()
 
+    # Downgrade findings on guarded optional imports (try/except ImportError)
+    _downgrade_optional_import_findings(unique, config.project_root)
+
     # Apply severity overrides from config
     if config.severity_overrides:
         for issue in unique:
@@ -80,6 +88,13 @@ def aggregate_results(
     # Apply exemptions
     if config.exemptions:
         unique = [i for i in unique if not _is_exempted(i, config.exemptions)]
+
+    # Apply signal tunings (agent-initiated suppression/downgrade)
+    tuned_count = 0
+    if config.project_root:
+        from .signal_tunings import filter_tuned_issues
+
+        unique, tuned_count = filter_tuned_issues(unique, config.project_root)
 
     # Split by severity
     blocking = sorted(
@@ -101,15 +116,20 @@ def aggregate_results(
         "blocking_count": len(blocking),
         "warning_count": len(warnings),
         "info_count": len(informational),
+        "tuned_count": tuned_count,
         "fixable_count": sum(1 for i in unique if i.fixable),
         "linters_run": sum(1 for s in linter_statuses.values() if s == "ok"),
         "linters_skipped": sum(1 for s in linter_statuses.values() if s == "skipped"),
-        "linters_errored": sum(1 for s in linter_statuses.values() if s in ("error", "timeout")),
+        "linters_errored": sum(
+            1 for s in linter_statuses.values() if s in ("error", "timeout")
+        ),
     }
 
     # Collect all files that were linted (normalize absolute paths to relative)
     project_root = config.project_root
-    files_linted = sorted({_normalize_file_path(f, project_root) for i in unique if (f := i.file)})
+    files_linted = sorted(
+        {_normalize_file_path(f, project_root) for i in unique if (f := i.file)}
+    )
 
     return AggregatedResult(
         blocking=blocking,
@@ -122,6 +142,66 @@ def aggregate_results(
         total_duration_ms=total_duration,
         files_linted=files_linted,
     )
+
+
+def _downgrade_optional_import_findings(
+    issues: list[LintIssue], project_root: str
+) -> None:
+    """Downgrade findings that reference guarded optional imports.
+
+    Scans each unique source file for ``try/except ImportError`` patterns.
+    Any finding whose line or message references a guarded import name is
+    downgraded from blocking/warning → informational with evidence attached.
+    """
+    by_file: dict[str, list[LintIssue]] = {}
+    for issue in issues:
+        if issue.file:
+            by_file.setdefault(issue.file, []).append(issue)
+
+    for filepath, file_issues in by_file.items():
+        report = _parse_optional_imports(filepath, project_root)
+        if report is None:
+            continue
+        _apply_optional_import_downgrades(file_issues, report)
+
+
+def _parse_optional_imports(
+    filepath: str, project_root: str
+) -> OptionalImportReport | None:
+    """Read and parse a file for optional-import patterns."""
+    full_path = filepath
+    if not os.path.isabs(filepath) and project_root:
+        full_path = os.path.join(project_root, filepath)
+    try:
+        with open(full_path) as f:
+            source = f.read()
+    except OSError:
+        return None
+    report = detect_optional_imports(source)
+    return report if report.optional_imports else None
+
+
+def _apply_optional_import_downgrades(
+    issues: list[LintIssue], report: OptionalImportReport
+) -> None:
+    """Downgrade issues that reference guarded imports to informational."""
+    fallback = _first_fallback(report)
+    for issue in issues:
+        if issue.severity == "informational":
+            continue
+        if is_finding_on_guarded_import(issue.line, issue.kind, issue.message, report):
+            issue.severity = "informational"
+            issue.evidence["optional_import"] = True
+            if fallback:
+                issue.evidence["fallback_value"] = fallback
+
+
+def _first_fallback(report: OptionalImportReport) -> str | None:
+    """Return the first fallback value found in the report, if any."""
+    for oi in report.optional_imports:
+        if oi.fallback_value:
+            return oi.fallback_value
+    return None
 
 
 def _resolve_severity_override(kind: str, overrides: dict[str, str]) -> str | None:
@@ -156,7 +236,10 @@ def _deduplicate(issues: list[LintIssue]) -> list[LintIssue]:
         if key in seen:
             existing = seen[key]
             # Keep the one with higher severity, then higher confidence
-            existing_rank = (severity_order.get(existing.severity, 0), existing.confidence)
+            existing_rank = (
+                severity_order.get(existing.severity, 0),
+                existing.confidence,
+            )
             new_rank = (severity_order.get(issue.severity, 0), issue.confidence)
             if new_rank > existing_rank:
                 seen[key] = issue
@@ -190,7 +273,9 @@ def _is_exempted(issue: LintIssue, exemptions: dict) -> bool:
         # Check by filename
         if issue.file:
             basename = os.path.basename(issue.file)
-            file_exemption = linter_exemptions.get(basename) or linter_exemptions.get(issue.file)
+            file_exemption = linter_exemptions.get(basename) or linter_exemptions.get(
+                issue.file
+            )
             if file_exemption:
                 # If codes are specified, check if this specific code is exempted
                 exempt_codes = file_exemption.get("codes", [])

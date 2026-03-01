@@ -1,6 +1,19 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 66 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 76 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+
+## Ship Pipeline
+
+Your job ends at `git push`. After push, the LintGate GitHub App (`lintgate[bot]`) handles everything:
+
+- Creates/updates a PR and adds itself as required reviewer
+- Monitors CI checks against `gate_contract.yaml`
+- All green → approves, squash-merges, GPG-signs the commit
+- Classifies any failures via GitHub Models (free tier) and creates structured issues
+- Mechanical findings get `auto-fix` labels — local deterministic tools handle them without LLM inference
+- Structural findings get `needs-reasoning` labels with theory context for your next session
+
+Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--preflight` for dry-run).
 
 ## Tool Index by Domain
 
@@ -84,6 +97,14 @@
 | `theory_mode_enter` | Enter theory exploration mode | Deep design exploration |
 | `theory_mode_freeze` | Freeze compass and exit theory mode | Done exploring |
 
+### Convergence Analysis
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `convergence_analyze` | Multi-lens convergence aggregation on functions/files | After controlplane_run identifies decomposition candidates |
+| `extraction_plan` | Build stepwise extraction plan for a specific function | After convergence_analyze shows EXTRACT actionability |
+| `optimization_landscape` | Project-wide optimization opportunity map | Strategic view of codebase optimization potential |
+
 ### Mutation Testing
 
 | Tool | Purpose | When to Use |
@@ -92,9 +113,16 @@
 | `mutation_run_full` | Deep exhaustive mutation profiling | Verify test quality of component |
 | `mutation_get_state` | Current mutation state and metrics | Review previous runs |
 | `mutation_prescribe` | Deterministic prescriptions from profiles | After mutation run |
-| `mutation_decompose` | Find highly entangled functions | Refactoring decisions |
+| `mutation_decompose` | Find entangled functions (mode: auto/static/dynamic) | Refactoring decisions, cold-start projects |
 | `mutation_refactor_loop` | Re-profile after test improvement | Close the test improvement loop |
 | `mutation_clear_state` | Clear mutation state | Code has drifted significantly |
+
+### Bootstrap (Cold-Start)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `bootstrap_tests` | Generate test skeletons, property tests, contracts | Zero-test projects |
+| `bootstrap_status` | Check bootstrap pipeline phase and artifacts | Monitor bootstrap progress |
 
 ### Test Effectiveness (TEFF)
 

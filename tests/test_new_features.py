@@ -60,7 +60,9 @@ def test_context_guidance_infers_solve_task_rule(tmp_path) -> None:
 
 
 def test_context_rule_checker_flags_inferred_drift_pattern(tmp_path) -> None:
-    (tmp_path / "AGENTS.md").write_text("DO NOT use solve_task_ style helper functions.\n")
+    (tmp_path / "AGENTS.md").write_text(
+        "DO NOT use solve_task_ style helper functions.\n"
+    )
     code_file = tmp_path / "solver.py"
     code_file.write_text("def solve_task_alpha(x):\n    return x\n")
 
@@ -102,14 +104,18 @@ def test_inspect_tool_versions_ignores_unrequired_missing_executables(
     tmp_path,
     monkeypatch,
 ) -> None:
-    requirements = collect_required_version_specs(str(tmp_path), config_requirements=None)
+    requirements = collect_required_version_specs(
+        str(tmp_path), config_requirements=None
+    )
 
     monkeypatch.setattr(
         versioning,
         "_installed_version",
         lambda spec, project_root=None: "3.11.0" if spec.tool == "python" else None,
     )
-    monkeypatch.setattr(versioning, "_which", lambda executable, project_root=None: None)
+    monkeypatch.setattr(
+        versioning, "_which", lambda executable, project_root=None: None
+    )
 
     observations = inspect_tool_versions(requirements)
     non_python = [item for item in observations if item["tool"] != "python"]
@@ -118,7 +124,9 @@ def test_inspect_tool_versions_ignores_unrequired_missing_executables(
     assert all(item["status"] == "ok" for item in non_python)
 
 
-def test_audit_tool_versions_persists_and_returns_summary(tmp_path, monkeypatch) -> None:
+def test_audit_tool_versions_persists_and_returns_summary(
+    tmp_path, monkeypatch
+) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_version_audit(*args, **kwargs):

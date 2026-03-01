@@ -4,7 +4,7 @@ required_checks:
   - "Tests (3.11)"
   - "Tests (3.12)"
   - "Qlty"
-  - "SonarCloud Code Analysis"
+  - "SonarQube Cloud Scan"
 
 ci_workflows:
   - ".github/workflows/tests.yml"
@@ -27,6 +27,20 @@ local_pre_push:
     command: "python -m lintgate.symbol_gate_runner"
   - id: "pip_audit"
     command: "pip-audit"
+
+parity_map:
+  # local gate ID → CI required_check name (null = local-only or embedded)
+  # Every required_checks entry must appear as a value here.
+  # Every local_pre_push ID must appear as a key here.
+  quality_infra: null
+  qlty: "Qlty"
+  gitleaks: null
+  tests: ["Tests (3.11)", "Tests (3.12)"]
+  symbol_gate: null
+  pip_audit: null
+  sonar:
+    ci_check: "SonarQube Cloud Scan"
+    local_mode: "ci_only"
 
 symbol_gate:
   # Single source of truth for advisory policy.

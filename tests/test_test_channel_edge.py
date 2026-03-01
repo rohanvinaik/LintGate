@@ -248,7 +248,9 @@ def test_filter_to_source_packages_multiple_packages(tmp_path: Path) -> None:
         str(tmp_path / "mcp_tools" / "server.py"),
         str(tmp_path / "docs" / "notes.txt"),
     ]
-    result = _filter_to_source_packages(changed, ["lintgate", "mcp_tools"], str(tmp_path))
+    result = _filter_to_source_packages(
+        changed, ["lintgate", "mcp_tools"], str(tmp_path)
+    )
     assert len(result) == 2
 
 
@@ -265,7 +267,9 @@ def test_filter_to_source_packages_skips_unrelatable_paths() -> None:
 
 def test_filter_to_source_packages_value_error(tmp_path: Path) -> None:
     files = ["/some/file.py", str(tmp_path / "lintgate" / "ok.py")]
-    with patch("lintgate.channels.test_channel.os.path.relpath", side_effect=ValueError):
+    with patch(
+        "lintgate.channels.test_channel.os.path.relpath", side_effect=ValueError
+    ):
         result = _filter_to_source_packages(files, ["lintgate"], str(tmp_path))
     assert result == []
 
@@ -336,7 +340,9 @@ def test_execute_cleans_up_ephemeral_coverage_json(
     src.write_text("x = 1")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_app.py").write_text("def test_x(): pass")
-    mock_run.return_value = MagicMock(stdout="1 passed in 0.01s", stderr="", returncode=0)
+    mock_run.return_value = MagicMock(
+        stdout="1 passed in 0.01s", stderr="", returncode=0
+    )
 
     event = SupervisionEvent(
         project_root=str(tmp_path),
@@ -374,7 +380,9 @@ def test_execute_skips_cleanup_when_not_ephemeral(
     src.write_text("x = 1")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_app.py").write_text("def test_x(): pass")
-    mock_run.return_value = MagicMock(stdout="1 passed in 0.01s", stderr="", returncode=0)
+    mock_run.return_value = MagicMock(
+        stdout="1 passed in 0.01s", stderr="", returncode=0
+    )
 
     event = SupervisionEvent(
         project_root=str(tmp_path),

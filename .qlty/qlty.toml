@@ -68,9 +68,12 @@ drivers = ["lint"]
 [[plugin]]
 name = "shellcheck"
 
-[[plugin]]
-name = "trivy"
-drivers = ["config"]
+# trivy disabled: aquasecurity/trivy repo has no releases (emptied upstream
+# as of 2026-03-01). qlty's plugin registry references trivy@0.67.2 which
+# 404s. Re-enable when qlty updates. Config scanning covered by bandit + gitleaks.
+# [[plugin]]
+# name = "trivy"
+# drivers = ["config"]
 
 [[plugin]]
 name = "trufflehog"

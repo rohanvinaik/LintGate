@@ -1,4 +1,7 @@
-from lintgate.telemetry import compute_quality_economics_summary, compute_telemetry_summary
+from lintgate.telemetry import (
+    compute_quality_economics_summary,
+    compute_telemetry_summary,
+)
 
 
 def test_telemetry_summary_basic():

@@ -39,7 +39,14 @@ def test_compass_claim_roundtrip():
         origin_facet="architecture",
     )
     restored = CompassClaim.from_dict(claim.to_dict())
-    for attr in ("text", "source", "heading", "confidence", "provenance", "origin_facet"):
+    for attr in (
+        "text",
+        "source",
+        "heading",
+        "confidence",
+        "provenance",
+        "origin_facet",
+    ):
         assert getattr(restored, attr) == getattr(claim, attr)
 
 
@@ -64,7 +71,11 @@ def test_compass_axis_roundtrip():
 def test_compass_directive_roundtrip():
     d = CompassDirective(kind="forbidden", text="no mocks", source="rules")
     restored = CompassDirective.from_dict(d.to_dict())
-    assert (restored.kind, restored.text, restored.source) == ("forbidden", "no mocks", "rules")
+    assert (restored.kind, restored.text, restored.source) == (
+        "forbidden",
+        "no mocks",
+        "rules",
+    )
 
 
 def test_compass_directive_from_empty_dict():
@@ -95,7 +106,9 @@ def test_compass_state_roundtrip():
     state = CompassState(
         version=1,
         axes={
-            "problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")], depth=1),
+            "problem": CompassAxis(
+                name="problem", claims=[CompassClaim(text="test")], depth=1
+            ),
             "solution": CompassAxis(name="solution", depth=0),
         },
         directives=[CompassDirective(kind="toward", text="test", source="solution")],
@@ -214,15 +227,25 @@ def test_gap_report_all_empty():
 
 def test_migrate_from_theory_profile_parity():
     theory = {
-        "core_theory": {"claims": [{"claim": "lossy channels converge", "confidence": 0.9}]},
-        "alignment": {"claims": [{"claim": "hypothesis-with-confidence", "confidence": 0.8}]},
+        "core_theory": {
+            "claims": [{"claim": "lossy channels converge", "confidence": 0.9}]
+        },
+        "alignment": {
+            "claims": [{"claim": "hypothesis-with-confidence", "confidence": 0.8}]
+        },
         "problem_solving": {"claims": [{"claim": "debug symptom not cause"}]},
         "architecture": {
-            "claims": [{"claim": "cross-channel because channels converge", "confidence": 0.9}],
+            "claims": [
+                {"claim": "cross-channel because channels converge", "confidence": 0.9}
+            ],
         },
         "anti_patterns": {"claims": [{"claim": "approach cycling", "confidence": 0.7}]},
-        "abstractions": {"claims": [{"claim": "CompassState as model", "confidence": 0.75}]},
-        "enforceable_rules": {"claims": [{"claim": "no global mocks", "confidence": 0.95}]},
+        "abstractions": {
+            "claims": [{"claim": "CompassState as model", "confidence": 0.75}]
+        },
+        "enforceable_rules": {
+            "claims": [{"claim": "no global mocks", "confidence": 0.95}]
+        },
     }
     full_result = {
         "anti_patterns": [{"pattern": "approach cycling without model update"}],
@@ -293,7 +316,9 @@ def test_save_creates_directory(tmp_path: Path):
     nested = tmp_path / "deep" / "nested"
     state = CompassState(
         forged_at=1.0,
-        axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
+        axes={
+            "problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])
+        },
     )
     path = save_compass(str(nested), state)
     assert path.exists()
@@ -351,7 +376,9 @@ def test_hash_changes_on_mutation():
 def test_reset_compass_deletes(tmp_path: Path):
     state = CompassState(
         forged_at=1.0,
-        axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
+        axes={
+            "problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])
+        },
     )
     save_compass(str(tmp_path), state)
     path = tmp_path / ".claude" / "compass.yaml"

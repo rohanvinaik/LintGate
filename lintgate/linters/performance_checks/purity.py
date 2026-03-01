@@ -103,7 +103,9 @@ _IMPURE_NAMESPACES = {
 class _PureFunctionVisitor(ast.NodeVisitor):
     """Pass 1: Gather local evidence of impurity (side effects) within a single function."""
 
-    def __init__(self, func_node: ast.FunctionDef | ast.AsyncFunctionDef, is_method: bool = False):
+    def __init__(
+        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef, is_method: bool = False
+    ):
         self.func_node = func_node
         self.is_method = is_method
         self.side_effects: list[SideEffect] = []
@@ -146,7 +148,9 @@ class _PureFunctionVisitor(ast.NodeVisitor):
     def visit_Global(self, node: ast.Global) -> None:
         for name in node.names:
             self.side_effects.append(
-                SideEffect("global_write", "Global", node.lineno, f"Writes to global '{name}'")
+                SideEffect(
+                    "global_write", "Global", node.lineno, f"Writes to global '{name}'"
+                )
             )
         self.generic_visit(node)
 
@@ -154,7 +158,10 @@ class _PureFunctionVisitor(ast.NodeVisitor):
         for name in node.names:
             self.side_effects.append(
                 SideEffect(
-                    "nonlocal_write", "Nonlocal", node.lineno, f"Writes to nonlocal '{name}'"
+                    "nonlocal_write",
+                    "Nonlocal",
+                    node.lineno,
+                    f"Writes to nonlocal '{name}'",
                 )
             )
         self.generic_visit(node)
@@ -185,13 +192,20 @@ class _PureFunctionVisitor(ast.NodeVisitor):
 
     def visit_Yield(self, node: ast.Yield) -> None:
         self.side_effects.append(
-            SideEffect("generator", "Yield", node.lineno, "Function is a stateful generator")
+            SideEffect(
+                "generator", "Yield", node.lineno, "Function is a stateful generator"
+            )
         )
         self.generic_visit(node)
 
     def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
         self.side_effects.append(
-            SideEffect("generator", "YieldFrom", node.lineno, "Function is a stateful generator")
+            SideEffect(
+                "generator",
+                "YieldFrom",
+                node.lineno,
+                "Function is a stateful generator",
+            )
         )
         self.generic_visit(node)
 
@@ -201,7 +215,10 @@ class _PureFunctionVisitor(ast.NodeVisitor):
             self.called_functions.add(func_name)
 
             # Direct I/O or known impure builtins
-            if func_name in _IMPURE_NAMESPACES or func_name.split(".")[0] in _IMPURE_NAMESPACES:
+            if (
+                func_name in _IMPURE_NAMESPACES
+                or func_name.split(".")[0] in _IMPURE_NAMESPACES
+            ):
                 self.side_effects.append(
                     SideEffect(
                         "io_call",
@@ -212,7 +229,10 @@ class _PureFunctionVisitor(ast.NodeVisitor):
                 )
 
             # Method call mutations (e.g., list.append, dict.update)
-            if isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS:
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in _MUTATING_METHODS
+            ):
                 # We only flag if we're mutating something that isn't cleanly local
                 # (A perfectly pure function can create a local list and append to it)
                 target = get_name(node.func.value)
@@ -247,7 +267,9 @@ def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
     Returns a mapping of qualified function names to their PurityResult.
     """
     # 1. First pass: Collect all functions and their local side effects.
-    functions: dict[str, tuple[ast.FunctionDef | ast.AsyncFunctionDef, _PureFunctionVisitor]] = {}
+    functions: dict[
+        str, tuple[ast.FunctionDef | ast.AsyncFunctionDef, _PureFunctionVisitor]
+    ] = {}
 
     class _FunctionCollector(ast.NodeVisitor):
         def __init__(self) -> None:

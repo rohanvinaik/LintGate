@@ -78,7 +78,10 @@ def test_ensure_project_venv_create_success(tmp_path: Path) -> None:
             "mcp_tools.onboarding_tools._venv_create_command",
             return_value=(["python", "-m", "venv", ".venv"], "python_venv"),
         ),
-        patch("mcp_tools.onboarding_tools.subprocess.run", side_effect=[mock_create, mock_pip]),
+        patch(
+            "mcp_tools.onboarding_tools.subprocess.run",
+            side_effect=[mock_create, mock_pip],
+        ),
     ):
         result = _ensure_project_venv(str(tmp_path))
     assert result["status"] == "created"
@@ -127,7 +130,10 @@ def test_install_commands_no_venv(tmp_path: Path) -> None:
 
 def test_install_commands_with_uv(tmp_path: Path) -> None:
     with (
-        patch("mcp_tools.onboarding_tools._project_venv_python", return_value="/v/bin/python"),
+        patch(
+            "mcp_tools.onboarding_tools._project_venv_python",
+            return_value="/v/bin/python",
+        ),
         patch("mcp_tools.onboarding_tools.shutil.which", return_value="/usr/bin/uv"),
     ):
         result = _install_commands_for_package(str(tmp_path), "pip-audit")
@@ -137,7 +143,10 @@ def test_install_commands_with_uv(tmp_path: Path) -> None:
 
 def test_install_commands_without_uv(tmp_path: Path) -> None:
     with (
-        patch("mcp_tools.onboarding_tools._project_venv_python", return_value="/v/bin/python"),
+        patch(
+            "mcp_tools.onboarding_tools._project_venv_python",
+            return_value="/v/bin/python",
+        ),
         patch("mcp_tools.onboarding_tools.shutil.which", return_value=None),
     ):
         result = _install_commands_for_package(str(tmp_path), "pip-audit")
@@ -156,7 +165,9 @@ def test_auto_install_skips_non_optional(tmp_path: Path) -> None:
 
 def test_auto_install_no_venv(tmp_path: Path) -> None:
     missing = [{"tool": "pip-audit", "package": "pip-audit"}]
-    with patch("mcp_tools.onboarding_tools._install_commands_for_package", return_value=[]):
+    with patch(
+        "mcp_tools.onboarding_tools._install_commands_for_package", return_value=[]
+    ):
         result = _auto_install_optional_tools(str(tmp_path), missing)
     assert len(result) == 1
     assert result[0]["status"] == "skipped"
@@ -315,7 +326,9 @@ def test_compute_gitignore_no_file(tmp_path: Path) -> None:
 
 def test_compute_gitignore_with_existing(tmp_path: Path) -> None:
     # Write a gitignore that includes all required patterns
-    (tmp_path / ".gitignore").write_text(".qlty/\n.coverage\ncoverage.xml\n.scannerwork/\n")
+    (tmp_path / ".gitignore").write_text(
+        ".qlty/\n.coverage\ncoverage.xml\n.scannerwork/\n"
+    )
     result = _compute_gitignore_additions(str(tmp_path))
     assert result["status"] == "complete"
     assert result["missing"] == []
@@ -534,7 +547,9 @@ def test_run_sonar_scanner_success(tmp_path: Path) -> None:
 
 def test_run_sonar_scanner_pysonar(tmp_path: Path) -> None:
     mock_result = MagicMock(returncode=0, stdout="done\n", stderr="")
-    with patch("mcp_tools.onboarding_tools.subprocess.run", return_value=mock_result) as mock_run:
+    with patch(
+        "mcp_tools.onboarding_tools.subprocess.run", return_value=mock_result
+    ) as mock_run:
         _run_sonar_scanner(str(tmp_path), "token", "/usr/bin/pysonar-scanner")
     cmd = mock_run.call_args[0][0]
     assert "-Dproject.home=" in cmd[1]
@@ -567,7 +582,9 @@ def test_reset_project_state_clears_dirs(tmp_path: Path) -> None:
         (lintgate_dir / subdir).mkdir(parents=True)
         (lintgate_dir / subdir / "data.json").write_text("{}")
 
-    with patch("mcp_tools.onboarding_tools.Path.home", return_value=tmp_path / "fake_home"):
+    with patch(
+        "mcp_tools.onboarding_tools.Path.home", return_value=tmp_path / "fake_home"
+    ):
         actions = _reset_project_state(str(tmp_path))
 
     assert len(actions) == 3
@@ -576,7 +593,9 @@ def test_reset_project_state_clears_dirs(tmp_path: Path) -> None:
 
 
 def test_reset_project_state_no_dirs(tmp_path: Path) -> None:
-    with patch("mcp_tools.onboarding_tools.Path.home", return_value=tmp_path / "fake_home"):
+    with patch(
+        "mcp_tools.onboarding_tools.Path.home", return_value=tmp_path / "fake_home"
+    ):
         actions = _reset_project_state(str(tmp_path))
     assert actions == []
 

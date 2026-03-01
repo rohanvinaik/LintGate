@@ -192,7 +192,9 @@ def setup_session_and_gate(
         with contextlib.suppress(Exception):
             from lintgate.context_auditor import check_session_readiness
 
-            readiness = check_session_readiness(cwd, theory_profile=session.theory_profile_cache)
+            readiness = check_session_readiness(
+                cwd, theory_profile=session.theory_profile_cache
+            )
             if not readiness.ready:
                 advisory = (
                     f"[Session Advisory] Context not ready for deep supervision. "
@@ -308,7 +310,10 @@ def record_snapshot_behavior(
     if tool_name != "Bash":
         return
 
-    from lintgate.controlplane.behavior_compass import extract_error_sig, normalize_command_sig
+    from lintgate.controlplane.behavior_compass import (
+        extract_error_sig,
+        normalize_command_sig,
+    )
 
     cmd = (
         tool_input.get("command", "")
@@ -336,7 +341,9 @@ def record_snapshot_behavior(
 # ── Constraint proposer ──────────────────────────────────────────────
 
 
-def run_constraint_proposer(session: Any, mesh_result: Any, cp_config: Any) -> list[dict]:
+def run_constraint_proposer(
+    session: Any, mesh_result: Any, cp_config: Any
+) -> list[dict]:
     """Run constraint proposer on pattern alerts and return proposed constraints."""
     proposed: list[dict] = []
     with contextlib.suppress(Exception):

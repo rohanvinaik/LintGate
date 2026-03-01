@@ -213,7 +213,9 @@ class TestToChannelResult:
         agg = _make_aggregated(metrics={"custom_key": 42})
         recurrence = {"repeated_issue_count": 3, "unique_signatures_tracked": 5}
         pattern_report = {"alerted_patterns": ["pattern_a"], "top_categories": []}
-        result = ch._to_channel_result(agg, recurrence, pattern_report, 150.0, "strict", 10000)
+        result = ch._to_channel_result(
+            agg, recurrence, pattern_report, 150.0, "strict", 10000
+        )
         assert result.metrics["custom_key"] == 42
         assert result.metrics["recurrence"] == recurrence
         assert result.metrics["pattern_alerts"] == ["pattern_a"]
@@ -515,9 +517,13 @@ class TestExecute:
         assert result.severity == "none"
         assert result.metrics["reason"] == "no_classification"
 
-    @patch("lintgate.channels.lint_channel._compute_dynamic_timeout_ms", return_value=8000)
+    @patch(
+        "lintgate.channels.lint_channel._compute_dynamic_timeout_ms", return_value=8000
+    )
     @patch("lintgate.channels.lint_channel._apply_mcp_strictness_override")
-    def test_tier_skip_returns_skip(self, mock_override: Any, mock_timeout: Any) -> None:
+    def test_tier_skip_returns_skip(
+        self, mock_override: Any, mock_timeout: Any
+    ) -> None:
         ch = LintChannel()
         event = _make_event(risk_level="moderate")
         skip_tier = _make_tier(skip=True)
@@ -531,7 +537,9 @@ class TestExecute:
         assert result.status == "skip"
         assert result.metrics["reason"] == "tier_skip"
 
-    @patch("lintgate.channels.lint_channel._compute_dynamic_timeout_ms", return_value=8000)
+    @patch(
+        "lintgate.channels.lint_channel._compute_dynamic_timeout_ms", return_value=8000
+    )
     @patch("lintgate.channels.lint_channel._apply_mcp_strictness_override")
     def test_full_pipeline_with_blocking_issues(
         self, mock_override: Any, mock_timeout: Any
@@ -557,7 +565,9 @@ class TestExecute:
         assert result.status == "fail"
         assert result.severity == "blocking"
 
-    @patch("lintgate.channels.lint_channel._compute_dynamic_timeout_ms", return_value=8000)
+    @patch(
+        "lintgate.channels.lint_channel._compute_dynamic_timeout_ms", return_value=8000
+    )
     @patch("lintgate.channels.lint_channel._apply_mcp_strictness_override")
     def test_side_effects_suppressed_on_exception(
         self, mock_override: Any, mock_timeout: Any

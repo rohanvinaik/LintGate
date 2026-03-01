@@ -34,7 +34,9 @@ def project_snapshot(
 
     # Heuristic for intent and mode
     primary_goal = (
-        "Resolve active findings" if session.active_finding_history else "Analyze codebase"
+        "Resolve active findings"
+        if session.active_finding_history
+        else "Analyze codebase"
     )
     mode = "execution" if session.action_history else "planning"
 
@@ -55,7 +57,8 @@ def project_snapshot(
     )
 
     safety = SafetyBounds(
-        max_files_modified=config.disposition_enforcement.max_ignores_before_blocking * 5,
+        max_files_modified=config.disposition_enforcement.max_ignores_before_blocking
+        * 5,
         forbidden_paths=[".git", "venv", ".env"],
         allowed_commands=["pytest", "ruff", "mypy"],
         require_approval_for=["git push", "rm -rf"],

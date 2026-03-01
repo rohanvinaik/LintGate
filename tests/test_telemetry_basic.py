@@ -38,7 +38,8 @@ def test_compute_telemetry_summary_with_data():
     with (
         patch("lintgate.telemetry._load_entries", return_value=mock_entries),
         patch(
-            "lintgate.telemetry.compute_token_economics_summary", return_value={"has_data": False}
+            "lintgate.telemetry.compute_token_economics_summary",
+            return_value={"has_data": False},
         ),
     ):
         summary = compute_telemetry_summary("/tmp/proj")

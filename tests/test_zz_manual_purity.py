@@ -40,6 +40,8 @@ def annotated(x: int) -> int:
     tree = ast.parse(code)
     results = analyze_purity(tree)
     # The analyze purity gives function level granularity
-    assert results["nonlocal_test"].is_pure is False or results["inner"].is_pure is False
+    assert (
+        results["nonlocal_test"].is_pure is False or results["inner"].is_pure is False
+    )
     assert results["list_append"].is_pure is True
     assert results["annotated"].is_pure is True

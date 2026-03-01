@@ -271,14 +271,20 @@ def test_execute_in_git_repo(tmp_path: Path) -> None:
     # Initialize a git repo in tmp_path
     subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"], capture_output=True, cwd=str(tmp_path)
+        ["git", "config", "user.email", "test@test.com"],
+        capture_output=True,
+        cwd=str(tmp_path),
     )
-    subprocess.run(["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path)
+    )
 
     # Create a file and commit it
     (tmp_path / "app.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "app.py"], capture_output=True, cwd=str(tmp_path))
-    subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path)
+    )
 
     classification = ChangeClassification(
         files_changed=[str(tmp_path / "app.py")],
@@ -328,7 +334,9 @@ def test_check5_missing_artifacts(mock_remote: object, tmp_path: Path) -> None:
 
 @patch("lintgate.quality_infra._has_github_remote", return_value=True)
 @patch("lintgate.quality_infra.audit_quality_infrastructure")
-def test_check5_complete(mock_audit: MagicMock, mock_remote: object, tmp_path: Path) -> None:
+def test_check5_complete(
+    mock_audit: MagicMock, mock_remote: object, tmp_path: Path
+) -> None:
     """Complete quality infrastructure → no findings."""
     from lintgate.quality_infra import QualityAuditResult
 
@@ -349,12 +357,18 @@ def test_check5_skipped_on_hooks(tmp_path: Path) -> None:
     """Check 5 not run during hook events (is_hook=True in execute)."""
     subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"], capture_output=True, cwd=str(tmp_path)
+        ["git", "config", "user.email", "test@test.com"],
+        capture_output=True,
+        cwd=str(tmp_path),
     )
-    subprocess.run(["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path)
+    )
     (tmp_path / "app.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "app.py"], capture_output=True, cwd=str(tmp_path))
-    subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
+    subprocess.run(
+        ["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path)
+    )
 
     classification = ChangeClassification(
         files_changed=[str(tmp_path / "app.py")],

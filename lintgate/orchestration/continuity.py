@@ -30,7 +30,11 @@ class SessionTransferPacket:
                 "sid": self.session_id,
                 "comp": round(self.compliance_rate, 2),
                 "hyps": [
-                    {"id": h["id"], "clm": h["claim"][:50], "conf": round(h["confidence"], 2)}
+                    {
+                        "id": h["id"],
+                        "clm": h["claim"][:50],
+                        "conf": round(h["confidence"], 2),
+                    }
                     for h in self.confirmed_hypotheses
                 ],
                 "active": self.active_findings,

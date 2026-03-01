@@ -93,4 +93,6 @@ class TestOperatorRelevanceMatrix:
             == MutationOperatorCategory.STRING
         )
         assert OperatorRelevanceMatrix.map_mutmut_type_to_category("annassign") is None
-        assert OperatorRelevanceMatrix.map_mutmut_type_to_category("unknown_type") is None
+        assert (
+            OperatorRelevanceMatrix.map_mutmut_type_to_category("unknown_type") is None
+        )

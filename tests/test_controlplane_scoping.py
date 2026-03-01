@@ -5,7 +5,9 @@ from mcp_tools.controlplane_tools import _resolve_scope_files
 
 def test_resolve_scope_files_files_scope():
     """Test standard scope='files' behavior, valid and invalid."""
-    helpers = {"_collect_python_files": lambda p: ["/app/a.py", "/app/b.py", "/app/c.py"]}
+    helpers = {
+        "_collect_python_files": lambda p: ["/app/a.py", "/app/b.py", "/app/c.py"]
+    }
 
     # Valid
     resolved = _resolve_scope_files("/app", "files", ["a.py", "b.py"], helpers)

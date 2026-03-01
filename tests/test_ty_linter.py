@@ -261,11 +261,16 @@ class TestTySeverityClassification:
 
     def test_blocking_checks(self):
         assert _classify_severity("major", "unresolved-import", "normal") == "blocking"
-        assert _classify_severity("major", "unresolved-reference", "normal") == "blocking"
+        assert (
+            _classify_severity("major", "unresolved-reference", "normal") == "blocking"
+        )
         assert _classify_severity("minor", "invalid-syntax", "normal") == "blocking"
 
     def test_informational_checks(self):
-        assert _classify_severity("minor", "unused-ignore-comment", "normal") == "informational"
+        assert (
+            _classify_severity("minor", "unused-ignore-comment", "normal")
+            == "informational"
+        )
         assert _classify_severity("minor", "deprecated", "normal") == "informational"
 
     def test_severity_map_defaults(self):

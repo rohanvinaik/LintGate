@@ -322,14 +322,18 @@ class TestCheckPathReferences:
         checks: list = []
         suggestions: list = []
         check_path_references(checks, suggestions, text, str(tmp_path), self.THRESHOLDS)
-        assert any(c["status"] == "pass" and c["check"] == "path_references" for c in checks)
+        assert any(
+            c["status"] == "pass" and c["check"] == "path_references" for c in checks
+        )
 
     def test_warn_dead_paths(self, tmp_path):
         text = "Check `src/missing.py` for details."
         checks: list = []
         suggestions: list = []
         check_path_references(checks, suggestions, text, str(tmp_path), self.THRESHOLDS)
-        assert any(c["status"] == "warn" and c["check"] == "path_references" for c in checks)
+        assert any(
+            c["status"] == "warn" and c["check"] == "path_references" for c in checks
+        )
         assert len(suggestions) >= 1
 
     def test_warn_too_many_paths(self, tmp_path):
@@ -446,7 +450,9 @@ class TestFindDeadPaths:
 
 class TestClassifyDirectiveEnforceability:
     def test_pure_syntactic(self):
-        result = classify_directive_enforceability("Do not use console.log() in production")
+        result = classify_directive_enforceability(
+            "Do not use console.log() in production"
+        )
         assert result.classification == "enforceable"
         assert result.confidence >= 0.9
 
@@ -512,7 +518,9 @@ class TestCoverageTokens:
         tokens = _coverage_tokens("hello_world testing")
         assert "hello" in tokens
         assert "world" in tokens
-        assert "testing" in tokens  # len > 4 and ends with s -> "testing"[:-1] = "testin"
+        assert (
+            "testing" in tokens
+        )  # len > 4 and ends with s -> "testing"[:-1] = "testin"
 
     def test_strips_trailing_s(self):
         tokens = _coverage_tokens("errors warnings")
@@ -538,7 +546,9 @@ class TestIsRegexEnforceable:
 
     def test_false_for_architectural(self):
         assert (
-            _is_regex_enforceable("Do not bypass the review approach without understanding")
+            _is_regex_enforceable(
+                "Do not bypass the review approach without understanding"
+            )
             is False
         )
 
@@ -625,7 +635,10 @@ class TestMatchesGeneratedPattern:
         assert _matches_generated_pattern("./dist/file.js", ["dist/*"]) is True
 
     def test_egg_info_pattern(self):
-        assert _matches_generated_pattern("mypackage.egg-info/PKG-INFO", ["*.egg-info/*"]) is True
+        assert (
+            _matches_generated_pattern("mypackage.egg-info/PKG-INFO", ["*.egg-info/*"])
+            is True
+        )
 
 
 # ── _find_bare_name_in_project ──────────────────────────────────────
@@ -667,7 +680,13 @@ class TestDirectiveHasMatchingRule:
         assert result is True
 
     def test_keyword_overlap_match(self):
-        rules = [{"message": "forbid console logging", "source": "", "pattern": "console\\.log"}]
+        rules = [
+            {
+                "message": "forbid console logging",
+                "source": "",
+                "pattern": "console\\.log",
+            }
+        ]
         directive_lower = "do not use console.log in production"
         directive_words = _coverage_tokens(directive_lower)
         result = _directive_has_matching_rule(directive_lower, directive_words, rules)

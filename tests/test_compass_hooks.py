@@ -81,7 +81,9 @@ def test_user_prompt_no_theory_keyword() -> None:
 def test_user_prompt_reports_non_normal_mode_without_keyword(monkeypatch) -> None:
     monkeypatch.setattr(
         "lintgate.controlplane.session_memory.get_or_create_session",
-        lambda _root: SimpleNamespace(behavior_compass={"mode_state": {"current": "habit"}}),
+        lambda _root: SimpleNamespace(
+            behavior_compass={"mode_state": {"current": "habit"}}
+        ),
     )
     result = user_prompt_handle({"cwd": "/tmp", "userMessage": "Fix typo"})
     assert result["continue"] is True
@@ -120,7 +122,9 @@ def test_pre_tool_bash_no_compass(tmp_path: object) -> None:
 def test_pre_tool_theory_mode_warns_on_write_without_compass(monkeypatch) -> None:
     monkeypatch.setattr(
         "lintgate.controlplane.session_memory.get_or_create_session",
-        lambda _root: SimpleNamespace(behavior_compass={"mode_state": {"current": "theory"}}),
+        lambda _root: SimpleNamespace(
+            behavior_compass={"mode_state": {"current": "theory"}}
+        ),
     )
     monkeypatch.setattr("lintgate.compass_io.load_compass", lambda _root: None)
     result = pre_tool_handle({"tool_name": "Write", "cwd": "/tmp"})
@@ -142,8 +146,8 @@ def test_stop_gate_no_compass(tmp_path: object) -> None:
 def test_pre_compact_no_compass(tmp_path: object) -> None:
     result = pre_compact_handle({"cwd": str(tmp_path)})
     assert result["continue"] is True
-    # No hookSpecificOutput when there is no compass
-    assert "hookSpecificOutput" not in result
+    # No capsule data when there is no compass
+    assert "lintgate-compact-state" not in result.get("systemMessage", "")
 
 
 # ── session_end with no compass ─────────────────────────────────────

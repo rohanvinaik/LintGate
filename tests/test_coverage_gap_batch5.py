@@ -87,7 +87,11 @@ def test_format_mesh_report_quota_zero_skips() -> None:
     """
     from lintgate.controlplane.reporter import format_mesh_report
     from lintgate.controlplane.reporter_delta import compute_finding_fingerprint
-    from lintgate.controlplane.types import ChannelResult, ControlPlaneConfig, MeshResult
+    from lintgate.controlplane.types import (
+        ChannelResult,
+        ControlPlaneConfig,
+        MeshResult,
+    )
     from lintgate.types import LintIssue
 
     # Finding A: will be "new" (not in prev_index) — gives quota_by_fp an entry
@@ -122,7 +126,9 @@ def test_format_mesh_report_quota_zero_skips() -> None:
     old_fp = compute_finding_fingerprint(old_finding, "lint")
     prev_index = {old_fp: {"severity": "warning", "count": 1, "channel": "lint"}}
 
-    report = format_mesh_report(mesh, ControlPlaneConfig(), previous_finding_index=prev_index)
+    report = format_mesh_report(
+        mesh, ControlPlaneConfig(), previous_finding_index=prev_index
+    )
     assert isinstance(report, dict)
 
 
@@ -198,7 +204,9 @@ def test_legacy_pipeline_tier_skip_exits_clean() -> None:
     with (
         patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
         patch("lintgate.hook_posttooluse.select_tier", return_value=skip_tier),
-        patch("lintgate.hook_posttooluse._exit_clean", side_effect=SystemExit(0)) as mock_exit,
+        patch(
+            "lintgate.hook_posttooluse._exit_clean", side_effect=SystemExit(0)
+        ) as mock_exit,
     ):
         with pytest.raises(SystemExit):
             _run_legacy_pipeline(
@@ -231,8 +239,14 @@ def test_prediction_register_accuracy_present() -> None:
 
     with (
         patch("lintgate.config.load_controlplane_config", return_value=cp_cfg),
-        patch("lintgate.controlplane.session_memory.get_or_create_session", return_value=session),
-        patch("lintgate.controlplane.session_memory.load_behavior_compass", return_value=compass),
+        patch(
+            "lintgate.controlplane.session_memory.get_or_create_session",
+            return_value=session,
+        ),
+        patch(
+            "lintgate.controlplane.session_memory.load_behavior_compass",
+            return_value=compass,
+        ),
         patch("lintgate.controlplane.session_memory.save_behavior_compass"),
         patch("lintgate.controlplane.session_memory.save_session"),
         patch(
@@ -295,8 +309,14 @@ def test_prediction_register_accuracy_note_and_outcomes() -> None:
 
     with (
         patch("lintgate.config.load_controlplane_config", return_value=cp_cfg),
-        patch("lintgate.controlplane.session_memory.get_or_create_session", return_value=session),
-        patch("lintgate.controlplane.session_memory.load_behavior_compass", return_value=compass),
+        patch(
+            "lintgate.controlplane.session_memory.get_or_create_session",
+            return_value=session,
+        ),
+        patch(
+            "lintgate.controlplane.session_memory.load_behavior_compass",
+            return_value=compass,
+        ),
         patch("lintgate.controlplane.session_memory.save_behavior_compass"),
         patch("lintgate.controlplane.session_memory.save_session"),
         patch(

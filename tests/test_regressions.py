@@ -78,7 +78,9 @@ def test_config_change_without_python_path_still_selects_tier(tmp_path: Path) ->
     assert str(py_file) in tier.files
 
 
-def test_dependency_change_without_python_path_still_selects_tier(tmp_path: Path) -> None:
+def test_dependency_change_without_python_path_still_selects_tier(
+    tmp_path: Path,
+) -> None:
     py_file = tmp_path / "main.py"
     py_file.write_text("print('ok')\n")
 
@@ -125,7 +127,9 @@ def test_complexity_exemption_alias_applies_to_radon_issue() -> None:
         line=10,
         severity="warning",
     )
-    linter_result = LinterResult(linter_name="complexity_checker", issues=[issue], status="ok")
+    linter_result = LinterResult(
+        linter_name="complexity_checker", issues=[issue], status="ok"
+    )
     config = ProjectConfig(
         project_root="/tmp",
         exemptions={

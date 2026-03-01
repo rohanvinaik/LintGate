@@ -72,7 +72,11 @@ DANGEROUS_PATTERNS = [
         "NSIL_DANGEROUS_CMD",
         "Base64 obfuscated execution",
     ),
-    (r"rm\s+-rf\s+[\"\'].*;\s*\w+", "NSIL_DANGEROUS_CMD", "Shell injection in quoted rm"),
+    (
+        r"rm\s+-rf\s+[\"\'].*;\s*\w+",
+        "NSIL_DANGEROUS_CMD",
+        "Shell injection in quoted rm",
+    ),
 ]
 
 # Blocked file patterns
@@ -113,7 +117,9 @@ def _check_dangerous_command(proposal: ActionProposal) -> list[tuple[str, str]]:
     return violations
 
 
-def _check_file_scope(proposal: ActionProposal, project_root: str) -> list[tuple[str, str]]:
+def _check_file_scope(
+    proposal: ActionProposal, project_root: str
+) -> list[tuple[str, str]]:
     """Check for file scope violations."""
     import re
 
@@ -188,7 +194,10 @@ def _check_active_constraints(
             for code, _desc in dangerous_violations:
                 if code == "NSIL_DANGEROUS_CMD":
                     violations.append(
-                        ("NSIL_CONSTRAINT_VIOLATION", f"Violates constraint: {constraint}")
+                        (
+                            "NSIL_CONSTRAINT_VIOLATION",
+                            f"Violates constraint: {constraint}",
+                        )
                     )
 
         # Path scope constraint
@@ -205,7 +214,10 @@ def _check_active_constraints(
             target = proposal.target or ""
             if re.search(r"(?:^|/)prod(?:/|$)", target, re.IGNORECASE):
                 violations.append(
-                    ("NSIL_SCOPE_VIOLATION", f"Violates no-prod constraint: {constraint}")
+                    (
+                        "NSIL_SCOPE_VIOLATION",
+                        f"Violates no-prod constraint: {constraint}",
+                    )
                 )
 
         # Verify before commit constraint
@@ -239,16 +251,22 @@ def _check_hygiene_preconditions(
         if cmd.startswith("git commit"):
             # Verify there's a message
             if "-m" not in cmd and "--message" not in cmd:
-                violations.append(("NSIL_HYGIENE_FAILURE", "Git commit without message"))
+                violations.append(
+                    ("NSIL_HYGIENE_FAILURE", "Git commit without message")
+                )
 
             # Check if hook bypass flags are used
             if "--no-verify" in cmd:
-                violations.append(("NSIL_HYGIENE_FAILURE", "Git commit with --no-verify"))
+                violations.append(
+                    ("NSIL_HYGIENE_FAILURE", "Git commit with --no-verify")
+                )
 
         # Check for git push
         if cmd.startswith("git push"):
             if hygiene_state.get("uncommitted_changes", False):
-                violations.append(("NSIL_HYGIENE_FAILURE", "Git push with uncommitted changes"))
+                violations.append(
+                    ("NSIL_HYGIENE_FAILURE", "Git push with uncommitted changes")
+                )
 
             if hygiene_state.get("lint_dirty", False):
                 violations.append(("NSIL_HYGIENE_FAILURE", "Git push with lint issues"))
@@ -320,7 +338,9 @@ def generate_repairs(
                 else:
                     repairs.append("Add commit message with -m flag")
             elif "git push" in cmd:
-                repairs.append("Commit changes first, or address lint issues before push")
+                repairs.append(
+                    "Commit changes first, or address lint issues before push"
+                )
             else:
                 repairs.append("Fix hygiene precondition issues")
 
@@ -328,10 +348,14 @@ def generate_repairs(
             repairs.append("Complete required gate checks before proceeding")
 
         elif code == "NSIL_FILE_SCOPE_VIOLATION":
-            repairs.append("Do not modify protected file types (.env, credentials, keys)")
+            repairs.append(
+                "Do not modify protected file types (.env, credentials, keys)"
+            )
 
         elif code == "NSIL_UNKNOWN_ACTION":
-            repairs.append("Use a known action type (bash, write, edit, read, grep, glob)")
+            repairs.append(
+                "Use a known action type (bash, write, edit, read, grep, glob)"
+            )
 
     return repairs
 

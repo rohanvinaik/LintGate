@@ -66,7 +66,9 @@ class TestInformationalDampening:
 
     def test_info_only_channel_dampened(self) -> None:
         findings = [_make_info_finding() for _ in range(30)]
-        result = _make_channel_result("perf", findings=findings, severity="informational")
+        result = _make_channel_result(
+            "perf", findings=findings, severity="informational"
+        )
         weight = _channel_failure_weight(result)
         # 30 info findings * 0.10 = 3.0, dampened by 0.3 => 0.9
         assert weight < 1.5  # Significantly less than undampened
@@ -170,9 +172,7 @@ class TestPERF001ParameterConfidence:
     """PERF001 confidence should vary based on parameter type."""
 
     def test_untyped_parameter_reduced_confidence(self) -> None:
-        code = (
-            "def foo(items):\n    for x in range(10):\n        if x in items:\n            pass\n"
-        )
+        code = "def foo(items):\n    for x in range(10):\n        if x in items:\n            pass\n"
         tree = ast.parse(code)
         issues = list(check_quadratic_membership(tree, "test.py"))
         if issues:

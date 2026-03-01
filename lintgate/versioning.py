@@ -45,7 +45,9 @@ _TRACKED_TOOLS: dict[str, ToolSpec] = {
     "radon": ToolSpec(tool="radon", package="radon", executable="radon"),
     "bandit": ToolSpec(tool="bandit", package="bandit", executable="bandit"),
     "vulture": ToolSpec(tool="vulture", package="vulture", executable="vulture"),
-    "pip-audit": ToolSpec(tool="pip-audit", package="pip-audit", executable="pip-audit"),
+    "pip-audit": ToolSpec(
+        tool="pip-audit", package="pip-audit", executable="pip-audit"
+    ),
 }
 
 _REQUIREMENTS_FILES = (
@@ -103,7 +105,8 @@ def collect_required_version_specs(
 ) -> dict[str, dict[str, Any]]:
     """Collect tool version requirements from project metadata and config."""
     requirements: dict[str, dict[str, Any]] = {
-        tool: {"specifiers": [], "sources": [], "is_optional": []} for tool in _TRACKED_TOOLS
+        tool: {"specifiers": [], "sources": [], "is_optional": []}
+        for tool in _TRACKED_TOOLS
     }
 
     if config_requirements:
@@ -111,7 +114,9 @@ def collect_required_version_specs(
             canonical = _canonical_tool_name(tool)
             if canonical in requirements and str(specifier).strip():
                 requirements[canonical]["specifiers"].append(str(specifier).strip())
-                requirements[canonical]["sources"].append(".claude/lintgate.yaml:tool_versions")
+                requirements[canonical]["sources"].append(
+                    ".claude/lintgate.yaml:tool_versions"
+                )
                 requirements[canonical]["is_optional"].append(False)
 
     project_path = Path(project_root)
@@ -133,7 +138,9 @@ def collect_required_version_specs(
 
         requirements[tool]["specifiers"] = deduped_specs
         requirements[tool]["combined_specifier"] = ",".join(deduped_specs)
-        requirements[tool]["is_optional_combined"] = is_optional if deduped_specs else False
+        requirements[tool]["is_optional_combined"] = (
+            is_optional if deduped_specs else False
+        )
 
     return requirements
 
@@ -221,7 +228,9 @@ def _collect_from_pyproject(
     if isinstance(requires_python, str) and requires_python.strip():
         _ensure_entry(requirements, "python")
         requirements["python"]["specifiers"].append(requires_python.strip())
-        requirements["python"]["sources"].append("pyproject.toml:project.requires-python")
+        requirements["python"]["sources"].append(
+            "pyproject.toml:project.requires-python"
+        )
         requirements["python"]["is_optional"].append(False)
 
     dep_groups: list[tuple[str, list[str], bool]] = []
@@ -233,7 +242,9 @@ def _collect_from_pyproject(
     if isinstance(optional, dict):
         for group_name, group_deps in optional.items():
             if isinstance(group_deps, list):
-                is_enforced = (enforced_groups is not None) and (group_name in enforced_groups)
+                is_enforced = (enforced_groups is not None) and (
+                    group_name in enforced_groups
+                )
                 dep_groups.append(
                     (
                         f"pyproject.toml:project.optional-dependencies.{group_name}",

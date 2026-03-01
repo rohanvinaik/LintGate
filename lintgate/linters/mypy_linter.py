@@ -84,7 +84,9 @@ class MypyLinter(BaseLinter):
             if not match:
                 continue
 
-            filepath, line_no, col_no, severity_str, message, error_code = match.groups()
+            filepath, line_no, col_no, severity_str, message, error_code = (
+                match.groups()
+            )
 
             yield LintIssue(
                 linter="mypy",
@@ -99,7 +101,9 @@ class MypyLinter(BaseLinter):
             )
 
 
-def _classify_severity(severity_str: str, error_code: str | None, strictness: str) -> str:
+def _classify_severity(
+    severity_str: str, error_code: str | None, strictness: str
+) -> str:
     """Map mypy severity + error code to LintGate severity."""
 
     # Notes are always informational

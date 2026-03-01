@@ -24,11 +24,12 @@ class MutationOrchestrator:
         self._queued_files: set[str] = set()
         self._last_run: dict[str, float] = {}
         self._debounce_seconds = 30.0
+        self._project_root: str | None = None
 
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()
 
-    def enqueue(self, file_path: str):
+    def enqueue(self, file_path: str, project_root: str | None = None):
         """Request a mutation run for a file, applying debounce logic."""
         with self._lock:
             now = time.time()
@@ -39,6 +40,8 @@ class MutationOrchestrator:
                 return
 
             self._queued_files.add(file_path)
+            if project_root is not None:
+                self._project_root = project_root
 
     def _worker_loop(self):
         """Background loop to drain the queue and run sampled mutations."""
@@ -51,6 +54,7 @@ class MutationOrchestrator:
                 # Take one file to process
                 file_to_process = self._queued_files.pop()
                 self._last_run[file_to_process] = time.time()
+                project_root = self._project_root
 
             try:
                 # Late import to avoid circular dependencies
@@ -66,7 +70,9 @@ class MutationOrchestrator:
                 engine = MutationEngine(state_manager, budget)
 
                 telemetry = MutationTelemetry("background_trigger")
-                engine.run_inline_sampling([file_to_process], telemetry)
+                engine.run_inline_sampling(
+                    [file_to_process], telemetry, project_root=project_root
+                )
             except Exception as e:
                 # Failsafe for background thread
                 print(f"[MutationOrchestrator] Error processing {file_to_process}: {e}")

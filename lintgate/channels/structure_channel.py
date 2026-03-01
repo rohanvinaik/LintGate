@@ -67,6 +67,21 @@ __all__ = [
 ]
 
 
+def _select_cohesion_candidates(
+    file_loc: dict[str, int], project_root: str, py_files: list[str], max_candidates: int = 5
+) -> list[str]:
+    """Select top N files by LOC above p90 as cohesion analysis candidates (bounded cost)."""
+    if not file_loc:
+        return []
+    sorted_locs = sorted(file_loc.values())
+    p90 = _percentile(sorted_locs, 0.90)
+    above_p90 = [
+        (fp, loc) for fp, loc in file_loc.items() if loc > p90
+    ]
+    above_p90.sort(key=lambda x: x[1], reverse=True)
+    return [fp for fp, _ in above_p90[:max_candidates]]
+
+
 class StructureChannel:
     """Supervision channel for codebase structural analysis.
 
@@ -101,7 +116,9 @@ class StructureChannel:
         # Import-only or class structure changes
         return classification.import_only or classification.class_structure_changed
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Execute structural analysis checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -120,9 +137,19 @@ class StructureChannel:
             )
 
         # Build import graph and run checks
-        import_graph, file_map, file_loc = _build_import_graph(py_files, project_root)
+        import_graph, file_map, file_loc, deferred_edges = _build_import_graph(
+            py_files, project_root
+        )
 
-        cycle_findings = _check_import_cycles(import_graph, file_map, project_root)
+        # Build reverse import graph and fan-in metrics (Gap 1)
+        from .structure_graph import build_reverse_import_graph, compute_module_fan_in
+
+        reverse_graph = build_reverse_import_graph(import_graph)
+        module_fan_in = compute_module_fan_in(reverse_graph, file_map)
+
+        cycle_findings = _check_import_cycles(
+            import_graph, file_map, project_root, deferred_edges
+        )
         findings.extend(cycle_findings)
 
         size_findings = _check_module_size_distribution(file_loc, project_root)
@@ -131,15 +158,75 @@ class StructureChannel:
         _ch_config = config.channels.get("structure")
         _structure_settings = _ch_config.settings if _ch_config else {}
         _extra_orphan_dirs = _structure_settings.get("orphan_exclude_dirs", [])
-        _extra_orphan_frozen = frozenset(_extra_orphan_dirs) if _extra_orphan_dirs else None
+        _extra_orphan_frozen = (
+            frozenset(_extra_orphan_dirs) if _extra_orphan_dirs else None
+        )
 
         orphan_findings = _check_orphans(
             py_files, import_graph, file_map, project_root, _extra_orphan_frozen
         )
         findings.extend(orphan_findings)
 
-        cohesion_findings = _check_package_cohesion(import_graph, file_map, project_root)
+        cohesion_findings = _check_package_cohesion(
+            import_graph, file_map, project_root
+        )
         findings.extend(cohesion_findings)
+
+        # STRUCT005/006: Pattern-based structure checks (Gap 3, 4)
+        from .structure_patterns import (
+            check_cross_file_patterns,
+            check_package_candidates,
+        )
+
+        _pkg_min = _structure_settings.get("package_detection_min_files", 3)
+        _pat_max_loc = _structure_settings.get("pattern_detection_max_file_loc", 1000)
+        _pat_max_files = _structure_settings.get("pattern_detection_max_files", 100)
+
+        package_findings = check_package_candidates(
+            py_files, import_graph, file_map, project_root, min_files=_pkg_min
+        )
+        findings.extend(package_findings)
+
+        pattern_findings = check_cross_file_patterns(
+            py_files,
+            project_root,
+            max_file_loc=_pat_max_loc,
+            max_files=_pat_max_files,
+        )
+        findings.extend(pattern_findings)
+
+        # File-level cohesion analysis for convergence (#215 A3)
+        file_cohesion: dict[str, dict] = {}
+        cohesion_candidates = _select_cohesion_candidates(
+            file_loc, project_root, py_files
+        )
+        if cohesion_candidates:
+            import ast as _ast
+
+            from lintgate.linters.structure_checks.cohesion_analysis import (
+                analyze_file_cohesion,
+            )
+
+            for candidate_path in cohesion_candidates:
+                try:
+                    with open(candidate_path, encoding="utf-8", errors="replace") as fh:
+                        tree = _ast.parse(fh.read(), filename=candidate_path)
+                    result = analyze_file_cohesion(tree, candidate_path)
+                    file_cohesion[candidate_path] = {
+                        "score": result.score,
+                        "component_count": result.component_count,
+                        "split_proposals": [
+                            {
+                                "kind": p.kind,
+                                "target": p.target,
+                                "action": p.action,
+                                "confidence": p.confidence,
+                            }
+                            for p in result.split_proposals
+                        ],
+                    }
+                except Exception:
+                    continue
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 
@@ -154,14 +241,26 @@ class StructureChannel:
             orphan_findings,
             cohesion_findings,
             project_root,
+            module_fan_in=module_fan_in,
         )
 
         status: Literal["pass", "fail"] = "fail" if findings else "pass"
         severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = (
-                "warning" if any(f.severity == "warning" for f in findings) else "informational"
+                "warning"
+                if any(f.severity == "warning" for f in findings)
+                else "informational"
             )
+
+        # Expose import graph for work queue builder (#192)
+        snapshot["_import_graph"] = {
+            mod: sorted(deps) for mod, deps in import_graph.items()
+        }
+        snapshot["_file_map"] = dict(file_map)
+        snapshot["_module_fan_in"] = dict(module_fan_in) if module_fan_in else {}
+        if file_cohesion:
+            snapshot["_file_cohesion"] = file_cohesion
 
         return ChannelResult(
             channel=self.name,

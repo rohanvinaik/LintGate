@@ -67,7 +67,11 @@ class TestProcessAcceptedConstraints:
     def test_accepts_and_collects_rules(self):
         session = mock.MagicMock()
         session.proposed_constraints = [
-            {"pattern_key": "ruff|F821", "status": "accepted", "proposed_rule": "no F821"},
+            {
+                "pattern_key": "ruff|F821",
+                "status": "accepted",
+                "proposed_rule": "no F821",
+            },
         ]
         actions: list[str] = []
         with mock.patch(
@@ -109,7 +113,11 @@ class TestProcessAcceptedConstraints:
         """Branch: constraint accepted but no matching pattern_key in proposed_constraints."""
         session = mock.MagicMock()
         session.proposed_constraints = [
-            {"pattern_key": "other|key", "status": "accepted", "proposed_rule": "some rule"},
+            {
+                "pattern_key": "other|key",
+                "status": "accepted",
+                "proposed_rule": "some rule",
+            },
         ]
         actions: list[str] = []
         with mock.patch(
@@ -247,7 +255,9 @@ class TestImplAgentFeedback:
             mock.patch("mcp_tools.controlplane_tools._process_rejected_constraints"),
             mock.patch("mcp_tools.controlplane_tools._generate_living_context_patches"),
         ):
-            raw = _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
+            raw = _impl_controlplane_agent_feedback(
+                "/tmp", None, None, None, None, _stub_helpers()
+            )
         parsed = json.loads(raw)
         assert parsed["session_id"] == "s2"
         rec.assert_not_called()
@@ -405,7 +415,12 @@ class TestLoadAllRepairs:
         snapshot = mock.MagicMock()
         snapshot.run_id = "r1"
         snapshot.repair_catalog = {
-            "a1": {"kind": "command", "summary": "fix it", "safe": "true", "channel": "lint"},
+            "a1": {
+                "kind": "command",
+                "summary": "fix it",
+                "safe": "true",
+                "channel": "lint",
+            },
         }
         with mock.patch("lintgate.state.load_controlplane_run", return_value=None):
             result = _load_all_repairs(snapshot)
@@ -489,7 +504,11 @@ class TestImplApplyRepairs:
             mock.patch(
                 "mcp_tools.controlplane_tools._collect_pending_repairs",
                 return_value=[
-                    {"action_id": "r1", "kind": "command", "payload": {"command": "echo hi"}},
+                    {
+                        "action_id": "r1",
+                        "kind": "command",
+                        "payload": {"command": "echo hi"},
+                    },
                 ],
             ),
             mock.patch(

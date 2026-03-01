@@ -85,7 +85,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "kind": "test_failure", "message": "test_foo failed"},
+                    {
+                        "severity": "warning",
+                        "kind": "test_failure",
+                        "message": "test_foo failed",
+                    },
                 ],
             },
             {"name": "deps", "status": "pass"},
@@ -137,7 +141,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "file": "/src/shared.py", "message": "lint issue"},
+                    {
+                        "severity": "warning",
+                        "file": "/src/shared.py",
+                        "message": "lint issue",
+                    },
                 ],
             },
             {
@@ -145,7 +153,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "file": "/src/shared.py", "message": "test failure"},
+                    {
+                        "severity": "warning",
+                        "file": "/src/shared.py",
+                        "message": "test failure",
+                    },
                 ],
             },
             {"name": "deps", "status": "pass"},
@@ -164,7 +176,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "file": "/src/a.py", "message": "lint issue"},
+                    {
+                        "severity": "warning",
+                        "file": "/src/a.py",
+                        "message": "lint issue",
+                    },
                 ],
             },
             {
@@ -172,7 +188,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "file": "/src/b.py", "message": "test failure"},
+                    {
+                        "severity": "warning",
+                        "file": "/src/b.py",
+                        "message": "test failure",
+                    },
                 ],
             },
             {"name": "deps", "status": "pass"},
@@ -219,14 +239,24 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "name": "lint",
                 "status": "fail",
                 "severity": "warning",
-                "findings": [{"severity": "warning", "file": "/src/a.py", "message": "lint issue"}],
+                "findings": [
+                    {
+                        "severity": "warning",
+                        "file": "/src/a.py",
+                        "message": "lint issue",
+                    }
+                ],
             },
             {
                 "name": "deps",
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "file": "/pyproject.toml", "message": "dep issue"},
+                    {
+                        "severity": "warning",
+                        "file": "/pyproject.toml",
+                        "message": "dep issue",
+                    },
                 ],
             },
             {"name": "tests", "status": "pass"},
@@ -360,7 +390,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "status": "fail",
                 "severity": "warning",
                 "findings": [
-                    {"severity": "warning", "file": "/src/x.py", "message": "lint issue"},
+                    {
+                        "severity": "warning",
+                        "file": "/src/x.py",
+                        "message": "lint issue",
+                    },
                 ],
             },
             {

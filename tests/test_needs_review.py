@@ -26,7 +26,9 @@ class TestDirectiveClassification3Way:
     def test_clear_syntactic_returns_enforceable(self) -> None:
         from lintgate.context_auditor import classify_directive_enforceability
 
-        result = classify_directive_enforceability("DO NOT use `threading.Thread` directly")
+        result = classify_directive_enforceability(
+            "DO NOT use `threading.Thread` directly"
+        )
         assert result.classification == "enforceable"
         assert result.confidence >= 0.9
 
@@ -58,7 +60,9 @@ class TestDirectiveClassification3Way:
         from lintgate.context_auditor import classify_directive_enforceability
 
         # Has both dotted name (syntactic) and "approach" (architectural)
-        result = classify_directive_enforceability("DO NOT use this approach for os.path calls")
+        result = classify_directive_enforceability(
+            "DO NOT use this approach for os.path calls"
+        )
         assert result.classification in ("uncertain", "enforceable", "architectural")
         # Key: should have lower confidence than clear-cut cases
         if result.classification == "uncertain":
@@ -138,7 +142,10 @@ class TestDirectiveReviewCollection:
     """Tests for _collect_directive_review_items."""
 
     def test_uncertain_directives_collected(self) -> None:
-        from lintgate.context_bootstrap import ReviewItem, _collect_directive_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_directive_review_items,
+        )
 
         guidance = {
             "directives": {
@@ -160,7 +167,10 @@ class TestDirectiveReviewCollection:
         assert "architectural" in items[0].options
 
     def test_no_directives_no_items(self) -> None:
-        from lintgate.context_bootstrap import ReviewItem, _collect_directive_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_directive_review_items,
+        )
 
         items: list[ReviewItem] = []
         _collect_directive_review_items(items, {"directives": {"do_not": []}})
@@ -168,7 +178,10 @@ class TestDirectiveReviewCollection:
 
     def test_all_clear_no_items(self) -> None:
         """When all directives are clearly classified, no review items."""
-        from lintgate.context_bootstrap import ReviewItem, _collect_directive_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_directive_review_items,
+        )
 
         guidance = {
             "directives": {
@@ -190,7 +203,10 @@ class TestDeadPathReviewCollection:
     """Tests for _collect_dead_path_review_items."""
 
     def test_dead_paths_collected(self) -> None:
-        from lintgate.context_bootstrap import ReviewItem, _collect_dead_path_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_dead_path_review_items,
+        )
 
         audit = {
             "audit": [
@@ -219,7 +235,10 @@ class TestDeadPathReviewCollection:
 
     def test_dead_paths_with_more_suffix(self) -> None:
         """Handles the '(+N more)' suffix in detail text."""
-        from lintgate.context_bootstrap import ReviewItem, _collect_dead_path_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_dead_path_review_items,
+        )
 
         audit = {
             "audit": [
@@ -243,7 +262,10 @@ class TestDeadPathReviewCollection:
         assert items[1].context == "b.py"
 
     def test_no_dead_paths_no_items(self) -> None:
-        from lintgate.context_bootstrap import ReviewItem, _collect_dead_path_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_dead_path_review_items,
+        )
 
         audit = {
             "audit": [
@@ -266,7 +288,10 @@ class TestDeadPathReviewCollection:
 
     def test_source_file_in_detail(self) -> None:
         """Review items should include the source file for context."""
-        from lintgate.context_bootstrap import ReviewItem, _collect_dead_path_review_items
+        from lintgate.context_bootstrap import (
+            ReviewItem,
+            _collect_dead_path_review_items,
+        )
 
         audit = {
             "audit": [

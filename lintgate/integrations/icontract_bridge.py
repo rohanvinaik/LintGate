@@ -15,7 +15,8 @@ def generate_icontract_decorators(
 ) -> list[str]:
     """Generate icontract decorators for the given properties."""
     if isinstance(properties, tuple):
-        purity, props_list = properties
+        purity: PurityResult = properties[0]
+        props_list: list[AlgebraicProperty] = properties[1]
     else:
         purity = properties.purity
         props_list = list(properties.properties)

@@ -31,9 +31,13 @@ class BehaviorHypothesis:
     created_at: float = 0.0
     last_tested: float = 0.0
     last_decay: float = 0.0
-    source: str = "command_failure"  # command_failure | precheck_declared | constraint_violation
+    source: str = (
+        "command_failure"  # command_failure | precheck_declared | constraint_violation
+    )
     status: str = "active"  # active | confirmed | weakened | expired
-    applies_to_sigs: list[str] = field(default_factory=list)  # e.g. ["idevicerestore:*"]
+    applies_to_sigs: list[str] = field(
+        default_factory=list
+    )  # e.g. ["idevicerestore:*"]
     applies_to_tools: list[str] = field(default_factory=list)  # e.g. ["Bash"]
     trust_score: float = 0.5  # Derived from coherence and source evidence
 
@@ -237,8 +241,12 @@ class SignalState:
     """Event tracking and signal cooldown state (v2 intent bias layer)."""
 
     event_counter: int = 0  # Monotonic per-event for cooldowns
-    last_fired: dict[str, int] = field(default_factory=dict)  # signal → event_counter at fire
-    signal_fire_counts: dict[str, int] = field(default_factory=dict)  # signal → session-total
+    last_fired: dict[str, int] = field(
+        default_factory=dict
+    )  # signal → event_counter at fire
+    signal_fire_counts: dict[str, int] = field(
+        default_factory=dict
+    )  # signal → session-total
     early_nudge_emitted: bool = False  # One-time serial_discovery stage 1
     constraint_check_count_session: int = 0  # constraint_check invocations this session
     intent_history: list[str] = field(default_factory=list)  # Last 30 intents (rolling)
@@ -272,11 +280,15 @@ class SignalState:
 class NudgeState:
     """Global behavior profile nudge tracking (v3)."""
 
-    pending_nudge_signals: list[str] = field(default_factory=list)  # Signals with active nudges
+    pending_nudge_signals: list[str] = field(
+        default_factory=list
+    )  # Signals with active nudges
     pending_nudge_constraint_check_count: int = (
         0  # constraint_check_count snapshot when pending_nudge_signals was set
     )
-    nudge_outcomes: dict[str, str] = field(default_factory=dict)  # signal → "accepted" | "ignored"
+    nudge_outcomes: dict[str, str] = field(
+        default_factory=dict
+    )  # signal → "accepted" | "ignored"
     compliance_rate: float = 1.0  # Rolling compliance score (0.0-1.0)
 
     def to_dict(self) -> dict[str, Any]:
@@ -347,7 +359,9 @@ class BehaviorCompass:
     hypothesis_version: int = 0  # Monotonic; +1 on any hyp mutation
     signals: SignalState = field(default_factory=SignalState)
     nudges: NudgeState = field(default_factory=NudgeState)
-    predictions: PredictionStateContainer = field(default_factory=PredictionStateContainer)
+    predictions: PredictionStateContainer = field(
+        default_factory=PredictionStateContainer
+    )
 
     # ── Backward-compatible property accessors for SignalState ──
 
@@ -474,8 +488,12 @@ class BehaviorCompass:
         if not data:
             return cls()
         return cls(
-            hypotheses=[BehaviorHypothesis.from_dict(h) for h in data.get("hypotheses", [])],
-            approaches=[ApproachAttempt.from_dict(a) for a in data.get("approaches", [])],
+            hypotheses=[
+                BehaviorHypothesis.from_dict(h) for h in data.get("hypotheses", [])
+            ],
+            approaches=[
+                ApproachAttempt.from_dict(a) for a in data.get("approaches", [])
+            ],
             coverage=CoverageMetrics.from_dict(data.get("coverage", {})),
             uncertainty_zones=data.get("uncertainty_zones", []),
             action_history=data.get("action_history", []),

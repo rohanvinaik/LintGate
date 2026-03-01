@@ -1,7 +1,13 @@
 from hypothesis import given
 from hypothesis import strategies as st
 
-from lintgate.compass import CompassAxis, CompassClaim, CompassDirective, CompassState, GapReport
+from lintgate.compass import (
+    CompassAxis,
+    CompassClaim,
+    CompassDirective,
+    CompassState,
+    GapReport,
+)
 
 
 # Strategies for Compass types

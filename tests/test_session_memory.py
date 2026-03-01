@@ -391,15 +391,22 @@ class TestRecordMeshRun:
 
         for count in [2, 0, 3]:
             findings = [
-                LintIssue(linter="ruff", kind="F821", severity="warning", message=f"issue {i}")
+                LintIssue(
+                    linter="ruff", kind="F821", severity="warning", message=f"issue {i}"
+                )
                 for i in range(count)
             ]
-            mesh = _make_mesh_result(coherence_state="stable", loud=["lint"] if count else [])
+            mesh = _make_mesh_result(
+                coherence_state="stable", loud=["lint"] if count else []
+            )
             if count:
                 mesh.channel_results[0].findings = findings
             record_mesh_run(session, mesh)
 
-        assert session.pattern_trend.get("ruff|F821") == [2, 3]  # 0-count runs aren't tracked
+        assert session.pattern_trend.get("ruff|F821") == [
+            2,
+            3,
+        ]  # 0-count runs aren't tracked
 
     def test_registers_pending_repairs(self):
         session = SessionMemory(project_root="/test")

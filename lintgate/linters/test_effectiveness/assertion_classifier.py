@@ -100,7 +100,9 @@ def _classify_compare(node: ast.Compare) -> tuple[AssertionKind, str]:
             return AssertionKind.DICT_KEY_CHECK, "structural"
         if isinstance(right, ast.Call):
             func_name = _get_name(right.func)
-            if func_name == "dict" or func_name.endswith(("json", "as_dict", "to_dict")):
+            if func_name == "dict" or func_name.endswith(
+                ("json", "as_dict", "to_dict")
+            ):
                 return AssertionKind.DICT_KEY_CHECK, "structural"
         if isinstance(right, ast.Constant) and isinstance(right.value, str):
             return AssertionKind.STRING_CONTAINS, "structural"
@@ -406,7 +408,9 @@ class TestFileAnalyzer(ast.NodeVisitor):
         self.test_assertions[qualname] = assertions
 
 
-def classify_test_file(source: str, filename: str = "<test>") -> dict[str, list[AssertionInfo]]:
+def classify_test_file(
+    source: str, filename: str = "<test>"
+) -> dict[str, list[AssertionInfo]]:
     """Classify all assertions in a test file.
 
     Args:

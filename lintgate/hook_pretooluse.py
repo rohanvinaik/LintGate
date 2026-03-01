@@ -57,7 +57,9 @@ def main() -> None:
         sys.exit(0)
 
     tool_input = input_data.get("tool_input", {})
-    command = tool_input if isinstance(tool_input, str) else tool_input.get("command", "")
+    command = (
+        tool_input if isinstance(tool_input, str) else tool_input.get("command", "")
+    )
 
     if not command:
         print(json.dumps({}))

@@ -63,8 +63,12 @@ def evaluate_telemetry_against_targets(
     filtered_score = _coerce_float(filtered_stats.get("score"))
     score_degradation_abs = max(0.0, baseline_score - filtered_score)
 
-    runtime_reduction_met = runtime_reduction_ratio >= active_targets.min_runtime_reduction_ratio
-    score_degradation_met = score_degradation_abs <= active_targets.max_score_degradation_abs
+    runtime_reduction_met = (
+        runtime_reduction_ratio >= active_targets.min_runtime_reduction_ratio
+    )
+    score_degradation_met = (
+        score_degradation_abs <= active_targets.max_score_degradation_abs
+    )
     score_floor_met = filtered_score >= active_targets.min_filtered_score
     passed_all = runtime_reduction_met and score_degradation_met and score_floor_met
 

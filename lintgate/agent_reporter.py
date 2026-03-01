@@ -75,7 +75,8 @@ def _build_posttooluse_context(result: AggregatedResult) -> str:
     warnings = len(result.warnings)
     informational = len(result.informational)
     top = ", ".join(
-        f"{issue.linter}/{issue.kind}:{issue.short_location()}" for issue in result.blocking[:3]
+        f"{issue.linter}/{issue.kind}:{issue.short_location()}"
+        for issue in result.blocking[:3]
     )
     parts = [
         f"blocking_count={blocking}",
@@ -111,7 +112,9 @@ def _add_blocking_section(parts: list[str], blocking: list[LintIssue]) -> None:
     count = len(blocking)
     parts.append(f"BLOCKING ({count} issue{'s' if count != 1 else ''} - must fix):")
     for issue in blocking[:5]:
-        parts.append(f"  [{issue.linter}/{issue.kind}] {issue.short_location()}: {issue.message}")
+        parts.append(
+            f"  [{issue.linter}/{issue.kind}] {issue.short_location()}: {issue.message}"
+        )
         if issue.fix_description:
             parts.append(f"    Fix: {issue.fix_description}")
         elif issue.suggestions:
@@ -128,7 +131,9 @@ def _add_warnings_section(parts: list[str], warnings: list[LintIssue]) -> None:
     count = len(warnings)
     parts.append(f"WARNINGS ({count}):")
     for issue in warnings[:3]:
-        parts.append(f"  [{issue.linter}/{issue.kind}] {issue.short_location()}: {issue.message}")
+        parts.append(
+            f"  [{issue.linter}/{issue.kind}] {issue.short_location()}: {issue.message}"
+        )
     if count > 3:
         parts.append(f"  ... and {count - 3} more warnings")
 
@@ -154,7 +159,9 @@ def _add_delta_section(
 
     if delta["blocking_delta"] > 0:
         n = delta["blocking_delta"]
-        parts.append(f"REGRESSION: +{n} blocking issue{'s' if n != 1 else ''} vs last run")
+        parts.append(
+            f"REGRESSION: +{n} blocking issue{'s' if n != 1 else ''} vs last run"
+        )
     elif delta["blocking_delta"] < 0:
         n = abs(delta["blocking_delta"])
         parts.append(f"IMPROVEMENT: {n} fewer blocking issue{'s' if n != 1 else ''}")
@@ -172,7 +179,9 @@ def _add_fixable_section(parts: list[str], metrics: dict[str, Any]) -> None:
         )
 
 
-def _add_recurrence_section(parts: list[str], recurrence_summary: dict[str, Any] | None) -> None:
+def _add_recurrence_section(
+    parts: list[str], recurrence_summary: dict[str, Any] | None
+) -> None:
     """Highlight repeated issues so agents avoid reintroducing the same bug shape."""
     if not recurrence_summary:
         return
@@ -196,7 +205,9 @@ def _add_recurrence_section(parts: list[str], recurrence_summary: dict[str, Any]
         )
 
 
-def _add_pattern_alert_section(parts: list[str], pattern_report: dict[str, Any] | None) -> None:
+def _add_pattern_alert_section(
+    parts: list[str], pattern_report: dict[str, Any] | None
+) -> None:
     """Highlight categorical anti-patterns (tail-chasing detection).
 
     These appear BEFORE blocking/warning sections because they represent
@@ -272,5 +283,7 @@ def _compute_delta(
         "warning_delta": (
             current.metrics.get("warning_count", 0) - last_run.get("warning_count", 0)
         ),
-        "total_delta": (current.metrics.get("total_issues", 0) - last_run.get("total_issues", 0)),
+        "total_delta": (
+            current.metrics.get("total_issues", 0) - last_run.get("total_issues", 0)
+        ),
     }

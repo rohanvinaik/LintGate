@@ -164,7 +164,9 @@ def test_bandit_fast_linter_b105_suppressed_in_test_dir(tmp_path):
 def test_constraint_check_theory_cold_start(tmp_path, monkeypatch):
     """When no relevant hypotheses exist on first check, theory seeds output (lines 262-269)."""
     monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
-    monkeypatch.setattr("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session")
+    monkeypatch.setattr(
+        "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
+    )
 
     config_dir = tmp_path / ".claude"
     config_dir.mkdir(exist_ok=True)
@@ -172,7 +174,9 @@ def test_constraint_check_theory_cold_start(tmp_path, monkeypatch):
 
     fake_profile = {
         "theory_profile": {
-            "anti_patterns": [{"claims": ["Avoid global state", "Never use mutable defaults"]}]
+            "anti_patterns": [
+                {"claims": ["Avoid global state", "Never use mutable defaults"]}
+            ]
         }
     }
     monkeypatch.setattr(
@@ -472,7 +476,9 @@ def test_generate_qlty_toml_empty_exclude_pattern():
     # Empty patterns should not appear; valid_dir should be present
     assert "valid_dir/**" in result
     # The toml output should be well-formed
-    assert "[config]" in result or "exclude_patterns" in result or "[[exclude]]" in result
+    assert (
+        "[config]" in result or "exclude_patterns" in result or "[[exclude]]" in result
+    )
 
 
 # ===================================================================

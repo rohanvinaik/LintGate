@@ -138,7 +138,9 @@ def test_format_header_skips_skip_channels() -> None:
 
 
 def test_format_blocking_single_issue() -> None:
-    findings = [_issue("blocking", message="Undefined name 'foo'", file="/tmp/foo.py", line=5)]
+    findings = [
+        _issue("blocking", message="Undefined name 'foo'", file="/tmp/foo.py", line=5)
+    ]
     result = _format_blocking(findings)
     assert "BLOCKING (1 issue - must fix):" in result
     assert "[ruff/F821]" in result
@@ -399,7 +401,9 @@ def test_format_proposed_constraints_drift_warning_with_contradicting() -> None:
             "proposed_rule": "Use %-formatting.",
             "drift_warning": True,
             "theory_coherence": {
-                "contradicting_claims": ["Project always uses f-strings for formatting"],
+                "contradicting_claims": [
+                    "Project always uses f-strings for formatting"
+                ],
             },
         }
     ]
@@ -467,7 +471,11 @@ def test_dynamic_budget_no_findings() -> None:
 
 def test_dynamic_budget_with_blocking_findings() -> None:
     findings = [_issue("blocking") for _ in range(5)]
-    mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
+    mesh = _mesh(
+        channel_results=[
+            ChannelResult(channel="lint", status="fail", findings=findings)
+        ]
+    )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
     budget = _compute_dynamic_budget(findings, mesh, config)
     expected = _BUDGET_BASE + 5 * _BUDGET_PER_BLOCKING
@@ -487,7 +495,10 @@ def test_dynamic_budget_with_mixed_findings() -> None:
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
     budget = _compute_dynamic_budget(all_findings, mesh, config)
     expected = (
-        _BUDGET_BASE + 2 * _BUDGET_PER_BLOCKING + 3 * _BUDGET_PER_WARNING + 4 * _BUDGET_PER_INFO
+        _BUDGET_BASE
+        + 2 * _BUDGET_PER_BLOCKING
+        + 3 * _BUDGET_PER_WARNING
+        + 4 * _BUDGET_PER_INFO
     )
     assert budget == expected
 
@@ -497,7 +508,9 @@ def test_dynamic_budget_includes_repairs() -> None:
     repairs = [_repair() for _ in range(3)]
     mesh = _mesh(
         channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=findings, repairs=repairs),
+            ChannelResult(
+                channel="lint", status="fail", findings=findings, repairs=repairs
+            ),
         ],
     )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
@@ -509,7 +522,11 @@ def test_dynamic_budget_includes_repairs() -> None:
 def test_dynamic_budget_hard_cap() -> None:
     """Massive findings should hit the hard cap."""
     findings = [_issue("blocking") for _ in range(5000)]
-    mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
+    mesh = _mesh(
+        channel_results=[
+            ChannelResult(channel="lint", status="fail", findings=findings)
+        ]
+    )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=900))
     budget = _compute_dynamic_budget(findings, mesh, config)
     assert budget == _BUDGET_HARD_CAP

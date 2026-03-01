@@ -7,7 +7,9 @@ import json
 from pathlib import Path
 
 _MCP_SERVER_PATH = Path(__file__).resolve().parent.parent / "mcp_server.py"
-_MCP_SPEC = importlib.util.spec_from_file_location("lintgate_local_mcp_server", _MCP_SERVER_PATH)
+_MCP_SPEC = importlib.util.spec_from_file_location(
+    "lintgate_local_mcp_server", _MCP_SERVER_PATH
+)
 assert _MCP_SPEC is not None and _MCP_SPEC.loader is not None
 _MCP_MODULE = importlib.util.module_from_spec(_MCP_SPEC)
 _MCP_SPEC.loader.exec_module(_MCP_MODULE)
@@ -84,7 +86,9 @@ def test_probe_submit_increments_probe_runs(monkeypatch, tmp_path) -> None:
             answers=_V2_ANSWERS,
         )
     )
-    status = json.loads(model_profile_status(path=str(tmp_path), model_id="claude-opus-4"))
+    status = json.loads(
+        model_profile_status(path=str(tmp_path), model_id="claude-opus-4")
+    )
 
     assert first["probe_runs"] == 1
     assert second["probe_runs"] == 2

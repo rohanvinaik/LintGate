@@ -134,7 +134,16 @@ def test_render_for_targets_multiple_targets() -> None:
 def test_build_default_registry_has_all_renderers() -> None:
     reg = build_default_registry()
     available = reg.list_available()
-    expected = ["agents", "aider", "claude", "cline", "copilot", "cursor", "generic", "windsurf"]
+    expected = [
+        "agents",
+        "aider",
+        "claude",
+        "cline",
+        "copilot",
+        "cursor",
+        "generic",
+        "windsurf",
+    ]
     assert available == expected
     assert len(available) == 8
 
@@ -152,7 +161,9 @@ def test_default_registry_renderers_produce_output() -> None:
         assert len(result) > 0, f"Renderer {name} produced no output"
         for path, content in result.items():
             assert isinstance(content, str)
-            assert len(content) > 0, f"Renderer {name} produced empty content for {path}"
+            assert len(content) > 0, (
+                f"Renderer {name} produced empty content for {path}"
+            )
 
 
 def test_renderer_project_name_falls_back_to_project_root(tmp_path: object) -> None:

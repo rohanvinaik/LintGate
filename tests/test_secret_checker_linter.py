@@ -39,7 +39,9 @@ def test_detects_high_confidence_token(tmp_path) -> None:
 
 def test_detects_private_key_blocking(tmp_path) -> None:
     p = tmp_path / "k.py"
-    p.write_text("key = '''-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----'''\n")
+    p.write_text(
+        "key = '''-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----'''\n"
+    )
     ctx = _ctx(tmp_path)
     ctx.files = [str(p)]
 

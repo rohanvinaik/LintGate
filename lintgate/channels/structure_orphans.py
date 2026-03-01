@@ -80,9 +80,7 @@ def _parse_import_from_reexport(
         reexports[stem] = "definite"
 
 
-def _parse_all_assignment(
-    node: ast.Assign, reexports: dict[str, str]
-) -> None:
+def _parse_all_assignment(node: ast.Assign, reexports: dict[str, str]) -> None:
     """Handle `__all__ = [...]` assignments."""
     for target in node.targets:
         if not (isinstance(target, ast.Name) and target.id == "__all__"):
@@ -135,7 +133,9 @@ def _detect_reexports(init_file: str, project_root: str) -> dict[str, str]:
     return reexports
 
 
-def _build_reexport_map(py_files: list[str], project_root: str) -> dict[str, dict[str, str]]:
+def _build_reexport_map(
+    py_files: list[str], project_root: str
+) -> dict[str, dict[str, str]]:
     """Build a map of parent_package -> {module_stem: certainty} from all __init__.py.
 
     Returns:
@@ -302,8 +302,7 @@ def _classify_orphan(
                 "file": relpath,
                 "reexport_status": "unknown",
                 "note": (
-                    "Module may be re-exported via wildcard or "
-                    "dynamic import in parent __init__.py"
+                    "Module may be re-exported via wildcard or dynamic import in parent __init__.py"
                 ),
             },
             suggestions=[
@@ -317,8 +316,7 @@ def _classify_orphan(
         linter="structure_channel",
         kind="STRUCT003",
         message=(
-            f"Orphaned module: {relpath} is not imported by any "
-            f"other module in the project."
+            f"Orphaned module: {relpath} is not imported by any other module in the project."
         ),
         file=filepath,
         severity="informational",

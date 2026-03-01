@@ -96,7 +96,9 @@ class TestChannelProtocol:
             )
             for i in range(3)
         ]
-        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
+        compass.action_history = [
+            {"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}
+        ]
 
         cfg = ControlPlaneConfig(
             enabled=True,
@@ -158,7 +160,9 @@ class TestApproachCycling:
             )
             for i in range(2)
         ]
-        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:1", "exit": 1, "err": ""}]
+        compass.action_history = [
+            {"tool": "Bash", "ts": now, "sig": "cmd:1", "exit": 1, "err": ""}
+        ]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -178,7 +182,9 @@ class TestApproachCycling:
             )
             for i in range(4)
         ]
-        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:3", "exit": 1, "err": ""}]
+        compass.action_history = [
+            {"tool": "Bash", "ts": now, "sig": "cmd:3", "exit": 1, "err": ""}
+        ]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -232,7 +238,13 @@ class TestFailureAmnesia:
         compass = new_compass()
         now = time.time()
         compass.action_history = [
-            {"tool": "Bash", "ts": now - 300, "sig": "cmd:a", "exit": 1, "err": "error A"},
+            {
+                "tool": "Bash",
+                "ts": now - 300,
+                "sig": "cmd:a",
+                "exit": 1,
+                "err": "error A",
+            },
             {"tool": "Bash", "ts": now, "sig": "cmd:b", "exit": 1, "err": "error B"},
         ]
 
@@ -304,7 +316,10 @@ class TestPrematureAction:
 
         pa_findings = [f for f in result.findings if f.kind == "premature_action"]
         assert len(pa_findings) == 1
-        assert pa_findings[0].severity in ("informational", "warning")  # Authority engine may escalate
+        assert pa_findings[0].severity in (
+            "informational",
+            "warning",
+        )  # Authority engine may escalate
 
     def test_no_fire_with_reads(self):
         compass = new_compass()
@@ -348,7 +363,9 @@ class TestSerialDiscovery:
         assert len(sd_findings) == 2
         stages = {f.evidence.get("stage") for f in sd_findings}
         assert stages == {1, 2}
-        assert all(f.severity in ("informational", "warning") for f in sd_findings)  # Authority engine may escalate
+        assert all(
+            f.severity in ("informational", "warning") for f in sd_findings
+        )  # Authority engine may escalate
 
     def test_no_fire_with_precheck_declared(self):
         compass = new_compass()
@@ -356,13 +373,25 @@ class TestSerialDiscovery:
         compass.constraint_check_count_session = 1
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h0", claim="fail", confidence=0.4, source="command_failure", status="active"
+                id="h0",
+                claim="fail",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
             BehaviorHypothesis(
-                id="h1", claim="fail", confidence=0.4, source="command_failure", status="active"
+                id="h1",
+                claim="fail",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
             BehaviorHypothesis(
-                id="h2", claim="fail", confidence=0.4, source="command_failure", status="active"
+                id="h2",
+                claim="fail",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
             BehaviorHypothesis(
                 id="h3",
@@ -387,7 +416,13 @@ class TestToolRepetition:
         compass = new_compass()
         now = time.time()
         compass.action_history = [
-            {"tool": "Bash", "ts": now - i * 60, "sig": "irecovery:query", "exit": 0, "err": ""}
+            {
+                "tool": "Bash",
+                "ts": now - i * 60,
+                "sig": "irecovery:query",
+                "exit": 0,
+                "err": "",
+            }
             for i in range(5)
         ]
 
@@ -440,7 +475,9 @@ class TestSeverityClassification:
             )
             for i in range(3)
         ]
-        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
+        compass.action_history = [
+            {"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}
+        ]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -521,7 +558,11 @@ class TestIntentBiasScorer:
         compass.constraint_check_count_session = 0
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
+                id="h1",
+                claim="test",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
         ]
         scorer = _IntentBiasScorer(compass, {})
@@ -534,7 +575,11 @@ class TestIntentBiasScorer:
         compass.constraint_check_count_session = 1
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
+                id="h1",
+                claim="test",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
         ]
         scorer = _IntentBiasScorer(compass, {})
@@ -545,10 +590,16 @@ class TestIntentBiasScorer:
         compass = new_compass()
         compass.approaches = [
             ApproachAttempt(
-                approach_sig="cmd:a", started_at=100, last_event=100, hyp_version_at_start=0
+                approach_sig="cmd:a",
+                started_at=100,
+                last_event=100,
+                hyp_version_at_start=0,
             ),
             ApproachAttempt(
-                approach_sig="cmd:b", started_at=200, last_event=200, hyp_version_at_start=0
+                approach_sig="cmd:b",
+                started_at=200,
+                last_event=200,
+                hyp_version_at_start=0,
             ),
         ]
         scorer = _IntentBiasScorer(compass, {})
@@ -587,7 +638,10 @@ class TestVerificationDebt:
 
         vd = [f for f in result.findings if f.kind == "verification_debt"]
         assert len(vd) == 1
-        assert vd[0].severity in ("informational", "warning")  # Authority engine may escalate
+        assert vd[0].severity in (
+            "informational",
+            "warning",
+        )  # Authority engine may escalate
         assert "8" in vd[0].message
 
     def test_does_not_fire_at_streak_7(self):
@@ -635,10 +689,16 @@ class TestStaleModel:
         compass = new_compass()
         compass.approaches = [
             ApproachAttempt(
-                approach_sig="cmd:a", started_at=100, last_event=100, hyp_version_at_start=0
+                approach_sig="cmd:a",
+                started_at=100,
+                last_event=100,
+                hyp_version_at_start=0,
             ),
             ApproachAttempt(
-                approach_sig="cmd:b", started_at=200, last_event=200, hyp_version_at_start=0
+                approach_sig="cmd:b",
+                started_at=200,
+                last_event=200,
+                hyp_version_at_start=0,
             ),
         ]
         compass.event_counter = 10
@@ -648,16 +708,25 @@ class TestStaleModel:
 
         sm = [f for f in result.findings if f.kind == "stale_model"]
         assert len(sm) == 1
-        assert sm[0].severity in ("informational", "warning")  # Authority engine may escalate
+        assert sm[0].severity in (
+            "informational",
+            "warning",
+        )  # Authority engine may escalate
 
     def test_no_fire_when_version_changes(self):
         compass = new_compass()
         compass.approaches = [
             ApproachAttempt(
-                approach_sig="cmd:a", started_at=100, last_event=100, hyp_version_at_start=0
+                approach_sig="cmd:a",
+                started_at=100,
+                last_event=100,
+                hyp_version_at_start=0,
             ),
             ApproachAttempt(
-                approach_sig="cmd:b", started_at=200, last_event=200, hyp_version_at_start=1
+                approach_sig="cmd:b",
+                started_at=200,
+                last_event=200,
+                hyp_version_at_start=1,
             ),
         ]
         compass.event_counter = 10
@@ -699,7 +768,11 @@ class TestSerialDiscoveryTwoStage:
         compass.early_nudge_emitted = False
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
+                id="h1",
+                claim="test",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
         ]
         compass.event_counter = 10
@@ -719,7 +792,11 @@ class TestSerialDiscoveryTwoStage:
         compass.early_nudge_emitted = False
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
+                id="h1",
+                claim="test",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
         ]
         compass.event_counter = 10
@@ -737,7 +814,11 @@ class TestSerialDiscoveryTwoStage:
         compass.early_nudge_emitted = True  # Already emitted
         compass.hypotheses = [
             BehaviorHypothesis(
-                id="h1", claim="test", confidence=0.4, source="command_failure", status="active"
+                id="h1",
+                claim="test",
+                confidence=0.4,
+                source="command_failure",
+                status="active",
             ),
         ]
         compass.event_counter = 10
@@ -781,7 +862,13 @@ class TestFailureAmnesiasDualSource:
         compass = new_compass()
         now = time.time()
         compass.action_history = [
-            {"tool": "Bash", "ts": now - 300, "sig": "cmd:a", "exit": 1, "err": "error X"},
+            {
+                "tool": "Bash",
+                "ts": now - 300,
+                "sig": "cmd:a",
+                "exit": 1,
+                "err": "error X",
+            },
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": "error X"},
         ]
         compass.intent_history = ["execute", "execute"]
@@ -848,7 +935,13 @@ class TestFailureAmnesiasDualSource:
         compass = new_compass()
         now = time.time()
         compass.action_history = [
-            {"tool": "Bash", "ts": now - 300, "sig": "cmd:a", "exit": 1, "err": "error X"},
+            {
+                "tool": "Bash",
+                "ts": now - 300,
+                "sig": "cmd:a",
+                "exit": 1,
+                "err": "error X",
+            },
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": "error X"},
         ]
         compass.intent_history = ["execute", "execute"]
@@ -868,7 +961,9 @@ class TestFailureAmnesiasDualSource:
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": "failed"},
         ]
         compass.intent_history = ["execute"]
-        compass.constraint_check_count_session = 1  # suppress serial_discovery stage-1 noise
+        compass.constraint_check_count_session = (
+            1  # suppress serial_discovery stage-1 noise
+        )
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1",
@@ -898,7 +993,9 @@ class TestFailureAmnesiasDualSource:
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": latest_error},
         ]
         compass.intent_history = ["execute"]
-        compass.constraint_check_count_session = 1  # suppress serial_discovery stage-1 noise
+        compass.constraint_check_count_session = (
+            1  # suppress serial_discovery stage-1 noise
+        )
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1",
@@ -925,7 +1022,9 @@ class TestSignalCooldown:
     def test_signal_suppressed_within_cooldown(self):
         compass = new_compass()
         compass.event_counter = 5
-        compass.last_fired = {"approach_cycling": 3}  # Fired 2 events ago, cooldown is 10
+        compass.last_fired = {
+            "approach_cycling": 3
+        }  # Fired 2 events ago, cooldown is 10
 
         coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
         assert coord.can_fire("approach_cycling") is False
@@ -984,7 +1083,9 @@ class TestPrecheckNudgeDedup:
         result = ch.execute(_make_event(compass), _default_config())
         next_actions = result.metrics.get("next_actions", [])
         # At most 1 precheck nudge (dedup'd by priority)
-        precheck_nudges = [a for a in next_actions if a.get("tool") == "constraint_check"]
+        precheck_nudges = [
+            a for a in next_actions if a.get("tool") == "constraint_check"
+        ]
         assert len(precheck_nudges) <= 1
 
     def test_higher_priority_signal_wins(self):
@@ -1010,7 +1111,9 @@ class TestPrecheckNudgeDedup:
 
         result = ch.execute(_make_event(compass), _default_config())
         next_actions = result.metrics.get("next_actions", [])
-        precheck_nudges = [a for a in next_actions if a.get("tool") == "constraint_check"]
+        precheck_nudges = [
+            a for a in next_actions if a.get("tool") == "constraint_check"
+        ]
         if precheck_nudges:
             # approach_cycling (priority 1) should win over consecutive_failures (priority 4)
             assert "approach_cycling" in precheck_nudges[0].get("reason", "")
@@ -1049,7 +1152,9 @@ class TestEscalation:
             )
             for i in range(3)
         ]
-        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
+        compass.action_history = [
+            {"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}
+        ]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -1078,7 +1183,9 @@ class TestEvidenceTrace:
         result = ch.execute(_make_event(compass), _default_config())
 
         for f in result.findings:
-            assert "intent_counts" in f.evidence, f"Finding {f.kind} missing intent_counts"
+            assert "intent_counts" in f.evidence, (
+                f"Finding {f.kind} missing intent_counts"
+            )
 
     def test_bias_findings_have_score_delta(self):
         compass = new_compass()
@@ -1226,7 +1333,9 @@ class TestGlobalPriorsIntegration:
         assert "global_alpha" in trace
         assert trace["global_alpha"] == pytest.approx(0.6)
         assert "global_adjustments_applied" in trace
-        assert trace["global_adjustments_applied"]["verification_debt"] == pytest.approx(0.05)
+        assert trace["global_adjustments_applied"][
+            "verification_debt"
+        ] == pytest.approx(0.05)
 
     def test_evidence_trace_no_global_when_alpha_zero(self):
         """When alpha=0, no global fields in evidence trace."""
@@ -1260,7 +1369,9 @@ class TestEffectiveBiasWeight:
             "decay_horizon": 50,
             "computed_bias_adjustments": {"verification_debt": 0.08},
         }
-        scorer = _IntentBiasScorer(compass, {"verification_debt_bias": 0.20}, global_priors=priors)
+        scorer = _IntentBiasScorer(
+            compass, {"verification_debt_bias": 0.20}, global_priors=priors
+        )
         # effective = 0.20 + 0.6 * 0.08 = 0.20 + 0.048 = 0.248
         effective = scorer._effective_bias_weight(
             "verification_debt", "verification_debt_bias", 0.20
@@ -1280,7 +1391,9 @@ class TestEffectiveBiasWeight:
             "computed_bias_adjustments": {"verification_debt": 0.10},
         }
         # project=0.25 + 0.6*0.10 = 0.31, but BIAS_CAP=0.25
-        scorer = _IntentBiasScorer(compass, {"verification_debt_bias": 0.25}, global_priors=priors)
+        scorer = _IntentBiasScorer(
+            compass, {"verification_debt_bias": 0.25}, global_priors=priors
+        )
         effective = scorer._effective_bias_weight(
             "verification_debt", "verification_debt_bias", 0.25
         )
@@ -1300,7 +1413,9 @@ class TestEffectiveBiasWeight:
         }
         scorer = _IntentBiasScorer(compass, {}, global_priors=priors)
         # effective = 0.15 + 0.6 * (-0.10) = 0.15 - 0.06 = 0.09
-        effective = scorer._effective_bias_weight("failure_amnesia", "failure_amnesia_bias", 0.15)
+        effective = scorer._effective_bias_weight(
+            "failure_amnesia", "failure_amnesia_bias", 0.15
+        )
         assert effective == pytest.approx(0.09)
 
     def test_clamp_to_zero_floor(self):
@@ -1406,7 +1521,10 @@ class TestRepertoireHints:
             compass,
             raw_input={
                 "resolution_repertoire": [
-                    {"trigger_signature": "approach_cycling", "resolution": "Just fix it."}
+                    {
+                        "trigger_signature": "approach_cycling",
+                        "resolution": "Just fix it.",
+                    }
                 ]
             },
         )

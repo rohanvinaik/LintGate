@@ -1,4 +1,7 @@
-from lintgate.channels.performance_channel import PerformanceChannel, _discover_python_files
+from lintgate.channels.performance_channel import (
+    PerformanceChannel,
+    _discover_python_files,
+)
 from lintgate.controlplane.types import ControlPlaneConfig, SupervisionEvent
 
 

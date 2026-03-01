@@ -74,7 +74,11 @@ _VENV_INDICATOR_FLAGS = ("--target", "-t ", "--prefix")
 
 # Conflicting package manager combos
 _CONFLICTING_COMBOS: list[tuple[str, str, str]] = [
-    ("Pipfile", "poetry.lock", "Both Pipfile (pipenv) and poetry.lock exist — pick one"),
+    (
+        "Pipfile",
+        "poetry.lock",
+        "Both Pipfile (pipenv) and poetry.lock exist — pick one",
+    ),
     ("Pipfile", "uv.lock", "Both Pipfile (pipenv) and uv.lock exist — pick one"),
     ("poetry.lock", "uv.lock", "Both poetry.lock and uv.lock exist — migrate to one"),
 ]
@@ -97,7 +101,11 @@ class HealthCheck:
     evidence: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"name": self.name, "status": self.status, "message": self.message}
+        d: dict[str, Any] = {
+            "name": self.name,
+            "status": self.status,
+            "message": self.message,
+        }
         if self.suggestion:
             d["suggestion"] = self.suggestion
         if self.evidence:
@@ -453,7 +461,10 @@ def _check_manifest_health(root: Path) -> list[HealthCheck]:
                 status="warning",
                 message="pyproject.toml missing requires-python field",
                 suggestion="Add requires-python = '>=3.10' (or your minimum version)",
-                evidence={"manifest": "pyproject.toml", "issue": "missing_requires_python"},
+                evidence={
+                    "manifest": "pyproject.toml",
+                    "issue": "missing_requires_python",
+                },
             )
         )
     else:

@@ -12,6 +12,7 @@ from ..cognitive_complexity import (
     count_statements,
 )
 from ._helpers import count_local_names
+from .dependency_clustering import find_extraction_candidates
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -205,6 +206,15 @@ def check_cognitive_complexity(
 
     if cogc > threshold:
         severity = "blocking" if cogc > threshold * 2 else "warning"
+        evidence: dict = {"cognitive_complexity": cogc, "threshold": threshold}
+
+        # Attach decomposition proposals for high-CC functions
+        decomp_threshold = thresholds.get("decomposition_cc_threshold", 15)
+        if cogc > decomp_threshold:
+            candidates = find_extraction_candidates(node, filepath)
+            if candidates:
+                evidence["decomposition"] = [c.to_dict() for c in candidates]
+
         yield LintIssue(
             linter="structure",
             kind="cognitive-complexity",
@@ -216,7 +226,7 @@ def check_cognitive_complexity(
             line=node.lineno,
             severity=severity,
             confidence=1.0,
-            evidence={"cognitive_complexity": cogc, "threshold": threshold},
+            evidence=evidence,
             suggestions=[
                 "Cognitive complexity measures understanding difficulty, not path count",
                 "Reduce nesting, simplify boolean expressions, extract helper functions",

@@ -93,7 +93,8 @@ class TestInjectDispositions:
         fired = inject_dispositions(session, True, 0.8, 0.60, 0, 0.7)
         assert len(fired) >= 1
         assert any(
-            "compact" in d["disposition"].lower() or "pressure" in d["disposition"].lower()
+            "compact" in d["disposition"].lower()
+            or "pressure" in d["disposition"].lower()
             for d in fired
         )
 
@@ -101,7 +102,8 @@ class TestInjectDispositions:
         session = {"event_counter": 25, "_disposition_cooldowns": {}}
         fired = inject_dispositions(session, False, 0.75, 0.0, 0, 0.70)
         assert any(
-            "habit" in d["disposition"].lower() or "declare_mode" in d["tool_hint"] for d in fired
+            "habit" in d["disposition"].lower() or "declare_mode" in d["tool_hint"]
+            for d in fired
         )
 
     def test_constraint_reorient(self):
@@ -110,7 +112,10 @@ class TestInjectDispositions:
         assert any("constraint" in d["tool_hint"] for d in fired)
 
     def test_cooldown_prevents_refire(self):
-        session = {"event_counter": 5, "_disposition_cooldowns": {"constraint_reorient": 5}}
+        session = {
+            "event_counter": 5,
+            "_disposition_cooldowns": {"constraint_reorient": 5},
+        }
         fired = inject_dispositions(session, False, 0.0, 0.0, 4, 0.7)
         assert not any("constraint" in d.get("tool_hint", "") for d in fired)
 
@@ -147,7 +152,10 @@ class TestExtractHabitSignals:
     def test_normal_session(self):
         session = {
             "habit_state": {"active": True, "habit_score": 0.85},
-            "token_tracker": {"estimated_tokens_used": 100000, "context_window_size": 200000},
+            "token_tracker": {
+                "estimated_tokens_used": 100000,
+                "context_window_size": 200000,
+            },
             "action_history": [{"exit_code": 1}, {"exit_code": 1}],
         }
         active, score, pressure, failures = extract_habit_signals(session)
@@ -230,7 +238,10 @@ class TestArbitrateOutput:
             "event_counter": 10,
             "_disposition_cooldowns": {},
             "habit_state": {"active": True, "habit_score": 0.8},
-            "token_tracker": {"estimated_tokens_used": 150000, "context_window_size": 200000},
+            "token_tracker": {
+                "estimated_tokens_used": 150000,
+                "context_window_size": 200000,
+            },
         }
         report = {"systemMessage": "OK"}
         result = arbitrate_output(report, cfg, session)

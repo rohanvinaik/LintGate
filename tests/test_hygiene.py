@@ -244,7 +244,9 @@ class TestCheckCleanWorkingTree:
 
 class TestCheckNoStagedSecrets:
     def test_no_secrets(self, tmp_path):
-        with patch("lintgate.channels.git_channel._check_diff_secrets", return_value=[]):
+        with patch(
+            "lintgate.channels.git_channel._check_diff_secrets", return_value=[]
+        ):
             result = _check_no_staged_secrets("git commit", str(tmp_path))
         assert result is None
 
@@ -277,7 +279,9 @@ class TestClassifyAndCheck:
         assert len(result.warnings) == 0
 
     def test_git_commit_checks(self, tmp_path):
-        with patch("lintgate.channels.git_channel._check_diff_secrets", return_value=[]):
+        with patch(
+            "lintgate.channels.git_channel._check_diff_secrets", return_value=[]
+        ):
             result = classify_and_check("git commit -m 'test'", str(tmp_path))
         assert result.command_class == "git_commit"
 
@@ -521,7 +525,9 @@ class TestCheckGitignoreCoverageGaps:
         gitignore.write_text(".env\n")
 
         with (
-            patch.object(type(gitignore), "read_text", side_effect=OSError("read error")),
+            patch.object(
+                type(gitignore), "read_text", side_effect=OSError("read error")
+            ),
             patch("pathlib.Path.read_text", side_effect=OSError("read error")),
         ):
             result = _check_gitignore_coverage("edit .env", str(tmp_path))

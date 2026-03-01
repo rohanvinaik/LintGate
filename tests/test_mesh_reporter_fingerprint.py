@@ -71,11 +71,19 @@ class TestFindingFingerprint:
     def test_stable_across_line_changes(self) -> None:
         """Same file+kind+message -> same fingerprint regardless of line."""
         issue_a = _make_issue(
-            "blocking", linter="ruff", kind="F821", message="Undefined name 'x'", file="foo.py"
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'x'",
+            file="foo.py",
         )
         issue_a.line = 10
         issue_b = _make_issue(
-            "blocking", linter="ruff", kind="F821", message="Undefined name 'x'", file="foo.py"
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'x'",
+            file="foo.py",
         )
         issue_b.line = 25
         fp_a = compute_finding_fingerprint(issue_a, "lint")
@@ -84,17 +92,27 @@ class TestFindingFingerprint:
 
     def test_different_messages_different_fingerprints(self) -> None:
         issue_a = _make_issue(
-            "blocking", linter="ruff", kind="F821", message="Undefined name 'x'", file="foo.py"
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'x'",
+            file="foo.py",
         )
         issue_b = _make_issue(
-            "blocking", linter="ruff", kind="F821", message="Undefined name 'y'", file="foo.py"
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'y'",
+            file="foo.py",
         )
         fp_a = compute_finding_fingerprint(issue_a, "lint")
         fp_b = compute_finding_fingerprint(issue_b, "lint")
         assert fp_a != fp_b
 
     def test_different_channels_different_fingerprints(self) -> None:
-        issue = _make_issue("warning", linter="test", kind="test_fail", message="test_x failed")
+        issue = _make_issue(
+            "warning", linter="test", kind="test_fail", message="test_x failed"
+        )
         fp_lint = compute_finding_fingerprint(issue, "lint")
         fp_tests = compute_finding_fingerprint(issue, "tests")
         assert fp_lint != fp_tests
@@ -152,7 +170,9 @@ class TestBuildFindingIndex:
                     channel="tests",
                     status="fail",
                     severity="warning",
-                    findings=[_make_issue("warning", linter="test_ch", message="test failed")],
+                    findings=[
+                        _make_issue("warning", linter="test_ch", message="test failed")
+                    ],
                 ),
             ]
         )
@@ -179,8 +199,18 @@ class TestBuildFindingIndex:
                     status="fail",
                     severity="warning",
                     findings=[
-                        _make_issue("warning", kind="E501", message="Line too long", file="foo.py"),
-                        _make_issue("warning", kind="E501", message="Line too long", file="foo.py"),
+                        _make_issue(
+                            "warning",
+                            kind="E501",
+                            message="Line too long",
+                            file="foo.py",
+                        ),
+                        _make_issue(
+                            "warning",
+                            kind="E501",
+                            message="Line too long",
+                            file="foo.py",
+                        ),
                     ],
                 ),
             ]
@@ -196,7 +226,14 @@ class TestBuildFindingIndex:
 
 class TestComputeFindingDelta:
     def _idx(self, fp: str, severity: str = "warning", channel: str = "lint") -> dict:
-        return {fp: {"channel": channel, "kind": "test", "severity": severity, "message": "m"}}
+        return {
+            fp: {
+                "channel": channel,
+                "kind": "test",
+                "severity": severity,
+                "message": "m",
+            }
+        }
 
     def test_new_findings_detected(self) -> None:
         prev = self._idx("fp1")
@@ -278,7 +315,9 @@ class TestFormatMeshReportCompact:
                     channel="lint",
                     status="fail",
                     severity="blocking",
-                    findings=[_make_issue("blocking", message="Undefined 'x'", file="foo.py")],
+                    findings=[
+                        _make_issue("blocking", message="Undefined 'x'", file="foo.py")
+                    ],
                 ),
             ]
         )
@@ -312,13 +351,17 @@ class TestFormatMeshReportCompact:
                         channel="lint",
                         status="fail",
                         severity="warning",
-                        findings=[_make_issue("warning", message="Warn B", file="b.py")],
+                        findings=[
+                            _make_issue("warning", message="Warn B", file="b.py")
+                        ],
                     ),
                 ]
             )
         )
 
-        compact = format_mesh_report_compact(mesh, previous_finding_index=previous_index)
+        compact = format_mesh_report_compact(
+            mesh, previous_finding_index=previous_index
+        )
 
         assert "delta" in compact
         assert "blocking_issues" not in compact

@@ -63,7 +63,11 @@ def register(mcp, helpers):
             venv_path = root / ".venv"
             if venv_path.exists():
                 result["actions"].append(
-                    {"action": "create_venv", "status": "skipped", "reason": ".venv already exists"}
+                    {
+                        "action": "create_venv",
+                        "status": "skipped",
+                        "reason": ".venv already exists",
+                    }
                 )
             else:
                 try:
@@ -79,11 +83,15 @@ def register(mcp, helpers):
                             "action": "create_venv",
                             "status": "ok" if proc.returncode == 0 else "error",
                             "returncode": proc.returncode,
-                            "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
+                            "stderr": proc.stderr.strip()[-500:]
+                            if proc.stderr
+                            else None,
                         }
                     )
                 except subprocess.TimeoutExpired:
-                    result["actions"].append({"action": "create_venv", "status": "timeout"})
+                    result["actions"].append(
+                        {"action": "create_venv", "status": "timeout"}
+                    )
 
         if lock:
             try:

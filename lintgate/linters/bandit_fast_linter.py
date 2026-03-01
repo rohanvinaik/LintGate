@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -78,6 +79,36 @@ _CONFIDENCE_MAP = {
 }
 
 
+_NOQA_RE = re.compile(r"#\s*noqa:\s*([\w,\s]+)")
+
+
+def _is_noqa_suppressed(filepath: str, lineno: int, test_id: str) -> bool:
+    """Check if a source line has a ``# noqa: BXXX`` suppression for test_id.
+
+    Bandit natively handles ``# nosec`` — this covers the Ruff-compatible
+    ``# noqa: B608`` / ``# noqa: S608, B608`` pattern that Bandit ignores.
+    """
+    if not filepath or not lineno or not test_id:
+        return False
+    try:
+        with open(filepath) as f:
+            for i, line in enumerate(f, 1):
+                if i == lineno:
+                    m = _NOQA_RE.search(line)
+                    if m:
+                        codes = {c.strip() for c in m.group(1).split(",")}
+                        if test_id in codes:
+                            return True
+                        # Also check Sxxx alias (Ruff maps B608 → S608)
+                        s_alias = "S" + test_id[1:] if test_id.startswith("B") else None
+                        if s_alias and s_alias in codes:
+                            return True
+                    return False
+    except OSError:
+        pass
+    return False
+
+
 class BanditFastLinter(BaseLinter):
     """Bandit fast path — high-confidence security checks at Tier 2.
 
@@ -128,6 +159,7 @@ class BanditFastLinter(BaseLinter):
             test_id = item.get("test_id", "")
             test_name = item.get("test_name", "")
             filename = item.get("filename")
+            lineno = item.get("line_number")
 
             # B105 scope-aware filtering: suppress in test/docs only
             if (
@@ -137,12 +169,16 @@ class BanditFastLinter(BaseLinter):
             ):
                 continue
 
+            # Ruff-compatible noqa suppression (Bandit handles # nosec natively)
+            if _is_noqa_suppressed(filename, lineno, test_id):
+                continue
+
             yield LintIssue(
                 linter="bandit_fast",
                 kind=f"{test_id}/{test_name}" if test_id else test_name,
                 message=item.get("issue_text", ""),
                 file=filename,
-                line=item.get("line_number"),
+                line=lineno,
                 severity=_SEVERITY_MAP.get(severity_label, "warning"),
                 confidence=_CONFIDENCE_MAP.get(confidence_label, 0.6),
                 evidence={

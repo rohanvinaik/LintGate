@@ -150,7 +150,9 @@ class TestUpdateHabitModePathABranches:
         with _path_a_env(hs, tr):
             _update_habit_mode_path_a(
                 self._cfg(),
-                self._session({"habit_config_overrides": {"context_window_size": "100000"}}),
+                self._session(
+                    {"habit_config_overrides": {"context_window_size": "100000"}}
+                ),
                 self._compass(),
                 "/tmp",
                 "Read",
@@ -186,7 +188,10 @@ class TestApplyPathBTelemetryFallback:
         from lintgate.hook_habit import _apply_path_b_telemetry
 
         fires = {"cmd_fail": 2}
-        with patch("lintgate.controlplane.model_profiles.load_profiles", side_effect=RuntimeError):
+        with patch(
+            "lintgate.controlplane.model_profiles.load_profiles",
+            side_effect=RuntimeError,
+        ):
             result = _apply_path_b_telemetry(100, fires)
         assert result == {"cmd_fail": 2}
 
@@ -254,11 +259,15 @@ class TestRunLegacyPipeline:
     def _legacy_patches(self, classification, tier, aggregated, *, dep_warnings=None):
         """Return a list of patch context managers for _run_legacy_pipeline."""
         ps = [
-            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
+            patch(
+                "lintgate.hook_posttooluse.classify_change", return_value=classification
+            ),
             patch("lintgate.hook_posttooluse.select_tier", return_value=tier),
             patch("lintgate.hook_posttooluse.build_registry", return_value=MagicMock()),
             patch("lintgate.hook_posttooluse.run_linters", return_value=[]),
-            patch("lintgate.hook_posttooluse.aggregate_results", return_value=aggregated),
+            patch(
+                "lintgate.hook_posttooluse.aggregate_results", return_value=aggregated
+            ),
             patch("lintgate.hook_posttooluse.format_report", return_value={}),
             patch("lintgate.hook_posttooluse.load_last_run", return_value=None),
             patch("lintgate.hook_posttooluse.update_issue_memory"),
@@ -283,17 +292,23 @@ class TestRunLegacyPipeline:
             risk_level="low",
             files_changed=["req.txt"],
         )
-        tier = LintTier(name="t1", linters=["ruff"], files=["req.txt"], reason="dep", skip=False)
+        tier = LintTier(
+            name="t1", linters=["ruff"], files=["req.txt"], reason="dep", skip=False
+        )
         agg = AggregatedResult(metrics={"linters_run": 1})
         stdout_buf = io.StringIO()
         monkeypatch.setattr(sys, "stdout", stdout_buf)
         config = MagicMock(total_timeout_ms=8000)
 
         with contextlib.ExitStack() as stack:
-            for p in self._legacy_patches(cls, tier, agg, dep_warnings=["Warning: unpinned"]):
+            for p in self._legacy_patches(
+                cls, tier, agg, dep_warnings=["Warning: unpinned"]
+            ):
                 stack.enter_context(p)
             with pytest.raises(SystemExit) as exc:
-                _run_legacy_pipeline("Edit", {}, "ok", str(tmp_path), config, time.perf_counter())
+                _run_legacy_pipeline(
+                    "Edit", {}, "ok", str(tmp_path), config, time.perf_counter()
+                )
         assert exc.value.code == 0
         out = json.loads(stdout_buf.getvalue().strip())
         assert "Dependency Health" in out.get("systemMessage", "")
@@ -307,7 +322,9 @@ class TestRunLegacyPipeline:
             risk_level="moderate",
             files_changed=["f.py"],
         )
-        tier = LintTier(name="t2", linters=["ruff"], files=["f.py"], reason="logic", skip=False)
+        tier = LintTier(
+            name="t2", linters=["ruff"], files=["f.py"], reason="logic", skip=False
+        )
         agg = AggregatedResult(metrics={"linters_run": 1})
         stdout_buf = io.StringIO()
         monkeypatch.setattr(sys, "stdout", stdout_buf)
@@ -320,7 +337,9 @@ class TestRunLegacyPipeline:
                 if hasattr(p, "attribute"):
                     mocks[p.attribute] = m
             with pytest.raises(SystemExit):
-                _run_legacy_pipeline("Edit", {}, "ok", str(tmp_path), config, time.perf_counter())
+                _run_legacy_pipeline(
+                    "Edit", {}, "ok", str(tmp_path), config, time.perf_counter()
+                )
         mocks["build_registry"].assert_called_once_with(config)
         mocks["run_linters"].assert_called_once()
 
@@ -341,7 +360,12 @@ class TestMainBranches:
     def test_non_mutation_tool_exits_clean(self, monkeypatch, tmp_path):
         """Line 191."""
         code, output = self._run_main(
-            {"tool_name": "Read", "tool_input": {}, "tool_output": "", "cwd": str(tmp_path)},
+            {
+                "tool_name": "Read",
+                "tool_input": {},
+                "tool_output": "",
+                "cwd": str(tmp_path),
+            },
             monkeypatch,
         )
         assert code == 0 and output == "{}"
@@ -418,10 +442,17 @@ class TestMainBranches:
         """Line 211."""
         with (
             patch("lintgate.hook_posttooluse.load_config", side_effect=RuntimeError),
-            patch("lintgate.hook_posttooluse._fallback_config", side_effect=RuntimeError),
+            patch(
+                "lintgate.hook_posttooluse._fallback_config", side_effect=RuntimeError
+            ),
         ):
             code, output = self._run_main(
-                {"tool_name": "Edit", "tool_input": {}, "tool_output": "ok", "cwd": str(tmp_path)},
+                {
+                    "tool_name": "Edit",
+                    "tool_input": {},
+                    "tool_output": "ok",
+                    "cwd": str(tmp_path),
+                },
                 monkeypatch,
             )
         assert code == 0 and output == "{}"

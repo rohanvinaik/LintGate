@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 68 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 76 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (68)
+## MCP Tools (73)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -58,6 +58,13 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `mutation_refactor_loop`  | Orchestrate before/after delta measurement for test reinforcement       |
 | `calibrate_assertion_weights` | Run mutation-backed calibration pipeline to adjust assertion weights |
 | `run_property_tests`     | Execute generated property tests for a function and capture counterexamples |
+
+### Bootstrap
+
+| Tool                   | Purpose                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `bootstrap_tests`      | Trigger test bootstrap pipeline (skeletons, property tests, contracts)  |
+| `bootstrap_status`     | Check bootstrap pipeline status, phase, artifacts, errors               |
 
 ### Behavioral Supervision
 
@@ -132,6 +139,22 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `nsil_verify_action`      | Verify an action against behavioral constraints and gate contracts   |
 | `nsil_export_training_data`| Export collected alignment and compliance data for model fine-tuning |
 | `nsil_benchmark`           | Run NSIL enforcement benchmarks                                     |
+
+### Convergence Analysis
+
+| Tool                      | Purpose                                                              |
+| ------------------------- | -------------------------------------------------------------------- |
+| `convergence_analyze`     | Multi-lens convergence aggregation on functions and files            |
+| `extraction_plan`         | Build stepwise extraction plan for a specific function               |
+| `optimization_landscape`  | Project-wide optimization opportunity map                            |
+
+### Refactor Checkpointing
+
+| Tool                  | Purpose                                                                |
+| --------------------- | ---------------------------------------------------------------------- |
+| `refactor_checkpoint` | Record progress on a file during a refactoring session                 |
+| `refactor_resume`     | Load refactor state and provide structured summary for session resumption |
+| `refactor_thesis`     | Record or update the agent's structural thesis about the codebase      |
 
 ---
 
@@ -263,7 +286,7 @@ lintgate/
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 68 MCP tool definitions (incl. habit_tools.py, compass_tools.py)
+├── mcp_tools/                       # 73 MCP tool definitions (incl. convergence_tools.py, habit_tools.py, compass_tools.py, bootstrap_tools.py)
 ├── tests/                           # 2,180+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy

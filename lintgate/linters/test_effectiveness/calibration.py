@@ -58,7 +58,12 @@ def calibrate_weights(
             vulnerable_functions.add(s["function"])
 
     kind_stats: dict[AssertionKind, dict[str, int]] = {
-        kind: {"present_killed": 0, "present_total": 0, "absent_killed": 0, "absent_total": 0}
+        kind: {
+            "present_killed": 0,
+            "present_total": 0,
+            "absent_killed": 0,
+            "absent_total": 0,
+        }
         for kind in AssertionKind
     }
 
@@ -106,13 +111,18 @@ def save_calibration(
     lintgate_dir = os.path.join(project_root, ".lintgate")
     os.makedirs(lintgate_dir, exist_ok=True)
 
-    data = {"source_hash": source_hash, "weights": {k.value: v for k, v in weights.items()}}
+    data = {
+        "source_hash": source_hash,
+        "weights": {k.value: v for k, v in weights.items()},
+    }
 
     with open(os.path.join(project_root, CALIBRATION_FILE), "w") as f:
         json.dump(data, f, indent=2)
 
 
-def get_effective_weights(project_root: str, survivors_path: str) -> dict[AssertionKind, float]:
+def get_effective_weights(
+    project_root: str, survivors_path: str
+) -> dict[AssertionKind, float]:
     """Load calibrated weights if valid and hash matches, else return default."""
     cal_path = os.path.join(project_root, CALIBRATION_FILE)
     if not os.path.exists(cal_path):

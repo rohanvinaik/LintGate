@@ -87,6 +87,21 @@ class RuffLinter(BaseLinter):
                 end_location = item.get("end_location", {})
                 fix = item.get("fix")
 
+                # E402 evidence attachment — transitive import analysis
+                evidence: dict = {}
+                confidence = 1.0  # Ruff is deterministic
+                if code == "E402":
+                    evidence = _build_e402_evidence_safe(
+                        item,
+                        location,
+                        ctx.project_root,
+                    )
+                    # Conditionally escalate confidence for cross-env risk (Gap 6)
+                    new_conf, escalation = _maybe_escalate_e402(evidence, confidence)
+                    confidence = new_conf
+                    if escalation:
+                        evidence["escalation"] = escalation
+
                 yield LintIssue(
                     linter="ruff",
                     kind=code,
@@ -97,9 +112,10 @@ class RuffLinter(BaseLinter):
                     end_line=end_location.get("row"),
                     end_column=end_location.get("column"),
                     severity=_classify_severity(code, ctx.strictness),
-                    confidence=1.0,  # Ruff is deterministic
+                    confidence=confidence,
                     fixable=fix is not None,
                     fix_description=fix.get("message") if fix else None,
+                    evidence=evidence,
                 )
 
 
@@ -141,6 +157,88 @@ class RuffFormatLinter(BaseLinter):
                             fixable=True,
                             fix_description="Run: ruff format",
                         )
+
+
+def _maybe_escalate_e402(
+    evidence: dict,
+    current_confidence: float,
+) -> tuple[float, dict | None]:
+    """Conditionally boost E402 confidence when cross-environment risk is present.
+
+    Conditions (ALL required):
+    1. non_stdlib_deps is non-empty
+    2. has_lazy is True (lazy imports hide failures until runtime)
+
+    Returns (new_confidence, escalation_evidence_or_None).
+    Severity stays "warning" — only confidence changes.
+    """
+    transitive = evidence.get("transitive_imports", {})
+    non_stdlib = transitive.get("non_stdlib", [])
+    has_lazy = transitive.get("has_lazy", False)
+
+    if non_stdlib and has_lazy:
+        escalation = {
+            "reason": "Mid-file import transitively depends on non-stdlib "
+            "packages with lazy import patterns — cross-environment risk",
+            "conditions_met": ["non_stdlib_deps", "lazy_imports"],
+            "non_stdlib": non_stdlib,
+        }
+        return (0.85, escalation)  # Boost from default 1.0 to 0.85
+
+    return (current_confidence, None)
+
+
+def _build_e402_evidence_safe(
+    item: dict,
+    location: dict,
+    project_root: str,
+) -> dict:
+    """Build E402 transitive import evidence, with graceful degradation.
+
+    Attaches evidence only — does NOT modify severity. The evidence
+    informs the agent's decision about import placement.
+    """
+    try:
+        from .structure_checks.import_tracing import build_e402_evidence
+
+        filepath = item.get("filename", "")
+        line = location.get("row", 0)
+
+        # Extract module name from ruff's message (e.g. "Module level import not at top of file")
+        # Ruff's E402 message doesn't include the module name directly,
+        # so we extract it from the source line or filename context.
+        # The message format is: "Module level import not at top of file"
+        # We need to parse the import from the source file.
+        module_name = _extract_e402_module(filepath, line)
+        if not module_name:
+            return {"code": "E402", "note": "could not resolve module name"}
+
+        return build_e402_evidence(module_name, filepath, line, project_root)
+    except Exception:
+        return {}  # Graceful degradation — never break the linter
+
+
+def _extract_e402_module(filepath: str, line: int) -> str | None:
+    """Extract the imported module name from the source file at the given line."""
+    import ast
+
+    try:
+        with open(filepath, encoding="utf-8", errors="ignore") as f:
+            source = f.read()
+        tree = ast.parse(source, filename=filepath)
+    except (SyntaxError, OSError):
+        return None
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        if node.lineno != line:
+            continue
+        if isinstance(node, ast.Import) and node.names:
+            return node.names[0].name
+        if isinstance(node, ast.ImportFrom) and node.module:
+            return node.module
+    return None
 
 
 def _classify_severity(code: str, strictness: str) -> str:

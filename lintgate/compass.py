@@ -205,7 +205,9 @@ class CompassState:
         return cls(
             version=int(data.get("version", 1)),
             axes={k: CompassAxis.from_dict(v) for k, v in data.get("axes", {}).items()},
-            directives=[CompassDirective.from_dict(d) for d in data.get("directives", [])],
+            directives=[
+                CompassDirective.from_dict(d) for d in data.get("directives", [])
+            ],
             gap_report=GapReport.from_dict(data.get("gap_report", {})),
             forged_at=float(data.get("forged_at", 0.0)),
             frozen=bool(data.get("frozen", False)),
@@ -240,7 +242,9 @@ def compute_axis_depth(claims: list[CompassClaim]) -> int:
 
     count = len(claims)
     causal_count = sum(
-        1 for c in claims if _has_causal_marker(c.text) or _has_contrastive_marker(c.text)
+        1
+        for c in claims
+        if _has_causal_marker(c.text) or _has_contrastive_marker(c.text)
     )
 
     if count >= 9 or causal_count >= 3:

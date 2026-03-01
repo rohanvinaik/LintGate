@@ -38,6 +38,14 @@ class PropertyManifest:
         """Return set of qualified names for all pure functions."""
         return {name for name, f in self.functions.items() if f.purity.is_pure}
 
+    def get_pure_functions_by_file(self) -> dict[str, list[str]]:
+        """Group pure function names by their source file."""
+        by_file: dict[str, list[str]] = {}
+        for name, func in self.functions.items():
+            if func.purity.is_pure and func.source_file:
+                by_file.setdefault(func.source_file, []).append(name)
+        return by_file
+
     def update_metrics(self) -> None:
         """Recalculate counts based on the current functions dictionary."""
         self.pure_count = sum(1 for f in self.functions.values() if f.purity.is_pure)
@@ -54,7 +62,9 @@ class PropertyManifest:
 
         self.property_distribution = dist
         # Sort opportunities by number of hints descending
-        self.optimization_potential = sorted(opps, key=lambda x: len(x[1]), reverse=True)
+        self.optimization_potential = sorted(
+            opps, key=lambda x: len(x[1]), reverse=True
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize manifest to a dictionary."""
@@ -62,7 +72,9 @@ class PropertyManifest:
             "functions": {k: v.to_dict() for k, v in self.functions.items()},
             "pure_count": self.pure_count,
             "impure_count": self.impure_count,
-            "property_distribution": {k.value: v for k, v in self.property_distribution.items()},
+            "property_distribution": {
+                k.value: v for k, v in self.property_distribution.items()
+            },
         }
 
     @classmethod
@@ -75,6 +87,26 @@ class PropertyManifest:
         manifest = cls(functions=functions)
         manifest.update_metrics()
         return manifest
+
+
+# Side-effect kinds that indicate I/O dependency (unsafe to extract naively)
+_IO_SIDE_EFFECT_KINDS = frozenset({"io_call"})
+
+
+def _classify_extraction_safety(func: FunctionProperties) -> str:
+    """Classify how safely a function can be extracted to another module.
+
+    Returns:
+        ``"safe"``  — pure function, freely extractable
+        ``"needs_module_state"``  — reads/writes globals or module state
+        ``"unsafe"``  — performs I/O (file, network, subprocess)
+    """
+    if func.purity.is_pure:
+        return "safe"
+    for se in func.purity.side_effects:
+        if se.kind in _IO_SIDE_EFFECT_KINDS:
+            return "unsafe"
+    return "needs_module_state"
 
 
 # ── Manifest builder helpers ────────────────────────────────────────────
@@ -93,7 +125,11 @@ class _FuncFinder(ast.NodeVisitor):
         self._class_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        qualname = f"{'.'.join(self._class_stack)}.{node.name}" if self._class_stack else node.name
+        qualname = (
+            f"{'.'.join(self._class_stack)}.{node.name}"
+            if self._class_stack
+            else node.name
+        )
         self.nodes[qualname] = node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
@@ -108,19 +144,25 @@ def _compute_file_hash(filepath: str) -> str:
 
 def _load_manifest_cache(
     cache_path: Any,
-) -> tuple[PropertyManifest, dict[str, dict[str, Any]]]:
-    """Load cached manifest and metadata from disk, returning empty defaults on failure."""
+) -> tuple[PropertyManifest, dict[str, dict[str, Any]], float]:
+    """Load cached manifest and metadata from disk, returning empty defaults on failure.
+
+    Returns:
+        (manifest, per_file_metadata, mutation_mtime) — the mutation_mtime is the
+        mutation state file mtime at the time the cache was written.
+    """
     if not cache_path.exists():
-        return PropertyManifest(), {}
+        return PropertyManifest(), {}, 0.0
     try:
         with open(cache_path) as f:
             cached_data = json.load(f)
             return (
                 PropertyManifest.from_dict(cached_data.get("manifest", {})),
                 cached_data.get("metadata", {}),
+                cached_data.get("mutation_mtime", 0.0),
             )
     except (json.JSONDecodeError, OSError, KeyError):
-        return PropertyManifest(), {}
+        return PropertyManifest(), {}, 0.0
 
 
 def _restore_cached_functions(
@@ -140,6 +182,7 @@ def _scan_file(
     filepath: str,
     project_root: str,
     mutation_manager: MutationStateManager | None = None,
+    enforcement_mode: str = "audit",
 ) -> list[str]:
     """Parse a Python file, run purity + property analysis, and populate the manifest.
 
@@ -172,20 +215,38 @@ def _scan_file(
             if mutation_manager:
                 mutation_state = mutation_manager.get_state(f"{relpath}::{qualname}")
 
-            props = classify_properties(func_node, purity, mutation_state)
-            manifest.functions[unique_key] = FunctionProperties(
+            props = classify_properties(
+                func_node,
+                purity,
+                mutation_state,
+                enforcement_mode,
+                mutation_system_active=(mutation_manager is not None),
+            )
+            func_props = FunctionProperties(
                 purity=props.purity,
                 properties=props.properties,
                 optimization_hints=props.optimization_hints,
                 source_file=filepath,
             )
         else:
-            manifest.functions[unique_key] = FunctionProperties(
+            func_props = FunctionProperties(
                 purity=purity,
                 properties=(),
                 optimization_hints=(),
                 source_file=filepath,
             )
+        # Compute extraction safety from side-effect classification
+        safety = _classify_extraction_safety(func_props)
+        if safety != "safe":
+            # Replace with updated extraction_safety (frozen dataclass)
+            func_props = FunctionProperties(
+                purity=func_props.purity,
+                properties=func_props.properties,
+                optimization_hints=func_props.optimization_hints,
+                source_file=func_props.source_file,
+                extraction_safety=safety,
+            )
+        manifest.functions[unique_key] = func_props
 
     return found_funcs
 
@@ -194,11 +255,19 @@ def _save_manifest_cache(
     cache_path: Any,
     manifest: PropertyManifest,
     metadata: dict[str, dict[str, Any]],
+    mutation_mtime: float = 0.0,
 ) -> None:
     """Persist manifest and per-file metadata to disk cache."""
     try:
         with open(cache_path, "w") as f:
-            json.dump({"manifest": manifest.to_dict(), "metadata": metadata}, f)
+            json.dump(
+                {
+                    "manifest": manifest.to_dict(),
+                    "metadata": metadata,
+                    "mutation_mtime": mutation_mtime,
+                },
+                f,
+            )
     except OSError:
         pass
 
@@ -206,14 +275,50 @@ def _save_manifest_cache(
 # ── Public API ──────────────────────────────────────────────────────────
 
 
-def build_manifest(project_root: str, python_files: list[str]) -> PropertyManifest:
+def _get_mutation_mtime(mutation_state_path: Any) -> float:
+    """Return the mtime of the mutation state file, or 0.0 if unavailable."""
+    try:
+        return mutation_state_path.stat().st_mtime
+    except (OSError, AttributeError):
+        return 0.0
+
+
+def _files_affected_by_mutation(
+    mutation_manager: MutationStateManager | None,
+    project_root: str,
+) -> set[str]:
+    """Return absolute file paths that have entries in mutation state.
+
+    These files need re-scanning when mutation state is newer than the
+    manifest cache so that ``classify_properties()`` picks up the enriched
+    mutation data.
+    """
+    if mutation_manager is None:
+        return set()
+    affected: set[str] = set()
+    for func_id in mutation_manager.state:
+        # func_id is ``relpath::qualname`` (canonical) or legacy ``abs_path::name``
+        parts = func_id.split("::", 1)
+        if not parts:
+            continue
+        file_part = parts[0]
+        if os.path.isabs(file_part):
+            affected.add(file_part)
+        else:
+            affected.add(os.path.join(project_root, file_part))
+    return affected
+
+
+def build_manifest(project_root: str, python_files: list[str], enforcement_mode: str = "audit") -> PropertyManifest:
     """Build a PropertyManifest by scanning Python files, with incremental caching."""
     PERF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     project_hash = hashlib.sha256(project_root.encode()).hexdigest()[:16]
     # Bump cache version to v2 to invalidate non-unique key caches
     cache_path = PERF_CACHE_DIR / f"{project_hash}_v2.json"
 
-    cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
+    cached_manifest, cache_metadata, cached_mutation_mtime = _load_manifest_cache(
+        cache_path
+    )
 
     # Mutation engine/tools persist state here; read from the same canonical path.
     mutation_state_path = MUTATION_CACHE_DIR / "state.json"
@@ -221,6 +326,14 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
         mutation_manager = MutationStateManager(str(mutation_state_path))
     except (OSError, ValueError):
         mutation_manager = None
+
+    # Detect mutation state changes — invalidate cache for affected files
+    current_mutation_mtime = _get_mutation_mtime(mutation_state_path)
+    mutation_invalidated_files: set[str] = set()
+    if current_mutation_mtime > cached_mutation_mtime:
+        mutation_invalidated_files = _files_affected_by_mutation(
+            mutation_manager, project_root
+        )
 
     manifest = PropertyManifest()
     new_metadata: dict[str, dict[str, Any]] = {}
@@ -231,15 +344,23 @@ def build_manifest(project_root: str, python_files: list[str]) -> PropertyManife
         except OSError:
             continue
 
+        # Force re-scan if mutation state has new data for this file
+        abs_filepath = os.path.abspath(filepath)
+        mutation_stale = abs_filepath in mutation_invalidated_files
+
         cached_entry = cache_metadata.get(filepath)
-        if cached_entry and cached_entry.get("hash") == file_hash:
+        if (
+            cached_entry
+            and cached_entry.get("hash") == file_hash
+            and not mutation_stale
+        ):
             _restore_cached_functions(manifest, filepath, cached_manifest, cached_entry)
             new_metadata[filepath] = cached_entry
         else:
-            found_funcs = _scan_file(manifest, filepath, project_root, mutation_manager)
+            found_funcs = _scan_file(manifest, filepath, project_root, mutation_manager, enforcement_mode)
             new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
 
     manifest.update_metrics()
-    _save_manifest_cache(cache_path, manifest, new_metadata)
+    _save_manifest_cache(cache_path, manifest, new_metadata, current_mutation_mtime)
 
     return manifest

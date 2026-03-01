@@ -77,7 +77,9 @@ class _TestFunctionCollector(ast.NodeVisitor):
     """Collect test functions with accurate lexical class scope."""
 
     def __init__(self) -> None:
-        self.tests: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, str | None]] = []
+        self.tests: list[
+            tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, str | None]
+        ] = []
         self._class_stack: list[str] = []
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -188,7 +190,9 @@ class _SourceFunctionVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._handle_def(node, is_async=True)
 
-    def _handle_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:
+    def _handle_def(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool
+    ) -> None:
         self._record_function(node.name)
         self.generic_visit(node)
 
@@ -412,10 +416,13 @@ def map_tests_to_source(
         from collections import Counter
 
         drop_freq: Counter[tuple[str, str]] = Counter(
-            (ex.get("symbol", ""), ex.get("reason", "")) for ex in diagnostics._drop_examples
+            (ex.get("symbol", ""), ex.get("reason", ""))
+            for ex in diagnostics._drop_examples
         )
         ranked_examples: list[dict[str, str]] = []
-        for (sym, reason), _count in sorted(drop_freq.items(), key=lambda kv: (-kv[1], kv[0])):
+        for (sym, reason), _count in sorted(
+            drop_freq.items(), key=lambda kv: (-kv[1], kv[0])
+        ):
             # Find first matching entry to preserve strategy label
             for ex in diagnostics._drop_examples:
                 if ex.get("symbol") == sym and ex.get("reason") == reason:
@@ -440,7 +447,9 @@ def _try_add_match(
         if strategy not in diagnostics.strategy_breakdown:
             from lintgate.linters.test_effectiveness.types import StrategyDiagnostics
 
-            diagnostics.strategy_breakdown[strategy] = StrategyDiagnostics(strategy=strategy)
+            diagnostics.strategy_breakdown[strategy] = StrategyDiagnostics(
+                strategy=strategy
+            )
         sd = diagnostics.strategy_breakdown[strategy]
         sd.attempted += 1
         diagnostics._attempted_symbols.add(func_name)
@@ -456,7 +465,9 @@ def _try_add_match(
         return False
 
     if module_hint and project_root:
-        candidates = _filter_candidates_by_module_hint(candidates, module_hint, project_root)
+        candidates = _filter_candidates_by_module_hint(
+            candidates, module_hint, project_root
+        )
 
     if len(candidates) != 1:
         if diagnostics is not None:
@@ -493,11 +504,16 @@ def _process_test_call(
     bare_name = call_name.rsplit(".", 1)[-1] if "." in call_name else call_name
     qualifier = call_name.rsplit(".", 1)[0] if "." in call_name else ""
 
-    if bare_name in local_defs.defined_names and bare_name not in import_collector.imported_names:
+    if (
+        bare_name in local_defs.defined_names
+        and bare_name not in import_collector.imported_names
+    ):
         if diagnostics is not None:
             diagnostics.counts.dropped_shadowed += 1
             if "call_graph" not in diagnostics.strategy_breakdown:
-                from lintgate.linters.test_effectiveness.types import StrategyDiagnostics
+                from lintgate.linters.test_effectiveness.types import (
+                    StrategyDiagnostics,
+                )
 
                 diagnostics.strategy_breakdown["call_graph"] = StrategyDiagnostics(
                     strategy="call_graph"
@@ -510,7 +526,9 @@ def _process_test_call(
 
     module_hint: str | None = None
     if call_name in import_collector.imported_names:
-        module_hint = _module_hint_from_import(import_collector.imported_names[call_name])
+        module_hint = _module_hint_from_import(
+            import_collector.imported_names[call_name]
+        )
     elif qualifier and qualifier in import_collector.imported_names:
         module_hint = import_collector.imported_names[qualifier]
 
@@ -535,7 +553,9 @@ def _process_test_call(
     # Fallback/alternative matching logic for bare name or imports
     module_hint = None
     if bare_name in import_collector.imported_names:
-        module_hint = _module_hint_from_import(import_collector.imported_names[bare_name])
+        module_hint = _module_hint_from_import(
+            import_collector.imported_names[bare_name]
+        )
     elif qualifier and qualifier in import_collector.imported_names:
         module_hint = import_collector.imported_names[qualifier]
 
@@ -619,7 +639,9 @@ def _apply_naming_strategy(
     if guessed_name not in local_defs.defined_names:
         guessed_hint = None
         if guessed_name in import_collector.imported_names:
-            guessed_hint = _module_hint_from_import(import_collector.imported_names[guessed_name])
+            guessed_hint = _module_hint_from_import(
+                import_collector.imported_names[guessed_name]
+            )
         _try_add_match(
             guessed_name,
             guessed_hint,

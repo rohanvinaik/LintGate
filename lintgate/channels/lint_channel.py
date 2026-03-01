@@ -19,7 +19,12 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Literal
 
-from lintgate.controlplane.types import ChannelResult, ControlPlaneConfig, SupervisionEvent
+from lintgate.controlplane.types import (
+    ChannelResult,
+    ControlPlaneConfig,
+    RepairAction,
+    SupervisionEvent,
+)
 from lintgate.types import LintTier
 
 if TYPE_CHECKING:
@@ -54,7 +59,9 @@ class LintChannel:
             return False
         return classification.risk_level != "none"
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Execute the full lint pipeline and convert to ChannelResult.
 
         Calls the same functions as hook_posttooluse.main() phases 2-4:
@@ -104,7 +111,9 @@ class LintChannel:
 
         from lintgate.lint_runner import run_linters
 
-        linter_results = run_linters(tier, project_config, registry, timeout_ms=remaining_ms)
+        linter_results = run_linters(
+            tier, project_config, registry, timeout_ms=remaining_ms
+        )
 
         # Phase 4: Aggregate results
         from lintgate.results_aggregator import aggregate_results
@@ -117,9 +126,17 @@ class LintChannel:
         )
 
         # Side effects: issue memory + pattern bank
-        all_issues = [*aggregated.blocking, *aggregated.warnings, *aggregated.informational]
+        all_issues = [
+            *aggregated.blocking,
+            *aggregated.warnings,
+            *aggregated.informational,
+        ]
 
-        recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
+        recurrence = {
+            "repeated_issue_count": 0,
+            "unique_signatures_tracked": 0,
+            "top_repeated": [],
+        }
         with contextlib.suppress(Exception):
             from lintgate.state import update_issue_memory
 
@@ -192,7 +209,9 @@ class LintChannel:
 
         from lintgate.lint_runner import run_linters
 
-        linter_results = run_linters(tier, project_config, registry, timeout_ms=remaining_ms)
+        linter_results = run_linters(
+            tier, project_config, registry, timeout_ms=remaining_ms
+        )
 
         from lintgate.results_aggregator import aggregate_results
 
@@ -206,7 +225,11 @@ class LintChannel:
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         # No side effects in pure mode
-        recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
+        recurrence = {
+            "repeated_issue_count": 0,
+            "unique_signatures_tracked": 0,
+            "top_repeated": [],
+        }
         pattern_report: dict[str, Any] = {"alerted_patterns": [], "top_categories": []}
 
         channel_result = self._to_channel_result(
@@ -236,7 +259,11 @@ class LintChannel:
         - findings: all issues merged (blocking + warnings + informational)
         - metrics: carries forward aggregated.metrics plus recurrence/pattern data
         """
-        all_findings = [*aggregated.blocking, *aggregated.warnings, *aggregated.informational]
+        all_findings = [
+            *aggregated.blocking,
+            *aggregated.warnings,
+            *aggregated.informational,
+        ]
 
         status: Literal["pass", "fail"]
         severity: Literal["blocking", "warning", "informational", "none"]
@@ -250,12 +277,14 @@ class LintChannel:
             status = "pass"
             severity = "none"
 
+        repairs = _build_lint_repairs(all_findings, aggregated)
+
         return ChannelResult(
             channel=self.name,
             status=status,
             severity=severity,
             findings=all_findings,
-            repairs=[],  # Lint doesn't propose repairs in v1
+            repairs=repairs,
             metrics={
                 **aggregated.metrics,
                 "recurrence": recurrence,
@@ -284,6 +313,63 @@ class LintChannel:
             from lintgate.types import ProjectConfig
 
             return ProjectConfig(project_root=event.project_root)
+
+
+def _build_lint_repairs(
+    findings: list,
+    aggregated: AggregatedResult,
+) -> list[RepairAction]:
+    """Build repair actions for fixable lint findings.
+
+    Emits command-type repairs for:
+    - ruff format (formatting violations)
+    - ruff import sorting (I001 violations)
+    - ruff --fix (other safe auto-fixable violations)
+    """
+    repairs: list[RepairAction] = []
+    has_fixable = any(getattr(f, "fixable", False) for f in findings)
+    has_format = any(getattr(f, "kind", "") in ("E1", "W1") for f in findings)
+    has_isort = any(getattr(f, "kind", "") == "I001" for f in findings)
+
+    # Also check metrics for fixable count
+    fixable_count = aggregated.metrics.get("fixable_count", 0)
+    if not has_fixable and fixable_count > 0:
+        has_fixable = True
+
+    if has_fixable:
+        repairs.append(
+            RepairAction(
+                channel="lint",
+                kind="command",
+                summary=f"Auto-fix {fixable_count} safe lint issue{'s' if fixable_count != 1 else ''}",
+                payload={"command": "ruff check --fix ."},
+                safe=True,
+            )
+        )
+
+    if has_isort:
+        repairs.append(
+            RepairAction(
+                channel="lint",
+                kind="command",
+                summary="Sort imports with ruff",
+                payload={"command": "ruff check --select I --fix ."},
+                safe=True,
+            )
+        )
+
+    if has_format:
+        repairs.append(
+            RepairAction(
+                channel="lint",
+                kind="command",
+                summary="Auto-format with ruff",
+                payload={"command": "ruff format ."},
+                safe=True,
+            )
+        )
+
+    return repairs
 
 
 def _empty_aggregated() -> AggregatedResult:

@@ -59,7 +59,13 @@ class MutationCIStats:
 
         # Prefer mutmut's own total when present; fall back to computed sum.
         computed_sum = (
-            killed + survived + timeout + suspicious + no_tests + skipped + equivalent_suspect
+            killed
+            + survived
+            + timeout
+            + suspicious
+            + no_tests
+            + skipped
+            + equivalent_suspect
         )
         total = raw.get("total", computed_sum)
 
@@ -146,12 +152,18 @@ def parse_stats_for_ci(stats_path: str, github_output: str) -> int:
 
     if stats.run_state == "missing":
         print("::error::No mutmut stats found — failing workflow for integrity")
-        _write_github_output(github_output, {"skip": "true", "mutation_integrity": "fail"})
+        _write_github_output(
+            github_output, {"skip": "true", "mutation_integrity": "fail"}
+        )
         return 1  # Integrity lock: missing stats fails the pipeline
 
     if not stats.is_valid():
-        print(f"::error::Mutation stats invalid — total={stats.total}, run_state={stats.run_state}")
-        _write_github_output(github_output, {"skip": "true", "mutation_integrity": "fail"})
+        print(
+            f"::error::Mutation stats invalid — total={stats.total}, run_state={stats.run_state}"
+        )
+        _write_github_output(
+            github_output, {"skip": "true", "mutation_integrity": "fail"}
+        )
         return 1
 
     color = compute_badge_color(stats.score)
@@ -221,9 +233,13 @@ def load_mutation_hotspots(survivors_path: str) -> list[dict[str, Any]]:
     try:
         data = json.loads(text)
         if isinstance(data, list):
-            return [_normalize_hotspot(entry) for entry in data if isinstance(entry, dict)]
+            return [
+                _normalize_hotspot(entry) for entry in data if isinstance(entry, dict)
+            ]
         if isinstance(data, dict) and "mutants" in data:
-            return [_normalize_hotspot(m) for m in data["mutants"] if isinstance(m, dict)]
+            return [
+                _normalize_hotspot(m) for m in data["mutants"] if isinstance(m, dict)
+            ]
     except json.JSONDecodeError:
         pass
 

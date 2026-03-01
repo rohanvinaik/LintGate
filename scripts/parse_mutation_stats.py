@@ -23,7 +23,9 @@ def main():
     # Only generate triage summaries if the stats run was valid.
     if rc == 0:
         survivors_txt = os.environ.get("SURVIVORS_TXT", "mutants/mutmut-survivors.txt")
-        survivors_json = os.environ.get("SURVIVORS_JSON", "mutants/mutmut-survivors.json")
+        survivors_json = os.environ.get(
+            "SURVIVORS_JSON", "mutants/mutmut-survivors.json"
+        )
 
         # Parse text logic in load_mutation_hotspots
         hotspots = load_mutation_hotspots(survivors_txt)

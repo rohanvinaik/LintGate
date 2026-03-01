@@ -80,16 +80,20 @@ def register(mcp, helpers):
             ]
             output["recommendation"] = hygiene_result.recommendation
 
-        output["next_actions"] = []
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        _na_list: list[NextAction] = []
         if hygiene_result and hygiene_result.warnings:
             for w in hygiene_result.warnings[:2]:
                 if w.actionability == "immediate":
-                    output["next_actions"].append(
-                        {
-                            "action": f"Fix: {w.message[:80]}",
-                            "priority": 1,
-                        }
+                    _na_list.append(
+                        NextAction(
+                            tool="terminal",
+                            reason=f"Fix: {w.message[:80]}",
+                            priority=1,
+                        )
                     )
+        output["next_actions"] = serialize_next_actions(_na_list)
 
         return helpers["_json_dumps"](output)
 
@@ -188,7 +192,9 @@ def register(mcp, helpers):
         for a in compass.approaches:
             if a.outcome == "failed":
                 binary = command_sig.split(":")[0] if ":" in command_sig else ""
-                approach_binary = a.approach_sig.split(":")[0] if ":" in a.approach_sig else ""
+                approach_binary = (
+                    a.approach_sig.split(":")[0] if ":" in a.approach_sig else ""
+                )
                 if binary and binary == approach_binary:
                     last_err = a.error_sigs[-1] if a.error_sigs else ""
                     similar_failures.append(
@@ -218,7 +224,8 @@ def register(mcp, helpers):
 
         if parts:
             recommendation = (
-                ". ".join(parts) + ". Consider researching uncertainty zones before acting."
+                ". ".join(parts)
+                + ". Consider researching uncertainty zones before acting."
             )
         else:
             recommendation = (
@@ -285,17 +292,20 @@ def register(mcp, helpers):
                 output["onboarding"] = _bp_onboarding
 
         # next_actions
-        next_actions = []
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        _cc_actions: list[NextAction] = []
         if coverage_gap > 0 or recall < 0.5:
-            next_actions.append(
-                {
-                    "tool": "constraint_check",
-                    "reason": "Re-run after researching uncertainty zones",
-                    "priority": 1,
-                }
+            _cc_actions.append(
+                NextAction(
+                    tool="constraint_check",
+                    args={"path": project_root, "planned_action": planned_action},
+                    reason="Re-run after researching uncertainty zones",
+                    priority=1,
+                )
             )
-        if next_actions:
-            output["next_actions"] = next_actions
+        if _cc_actions:
+            output["next_actions"] = serialize_next_actions(_cc_actions)
 
         return helpers["_json_dumps"](output)
 
@@ -429,7 +439,11 @@ def register(mcp, helpers):
         # Compute accuracy section
         pred_accuracy = compute_prediction_accuracy(compass)
         checked_count = len(
-            [e for e in compass.prediction_log if e.get("status") in ("confirmed", "falsified")]
+            [
+                e
+                for e in compass.prediction_log
+                if e.get("status") in ("confirmed", "falsified")
+            ]
         )
         accuracy_section: dict[str, Any] = {
             "pending_count": len(compass.pending_predictions),
@@ -464,12 +478,15 @@ def register(mcp, helpers):
         }
 
         # next_actions: strong guidance per tool
-        output["next_actions"] = [
-            {
-                "action": "Execute your planned action, then outcomes are checked automatically.",
-                "priority": 1,
-            },
-        ]
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        output["next_actions"] = serialize_next_actions([
+            NextAction(
+                tool="terminal",
+                reason="Execute your planned action, then outcomes are checked automatically.",
+                priority=1,
+            ),
+        ])
 
         return helpers["_json_dumps"](output)
 
@@ -532,14 +549,18 @@ def register(mcp, helpers):
             # Validate that prediction metadata is complete
             _pred_errors = []
             if not prediction_type:
-                _pred_errors.append("prediction_type is required when prediction is provided")
+                _pred_errors.append(
+                    "prediction_type is required when prediction is provided"
+                )
             elif prediction_type not in _valid_prediction_types:
                 _pred_errors.append(
                     f"prediction_type {prediction_type!r} invalid, "
                     f"must be one of: {sorted(_valid_prediction_types)}"
                 )
             if prediction_value is None:
-                _pred_errors.append("prediction_value is required when prediction is provided")
+                _pred_errors.append(
+                    "prediction_value is required when prediction is provided"
+                )
 
             if _pred_errors:
                 output["prediction_error"] = {

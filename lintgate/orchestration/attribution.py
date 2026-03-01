@@ -48,4 +48,8 @@ class SignalSourceDecomposition:
         if self.coherence_score > 0.5:
             parts.append("cross-channel coherence")
 
-        return f"Triggered by: {', '.join(parts)}" if parts else "Triggered by mixed signals"
+        return (
+            f"Triggered by: {', '.join(parts)}"
+            if parts
+            else "Triggered by mixed signals"
+        )

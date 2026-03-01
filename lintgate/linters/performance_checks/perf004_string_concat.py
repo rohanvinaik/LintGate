@@ -65,7 +65,7 @@ def check_string_concat_in_loop(tree: ast.AST, file_path: str) -> Iterable[LintI
                     line=node.lineno,
                     severity="warning",
                     confidence=confidence,
-                    evidence={"check": "PERF004"},
+                    evidence={"check": "PERF004", "target": target_name},
                     suggestions=[
                         suggestion_append,
                         "After the loop: `result = ''.join(parts)`.",
@@ -84,7 +84,13 @@ def _is_per_iteration_pattern(
     (e.g., ``msg += ...; log(msg); msg = ""``).  This is a confidence
     downgrade signal, not a suppression — ``some_func(msg)`` does not
     always mean "consumed".
+
+    Also checks for reset *before* the += (per-iteration building pattern):
+        for item in items:
+            msg = ""           # reset (before +=)
+            msg += f"{item}"   # not cross-iteration accumulation
     """
+    # Check for reset/consumption AFTER the += in same iteration
     for stmt in body[aug_index + 1 :]:
         for node in ast.walk(stmt):
             # Reset: target = ... (any reassignment)
@@ -97,4 +103,17 @@ def _is_per_iteration_pattern(
                 isinstance(a, ast.Name) and a.id == target_name for a in node.args
             ):
                 return True
+
+    # Check for reset BEFORE the += in same iteration
+    for stmt in body[:aug_index]:
+        if isinstance(stmt, ast.Assign):
+            for t in stmt.targets:
+                if isinstance(t, ast.Name) and t.id == target_name:
+                    return True
+        if (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and stmt.target.id == target_name
+        ):
+            return True
     return False

@@ -76,7 +76,10 @@ def test_function_effectiveness_roundtrip():
         test_count=3,
         assertions=[
             AssertionInfo(
-                kind=AssertionKind.EQUALITY, line=5, strength=0.9, target_expression="result"
+                kind=AssertionKind.EQUALITY,
+                line=5,
+                strength=0.9,
+                target_expression="result",
             ),
         ],
     )

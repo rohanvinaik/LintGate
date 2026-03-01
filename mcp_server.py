@@ -184,7 +184,9 @@ def _validate_tier(tier: int) -> int:
 def _validate_strictness(strictness: str) -> str:
     if strictness not in _VALID_STRICTNESS:
         allowed = ", ".join(sorted(_VALID_STRICTNESS))
-        raise ValueError(f"Invalid strictness '{strictness}'; expected one of: {allowed}")
+        raise ValueError(
+            f"Invalid strictness '{strictness}'; expected one of: {allowed}"
+        )
     return strictness
 
 
@@ -279,7 +281,9 @@ def _collect_python_files(project_root: str) -> list[str]:
 
 def _resolve_files(files: list[str], project_root: str) -> tuple[list[str], list[str]]:
     resolved = [
-        path if os.path.isabs(path) else os.path.normpath(os.path.join(project_root, path))
+        path
+        if os.path.isabs(path)
+        else os.path.normpath(os.path.join(project_root, path))
         for path in files
     ]
     existing = [path for path in resolved if os.path.exists(path)]
@@ -300,7 +304,9 @@ def _normalize_linter_names(base: tuple[str, ...], extra: tuple[str, ...]) -> li
     return deduped
 
 
-def _build_cp_full_details(mesh_result: Any, finding_index: dict[str, Any]) -> dict[str, Any]:
+def _build_cp_full_details(
+    mesh_result: Any, finding_index: dict[str, Any]
+) -> dict[str, Any]:
     """Build full details payload for controlplane_get_details drill-down."""
     details: dict[str, Any] = {
         "coherence": {
@@ -363,9 +369,11 @@ def _build_linter_diagnostics(results: list[Any]) -> list[dict[str, Any]]:
 def _build_next_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
     """Generate structured next_actions from tool output context.
 
-    Returns a list of suggested follow-up tool calls with priority.
+    Returns a list of serialized NextAction dicts.
     """
-    actions: list[dict[str, Any]] = []
+    from lintgate.next_action import NextAction, serialize_next_actions
+
+    actions: list[NextAction] = []
 
     blocking = context.get("blocking", 0)
     fixable = context.get("fixable", 0)
@@ -375,40 +383,37 @@ def _build_next_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
     # If there are fixable issues, suggest lint_fix
     if fixable > 0:
         actions.append(
-            {
-                "tool": "lint_fix",
-                "args": {"path": context.get("project", ""), "dry_run": True},
-                "safe": True,
-                "reason": f"{fixable} auto-fixable issue{'s' if fixable != 1 else ''}",
-                "priority": 1,
-            }
+            NextAction(
+                tool="lint_fix",
+                args={"path": context.get("project", ""), "dry_run": True},
+                reason=f"{fixable} auto-fixable issue{'s' if fixable != 1 else ''}",
+                priority=1,
+            )
         )
 
     # If there are blocking issues and a run_id, suggest drill-down
     if blocking > 0 and run_id:
         actions.append(
-            {
-                "tool": "lint_get_details",
-                "args": {"run_id": run_id, "severity": "blocking"},
-                "safe": True,
-                "reason": f"View {blocking} blocking issue details",
-                "priority": 2,
-            }
+            NextAction(
+                tool="lint_get_details",
+                args={"run_id": run_id, "severity": "blocking"},
+                reason=f"View {blocking} blocking issue details",
+                priority=2,
+            )
         )
 
     # If many warnings, suggest details
     if warnings > 5 and run_id:
         actions.append(
-            {
-                "tool": "lint_get_details",
-                "args": {"run_id": run_id, "severity": "warning"},
-                "safe": True,
-                "reason": f"View {warnings} warning details",
-                "priority": 3,
-            }
+            NextAction(
+                tool="lint_get_details",
+                args={"run_id": run_id, "severity": "warning"},
+                reason=f"View {warnings} warning details",
+                priority=3,
+            )
         )
 
-    return actions
+    return serialize_next_actions(actions)
 
 
 _VALID_OUTPUT_MODES = {"compact", "standard", "full"}
@@ -501,7 +506,11 @@ def _run_lint(
     )
     all_issues = _collect_all_issues(aggregated)
 
-    recurrence = {"repeated_issue_count": 0, "unique_signatures_tracked": 0, "top_repeated": []}
+    recurrence = {
+        "repeated_issue_count": 0,
+        "unique_signatures_tracked": 0,
+        "top_repeated": [],
+    }
     with contextlib.suppress(Exception):
         recurrence = update_issue_memory(project_root, all_issues)
 
@@ -509,7 +518,17 @@ def _run_lint(
     last_run = load_last_run(project_root)
     report = format_report(aggregated, last_run, recurrence_summary=recurrence)
 
-    # Save state.
+    # Compute delta against previous lint run
+    lint_delta = None
+    if last_run is not None:
+        previous_index = last_run.get("finding_index")
+        if previous_index:
+            with contextlib.suppress(Exception):
+                from lintgate.lint_delta import compute_lint_delta
+
+                lint_delta = compute_lint_delta(aggregated, previous_index)
+
+    # Save state (includes finding index for next run's delta).
     with contextlib.suppress(Exception):
         save_run(project_root, aggregated)
 
@@ -577,12 +596,26 @@ def _run_lint(
         # Include blocking issue summaries even in compact (they're critical)
         if aggregated.blocking:
             output["blocking_issues"] = [
-                {"id": i.issue_id, "kind": i.kind, "loc": i.short_location(), "msg": i.message[:80]}
+                {
+                    "id": i.issue_id,
+                    "kind": i.kind,
+                    "loc": i.short_location(),
+                    "msg": i.message[:80],
+                }
                 for i in aggregated.blocking[:max_findings]
             ]
             if len(aggregated.blocking) > max_findings:
                 output["blocking_truncated"] = len(aggregated.blocking) - max_findings
-        output["next_actions"] = _build_next_actions({**output, "project": project_root})
+        if lint_delta is not None:
+            output["delta"] = {
+                "resolved": lint_delta["resolved_count"],
+                "new": len(lint_delta["new"]),
+                "remaining": lint_delta["still_active_count"],
+                "summary": lint_delta.get("summary", ""),
+            }
+        output["next_actions"] = _build_next_actions(
+            {**output, "project": project_root}
+        )
         return output
 
     elif output_mode == "standard":
@@ -613,7 +646,11 @@ def _run_lint(
                 ]
                 if len(aggregated.warnings) > remaining:
                     output["warnings_truncated"] = len(aggregated.warnings) - remaining
-        output["next_actions"] = _build_next_actions({**output, "project": project_root})
+        if lint_delta is not None:
+            output["delta"] = lint_delta
+        output["next_actions"] = _build_next_actions(
+            {**output, "project": project_root}
+        )
         return output
 
     else:
@@ -622,7 +659,11 @@ def _run_lint(
             "run_id": run_id,
             **full_details,
         }
-        output["next_actions"] = _build_next_actions({**output, "project": project_root})
+        if lint_delta is not None:
+            output["delta"] = lint_delta
+        output["next_actions"] = _build_next_actions(
+            {**output, "project": project_root}
+        )
         return output
 
 
@@ -706,6 +747,9 @@ setup_hooks = _tool_funcs["setup_hooks"]
 telemetry_summary = _tool_funcs["telemetry_summary"]
 theory_mode_enter = _tool_funcs["theory_mode_enter"]
 theory_mode_freeze = _tool_funcs["theory_mode_freeze"]
+convergence_analyze = _tool_funcs["convergence_analyze"]
+extraction_plan = _tool_funcs["extraction_plan"]
+optimization_landscape = _tool_funcs["optimization_landscape"]
 
 __all__ = [
     "mcp",
@@ -763,6 +807,9 @@ __all__ = [
     "telemetry_summary",
     "theory_mode_enter",
     "theory_mode_freeze",
+    "convergence_analyze",
+    "extraction_plan",
+    "optimization_landscape",
 ]
 
 # ─── Version constant (referenced by test_mcp_schema_contracts) ─────────

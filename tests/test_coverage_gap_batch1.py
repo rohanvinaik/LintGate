@@ -106,7 +106,9 @@ class TestStructureChannelExecuteWarningSeverity:
 class TestBuildImportGraphFalsyModule:
     """Line 310: continue when filepath_to_module returns falsy."""
 
-    def test_skips_file_when_filepath_to_module_returns_none(self, tmp_path: Path) -> None:
+    def test_skips_file_when_filepath_to_module_returns_none(
+        self, tmp_path: Path
+    ) -> None:
         root = str(tmp_path)
         py_file = os.path.join(root, "bad_file.py")
         _write_file(py_file, "x = 1\n")
@@ -115,11 +117,12 @@ class TestBuildImportGraphFalsyModule:
             "lintgate.linters.architecture_checks._helpers.filepath_to_module",
             return_value=None,
         ):
-            graph, file_map, file_loc = _build_import_graph([py_file], root)
+            graph, file_map, file_loc, deferred = _build_import_graph([py_file], root)
 
         # File should be skipped entirely
         assert len(file_map) == 0
         assert len(file_loc) == 0
+        assert len(deferred) == 0
 
 
 class TestCheckImportCyclesDuplicate:
@@ -155,7 +158,9 @@ class TestCheckModuleSizeP50Zero:
         # but median is 0, that's impossible. Let's mock statistics.median.
         file_loc = {f"/proj/f{i}.py": 50 for i in range(6)}
 
-        with patch("lintgate.channels.structure_logic.statistics.median", return_value=0):
+        with patch(
+            "lintgate.channels.structure_logic.statistics.median", return_value=0
+        ):
             findings = _check_module_size_distribution(file_loc, "/proj")
 
         assert findings == []

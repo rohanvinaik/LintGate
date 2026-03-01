@@ -185,7 +185,16 @@ def _discover_python_files(project_root: str, max_files: int = 50) -> list[str]:
             for d in dirnames
             if not d.startswith(".")
             and d
-            not in ("node_modules", "__pycache__", ".venv", "venv", "build", "dist", ".git", ".tox")
+            not in (
+                "node_modules",
+                "__pycache__",
+                ".venv",
+                "venv",
+                "build",
+                "dist",
+                ".git",
+                ".tox",
+            )
         ]
         for f in filenames:
             if f.endswith(".py"):
@@ -208,14 +217,18 @@ def _print_human_readable(mesh_result) -> None:
         if cr.status == "skip":
             continue
 
-        icon = {"pass": "✓", "fail": "✗", "error": "⚠", "timeout": "⏱"}.get(cr.status, "?")
+        icon = {"pass": "✓", "fail": "✗", "error": "⚠", "timeout": "⏱"}.get(
+            cr.status, "?"
+        )
         print(f"\n  {icon} {cr.channel}: {cr.status}")
 
         if cr.findings:
             for f in cr.findings[:5]:
-                sev_icon = {"blocking": "🔴", "warning": "🟡", "informational": "🔵"}.get(
-                    f.severity, "⚪"
-                )
+                sev_icon = {
+                    "blocking": "🔴",
+                    "warning": "🟡",
+                    "informational": "🔵",
+                }.get(f.severity, "⚪")
                 location = f.short_location() if hasattr(f, "short_location") else ""
                 print(f"    {sev_icon} [{f.kind}] {location}: {f.message}")
             if len(cr.findings) > 5:
@@ -231,7 +244,9 @@ def _print_human_readable(mesh_result) -> None:
         print(f"  Action: {coherence.recommended_action}")
 
     if mesh_result.partial:
-        print(f"\n  ⚠ Partial: channels timed out: {', '.join(mesh_result.incomplete_channels)}")
+        print(
+            f"\n  ⚠ Partial: channels timed out: {', '.join(mesh_result.incomplete_channels)}"
+        )
 
     print(f"\n{'═' * 60}")
 

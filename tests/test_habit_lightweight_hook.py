@@ -30,7 +30,9 @@ class _DummyConfig:
 
 
 def test_lightweight_path_respects_auto_detect_disabled(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path / "habit_state")
+    monkeypatch.setattr(
+        "lintgate.habit_mode._HABIT_STATE_DIR", tmp_path / "habit_state"
+    )
     cp = _DummyConfig(habit_mode_auto_detect=False)
     project = tmp_path / "proj"
     project.mkdir()
@@ -48,8 +50,12 @@ def test_lightweight_path_respects_auto_detect_disabled(monkeypatch, tmp_path) -
     assert state.active is False
 
 
-def test_lightweight_path_non_test_bash_does_not_flip_test_status(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path / "habit_state")
+def test_lightweight_path_non_test_bash_does_not_flip_test_status(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "lintgate.habit_mode._HABIT_STATE_DIR", tmp_path / "habit_state"
+    )
     cp = _DummyConfig()
     project = tmp_path / "proj"
     project.mkdir()
@@ -66,8 +72,12 @@ def test_lightweight_path_non_test_bash_does_not_flip_test_status(monkeypatch, t
     assert state.last_test_status == ""
 
 
-def test_lightweight_path_auto_compacts_when_threshold_exceeded(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path / "habit_state")
+def test_lightweight_path_auto_compacts_when_threshold_exceeded(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "lintgate.habit_mode._HABIT_STATE_DIR", tmp_path / "habit_state"
+    )
     cp = _DummyConfig(habit_mode_auto_detect=True)
     project = tmp_path / "proj"
     project.mkdir()
@@ -81,7 +91,9 @@ def test_lightweight_path_auto_compacts_when_threshold_exceeded(monkeypatch, tmp
         last_compact_tokens=0,
         context_window_size=200000,
     )
-    save_habit_state_standalone(str(project), state, ring, tracker_dict=tracker.to_dict())
+    save_habit_state_standalone(
+        str(project), state, ring, tracker_dict=tracker.to_dict()
+    )
 
     _record_habit_event_lightweight(
         cp,

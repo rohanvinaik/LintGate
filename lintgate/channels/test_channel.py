@@ -47,7 +47,9 @@ class TestRunResult:
     timed_out: bool = False
     coverage_pct: float | None = None  # Set when measure_coverage=True
     coverage_json_path: str | None = None  # Path to coverage.json when measured
-    coverage_json_ephemeral: bool = False  # True when path should be cleaned up by caller
+    coverage_json_ephemeral: bool = (
+        False  # True when path should be cleaned up by caller
+    )
 
 
 @dataclass
@@ -82,7 +84,9 @@ class TestChannel:
             return False
         return classification.change_kind in ("logic", "structural", "test")
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Execute test supervision checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -96,6 +100,20 @@ class TestChannel:
 
         # Step 2: Check for missing tests + propose skeletons
         _check_missing_tests(changed_files, project_root, findings, repairs)
+
+        # Step 2b: Bootstrap trigger — signal when project has zero test files
+        bootstrap_needed = False
+        if not impacted_tests and _no_test_files_exist(project_root):
+            bootstrap_needed = True
+            findings.append(
+                LintIssue(
+                    linter="test_channel",
+                    kind="BOOTSTRAP_TRIGGERED",
+                    message="No test files detected. Test bootstrap pipeline available.",
+                    severity="informational",
+                    confidence=1.0,
+                )
+            )
 
         # Step 3: Parse coverage settings
         channel_settings = config.channels.get("tests", ChannelConfig()).settings
@@ -112,10 +130,14 @@ class TestChannel:
         try:
             # Step 4: Run selected tests (impacted or fallback)
             if tests_to_run:
-                base_timeout_ms = config.channels.get("tests", ChannelConfig()).timeout_ms
+                base_timeout_ms = config.channels.get(
+                    "tests", ChannelConfig()
+                ).timeout_ms
                 if not base_timeout_ms:
                     base_timeout_ms = self.timeout_ms
-                remaining_ms = base_timeout_ms - int((time.perf_counter() - start) * 1000)
+                remaining_ms = base_timeout_ms - int(
+                    (time.perf_counter() - start) * 1000
+                )
                 timeout_floor_ms = 2000
                 if cov_cfg["symbol_enabled"] and event.surface in ("mcp", "ci"):
                     # Symbol gate needs a meaningful coverage sample; avoid 10s truncation.
@@ -127,7 +149,9 @@ class TestChannel:
                     measure_coverage=cov_cfg["measure"],
                     source_packages=cov_cfg["source_packages"],
                 )
-                _collect_test_findings(test_result, remaining_ms, findings)
+                _collect_test_findings(
+                    test_result, remaining_ms, findings, project_root
+                )
 
             # Step 5: Check coverage threshold
             _check_coverage_threshold(
@@ -161,6 +185,9 @@ class TestChannel:
             ):
                 coverage_ok = coverage_pct >= float(cov_cfg["threshold"])
 
+            # Step 5b: Contract drift detection (#184)
+            _check_contract_drift(changed_files, project_root, findings)
+
             # Step 6: Symbol coverage gate
             gate_result = _run_symbol_gate_if_enabled(
                 cov_cfg,
@@ -189,6 +216,7 @@ class TestChannel:
                     coverage_pct=coverage_pct,
                     is_partial_run=is_partial_run,
                     coverage_ok=coverage_ok,
+                    bootstrap_needed=bootstrap_needed,
                 )
             )
         finally:
@@ -212,7 +240,10 @@ def _check_missing_tests(
 ) -> None:
     """Check for source files without corresponding tests and propose skeletons."""
     for src_file in changed_files:
-        if not (_is_source_file(src_file, project_root) and not _has_test(src_file, project_root)):
+        if not (
+            _is_source_file(src_file, project_root)
+            and not _has_test(src_file, project_root)
+        ):
             continue
         findings.append(
             LintIssue(
@@ -247,7 +278,9 @@ def _check_missing_tests(
             pass  # Archetype selection failure is non-fatal
 
 
-def _parse_coverage_settings(channel_settings: dict[str, Any], surface: str) -> dict[str, Any]:
+def _parse_coverage_settings(
+    channel_settings: dict[str, Any], surface: str
+) -> dict[str, Any]:
     """Parse coverage-related settings into a flat dict."""
     raw_threshold = channel_settings.get("coverage_threshold")
     threshold: float | None = None
@@ -280,9 +313,18 @@ def _parse_coverage_settings(channel_settings: dict[str, Any], surface: str) -> 
 
 
 def _collect_test_findings(
-    test_result: TestRunResult, remaining_ms: int, findings: list[LintIssue]
+    test_result: TestRunResult,
+    remaining_ms: int,
+    findings: list[LintIssue],
+    project_root: str | None = None,
 ) -> None:
-    """Convert test execution results into findings."""
+    """Convert test execution results into findings.
+
+    When project_root is provided, classifies each failure as
+    ``test_drift`` (test file has uncommitted changes — likely needs
+    assertion update) or ``regression`` (test file is committed —
+    likely a code bug).  See issue #183.
+    """
     if test_result.timed_out:
         findings.append(
             LintIssue(
@@ -292,7 +334,27 @@ def _collect_test_findings(
                 severity="warning",
             )
         )
+
+    # Collect git context for drift classification
+    drift_context = _build_drift_context(project_root) if project_root else None
+
+    drift_count = 0
+    regression_count = 0
+
     for failure in test_result.failures:
+        classification = "unknown"
+        if drift_context and failure.file:
+            classification = _classify_test_failure(
+                failure.file,
+                drift_context["modified"],
+                drift_context["untracked"],
+                project_root or "",
+            )
+            if classification == "test_drift":
+                drift_count += 1
+            elif classification == "regression":
+                regression_count += 1
+
         findings.append(
             LintIssue(
                 linter="test_channel",
@@ -301,8 +363,273 @@ def _collect_test_findings(
                 file=failure.file,
                 line=failure.line,
                 severity="warning",
+                evidence={"failure_class": classification}
+                if classification != "unknown"
+                else {},
             )
         )
+
+    # TEFF009: Check for stale test references to deleted symbols
+    if project_root and test_result.failures:
+        _check_stale_test_symbols(test_result.failures, project_root, findings)
+
+    # Emit summary finding when both drift and regression are present
+    if drift_count + regression_count > 0 and (drift_count > 0 or regression_count > 0):
+        parts: list[str] = []
+        if drift_count:
+            parts.append(
+                f"{drift_count} in uncommitted test files (likely test drift — update assertions)"
+            )
+        if regression_count:
+            parts.append(
+                f"{regression_count} in committed test files (likely regression — fix code)"
+            )
+        findings.append(
+            LintIssue(
+                linter="test_channel",
+                kind="test_drift_summary",
+                message=f"Test failure classification: {'; '.join(parts)}.",
+                severity="informational",
+                evidence={
+                    "drift_count": drift_count,
+                    "regression_count": regression_count,
+                },
+            )
+        )
+
+
+def _build_drift_context(project_root: str) -> dict[str, set[str]] | None:
+    """Collect modified/untracked file sets for drift classification."""
+    try:
+        from lintgate.channels.git_channel import collect_working_tree_context
+
+        ctx = collect_working_tree_context(project_root)
+        return {
+            "modified": set(ctx.get("modified_files", [])),
+            "untracked": set(ctx.get("untracked_files", [])),
+        }
+    except Exception:
+        return None
+
+
+def _classify_test_failure(
+    test_file: str,
+    modified_files: set[str],
+    untracked_files: set[str],
+    project_root: str,
+) -> str:
+    """Classify a test failure as test_drift or regression.
+
+    - ``test_drift``: test file has uncommitted changes or is new —
+      likely needs assertion updates to match refactored code.
+    - ``regression``: test file is committed and unmodified —
+      likely the code under test broke something.
+    """
+    import os
+
+    if os.path.isabs(test_file):
+        try:
+            rel = os.path.relpath(test_file, project_root)
+        except ValueError:
+            return "unknown"
+    else:
+        rel = test_file
+
+    rel = rel.replace(os.sep, "/")
+
+    if rel in untracked_files:
+        return "test_drift"
+    if rel in modified_files:
+        return "test_drift"
+    return "regression"
+
+
+def _check_stale_test_symbols(
+    failures: list[TestFailure],
+    project_root: str,
+    findings: list[LintIssue],
+) -> None:
+    """TEFF009 — Detect failing tests that reference deleted symbols.
+
+    When a test imports or patches a symbol that no longer exists in the
+    source tree, the test is stale — the agent should rewrite or remove it,
+    NOT re-add the deleted code.
+    """
+    try:
+        from lintgate.channels.test_symbol_resolver import build_stale_test_findings
+    except ImportError:
+        return
+
+    # Deduplicate by test file to avoid redundant AST parses
+    seen_files: set[str] = set()
+    stale_count = 0
+
+    for failure in failures:
+        if not failure.file or failure.file in seen_files:
+            continue
+        seen_files.add(failure.file)
+
+        stale_refs = build_stale_test_findings(
+            failure.file, project_root, failure.test_name
+        )
+        for ref in stale_refs:
+            stale_count += 1
+            findings.append(
+                LintIssue(
+                    linter="test_effectiveness",
+                    kind="TEFF009",
+                    message=(
+                        f"Test references deleted symbol "
+                        f"'{ref['module']}.{ref['symbol']}'. "
+                        f"The test is stale — rewrite or remove it. "
+                        f"DO NOT re-add the deleted code to satisfy the test."
+                    ),
+                    file=failure.file,
+                    line=ref.get("line"),
+                    severity="warning",
+                    confidence=ref.get("confidence", 0.95),
+                    evidence={
+                        "code": "TEFF009",
+                        "deleted_symbol": f"{ref['module']}.{ref['symbol']}",
+                        "test_file": ref["test_file"],
+                        "resolution": "stale_test",
+                        "verdict": "remove_or_rewrite_test",
+                        "source": ref.get("source", "import"),
+                    },
+                    suggestions=[
+                        "Check git log for the commit that deleted the symbol — it likely explains why.",
+                        "If the function was replaced by a new interface, rewrite the test for the new interface.",
+                        "If the function was removed entirely, remove the test.",
+                    ],
+                )
+            )
+
+    if stale_count > 0:
+        findings.append(
+            LintIssue(
+                linter="test_effectiveness",
+                kind="TEFF009_summary",
+                message=(
+                    f"{stale_count} test failure{'s' if stale_count != 1 else ''} "
+                    f"reference{'s' if stale_count == 1 else ''} deleted symbols. "
+                    f"These tests are stale — update or remove them."
+                ),
+                severity="informational",
+                evidence={
+                    "stale_count": stale_count,
+                    "verdict": "stale_tests_detected",
+                },
+            )
+        )
+
+
+def _check_contract_drift(
+    changed_files: list[str],
+    project_root: str,
+    findings: list[LintIssue],
+) -> None:
+    """TEFF010 — Detect function signature changes that will break tests.
+
+    For each changed source file, compare old (git HEAD) and new versions
+    to detect return arity and parameter changes, then find test call sites
+    that will break.
+    """
+    import subprocess
+
+    try:
+        from lintgate.channels.contract_drift_detector import (
+            analyze_contract_drift,
+        )
+    except ImportError:
+        return
+
+    # Only check Python source files, not test files
+    source_files = [
+        f
+        for f in changed_files
+        if f.endswith(".py") and not os.path.basename(f).startswith("test_")
+    ]
+    if not source_files:
+        return
+
+    # Discover test files for call site scanning
+    test_dir = os.path.join(project_root, "tests")
+    if not os.path.isdir(test_dir):
+        return
+
+    test_files: list[str] = []
+    for root, _dirs, files in os.walk(test_dir):
+        for fname in files:
+            if fname.startswith("test_") and fname.endswith(".py"):
+                test_files.append(os.path.join(root, fname))
+
+    if not test_files:
+        return
+
+    for source_file in source_files:
+        abs_path = (
+            source_file
+            if os.path.isabs(source_file)
+            else os.path.join(project_root, source_file)
+        )
+        if not os.path.isfile(abs_path):
+            continue
+
+        # Get old version from git HEAD
+        try:
+            rel = os.path.relpath(abs_path, project_root)
+            old_source = subprocess.run(
+                ["git", "show", f"HEAD:{rel}"],
+                capture_output=True,
+                text=True,
+                cwd=project_root,
+                timeout=5,
+            ).stdout
+        except (subprocess.SubprocessError, OSError):
+            continue
+
+        if not old_source:
+            continue  # New file, no old version to compare
+
+        try:
+            with open(abs_path, encoding="utf-8") as f:
+                new_source = f.read()
+        except OSError:
+            continue
+
+        results = analyze_contract_drift(abs_path, old_source, new_source, test_files)
+
+        for drift in results:
+            if not drift.affected_sites:
+                continue
+            findings.append(
+                LintIssue(
+                    linter="test_effectiveness",
+                    kind="TEFF010",
+                    message=drift.advisory,
+                    file=drift.change.file,
+                    line=drift.change.line,
+                    severity="warning",
+                    confidence=0.90,
+                    evidence={
+                        "code": "TEFF010",
+                        "function": drift.change.function,
+                        "change_type": drift.change.change_type,
+                        "old_value": drift.change.old_value,
+                        "new_value": drift.change.new_value,
+                        "affected_count": len(drift.affected_sites),
+                        "affected_sites": [
+                            {"file": s.test_file, "line": s.line}
+                            for s in drift.affected_sites[:10]
+                        ],
+                    },
+                    suggestions=[
+                        "Update test call sites to match the new function contract.",
+                        "For return arity changes: update tuple unpacking to match new return count.",
+                        "For parameter changes: add/remove arguments at call sites.",
+                    ],
+                )
+            )
 
 
 def _check_coverage_threshold(
@@ -413,6 +740,7 @@ class TestChannelContext:
     coverage_pct: float | None = None
     is_partial_run: bool = False
     coverage_ok: bool = True
+    bootstrap_needed: bool = False
 
 
 def _build_channel_result(ctx: TestChannelContext) -> ChannelResult:
@@ -426,6 +754,9 @@ def _build_channel_result(ctx: TestChannelContext) -> ChannelResult:
         "missing_test_count": sum(1 for f in ctx.findings if f.kind == "missing_test"),
         "test_failure_count": sum(1 for f in ctx.findings if f.kind == "test_failure"),
     }
+    if ctx.bootstrap_needed:
+        metrics["bootstrap_needed"] = True
+        metrics["bootstrap_reason"] = "zero_test_files"
     if ctx.cov_cfg["measure"] and ctx.test_result is not None:
         cov = ctx.test_result.coverage_pct
         if cov is not None:
@@ -435,7 +766,9 @@ def _build_channel_result(ctx: TestChannelContext) -> ChannelResult:
     if ctx.gate_result is not None:
         sym_uncovered = sum(1 for r in ctx.gate_result.symbol_results if not r.covered)
         metrics["symbol_coverage_targets"] = len(ctx.gate_result.symbol_results)
-        metrics["symbol_coverage_passed"] = len(ctx.gate_result.symbol_results) - sym_uncovered
+        metrics["symbol_coverage_passed"] = (
+            len(ctx.gate_result.symbol_results) - sym_uncovered
+        )
         metrics["symbol_coverage_failed"] = sym_uncovered
         metrics["symbol_coverage_waivers"] = len(ctx.gate_result.waivers_applied)
         metrics["symbol_gate_context"] = {
@@ -582,7 +915,9 @@ def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str
             joined_name = (
                 "test_"
                 + "_".join(
-                    p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__")
+                    p
+                    for p in rel.with_suffix("").parts
+                    if p not in ("src", "lib", "__init__")
                 )
                 + ".py"
             )
@@ -680,7 +1015,11 @@ def run_tests(
                 coverage_xml_path,
                 f"{result.stdout}\n{result.stderr}",
             )
-        if measure_coverage and coverage_json_path and os.path.isfile(coverage_json_path):
+        if (
+            measure_coverage
+            and coverage_json_path
+            and os.path.isfile(coverage_json_path)
+        ):
             # Persist JSON beyond TemporaryDirectory lifetime so symbol gate can read it.
             import shutil
             import tempfile
@@ -836,7 +1175,9 @@ def _build_symbol_suggestions(sr: Any) -> list[str]:
             f"Add tests that execute lines {missing_line_str} and branches {missing_branch_str} in {sr.symbol.name}"
         )
     elif sr.missing_lines:
-        suggestions.append(f"Add tests that execute lines {missing_line_str} in {sr.symbol.name}")
+        suggestions.append(
+            f"Add tests that execute lines {missing_line_str} in {sr.symbol.name}"
+        )
     elif sr.missing_branches:
         suggestions.append(
             f"Add tests that execute branches {missing_branch_str} in {sr.symbol.name}"
@@ -877,7 +1218,9 @@ def _emit_symbol_findings(
             if coverage_ok:
                 confidence = 0.6
                 severity = "warning"
-                downgrade_reason = " (downgraded: partial test run with healthy line coverage)"
+                downgrade_reason = (
+                    " (downgraded: partial test run with healthy line coverage)"
+                )
             else:
                 confidence = 0.7
                 severity = "blocking"
@@ -950,6 +1293,30 @@ def _emit_symbol_findings(
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
+
+
+def _no_test_files_exist(project_root: str) -> bool:
+    """Check if the project has zero test files anywhere.
+
+    Scans common test locations for any file matching test_*.py or *_test.py.
+    Returns True only when absolutely no test files exist (cold-start project).
+    """
+    root = Path(project_root)
+    # Check common test directories first (fast path)
+    for dirname in ("tests", "test"):
+        test_dir = root / dirname
+        if test_dir.is_dir():
+            for _ in test_dir.rglob("test_*.py"):
+                return False
+            for _ in test_dir.rglob("*_test.py"):
+                return False
+    # Check for root-level test files
+    for _ in root.glob("test_*.py"):
+        return False
+    # Check for test files co-located with source
+    for _ in root.rglob("test_*.py"):
+        return False
+    return True
 
 
 def _is_source_file(filepath: str, project_root: str) -> bool:

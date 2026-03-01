@@ -30,7 +30,9 @@ from .performance_checks.perf001_quadratic_membership import check_quadratic_mem
 from .performance_checks.perf002_recompile import check_recompile_in_function
 from .performance_checks.perf003_sorted_first_last import check_sorted_first_last
 from .performance_checks.perf004_string_concat import check_string_concat_in_loop
-from .performance_checks.perf005_unnecessary_list_wrap import check_unnecessary_list_wrap
+from .performance_checks.perf005_unnecessary_list_wrap import (
+    check_unnecessary_list_wrap,
+)
 from .performance_checks.perf006_dict_keys import check_dict_keys_iteration
 from .performance_checks.perf007_numerical_loop import check_numerical_loop
 from .performance_checks.perf008_sequential_io import check_sequential_io_in_loop
@@ -38,7 +40,9 @@ from .performance_checks.perf009_multi_pass import check_multi_pass
 from .performance_checks.perf010_unnecessary_materialization import (
     check_unnecessary_materialization,
 )
-from .performance_checks.perf011_pure_uncached_in_loop import check_pure_uncached_in_loop
+from .performance_checks.perf011_pure_uncached_in_loop import (
+    check_pure_uncached_in_loop,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

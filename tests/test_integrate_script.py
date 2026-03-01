@@ -36,7 +36,9 @@ def _make_integrate_harness(tmp_path: Path) -> Path:
     return repo
 
 
-def _run_integrate(repo: Path, tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run_integrate(
+    repo: Path, tmp_path: Path, *args: str
+) -> subprocess.CompletedProcess[str]:
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
     env = os.environ.copy()
@@ -59,7 +61,9 @@ def test_integrate_agent_override_generates_codex_context(tmp_path: Path) -> Non
     assert (repo / ".codex" / "context.md").exists()
 
 
-def test_integrate_preserves_literal_backticks_in_cognitive_context(tmp_path: Path) -> None:
+def test_integrate_preserves_literal_backticks_in_cognitive_context(
+    tmp_path: Path,
+) -> None:
     repo = _make_integrate_harness(tmp_path)
     proc = _run_integrate(repo, tmp_path, "--agent", "codex")
     assert proc.returncode == 0, proc.stderr

@@ -8,7 +8,9 @@ import tempfile
 from hypothesis import given
 from hypothesis import strategies as st
 
-from lintgate.linters.test_effectiveness.assertion_classifier import classify_test_file_from_path
+from lintgate.linters.test_effectiveness.assertion_classifier import (
+    classify_test_file_from_path,
+)
 from lintgate.linters.test_effectiveness.types import AssertionKind
 
 

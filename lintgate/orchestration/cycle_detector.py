@@ -106,7 +106,9 @@ def track_event(state: EditCycleState, event: dict[str, Any]) -> EditCycleState:
                     seen_fingerprints.add(fp)
 
             for fp in seen_fingerprints:
-                new_state.finding_persistence[fp] = new_state.finding_persistence.get(fp, 0) + 1
+                new_state.finding_persistence[fp] = (
+                    new_state.finding_persistence.get(fp, 0) + 1
+                )
 
             # Prune findings that were resolved (not in this run)
             for old_fp in list(new_state.finding_persistence.keys()):
@@ -148,7 +150,9 @@ def detect_cycles(state: EditCycleState) -> list[CycleDetectionResult]:
             CycleDetectionResult(
                 cycle_detected=True,
                 reason=CYCLE_REPLACE_FAIL,
-                diagnostics={"consecutive_failures": state.consecutive_replace_failures},
+                diagnostics={
+                    "consecutive_failures": state.consecutive_replace_failures
+                },
             )
         )
 

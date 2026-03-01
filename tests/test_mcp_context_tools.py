@@ -96,7 +96,9 @@ class TestContextGuidance:
                 return_value="Summary",
             ),
         ):
-            result = json.loads(tools["context_guidance"](path=str(tmp_path), files=["foo.py"]))
+            result = json.loads(
+                tools["context_guidance"](path=str(tmp_path), files=["foo.py"])
+            )
         mock_build.assert_called_once_with(str(tmp_path), files=["foo.py"])
         assert isinstance(result, dict)
 
@@ -175,7 +177,9 @@ class TestBootstrapContextFiles:
             ) as mock_bs,
             patch("lintgate.state.log_feature_usage"),
         ):
-            tools["bootstrap_context_files"](path=str(tmp_path), model_id="anthropic:claude-opus-4")
+            tools["bootstrap_context_files"](
+                path=str(tmp_path), model_id="anthropic:claude-opus-4"
+            )
         assert mock_bs.call_args[1]["model_id"] == "anthropic:claude-opus-4"
 
 
@@ -375,7 +379,9 @@ class TestContextPatchApply:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path), patch_ids=["p2"]))
+            result = json.loads(
+                tools["context_patch_apply"](path=str(tmp_path), patch_ids=["p2"])
+            )
         # Only p2 should be processed
         assert result["applied"] == 1
         assert len(result["results"]) == 1
@@ -417,7 +423,9 @@ class TestContextPatchApply:
                 return_value={"applied": False, "diff_preview": "+x"},
             ),
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path), dry_run=True))
+            result = json.loads(
+                tools["context_patch_apply"](path=str(tmp_path), dry_run=True)
+            )
         assert result["dry_run"] is True
         mock_save.assert_not_called()
 

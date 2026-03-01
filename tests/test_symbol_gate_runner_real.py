@@ -30,7 +30,9 @@ class TestCollectNormalizeFiltering:
         py.write_text("pass\n")
         txt = tmp_path / "notes.txt"
         txt.write_text("hello\n")
-        result = collect_changed_python_files(str(tmp_path), explicit_files=[str(py), str(txt)])
+        result = collect_changed_python_files(
+            str(tmp_path), explicit_files=[str(py), str(txt)]
+        )
         assert len(result) == 1
         assert result[0] == str(py.resolve())
 
@@ -38,14 +40,18 @@ class TestCollectNormalizeFiltering:
         """Same file listed twice is returned once (line 109)."""
         f = tmp_path / "mod.py"
         f.write_text("pass\n")
-        result = collect_changed_python_files(str(tmp_path), explicit_files=[str(f), str(f)])
+        result = collect_changed_python_files(
+            str(tmp_path), explicit_files=[str(f), str(f)]
+        )
         assert len(result) == 1
 
     def test_relative_and_absolute_dedup(self, tmp_path: Path) -> None:
         """Relative + absolute path for same file resolves to one entry."""
         f = tmp_path / "mod.py"
         f.write_text("pass\n")
-        result = collect_changed_python_files(str(tmp_path), explicit_files=[str(f), "mod.py"])
+        result = collect_changed_python_files(
+            str(tmp_path), explicit_files=[str(f), "mod.py"]
+        )
         assert len(result) == 1
 
 
@@ -142,7 +148,9 @@ class TestCollectWorkingTreePath:
 
 
 class TestRunSymbolGateSkippedReasons:
-    def test_no_symbols_prints_skipped_reasons(self, tmp_path: Path, capsys: object) -> None:
+    def test_no_symbols_prints_skipped_reasons(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
         """File with no functions → skipped_reasons printed (lines 193-195)."""
         src = tmp_path / "constants.py"
         src.write_text("X = 42\nY = 'hello'\n")
@@ -203,7 +211,9 @@ class TestRunSymbolGateUncovered:
         assert "uncovered symbols:" in captured.out
         assert "greet" in captured.out
 
-    def test_overflow_printed_when_over_25(self, tmp_path: Path, capsys: object) -> None:
+    def test_overflow_printed_when_over_25(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
         """More than 25 uncovered symbols → overflow message (lines 202-203)."""
         funcs = "\n".join(f"def func_{i}():\n    return {i}\n" for i in range(30))
         src = tmp_path / "many.py"

@@ -218,7 +218,9 @@ def save_runtime_state_with_meta(
         state.timestamp = time.time()
 
         try:
-            fd, tmp_path = tempfile.mkstemp(dir=str(state_dir), suffix=".tmp", prefix="rs_")
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(state_dir), suffix=".tmp", prefix="rs_"
+            )
             try:
                 with os.fdopen(fd, "w") as f:
                     json.dump(state.to_dict(), f, separators=(",", ":"))
@@ -330,8 +332,13 @@ def build_runtime_state(
     if session is not None and session.snapshots:
         latest = session.snapshots[-1]
         # Infer test status from behavior data
-        if latest.behavior.action_type == "bash" and "test" in latest.behavior.command_signature:
-            state.last_test_status = "pass" if latest.behavior.exit_code == 0 else "fail"
+        if (
+            latest.behavior.action_type == "bash"
+            and "test" in latest.behavior.command_signature
+        ):
+            state.last_test_status = (
+                "pass" if latest.behavior.exit_code == 0 else "fail"
+            )
 
     # Coherence state
     if last_coherence_state:
@@ -353,7 +360,9 @@ def build_runtime_state(
             if s.behavior.prediction_accuracy is not None
         ]
         if recent_predictions:
-            state.prediction_accuracy = round(sum(recent_predictions) / len(recent_predictions), 2)
+            state.prediction_accuracy = round(
+                sum(recent_predictions) / len(recent_predictions), 2
+            )
 
     # Token economics
     if tracker is not None:
@@ -386,8 +395,12 @@ def _populate_from_compass(state: RuntimeState, compass: CompassState) -> None:
     if problem_axis and problem_axis.summary:
         state.true_north = problem_axis.summary[:_TRUE_NORTH_MAX_CHARS]
 
-    state.toward = [d.text for d in compass.directives if d.kind == "toward"][:_MAX_DIRECTIVES]
-    state.away = [d.text for d in compass.directives if d.kind == "away"][:_MAX_DIRECTIVES]
+    state.toward = [d.text for d in compass.directives if d.kind == "toward"][
+        :_MAX_DIRECTIVES
+    ]
+    state.away = [d.text for d in compass.directives if d.kind == "away"][
+        :_MAX_DIRECTIVES
+    ]
     state.forbidden = [d.text for d in compass.directives if d.kind == "forbidden"][
         :_MAX_DIRECTIVES
     ]

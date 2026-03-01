@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -82,6 +83,28 @@ class FunctionMutationState:
         if self.total == 0:
             return 1.0
         return self.survived / self.total
+
+    @property
+    def specification_strength(self) -> float:
+        """Ratio of assertion-kills to total kills.
+
+        0.0 = all crash-kills (proves crash-freedom only).
+        1.0 = all assertion-kills (proves specification completeness).
+        """
+        total_killed = self.killed_by_assertion + self.killed_by_crash
+        if total_killed == 0:
+            return 0.0
+        return self.killed_by_assertion / total_killed
+
+    @property
+    def is_gateable(self) -> bool:
+        """Whether this state has sufficient authority to gate optimization hints.
+
+        Full-depth profiled data always gates. Sampled data gates only with HIGH confidence.
+        """
+        if self.depth == CoverageDepth.PROFILED:
+            return True
+        return bool(self.depth == CoverageDepth.SAMPLED and self.confidence == ConfidenceLevel.HIGH)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
@@ -182,10 +205,24 @@ class MutationStateManager:
         """Retrieve state for a fully qualified function identifier."""
         return self.state.get(function_id)
 
-    def update_state(self, state: FunctionMutationState) -> None:
-        """Update or insert a state record."""
-        # Use fully qualified name as the identifier
-        func_id = f"{state.file_path}::{state.function_name}"
+    def update_state(
+        self,
+        state: FunctionMutationState,
+        project_root: str | None = None,
+    ) -> None:
+        """Update or insert a state record.
+
+        When *project_root* is supplied the key is produced via
+        :func:`canonicalize_function_id` so that it matches the manifest's
+        ``relpath::qualname`` convention.  Without it the legacy
+        ``file_path::function_name`` key is used (backward-compatible).
+        """
+        if project_root is not None:
+            func_id = canonicalize_function_id(
+                state.file_path, state.function_name, project_root
+            )
+        else:
+            func_id = f"{state.file_path}::{state.function_name}"
         self.state[func_id] = state
 
     def requires_run(
@@ -210,7 +247,44 @@ class MutationStateManager:
             return True
 
         # If we want a deep profile but only have a sample, we must run.
-        return target_depth == CoverageDepth.PROFILED and st.depth != CoverageDepth.PROFILED
+        return (
+            target_depth == CoverageDepth.PROFILED
+            and st.depth != CoverageDepth.PROFILED
+        )
+
+
+def canonicalize_function_id(
+    file_path: str,
+    function_name: str,
+    project_root: str,
+) -> str:
+    """Produce a canonical function identifier: ``relpath::qualname``.
+
+    This is the single source of truth for function identity across the
+    manifest (``manifest.py``) and mutation state (``state.py``).  Both
+    subsystems MUST use this helper so that lookups never silently miss.
+
+    The path component is always ``os.path.relpath(file_path, project_root)``
+    which matches the keying convention in ``manifest.py::_scan_file()``.
+    The qualname component preserves class prefixes (e.g. ``Class.method``).
+
+    Examples::
+
+        canonicalize_function_id(
+            "/home/user/proj/src/core.py", "Engine.run", "/home/user/proj"
+        )
+        # -> "src/core.py::Engine.run"
+
+        canonicalize_function_id(
+            "src/core.py", "compute", "/home/user/proj"
+        )
+        # -> "src/core.py::compute"
+    """
+    # Normalize to absolute so relpath works even when file_path is already relative
+    abs_file = os.path.abspath(file_path)
+    abs_root = os.path.abspath(project_root)
+    relpath = os.path.relpath(abs_file, abs_root)
+    return f"{relpath}::{function_name}"
 
 
 def compute_content_hash(content: str) -> str:

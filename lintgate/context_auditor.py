@@ -180,6 +180,7 @@ class SessionReadiness:
 def check_session_readiness(
     project_root: str,
     theory_profile: dict[str, Any] | None = None,
+    git_context: dict[str, Any] | None = None,
 ) -> SessionReadiness:
     """Check if the session has sufficient theory context for deep supervision.
 
@@ -187,10 +188,12 @@ def check_session_readiness(
     - Theory profile has required facets (core_theory, problem_solving, alignment)
       with at least one claim each.
     - At least one enforceable rule exists.
+    - Theory profile covers uncommitted files (#182).
 
     Args:
         project_root: Repository root.
         theory_profile: Pre-extracted theory profile (avoids re-extraction).
+        git_context: Optional git working tree context for staleness checking.
 
     Returns:
         SessionReadiness with ready flag, missing items, and recommendation.
@@ -222,15 +225,36 @@ def check_session_readiness(
     if not has_rules:
         missing.append("no_enforceable_rules")
 
+    # Check theory coverage of uncommitted files (#182)
+    if git_context and theory_profile is not None:
+        try:
+            from .theory_extractor import check_theory_staleness
+
+            staleness = check_theory_staleness(
+                project_root, theory_profile, git_context
+            )
+            if staleness.get("stale"):
+                uncovered = staleness.get("uncovered_files", [])
+                missing.append(f"theory_stale:{len(uncovered)}_uncommitted_files")
+        except Exception:
+            pass  # Graceful degradation
+
     if missing:
         parts = []
         if "no_theory_profile" in missing:
             parts.append("extract project theory")
-        facet_missing = [m.split(":")[1] for m in missing if m.startswith("missing_facet:")]
+        facet_missing = [
+            m.split(":")[1] for m in missing if m.startswith("missing_facet:")
+        ]
         if facet_missing:
             parts.append(f"add claims for facets: {', '.join(facet_missing)}")
         if "no_enforceable_rules" in missing:
             parts.append("add enforceable rules to CLAUDE.md")
+        stale_items = [m for m in missing if m.startswith("theory_stale:")]
+        if stale_items:
+            parts.append(
+                "run build_theory_pack to cover uncommitted files with design docstrings"
+            )
         recommendation = f"Run bootstrap_context_files to {'; '.join(parts)}."
     else:
         recommendation = ""

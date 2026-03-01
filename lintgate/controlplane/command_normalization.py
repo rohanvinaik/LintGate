@@ -15,7 +15,9 @@ import shlex
 # ── Intent taxonomy ─────────────────────────────────────────────────────
 # 6 categories: enough structure to reduce ambiguity without NLP.
 
-INTENT_CATEGORIES = frozenset({"inspect", "modify", "verify", "execute", "meta", "unknown"})
+INTENT_CATEGORIES = frozenset(
+    {"inspect", "modify", "verify", "execute", "meta", "unknown"}
+)
 
 # Deterministic mapping chain:
 # 1. Explicit tool type (Read, Write, Edit, Bash → fallback if not in sig map)
@@ -34,6 +36,8 @@ _TOOL_TYPE_DEFAULTS: dict[str, str] = {
     "WebFetch": "inspect",
     "WebSearch": "inspect",
     "Task": "meta",
+    "Agent": "meta",
+    "EnterPlanMode": "meta",
     "TodoWrite": "meta",
     "AskUserQuestion": "meta",
 }
@@ -288,7 +292,9 @@ def extract_error_sig(stderr: str) -> str:
         # Strip absolute paths
         cleaned = _ABS_PATH_PATTERN.sub(r"\1", stripped)
         # Strip timestamps (common patterns: ISO, syslog, bracketed)
-        cleaned = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\d]*\s*", "", cleaned)
+        cleaned = re.sub(
+            r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\d]*\s*", "", cleaned
+        )
         cleaned = re.sub(r"\[\d+[:.]\d+\]\s*", "", cleaned)
 
         # Truncate to reasonable length

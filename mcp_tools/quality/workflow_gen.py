@@ -2,6 +2,24 @@
 
 from __future__ import annotations
 
+# Constants used by both this module and quality_helpers / onboarding_tools.
+# Defined here (the primary consumer) to avoid an import cycle with quality_helpers.
+REQUIRED_ARTIFACTS = {
+    "codeclimate": ".codeclimate.yml",
+    "sonar": "sonar-project.properties",
+    "coveragerc": ".coveragerc",
+    "gitleaks": ".gitleaks.toml",
+    "security_policy": "SECURITY.md",
+}
+
+REQUIRED_BADGE_FINGERPRINTS = [
+    "actions/workflows/tests.yml/badge.svg",
+    "actions/workflows/security-lite.yml/badge.svg",
+    "metric=alert_status",
+    "metric=coverage",
+    "metric=security_rating",
+]
+
 
 def _generate_scorecard_workflow() -> str:
     """Generate OpenSSF Scorecard GitHub Action workflow."""
@@ -222,17 +240,15 @@ def _generate_pypi_publish_workflow() -> str:
 
 def _generate_quality_infra_gate_workflow() -> str:
     """Generate the quality infrastructure gate CI workflow."""
-    from mcp_tools.quality_helpers import _REQUIRED_ARTIFACTS, _REQUIRED_BADGE_FINGERPRINTS
-
     file_checks: list[str] = []
-    for _name, rel_path in _REQUIRED_ARTIFACTS.items():
+    for _name, rel_path in REQUIRED_ARTIFACTS.items():
         file_checks.append(
             f'          if [ ! -e "{rel_path}" ]; then '
             f'echo "MISSING: {rel_path}"; MISSING=$((MISSING+1)); fi'
         )
 
     fp_checks: list[str] = []
-    for fp in _REQUIRED_BADGE_FINGERPRINTS:
+    for fp in REQUIRED_BADGE_FINGERPRINTS:
         escaped = fp.replace(".", "\\.").replace("/", "\\/")
         fp_checks.append(
             f'          if ! grep -q "{escaped}" README.md 2>/dev/null; then '

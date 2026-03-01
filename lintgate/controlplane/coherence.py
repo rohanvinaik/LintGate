@@ -151,7 +151,9 @@ def _compute_base_coherence(
 
     # Rule 5: degraded — check before failure rules
     if errored:
-        return _handle_degraded_state(errored, failed, silent, loud, demoted_notes, enabled)
+        return _handle_degraded_state(
+            errored, failed, silent, loud, demoted_notes, enabled
+        )
 
     # Rule 1: stable — all channels pass (includes demoted info-only channels)
     if not failed:
@@ -211,7 +213,9 @@ def _partition_results(
     }
 
 
-def _handle_stable_state(demoted_notes: list[str], silent: list[str]) -> CoherenceResult:
+def _handle_stable_state(
+    demoted_notes: list[str], silent: list[str]
+) -> CoherenceResult:
     """Handle Rule 1: stable state."""
     summary = "All channels clean."
     if demoted_notes:
@@ -237,9 +241,13 @@ def _handle_degraded_state(
 ) -> CoherenceResult:
     """Handle the degraded state when channels error or timeout."""
     errored_names = [r.channel for r in errored]
-    notes: list[str] = demoted_notes + [f"{len(errored_names)} channel(s) errored/timed out"]
+    notes: list[str] = demoted_notes + [
+        f"{len(errored_names)} channel(s) errored/timed out"
+    ]
     if failed:
-        notes.append(f"also {len(failed)} channel(s) failed — failures may be masked by errors")
+        notes.append(
+            f"also {len(failed)} channel(s) failed — failures may be masked by errors"
+        )
 
     return CoherenceResult(
         state="degraded",
@@ -288,6 +296,7 @@ def compute_coherence_with_history(
     1. REGRESSION: coherence state worsened from previous run
     2. PERSISTENT: same channel loud 3+ consecutive runs → escalate wording
     3. RESOLUTION: previously-loud channel now silent → note resolution
+    4. NO_DATA: test channel passes but has no test files (bootstrap needed)
 
     Only modifies summary and recommended_action text. Never changes the
     state enum — the base coherence engine is authoritative for that.
@@ -310,23 +319,50 @@ def compute_coherence_with_history(
         files_changed=files_changed,
     )
 
+    # Bootstrap-aware "no data" annotation — applies even without session history
+    bootstrap_notes = _detect_bootstrap_needed(channel_results)
+    if bootstrap_notes and not (session and session.snapshots):
+        # No session history but bootstrap annotation needed
+        notes = list(base.classification_notes) + bootstrap_notes
+        return CoherenceResult(
+            state=base.state,
+            summary=base.summary,
+            recommended_action=base.recommended_action,
+            silent_channels=base.silent_channels,
+            loud_channels=base.loud_channels,
+            confidence=base.confidence,
+            classification_notes=notes,
+            edit_scoped=base.edit_scoped,
+            edit_related_channels=base.edit_related_channels,
+            ambient_channels=base.ambient_channels,
+            unknown_scope_channels=base.unknown_scope_channels,
+        )
+
     if session is None or not session.snapshots:
         return base
 
     annotations: list[str] = []
+    if bootstrap_notes:
+        annotations.extend(bootstrap_notes)
 
     # 1. REGRESSION / IMPROVEMENT detection: state change from last run
     if session.coherence_trajectory:
         prev_state = session.coherence_trajectory[-1]
         if state_severity(base.state) > state_severity(prev_state):
-            annotations.append(f"REGRESSION: coherence degraded from {prev_state} → {base.state}")
+            annotations.append(
+                f"REGRESSION: coherence degraded from {prev_state} → {base.state}"
+            )
         elif state_severity(base.state) < state_severity(prev_state):
-            annotations.append(f"IMPROVEMENT: coherence improved from {prev_state} → {base.state}")
+            annotations.append(
+                f"IMPROVEMENT: coherence improved from {prev_state} → {base.state}"
+            )
 
     # 2. PERSISTENT detection: same channel loud 3+ consecutive runs
     persistent_channels = detect_persistent_loud(session, base.loud_channels)
     for ch_name, streak in persistent_channels:
-        annotations.append(f"PERSISTENT: {ch_name} has been failing for {streak} consecutive runs")
+        annotations.append(
+            f"PERSISTENT: {ch_name} has been failing for {streak} consecutive runs"
+        )
 
     # 3. RESOLUTION detection: previously-loud channel now silent
     resolved = detect_resolutions(session, base.silent_channels)
@@ -337,7 +373,7 @@ def compute_coherence_with_history(
     tradeoffs = detect_refactoring_tradeoffs(channel_results, session)
     for t in tradeoffs:
         annotations.append(
-            f"TRADEOFF: {t['improved']} improved by {abs(t['improved_delta'])}, "
+            f"TRADEOFF: {t['improved']} improved by {abs(float(t['improved_delta']))}, "
             f"but {t['regressed']} increased by {t['regressed_delta']}"
         )
 
@@ -350,9 +386,7 @@ def compute_coherence_with_history(
     enriched_action = base.recommended_action
     if persistent_channels:
         ch_names = [ch for ch, _ in persistent_channels]
-        enriched_action += (
-            f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
-        )
+        enriched_action += f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
     if any("IMPROVEMENT" in a for a in annotations):
         enriched_action += " Progress detected — continue current approach."
 
@@ -383,6 +417,43 @@ def _has_actionable_findings(result: ChannelResult) -> bool:
             return True
     # Also check channel-level severity as fallback
     return result.severity in ("blocking", "warning")
+
+
+def _detect_bootstrap_needed(channel_results: list[ChannelResult]) -> list[str]:
+    """Check if the test channel signals bootstrap_needed (zero test files).
+
+    When the test channel passes but has no test files, "tests pass" is
+    misleading — it means "no tests exist to fail." This annotation ensures
+    the coherence engine does not treat silence as health.
+
+    Returns:
+        List of annotation strings (empty if no bootstrap signal detected).
+    """
+    notes: list[str] = []
+    for cr in channel_results:
+        if cr.channel != "tests":
+            continue
+        metrics = cr.metrics if isinstance(cr.metrics, dict) else {}
+        if metrics.get("bootstrap_needed"):
+            bootstrap_status = "available"
+            # Check if bootstrap is already running
+            try:
+                from lintgate.orchestration.bootstrap_state import BootstrapState
+
+                state = BootstrapState.load(metrics.get("project_root", ""))
+                if state.status == "running":
+                    bootstrap_status = f"running (phase: {state.phase})"
+                elif state.status == "complete":
+                    bootstrap_status = "complete"
+            except Exception:
+                pass
+
+            notes.append(
+                f"NO_DATA: tests channel passes with caveat — no test files exist. "
+                f"Bootstrap pipeline {bootstrap_status}."
+            )
+            break
+    return notes
 
 
 def _build_classification_reason(result: CoherenceResult) -> str:

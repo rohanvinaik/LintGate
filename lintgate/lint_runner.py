@@ -7,12 +7,24 @@ changed files, not the whole project).
 
 from __future__ import annotations
 
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import TYPE_CHECKING
 
 from .types import LinterContext, LinterResult, LintTier, ProjectConfig
+
+
+def _is_external_package(filepath: str) -> bool:
+    """Exclude site-packages and dist-packages from analysis.
+
+    Resolves symlinks before checking so vendored links into
+    a virtual-env are correctly filtered.
+    """
+    resolved = os.path.realpath(filepath)
+    return any(seg in resolved for seg in ("/site-packages/", "/dist-packages/"))
+
 
 if TYPE_CHECKING:
     from .linters.base import BaseLinter
@@ -65,9 +77,14 @@ def run_linters(
     if not selected:
         return results
 
+    # Filter out external packages (site-packages, dist-packages)
+    filtered_files = [f for f in tier.files if not _is_external_package(f)]
+    if not filtered_files:
+        return results
+
     # Build shared context
     ctx = LinterContext(
-        files=tier.files,
+        files=filtered_files,
         project_root=config.project_root,
         strictness=tier.strictness,
         config=config.linter_configs,

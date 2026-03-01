@@ -212,7 +212,12 @@ class TestSerialization:
             {"tool": "Bash", "ts": 1000.0, "sig": "git:push", "exit": 0, "err": ""}
         )
         compass.error_memory = {
-            "err01": {"count": 2, "first_seen": 900.0, "last_seen": 1000.0, "last_sig": "error X"},
+            "err01": {
+                "count": 2,
+                "first_seen": 900.0,
+                "last_seen": 1000.0,
+                "last_sig": "error X",
+            },
         }
 
         data = compass.to_dict()
@@ -289,7 +294,9 @@ class TestIntentHistory:
 
     def test_intent_appended_for_bash(self):
         compass = new_compass()
-        record_tool_event(compass, "Bash", {"command": "pytest tests/"}, "exit_code: 0", now=100.0)
+        record_tool_event(
+            compass, "Bash", {"command": "pytest tests/"}, "exit_code: 0", now=100.0
+        )
         assert len(compass.intent_history) == 1
         assert compass.intent_history[0] == "verify"
 
@@ -402,7 +409,12 @@ class TestSerializationV2:
         compass.signal_fire_counts = {"approach_cycling": 2}
         compass.early_nudge_emitted = True
         compass.error_memory = {
-            "err01": {"count": 2, "first_seen": 10.0, "last_seen": 20.0, "last_sig": "error sig"},
+            "err01": {
+                "count": 2,
+                "first_seen": 10.0,
+                "last_seen": 20.0,
+                "last_sig": "error sig",
+            },
         }
 
         data = compass.to_dict()
@@ -508,7 +520,9 @@ class TestCoverageInternal:
         c.hypotheses.append(h)
         old_conf = h.confidence
         cfg = dict(DEFAULT_HYPOTHESIS_CONFIG)
-        _test_hypotheses(c, "pytest:tests/test_foo.py", 1, "import error found", time.time(), cfg)
+        _test_hypotheses(
+            c, "pytest:tests/test_foo.py", 1, "import error found", time.time(), cfg
+        )
         assert h.confidence > old_conf
 
     def test_test_hypotheses_weakens_on_success(self):

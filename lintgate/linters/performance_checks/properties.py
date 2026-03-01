@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 from typing import TYPE_CHECKING
 
 from lintgate.linters.performance_checks.algebra_types import (
@@ -32,7 +33,9 @@ def _get_return_nodes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.
     return returns
 
 
-def _is_single_expression_return(node: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.expr | None:
+def _is_single_expression_return(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> ast.expr | None:
     """If the function is effectively just `return <expr>`, return the expr."""
     returns = _get_return_nodes(node)
 
@@ -61,7 +64,9 @@ def _is_single_expression_return(node: ast.FunctionDef | ast.AsyncFunctionDef) -
     return None
 
 
-def _check_bounded(node: ast.FunctionDef | ast.AsyncFunctionDef) -> AlgebraicProperty | None:
+def _check_bounded(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> AlgebraicProperty | None:
     """Detect if the function output is mathematically bounded."""
 
     expr = _is_single_expression_return(node)
@@ -171,13 +176,17 @@ def _check_monotonic(
     v.visit(expr)
     if v.is_monotonic:
         return AlgebraicProperty(
-            PropertyKind.MONOTONIC, 0.5, "Single expression using only monotonic operations"
+            PropertyKind.MONOTONIC,
+            0.5,
+            "Single expression using only monotonic operations",
         )
     return None
 
 
 def _check_idempotent(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, param_types: list[str], ret_type: str | None
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    param_types: list[str],
+    ret_type: str | None,
 ) -> AlgebraicProperty | None:
     """Detect idempotent f(f(x)) == f(x)."""
     # Needs exactly 1 parameter of the same type as the return type
@@ -192,20 +201,44 @@ def _check_idempotent(
     if (
         isinstance(expr, ast.Call)
         and isinstance(expr.func, ast.Name)
-        and expr.func.id in ("abs", "set", "list", "dict", "str", "int", "float", "bool")
+        and expr.func.id
+        in ("abs", "set", "list", "dict", "str", "int", "float", "bool")
     ):
         # Type casting is generally idempotent
         return AlgebraicProperty(
-            PropertyKind.IDEMPOTENT, 0.9, f"Function returns a single {expr.func.id}() cast/call"
+            PropertyKind.IDEMPOTENT,
+            0.9,
+            f"Function returns a single {expr.func.id}() cast/call",
         )
 
     return None
 
 
+_NUMERIC_TYPES = frozenset({"int", "float", "complex", "Decimal"})
+_NON_COMMUTATIVE_ADD_TYPES = frozenset({"str", "bytes", "list", "tuple"})
+_SET_TYPES = frozenset({"set", "frozenset"})
+
+
+def _extract_param_type_annotations(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, str]:
+    """Extract parameter type annotations from a function definition."""
+    param_types: dict[str, str] = {}
+    for arg in node.args.args:
+        if arg.annotation:
+            with contextlib.suppress(Exception):
+                param_types[arg.arg] = ast.unparse(arg.annotation)
+    return param_types
+
+
 def _check_commutative_associative(
     node: ast.FunctionDef | ast.AsyncFunctionDef, param_names: set[str]
 ) -> tuple[AlgebraicProperty | None, AlgebraicProperty | None]:
-    """Detect if f(x, y) == f(y, x) and f(x, f(y, z)) == f(f(x, y), z)."""
+    """Detect if f(x, y) == f(y, x) and f(x, f(y, z)) == f(f(x, y), z).
+
+    Type-aware: consults parameter type annotations to avoid false positives
+    for non-commutative types like str and list concatenation.
+    """
     if len(param_names) < 2:
         return None, None
 
@@ -213,17 +246,64 @@ def _check_commutative_associative(
     if not expr:
         return None, None
 
-    # Heuristic: the expression uses only Commutative operations (+, *, &, |)
-    # on all arguments equally.
+    if not isinstance(expr, ast.BinOp):
+        return None, None
 
-    if isinstance(expr, ast.BinOp) and isinstance(
-        expr.op, (ast.Add, ast.Mult, ast.BitAnd, ast.BitOr, ast.BitXor)
-    ):
+    op = expr.op
+    param_type_map = _extract_param_type_annotations(node)
+    resolved_types = set(param_type_map.values())
+
+    # Set operations (|, &, ^) — commutative + associative for set types
+    if isinstance(op, (ast.BitAnd, ast.BitOr, ast.BitXor)):
+        type_ctx = param_type_map if param_type_map else None
+        if resolved_types and resolved_types <= _SET_TYPES:
+            confidence = 0.9
+            evidence = "Returns a commutative set operation (|, &, ^) with set-typed parameters"
+        elif resolved_types:
+            confidence = 0.8
+            evidence = "Returns a commutative binary operation (&, |, ^)"
+        else:
+            confidence = 0.6
+            evidence = "Returns a binary operation (&, |, ^) (unannotated parameters)"
         comm = AlgebraicProperty(
-            PropertyKind.COMMUTATIVE, 0.8, "Returns a commutative binary operation (+, *, &, |, ^)"
+            PropertyKind.COMMUTATIVE, confidence, evidence, type_context=type_ctx
         )
         assoc = AlgebraicProperty(
-            PropertyKind.ASSOCIATIVE, 0.8, "Returns an associative binary operation"
+            PropertyKind.ASSOCIATIVE,
+            confidence,
+            "Returns an associative binary operation",
+            type_context=type_ctx,
+        )
+        return comm, assoc
+
+    # Addition and multiplication — must check for non-commutative types
+    if isinstance(op, (ast.Add, ast.Mult)):
+        # If any parameter is annotated as a non-commutative type, skip entirely
+        if resolved_types & _NON_COMMUTATIVE_ADD_TYPES:
+            return None, None
+
+        type_ctx = param_type_map if param_type_map else None
+
+        if resolved_types and resolved_types <= _NUMERIC_TYPES:
+            confidence = 0.9
+            evidence = "Returns a commutative binary operation (+, *) with numeric-typed parameters"
+        elif resolved_types:
+            # Some other annotated type — keep detection but standard confidence
+            confidence = 0.8
+            evidence = "Returns a commutative binary operation (+, *)"
+        else:
+            # No annotations — reduced confidence
+            confidence = 0.6
+            evidence = "Returns a binary operation (+, *) (unannotated — may be non-commutative for str/list)"
+
+        comm = AlgebraicProperty(
+            PropertyKind.COMMUTATIVE, confidence, evidence, type_context=type_ctx
+        )
+        assoc = AlgebraicProperty(
+            PropertyKind.ASSOCIATIVE,
+            confidence,
+            "Returns an associative binary operation",
+            type_context=type_ctx,
         )
         return comm, assoc
 
@@ -234,28 +314,66 @@ def classify_properties(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     purity: PurityResult,
     mutation_state: FunctionMutationState | None = None,
+    enforcement_mode: str = "audit",
+    mutation_system_active: bool = False,
 ) -> FunctionProperties:
     """
     Given a known-pure function, attempt to classify its algebraic properties.
+
+    When ``mutation_system_active`` is True but ``mutation_state`` is None,
+    the function is treated as MUTATION_UNKNOWN with reduced confidence (0.4).
+    When ``mutation_system_active`` is False (mutation infrastructure unavailable),
+    the default behavior is preserved for backward compatibility.
     """
     confidence = purity.confidence
     evidence_prefix = ""
 
-    # Integrated Cross-Channel Gate (Item 3)
+    # Integrated Cross-Channel Gate (#207: depth/confidence/assertion-aware)
     if mutation_state and mutation_state.total > 0:
         survival_rate = mutation_state.survival_rate
-        if survival_rate > 0.6:
-            # High survival indicates the function is likely NOT pure or tests are missing
-            confidence = min(confidence, 0.1)
-            evidence_prefix = f"[MUTATION GATED: {survival_rate:.2f} survival] "
-        elif survival_rate > 0.3:
-            # Moderate survival lowers confidence
-            confidence *= 0.5
-            evidence_prefix = f"[MUTATION PENALIZED: {survival_rate:.2f} survival] "
+        spec_strength = mutation_state.specification_strength
+
+        if mutation_state.is_gateable:
+            # Hard gate: sufficient evidence to modify hints
+            # Survival > 0.5 always gates (independent of enforcement mode)
+            # Spec-strength < 0.5 only gates when enforcement_mode != "audit"
+            should_gate = survival_rate > 0.5
+            if not should_gate and enforcement_mode != "audit":
+                from lintgate.mutation.prescriptions import resolve_gate_status
+                gate_status, _ = resolve_gate_status(spec_strength, enforcement_mode)
+                should_gate = gate_status != "pass"
+
+            if should_gate:
+                confidence = min(confidence, 0.1)
+                evidence_prefix = (
+                    f"[MUTATION GATED: survival={survival_rate:.0%}, "
+                    f"spec_strength={spec_strength:.0%}] "
+                )
+            elif survival_rate > 0.2:
+                confidence *= 0.5
+                evidence_prefix = f"[MUTATION PENALIZED: survival={survival_rate:.0%}] "
+            else:
+                confidence = max(confidence, 0.9)
+                evidence_prefix = (
+                    f"[MUTATION VERIFIED: survival={survival_rate:.0%}, "
+                    f"spec_strength={spec_strength:.0%}] "
+                )
         else:
-            # Low survival increases confidence if it wasn't already high
-            confidence = max(confidence, 0.9)
-            evidence_prefix = f"[MUTATION VERIFIED: {survival_rate:.2f} survival] "
+            # Advisory only: sampled/low-confidence — hints NOT modified
+            if survival_rate > 0.3:
+                evidence_prefix = (
+                    f"[MUTATION ADVISORY: survival={survival_rate:.0%}, "
+                    f"depth={mutation_state.depth.value}] "
+                )
+            elif survival_rate <= 0.2:
+                confidence = max(confidence, 0.9)
+                evidence_prefix = f"[MUTATION VERIFIED: survival={survival_rate:.0%}] "
+
+    # MUTATION_UNKNOWN: mutation system is active but no data for this function.
+    # Treat absence of evidence as epistemic uncertainty, not evidence of safety.
+    elif mutation_system_active and purity.is_pure and mutation_state is None:
+        confidence = 0.4
+        evidence_prefix = "[MUTATION_UNKNOWN: no specification data] "
 
     properties: list[AlgebraicProperty] = [
         AlgebraicProperty(
@@ -267,10 +385,10 @@ def classify_properties(
     hints: list[str] = ["cacheable"]
 
     param_names = {arg.arg for arg in func_node.args.args}
-    param_types = [
-        getattr(arg.annotation, "id", None)
+    param_types: list[str] = [
+        t
         for arg in func_node.args.args
-        if getattr(arg.annotation, "id", None)
+        if isinstance((t := getattr(arg.annotation, "id", None)), str)
     ]
 
     # 1. Bounded
@@ -301,6 +419,23 @@ def classify_properties(
         properties.append(assoc)
         hints.append("parallelizable")
         hints.append("map-reduce-compatible")
+
+    # #207: Hard gate — suppress hints when gateable evidence says specification is weak.
+    # Applied after all property detection so ALL hints are subject to the gate.
+    if mutation_state and mutation_state.is_gateable and mutation_state.total > 0:
+        survival_rate = mutation_state.survival_rate
+        spec_strength = mutation_state.specification_strength
+        # Survival > 0.5 always suppresses hints
+        should_suppress = survival_rate > 0.5
+        if not should_suppress and enforcement_mode != "audit":
+            from lintgate.mutation.prescriptions import resolve_gate_status
+            gate_status, _ = resolve_gate_status(spec_strength, enforcement_mode)
+            should_suppress = gate_status != "pass"
+
+        if should_suppress:
+            hints = []  # Fully gated — no optimization hints
+        elif survival_rate > 0.2:
+            hints = [h for h in hints if h == "cacheable"]  # Only cacheable survives
 
     return FunctionProperties(
         purity=purity,

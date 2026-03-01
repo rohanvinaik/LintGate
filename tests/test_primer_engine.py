@@ -29,7 +29,9 @@ class TestBuildPrimer:
         assert "Mode: habit (82%)" in primer
 
     def test_focus_files_basenames(self, tmp_path):
-        state = RuntimeState(active_files=["/src/main.py", "/src/utils.py", "/tests/test_main.py"])
+        state = RuntimeState(
+            active_files=["/src/main.py", "/src/utils.py", "/tests/test_main.py"]
+        )
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
         assert "Focus: [main.py, utils.py, test_main.py]" in primer
@@ -135,7 +137,9 @@ class TestHandleIntegration:
         state = RuntimeState(mode="normal")
         save_runtime_state(str(tmp_path), state)
 
-        result = handle({"cwd": str(tmp_path), "userMessage": "explain the architecture"})
+        result = handle(
+            {"cwd": str(tmp_path), "userMessage": "explain the architecture"}
+        )
         msg = result["systemMessage"]
         assert "theory-relevant prompt" in msg
 

@@ -133,41 +133,43 @@ class TestBuildCpNextActions:
         counts = {"blocking": 2, "warning": 0, "repairs_available": 0}
         actions = _build_cp_next_actions("run123", counts)
         assert len(actions) == 1
-        assert actions[0]["tool"] == "controlplane_get_details"
-        assert actions[0]["priority"] == 1
+        assert actions[0].tool == "controlplane_get_details"
+        assert actions[0].priority == 1
 
     def test_repairs_available_triggers_action(self) -> None:
         """Line 218: repairs_available > 0 triggers the repair action."""
         counts = {"blocking": 0, "warning": 0, "repairs_available": 3}
         actions = _build_cp_next_actions("run123", counts)
         assert len(actions) == 1
-        assert actions[0]["tool"] == "controlplane_apply_repairs"
-        assert "3 safe repairs available" in actions[0]["reason"]
+        assert actions[0].tool == "controlplane_apply_repairs"
+        assert "3 safe repairs available" in actions[0].reason
 
     def test_repairs_available_singular(self) -> None:
         """Single repair uses singular noun."""
         counts = {"blocking": 0, "warning": 0, "repairs_available": 1}
         actions = _build_cp_next_actions("run123", counts)
         assert len(actions) == 1
-        assert "1 safe repair available" in actions[0]["reason"]
+        assert "1 safe repair available" in actions[0].reason
 
     def test_symbol_blockers_with_repairs(self) -> None:
         """Symbol blockers + repairs: both appear with correct priorities."""
         blockers = [{"kind": "symbol_uncovered", "symbol": "foo"}]
         counts = {"blocking": 0, "warning": 0, "repairs_available": 2}
         actions = _build_cp_next_actions("run123", counts, symbol_blockers=blockers)
-        tools = [a["tool"] for a in actions]
+        tools = [a.tool for a in actions]
         assert "controlplane_get_details" in tools
         assert "controlplane_run" in tools
         assert "controlplane_apply_repairs" in tools
-        repair_action = next(a for a in actions if a["tool"] == "controlplane_apply_repairs")
-        assert repair_action["priority"] == 4
+        repair_action = next(
+            a for a in actions if a.tool == "controlplane_apply_repairs"
+        )
+        assert repair_action.priority == 4
 
     def test_warnings_action(self) -> None:
         counts = {"blocking": 0, "warning": 5, "repairs_available": 0}
         actions = _build_cp_next_actions("run123", counts)
         assert len(actions) == 1
-        assert actions[0]["args"]["severity"] == "warning"
+        assert actions[0].args["severity"] == "warning"
 
     def test_all_counts_produce_all_actions(self) -> None:
         counts = {"blocking": 1, "warning": 2, "repairs_available": 1}

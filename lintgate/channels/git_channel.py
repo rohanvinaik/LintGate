@@ -67,7 +67,9 @@ class GitChannel:
         # Skip read-only operations
         return classification.risk_level != "none"
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Execute git hygiene checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -99,7 +101,9 @@ class GitChannel:
             {os.path.basename(f) for f in event.files_changed} & _DEPENDENCY_FILES
         )
         if run_lockfile_check:
-            lockfile_findings, lockfile_repairs = _check_lockfile_freshness(project_root)
+            lockfile_findings, lockfile_repairs = _check_lockfile_freshness(
+                project_root
+            )
             findings.extend(lockfile_findings)
             repairs.extend(lockfile_repairs)
 
@@ -148,6 +152,133 @@ class GitChannel:
             },
             duration_ms=elapsed_ms,
         )
+
+
+# ── Git context collection (#179) ────────────────────────────────────────
+
+
+def collect_working_tree_context(project_root: str) -> dict:
+    """Collect working tree state for git-aware scope signaling.
+
+    Returns a dict with:
+    - branch: current branch name
+    - modified_files: list of modified tracked files
+    - untracked_files: list of untracked files
+    - modified_count / untracked_count: counts
+    - uncommitted_loc_delta: estimated net line changes (insertions - deletions)
+    - large_uncommitted_diff: True if uncommitted changes exceed threshold
+    """
+    context: dict = {
+        "branch": "",
+        "modified_files": [],
+        "untracked_files": [],
+        "modified_count": 0,
+        "untracked_count": 0,
+        "uncommitted_loc_delta": 0,
+        "large_uncommitted_diff": False,
+    }
+
+    if not _is_git_repo(project_root):
+        return context
+
+    # Get branch name
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=project_root,
+        )
+        if result.returncode == 0:
+            context["branch"] = result.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    # Get modified and untracked files via git status --porcelain
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=project_root,
+        )
+        if result.returncode == 0:
+            modified: list[str] = []
+            untracked: list[str] = []
+            for line in result.stdout.splitlines():
+                if len(line) < 4:
+                    continue
+                status = line[:2]
+                filepath = line[3:].strip().strip('"')
+                if status == "??":
+                    untracked.append(filepath)
+                else:
+                    modified.append(filepath)
+            context["modified_files"] = modified
+            context["untracked_files"] = untracked
+            context["modified_count"] = len(modified)
+            context["untracked_count"] = len(untracked)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    # Get uncommitted LOC delta (unstaged + staged)
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--stat", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=project_root,
+        )
+        if result.returncode == 0:
+            ins, dels = _parse_diff_stat_totals(result.stdout)
+            context["uncommitted_loc_delta"] = ins - dels
+            total_uncommitted = context["modified_count"] + context["untracked_count"]
+            context["large_uncommitted_diff"] = (
+                total_uncommitted > 10 or (ins + dels) > 500
+            )
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    return context
+
+
+def classify_finding_scope(
+    finding_file: str | None,
+    modified_files: list[str],
+    untracked_files: list[str],
+    project_root: str,
+) -> str:
+    """Classify a finding's scope as committed, uncommitted, or new_file.
+
+    Returns:
+        ``"committed"``   — file has no uncommitted changes
+        ``"uncommitted"`` — file has uncommitted modifications
+        ``"new_file"``    — file is untracked (not yet committed)
+        ``"unknown"``     — file path not available
+    """
+    if not finding_file:
+        return "unknown"
+
+    # Normalize to relative path for matching
+    if os.path.isabs(finding_file):
+        try:
+            rel = os.path.relpath(finding_file, project_root)
+        except ValueError:
+            return "unknown"
+    else:
+        rel = finding_file
+
+    # Normalize separators
+    rel = rel.replace(os.sep, "/")
+
+    if rel in untracked_files:
+        return "new_file"
+    if rel in modified_files:
+        return "uncommitted"
+    return "committed"
 
 
 # ── Git checks ───────────────────────────────────────────────────────────
@@ -275,7 +406,9 @@ def _check_large_changes(project_root: str) -> list[LintIssue]:
     ]
 
 
-def _check_lockfile_freshness(project_root: str) -> tuple[list[LintIssue], list[RepairAction]]:
+def _check_lockfile_freshness(
+    project_root: str,
+) -> tuple[list[LintIssue], list[RepairAction]]:
     """Check if lockfile is older than manifest (pyproject.toml)."""
     findings: list[LintIssue] = []
     repairs: list[RepairAction] = []
@@ -289,7 +422,11 @@ def _check_lockfile_freshness(project_root: str) -> tuple[list[LintIssue], list[
 
     if not lockfile.exists():
         # Check for other lockfile types
-        alt_lockfiles = [root / "requirements.txt", root / "poetry.lock", root / "Pipfile.lock"]
+        alt_lockfiles = [
+            root / "requirements.txt",
+            root / "poetry.lock",
+            root / "Pipfile.lock",
+        ]
         if not any(lf.exists() for lf in alt_lockfiles):
             findings.append(
                 LintIssue(
@@ -418,7 +555,9 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     ),
     (
         "generic_api_key",
-        re.compile(r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"),
+        re.compile(
+            r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"
+        ),
         0.80,
     ),
     (
@@ -529,7 +668,9 @@ def _check_diff_secrets(project_root: str) -> list[LintIssue]:
 
     findings: list[LintIssue] = []
     for file_path, added_content, approx_line in _iter_diff_additions(result.stdout):
-        finding = _match_secret_pattern(added_content, file_path, approx_line, project_root)
+        finding = _match_secret_pattern(
+            added_content, file_path, approx_line, project_root
+        )
         if finding:
             findings.append(finding)
 

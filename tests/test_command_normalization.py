@@ -38,7 +38,9 @@ class TestConstants:
 
     def test_default_intent_map_values_in_categories(self) -> None:
         for binary, intent in DEFAULT_INTENT_MAP.items():
-            assert intent in INTENT_CATEGORIES, f"{binary} -> {intent} not in categories"
+            assert intent in INTENT_CATEGORIES, (
+                f"{binary} -> {intent} not in categories"
+            )
 
     def test_default_intent_sig_map_values_in_categories(self) -> None:
         for sig, intent in DEFAULT_INTENT_SIG_MAP.items():
@@ -225,7 +227,9 @@ class TestExtractErrorSig:
         assert "ModuleNotFoundError" in result
 
     def test_takes_last_meaningful_line(self) -> None:
-        stderr = "Traceback (most recent call last):\n  File ...\nValueError: bad input\n"
+        stderr = (
+            "Traceback (most recent call last):\n  File ...\nValueError: bad input\n"
+        )
         result = extract_error_sig(stderr)
         assert "ValueError" in result
 

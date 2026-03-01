@@ -60,7 +60,9 @@ def log_runtime_state_write_metric(metric: RuntimeStateWriteMetric) -> None:
 
 def derive_focus_intent(tool_name: str, tool_input: Any) -> str:
     """Extract a short focus sentence from the current tool action."""
-    if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and isinstance(tool_input, dict):
+    if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and isinstance(
+        tool_input, dict
+    ):
         path = str(tool_input.get("file_path") or tool_input.get("path") or "").strip()
         if path:
             return f"Edit {os.path.basename(path)}"
@@ -123,7 +125,9 @@ def runtime_targets(registry: Any, project_root: str) -> list[str]:
     return []
 
 
-def write_dynamic_runtime_files(project_root: str, runtime_state: Any) -> tuple[bool, str]:
+def write_dynamic_runtime_files(
+    project_root: str, runtime_state: Any
+) -> tuple[bool, str]:
     """Write dynamic rule files for all detected runtime hosts.
 
     Returns:
@@ -212,11 +216,15 @@ def refresh_runtime_state_with_session(
         if trigger == "tool_call":
             record_tool_call(scheduler)
         effective_trigger = "mode_transition" if transition else trigger
-        should_emit = save_ok and should_write(scheduler, runtime.generation, effective_trigger)
+        should_emit = save_ok and should_write(
+            scheduler, runtime.generation, effective_trigger
+        )
         wrote_dynamic = False
         dynamic_status = "save_failed" if not save_ok else "skipped_by_cadence"
         if should_emit:
-            wrote_dynamic, dynamic_status = write_dynamic_runtime_files(project_root, runtime)
+            wrote_dynamic, dynamic_status = write_dynamic_runtime_files(
+                project_root, runtime
+            )
             if wrote_dynamic:
                 record_write(scheduler, runtime.generation)
 
@@ -273,8 +281,12 @@ def refresh_runtime_state_lightweight(
         if habit_state is not None:
             runtime.mode = "habit" if habit_state.active else "normal"
         if mesh_result is not None:
-            runtime.coherence_state = str(mesh_result.coherence.state or runtime.coherence_state)
-            runtime.blocking_issues, runtime.warning_issues = mesh_finding_counts(mesh_result)
+            runtime.coherence_state = str(
+                mesh_result.coherence.state or runtime.coherence_state
+            )
+            runtime.blocking_issues, runtime.warning_issues = mesh_finding_counts(
+                mesh_result
+            )
             runtime.symbol_coverage_blockers = mesh_symbol_blocker_count(mesh_result)
 
         focus_intent = derive_focus_intent(tool_name, tool_input)
@@ -292,11 +304,15 @@ def refresh_runtime_state_lightweight(
         if trigger == "tool_call":
             record_tool_call(scheduler)
         effective_trigger = "mode_transition" if transition else trigger
-        should_emit = save_ok and should_write(scheduler, runtime.generation, effective_trigger)
+        should_emit = save_ok and should_write(
+            scheduler, runtime.generation, effective_trigger
+        )
         wrote_dynamic = False
         dynamic_status = "save_failed" if not save_ok else "skipped_by_cadence"
         if should_emit:
-            wrote_dynamic, dynamic_status = write_dynamic_runtime_files(project_root, runtime)
+            wrote_dynamic, dynamic_status = write_dynamic_runtime_files(
+                project_root, runtime
+            )
             if wrote_dynamic:
                 record_write(scheduler, runtime.generation)
 

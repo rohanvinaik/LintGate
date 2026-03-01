@@ -103,7 +103,10 @@ class TestSessionStartInitialization:
         assert result["continue"] is True
 
     def test_rehydrates_runtime_state_from_session_sources(self, tmp_path):
-        from lintgate.controlplane.session_memory import get_or_create_session, save_session
+        from lintgate.controlplane.session_memory import (
+            get_or_create_session,
+            save_session,
+        )
         from lintgate.habit_mode import HabitModeState, save_habit_state
         from lintgate.hooks.session_start import handle
         from lintgate.token_tracker import TokenTrackerState, save_tracker_state
@@ -203,7 +206,9 @@ class TestSessionEndCleanup:
         def failing_delete(*args, **kwargs):
             raise OSError("permission denied")
 
-        monkeypatch.setattr("lintgate.runtime_state.delete_runtime_state", failing_delete)
+        monkeypatch.setattr(
+            "lintgate.runtime_state.delete_runtime_state", failing_delete
+        )
 
         result = handle({"cwd": str(tmp_path)})
         assert result["continue"] is True

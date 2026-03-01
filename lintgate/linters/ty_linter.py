@@ -118,10 +118,13 @@ class TyLinter(BaseLinter):
                 begin = positions.get("begin", {})
                 line_no = begin.get("line")
 
-            sys_path_dynamic_import = check_name == "unresolved-import" and _uses_dynamic_sys_path(
-                filepath,
-                ctx.project_root,
-                cache=sys_path_hack_cache,
+            sys_path_dynamic_import = (
+                check_name == "unresolved-import"
+                and _uses_dynamic_sys_path(
+                    filepath,
+                    ctx.project_root,
+                    cache=sys_path_hack_cache,
+                )
             )
             severity = _classify_severity(
                 severity_label,

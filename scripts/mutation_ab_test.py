@@ -19,7 +19,10 @@ from unittest.mock import patch
 from lintgate.mutation.engine import MutationEngine
 from lintgate.mutation.policy import MutationTelemetry, RuntimeBudget
 from lintgate.mutation.state import MutationStateManager
-from lintgate.mutation.telemetry import TelemetryTargets, evaluate_telemetry_against_targets
+from lintgate.mutation.telemetry import (
+    TelemetryTargets,
+    evaluate_telemetry_against_targets,
+)
 
 
 def compute_metrics(states):
@@ -31,7 +34,9 @@ def compute_metrics(states):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run A/B Test for Monty Hall filtering")
+    parser = argparse.ArgumentParser(
+        description="Run A/B Test for Monty Hall filtering"
+    )
     parser.add_argument("files", nargs="+", help="Python files to mutate")
     args = parser.parse_args()
 
@@ -52,7 +57,9 @@ def main():
     # Baseline: Force relevant_categories=None to disable pre-execution filtering
     original_execute = engine._execute_mutmut
 
-    def _baseline_exec(paths, depth, test_filter, relevant_categories=None, telemetry=None):
+    def _baseline_exec(
+        paths, depth, test_filter, relevant_categories=None, telemetry=None
+    ):
         return original_execute(
             paths, depth, test_filter, relevant_categories=None, telemetry=telemetry
         )
@@ -91,7 +98,9 @@ def main():
         f"Filtered: {filtered_stats['total_time_s']:.2f}s, Score: {filtered_stats['score']:.1f}% "
         f"({filtered_stats['total_killed']}/{filtered_stats['total_mutants']})"
     )
-    print(f"Mutants execution skipped fully by policy: {filtered_telemetry.mutants_skipped_policy}")
+    print(
+        f"Mutants execution skipped fully by policy: {filtered_telemetry.mutants_skipped_policy}"
+    )
 
     print("\n=== Evaluating Against Targets ===")
     targets = TelemetryTargets()

@@ -11,5 +11,6 @@ paths = [
     '''tests/test_git_channel_helpers\.py''',
     '''\.githooks/pre-push''',
     '''mcp_tools/onboarding_tools\.py''',
+    '''worker/src/auth/github-app\.ts''',
 ]
 

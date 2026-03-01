@@ -52,7 +52,9 @@ class Channel(Protocol):
         """
         ...
 
-    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
+    def execute(
+        self, event: SupervisionEvent, config: ControlPlaneConfig
+    ) -> ChannelResult:
         """Run the channel's analysis and return structured results.
 
         This is the main analysis method. It should:

@@ -163,7 +163,9 @@ def get_neutral_prior() -> tuple[dict[str, float], float]:
 # ── Public API ──────────────────────────────────────────────────────
 
 
-def get_probe_tasks(probe_set: str = "quick", seed: int | None = None) -> list[dict[str, Any]]:
+def get_probe_tasks(
+    probe_set: str = "quick", seed: int | None = None
+) -> list[dict[str, Any]]:
     """Return probe tasks formatted for MCP response.
 
     Selects one variant per task (rotated via seed for anti-gaming).

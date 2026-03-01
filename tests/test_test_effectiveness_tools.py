@@ -17,7 +17,9 @@ def temp_project():
         src_dir = os.path.join(tmpdir, "src")
         os.makedirs(src_dir)
         with open(os.path.join(src_dir, "calculator.py"), "w") as f:
-            f.write("def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n")
+            f.write(
+                "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n"
+            )
 
         # Test file
         test_dir = os.path.join(tmpdir, "tests")
@@ -89,7 +91,9 @@ class TestAnalyzeTestStrength:
 
         mcp = FakeMCP()
         tools = register(mcp, helpers)
-        result_str = tools["analyze_test_strength"](path=temp_project, function_filter="add")
+        result_str = tools["analyze_test_strength"](
+            path=temp_project, function_filter="add"
+        )
         result = json.loads(result_str)
         assert "error" not in result
 
@@ -137,7 +141,9 @@ class TestAnalyzeTestStrength:
 
         mcp = FakeMCP()
         tools = register(mcp, helpers)
-        result_str = tools["analyze_test_strength"](path=temp_project, file_filter="calculator")
+        result_str = tools["analyze_test_strength"](
+            path=temp_project, file_filter="calculator"
+        )
         result = json.loads(result_str)
         assert "error" not in result
         assert "calculator.py" in str(result)
@@ -156,7 +162,9 @@ class TestAnalyzeTestStrength:
 
         mcp = FakeMCP()
         tools = register(mcp, helpers)
-        result_str = tools["analyze_test_strength"](path=temp_project, file_filter="calc")
+        result_str = tools["analyze_test_strength"](
+            path=temp_project, file_filter="calc"
+        )
         result = json.loads(result_str)
         assert "filter_applied" in result
         assert result["filter_applied"]["file"] == "calc"
@@ -219,7 +227,9 @@ class TestInspectTestAssertions:
         mcp = FakeMCP()
         tools = register(mcp, helpers)
         test_file = os.path.join(temp_project, "tests", "test_calculator.py")
-        result_str = tools["inspect_test_assertions"](path=temp_project, test_file=test_file)
+        result_str = tools["inspect_test_assertions"](
+            path=temp_project, test_file=test_file
+        )
         result = json.loads(result_str)
 
         assert "test_functions" in result
@@ -244,7 +254,9 @@ class TestInspectTestAssertions:
 
         mcp = FakeMCP()
         tools = register(mcp, helpers)
-        result_str = tools["inspect_test_assertions"](path=temp_project, test_file="nonexistent.py")
+        result_str = tools["inspect_test_assertions"](
+            path=temp_project, test_file="nonexistent.py"
+        )
         result = json.loads(result_str)
         assert "error" in result
 
@@ -302,7 +314,10 @@ class TestInspectTestAssertions:
         assert "file_errors" in result
         assert "analyzed_file_count" in result["summary"]
         assert "total_file_count" in result["summary"]
-        assert result["summary"]["analyzed_file_count"] == result["summary"]["total_file_count"]
+        assert (
+            result["summary"]["analyzed_file_count"]
+            == result["summary"]["total_file_count"]
+        )
 
 
 class TestAssertionAnnotation:
@@ -310,7 +325,9 @@ class TestAssertionAnnotation:
 
     def test_lgignore_sentinel_annotation(self):
         """# lgignore: sentinel on a line overrides kind to SENTINEL_CHECK (#81)."""
-        from lintgate.linters.test_effectiveness.assertion_classifier import classify_test_file
+        from lintgate.linters.test_effectiveness.assertion_classifier import (
+            classify_test_file,
+        )
         from lintgate.linters.test_effectiveness.types import AssertionKind
 
         source = (
@@ -326,7 +343,9 @@ class TestAssertionAnnotation:
 
     def test_bare_call_classified_as_boolean_contract(self):
         """bare assert fn(args) → BOOLEAN_CONTRACT_CALL with heuristic confidence (#80)."""
-        from lintgate.linters.test_effectiveness.assertion_classifier import classify_test_file
+        from lintgate.linters.test_effectiveness.assertion_classifier import (
+            classify_test_file,
+        )
         from lintgate.linters.test_effectiveness.types import AssertionKind
 
         source = "def test_predicate():\n    assert compute_ratio(data)\n"

@@ -5,7 +5,7 @@ theory_scope: false
 # LintGate Agent Retrospective: [Project Name] — [Session Type]
 
 <!--
-RETROSPECTIVE TEMPLATE v2
+RETROSPECTIVE TEMPLATE v3
 
 == FILE NAMING CONVENTION ==
 
@@ -34,8 +34,8 @@ This convention ensures:
 == INSTRUCTIONS FOR AGENTS ==
 
 - Copy this template and replace all [BRACKETED] placeholders with project-specific content.
-- Preserve the section structure (Parts I-IX + Summary). Skip sections that don't apply,
-  but note why they were skipped.
+- Preserve the section structure (Parts I-IX + Summary, including the Performance Tracking
+  subsection in Part V). Skip sections that don't apply, but note why they were skipped.
 - Each "Observation N" should follow the pattern: describe what happened, then extract what it
   reveals about LintGate or about the agent-tool interaction.
 - The Economics section (Part IX) should use real numbers where available and clearly mark
@@ -258,6 +258,126 @@ are unavailable. Note "Skipped — audit-only session" or "Skipped — tools not
 | **Test suite** | [N passed, N subtests] | [N passed, N subtests] | [regressions?] |
 
 [1-2 sentences interpreting the deltas. Which metrics moved and why? Which didn't and why not? A hygiene-focused session will move ruff/pylint but not radon CC; a structural refactoring session will move radon CC and MI but may not change ruff counts.]
+
+### Performance Tracking: Before/After Refactor Cycle
+
+<!--
+Runtime performance measurements before and after the LintGate refactor cycle. This
+section captures whether quality improvements came at a performance cost, or whether
+refactoring (e.g., reducing complexity, splitting modules) also improved speed.
+
+METHODOLOGY:
+1. Measure BEFORE refactoring (stash working changes or use the pre-session commit):
+   - Run benchmarks, import timing, test suite timing, and startup latency
+2. Measure AFTER refactoring on the final state
+3. Compare — note any regressions, improvements, or neutral changes
+
+Use the same machine, same Python version, and same environment for both measurements.
+Run timing-sensitive measurements 3× and take the median to reduce noise.
+
+WHAT TO MEASURE (pick what applies to the project):
+
+    # Test suite wall-clock time
+    time python -m pytest tests/ -q --tb=no 2>&1 | tail -3
+
+    # Import time for the main package (cold import)
+    python -X importtime -c "import <package>" 2>&1 | head -5
+    # or:
+    python -c "import time; t=time.perf_counter(); import <package>; print(f'{(time.perf_counter()-t)*1000:.0f}ms')"
+
+    # CLI startup latency (if the project has a CLI entrypoint)
+    time python -m <package> --help 2>&1 | tail -1
+
+    # Project-specific benchmarks (if available)
+    python -m pytest tests/ -k benchmark --benchmark-only
+
+    # Memory footprint (peak RSS during test suite)
+    /usr/bin/time -l python -m pytest tests/ -q --tb=no 2>&1 | grep "maximum resident"
+    # Linux: /usr/bin/time -v ... | grep "Maximum resident"
+
+    # Module load count (proxy for import sprawl)
+    python -c "import sys; before=len(sys.modules); import <package>; print(f'{len(sys.modules)-before} modules loaded')"
+
+SKIP CRITERIA:
+- Skip if the session was audit-only (no code changes)
+- Skip if no timing tools are available
+- Skip import/startup timing if the project is a library with no CLI entrypoint
+- Note "Skipped — [reason]" if skipped
+
+INTERPRETATION GUIDANCE:
+- Complexity refactoring (splitting large functions) usually has NO runtime impact
+  but may slightly increase import time (more modules to load)
+- Removing dead code / unused imports should slightly improve import time
+- Adding type-checking imports (TYPE_CHECKING blocks) should improve runtime
+  import time at the cost of no change in type-check time
+- Test suite speedup usually comes from removing redundant fixtures or I/O,
+  not from production code changes
+-->
+
+| Metric | Before | After | Delta | Notes |
+|--------|--------|-------|-------|-------|
+| **Test suite wall-clock** | [N.Ns] | [N.Ns] | [+/- N.Ns (N%)] | [e.g., "5185 tests, same count before/after"] |
+| **Package import time** | [Nms] | [Nms] | [+/- Nms (N%)] | [cold import of main package] |
+| **CLI startup latency** | [Nms] | [Nms] | [+/- Nms] | [--help or equivalent, if applicable] |
+| **Peak memory (test suite)** | [N MB] | [N MB] | [+/- N MB] | [RSS during full pytest run] |
+| **Modules loaded on import** | [N] | [N] | [+/- N] | [proxy for import sprawl] |
+| **[Project benchmark]** | [N] | [N] | [+/- N] | [project-specific, if available] |
+
+#### Performance Regressions
+
+<!--
+Did any refactoring introduce a measurable performance regression? If so, document
+it explicitly — including whether the regression is acceptable (e.g., +50ms import
+time from splitting a 2000-line module into 5 files is usually worth it).
+
+If no regressions: "None detected."
+-->
+
+[Description of any regressions, or "None detected."]
+
+#### Performance Wins
+
+<!--
+Did refactoring produce any unexpected performance improvements? Common wins:
+- Removing unused imports reduces cold start time
+- Splitting large modules enables lazy loading
+- Eliminating dead code paths reduces branch prediction pressure (marginal)
+- Moving TYPE_CHECKING imports saves runtime import cost
+
+If no wins: "None detected."
+-->
+
+[Description of any wins, or "None detected."]
+
+#### Process Efficiency: Ship Pipeline Timing
+
+<!--
+If this session involved shipping (CI gates, pre-push hooks, PR workflow), track
+the pipeline timing. This measures the PROCESS performance, not the code performance.
+
+Skip if the session did not involve a ship/CI cycle.
+
+WHAT TO MEASURE:
+    # Pre-push hook wall-clock
+    time .githooks/pre-push
+
+    # CI total time (from gh pr checks output)
+    gh pr checks <PR_NUMBER>
+
+    # Ship pipeline end-to-end (from ship_main.py invocation to merge)
+-->
+
+| Pipeline Stage | Duration | Notes |
+|---------------|----------|-------|
+| Pre-push hook (total) | [N min Ns] | [breakdown: qlty Ns, tests Ns, secrets Ns, etc.] |
+| Push + PR creation | [Ns] | |
+| CI checks (wall-clock) | [N min Ns] | [slowest check: X at Ns] |
+| Check watching / polling | [N min] | [N polls at Ns intervals] |
+| Auto-merge + cleanup | [Ns] | |
+| **Ship end-to-end** | **[N min]** | [first attempt / Nth attempt] |
+| Iterations required | [N] | [e.g., "3 attempts — qlty, SonarCloud, then clean"] |
+
+[1-2 sentences on pipeline efficiency. Was the ship process bottlenecked by a specific gate? Could any stage be parallelized or skipped? If multiple iterations were needed, what caused the rework?]
 
 ### Current Standing vs. Industry Thresholds
 
@@ -677,5 +797,6 @@ from this specific session, not on what LintGate could theoretically do.
 | **Theory/documentation** | [1-2 sentence assessment] |
 | **Auto-fix** | [1-2 sentence assessment] |
 | **Noise level** | [1-2 sentence assessment] |
+| **Performance** | [1-2 sentence assessment — did refactoring affect runtime speed, import time, or test suite duration? Any regressions?] |
 | **Economics** | [1-2 sentence assessment — was the tool worth the overhead?] |
 | **Overall** | [2-3 sentence summary] |

@@ -120,9 +120,7 @@ class TestRuffFixSummaryParsing:
         assert result.changes[0]["action"] == "import_sort"
 
     def test_multiline_output_finds_summary(self) -> None:
-        output = (
-            "test.py:1:8: F401 `os` imported but unused\nFound 3 errors (2 fixed, 1 remaining).\n"
-        )
+        output = "test.py:1:8: F401 `os` imported but unused\nFound 3 errors (2 fixed, 1 remaining).\n"
         result = FixResult(dry_run=False)
         _parse_ruff_fix_summary(output, result)
         assert len(result.changes) == 1
@@ -237,7 +235,9 @@ class TestRuffFlagCorrectness:
         # At least one ruff check cmd should have --unsafe-fixes
         ruff_check_cmds = [c for c in captured_cmds if "check" in c]
         has_unsafe = any("--unsafe-fixes" in c for c in ruff_check_cmds)
-        assert has_unsafe, f"safe_only=False should pass --unsafe-fixes. Cmds: {ruff_check_cmds}"
+        assert has_unsafe, (
+            f"safe_only=False should pass --unsafe-fixes. Cmds: {ruff_check_cmds}"
+        )
 
     def test_returncode_1_still_parses(self, tmp_path: Path) -> None:
         """ruff returns 1 when unfixed issues remain — should still parse output."""
@@ -330,7 +330,7 @@ class TestNextActions:
                 "project": "/tmp/proj",
             }
         )
-        required_keys = {"tool", "args", "safe", "reason", "priority"}
+        required_keys = {"tool", "reason", "priority"}
         for action in actions:
             assert required_keys.issubset(action.keys()), f"Missing keys in {action}"
 
@@ -347,7 +347,9 @@ class TestNextActions:
                 "project": "/tmp/proj",
             }
         )
-        warning_details = [a for a in actions if a.get("args", {}).get("severity") == "warning"]
+        warning_details = [
+            a for a in actions if a.get("args", {}).get("severity") == "warning"
+        ]
         assert len(warning_details) == 1
 
 

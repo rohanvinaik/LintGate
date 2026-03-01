@@ -20,7 +20,9 @@ from .types import ChangeClassification, DiffAnalysis, ProjectConfig
 # ─── File type detection ─────────────────────────────────────────────────
 
 _DOCS_EXTENSIONS = frozenset({".md", ".rst", ".txt", ".adoc", ".html", ".css"})
-_CONFIG_EXTENSIONS = frozenset({".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"})
+_CONFIG_EXTENSIONS = frozenset(
+    {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"}
+)
 _CONFIG_NAMES = frozenset(
     {
         "pyproject.toml",
@@ -170,7 +172,8 @@ def classify_change(
     touches_critical = False
     if config and config.pipeline_critical_paths:
         touches_critical = any(
-            _matches_pipeline_path(f, config.pipeline_critical_paths, cwd) for f in files_changed
+            _matches_pipeline_path(f, config.pipeline_critical_paths, cwd)
+            for f in files_changed
         )
 
     # Classify change kind
@@ -218,7 +221,9 @@ def _classify_no_file_change(
 # ─── File extraction ─────────────────────────────────────────────────────
 
 
-def _extract_changed_files(tool_name: str, tool_input: dict[str, Any], cwd: str) -> list[str]:
+def _extract_changed_files(
+    tool_name: str, tool_input: dict[str, Any], cwd: str
+) -> list[str]:
     """Extract the list of files affected by this tool use."""
 
     if tool_name in ("Write", "Edit", "MultiEdit"):
@@ -415,7 +420,9 @@ def _classify_change_kind(
     """Determine what kind of change this is. Most specific wins."""
 
     # Build commands
-    if tool_name == "Bash" and _is_build_command(_as_text(tool_input.get("command", ""))):
+    if tool_name == "Bash" and _is_build_command(
+        _as_text(tool_input.get("command", ""))
+    ):
         return "build"
 
     # Docs changes (all files are docs)
