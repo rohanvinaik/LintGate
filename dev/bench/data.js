@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772304532352,
+  "lastUpdate": 1772405503897,
   "repoUrl": "https://github.com/rohanvinaik/LintGate",
   "entries": {
     "LintGate Hot Path Benchmarks": [
@@ -1005,6 +1005,65 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00004166697316251185",
             "extra": "mean: 673.7337554079621 usec\nrounds: 601"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "264708754+lintgate[bot]@users.noreply.github.com",
+            "name": "lintgate[bot]",
+            "username": "lintgate[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d6e93e1ee5e1e2589449cdc99b2419d0a9ec5df7",
+          "message": "20260301 164524 (#237)\n\n* feat: convergence pipeline, file-level convergence, MUTCH004 graduated gating, and full codebase improvements (#212-220)\n\nIssues #212-220 implement the convergence analysis pipeline:\n- A1/A2: Evidence types and multi-lens aggregation with probability union\n- A3: File-level convergence with cohesion, fan-in, co-change, import weight\n- A4: MUTCH004 Phase 2 graduated gating (audit/graduated/strict modes)\n- B1: Extraction plan builder with ordered stepwise refactoring guidance\n- B2: Post-extraction projector for optimization opportunities\n- B3: Optimization landscape synthesizer with dependency ordering\n- B4: 3 new MCP tools (convergence_analyze, extraction_plan, optimization_landscape)\n\nAlso includes codebase-wide improvements: authority escalation, orchestration layer,\nstructure checks, cross-channel coherence, bootstrap pipeline, and test remediation.\n\nTool count: 73 → 76 MCP tools.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: set ruff target-version py310 and remove unused contextlib import\n\nFixes qlty pre-push gate failures:\n- Add [tool.ruff] target-version = \"py310\" to pyproject.toml (eliminates\n  200+ false-positive invalid-syntax errors for parenthesized with statements)\n- Remove unused top-level contextlib import in runtime.py (F401/F811)\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: resolve qlty gate issues — E741, S1066, S1871, E402, S3981, S4144\n\nRename ambiguous variable `l` to `lk` across convergence files (E741),\nmerge nested ifs (S1066), deduplicate identical branches (S1871), move\nimport to top of file (E402), fix always-true len check (S3981), and\nadd distinguishing assertion to duplicate test (S4144).\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: restore full pyproject.toml — hatch build, project metadata, ruff lint config\n\nThe pyproject.toml was accidentally stripped to only ruff target-version\nand mutmut config during the large convergence commit. Restores build-system,\nproject metadata, optional-dependencies, entry points, hatch wheel config,\nruff lint rules, mypy config, and pytest settings.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: resolve remaining qlty issues — import sorting, TC001, SIM102, SIM115, N806, C401\n\nAuto-fix import sorting (I001) across 13 files, move type-only imports\ninto TYPE_CHECKING blocks (TC001/TC003), merge nested ifs (SIM102),\nuse context manager for file open (SIM115), rename uppercase variable\nin function (N806), and convert generators to set comprehensions (C401).\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: additional qlty auto-fixes — SIM110, import order, getattr, SIM103\n\nSimplify for-loop returns with any() (SIM110), reorder stdlib/app imports,\nuse direct attribute access instead of getattr (B009), simplify if-return\nto return expression (SIM103), and add skeleton summary in bootstrap output.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: update test for renamed _post_merge_sync function\n\nThe rebase renamed _sync_local_after_merge to _post_merge_sync with\na different signature. Update test to match new function name and args.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: update gate_contract required check name to match GitHub\n\nBranch protection uses \"SonarCloud Code Analysis\" not \"SonarQube Cloud Scan\".\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: correct indentation in pre-push hook symbol gate section\n\nThe symbol gate logic inside the tests block was indented at 4 spaces\n(as if inside a nested if) instead of 2 spaces (matching the outer\n_should_run tests block). This caused a mismatched fi that produced a\nbash syntax error at line 178, blocking all pushes.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: harden CI workflows — pin actions, deps, add permissions\n\n- ship_parity.yml: add top-level permissions block, pin checkout/setup-python\n  to commit SHAs, pin pip version\n- quality-infra-gate.yml: pin pyyaml==6.0.2\n- mutation.yml: pin mutmut==3.5.0\n\nFixes CodeQL/Scorecard TokenPermissions and PinnedDependencies alerts\nblocking PR #237.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: disable trivy qlty plugin — upstream repo emptied\n\naquasecurity/trivy has 0 releases as of 2026-03-01 (repo size: 0,\nno tags). qlty's plugin registry references trivy@0.67.2 which 404s\non their proxy, failing CI with exit code 99.\n\nConfig scanning coverage maintained via gitleaks + bandit in the\nsecurity-lite workflow.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* refactor: thin Worker + parity enforcement for ship pipeline\n\n- Fix check name: SonarCloud Code Analysis → SonarQube Cloud Scan\n- Worker push handler: approve PR + enable auto-merge via GraphQL\n- Worker check-suite handler: replace gate evaluation with thin\n  orchestration (combined check-suite status, comment dedup)\n- Delete gate/evaluate.ts and gate/contract.ts (Worker no longer\n  parses YAML or enumerates individual check runs)\n- Schedule handler: use constants directly, remove contract parsing\n- Add parity_map to gate_contract.yaml tying local gates to CI checks\n- Add _check_parity_map to quality_infra.py for bidirectional validation\n- Add KV helpers: auto-merge status, comment dedup (hasCommented/markCommented)\n- Add node_modules/.wrangler to .gitignore\n- Replace gate-evaluate tests with auto-merge/dedup/status tests\n- Add 5 parity map Python tests (all passing)\n- Update ship_main.py docstring for thin worker architecture\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* feat: parallel test execution + batch staged changes\n\n- Pre-push hook: use pytest-xdist with 50% of available cores\n  (worksteal distribution for optimal load balancing)\n- Mutation channel: extended with unknown-mutant handling\n- Performance channel: manifest helpers, property extraction\n- Reporter compact: updated for new channel outputs\n- New modules: next_action.py, phase2/3/4 test suites\n- Retrospective docs from tier-2 audit sessions\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* chore: gitignore LintGate session state files\n\nThese are generated per-session by hooks and constantly dirty\nthe worktree, blocking ship_main.py's clean-worktree check.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix: use free CPU headroom for parallel tests, not total cores\n\nReads 1-minute load average and claims half the idle capacity.\nIf the machine is already busy, falls back to 1 worker.\nPrevents saturating the machine during local gate runs.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Rohan Vinaik <rohanpvinaik@gmail.com>\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-03-01T17:51:07-05:00",
+          "tree_id": "8c24e45f2de98a2592605971f309fc2697f5a9ea",
+          "url": "https://github.com/rohanvinaik/LintGate/commit/d6e93e1ee5e1e2589449cdc99b2419d0a9ec5df7"
+        },
+        "date": 1772405502690,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/test_benchmarks.py::test_bench_lint_single_file",
+            "value": 133.97788979623965,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00020312087058036075",
+            "extra": "mean: 7.463918125004436 msec\nrounds: 120"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_format_report",
+            "value": 208115.6295126311,
+            "unit": "iter/sec",
+            "range": "stddev: 7.677883199241262e-7",
+            "extra": "mean: 4.805021143014668 usec\nrounds: 55054"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_purity_analysis",
+            "value": 5395.420676067903,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00030656587238313634",
+            "extra": "mean: 185.34235975994076 usec\nrounds: 3166"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_property_classification",
+            "value": 12621.534183313164,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000016681908888945305",
+            "extra": "mean: 79.22967093192936 usec\nrounds: 7424"
+          },
+          {
+            "name": "tests/test_benchmarks.py::test_bench_manifest_build",
+            "value": 1430.6121117487228,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009557058769620898",
+            "extra": "mean: 699.0014915906452 usec\nrounds: 535"
           }
         ]
       }
