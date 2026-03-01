@@ -3,13 +3,17 @@
 
 This is the local pipeline driver:
 1. Validate worktree is clean
-2. Run strict local gates (.githooks/pre-push)
-3. Push current branch
-4. Create/update PR to main
+2. Run strict local gates (.githooks/pre-push) — THE authority
+3. Push current branch — terminal action
+4. Create/update PR to main (optional, if Worker doesn't create it first)
 
-CI monitoring, gate enforcement, auto-merge, and branch cleanup are
-handled by the lintgate[bot] GitHub App (Cloudflare Worker). The agent's
-job ends at `git push`.
+After push, the lintgate[bot] Cloudflare Worker handles:
+- PR creation + approval + auto-merge enablement
+- Branch cleanup after merge
+
+The Worker is a thin orchestration layer — it never parses gate contracts
+or evaluates individual checks. GitHub branch protection is the remote
+authority. If local gates pass, merge is a formality.
 """
 
 from __future__ import annotations

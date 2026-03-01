@@ -100,6 +100,11 @@ test_strength_*.json
 call_mcp.py
 check_findings.py
 
+# Cloudflare Worker
+node_modules/
+.wrangler/
+worker/dist/
+
 # Local mutation scratch artifacts
 mutation_ab_report.json
 .mutation_ab_state.json

@@ -15,6 +15,7 @@ from lintgate.quality_infra import (
     QualityAuditResult,
     _check_badge_fingerprints,
     _check_gate_contract_drift,
+    _check_parity_map,
     _cli_main,
     _contract_local_steps,
     _contract_string_list,
@@ -201,7 +202,7 @@ required_checks:
   - "Tests (3.11)"
   - "Tests (3.12)"
   - "Qlty"
-  - "SonarCloud Code Analysis"
+  - "SonarQube Cloud Scan"
 ci_workflows:
   - ".github/workflows/tests.yml"
   - ".github/workflows/qlty.yml"
@@ -238,7 +239,7 @@ def test_gate_contract_drift_none_when_all_parity_checks_pass(tmp_path: Path) ->
             "Tests (3.11)",
             "Tests (3.12)",
             "Qlty",
-            "SonarCloud Code Analysis",
+            "SonarQube Cloud Scan",
         ],
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
@@ -259,7 +260,7 @@ def test_gate_contract_drift_detects_missing_pre_push_command(tmp_path: Path) ->
             "Tests (3.11)",
             "Tests (3.12)",
             "Qlty",
-            "SonarCloud Code Analysis",
+            "SonarQube Cloud Scan",
         ],
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
@@ -406,7 +407,7 @@ def test_gate_contract_drift_detects_extra_remote_required_checks(
             "Tests (3.11)",
             "Tests (3.12)",
             "Qlty",
-            "SonarCloud Code Analysis",
+            "SonarQube Cloud Scan",
             "Extra Check",
         ],
     ):
@@ -690,3 +691,96 @@ def test_cli_complete_github_project(tmp_path: Path) -> None:
     ):
         exit_code = _cli_main()
     assert exit_code == 0
+
+
+# ── Parity map validation ─────────────────────────────────────────────
+
+
+def test_parity_map_valid_passes() -> None:
+    """Valid parity_map with all required_checks and local_pre_push IDs → no errors."""
+    contract = {
+        "required_checks": ["Tests (3.11)", "Tests (3.12)", "Qlty", "SonarQube Cloud Scan"],
+        "local_pre_push": [
+            {"id": "quality_infra", "command": "python -m lintgate.quality_infra --enforce"},
+            {"id": "qlty", "command": "qlty check --all"},
+            {"id": "gitleaks", "command": "gitleaks detect"},
+            {"id": "tests", "command": "python -m pytest"},
+            {"id": "symbol_gate", "command": "python -m lintgate.symbol_gate_runner"},
+            {"id": "pip_audit", "command": "pip-audit"},
+            {"id": "sonar"},
+        ],
+        "parity_map": {
+            "quality_infra": None,
+            "qlty": "Qlty",
+            "gitleaks": None,
+            "tests": ["Tests (3.11)", "Tests (3.12)"],
+            "symbol_gate": None,
+            "pip_audit": None,
+            "sonar": {"ci_check": "SonarQube Cloud Scan", "local_mode": "ci_only"},
+        },
+    }
+    errors: list[str] = []
+    _check_parity_map(contract, errors)
+    assert errors == []
+
+
+def test_parity_map_missing_required_check_fails() -> None:
+    """required_check not in parity_map values → error."""
+    contract = {
+        "required_checks": ["Tests (3.11)", "Qlty", "SonarQube Cloud Scan"],
+        "local_pre_push": [
+            {"id": "qlty", "command": "qlty check --all"},
+        ],
+        "parity_map": {
+            "qlty": "Qlty",
+            # Missing Tests (3.11) and SonarQube Cloud Scan mappings
+        },
+    }
+    errors: list[str] = []
+    _check_parity_map(contract, errors)
+    assert any("parity_map missing CI mapping for required_check: Tests (3.11)" in e for e in errors)
+    assert any(
+        "parity_map missing CI mapping for required_check: SonarQube Cloud Scan" in e
+        for e in errors
+    )
+
+
+def test_parity_map_missing_local_pre_push_key_fails() -> None:
+    """local_pre_push ID not in parity_map keys → error."""
+    contract = {
+        "required_checks": ["Qlty"],
+        "local_pre_push": [
+            {"id": "qlty", "command": "qlty check --all"},
+            {"id": "gitleaks", "command": "gitleaks detect"},
+        ],
+        "parity_map": {
+            "qlty": "Qlty",
+            # Missing gitleaks key
+        },
+    }
+    errors: list[str] = []
+    _check_parity_map(contract, errors)
+    assert any("parity_map missing key for local_pre_push gate: gitleaks" in e for e in errors)
+
+
+def test_parity_map_absent_skips_validation() -> None:
+    """No parity_map in contract → no errors (backwards compatible)."""
+    contract = {
+        "required_checks": ["Tests"],
+        "local_pre_push": [{"id": "tests", "command": "pytest"}],
+    }
+    errors: list[str] = []
+    _check_parity_map(contract, errors)
+    assert errors == []
+
+
+def test_parity_map_not_a_dict_skips_validation() -> None:
+    """parity_map is not a dict → no errors (graceful degradation)."""
+    contract = {
+        "required_checks": ["Tests"],
+        "local_pre_push": [{"id": "tests", "command": "pytest"}],
+        "parity_map": "invalid",
+    }
+    errors: list[str] = []
+    _check_parity_map(contract, errors)
+    assert errors == []
