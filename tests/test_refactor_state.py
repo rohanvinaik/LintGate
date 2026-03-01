@@ -151,7 +151,7 @@ class TestCheckpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
                 checkpoint(tmpdir, "mod.py", "invalid_status")
-                assert False, "Should have raised"
+                raise AssertionError("Should have raised")
             except ValueError:
                 pass
 

@@ -88,7 +88,8 @@ class MutationChannel:
             try:
                 from lintgate.mutation.state import compute_content_hash
 
-                content = open(abs_path, errors="replace").read()
+                with open(abs_path, errors="replace") as fh:
+                    content = fh.read()
                 file_hashes[f] = compute_content_hash(content)
             except OSError:
                 pass

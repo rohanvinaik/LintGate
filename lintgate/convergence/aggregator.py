@@ -59,8 +59,8 @@ def aggregate(evidence: list[LensEvidence]) -> list[ConvergenceResult]:
         oppose_prob = _probability_union([e.confidence for e in oppose])
         net = max(support_prob - oppose_prob, 0.0)
 
-        supporting_lenses = sorted(set(e.lens for e in support), key=lambda lk: lk.value)
-        opposing_lenses = sorted(set(e.lens for e in oppose), key=lambda lk: lk.value)
+        supporting_lenses = sorted({e.lens for e in support}, key=lambda lk: lk.value)
+        opposing_lenses = sorted({e.lens for e in oppose}, key=lambda lk: lk.value)
 
         actionability = classify_actionability(net, len(supporting_lenses))
 
@@ -588,8 +588,8 @@ def aggregate_file(
         oppose_prob = _probability_union(weighted_oppose)
         net = max(support_prob - oppose_prob, 0.0)
 
-        supporting_lenses = sorted(set(e.lens for e in support), key=lambda lk: lk.value)
-        opposing_lenses = sorted(set(e.lens for e in oppose), key=lambda lk: lk.value)
+        supporting_lenses = sorted({e.lens for e in support}, key=lambda lk: lk.value)
+        opposing_lenses = sorted({e.lens for e in oppose}, key=lambda lk: lk.value)
 
         cohesion_data = (cohesion_map or {}).get(target)
         actionability = classify_file_actionability(

@@ -1,6 +1,11 @@
 """Convergence aggregator: multi-lens evidence fusion for decomposition proposals."""
 
-from .aggregator import aggregate, aggregate_file, classify_actionability, classify_file_actionability
+from .aggregator import (
+    aggregate,
+    aggregate_file,
+    classify_actionability,
+    classify_file_actionability,
+)
 from .evidence import Actionability, ConvergenceResult, LensEvidence, LensKind
 from .extraction_plan import ExtractionPlan, ExtractionStep, build_extraction_plan
 from .projector import ProjectedOpportunity, project_post_extraction

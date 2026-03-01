@@ -17,11 +17,12 @@ from .aggregator import (
     aggregate,
     aggregate_file,
 )
-from .evidence import ConvergenceResult, LensEvidence
 
 if TYPE_CHECKING:
     from lintgate.controlplane.types import ChannelResult
     from lintgate.mutation.decomposition import DecompositionCandidate
+
+    from .evidence import ConvergenceResult, LensEvidence
 
 
 def extract_all_evidence(

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from lintgate.mutation.state import FunctionMutationState
 from lintgate.mutation.test_generators import generate_template_for_category
+
+if TYPE_CHECKING:
+    from lintgate.mutation.state import FunctionMutationState
 
 
 class PrescriptionCategory(str, Enum):

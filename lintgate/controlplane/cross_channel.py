@@ -11,10 +11,12 @@ Finding codes:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from lintgate.controlplane.types import ChannelResult
 from lintgate.types import LintIssue
+
+if TYPE_CHECKING:
+    from lintgate.controlplane.types import ChannelResult
 
 
 def cross_channel_coherence(channel_results: list[ChannelResult]) -> list[LintIssue]:

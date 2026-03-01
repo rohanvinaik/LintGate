@@ -7,9 +7,8 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from lintgate.mutation.state import MutationStateManager
-
 if TYPE_CHECKING:
+    from lintgate.mutation.state import MutationStateManager
     from lintgate.types import Prescription
 
 

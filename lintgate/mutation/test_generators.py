@@ -7,9 +7,12 @@ to files via the Write tool.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from lintgate.mutation.state import FunctionMutationState
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from lintgate.mutation.state import FunctionMutationState
 
 
 def generate_arithmetic_template(state: FunctionMutationState) -> str:

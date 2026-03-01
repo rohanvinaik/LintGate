@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 from typing import TYPE_CHECKING
 
 from lintgate.linters.performance_checks.algebra_types import (
@@ -225,10 +226,8 @@ def _extract_param_type_annotations(
     param_types: dict[str, str] = {}
     for arg in node.args.args:
         if arg.annotation:
-            try:
+            with contextlib.suppress(Exception):
                 param_types[arg.arg] = ast.unparse(arg.annotation)
-            except Exception:
-                pass
     return param_types
 
 

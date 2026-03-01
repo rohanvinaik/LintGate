@@ -337,10 +337,13 @@ def _trace_file(
         # Check for module-level I/O
         if isinstance(node, ast.Call) and depth == 0:
             call_name = _get_call_name(node)
-            if call_name and call_name.split(".")[-1] in _IO_INDICATORS:
+            if (
+                call_name
+                and call_name.split(".")[-1] in _IO_INDICATORS
+                and _is_module_level(node, tree)
+            ):
                 # Only count module-level calls (not inside functions)
-                if _is_module_level(node, tree):
-                    result.has_module_level_io = True
+                result.has_module_level_io = True
 
 
 def _extract_import_modules(node: ast.Import | ast.ImportFrom) -> list[str]:

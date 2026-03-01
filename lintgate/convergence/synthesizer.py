@@ -8,11 +8,12 @@ which extractions to do first (highest unlock value), and total estimated impact
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .evidence import ConvergenceResult
-from .extraction_plan import ExtractionPlan
-from .projector import ProjectedOpportunity
+if TYPE_CHECKING:
+    from .evidence import ConvergenceResult
+    from .extraction_plan import ExtractionPlan
+    from .projector import ProjectedOpportunity
 
 
 @dataclass
@@ -164,7 +165,7 @@ def _topo_sort_weighted(
     highest unlock score.
     """
     # Build in-degree from the dependency sets
-    in_degree: dict[str, int] = {n: 0 for n in edges}
+    in_degree: dict[str, int] = dict.fromkeys(edges, 0)
     for node, deps in edges.items():
         in_degree[node] = len(deps & edges.keys())  # only count known nodes
 

@@ -297,7 +297,7 @@ def _parse_property_test_output(
     if match:
         counterexample = match.group(1).strip()
 
-    _HINT_PATTERNS = {
+    hint_patterns = {
         ("Idempotent", "test_is_idempotent"): (
             "Idempotency violated - check if function has hidden state or precision issues."
         ),
@@ -309,7 +309,7 @@ def _parse_property_test_output(
         ),
     }
 
-    for keywords, hint in _HINT_PATTERNS.items():
+    for keywords, hint in hint_patterns.items():
         if any(kw in output for kw in keywords):
             refinement_hints.append(hint)
 

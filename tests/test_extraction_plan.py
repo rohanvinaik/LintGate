@@ -30,10 +30,10 @@ def _make_convergence(
 ) -> ConvergenceResult:
     ev = evidence or []
     supporting = sorted(
-        set(e.lens for e in ev if e.signal == "support"), key=lambda lk: lk.value
+        {e.lens for e in ev if e.signal == "support"}, key=lambda lk: lk.value
     )
     opposing = sorted(
-        set(e.lens for e in ev if e.signal == "oppose"), key=lambda lk: lk.value
+        {e.lens for e in ev if e.signal == "oppose"}, key=lambda lk: lk.value
     )
     return ConvergenceResult(
         target=target,
@@ -500,7 +500,7 @@ class TestStepOrdering:
         actions = [s.action for s in plan.steps]
         # Verify ordering constraints
         for i, action in enumerate(actions):
-            for j, later_action in enumerate(actions[i + 1 :], i + 1):
+            for _j, later_action in enumerate(actions[i + 1 :], i + 1):
                 _assert_not_reversed(action, later_action)
 
     def test_orders_are_sequential(self):

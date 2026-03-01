@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .extraction_plan import ExtractionPlan, ExtractionStep
+if TYPE_CHECKING:
+    from .extraction_plan import ExtractionPlan, ExtractionStep
 
 
 @dataclass
@@ -306,7 +307,7 @@ def _heuristic_purity(func_node: ast.FunctionDef) -> _ProjectedPurity:
     io_calls = False
 
     for node in ast.walk(func_node):
-        if isinstance(node, ast.Global) or isinstance(node, ast.Nonlocal):
+        if isinstance(node, (ast.Global, ast.Nonlocal)):
             global_refs = True
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in impure_calls:

@@ -13,6 +13,7 @@ No LLM calls. Deterministic from git log output.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 from collections import Counter
@@ -230,10 +231,8 @@ def _parse_git_log(stdout: str, project_root: str) -> list[set[str]]:
         elif line:
             # Normalize to relative path
             if os.path.isabs(line):
-                try:
+                with contextlib.suppress(ValueError):
                     line = os.path.relpath(line, project_root)
-                except ValueError:
-                    pass
             current_files.add(line)
 
     # Don't forget the last commit

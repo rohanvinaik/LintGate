@@ -694,10 +694,7 @@ def _suggest_module_name(candidate: ConvergenceResult) -> str:
         if isinstance(first, dict) and "module_name" in first:
             return first["module_name"]
     # Default: append _extracted to base name
-    if "/" in target:
-        base = target.rsplit("/", 1)[-1]
-    else:
-        base = target
+    base = target.rsplit("/", 1)[-1] if "/" in target else target
     if base.endswith(".py"):
         base = base[:-3]
     return f"{base}_extracted.py"

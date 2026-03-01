@@ -13,13 +13,16 @@ import ast
 import json
 import os
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lintgate.orchestration.bootstrap_state import (
     PHASES,
     BootstrapArtifacts,
     BootstrapState,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ── C4: Bootstrap State ─────────────────────────────────────────────────
 
@@ -385,7 +388,7 @@ class TestBehavioralContracts:
         # Should have at least the return type contract
         assert isinstance(contracts, dict)  # May or may not produce depending on AST
         # If any produced, verify structure
-        for path, content in contracts.items():
+        for _path, content in contracts.items():
             assert "Auto-generated" in content
 
 

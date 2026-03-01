@@ -258,9 +258,11 @@ def _impl_optimization_landscape(
                 if not os.path.isabs(source_file)
                 else source_file
             )
-            with contextlib.suppress(OSError, SyntaxError):
+            try:
                 with open(full_path, encoding="utf-8") as f:
                     source_ast = ast.parse(f.read(), filename=full_path)
+            except (OSError, SyntaxError):
+                pass
 
         plan = build_extraction_plan(cr, source_ast, source_file)
         opportunities = project_post_extraction(plan, source_ast)

@@ -8,15 +8,17 @@ No I/O. Fully deterministic. Pure graph computations.
 
 from __future__ import annotations
 
-import ast
-from typing import Any
-
-from lintgate.types import Prescription
+from typing import TYPE_CHECKING, Any
 
 from ..linters.structure_checks.cohesion_analysis import (
     _collect_name_references,
     _collect_top_level_defs,
 )
+
+if TYPE_CHECKING:
+    import ast
+
+    from lintgate.types import Prescription
 
 # ── Reverse Import Graph ────────────────────────────────────────────────
 

@@ -150,9 +150,8 @@ def _is_string_variable(name: str, tree: ast.AST) -> bool:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == name:
-                    if _value_is_string(node.value):
-                        return True
+                if isinstance(target, ast.Name) and target.id == name and _value_is_string(node.value):
+                    return True
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
@@ -208,22 +207,14 @@ def _value_is_string(value: ast.expr) -> bool:
     ):
         return True
     # str() constructor
-    if (
-        isinstance(value, ast.Call)
-        and isinstance(value.func, ast.Name)
-        and value.func.id == "str"
-    ):
-        return True
-    return False
+    return bool(isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "str")
 
 
 def _annotation_is_str(ann: ast.expr) -> bool:
     """Check if a type annotation is str."""
     if isinstance(ann, ast.Name) and ann.id == "str":
         return True
-    if isinstance(ann, ast.Constant) and ann.value == "str":
-        return True
-    return False
+    return bool(isinstance(ann, ast.Constant) and ann.value == "str")
 
 
 def _is_small_constant_list(name: str, tree: ast.AST) -> bool:

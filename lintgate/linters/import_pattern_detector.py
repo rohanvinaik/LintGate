@@ -166,8 +166,4 @@ def is_finding_on_guarded_import(
         return True
 
     # Check if finding message references a guarded name
-    for name in report.guarded_names:
-        if name in finding_message:
-            return True
-
-    return False
+    return any(name in finding_message for name in report.guarded_names)

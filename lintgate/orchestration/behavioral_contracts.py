@@ -246,9 +246,13 @@ def _generate_shape_contract(
 
     for stmt in body:
         # Check for list initialization: result = []
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
-            if isinstance(stmt.value, ast.List) and len(stmt.value.elts) == 0:
-                has_init_list = True
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.value, ast.List)
+            and len(stmt.value.elts) == 0
+        ):
+            has_init_list = True
 
         # Check for: for x in param: ... result.append(...)
         if isinstance(stmt, ast.For) and has_init_list:
@@ -257,9 +261,12 @@ def _generate_shape_contract(
                 input_param = iter_node.id
             # Check body for .append() call
             for sub_stmt in ast.walk(stmt):
-                if isinstance(sub_stmt, ast.Call):
-                    if isinstance(sub_stmt.func, ast.Attribute) and sub_stmt.func.attr == "append":
-                        has_for_append = True
+                if (
+                    isinstance(sub_stmt, ast.Call)
+                    and isinstance(sub_stmt.func, ast.Attribute)
+                    and sub_stmt.func.attr == "append"
+                ):
+                    has_for_append = True
 
     if not (has_init_list and has_for_append and input_param):
         return None
@@ -556,9 +563,7 @@ def _is_io_call(call_name: str) -> bool:
     if len(parts) == 1 and parts[0] in _IO_FUNCTION_NAMES:
         return True
     # Check method-level: x.read(), x.write(), etc.
-    if len(parts) >= 2 and parts[-1] in _IO_FUNCTION_NAMES:
-        return True
-    return False
+    return bool(len(parts) >= 2 and parts[-1] in _IO_FUNCTION_NAMES)
 
 
 def _compute_import_path(filepath: str, project_root: str) -> str:
