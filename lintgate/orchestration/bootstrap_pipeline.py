@@ -35,6 +35,11 @@ class BootstrapResult:
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a compact summary suitable for MCP tool output.
+
+        Skeleton file contents are summarised (path + line count) rather
+        than included verbatim to avoid flooding the tool response.
+        """
         d: dict[str, Any] = {
             "status": self.status,
             "phase": self.phase,
@@ -44,7 +49,16 @@ class BootstrapResult:
         if self.error:
             d["error"] = self.error
         if self.skeletons:
-            d["skeletons"] = self.skeletons
+            # Summary only — show what would be generated without dumping content
+            d["skeleton_summary"] = [
+                {
+                    "path": path,
+                    "lines": content.count("\n") + 1,
+                    "functions": content.count("def test_"),
+                }
+                for path, content in self.skeletons.items()
+            ]
+            d["skeleton_count"] = len(self.skeletons)
         return d
 
 

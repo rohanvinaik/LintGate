@@ -396,9 +396,9 @@ def _run_controlplane(
     compliance_outcome = None
     if session is not None:
         try:
-            from lintgate.orchestration.compliance import ComplianceManager
-
             import dataclasses
+
+            from lintgate.orchestration.compliance import ComplianceManager
 
             cm = ComplianceManager(session.behavior_compass)
             compliance_outcome = cm.evaluate_and_record(

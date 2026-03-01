@@ -179,10 +179,7 @@ def _is_mechanical(kind: str) -> bool:
     if kind in MECHANICAL_FIXES:
         return True
     # Prefix matching for families (e.g., C4xx)
-    for prefix in MECHANICAL_FIXES:
-        if len(prefix) <= 3 and kind.startswith(prefix):
-            return True
-    return False
+    return any(len(prefix) <= 3 and kind.startswith(prefix) for prefix in MECHANICAL_FIXES)
 
 
 def _count_downstream_dependents(

@@ -103,12 +103,7 @@ class FunctionMutationState:
         """
         if self.depth == CoverageDepth.PROFILED:
             return True
-        if (
-            self.depth == CoverageDepth.SAMPLED
-            and self.confidence == ConfidenceLevel.HIGH
-        ):
-            return True
-        return False
+        return bool(self.depth == CoverageDepth.SAMPLED and self.confidence == ConfidenceLevel.HIGH)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
