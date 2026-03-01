@@ -354,6 +354,7 @@ class BootstrapPipeline:
             engine.run_inline_sampling(
                 target_files=source_files[:20],  # Cap for performance
                 telemetry=telemetry,
+                project_root=self.project_root,
             )
             self.state.heartbeat()
 

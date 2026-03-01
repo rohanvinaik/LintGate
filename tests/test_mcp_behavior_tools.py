@@ -172,7 +172,7 @@ class TestHygieneCheck:
         )
         # Only the immediate warning generates a next_action
         assert len(result["next_actions"]) == 1
-        assert "virtualenv" in result["next_actions"][0]["action"].lower()
+        assert "virtualenv" in result["next_actions"][0]["reason"].lower()
 
     def test_hygiene_exception_graceful(self, tmp_path, monkeypatch):
         """When classify_and_check raises, result is no_checks_applicable."""

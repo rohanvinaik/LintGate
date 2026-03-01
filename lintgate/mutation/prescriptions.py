@@ -7,6 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from lintgate.mutation.test_generators import generate_template_for_category
+from lintgate.next_action import NextAction
 
 if TYPE_CHECKING:
     from lintgate.mutation.state import FunctionMutationState
@@ -44,7 +45,7 @@ class Diagnosis:
     surviving_categories: set[str]
     prescriptions: list[MutationDiagnosis] = field(default_factory=list)
     gate_status: str = "PASS"  # PASS, WARN, FAIL
-    next_actions: list[str] = field(default_factory=list)
+    next_actions: list[NextAction] = field(default_factory=list)
 
 
 class PrescriptionEngine:
@@ -108,7 +109,14 @@ class PrescriptionEngine:
                     gate_lift_projection_percent=rate * 100.0,
                 )
             )
-            diag.next_actions.append("mutation_decompose")
+            diag.next_actions.append(
+                NextAction(
+                    tool="mutation_decompose",
+                    args={"path": ".", "file": state.file_path},
+                    reason=f"High entanglement ({rate:.0%} survival across {len(surviving_cats)} categories) — decompose first.",
+                    priority=1,
+                )
+            )
 
         # 2. Specific Category Rules (mapped when decomposition isn't the sole answer)
         else:
@@ -186,12 +194,20 @@ class PrescriptionEngine:
             key=lambda p: p.gate_lift_projection_percent, reverse=True
         )
 
-        has_tests = "mutation_refactor_loop" not in diag.next_actions
-        if has_tests and any(
+        existing_tools = {a.tool for a in diag.next_actions}
+        has_refactor_loop = "mutation_refactor_loop" in existing_tools
+        if not has_refactor_loop and any(
             p.category != PrescriptionCategory.DECOMPOSE_FUNCTION
             for p in diag.prescriptions
         ):
-            diag.next_actions.append("mutation_refactor_loop")
+            diag.next_actions.append(
+                NextAction(
+                    tool="mutation_refactor_loop",
+                    args={"path": ".", "file": state.file_path},
+                    reason="Apply test improvements and re-profile to measure survival delta.",
+                    priority=3,
+                )
+            )
 
         return diag
 

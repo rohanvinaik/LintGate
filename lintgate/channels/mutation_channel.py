@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -74,7 +74,7 @@ class MutationChannel:
             from lintgate.mutation.automation import global_orchestrator
 
             for f in relevant_files:
-                global_orchestrator.enqueue(f)
+                global_orchestrator.enqueue(f, project_root=event.project_root)
 
         # 3. Analyze state and build findings
         findings: list[LintIssue] = []
@@ -99,17 +99,22 @@ class MutationChannel:
         _mutation_settings = _ch_config.settings if _ch_config else {}
         enforcement_mode = _mutation_settings.get("enforcement_mode", "audit")
 
-        # Build algebra manifest for MUTCH004 cross-reference (#207)
+        # Use shared manifest from run_mesh() pre-pass if available,
+        # otherwise fall back to building our own (non-ControlPlane paths).
         manifest_hints: dict[str, tuple[str, ...]] = {}
-        try:
-            from lintgate.linters.performance_checks.manifest import build_manifest
+        manifest = event.context.get("property_manifest")
+        if manifest is None:
+            try:
+                from lintgate.linters.performance_checks.manifest import build_manifest
 
-            manifest = build_manifest(event.project_root, relevant_files, enforcement_mode=enforcement_mode)
+                manifest = build_manifest(event.project_root, relevant_files, enforcement_mode=enforcement_mode)
+            except Exception:
+                pass  # Graceful degradation if manifest build fails
+
+        if manifest is not None:
             for func_key, func_props in manifest.functions.items():
                 if func_props.purity.is_pure and func_props.optimization_hints:
                     manifest_hints[func_key] = func_props.optimization_hints
-        except Exception:
-            pass  # Graceful degradation if manifest build fails
 
         all_states = state_manager.state
         policy = CalibratedPolicy()
@@ -126,6 +131,10 @@ class MutationChannel:
         # MUTCH004: Pure functions with optimization hints + insufficient spec evidence
         findings.extend(self._check_mutch004(all_states, manifest_hints, enforcement_mode))
 
+        # MUTCH008: Pure functions with no mutation data (MUTATION_UNKNOWN)
+        unknown_funcs = self._check_mutch008(all_states, manifest, relevant_files)
+        findings.extend(unknown_funcs)
+
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         metrics = {
@@ -135,6 +144,7 @@ class MutationChannel:
             ),
             "avg_survival": sum(s.survival_rate for s in all_states.values())
             / max(len(all_states), 1),
+            "mutation_unknown_count": len(unknown_funcs),
         }
 
         status: Literal["pass", "fail"] = (
@@ -307,6 +317,93 @@ class MutationChannel:
                         "Use the `mutation_decompose` tool to identify split candidates.",
                         "Use the `mutation_prescribe` tool for specific refactoring intents.",
                         "Use the `mutation_run_full` tool to get a precise breakdown of surviving mutants.",
+                    ],
+                )
+            )
+
+        return issues
+
+    def _check_mutch008(
+        self,
+        all_states: dict[str, FunctionMutationState],
+        manifest: Any | None,
+        relevant_files: list[str],
+    ) -> list[LintIssue]:
+        """MUTCH008: Pure functions with no mutation data (MUTATION_UNKNOWN).
+
+        Emitted when:
+        1. A function is pure (detected by the algebra manifest)
+        2. No mutation state exists for that function key
+        3. The manifest was successfully built (not None)
+
+        These are functions where the mutation system is active but has never
+        profiled them — absence of evidence treated as epistemic uncertainty.
+        """
+        if manifest is None:
+            return []
+
+        from lintgate.next_action import NextAction
+
+        issues: list[LintIssue] = []
+
+        # Group unknown pure functions by file for batched next_actions
+        unknown_by_file: dict[str, list[str]] = {}
+
+        for func_key, func_props in manifest.functions.items():
+            if not func_props.purity.is_pure:
+                continue
+
+            # Only report on relevant files if provided
+            source_file = func_props.source_file
+            if relevant_files and source_file and source_file not in relevant_files:
+                continue
+
+            # Check if mutation state exists for this function
+            if func_key in all_states:
+                continue
+
+            # This is a MUTATION_UNKNOWN function
+            file_path = source_file or "unknown"
+            func_name = func_key.split("::")[-1] if "::" in func_key else func_key
+            unknown_by_file.setdefault(file_path, []).append(func_name)
+
+        if not unknown_by_file:
+            return []
+
+        # Emit one finding per file listing unknown functions
+        for file_path, func_names in unknown_by_file.items():
+            func_list = ", ".join(func_names[:5])
+            suffix = f" (+{len(func_names) - 5} more)" if len(func_names) > 5 else ""
+
+            # Build batched next_action targeting this file
+            next_action = NextAction(
+                tool="mutation_run_sampling",
+                args={"files": [file_path]},
+                reason=f"{len(func_names)} pure function(s) lack specification data",
+                priority=2,
+            )
+
+            issues.append(
+                LintIssue(
+                    linter=self.name,
+                    kind="MUTCH008",
+                    message=(
+                        f"{len(func_names)} pure function(s) in '{file_path}' have no "
+                        f"mutation data (MUTATION_UNKNOWN): {func_list}{suffix}. "
+                        f"Run mutation_run_sampling to establish specification baseline."
+                    ),
+                    file=file_path,
+                    severity="informational",
+                    confidence=0.85,
+                    evidence={
+                        "unknown_functions": func_names,
+                        "count": len(func_names),
+                        "is_gateable": False,
+                        "next_action": next_action.to_dict(),
+                    },
+                    suggestions=[
+                        "Run mutation_run_sampling to establish specification baseline.",
+                        "Use inspect_algebra to review detected algebraic properties.",
                     ],
                 )
             )

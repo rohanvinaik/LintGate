@@ -7,6 +7,8 @@ import json
 import os
 from typing import Any
 
+from lintgate.next_action import NextAction, serialize_next_actions
+
 
 def _build_channels() -> list:
     """Instantiate analysis channels needed for convergence."""
@@ -106,16 +108,22 @@ def _impl_convergence_analyze(
             "total": len(file_convergence),
             "results": [r.to_dict() for r in file_convergence[:10]],
         },
-        "next_actions": [
-            {
-                "tool": "extraction_plan",
-                "when": "convergence shows EXTRACT actionability",
-            },
-            {
-                "tool": "optimization_landscape",
-                "when": "want project-wide optimization view",
-            },
-        ],
+        "next_actions": serialize_next_actions([
+            NextAction(
+                tool="extraction_plan",
+                args={"path": path},
+                reason="Convergence shows EXTRACT actionability for one or more functions.",
+                priority=2,
+                condition="convergence shows EXTRACT actionability",
+            ),
+            NextAction(
+                tool="optimization_landscape",
+                args={"path": path},
+                reason="View project-wide optimization potential.",
+                priority=4,
+                condition="want project-wide optimization view",
+            ),
+        ]),
     }
 
 
@@ -195,16 +203,22 @@ def _impl_extraction_plan(
     plan.post_extraction_opportunities = opportunities
 
     result = plan.to_dict()
-    result["next_actions"] = [
-        {
-            "tool": "optimization_landscape",
-            "when": "want to see project-wide optimization view",
-        },
-        {
-            "tool": "convergence_analyze",
-            "when": "want to see evidence for other functions",
-        },
-    ]
+    result["next_actions"] = serialize_next_actions([
+        NextAction(
+            tool="optimization_landscape",
+            args={"path": path},
+            reason="View project-wide optimization potential after extraction.",
+            priority=3,
+            condition="want to see project-wide optimization view",
+        ),
+        NextAction(
+            tool="convergence_analyze",
+            args={"path": path},
+            reason="See convergence evidence for other functions.",
+            priority=4,
+            condition="want to see evidence for other functions",
+        ),
+    ])
     return result
 
 
@@ -275,14 +289,22 @@ def _impl_optimization_landscape(
     result["project"] = path
     result["convergence_targets"] = len(convergence)
     result["plans_built"] = len(plans)
-    result["next_actions"] = [
-        {
-            "tool": "extraction_plan",
-            "args": "function=<target>",
-            "when": "drill into specific function",
-        },
-        {"tool": "convergence_analyze", "when": "see detailed evidence"},
-    ]
+    result["next_actions"] = serialize_next_actions([
+        NextAction(
+            tool="extraction_plan",
+            args={"path": path},
+            reason="Drill into extraction plan for a specific high-convergence function.",
+            priority=2,
+            condition="drill into specific function",
+        ),
+        NextAction(
+            tool="convergence_analyze",
+            args={"path": path},
+            reason="See detailed convergence evidence.",
+            priority=4,
+            condition="see detailed evidence",
+        ),
+    ])
     return result
 
 

@@ -39,6 +39,9 @@ class SupervisionEvent:
     change_classification: ChangeClassification | None = None
     raw_input: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
+    # Opaque artifact bag for pre-pass results (e.g., shared manifest).
+    # Populated by run_mesh() Phase 0 and consumed by channels.
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 # ── Repair Actions ────────────────────────────────────────────────────

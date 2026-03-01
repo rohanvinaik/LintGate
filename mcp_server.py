@@ -369,9 +369,11 @@ def _build_linter_diagnostics(results: list[Any]) -> list[dict[str, Any]]:
 def _build_next_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
     """Generate structured next_actions from tool output context.
 
-    Returns a list of suggested follow-up tool calls with priority.
+    Returns a list of serialized NextAction dicts.
     """
-    actions: list[dict[str, Any]] = []
+    from lintgate.next_action import NextAction, serialize_next_actions
+
+    actions: list[NextAction] = []
 
     blocking = context.get("blocking", 0)
     fixable = context.get("fixable", 0)
@@ -381,40 +383,37 @@ def _build_next_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
     # If there are fixable issues, suggest lint_fix
     if fixable > 0:
         actions.append(
-            {
-                "tool": "lint_fix",
-                "args": {"path": context.get("project", ""), "dry_run": True},
-                "safe": True,
-                "reason": f"{fixable} auto-fixable issue{'s' if fixable != 1 else ''}",
-                "priority": 1,
-            }
+            NextAction(
+                tool="lint_fix",
+                args={"path": context.get("project", ""), "dry_run": True},
+                reason=f"{fixable} auto-fixable issue{'s' if fixable != 1 else ''}",
+                priority=1,
+            )
         )
 
     # If there are blocking issues and a run_id, suggest drill-down
     if blocking > 0 and run_id:
         actions.append(
-            {
-                "tool": "lint_get_details",
-                "args": {"run_id": run_id, "severity": "blocking"},
-                "safe": True,
-                "reason": f"View {blocking} blocking issue details",
-                "priority": 2,
-            }
+            NextAction(
+                tool="lint_get_details",
+                args={"run_id": run_id, "severity": "blocking"},
+                reason=f"View {blocking} blocking issue details",
+                priority=2,
+            )
         )
 
     # If many warnings, suggest details
     if warnings > 5 and run_id:
         actions.append(
-            {
-                "tool": "lint_get_details",
-                "args": {"run_id": run_id, "severity": "warning"},
-                "safe": True,
-                "reason": f"View {warnings} warning details",
-                "priority": 3,
-            }
+            NextAction(
+                tool="lint_get_details",
+                args={"run_id": run_id, "severity": "warning"},
+                reason=f"View {warnings} warning details",
+                priority=3,
+            )
         )
 
-    return actions
+    return serialize_next_actions(actions)
 
 
 _VALID_OUTPUT_MODES = {"compact", "standard", "full"}

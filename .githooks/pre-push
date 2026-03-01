@@ -103,7 +103,14 @@ fi
 if _should_run tests && { [ -d tests ] || [ -d test ]; }; then
   if [ -d tests ]; then TEST_DIR=tests; else TEST_DIR=test; fi
   echo "[lintgate] running tests with coverage + symbol gate"
-  python -m pytest "$TEST_DIR" --cov --cov-config=.coveragerc \
+  # Use 50% of available cores for parallel test execution (min 1)
+  NCPU=$(python -c "import os; print(max(1, int(os.cpu_count() * 0.5)))" 2>/dev/null || echo "1")
+  XDIST_FLAG=""
+  if python -c "import xdist" 2>/dev/null; then
+    XDIST_FLAG="-n $NCPU --dist worksteal"
+  fi
+  # shellcheck disable=SC2086
+  python -m pytest "$TEST_DIR" $XDIST_FLAG --cov --cov-config=.coveragerc \
     --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
     --tb=short -q
 

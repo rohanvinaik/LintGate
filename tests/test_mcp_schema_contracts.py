@@ -21,7 +21,7 @@ from lintgate.types import LintIssue
 class TestNextActionsSchema:
     """Verify next_actions entries have all required fields."""
 
-    REQUIRED_KEYS = {"tool", "args", "safe", "reason", "priority"}
+    REQUIRED_KEYS = {"tool", "reason", "priority"}
 
     def test_next_actions_entry_has_required_keys(self) -> None:
         from mcp_server import _build_next_actions
@@ -69,7 +69,7 @@ class TestNextActionsSchema:
         for action in actions:
             assert isinstance(action["args"], dict)
 
-    def test_next_actions_safe_is_bool(self) -> None:
+    def test_next_actions_safe_is_bool_when_present(self) -> None:
         from mcp_server import _build_next_actions
 
         context = {
@@ -81,7 +81,9 @@ class TestNextActionsSchema:
         }
         actions = _build_next_actions(context)
         for action in actions:
-            assert isinstance(action["safe"], bool)
+            # "safe" key is omitted when True (default); present as bool when False
+            if "safe" in action:
+                assert isinstance(action["safe"], bool)
 
     def test_next_actions_priority_is_int(self) -> None:
         from mcp_server import _build_next_actions

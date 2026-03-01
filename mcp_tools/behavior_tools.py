@@ -80,16 +80,20 @@ def register(mcp, helpers):
             ]
             output["recommendation"] = hygiene_result.recommendation
 
-        output["next_actions"] = []
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        _na_list: list[NextAction] = []
         if hygiene_result and hygiene_result.warnings:
             for w in hygiene_result.warnings[:2]:
                 if w.actionability == "immediate":
-                    output["next_actions"].append(
-                        {
-                            "action": f"Fix: {w.message[:80]}",
-                            "priority": 1,
-                        }
+                    _na_list.append(
+                        NextAction(
+                            tool="terminal",
+                            reason=f"Fix: {w.message[:80]}",
+                            priority=1,
+                        )
                     )
+        output["next_actions"] = serialize_next_actions(_na_list)
 
         return helpers["_json_dumps"](output)
 
@@ -288,17 +292,20 @@ def register(mcp, helpers):
                 output["onboarding"] = _bp_onboarding
 
         # next_actions
-        next_actions = []
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        _cc_actions: list[NextAction] = []
         if coverage_gap > 0 or recall < 0.5:
-            next_actions.append(
-                {
-                    "tool": "constraint_check",
-                    "reason": "Re-run after researching uncertainty zones",
-                    "priority": 1,
-                }
+            _cc_actions.append(
+                NextAction(
+                    tool="constraint_check",
+                    args={"path": project_root, "planned_action": planned_action},
+                    reason="Re-run after researching uncertainty zones",
+                    priority=1,
+                )
             )
-        if next_actions:
-            output["next_actions"] = next_actions
+        if _cc_actions:
+            output["next_actions"] = serialize_next_actions(_cc_actions)
 
         return helpers["_json_dumps"](output)
 
@@ -471,12 +478,15 @@ def register(mcp, helpers):
         }
 
         # next_actions: strong guidance per tool
-        output["next_actions"] = [
-            {
-                "action": "Execute your planned action, then outcomes are checked automatically.",
-                "priority": 1,
-            },
-        ]
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        output["next_actions"] = serialize_next_actions([
+            NextAction(
+                tool="terminal",
+                reason="Execute your planned action, then outcomes are checked automatically.",
+                priority=1,
+            ),
+        ])
 
         return helpers["_json_dumps"](output)
 

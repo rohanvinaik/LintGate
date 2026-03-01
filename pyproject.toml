@@ -96,7 +96,7 @@ disallow_untyped_defs = false  # Gradual typing
 check_untyped_defs = true
 
 [tool.mutmut]
-paths_to_mutate = ["dummy.py"]
+paths_to_mutate = ["/private/var/folders/pf/h3szfpt17_nc2vbq9mmd__pc0000gp/T/pytest-of-rohanvinaik/pytest-115/popen-gw0/test_write_mode_creates_files0/utils.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

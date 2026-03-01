@@ -245,7 +245,11 @@ class PerformanceChannel:
         findings: list[LintIssue] = []
 
         project_root = event.project_root
-        py_files = _discover_python_files(project_root)
+
+        # Use shared manifest from run_mesh() pre-pass if available,
+        # otherwise fall back to building our own (non-ControlPlane paths).
+        manifest = event.context.get("property_manifest")
+        py_files = event.context.get("python_files") or _discover_python_files(project_root)
 
         if not py_files:
             return ChannelResult(
@@ -259,8 +263,9 @@ class PerformanceChannel:
         # 1. Check for recent lint run with PERF findings to deduplicate (Phase 3.3)
         # We will stub this for now until we implement Phase 3 cross-tool dedup
 
-        # 2. Build property manifest for project
-        manifest = build_manifest(project_root, py_files)
+        # 2. Build property manifest for project (only if not shared from pre-pass)
+        if manifest is None:
+            manifest = build_manifest(project_root, py_files)
 
         # 2b. Inject manifest pure names into PERF011 so tier-2 checks
         # can detect project-local pure functions in loops.

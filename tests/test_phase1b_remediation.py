@@ -330,7 +330,7 @@ class TestNextActions:
                 "project": "/tmp/proj",
             }
         )
-        required_keys = {"tool", "args", "safe", "reason", "priority"}
+        required_keys = {"tool", "reason", "priority"}
         for action in actions:
             assert required_keys.issubset(action.keys()), f"Missing keys in {action}"
 

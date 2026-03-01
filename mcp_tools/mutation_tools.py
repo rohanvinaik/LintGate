@@ -74,7 +74,11 @@ def _merge_decomposition_candidates(
 # ---------------------------------------------------------------------------
 
 
-def _impl_run_sampling(engine: Any, files: list[str] | None) -> dict[str, Any] | None:
+def _impl_run_sampling(
+    engine: Any,
+    files: list[str] | None,
+    project_root: str | None = None,
+) -> dict[str, Any] | None:
     """Run sampled mutation analysis. Returns None if no files provided."""
     from lintgate.mutation.policy import MutationTelemetry
 
@@ -82,7 +86,9 @@ def _impl_run_sampling(engine: Any, files: list[str] | None) -> dict[str, Any] |
         return None
 
     telemetry = MutationTelemetry("sampling_run")
-    results = engine.run_inline_sampling(files, telemetry)
+    results = engine.run_inline_sampling(
+        files, telemetry, project_root=project_root
+    )
 
     return {
         "run_id": telemetry.run_id,
@@ -108,7 +114,9 @@ def _impl_run_full(
 
     test_mapping: dict[str, list[str]] = {}
     telemetry = MutationTelemetry("full_profiling_run")
-    results = engine.run_background_profiling(files, test_mapping, telemetry)
+    results = engine.run_background_profiling(
+        files, test_mapping, telemetry, project_root=project_root
+    )
 
     return {
         "run_id": telemetry.run_id,
@@ -182,10 +190,13 @@ def _impl_prescribe(
             continue
         filtered_states.append(state)
 
+    from lintgate.next_action import NextAction, serialize_next_actions
+
     profiles: list[dict[str, Any]] = []
     diagnoses: list[dict[str, Any]] = []
     all_prescriptions: list[dict[str, Any]] = []
-    all_next_actions: set[str] = set()
+    all_next_actions: list[NextAction] = []
+    seen_tools: set[str] = set()
     overall_gate = "PASS"
 
     for state in filtered_states:
@@ -207,7 +218,10 @@ def _impl_prescribe(
         )
         for p in diag.prescriptions:
             all_prescriptions.append(dataclasses.asdict(p))
-        all_next_actions.update(diag.next_actions)
+        for action in diag.next_actions:
+            if action.tool not in seen_tools:
+                seen_tools.add(action.tool)
+                all_next_actions.append(action)
 
     # Deduplicate prescriptions to avoid overwhelming UX
     seen_prescriptions: set[tuple[str, ...]] = set()
@@ -224,7 +238,7 @@ def _impl_prescribe(
         "diagnoses": diagnoses,
         "prescriptions": unique_prescriptions,
         "gate_status": overall_gate,
-        "next_actions": list(all_next_actions),
+        "next_actions": serialize_next_actions(all_next_actions),
     }
 
 
@@ -288,7 +302,9 @@ def _reprofile_function(
     abs_file = os.path.join(project_root, file)
     if not os.path.exists(abs_file):
         abs_file = file
-    results = engine.run_inline_sampling([abs_file], telemetry)
+    results = engine.run_inline_sampling(
+        [abs_file], telemetry, project_root=project_root
+    )
 
     for state in results:
         if not function or state.function_name == function:
@@ -411,7 +427,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         """
         project_root = helpers["_validate_project_root"](path)
         engine = _get_engine(project_root)
-        result = _impl_run_sampling(engine, files)
+        result = _impl_run_sampling(engine, files, project_root=project_root)
         if result is None:
             return json.dumps({"error": "Please provide specific files for sampling"})
         return helpers["_json_dumps"](result)

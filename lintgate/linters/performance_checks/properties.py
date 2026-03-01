@@ -315,9 +315,15 @@ def classify_properties(
     purity: PurityResult,
     mutation_state: FunctionMutationState | None = None,
     enforcement_mode: str = "audit",
+    mutation_system_active: bool = False,
 ) -> FunctionProperties:
     """
     Given a known-pure function, attempt to classify its algebraic properties.
+
+    When ``mutation_system_active`` is True but ``mutation_state`` is None,
+    the function is treated as MUTATION_UNKNOWN with reduced confidence (0.4).
+    When ``mutation_system_active`` is False (mutation infrastructure unavailable),
+    the default behavior is preserved for backward compatibility.
     """
     confidence = purity.confidence
     evidence_prefix = ""
@@ -362,6 +368,12 @@ def classify_properties(
             elif survival_rate <= 0.2:
                 confidence = max(confidence, 0.9)
                 evidence_prefix = f"[MUTATION VERIFIED: survival={survival_rate:.0%}] "
+
+    # MUTATION_UNKNOWN: mutation system is active but no data for this function.
+    # Treat absence of evidence as epistemic uncertainty, not evidence of safety.
+    elif mutation_system_active and purity.is_pure and mutation_state is None:
+        confidence = 0.4
+        evidence_prefix = "[MUTATION_UNKNOWN: no specification data] "
 
     properties: list[AlgebraicProperty] = [
         AlgebraicProperty(

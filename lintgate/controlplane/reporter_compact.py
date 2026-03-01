@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from lintgate.next_action import NextAction, serialize_next_actions
+
 from .reporter_delta import build_finding_index, compute_finding_delta
 from .types import ChannelResult, CoherenceResult, ControlPlaneConfig, MeshResult
 
@@ -83,12 +85,14 @@ def format_mesh_report_compact(
     if proven_resolutions:
         compact["proven_resolutions"] = proven_resolutions
 
-    compact["next_actions"] = _build_cp_next_actions(
-        run_id,
-        counts,
-        symbol_blockers,
-        ship_gate_parity,
-        bootstrap_progress=bootstrap_progress,
+    compact["next_actions"] = serialize_next_actions(
+        _build_cp_next_actions(
+            run_id,
+            counts,
+            symbol_blockers,
+            ship_gate_parity,
+            bootstrap_progress=bootstrap_progress,
+        )
     )
 
     if symbol_blockers:
@@ -263,9 +267,9 @@ def _build_cp_next_actions(
     symbol_blockers: list[dict[str, Any]] | None = None,
     ship_gate_parity: dict[str, Any] | None = None,
     bootstrap_progress: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+) -> list[NextAction]:
     """Build next_actions for ControlPlane compact output."""
-    actions: list[dict[str, Any]] = []
+    actions: list[NextAction] = []
     symbol_count = len(symbol_blockers or [])
 
     # Bootstrap action — when test files are missing, suggest bootstrap_tests
@@ -273,25 +277,25 @@ def _build_cp_next_actions(
         bs_status = bootstrap_progress.get("status")
         if bs_status in (None, "idle", "failed"):
             actions.append(
-                {
-                    "tool": "bootstrap_tests",
-                    "args": {"path": "."},
-                    "reason": "No test files detected. Run bootstrap to generate test scaffolding.",
-                    "priority": 1,
-                }
+                NextAction(
+                    tool="bootstrap_tests",
+                    args={"path": "."},
+                    reason="No test files detected. Run bootstrap to generate test scaffolding.",
+                    priority=1,
+                )
             )
         elif bs_status == "running":
             actions.append(
-                {
-                    "tool": "bootstrap_status",
-                    "args": {"path": "."},
-                    "reason": (
+                NextAction(
+                    tool="bootstrap_status",
+                    args={"path": "."},
+                    reason=(
                         f"Bootstrap pipeline running "
                         f"(phase: {bootstrap_progress.get('phase', 'unknown')}). "
                         f"Check progress."
                     ),
-                    "priority": 1,
-                }
+                    priority=1,
+                )
             )
 
     parity_status = ship_gate_parity.get("status") if ship_gate_parity else None
@@ -303,70 +307,70 @@ def _build_cp_next_actions(
         parity_failing or (parity_missing and counts.get("blocking", 0) > 0)
     ):
         actions.append(
-            {
-                "tool": "controlplane_run" if parity_missing else "terminal",
-                "args": (
+            NextAction(
+                tool="controlplane_run" if parity_missing else "terminal",
+                args=(
                     {"path": ".", "strictness": "strict"}
                     if parity_missing
                     else {"command": "python scripts/ship_main.py --preflight"}
                 ),
-                "reason": "Ship gate parity is failing or missing. Evaluate strict preflight output.",
-                "priority": 1,
-            }
+                reason="Ship gate parity is failing or missing. Evaluate strict preflight output.",
+                priority=1,
+            )
         )
 
     if symbol_count > 0:
         actions.append(
-            {
-                "tool": "controlplane_get_details",
-                "args": {
+            NextAction(
+                tool="controlplane_get_details",
+                args={
                     "run_id": run_id,
                     "channel": "tests",
                     "severity": "blocking",
                     "max_issues": 50,
                 },
-                "reason": (
+                reason=(
                     f"Inspect {symbol_count} symbol coverage blocker"
                     f"{'s' if symbol_count != 1 else ''}"
                 ),
-                "priority": 1,
-            }
+                priority=1,
+            )
         )
         actions.append(
-            {
-                "tool": "controlplane_run",
-                "args": {"path": "."},
-                "reason": "After adding tests, rerun to verify blockers are cleared.",
-                "priority": 2,
-            }
+            NextAction(
+                tool="controlplane_run",
+                args={"path": "."},
+                reason="After adding tests, rerun to verify blockers are cleared.",
+                priority=2,
+            )
         )
 
     if counts.get("blocking", 0) > 0:
         actions.append(
-            {
-                "tool": "controlplane_get_details",
-                "args": {"run_id": run_id, "severity": "blocking"},
-                "reason": f"View {counts['blocking']} blocking finding{'s' if counts['blocking'] != 1 else ''}",
-                "priority": 3 if symbol_count > 0 else 1,
-            }
+            NextAction(
+                tool="controlplane_get_details",
+                args={"run_id": run_id, "severity": "blocking"},
+                reason=f"View {counts['blocking']} blocking finding{'s' if counts['blocking'] != 1 else ''}",
+                priority=3 if symbol_count > 0 else 1,
+            )
         )
     if counts.get("repairs_available", 0) > 0:
         actions.append(
-            {
-                "tool": "controlplane_apply_repairs",
-                "args": {"path": ".", "safe_only": True},
-                "reason": f"{counts['repairs_available']} safe repair{'s' if counts['repairs_available'] != 1 else ''} available",
-                "priority": 4 if symbol_count > 0 else 2,
-            }
+            NextAction(
+                tool="controlplane_apply_repairs",
+                args={"path": ".", "safe_only": True},
+                reason=f"{counts['repairs_available']} safe repair{'s' if counts['repairs_available'] != 1 else ''} available",
+                priority=4 if symbol_count > 0 else 2,
+            )
         )
     if counts.get("warning", 0) > 0 and run_id:
         actions.append(
-            {
-                "tool": "controlplane_get_details",
-                "args": {"run_id": run_id, "severity": "warning"},
-                "reason": f"View {counts['warning']} warning{'s' if counts['warning'] != 1 else ''}",
-                "priority": 5 if symbol_count > 0 else 3,
-            }
+            NextAction(
+                tool="controlplane_get_details",
+                args={"run_id": run_id, "severity": "warning"},
+                reason=f"View {counts['warning']} warning{'s' if counts['warning'] != 1 else ''}",
+                priority=5 if symbol_count > 0 else 3,
+            )
         )
     return actions
 

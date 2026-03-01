@@ -152,7 +152,7 @@ class TestBootstrapProgressReporter:
         }
         bootstrap = {"needed": True, "status": None}
         actions = _build_cp_next_actions("run1", counts, bootstrap_progress=bootstrap)
-        tool_names = [a["tool"] for a in actions]
+        tool_names = [a.tool for a in actions]
         assert "bootstrap_tests" in tool_names
 
     def test_bootstrap_running_suggests_status(self):
@@ -166,7 +166,7 @@ class TestBootstrapProgressReporter:
         }
         bootstrap = {"needed": True, "status": "running", "phase": "skeletons"}
         actions = _build_cp_next_actions("run1", counts, bootstrap_progress=bootstrap)
-        tool_names = [a["tool"] for a in actions]
+        tool_names = [a.tool for a in actions]
         assert "bootstrap_status" in tool_names
 
 

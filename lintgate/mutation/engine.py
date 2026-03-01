@@ -63,11 +63,15 @@ class MutationEngine:
         telemetry: MutationTelemetry,
         algebra_manifest: PropertyManifest | None = None,
         teff_manifest: TestEffectivenessManifest | None = None,
+        project_root: str | None = None,
     ) -> list[FunctionMutationState]:
         """Run a fast, inline sampled mutation run on specific files.
 
         This is Tier 1: Designed to run as part of active gating or direct developer
         feedback loops. It uses a strict time budget and limits mutants per function.
+
+        When *project_root* is provided, state keys use canonical identity
+        (``relpath::qualname``) matching the manifest convention.
         """
         if not self.budget.enabled:
             return []
@@ -84,19 +88,26 @@ class MutationEngine:
                 )
                 break
 
-            # Heuristic: discover functions in file to compute relevance
+            # Heuristic: discover functions in file to compute per-function relevance.
+            # Phase 4: Build per-function category maps instead of unioning all
+            # functions' categories into a single file-level set. This avoids
+            # including irrelevant mutant categories for functions that don't need them.
             relevant_categories = None
+            per_function_categories: dict[str, set[MutationOperatorCategory]] | None = None
             try:
                 source = Path(file_path).read_text("utf-8")
                 tree = ast.parse(source)
+                pfc: dict[str, set[MutationOperatorCategory]] = {}
                 file_categories = set()
                 for node in ast.walk(tree):
                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         cat = self._compute_relevant_categories(
                             file_path, node.name, algebra_manifest, teff_manifest
                         )
+                        pfc[node.name] = cat
                         file_categories.update(cat)
                 relevant_categories = file_categories
+                per_function_categories = pfc
             except (OSError, SyntaxError):
                 pass
 
@@ -106,16 +117,21 @@ class MutationEngine:
                 depth=CoverageDepth.SAMPLED,
                 test_filter=None,
                 relevant_categories=relevant_categories,
+                per_function_categories=per_function_categories,
                 telemetry=telemetry,
             )
             elapsed_ms = (time.perf_counter() - start_t) * 1000
             telemetry.add_inline_time(elapsed_ms)
 
             if success:
-                file_states = self._parse_mutmut_results([file_path])
+                file_states = self._parse_mutmut_results(
+                    [file_path], project_root=project_root
+                )
                 for state in file_states.values():
                     state.depth = CoverageDepth.SAMPLED
-                    self.state_manager.update_state(state)
+                    self.state_manager.update_state(
+                        state, project_root=project_root
+                    )
                     results.append(state)
 
         self.state_manager.save()
@@ -128,12 +144,16 @@ class MutationEngine:
         telemetry: MutationTelemetry,
         algebra_manifest: PropertyManifest | None = None,
         teff_manifest: TestEffectivenessManifest | None = None,
+        project_root: str | None = None,
     ) -> list[FunctionMutationState]:
         """Run deep, background mutation profiling.
 
         This is Tier 2: Designed to run on CI or in background agents. It uses the
         test-impact mapping to only run relevant tests for each mutated file, massively
         speeding up exhaustive sweeps.
+
+        When *project_root* is provided, state keys use canonical identity
+        (``relpath::qualname``) matching the manifest convention.
         """
         if not self.budget.enabled:
             return []
@@ -175,10 +195,14 @@ class MutationEngine:
             telemetry.background_functions_profiled += 1
 
             if success:
-                file_states = self._parse_mutmut_results([file_path])
+                file_states = self._parse_mutmut_results(
+                    [file_path], project_root=project_root
+                )
                 for state in file_states.values():
                     state.depth = CoverageDepth.PROFILED
-                    self.state_manager.update_state(state)
+                    self.state_manager.update_state(
+                        state, project_root=project_root
+                    )
                     results.append(state)
 
         self.state_manager.save()
@@ -190,12 +214,18 @@ class MutationEngine:
         depth: CoverageDepth,
         test_filter: str | None,
         relevant_categories: set[MutationOperatorCategory] | None = None,
+        per_function_categories: dict[str, set[MutationOperatorCategory]] | None = None,
         telemetry: MutationTelemetry | None = None,
     ) -> bool:
         """Execute mutmut v3 via subprocess.
 
         mutmut v3 reads paths_to_mutate from pyproject.toml, not CLI flags.
         We temporarily override pyproject.toml to scope the run, then restore it.
+
+        When *per_function_categories* is provided, mutant filtering is done at
+        function granularity (Phase 4) — each mutant is only included if its
+        category is relevant for the specific function it belongs to. Falls back
+        to file-level *relevant_categories* when per-function data is unavailable.
 
         Returns True if successful (mutants killed/survived normally), False on runner crash.
         """
@@ -206,7 +236,8 @@ class MutationEngine:
 
         try:
             mutants_to_run, filter_active = self._filter_mutants_by_category(
-                paths, relevant_categories, telemetry
+                paths, relevant_categories, telemetry,
+                per_function_categories=per_function_categories,
             )
 
             self._scope_pyproject_paths(pyproject_path, original_pyproject, paths)
@@ -230,8 +261,14 @@ class MutationEngine:
         paths: list[str],
         relevant_categories: set[MutationOperatorCategory] | None,
         telemetry: MutationTelemetry | None,
+        per_function_categories: dict[str, set[MutationOperatorCategory]] | None = None,
     ) -> tuple[list[str], bool]:
         """Pre-execution filtering: select mutants whose category is relevant.
+
+        When *per_function_categories* is provided (Phase 4), each mutant is
+        checked against the category set of the specific function it belongs to.
+        Falls back to file-level *relevant_categories* when per-function data
+        is unavailable or when the mutant's function can't be identified.
 
         Returns (mutants_to_run, filter_active).
         """
@@ -244,6 +281,16 @@ class MutationEngine:
                 source = Path(path).read_text("utf-8")
                 cat_map = self._build_mutant_category_map(path, source)
                 for mutant_id, cat in cat_map.items():
+                    # Phase 4: Per-function filtering when available
+                    if per_function_categories is not None:
+                        func_name = _extract_func_name_from_mutant_id(mutant_id)
+                        if func_name and func_name in per_function_categories:
+                            if cat in per_function_categories[func_name]:
+                                mutants_to_run.append(mutant_id)
+                            elif telemetry:
+                                telemetry.mutants_skipped_policy += 1
+                            continue
+                    # Fallback: file-level category check
                     if cat in relevant_categories:
                         mutants_to_run.append(mutant_id)
                     elif telemetry:
@@ -365,7 +412,9 @@ class MutationEngine:
         )
 
     def _parse_mutmut_results(
-        self, paths: list[str]
+        self,
+        paths: list[str],
+        project_root: str | None = None,
     ) -> dict[str, FunctionMutationState]:
         """Parse mutmut v3 results and return per-function state.
 
@@ -374,6 +423,9 @@ class MutationEngine:
 
         We demangle the function name, aggregate per-function, and filter to
         only the requested paths.
+
+        When *project_root* is provided, keys use canonical identity
+        (``relpath::qualname``) matching the manifest convention.
         """
         output = self._fetch_mutmut_output()
         if output is None:
@@ -381,7 +433,7 @@ class MutationEngine:
 
         mutant_category_map = self._collect_category_maps(paths)
         func_counts = self._aggregate_func_counts(output, mutant_category_map)
-        return self._build_function_states(func_counts, paths)
+        return self._build_function_states(func_counts, paths, project_root)
 
     @staticmethod
     def _fetch_mutmut_output() -> str | None:
@@ -450,8 +502,15 @@ class MutationEngine:
     def _build_function_states(
         func_counts: dict[str, dict[str, Any]],
         paths: list[str],
+        project_root: str | None = None,
     ) -> dict[str, FunctionMutationState]:
-        """Demangle aggregated counts, filter to requested paths, and build states."""
+        """Demangle aggregated counts, filter to requested paths, and build states.
+
+        When *project_root* is provided, keys use :func:`canonicalize_function_id`
+        so that they match the manifest's ``relpath::qualname`` convention.
+        """
+        from lintgate.mutation.state import canonicalize_function_id
+
         states: dict[str, FunctionMutationState] = {}
 
         for mangled, counts in func_counts.items():
@@ -471,7 +530,13 @@ class MutationEngine:
                 with contextlib.suppress(OSError):
                     code_content = Path(matched_path).read_text("utf-8")
 
-            func_id = f"{matched_path}::{func_name}"
+            if project_root is not None:
+                func_id = canonicalize_function_id(
+                    matched_path, func_name, project_root
+                )
+            else:
+                func_id = f"{matched_path}::{func_name}"
+
             states[func_id] = FunctionMutationState(
                 function_name=func_name,
                 file_path=matched_path,
@@ -713,6 +778,53 @@ class MutationEngine:
                 f"Exception in _build_mutant_category_map_with_ast for {module_name}: {e}"
             )
             return {}
+
+
+def _extract_func_name_from_mutant_id(mutant_id: str) -> str | None:
+    """Extract the simple function name from a mutmut mutant ID.
+
+    Mutant IDs follow the format ``{module}.{base}__mutmut_{n}`` where
+    ``base`` is one of:
+    - ``x_funcname`` for module-level functions
+    - ``x\\u01c1ClassName\\u01c1method_name`` for class methods
+
+    Returns the simple function/method name (matching AST ``node.name``),
+    or ``None`` if the ID cannot be parsed.
+
+    Examples::
+
+        >>> _extract_func_name_from_mutant_id("mod.sub.x_compute__mutmut_3")
+        'compute'
+        >>> _extract_func_name_from_mutant_id("mod.sub.x\\u01c1Cls\\u01c1run__mutmut_1")
+        'run'
+        >>> _extract_func_name_from_mutant_id("mod.sub.x__private__mutmut_2")
+        '_private'
+    """
+    # Strip __mutmut_N suffix
+    mutmut_idx = mutant_id.find("__mutmut_")
+    if mutmut_idx == -1:
+        return None
+
+    prefix = mutant_id[:mutmut_idx]
+
+    class_sep = "\u01c1"  # mutmut's CLASS_NAME_SEPARATOR
+
+    # Class method: look for .xǁ pattern
+    class_marker = ".x" + class_sep
+    class_idx = prefix.rfind(class_marker)
+    if class_idx != -1:
+        remainder = prefix[class_idx + 2:]  # skip '.x'
+        parts = [p for p in remainder.split(class_sep) if p]
+        # parts = ['ClassName', 'method_name'] — return the method name
+        return parts[-1] if parts else None
+
+    # Module-level: look for .x_ pattern
+    func_marker = ".x_"
+    func_idx = prefix.rfind(func_marker)
+    if func_idx != -1:
+        return prefix[func_idx + 3:]  # skip '.x_' → 'funcname'
+
+    return None
 
 
 def _tally_status(

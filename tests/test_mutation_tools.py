@@ -114,7 +114,8 @@ def test_mutation_prescribe_tool(mock_engine, monkeypatch):
     assert "gate_lift_projection_percent" in result["prescriptions"][0]
 
     assert "next_actions" in result
+    action_tools = [a["tool"] for a in result["next_actions"]]
     assert (
-        "mutation_decompose" in result["next_actions"]
-        or "mutation_refactor_loop" in result["next_actions"]
+        "mutation_decompose" in action_tools
+        or "mutation_refactor_loop" in action_tools
     )

@@ -57,7 +57,7 @@ def test_mutation_engine_inline_sampling_execution(mock_state_manager, budget):
         results = engine.run_inline_sampling(["src/a.py"], telemetry)
 
         mock_exec.assert_called_once()
-        mock_parse.assert_called_once_with(["src/a.py"])
+        mock_parse.assert_called_once_with(["src/a.py"], project_root=None)
         mock_state_manager.update_state.assert_called_once()
         mock_state_manager.save.assert_called_once()
         assert len(results) == 1

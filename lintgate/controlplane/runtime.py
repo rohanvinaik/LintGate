@@ -62,6 +62,9 @@ def run_mesh(
     start = time.perf_counter()
     global_deadline = start + (config.latency_budget_ms / 1000.0)
 
+    # Phase 0: Pre-pass — build shared artifacts once for all channels
+    _run_prepass(event)
+
     # Phase 1: Filter to channels that should run
     active_channels: list[Channel] = []
     skipped_results: list[ChannelResult] = []
@@ -137,6 +140,32 @@ def run_mesh(
         partial=len(incomplete) > 0,
         git_context=git_context,
     )
+
+
+def _run_prepass(event: SupervisionEvent) -> None:
+    """Phase 0: Build shared artifacts once for all channels.
+
+    Currently builds the property manifest (expensive AST parsing) and
+    stores it in ``event.context`` so performance and mutation channels
+    can share it instead of rebuilding independently.
+
+    Gracefully degrades: if manifest build fails, channels fall back to
+    building their own.
+    """
+    import contextlib
+
+    if not event.project_root:
+        return
+
+    with contextlib.suppress(Exception):
+        from lintgate.channels.performance_channel import _discover_python_files
+        from lintgate.linters.performance_checks.manifest import build_manifest
+
+        py_files = _discover_python_files(event.project_root)
+        if py_files:
+            manifest = build_manifest(event.project_root, py_files)
+            event.context["property_manifest"] = manifest
+            event.context["python_files"] = py_files
 
 
 def _collect_git_context(
