@@ -53,7 +53,9 @@ class MutationChannel:
 
         # 1. Background loading of existing state
         # For changed files, we might want to run sampling
-        relevant_files = event.files_changed or []
+        from lintgate.mutation.engine import _is_mutant_path
+
+        relevant_files = [f for f in (event.files_changed or []) if not _is_mutant_path(f)]
         if not relevant_files:
             # Fallback to discover all
             from lintgate.channels.performance_channel import _discover_python_files

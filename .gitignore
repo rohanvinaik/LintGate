@@ -45,6 +45,8 @@ uv.lock
 
 # mutmut v3 working directory
 mutants/
+.mutmut-cache/
+pyproject.toml.lintgate-backup
 
 # Local MCP config (contains absolute paths)
 .mcp.json

@@ -31,6 +31,10 @@ class MutationOrchestrator:
 
     def enqueue(self, file_path: str, project_root: str | None = None):
         """Request a mutation run for a file, applying debounce logic."""
+        from lintgate.mutation.engine import _is_mutant_path
+
+        if _is_mutant_path(file_path):
+            return
         with self._lock:
             now = time.time()
             last = self._last_run.get(file_path, 0.0)

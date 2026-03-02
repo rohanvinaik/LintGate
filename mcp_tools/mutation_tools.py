@@ -80,8 +80,13 @@ def _impl_run_sampling(
     project_root: str | None = None,
 ) -> dict[str, Any] | None:
     """Run sampled mutation analysis. Returns None if no files provided."""
+    from lintgate.mutation.engine import _is_mutant_path
     from lintgate.mutation.policy import MutationTelemetry
 
+    if not files:
+        return None
+
+    files = [f for f in files if not _is_mutant_path(f)]
     if not files:
         return None
 
@@ -105,12 +110,15 @@ def _impl_run_full(
     engine: Any, project_root: str, files: list[str] | None
 ) -> dict[str, Any]:
     """Run full mutation profiling with test-impact gating."""
+    from lintgate.mutation.engine import _is_mutant_path
     from lintgate.mutation.policy import MutationTelemetry
 
     if not files:
         from lintgate.channels.performance_channel import _discover_python_files
 
         files = _discover_python_files(project_root)
+
+    files = [f for f in files if not _is_mutant_path(f)]
 
     test_mapping: dict[str, list[str]] = {}
     telemetry = MutationTelemetry("full_profiling_run")

@@ -45,6 +45,12 @@ from lintgate.mutation.state import (
 logger = logging.getLogger(__name__)
 
 
+def _is_mutant_path(path: str) -> bool:
+    """Return True if path is inside a mutants/ directory."""
+    parts = Path(path).resolve().parts
+    return "mutants" in parts
+
+
 class MutationEngine:
     """Orchestrates mutation testing execution."""
 
@@ -53,9 +59,20 @@ class MutationEngine:
         state_manager: MutationStateManager,
         budget: RuntimeBudget,
     ):
+        self._recover_pyproject_if_needed()
         self.state_manager = state_manager
         self.budget = budget
         self.relevance_matrix = OperatorRelevanceMatrix()
+
+    @staticmethod
+    def _recover_pyproject_if_needed() -> None:
+        """Restore pyproject.toml from backup if a previous run was interrupted."""
+        backup = Path("pyproject.toml.lintgate-backup")
+        if backup.exists():
+            pyproject = Path("pyproject.toml")
+            pyproject.write_text(backup.read_text("utf-8"), "utf-8")
+            backup.unlink()
+            logger.info("Recovered pyproject.toml from stale lintgate-backup")
 
     def run_inline_sampling(
         self,
@@ -230,11 +247,15 @@ class MutationEngine:
         Returns True if successful (mutants killed/survived normally), False on runner crash.
         """
         pyproject_path = Path("pyproject.toml")
+        backup_path = pyproject_path.with_suffix(".toml.lintgate-backup")
         original_pyproject = None
         if pyproject_path.exists():
             original_pyproject = pyproject_path.read_text("utf-8")
 
         try:
+            if original_pyproject is not None:
+                backup_path.write_text(original_pyproject, "utf-8")
+
             mutants_to_run, filter_active = self._filter_mutants_by_category(
                 paths, relevant_categories, telemetry,
                 per_function_categories=per_function_categories,
@@ -255,6 +276,8 @@ class MutationEngine:
         finally:
             if original_pyproject is not None:
                 pyproject_path.write_text(original_pyproject, "utf-8")
+            if backup_path.exists():
+                backup_path.unlink()
 
     def _filter_mutants_by_category(
         self,
