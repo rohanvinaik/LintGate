@@ -344,3 +344,5 @@ class ProjectConfig:
     )
     total_timeout_ms: int = 8000
     quality_policy: QualityPolicy = field(default_factory=QualityPolicy)
+    discovery_source_paths: list[str] = field(default_factory=list)
+    discovery_exclude_paths: list[str] = field(default_factory=list)

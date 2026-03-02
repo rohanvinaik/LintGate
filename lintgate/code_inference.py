@@ -15,26 +15,13 @@ import subprocess
 from pathlib import Path
 
 from .compass import CompassClaim
+from .discovery import should_skip_dir
 
 # ── Constants ────────────────────────────────────────────────────────
 
 _MAX_CONFIDENCE = 0.6
 _MAX_PY_FILES = 50
 
-_SKIP_DIRS = frozenset(
-    {
-        ".git",
-        "node_modules",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".tox",
-        "dist",
-        "build",
-        ".eggs",
-        ".mypy_cache",
-    }
-)
 
 _FRAMEWORK_MAP: dict[str, tuple[str, str]] = {
     "fastapi": ("Uses FastAPI for HTTP API layer", "solution"),
@@ -90,17 +77,9 @@ def _claim(
 
 def _collect_py_files(project_root: str) -> list[Path]:
     """Collect up to _MAX_PY_FILES .py files, skipping excluded dirs."""
-    collected: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")
-        ]
-        for fname in filenames:
-            if fname.endswith(".py"):
-                collected.append(Path(dirpath) / fname)
-                if len(collected) >= _MAX_PY_FILES:
-                    return collected
-    return collected
+    from .discovery import discover_project_files
+
+    return [Path(f) for f in discover_project_files(project_root, limit=_MAX_PY_FILES)]
 
 
 def _read_text_safe(path: Path) -> str:
@@ -280,7 +259,7 @@ def _scan_test_dir(test_dir: Path) -> dict[str, bool | int]:
         "count": 0,
     }
     for dirpath, dirnames, filenames in os.walk(test_dir):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
         for fname in filenames:
             if not fname.endswith(".py"):
                 continue

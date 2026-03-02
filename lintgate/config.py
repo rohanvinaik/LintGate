@@ -274,6 +274,16 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
     # Timeout
     config.total_timeout_ms = raw.get("total_timeout_ms", 8000)
 
+    # Discovery scope
+    discovery_raw = raw.get("discovery", {})
+    if isinstance(discovery_raw, dict):
+        sp = discovery_raw.get("source_paths", [])
+        if isinstance(sp, list):
+            config.discovery_source_paths = [str(p) for p in sp if p]
+        ep = discovery_raw.get("exclude_paths", [])
+        if isinstance(ep, list):
+            config.discovery_exclude_paths = [str(p) for p in ep if p]
+
     # Quality policy
     qp_raw = raw.get("quality_policy", {})
     if isinstance(qp_raw, dict):

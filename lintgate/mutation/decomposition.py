@@ -256,19 +256,6 @@ def _discover_files(project_root: str, file_path: str | None) -> list[str]:
         )
         return [full] if os.path.isfile(full) else []
 
-    py_files: list[str] = []
-    for dirpath, _, filenames in os.walk(project_root):
-        basename = os.path.basename(dirpath)
-        if basename.startswith(".") or basename in (
-            "__pycache__",
-            "node_modules",
-            ".git",
-        ):
-            continue
-        resolved = os.path.realpath(dirpath)
-        if "/site-packages/" in resolved or "/dist-packages/" in resolved:
-            continue
-        for fn in filenames:
-            if fn.endswith(".py"):
-                py_files.append(os.path.join(dirpath, fn))
-    return py_files
+    from lintgate.discovery import discover_project_files
+
+    return discover_project_files(project_root)

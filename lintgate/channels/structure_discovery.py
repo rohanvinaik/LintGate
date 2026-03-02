@@ -9,8 +9,6 @@ import ast
 import os
 from collections import defaultdict
 
-from lintgate.path_filters import is_backup_like_directory
-
 # Markers that identify a directory as a separate nested subproject root.
 _NESTED_SUBPROJECT_MARKERS = frozenset(
     {
@@ -59,28 +57,6 @@ def _detect_nested_subproject_roots(
     return frozenset(excluded)
 
 
-_EXCLUDE_DIRS = frozenset(
-    {
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".git",
-        ".tox",
-        ".mypy_cache",
-        ".ruff_cache",
-        "node_modules",
-        ".eggs",
-        "dist",
-        "build",
-        ".nox",
-        ".pytest_cache",
-        "mutants",
-        ".mutmut",
-        ".mutmut-cache",
-    }
-)
-
-
 def _discover_python_files(
     project_root: str,
     nested_subproject_allowlist: frozenset[str] | None = None,
@@ -93,31 +69,22 @@ def _discover_python_files(
         nested_subproject_allowlist: Directory names to include even if they look
             like nested subprojects (e.g. a vendored copy you *do* want analyzed).
     """
-    py_files: list[str] = []
+    from lintgate.discovery import discover_project_files
 
+    base_files = discover_project_files(project_root)
+
+    # Layer on structure-channel-specific nested subproject filtering
     nested_excluded = _detect_nested_subproject_roots(
         project_root, allowlist=nested_subproject_allowlist
     )
+    if not nested_excluded:
+        return base_files
 
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if d not in _EXCLUDE_DIRS
-            and not d.startswith(".")
-            and not is_backup_like_directory(d)
-            and os.path.join(dirpath, d) not in nested_excluded
-        ]
-        for fn in filenames:
-            if fn.endswith(".py"):
-                full = os.path.join(dirpath, fn)
-                # Skip external packages (site-packages, dist-packages)
-                resolved = os.path.realpath(full)
-                if "/site-packages/" in resolved or "/dist-packages/" in resolved:
-                    continue
-                py_files.append(full)
-
-    return py_files
+    return [
+        f
+        for f in base_files
+        if not any(f.startswith(ex + os.sep) for ex in nested_excluded)
+    ]
 
 
 # ── Import Graph Construction ────────────────────────────────────────────
