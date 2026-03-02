@@ -1,7 +1,7 @@
 """Phase 4 tests: Monty Hall post-generation filter at function granularity.
 
 Tests cover:
-1. _extract_func_name_from_mutant_id() — parsing various mutant ID formats
+1. extract_func_name_from_mutant_id() — parsing various mutant ID formats
 2. _filter_mutants_by_category() — per-function filtering vs file-level fallback
 3. run_inline_sampling() — builds per_function_categories from AST
 """
@@ -10,61 +10,59 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from lintgate.mutation.engine import (
-    MutationEngine,
-    _extract_func_name_from_mutant_id,
-)
+from lintgate.mutation.engine import MutationEngine
+from lintgate.mutation.mutant_parsing import extract_func_name_from_mutant_id
 from lintgate.mutation.policy import RuntimeBudget
 
-# ── _extract_func_name_from_mutant_id ────────────────────────────────
+# ── extract_func_name_from_mutant_id ────────────────────────────────
 
 
 class TestExtractFuncNameFromMutantId:
     """Extract simple function name from mutmut mutant IDs."""
 
     def test_module_level_function(self):
-        result = _extract_func_name_from_mutant_id("mod.sub.x_compute__mutmut_3")
+        result = extract_func_name_from_mutant_id("mod.sub.x_compute__mutmut_3")
         assert result == "compute"
 
     def test_class_method(self):
-        result = _extract_func_name_from_mutant_id(
+        result = extract_func_name_from_mutant_id(
             "mod.sub.x\u01c1MyClass\u01c1run__mutmut_1"
         )
         assert result == "run"
 
     def test_private_function(self):
-        result = _extract_func_name_from_mutant_id("mod.sub.x__private__mutmut_2")
+        result = extract_func_name_from_mutant_id("mod.sub.x__private__mutmut_2")
         assert result == "_private"
 
     def test_dunder_method(self):
-        result = _extract_func_name_from_mutant_id("mod.x___init____mutmut_1")
+        result = extract_func_name_from_mutant_id("mod.x___init____mutmut_1")
         assert result == "__init__"
 
     def test_deeply_nested_module(self):
-        result = _extract_func_name_from_mutant_id(
+        result = extract_func_name_from_mutant_id(
             "a.b.c.d.e.x_helper__mutmut_42"
         )
         assert result == "helper"
 
     def test_no_mutmut_suffix_returns_none(self):
-        assert _extract_func_name_from_mutant_id("garbage") is None
+        assert extract_func_name_from_mutant_id("garbage") is None
 
     def test_empty_string_returns_none(self):
-        assert _extract_func_name_from_mutant_id("") is None
+        assert extract_func_name_from_mutant_id("") is None
 
     def test_class_with_underscore_prefix(self):
-        result = _extract_func_name_from_mutant_id(
+        result = extract_func_name_from_mutant_id(
             "mod.x\u01c1_PrivateClass\u01c1visit_Call__mutmut_5"
         )
         assert result == "visit_Call"
 
     def test_mutmut_index_1(self):
         """First mutant in a function (index 1)."""
-        result = _extract_func_name_from_mutant_id("pkg.mod.x_foo__mutmut_1")
+        result = extract_func_name_from_mutant_id("pkg.mod.x_foo__mutmut_1")
         assert result == "foo"
 
     def test_func_name_with_numbers(self):
-        result = _extract_func_name_from_mutant_id("mod.x_step2_validate__mutmut_3")
+        result = extract_func_name_from_mutant_id("mod.x_step2_validate__mutmut_3")
         assert result == "step2_validate"
 
 
