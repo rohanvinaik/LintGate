@@ -9,16 +9,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from lintgate.mutation.state import _path_to_mutmut_module
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from lintgate.mutation.state import FunctionMutationState
 
 
-def generate_arithmetic_template(state: FunctionMutationState) -> str:
+def generate_arithmetic_template(
+    state: FunctionMutationState, project_root: str | None = None
+) -> str:
     """Generate exact-value assertion tests for arithmetic mutation survivors."""
     func = state.function_name
-    module = state.file_path.replace("/", ".").replace("\\", ".").removesuffix(".py")
+    module = _path_to_mutmut_module(state.file_path, project_root=project_root)
     return (
         f'"""Tests targeting arithmetic mutation survivors in {func}."""\n'
         f"import pytest\n"
@@ -41,10 +45,12 @@ def generate_arithmetic_template(state: FunctionMutationState) -> str:
     )
 
 
-def generate_conditional_template(state: FunctionMutationState) -> str:
+def generate_conditional_template(
+    state: FunctionMutationState, project_root: str | None = None
+) -> str:
     """Generate branch-coverage tests for conditional mutation survivors."""
     func = state.function_name
-    module = state.file_path.replace("/", ".").replace("\\", ".").removesuffix(".py")
+    module = _path_to_mutmut_module(state.file_path, project_root=project_root)
     return (
         f'"""Tests targeting conditional mutation survivors in {func}."""\n'
         f"import pytest\n"
@@ -69,10 +75,12 @@ def generate_conditional_template(state: FunctionMutationState) -> str:
     )
 
 
-def generate_boundary_template(state: FunctionMutationState) -> str:
+def generate_boundary_template(
+    state: FunctionMutationState, project_root: str | None = None
+) -> str:
     """Generate boundary-value tests for off-by-one mutation survivors."""
     func = state.function_name
-    module = state.file_path.replace("/", ".").replace("\\", ".").removesuffix(".py")
+    module = _path_to_mutmut_module(state.file_path, project_root=project_root)
     return (
         f'"""Tests targeting boundary mutation survivors in {func}."""\n'
         f"import pytest\n"
@@ -97,10 +105,10 @@ def generate_boundary_template(state: FunctionMutationState) -> str:
     )
 
 
-def generate_string_template(state: FunctionMutationState) -> str:
+def generate_string_template(state: FunctionMutationState, project_root: str | None = None) -> str:
     """Generate exact-match tests for string mutation survivors."""
     func = state.function_name
-    module = state.file_path.replace("/", ".").replace("\\", ".").removesuffix(".py")
+    module = _path_to_mutmut_module(state.file_path, project_root=project_root)
     return (
         f'"""Tests targeting string mutation survivors in {func}."""\n'
         f"from {module} import {func}\n\n\n"
@@ -118,7 +126,7 @@ def generate_string_template(state: FunctionMutationState) -> str:
 
 
 # Map survivor categories to template generators
-CATEGORY_GENERATORS: dict[str, Callable[[FunctionMutationState], str]] = {
+CATEGORY_GENERATORS: dict[str, Callable[..., str]] = {
     "arithmetic": generate_arithmetic_template,
     "conditional": generate_conditional_template,
     "boundary": generate_boundary_template,
@@ -129,6 +137,7 @@ CATEGORY_GENERATORS: dict[str, Callable[[FunctionMutationState], str]] = {
 def generate_template_for_category(
     category: str,
     state: FunctionMutationState,
+    project_root: str | None = None,
 ) -> str | None:
     """Generate a test template for a specific survivor category.
 
@@ -137,4 +146,4 @@ def generate_template_for_category(
     generator = CATEGORY_GENERATORS.get(category)
     if generator is None:
         return None
-    return generator(state)
+    return generator(state, project_root=project_root)

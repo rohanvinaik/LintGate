@@ -52,7 +52,14 @@ class TestArithmeticTemplate:
     def test_uses_module_path(self):
         state = _make_state(file="src/math.py")
         template = generate_arithmetic_template(state)
-        assert "from src.math import" in template
+        # src. prefix is stripped to match mutmut v3 naming
+        assert "from math import" in template
+
+    def test_uses_module_path_with_project_root(self):
+        """Absolute file_path + project_root produces correct import."""
+        state = _make_state(file="/home/user/proj/src/model_atlas/db.py")
+        template = generate_arithmetic_template(state, project_root="/home/user/proj")
+        assert "from model_atlas.db import" in template
 
     def test_compiles(self):
         state = _make_state()
@@ -219,9 +226,7 @@ class TestPrescriptionEngineTemplates:
         engine = PrescriptionEngine()
         diag = engine.diagnose(state)
 
-        decomp_p = [
-            p for p in diag.prescriptions if p.category.value == "decompose_function"
-        ]
+        decomp_p = [p for p in diag.prescriptions if p.category.value == "decompose_function"]
         assert len(decomp_p) == 1
         assert decomp_p[0].suggested_test_template is None
 

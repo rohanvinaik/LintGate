@@ -55,13 +55,14 @@ class PrescriptionEngine:
     DECOMPOSITION_THRESHOLD = 0.50  # Survival > 50% across multiple categories
     ACTIONABLE_SURVIVAL_THRESHOLD = 0.10  # 10% survival starts triggering warnings
 
+    def __init__(self, project_root: str | None = None) -> None:
+        self.project_root = project_root
+
     def diagnose(self, state: FunctionMutationState) -> Diagnosis:
         """Analyze a state record and emit a complete diagnosis."""
         rate = state.survival_rate
         func_id = f"{state.file_path}::{state.function_name}"
-        surviving_cats = {
-            c for c, count in state.survived_by_category.items() if count > 0
-        }
+        surviving_cats = {c for c, count in state.survived_by_category.items() if count > 0}
 
         diag = Diagnosis(
             function_id=func_id,
@@ -123,7 +124,9 @@ class PrescriptionEngine:
             for cat in surviving_cats:
                 count = state.survived_by_category.get(cat, 0)
                 cat_survival_rate = count / state.total
-                template = generate_template_for_category(cat, state)
+                template = generate_template_for_category(
+                    cat, state, project_root=self.project_root
+                )
 
                 if cat == "arithmetic":
                     diag.prescriptions.append(
@@ -131,9 +134,7 @@ class PrescriptionEngine:
                             category=PrescriptionCategory.ADD_TEST_CASE,
                             reason="Arithmetic mutations survived, meaning math edge cases are unchecked.",
                             suggested_action="Add tests specifically verifying exact payload outputs, not just types.",
-                            gate_lift_projection_percent=cat_survival_rate
-                            * 100.0
-                            * 0.8,
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.8,
                             suggested_test_template=template,
                             survivor_category=cat,
                         )
@@ -144,9 +145,7 @@ class PrescriptionEngine:
                             category=PrescriptionCategory.ADD_BOUNDS_CHECK,
                             reason="Conditional branch mutations survived.",
                             suggested_action="Add tests covering both branches (True/False) of the logic.",
-                            gate_lift_projection_percent=cat_survival_rate
-                            * 100.0
-                            * 0.9,
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.9,
                             suggested_test_template=template,
                             survivor_category=cat,
                         )
@@ -157,9 +156,7 @@ class PrescriptionEngine:
                             category=PrescriptionCategory.STRENGTHEN_ASSERTION,
                             reason="String mutations survived, indicating weak assertions on text outputs.",
                             suggested_action="Assert exact string matching instead of substring or empty state.",
-                            gate_lift_projection_percent=cat_survival_rate
-                            * 100.0
-                            * 0.5,
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.5,
                             suggested_test_template=template,
                             survivor_category=cat,
                         )
@@ -170,9 +167,7 @@ class PrescriptionEngine:
                             category=PrescriptionCategory.STRENGTHEN_ASSERTION,
                             reason="Keyword (e.g. break->continue, True->False) mutations survived.",
                             suggested_action="Verify exact boolean states and loop exit side-effects.",
-                            gate_lift_projection_percent=cat_survival_rate
-                            * 100.0
-                            * 0.75,
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.75,
                             survivor_category=cat,
                         )
                     )
@@ -182,23 +177,18 @@ class PrescriptionEngine:
                             category=PrescriptionCategory.ADD_TEST_CASE,
                             reason=f"Mutations in {cat} survived.",
                             suggested_action="Review test coverage missing this semantic block.",
-                            gate_lift_projection_percent=cat_survival_rate
-                            * 100.0
-                            * 0.5,
+                            gate_lift_projection_percent=cat_survival_rate * 100.0 * 0.5,
                             survivor_category=cat,
                         )
                     )
 
         # Sort prescriptions by projection (impact)
-        diag.prescriptions.sort(
-            key=lambda p: p.gate_lift_projection_percent, reverse=True
-        )
+        diag.prescriptions.sort(key=lambda p: p.gate_lift_projection_percent, reverse=True)
 
         existing_tools = {a.tool for a in diag.next_actions}
         has_refactor_loop = "mutation_refactor_loop" in existing_tools
         if not has_refactor_loop and any(
-            p.category != PrescriptionCategory.DECOMPOSE_FUNCTION
-            for p in diag.prescriptions
+            p.category != PrescriptionCategory.DECOMPOSE_FUNCTION for p in diag.prescriptions
         ):
             diag.next_actions.append(
                 NextAction(
@@ -213,9 +203,9 @@ class PrescriptionEngine:
 
 
 MUTCH004_ENFORCEMENT_THRESHOLDS: dict[str, dict[float, float]] = {
-    "audit": {},                          # no gating
-    "graduated": {0.1: 0.2, 0.3: 0.5},   # spec<0.1→conf*0.2, spec<0.3→conf*0.5
-    "strict": {0.5: 0.0},                # spec<0.5→suppress (multiply by 0)
+    "audit": {},  # no gating
+    "graduated": {0.1: 0.2, 0.3: 0.5},  # spec<0.1→conf*0.2, spec<0.3→conf*0.5
+    "strict": {0.5: 0.0},  # spec<0.5→suppress (multiply by 0)
 }
 
 

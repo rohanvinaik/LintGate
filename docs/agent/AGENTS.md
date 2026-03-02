@@ -110,7 +110,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `mutation_run_sampling` | Fast sampled mutation run | After editing specific files |
-| `mutation_run_full` | Deep exhaustive mutation profiling | Verify test quality of component |
+| `mutation_run_full` | Deep exhaustive mutation profiling (Tier 2) | Verify test quality of component; also auto-scheduled by ControlPlane when `tier2_auto_schedule: true` |
 | `mutation_get_state` | Current mutation state and metrics | Review previous runs |
 | `mutation_prescribe` | Deterministic prescriptions from profiles | After mutation run |
 | `mutation_decompose` | Find entangled functions (mode: auto/static/dynamic) | Refactoring decisions, cold-start projects |

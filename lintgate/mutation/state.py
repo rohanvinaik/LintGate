@@ -218,9 +218,7 @@ class MutationStateManager:
         ``file_path::function_name`` key is used (backward-compatible).
         """
         if project_root is not None:
-            func_id = canonicalize_function_id(
-                state.file_path, state.function_name, project_root
-            )
+            func_id = canonicalize_function_id(state.file_path, state.function_name, project_root)
         else:
             func_id = f"{state.file_path}::{state.function_name}"
         self.state[func_id] = state
@@ -247,10 +245,45 @@ class MutationStateManager:
             return True
 
         # If we want a deep profile but only have a sample, we must run.
-        return (
-            target_depth == CoverageDepth.PROFILED
-            and st.depth != CoverageDepth.PROFILED
-        )
+        return target_depth == CoverageDepth.PROFILED and st.depth != CoverageDepth.PROFILED
+
+
+def _path_to_mutmut_module(path: str, project_root: str | None = None) -> str:
+    """Convert a file path to the module name mutmut v3 uses internally.
+
+    Replicates mutmut v3's ``get_mutant_name()`` transformations
+    (``mutmut/__main__.py:336-343``):
+
+    1. Strip ``.py`` extension, replace path separators with dots.
+    2. Strip leading ``src.`` prefix (src-layout convention).
+    3. Collapse ``.__init__.`` to ``.`` / strip trailing ``.__init__``.
+
+    When *project_root* is provided, the path is first relativized so that
+    absolute paths (as stored in ``FunctionMutationState.file_path``) produce
+    correct module names.
+
+    Examples::
+
+        >>> _path_to_mutmut_module("lintgate/mutation/engine.py")
+        'lintgate.mutation.engine'
+        >>> _path_to_mutmut_module("src/model_atlas/spreading.py")
+        'model_atlas.spreading'
+        >>> _path_to_mutmut_module("src/model_atlas/__init__.py")
+        'model_atlas'
+    """
+    if project_root is not None:
+        path = os.path.relpath(path, project_root)
+    module_name = os.path.splitext(path)[0].replace(os.sep, ".").replace("/", ".")
+    if module_name.startswith("."):
+        module_name = module_name[1:]
+    # mutmut v3: strip src. prefix
+    if module_name.startswith("src."):
+        module_name = module_name[4:]
+    # mutmut v3: collapse .__init__. to . and strip trailing .__init__
+    module_name = module_name.replace(".__init__.", ".")
+    if module_name.endswith(".__init__"):
+        module_name = module_name[: -len(".__init__")]
+    return module_name
 
 
 def canonicalize_function_id(

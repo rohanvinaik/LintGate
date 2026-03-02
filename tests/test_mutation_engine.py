@@ -74,9 +74,7 @@ def test_mutation_engine_background_profiling_test_impact(mock_state_manager, bu
     test_mapping = {"src/a.py": ["tests/test_a.py::test_foo"]}
 
     with patch.object(engine, "_execute_mutmut", return_value=True) as mock_exec:
-        engine.run_background_profiling(
-            ["src/a.py", "src/b.py"], test_mapping, telemetry
-        )
+        engine.run_background_profiling(["src/a.py", "src/b.py"], test_mapping, telemetry)
 
         # a.py has a mapping
         mock_exec.assert_any_call(
@@ -113,9 +111,7 @@ def test_mutation_engine_parse_mutmut_results(mock_state_manager, budget):
         mock_run.return_value = MagicMock(returncode=0, stdout=mock_output)
 
         with (
-            patch(
-                "lintgate.mutation.engine.compute_content_hash", return_value="hash1"
-            ),
+            patch("lintgate.mutation.engine.compute_content_hash", return_value="hash1"),
             patch("os.path.exists", return_value=True),
             patch("pathlib.Path.read_text", return_value=""),
         ):
@@ -129,9 +125,7 @@ def test_mutation_engine_parse_mutmut_results(mock_state_manager, budget):
             assert state.survived == 1
 
 
-def test_mutation_engine_compute_relevant_categories(
-    mock_state_manager, budget, tmp_path
-):
+def test_mutation_engine_compute_relevant_categories(mock_state_manager, budget, tmp_path):
     """Verify AST-based characteristic extraction."""
     engine = MutationEngine(mock_state_manager, budget)
 
@@ -148,9 +142,7 @@ def math_func(x):
     assert MutationOperatorCategory.STRING not in cats
 
 
-def test_mutation_engine_inline_sampling_with_filtering(
-    mock_state_manager, budget, tmp_path
-):
+def test_mutation_engine_inline_sampling_with_filtering(mock_state_manager, budget, tmp_path):
     """Verify filtering is wired into sampling."""
     engine = MutationEngine(mock_state_manager, budget)
     telemetry = MutationTelemetry("test")
@@ -170,3 +162,38 @@ def test_mutation_engine_inline_sampling_with_filtering(
         args, kwargs = mock_exec.call_args
         assert "relevant_categories" in kwargs
         assert isinstance(kwargs["relevant_categories"], set)
+
+
+# --- src/ layout fixes ---
+
+
+def test_path_to_mutmut_module_flat_layout():
+    """Flat layout paths are unchanged."""
+    from lintgate.mutation.state import _path_to_mutmut_module
+
+    assert _path_to_mutmut_module("lintgate/mutation/engine.py") == "lintgate.mutation.engine"
+
+
+def test_path_to_mutmut_module_src_layout():
+    """src/ prefix is stripped to match mutmut v3 naming."""
+    from lintgate.mutation.state import _path_to_mutmut_module
+
+    assert _path_to_mutmut_module("src/model_atlas/spreading.py") == "model_atlas.spreading"
+
+
+def test_path_to_mutmut_module_src_init():
+    """__init__ is collapsed after src/ stripping."""
+    from lintgate.mutation.state import _path_to_mutmut_module
+
+    assert _path_to_mutmut_module("src/model_atlas/__init__.py") == "model_atlas"
+
+
+def test_match_path_src_layout():
+    """Demangled path without src/ matches requested path with src/."""
+    from lintgate.mutation.engine import _match_path
+
+    # _demangle produces 'model_atlas/spreading.py' but the requested path is
+    # 'src/model_atlas/spreading.py'. _match_path should find the match.
+    result = _match_path("model_atlas/spreading.py", ["src/model_atlas/spreading.py"])
+    assert result is not None
+    assert result.endswith("src/model_atlas/spreading.py")

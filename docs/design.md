@@ -257,6 +257,35 @@ MCP tools:
 - `analyze_test_strength(path)` — project-wide effectiveness report with top vulnerable functions and assertion upgrade suggestions
 - `inspect_test_assertions(path, test_file)` — per-assertion drill-down into a single test file
 
+### Mutation Channel — Tier 2 Auto-Scheduling
+
+The mutation channel runs Tier 1 (sampling) inline during ControlPlane execution. Tier 2 (full profiling via `mutation_run_full`) is heavier — minutes, not seconds — and runs in a background thread managed by `MutationOrchestrator`.
+
+After computing findings, the channel optionally enqueues Tier 2 runs for files with confirmed gaps. Priority is assigned by finding code:
+
+| Finding code | Priority | Signal |
+|---|---|---|
+| MUTCH008 | `NO_DATA` (0) | Pure function with zero mutation state |
+| MUT003, MUTCH006 | `CONFIRMED_GAP` (1) | Sampled data shows survival gaps |
+| MUTCH005 | `STALE` (2) | Code changed since last profiling |
+
+Safety: Tier 2 runs only when the Tier 1 queue is empty. Serial execution prevents pyproject.toml race conditions. Session caps, debounce intervals, and dedup guards prevent runaway profiling.
+
+Configuration:
+```yaml
+controlplane:
+  channels:
+    mutation:
+      timeout_ms: 15000
+      tier2_auto_schedule: true       # Enable ControlPlane-triggered Tier 2
+      tier2_max_per_session: 3        # Max Tier 2 runs per session
+      tier2_timeout_s: 300            # Per-run timeout
+      tier2_debounce_s: 120.0         # Min seconds between runs of same file
+      enforcement_mode: audit         # audit | graduated | strict
+```
+
+`tier2_auto_schedule` defaults to `false` — opt-in only. The remaining settings flow into `MutationOrchestrator.configure_tier2()` via the existing `ChannelConfig.settings` catch-all.
+
 ### Cold-Start Bootstrap Pipeline
 
 The mutation→decompose→refactor pipeline is powerful but silent for exactly the projects that need guidance most: those with zero tests. `mutation_decompose` returns 0 candidates without test data. The bootstrap pipeline breaks this chicken-and-egg problem by generating deterministic test scaffolding from AST analysis alone — no LLM calls, fully resumable.

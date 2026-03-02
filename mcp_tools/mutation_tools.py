@@ -91,9 +91,7 @@ def _impl_run_sampling(
         return None
 
     telemetry = MutationTelemetry("sampling_run")
-    results = engine.run_inline_sampling(
-        files, telemetry, project_root=project_root
-    )
+    results = engine.run_inline_sampling(files, telemetry, project_root=project_root)
 
     return {
         "run_id": telemetry.run_id,
@@ -106,9 +104,7 @@ def _impl_run_sampling(
     }
 
 
-def _impl_run_full(
-    engine: Any, project_root: str, files: list[str] | None
-) -> dict[str, Any]:
+def _impl_run_full(engine: Any, project_root: str, files: list[str] | None) -> dict[str, Any]:
     """Run full mutation profiling with test-impact gating."""
     from lintgate.mutation.engine import _is_mutant_path
     from lintgate.mutation.policy import MutationTelemetry
@@ -171,6 +167,7 @@ def _impl_prescribe(
     file: str | None,
     function: str | None,
     min_depth: str,
+    project_root: str | None = None,
 ) -> dict[str, Any]:
     """Generate prescriptions from mutation profiles."""
     import dataclasses
@@ -178,11 +175,9 @@ def _impl_prescribe(
     from lintgate.mutation.prescriptions import PrescriptionEngine
     from lintgate.mutation.state import CoverageDepth
 
-    p_engine = PrescriptionEngine()
+    p_engine = PrescriptionEngine(project_root=project_root)
     min_depth_enum = (
-        CoverageDepth.SAMPLED
-        if min_depth.lower() == "sampled"
-        else CoverageDepth.PROFILED
+        CoverageDepth.SAMPLED if min_depth.lower() == "sampled" else CoverageDepth.PROFILED
     )
 
     filtered_states = []
@@ -191,10 +186,7 @@ def _impl_prescribe(
             continue
         if function and state.function_name != function:
             continue
-        if (
-            min_depth_enum == CoverageDepth.PROFILED
-            and state.depth != CoverageDepth.PROFILED
-        ):
+        if min_depth_enum == CoverageDepth.PROFILED and state.depth != CoverageDepth.PROFILED:
             continue
         filtered_states.append(state)
 
@@ -291,9 +283,7 @@ def _impl_decompose(
 def _find_before_state(engine: Any, file: str, function: str | None) -> Any:
     """Find the before-state for a function in the mutation state manager."""
     for _key, state in engine.state_manager.state.items():
-        if state.file_path.endswith(file) and (
-            not function or state.function_name == function
-        ):
+        if state.file_path.endswith(file) and (not function or state.function_name == function):
             return state
     return None
 
@@ -310,9 +300,7 @@ def _reprofile_function(
     abs_file = os.path.join(project_root, file)
     if not os.path.exists(abs_file):
         abs_file = file
-    results = engine.run_inline_sampling(
-        [abs_file], telemetry, project_root=project_root
-    )
+    results = engine.run_inline_sampling([abs_file], telemetry, project_root=project_root)
 
     for state in results:
         if not function or state.function_name == function:
@@ -345,9 +333,7 @@ def _generate_after_prescriptions(
 
     p_engine = PrescriptionEngine()
     for state in engine.state_manager.state.values():
-        if state.file_path.endswith(file) and (
-            not function or state.function_name == function
-        ):
+        if state.file_path.endswith(file) and (not function or state.function_name == function):
             diag = p_engine.diagnose(state)
             return [dataclasses.asdict(p) for p in diag.prescriptions]
     return []
@@ -513,7 +499,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         """
         project_root = helpers["_validate_project_root"](path)
         engine = _get_engine(project_root)
-        result = _impl_prescribe(engine, file, function, min_depth)
+        result = _impl_prescribe(engine, file, function, min_depth, project_root=project_root)
         return helpers["_json_dumps"](result)
 
     @mcp.tool()
