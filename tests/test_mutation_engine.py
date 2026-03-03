@@ -1,3 +1,4 @@
+import logging
 import os
 from unittest.mock import MagicMock, patch
 
@@ -197,3 +198,166 @@ def test_match_path_src_layout():
     result = _match_path("model_atlas/spreading.py", ["src/model_atlas/spreading.py"])
     assert result is not None
     assert result.endswith("src/model_atlas/spreading.py")
+
+
+# --- Source protection tests ---
+
+
+class TestSourceProtection:
+    """Tests for source backup/restore in _execute_mutmut()."""
+
+    def test_source_files_restored_after_corruption(self, mock_state_manager, budget, tmp_path):
+        """Source files are restored even when mutmut rewrites them in-place."""
+        engine = MutationEngine(mock_state_manager, budget)
+
+        src = tmp_path / "mod.py"
+        original = "def f(): return 1\n"
+        src.write_text(original, "utf-8")
+
+        # Simulate mutmut corrupting the file during subprocess.run
+        def corrupt_source(*args, **kwargs):
+            src.write_text("# TRAMPOLINE\ndef _mutmut_trampoline(): ...\n", "utf-8")
+            return MagicMock(returncode=0)
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool.mutmut]\n", "utf-8")
+
+        with patch("subprocess.run", side_effect=corrupt_source):
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp_path)
+                engine._execute_mutmut(
+                    paths=[str(src)],
+                    depth=CoverageDepth.SAMPLED,
+                    test_filter=None,
+                )
+            finally:
+                os.chdir(old_cwd)
+
+        assert src.read_text("utf-8") == original
+
+    def test_source_files_restored_after_exception(self, mock_state_manager, budget, tmp_path):
+        """Source files are restored even when _execute_mutmut raises."""
+        engine = MutationEngine(mock_state_manager, budget)
+
+        src = tmp_path / "mod.py"
+        original = "def g(): return 2\n"
+        src.write_text(original, "utf-8")
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool.mutmut]\n", "utf-8")
+
+        import subprocess
+
+        with patch("subprocess.run", side_effect=subprocess.SubprocessError("boom")):
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp_path)
+                result = engine._execute_mutmut(
+                    paths=[str(src)],
+                    depth=CoverageDepth.SAMPLED,
+                    test_filter=None,
+                )
+            finally:
+                os.chdir(old_cwd)
+
+        assert result is False
+        assert src.read_text("utf-8") == original
+
+    def test_multiple_source_files_all_restored(self, mock_state_manager, budget, tmp_path):
+        """All source files are backed up and restored when multiple paths given."""
+        engine = MutationEngine(mock_state_manager, budget)
+
+        src_a = tmp_path / "a.py"
+        src_b = tmp_path / "b.py"
+        orig_a = "def a(): return 'a'\n"
+        orig_b = "def b(): return 'b'\n"
+        src_a.write_text(orig_a, "utf-8")
+        src_b.write_text(orig_b, "utf-8")
+
+        def corrupt_both(*args, **kwargs):
+            src_a.write_text("CORRUPTED_A", "utf-8")
+            src_b.write_text("CORRUPTED_B", "utf-8")
+            return MagicMock(returncode=0)
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool.mutmut]\n", "utf-8")
+
+        with patch("subprocess.run", side_effect=corrupt_both):
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp_path)
+                engine._execute_mutmut(
+                    paths=[str(src_a), str(src_b)],
+                    depth=CoverageDepth.SAMPLED,
+                    test_filter=None,
+                )
+            finally:
+                os.chdir(old_cwd)
+
+        assert src_a.read_text("utf-8") == orig_a
+        assert src_b.read_text("utf-8") == orig_b
+
+    def test_hash_mismatch_logs_critical(self, mock_state_manager, budget, tmp_path, caplog):
+        """CRITICAL is logged when restored content doesn't match the backup hash."""
+        engine = MutationEngine(mock_state_manager, budget)
+
+        src = tmp_path / "mod.py"
+        original = "def h(): return 3\n"
+        src.write_text(original, "utf-8")
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool.mutmut]\n", "utf-8")
+
+        call_count = 0
+        real_write = type(src).write_text
+
+        def flaky_write(self_path, content, *args, **kwargs):
+            nonlocal call_count
+            # Let the backup-phase write succeed normally, but sabotage
+            # the first restore write (the one in the finally block)
+            if self_path.name == "mod.py":
+                call_count += 1
+                if call_count == 1:
+                    # First write_text for mod.py in finally: write wrong content
+                    real_write(self_path, "WRONG CONTENT", *args, **kwargs)
+                    return
+            real_write(self_path, content, *args, **kwargs)
+
+        with (
+            patch("subprocess.run", return_value=MagicMock(returncode=0)),
+            patch.object(type(src), "write_text", flaky_write),
+            caplog.at_level(logging.CRITICAL, logger="lintgate.mutation.engine"),
+        ):
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp_path)
+                engine._execute_mutmut(
+                    paths=[str(src)],
+                    depth=CoverageDepth.SAMPLED,
+                    test_filter=None,
+                )
+            finally:
+                os.chdir(old_cwd)
+
+        assert any("Hash mismatch after restore" in r.message for r in caplog.records)
+
+    def test_trampoline_detection_on_recovery(self, tmp_path, mock_state_manager, budget, caplog):
+        """_recover_if_needed() detects and logs trampoline-corrupted files."""
+        corrupted = tmp_path / "corrupted.py"
+        corrupted.write_text(
+            "def _mutmut_trampoline(): pass\ndef real(): return 1\n", "utf-8"
+        )
+        clean = tmp_path / "clean.py"
+        clean.write_text("def normal(): return 2\n", "utf-8")
+
+        with caplog.at_level(logging.CRITICAL, logger="lintgate.mutation.engine"):
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp_path)
+                MutationEngine._recover_if_needed()
+            finally:
+                os.chdir(old_cwd)
+
+        assert any("trampoline artifacts" in r.message for r in caplog.records)
+        assert any("corrupted.py" in r.message for r in caplog.records)

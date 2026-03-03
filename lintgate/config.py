@@ -65,7 +65,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
 
     cp_config = ControlPlaneConfig(
         enabled=cp_raw.get("enabled", False),
-        latency_budget_ms=cp_raw.get("latency_budget_ms", 15000),
+        latency_budget_ms=cp_raw.get("latency_budget_ms", 120_000),
         advisory_default=cp_raw.get("advisory_default", True),
         session_memory=cp_raw.get("session_memory", False),
         session_max_age_hours=float(cp_raw.get("session_max_age_hours", 4.0)),

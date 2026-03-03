@@ -137,7 +137,7 @@ what performance engineering is actually possible.
 - **Sussman's SICP** — Programs as specifications for computational processes,
   abstraction barriers, the "what" vs "how" distinction.
 
-### 5.2 Partially Explored
+### 5.2 Partially Explored → Actively Explored by Related Groups
 
 The reframing from "test quality" to "specification completeness" exists in pockets
 (Gordon Fraser, Andrea Arcuri, the PITest community) but is not the dominant framing.
@@ -145,11 +145,27 @@ Mainstream mutation testing literature treats surviving mutants as a measure of 
 suite adequacy — how good are the tests? — not as a statement about the function's
 contract.
 
+However, recent work from three independent groups converges on the same reframing:
+
+- **Xu et al. (Waterloo)** — FAST (IEEE S&P 2023) explicitly treats mutation testing
+  as a specification completeness audit for formally verified systems. "Not All Move
+  Specifications Are Created Equal" (LangSec 2024) formalizes the quality taxonomy
+  that maps to our specification lattice. The Agentic Specification Generator
+  (ASE 2025) automates specification synthesis using mutation feedback.
+- **Lévai & McMinn (Sheffield)** — mutest-rs demonstrates compiler-integrated mutation
+  with static dispatch tables and non-conflicting mutation batching (ICST 2023,
+  TOSEM 2026). Their cost model formalization (66.4% runtime reduction from batching)
+  validates Section 6's execution architecture.
+- **Vikram & Padhye (CMU)** — mu2 (ISSTA 2023) uses mutation kill count as a fuzzer
+  fitness function, with dead mutant retirement and cartography-then-refine execution.
+  This is the mu2 pattern that validates Section 7's two-tier orchestration.
+
 ### 5.3 Novel Synthesis
 
 The operational chain — **mutation pressure -> forced decomposition -> algebraic
 properties -> mechanizable optimization** — does not appear to be articulated as a
-unified theory anywhere in the literature. Related traditions each get part of it:
+unified theory anywhere in the literature, though recent work independently validates
+individual links in the chain. Related traditions each get part of it:
 
 - **Haskell's equational reasoning** (SPJ's "Playing by the Rules") demonstrates
   algebraic properties enabling automated optimization — but starts from purity and
@@ -162,6 +178,16 @@ unified theory anywhere in the literature. Related traditions each get part of i
   don't interact with the "fuzzy" creative layer.
 - **Abstract interpretation** (Cousot & Cousot) approximates semantics statically
   but doesn't produce the decomposition pressure mutation testing creates.
+
+What LintGate uniquely contributes is not any single link but the **operational chain
+connecting them**: prediction (static signals → specification level) → targeted
+execution (Monty Hall filtering → in-process mutation) → decomposition prescription
+(survival categories → architectural moves) → test synthesis (mu2 fitness → minimal
+pinning sets) → verification (re-profile → calibrate) → optimization gating
+(specification completeness → safe algebraic transforms). FAST validates the
+measurement theory, mu2 validates the synthesis loop, Sheffield validates the
+execution architecture — but the end-to-end chain from static prediction through
+decomposition to optimization gating is novel.
 
 ### 5.4 The Key Conjecture
 
@@ -215,6 +241,109 @@ decomposition axis. But it's never wrong that the function is underspecified. An
 knowing *that* — knowing where the specification gaps are, at per-function granularity,
 with categorical breakdown — is the kind of signal that changes how you write code.
 
+### 5.7 Research Grounding — Connecting Three Traditions
+
+Three independent research traditions converge on pieces of the theory articulated
+here. None connects all the pieces; their synthesis is what makes LintGate's approach
+novel. But each provides formal backing for claims that were initially empirical.
+
+**Sussman (MIT) — Programs as Specifications.** SICP's framing that programs are
+"precise specifications of computational processes" is the philosophical foundation.
+Sussman's "abstraction barrier" maps directly to the decomposition prescribed by
+multi-category survival: when a function has survivors in string, conditional, AND
+arithmetic categories, it has violated an abstraction barrier by mixing concerns. His
+distinction between "what" (declarative knowledge) and "how" (imperative knowledge)
+maps to the SICP/fuzzy classification from the ModelAtlas retrospective (Part IV):
+SICP-style code is fully specifiable because it computes a definite "what"; fuzzy code
+has an irreducible "how" that resists full specification because the "right answer" is
+a design decision.
+
+**Xu et al. (Waterloo) — Specification Completeness as Measurable Property.** FAST
+(Ji & Xu, IEEE S&P 2023) mutates CODE and checks if SPEC catches it — exactly the
+operation LintGate performs with test suites as implicit specifications. FAST
+formalizes "specification blind spots" as gaps where mutated code still conforms to the
+spec. Each blind spot is a degree of freedom (Section 8.3's "negative space"). "Not
+All Move Specifications Are Created Equal" (Xu, LangSec 2024) provides the taxonomy
+for specification quality that maps to our specification lattice (Section 4): some
+specifications constrain behavior meaningfully (value assertions → high kill rate),
+others are tautological (structural assertions → low kill rate despite passing tests).
+eBPF SpecCheck (Lyu, Payer, Xu et al., SOSP 2025) formalizes the oracle taxonomy:
+crash oracles (our `killed_by_crash`) prove crash-freedom but not behavioral
+correctness; specification oracles (our `killed_by_assertion`) prove the function
+computes the right output. This validates and extends the `specification_strength`
+metric in `FunctionMutationState`. FuzzSlice (Xu, ICSE 2024) demonstrates static
+analysis validated by targeted execution — the same pattern as our prediction layer
+(static signals → specification level) followed by mutation verification.
+
+**Lévai & McMinn (Sheffield) — Efficient Execution Architecture.** mutest-rs
+demonstrates compiler-integrated mutation via a static dispatch table: all mutations
+compiled into one binary, selected at runtime by a global handle. This is the
+architectural pattern for the in-process meta-mutant engine (Issue #250). Their
+non-conflicting mutation batching formalization (ICST 2023, TOSEM 2026) proves that
+mutations in functions with disjoint call graphs can execute simultaneously, achieving
+66.4% runtime reduction. This validates Section 6.3's parallelization claim and
+provides the mathematical cost model. Their safety precondition — mutations conflict
+iff their target functions share test execution paths — maps to our convergence
+engine's `LensKind.CALL_GRAPH` evidence.
+
+**Vikram & Padhye (CMU) — Mutation as Fitness Function.** mu2 (ISSTA 2023) inverts the
+standard relationship: instead of running tests against mutants, it uses mutation kill
+count as a fitness function for a greybox fuzzer. Inputs that kill more mutants are
+prioritized. The cartography phase (map mutation sites once, amortize cost) IS the
+Monty Hall filtering from Section 6.1. The dead mutant retirement (killed mutants
+excluded from future runs, surviving set shrinks monotonically) IS the progressive
+convergence from Section 7.3. mu2 validates the self-perpetuating cycle from the
+ModelAtlas retrospective Part IV: mutation data guides input generation, which kills
+mutants, which updates the mutation data.
+
+**The Synthesis.** Sussman says programs ARE specifications. Xu shows specifications
+have measurable completeness and quality taxonomies. Sheffield shows how to measure
+efficiently. Padhye shows how to close the loop between measurement and synthesis.
+DeMillo provides the measurement mechanism (mutant survival under the competent
+programmer hypothesis). LintGate's contribution: the operational chain that makes this
+useful for working engineers — prediction → targeted execution → decomposition
+prescription → test synthesis → verification → calibration → optimization gating.
+
+### 5.8 The Orthogonal Lens Theorem
+
+The prediction layer achieves 94.8% scope reduction on LintGate itself: of 8,118
+functions, only 425 need mutation verification. This is achieved by combining four
+static signals — `semantic_ratio` from test effectiveness, `weakness_taxonomy` from
+test effectiveness, AST category count from local analysis, and `purity` from the
+algebra pipeline — through a 6-path deterministic decision tree.
+
+**Why does this work?** The signals are independently computed by different channels
+with different methodologies. No single signal achieves more than ~60% accuracy. Yet
+their combination achieves 94.8%. The explanation lies in the orthogonality of the
+measurement axes.
+
+Each channel measures a different dimension of Xu's specification quality:
+
+| Channel | Dimension Measured | Independence Basis |
+|---------|-------------------|-------------------|
+| Test effectiveness (`semantic_ratio`) | Assertion quality — do tests check values? | Operates on test AST, not source |
+| Test effectiveness (`weakness_taxonomy`) | Weakness classification — structural vs. semantic | Derived from assertion taxonomy |
+| AST analysis (`num_categories`) | Behavioral dimensionality — how many concerns? | Operates on source AST only |
+| Algebra (`purity`) | Structural property — side effects? | Operates on data flow analysis |
+
+The convergence engine's probability union formula — `1 - Π(1 - confidence_i)` —
+assumes independence. If three lenses each have 0.6 confidence, the union gives 0.936.
+The empirical 94.8% is consistent with 3-4 independent signals at moderate individual
+accuracy.
+
+The information-theoretic framing: if the signals are truly independent observations
+of the same latent variable (specification completeness), each adds fresh information.
+The total information is the sum of individual contributions. This is the Naive Bayes
+assumption applied to specification prediction — and like Naive Bayes in practice, it
+works well even when the independence assumption is only approximately true.
+
+This has practical implications for extending the prediction layer: the highest-value
+new signal is one that is maximally independent of existing signals (measures a
+dimension none of the current channels capture). Candidates include `fan_in` (measures
+how many callers depend on the function — orthogonal to what the function does
+internally) and `cochange` frequency (measures coupling — orthogonal to static
+properties). See Issue #258 for the full exploration plan.
+
 ## 6. Efficient Execution: The Monty Hall Architecture
 
 Mutation testing is expensive. If it is a first-order signal, hyper-optimizing the
@@ -258,6 +387,55 @@ The finite set of mutation operators (~15–20 distinct AST transformations) ena
   invalidated on test file changes). 15 mutations x 3 relevant tests each >> 15
   mutations x full test suite.
 
+### 6.4 Research-Backed Execution Architecture
+
+The three execution optimization layers above (Sections 6.1–6.3) map directly to
+techniques validated by recent systems research. The combined cost model transforms
+mutation testing from prohibitively expensive to routine.
+
+**In-process meta-mutant (mutest-rs pattern).** Replace the mutmut subprocess with
+an in-process mutator. For each function, generate all mutant ASTs using Python's `ast`
+module, construct a dispatch table indexed by `(category, mutation_id)`, and select the
+active mutation via a module-level toggle. This eliminates the 0.39s subprocess startup
+per invocation and the source file backup/restore dance. All transforms happen
+in-memory — no disk writes, no trampoline artifacts, no corruption risk. The dispatch
+table approach is proven by mutest-rs (Lévai & McMinn, Sheffield) and mu2's
+`MutationClassLoader` (Vikram & Padhye, CMU). See Issue #250.
+
+**Non-conflicting mutation batching (Sheffield pattern).** Two mutations are
+non-conflicting if their target functions are disjoint in the call graph within a
+configured depth. Non-conflicting mutations can be activated simultaneously — one test
+run produces multiple data points. Lévai & McMinn (ICST 2023, TOSEM 2026) report 66.4%
+runtime reduction from batching alone. Implementation requires: (1) a function-level
+conflict graph built from test coverage data or static call graph analysis, (2) a
+greedy graph coloring algorithm to find maximal independent sets, (3) failure
+attribution when a batch test run fails (binary search or per-assertion tracking). See
+Issue #253.
+
+**Coverage-guided test scoping (Mull pattern).** For each mutation, run only the tests
+that cover the mutated function, not the full suite. `coverage.py` already provides
+per-context line coverage in its `.coverage` SQLite database. The existing
+`test_impact.py` module parses this data at file granularity; extending to function
+granularity (mapping source lines to function boundaries via AST) yields precise
+per-mutation test selection. See Issue #260.
+
+**Combined cost model.** The current cost is:
+
+```
+O(functions × mutants_per_function × subprocess_startup × full_test_suite)
+```
+
+With all three optimizations:
+
+```
+O(batches × covering_tests_per_batch × in_process_toggle)
+```
+
+Where `batches = ceil(mutants / batch_size)` with batch_size typically 3–10 for
+well-structured code, and `covering_tests` is typically 2–5 per function vs. the full
+suite. Conservative estimate: 50–200x total cost reduction, making continuous mutation
+profiling practical as a background operation.
+
 ## 7. Orchestration: Two-Tier Progressive Execution
 
 ### 7.1 Inline Tier (On Edit, 2–5 Seconds)
@@ -300,6 +478,44 @@ By the time a user has:
 filtering reducing each function to 10–20 mutations, and test-impact selection
 reducing each mutation to 2–3 test runs, a 100-function project is fully profiled
 in that window.
+
+### 7.4 Two-Mode Orchestration — Passive Accumulator + Active Audit
+
+The two-tier execution model (Sections 7.1–7.2) implies two operationally distinct
+modes that should be explicitly separated rather than blurred.
+
+**Passive mode (background accumulator).** Starts automatically on `controlplane_run`.
+Symbolic-only — no source modification, no subprocess spawning, no test execution.
+Operations: read existing state from the specification ledger, run the predictor
+(`predict_specification_level`) to classify all functions, build category maps from AST
+analysis, emit findings to the ControlPlane, enrich convergence data. This mode builds
+a "symbolic mutation profile" — everything knowable about specification completeness
+without executing mutations. It should feel invisible: one worker, one core, running
+until the ledger is populated or the session ends.
+
+This maps to mu2's cartography phase (Vikram & Padhye, ISSTA 2023): map all mutation
+sites once, cheaply, as infrastructure for subsequent intensive analysis. The
+cartography IS the passive mode; the exploitation loop IS the active mode.
+
+**Active mode (intensive audit).** Triggered explicitly via MCP tools
+(`mutation_run_sampling`, `mutation_run_full`) or via `declare_mode("mutation_audit")`.
+Multi-worker, execution-intensive, informed by passive mode's accumulated data. Uses
+in-process mutation (Section 6.4), mutation batching, and coverage-guided test scoping
+for throughput. Produces authoritative data (`coverage_depth=PROFILED`) that supersedes
+passive predictions. May block for minutes.
+
+**Mode transition.** Configurable in `.claude/lintgate.yaml`:
+`mutation.mode: passive | active | auto`. The `auto` default runs passive during
+ControlPlane runs and active when MCP tools are explicitly invoked. Mode-aware
+scheduling: passive mode prioritizes prediction refresh and staleness detection; active
+mode uses the convergence-informed priority queue (TANGLED > UNSPECIFIED >
+CONFIRMED_GAP > NEARLY_SPECIFIED > STALE).
+
+**The passive mode output** is a new coverage depth level: `PREDICTED` (below
+`SAMPLED`). Findings clearly distinguish predicted vs. sampled vs. profiled data. The
+specification ledger (Issue #251) stores both passive predictions and active
+verification results, with source-hash invalidation triggering re-prediction on code
+changes. See Issue #254 for the full design.
 
 ## 8. Empirical Validation
 
@@ -549,3 +765,114 @@ Together, they form a symbolic specification of the delta between the code as it
 the code as it should be.
 
 This is outlined as a full implementation proposal in GitHub Issue #102.
+
+### 11.1 Mutation-Guided Test Synthesis
+
+The symbolic refactoring engine prescribes decomposition. But the other half of the
+cycle — generating the tests that pin each degree of freedom — also has research-backed
+architecture.
+
+**mu2's fitness function applied to test generation.** mu2 (Vikram & Padhye, ISSTA
+2023) uses mutation kill count as a fitness function for a greybox fuzzer: inputs that
+kill more mutants are prioritized, inputs that kill none are discarded. Applied to test
+synthesis, this means: instead of generating test TEMPLATES and hoping they kill
+mutants, generate test INPUTS guided by which mutants they kill. The mutation engine
+becomes the oracle for the test generator. See Issue #255.
+
+**Minimal pinning sets (FAST pattern).** FAST (Ji & Xu, IEEE S&P 2023) formalizes
+"specification blind spots" — gaps where mutated code conforms to the original spec.
+Each blind spot is a degree of freedom. The minimal fix is one assertion per blind
+spot, not one test class per mutation category. Five arithmetic mutants that all change
+the same `+` operator represent ONE degree of freedom, not five separate test needs. A
+single parametrized test with the right input kills all five. The test generator should
+search for high-kill-count inputs (set cover optimization), not enumerate per-mutant
+templates. See Issue #252.
+
+**Specification oracle taxonomy (eBPF SpecCheck pattern).** Not all kills are equal.
+eBPF SpecCheck (Lyu, Payer, Xu et al., SOSP 2025) distinguishes crash oracles from
+specification oracles. A crash-kill proves crash-freedom; an assertion-kill proves
+behavioral correctness. But assertion-kills vary in strength: `assert result is not
+None` (structural) is weaker than `assert result == expected` (value). The kill
+taxonomy extends the current binary `killed_by_assertion`/`killed_by_crash` to a
+multi-level classification: crash → type → structural → shape → value → property. Each
+level proves a different property, and the specification strength becomes a vector
+rather than a scalar. This enables more precise gating: caching requires value-level
+specification (must verify the cached value), while parallelization requires
+property-level specification (must verify associativity/commutativity). See Issue #256.
+
+**The synthesis loop.** These three patterns combine into a closed-loop test synthesis
+engine:
+
+1. Profile function → identify surviving mutants by category
+2. Group survivors by behavioral equivalence (same AST node = same degree of freedom)
+3. For each degree of freedom, generate candidate inputs using mu2 fitness
+4. Score candidates by kill count; keep high-scorers, discard zeros
+5. Classify kills by oracle level (crash/structural/value/property)
+6. Retire killed mutants; repeat on survivors until budget exhausted or all pinned
+7. Output: minimal pinning set with per-input kill attribution and oracle classification
+
+The loop is self-improving: each successfully pinned degree of freedom validates the
+category→input mapping and refines it for future synthesis.
+
+## 12. Related Systems
+
+LintGate's mutation testing subsystem sits at the intersection of four active research
+programs. Each addresses a different aspect of the same fundamental problem:
+understanding and improving specification completeness.
+
+### 12.1 FAST — Mutation as Specification Audit for Verified Systems
+
+FAST (Ji & Xu, IEEE S&P 2023) applies mutation testing to formally verified systems
+(seL4, Compcert). It mutates code and checks whether the formal specification catches
+the mutation. LintGate does the same thing for informally verified systems — test
+suites as implicit specifications. Where FAST checks satisfiability of formal specs,
+LintGate checks assertion-kills in test suites. The measurement theory is identical;
+the specification formalism differs.
+
+### 12.2 eBPF SpecCheck — Oracle Taxonomy and Specification Quality
+
+eBPF SpecCheck (Lyu, Payer, Xu et al., SOSP 2025) formalizes the distinction between
+crash oracles and specification oracles for the eBPF verifier. LintGate extends this
+taxonomy to mainstream Python testing: the `killed_by_assertion` vs `killed_by_crash`
+distinction maps directly to specification oracle vs crash oracle. The multi-level kill
+taxonomy (Issue #256) is the full operationalization of SpecCheck's oracle hierarchy
+for general-purpose code.
+
+### 12.3 mu2 — Mutation-Guided Fuzzing
+
+mu2 (Vikram & Padhye, ISSTA 2023) uses mutation kill count as a fuzzer fitness
+function. LintGate's test synthesis (Issue #255) is mu2 applied to specification
+completeness: instead of fuzzing for bugs, "fuzz" for test inputs that pin behavioral
+degrees of freedom. mu2's cartography-then-exploit architecture maps to LintGate's
+passive-then-active orchestration (Section 7.4). mu2's dead mutant retirement maps to
+the specification ledger's temporal tracking (Issue #251).
+
+### 12.4 mutest-rs — Compiler-Integrated Efficient Mutation
+
+mutest-rs (Lévai & McMinn, Sheffield) demonstrates that mutation testing can be made
+efficient enough for routine use through compiler integration and batching. LintGate's
+in-process meta-mutant (Issue #250) follows mutest-rs's dispatch table architecture
+adapted to Python's runtime. The non-conflicting mutation batching (Issue #253) follows
+Sheffield's formalization with call-graph-based conflict detection. Sheffield provides
+the execution efficiency; LintGate adds the specification-level interpretation and
+decomposition prescription that Sheffield's work does not address.
+
+### 12.5 LintGate's Unique Position
+
+What distinguishes LintGate from these systems is the **end-to-end operational chain**:
+
+```
+Static prediction (94.8% scope reduction)
+    → Targeted mutation execution (in-process, batched, test-scoped)
+    → Specification level classification (UNSPECIFIED → TANGLED → ... → SPECIFIED)
+    → Decomposition prescription (survival categories → architectural moves)
+    → Test synthesis (mu2 fitness → minimal pinning sets)
+    → Verification (re-profile → calibrate predictions)
+    → Optimization gating (specification completeness → safe algebraic transforms)
+```
+
+No existing system connects prediction through execution through decomposition through
+synthesis through verification through optimization. FAST measures but doesn't
+prescribe. mu2 synthesizes but doesn't decompose. mutest-rs executes efficiently but
+doesn't interpret. LintGate's contribution is the chain itself — making mutation
+testing not just a measurement tool but a specification convergence engine.

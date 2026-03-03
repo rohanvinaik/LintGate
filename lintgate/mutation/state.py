@@ -49,6 +49,22 @@ class ConfidenceLevel(str, Enum):
     HIGH = "high"
 
 
+class SpecificationLevel(str, Enum):
+    """Classification of a function's specification completeness.
+
+    Derived from mutation survival rate and category spread,
+    following the SICP/fuzzy distinction from mutation theory
+    (docs/mutation-theory.md Section 4, retrospective Part IV).
+    """
+
+    UNSPECIFIED = "unspecified"  # No tests at all (zero kills)
+    TANGLED = "tangled"  # >50% survival, multi-category (3+)
+    DECOMPOSITION_CANDIDATE = "decomposition_candidate"  # <50%, multi-category
+    FUZZY_ATOMIC = "fuzzy_atomic"  # >50% survival, single-category (irreducible)
+    NEARLY_SPECIFIED = "nearly_specified"  # <20%, single-category survivors
+    SPECIFIED = "specified"  # 0% survival
+
+
 @dataclass
 class FunctionMutationState:
     """Persistent state for a single function's mutation coverage."""
@@ -76,6 +92,9 @@ class FunctionMutationState:
 
     # Detailed breakdown (v2)
     survived_by_category: dict[str, int] = field(default_factory=dict)
+
+    # Specification completeness classification (mutation theory)
+    spec_level: SpecificationLevel = SpecificationLevel.UNSPECIFIED
 
     @property
     def survival_rate(self) -> float:
@@ -111,6 +130,7 @@ class FunctionMutationState:
         d = asdict(self)
         d["depth"] = self.depth.value
         d["confidence"] = self.confidence.value
+        d["spec_level"] = self.spec_level.value
         return d
 
     @classmethod
@@ -121,6 +141,10 @@ class FunctionMutationState:
             data["depth"] = CoverageDepth(data["depth"])
         if "confidence" in data:
             data["confidence"] = ConfidenceLevel(data["confidence"])
+        if "spec_level" in data:
+            data["spec_level"] = SpecificationLevel(data["spec_level"])
+        else:
+            data["spec_level"] = SpecificationLevel.UNSPECIFIED
 
         return cls(**data)
 

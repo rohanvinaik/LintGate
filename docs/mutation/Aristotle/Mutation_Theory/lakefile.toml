@@ -1,0 +1,10 @@
+name = "Mutation_Theory"
+version = "0.1.0"
+defaultTargets = ["mutation_theory"]
+
+[[lean_lib]]
+name = "MutationTheory"
+
+[[lean_exe]]
+name = "mutation_theory"
+root = "Main"

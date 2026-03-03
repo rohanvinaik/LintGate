@@ -68,6 +68,9 @@ class MutationChannel:
             manifest_hints,
         )
 
+        # Phase 2: Classify specification level and emit theory-informed findings
+        findings.extend(self._classify_and_emit(state_manager, relevant_files))
+
         self._maybe_enqueue_tier2(findings, event, config)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -109,16 +112,53 @@ class MutationChannel:
         event: SupervisionEvent,
         relevant_files: list[str],
     ) -> None:
-        """Queue sampling for stale or missing state in small changesets."""
+        """Queue sampling for stale or missing state, guided by predictions.
+
+        When predictor is available, only enqueues files where at least one
+        function has ``needs_verification=True``. Falls back to the original
+        staleness-based logic if the predictor import fails.
+
+        The orchestrator's 30s debounce provides sufficient rate limiting,
+        so we no longer cap at 5 files.
+        """
+        from lintgate.mutation.engine import SOURCE_PROTECTION_ACTIVE
+
+        if not SOURCE_PROTECTION_ACTIVE:
+            return
+
+        # Gate on staleness first — don't enqueue anything unless
+        # code or tests have actually changed.
         any_stale = any(
             state_manager.requires_run(f, "unknown", "unknown", CoverageDepth.SAMPLED)
             for f in (event.files_changed or [])
         )
-        if any_stale and len(relevant_files) <= 5:
-            from lintgate.mutation.automation import global_orchestrator
+        if not any_stale:
+            return
+
+        from lintgate.mutation.automation import global_orchestrator
+
+        # When predictor is available, use predictions to narrow the
+        # stale files to only those with uncertain specification levels.
+        try:
+            from lintgate.mutation.predictor import predict_for_file
+
+            property_manifest = event.context.get("property_manifest")
+            teff_manifest = event.context.get("test_effectiveness_manifest")
 
             for f in relevant_files:
-                global_orchestrator.enqueue(f, project_root=event.project_root)
+                predictions = predict_for_file(
+                    f, property_manifest, teff_manifest, event.project_root
+                )
+                if not predictions or any(
+                    p.needs_verification for p in predictions.values()
+                ):
+                    global_orchestrator.enqueue(f, project_root=event.project_root)
+            return
+        except Exception:
+            pass  # Fall back to original logic
+
+        for f in relevant_files:
+            global_orchestrator.enqueue(f, project_root=event.project_root)
 
     def _build_findings(
         self,
@@ -292,6 +332,140 @@ class MutationChannel:
                     ],
                 )
             )
+
+        return issues
+
+    def _classify_and_emit(
+        self,
+        state_manager: MutationStateManager,
+        relevant_files: list[str],
+    ) -> list[LintIssue]:
+        """Classify specification level for each function and emit theory-informed findings.
+
+        Runs after _build_findings(). For each FunctionMutationState with data:
+        1. Classify via classify_specification_level()
+        2. Persist the spec_level on the state
+        3. Emit MUTCH009 (NEARLY_SPECIFIED), MUTCH010 (FUZZY_ATOMIC), MUTCH011 (TANGLED)
+
+        Saves state once after the classification pass.
+        """
+        from lintgate.mutation.prescriptions import classify_specification_level
+        from lintgate.mutation.state import SpecificationLevel
+        from lintgate.next_action import NextAction
+
+        issues: list[LintIssue] = []
+        classified_any = False
+
+        for state in state_manager.state.values():
+            if state.total == 0:
+                continue
+            if relevant_files and state.file_path not in relevant_files:
+                continue
+
+            spec_level = classify_specification_level(state)
+            state.spec_level = spec_level
+            classified_any = True
+
+            surviving_cats = [c for c, count in state.survived_by_category.items() if count > 0]
+            rate_pct = state.survival_rate * 100
+
+            if spec_level == SpecificationLevel.NEARLY_SPECIFIED:
+                cat_name = surviving_cats[0] if surviving_cats else "unknown"
+                survivor_count = state.survived_by_category.get(cat_name, 0) if surviving_cats else state.survived
+                issues.append(
+                    LintIssue(
+                        linter=self.name,
+                        kind="MUTCH009",
+                        message=(
+                            f"Function '{state.function_name}' has single-category survival "
+                            f"at {rate_pct:.0f}% ({cat_name}). "
+                            f"{survivor_count} targeted test(s) would reach full specification."
+                        ),
+                        file=state.file_path,
+                        severity="informational",
+                        confidence=0.80,
+                        evidence={
+                            "spec_level": spec_level.value,
+                            "surviving_category": cat_name,
+                            "survivor_count": survivor_count,
+                            "survival_rate": state.survival_rate,
+                            "depth": state.depth.value,
+                            "next_action": NextAction(
+                                tool="mutation_prescribe_tests",
+                                args={"path": ".", "file": state.file_path, "function": state.function_name},
+                                reason=f"Nearly specified — {survivor_count} targeted test(s) to full spec",
+                                priority=2,
+                            ).to_dict(),
+                        },
+                        suggestions=[
+                            f"Add targeted test(s) for the '{cat_name}' mutation category.",
+                            "Use mutation_prescribe_tests to generate test skeletons.",
+                        ],
+                    )
+                )
+
+            elif spec_level == SpecificationLevel.FUZZY_ATOMIC:
+                cat_list = ", ".join(surviving_cats) if surviving_cats else "unknown"
+                issues.append(
+                    LintIssue(
+                        linter=self.name,
+                        kind="MUTCH010",
+                        message=(
+                            f"Function '{state.function_name}' has irreducible "
+                            f"{rate_pct:.0f}% survival in {cat_list}. "
+                            f"Classified as atomic fuzzy — no further decomposition prescribed."
+                        ),
+                        file=state.file_path,
+                        severity="informational",
+                        confidence=0.75,
+                        evidence={
+                            "spec_level": spec_level.value,
+                            "surviving_categories": surviving_cats,
+                            "survival_rate": state.survival_rate,
+                            "depth": state.depth.value,
+                        },
+                        suggestions=[
+                            "This function embodies an irreducible creative decision.",
+                            "Document the fuzzy degree of freedom rather than testing further.",
+                        ],
+                    )
+                )
+
+            elif spec_level == SpecificationLevel.TANGLED:
+                cat_list = ", ".join(surviving_cats)
+                issues.append(
+                    LintIssue(
+                        linter=self.name,
+                        kind="MUTCH011",
+                        message=(
+                            f"Function '{state.function_name}' has {rate_pct:.0f}% survival "
+                            f"across {len(surviving_cats)} categories. "
+                            f"Decomposition prescribed along: {cat_list}."
+                        ),
+                        file=state.file_path,
+                        severity="warning",
+                        confidence=0.85,
+                        evidence={
+                            "spec_level": spec_level.value,
+                            "surviving_categories": surviving_cats,
+                            "survival_rate": state.survival_rate,
+                            "depth": state.depth.value,
+                            "next_action": NextAction(
+                                tool="mutation_decompose",
+                                args={"path": ".", "file": state.file_path},
+                                reason=f"Tangled function — decompose along {len(surviving_cats)} axes",
+                                priority=1,
+                            ).to_dict(),
+                        },
+                        suggestions=[
+                            "Use mutation_decompose to identify extraction candidates.",
+                            "Use mutation_prescribe_tests for targeted test generation.",
+                        ],
+                    )
+                )
+
+        if classified_any:
+            state_manager.save()
 
         return issues
 
@@ -469,6 +643,10 @@ class MutationChannel:
 
         Reads ``tier2_auto_schedule`` from channel settings (default: False).
         Maps finding codes to Tier2Priority and enqueues via global_orchestrator.
+
+        When the predictor is available, files with uncertain predictions
+        (confidence < threshold) get priority-boosted to NO_DATA, and files
+        with TANGLED predictions get CONFIRMED_GAP priority.
         """
         _ch_config = config.channels.get("mutation")
         _settings = _ch_config.settings if _ch_config else {}
@@ -486,7 +664,9 @@ class MutationChannel:
 
         # Priority mapping: finding code → (Tier2Priority, reason)
         code_priority = {
+            "MUTCH011": (Tier2Priority.NO_DATA, "tangled function needs decomposition profiling"),
             "MUTCH008": (Tier2Priority.NO_DATA, "pure function with no mutation data"),
+            "MUTCH009": (Tier2Priority.CONFIRMED_GAP, "nearly specified — quick profiling win"),
             "MUT003": (Tier2Priority.CONFIRMED_GAP, "sampled data shows survival gaps"),
             "MUTCH006": (Tier2Priority.CONFIRMED_GAP, "sampled data shows survival gaps"),
             "MUTCH005": (Tier2Priority.STALE, "code changed since last profiling"),
@@ -504,6 +684,39 @@ class MutationChannel:
             existing = candidates.get(file_path)
             if existing is None or priority < existing[0]:
                 candidates[file_path] = (priority, reason)
+
+        # Prediction-driven priority boosting
+        try:
+            from lintgate.mutation.predictor import predict_for_file
+            from lintgate.mutation.state import SpecificationLevel
+
+            property_manifest = event.context.get("property_manifest")
+            teff_manifest = event.context.get("test_effectiveness_manifest")
+
+            # Collect unique files from findings
+            finding_files = {f.file for f in findings if f.file}
+            for file_path in finding_files:
+                predictions = predict_for_file(
+                    file_path, property_manifest, teff_manifest, event.project_root
+                )
+                for pred in predictions.values():
+                    if pred.confidence < 0.30:
+                        # Very uncertain — highest priority
+                        existing = candidates.get(file_path)
+                        boosted = (Tier2Priority.NO_DATA, "prediction uncertainty < 30%")
+                        if existing is None or boosted[0] < existing[0]:
+                            candidates[file_path] = boosted
+                        break
+                    elif pred.predicted_level == SpecificationLevel.TANGLED:
+                        existing = candidates.get(file_path)
+                        boosted = (
+                            Tier2Priority.CONFIRMED_GAP,
+                            "predicted tangled specification",
+                        )
+                        if existing is None or boosted[0] < existing[0]:
+                            candidates[file_path] = boosted
+        except Exception:
+            pass  # Graceful degradation if predictor unavailable
 
         for file_path, (priority, reason) in candidates.items():
             global_orchestrator.enqueue_tier2(

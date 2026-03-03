@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from lintgate.mutation.state import SpecificationLevel
 from lintgate.mutation.test_generators import generate_template_for_category
 from lintgate.next_action import NextAction
 
@@ -200,6 +201,46 @@ class PrescriptionEngine:
             )
 
         return diag
+
+
+def classify_specification_level(state: FunctionMutationState) -> SpecificationLevel:
+    """Classify a function's specification completeness from its mutation profile.
+
+    Pure function: FunctionMutationState -> SpecificationLevel.
+
+    Decision tree (mutation-theory.md Section 4, retrospective Part IV):
+    1. No data at all → UNSPECIFIED
+    2. Zero survival → SPECIFIED (all mutants killed)
+    3. Low survival (<20%), single category → NEARLY_SPECIFIED (quick SICP win)
+    4. Moderate survival (<50%), multi-category (2+) → DECOMPOSITION_CANDIDATE
+    5. High survival (>=50%), multi-category (3+) → TANGLED (entangled, decompose)
+    6. High survival (>=50%), few categories (<=2) → FUZZY_ATOMIC (irreducible)
+    7. Fallback → DECOMPOSITION_CANDIDATE (conservative default)
+    """
+    if state.total == 0:
+        return SpecificationLevel.UNSPECIFIED
+
+    rate = state.survival_rate
+    surviving_cats = [c for c, count in state.survived_by_category.items() if count > 0]
+    n_cats = len(surviving_cats)
+
+    if rate == 0.0:
+        return SpecificationLevel.SPECIFIED
+
+    if rate < 0.20 and n_cats <= 1:
+        return SpecificationLevel.NEARLY_SPECIFIED
+
+    if rate < 0.50 and n_cats >= 2:
+        return SpecificationLevel.DECOMPOSITION_CANDIDATE
+
+    if rate >= 0.50 and n_cats >= 3:
+        return SpecificationLevel.TANGLED
+
+    if rate >= 0.50 and n_cats <= 2:
+        return SpecificationLevel.FUZZY_ATOMIC
+
+    # Conservative fallback for edge cases (e.g. rate 0.20-0.50 with 1 cat)
+    return SpecificationLevel.DECOMPOSITION_CANDIDATE
 
 
 MUTCH004_ENFORCEMENT_THRESHOLDS: dict[str, dict[float, float]] = {

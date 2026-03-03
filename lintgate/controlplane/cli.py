@@ -132,7 +132,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     # Build config
     cp_config = ControlPlaneConfig(
         enabled=True,
-        latency_budget_ms=30000,  # CLI gets more time
+        latency_budget_ms=120_000,  # 2 min default; dynamic budget in MCP surface
     )
 
     # Run mesh

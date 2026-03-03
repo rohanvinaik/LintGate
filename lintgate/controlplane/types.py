@@ -256,7 +256,7 @@ class ControlPlaneConfig:
     """
 
     enabled: bool = False
-    latency_budget_ms: int = 15000
+    latency_budget_ms: int = 120_000  # 2 minutes; MCP/CLI may override dynamically
     advisory_default: bool = True
     channels: dict[str, ChannelConfig] = field(default_factory=dict)
     token_policy: TokenPolicy = field(default_factory=TokenPolicy)

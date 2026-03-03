@@ -500,8 +500,10 @@ class TestEffectivenessChannel:
             all_test_files, project_root
         )
 
-        # Build the effectiveness manifest
-        manifest = build_test_effectiveness_manifest(project_root, py_files, test_files)
+        # Reuse manifest from prepass if available (avoid duplicate work)
+        manifest = event.context.get("test_effectiveness_manifest")
+        if manifest is None:
+            manifest = build_test_effectiveness_manifest(project_root, py_files, test_files)
 
         if not manifest.functions:
             return ChannelResult(

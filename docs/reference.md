@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 76 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 78 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (73)
+## MCP Tools (78)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (49 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (78 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -56,6 +56,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `mutation_prescribe`      | Generate deterministic refactoring prescriptions from mutation profiles |
 | `mutation_decompose`      | Identify multi-category entangled functions requiring decomposition     |
 | `mutation_refactor_loop`  | Orchestrate before/after delta measurement for test reinforcement       |
+| `mutation_prescribe_tests` | Generate targeted test skeletons from mutation survival profiles       |
+| `mutation_validate_tests` | Re-profile after test changes and compute per-category survival deltas  |
 | `calibrate_assertion_weights` | Run mutation-backed calibration pipeline to adjust assertion weights |
 | `run_property_tests`     | Execute generated property tests for a function and capture counterexamples |
 
@@ -334,7 +336,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 49 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 78 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 

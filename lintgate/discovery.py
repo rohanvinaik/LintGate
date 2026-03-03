@@ -118,6 +118,22 @@ def discover_project_files(
         and "/dist-packages/" not in os.path.realpath(f)
     ]
 
+    # Filter files with mutmut trampoline artifacts (in-place instrumentation)
+    clean_files = []
+    for f in files:
+        try:
+            with open(f, encoding="utf-8", errors="ignore") as fh:
+                head = fh.read(2048)
+            if "_mutmut_trampoline" not in head:
+                clean_files.append(f)
+            else:
+                _log.warning(
+                    "Excluded mutmut-instrumented file from discovery: %s", f
+                )
+        except OSError:
+            clean_files.append(f)  # Can't read -> keep it, let downstream handle
+    files = clean_files
+
     files.sort()
 
     if limit is not None and len(files) > limit:

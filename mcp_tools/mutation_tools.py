@@ -397,6 +397,192 @@ def _impl_refactor_loop(
     }
 
 
+def _impl_prescribe_tests(
+    engine: Any,
+    file: str,
+    function: str | None,
+    project_root: str | None = None,
+) -> dict[str, Any]:
+    """Generate targeted test skeletons based on mutation survival profiles."""
+    from lintgate.mutation.prescriptions import classify_specification_level
+    from lintgate.mutation.test_generators import generate_targeted_template
+    from lintgate.next_action import NextAction, serialize_next_actions
+
+    results: list[dict[str, Any]] = []
+    next_actions: list[NextAction] = []
+
+    for _key, state in engine.state_manager.state.items():
+        if not state.file_path.endswith(file):
+            continue
+        if function and state.function_name != function:
+            continue
+        if state.total == 0 or state.survived == 0:
+            continue
+
+        spec_level = classify_specification_level(state)
+        surviving_cats = [c for c, count in state.survived_by_category.items() if count > 0]
+
+        skeletons: list[dict[str, Any]] = []
+        for cat in surviving_cats:
+            template = generate_targeted_template(cat, state, project_root=project_root)
+            skeletons.append(template)
+
+        results.append(
+            {
+                "function_id": f"{state.file_path}::{state.function_name}",
+                "spec_level": spec_level.value,
+                "survival_rate": state.survival_rate,
+                "surviving_categories": surviving_cats,
+                "test_skeletons": skeletons,
+            }
+        )
+
+        next_actions.append(
+            NextAction(
+                tool="mutation_validate_tests",
+                args={"path": ".", "file": file, "function": state.function_name},
+                reason="Validate generated tests kill targeted mutants",
+                priority=2,
+            )
+        )
+
+    return {
+        "functions": results,
+        "total_skeletons": sum(len(r["test_skeletons"]) for r in results),
+        "next_actions": serialize_next_actions(next_actions),
+    }
+
+
+def _snapshot_before_states(
+    engine: Any, file: str, function: str | None
+) -> dict[str, dict[str, Any]]:
+    """Capture pre-validation mutation state for delta computation."""
+    from lintgate.mutation.prescriptions import classify_specification_level
+
+    before: dict[str, dict[str, Any]] = {}
+    for _key, state in engine.state_manager.state.items():
+        if not state.file_path.endswith(file):
+            continue
+        if function and state.function_name != function:
+            continue
+        spec = classify_specification_level(state)
+        before[state.function_name] = {
+            "survival_rate": state.survival_rate,
+            "survived": state.survived,
+            "total": state.total,
+            "survived_by_category": dict(state.survived_by_category),
+            "spec_level": spec.value,
+        }
+    return before
+
+
+def _compute_category_deltas(
+    before_by_cat: dict[str, int],
+    after_by_cat: dict[str, int],
+) -> tuple[dict[str, dict[str, Any]], list[str], list[str]]:
+    """Compute per-category survival deltas.
+
+    Returns (category_deltas, still_surviving, newly_killed).
+    """
+    all_cats = set(list(before_by_cat.keys()) + list(after_by_cat.keys()))
+    category_deltas: dict[str, dict[str, Any]] = {}
+    still_surviving: list[str] = []
+    newly_killed: list[str] = []
+
+    for cat in all_cats:
+        b = before_by_cat.get(cat, 0)
+        a = after_by_cat.get(cat, 0)
+        if a == 0 and b > 0:
+            status = "killed"
+            newly_killed.append(cat)
+        elif a < b:
+            status = "reduced"
+            still_surviving.append(cat)
+        elif a > b:
+            status = "regression"
+            still_surviving.append(cat)
+        else:
+            status = "unchanged"
+            if a > 0:
+                still_surviving.append(cat)
+        category_deltas[cat] = {"before": b, "after": a, "status": status}
+
+    return category_deltas, still_surviving, newly_killed
+
+
+def _impl_validate_tests(
+    engine: Any,
+    file: str,
+    function: str | None,
+    project_root: str,
+) -> dict[str, Any]:
+    """Re-profile and compute per-category deltas to validate test improvements."""
+    from lintgate.mutation.policy import MutationTelemetry
+    from lintgate.mutation.prescriptions import classify_specification_level
+    from lintgate.next_action import NextAction, serialize_next_actions
+
+    before_states = _snapshot_before_states(engine, file, function)
+
+    # Re-run sampling
+    import os
+
+    telemetry = MutationTelemetry("validate_tests")
+    abs_file = os.path.join(project_root, file) if not os.path.isabs(file) else file
+    if not os.path.exists(abs_file):
+        abs_file = file
+    engine.run_inline_sampling([abs_file], telemetry, project_root=project_root)
+
+    # Snapshot AFTER state and compute deltas
+    results: list[dict[str, Any]] = []
+    next_actions: list[NextAction] = []
+
+    for _key, state in engine.state_manager.state.items():
+        if not state.file_path.endswith(file):
+            continue
+        if function and state.function_name != function:
+            continue
+
+        spec_after = classify_specification_level(state)
+        state.spec_level = spec_after
+
+        before = before_states.get(state.function_name, {})
+        deltas, still_surviving, newly_killed = _compute_category_deltas(
+            before.get("survived_by_category", {}),
+            dict(state.survived_by_category),
+        )
+
+        results.append(
+            {
+                "function_id": f"{state.file_path}::{state.function_name}",
+                "before_survival_rate": before.get("survival_rate", 1.0),
+                "after_survival_rate": state.survival_rate,
+                "overall_delta": state.survival_rate - before.get("survival_rate", 1.0),
+                "spec_level_before": before.get("spec_level", "unknown"),
+                "spec_level_after": spec_after.value,
+                "category_deltas": deltas,
+                "still_surviving": still_surviving,
+                "newly_killed": newly_killed,
+            }
+        )
+
+        if still_surviving:
+            next_actions.append(
+                NextAction(
+                    tool="mutation_prescribe_tests",
+                    args={"path": ".", "file": file, "function": state.function_name},
+                    reason=f"Still surviving in: {', '.join(still_surviving)}",
+                    priority=2,
+                )
+            )
+
+    engine.state_manager.save()
+
+    return {
+        "functions": results,
+        "next_actions": serialize_next_actions(next_actions),
+    }
+
+
 # ---------------------------------------------------------------------------
 # MCP registration — thin wrappers delegating to impl functions above
 # ---------------------------------------------------------------------------
@@ -548,6 +734,57 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         )
         return helpers["_json_dumps"](result)
 
+    @mcp.tool()
+    def mutation_prescribe_tests(
+        path: str,
+        file: str,
+        function: str | None = None,
+    ) -> str:
+        """Generate targeted test skeletons from mutation survival profiles.
+
+        WHEN TO USE: After mutation_prescribe shows surviving categories, use this
+        to generate test templates that specifically target those survivors. Each
+        skeleton includes the mutation category it targets, the behavioral degree
+        of freedom it pins, and the expected kill count.
+
+        Example: mutation_prescribe_tests(path="/my/project", file="src/core.py")
+        Example: mutation_prescribe_tests(path="/my/project", file="src/core.py", function="compute_score")
+
+        Args:
+            path: Project root path.
+            file: Source file to generate tests for.
+            function: Optional specific function name to filter for.
+        """
+        project_root = helpers["_validate_project_root"](path)
+        engine = _get_engine(project_root)
+        result = _impl_prescribe_tests(engine, file, function, project_root=project_root)
+        return helpers["_json_dumps"](result)
+
+    @mcp.tool()
+    def mutation_validate_tests(
+        path: str,
+        file: str,
+        function: str | None = None,
+    ) -> str:
+        """Validate that new tests kill targeted mutants by re-profiling.
+
+        WHEN TO USE: After writing tests generated by mutation_prescribe_tests,
+        use this to re-run mutation sampling and measure per-category deltas.
+        Shows which categories were killed, reduced, unchanged, or regressed.
+
+        Example: mutation_validate_tests(path="/my/project", file="src/core.py")
+        Example: mutation_validate_tests(path="/my/project", file="src/core.py", function="compute_score")
+
+        Args:
+            path: Project root path.
+            file: Source file to validate tests for.
+            function: Optional specific function name to filter for.
+        """
+        project_root = helpers["_validate_project_root"](path)
+        engine = _get_engine(project_root)
+        result = _impl_validate_tests(engine, file, function, project_root)
+        return helpers["_json_dumps"](result)
+
     return {
         "mutation_run_sampling": mutation_run_sampling,
         "mutation_run_full": mutation_run_full,
@@ -556,4 +793,6 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         "mutation_prescribe": mutation_prescribe,
         "mutation_decompose": mutation_decompose,
         "mutation_refactor_loop": mutation_refactor_loop,
+        "mutation_prescribe_tests": mutation_prescribe_tests,
+        "mutation_validate_tests": mutation_validate_tests,
     }

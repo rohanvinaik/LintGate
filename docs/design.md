@@ -265,9 +265,14 @@ After computing findings, the channel optionally enqueues Tier 2 runs for files 
 
 | Finding code | Priority | Signal |
 |---|---|---|
-| MUTCH008 | `NO_DATA` (0) | Pure function with zero mutation state |
-| MUT003, MUTCH006 | `CONFIRMED_GAP` (1) | Sampled data shows survival gaps |
-| MUTCH005 | `STALE` (2) | Code changed since last profiling |
+| MUTCH011 | `TANGLED` (0) | Multi-category high survival — highest payoff decomposition target |
+| MUTCH008 | `UNSPECIFIED` (1) | Pure function with zero mutation state |
+| — | `NO_DATA` (2) | Pure function zero state (backward compat alias) |
+| MUT003, MUTCH006 | `CONFIRMED_GAP` (3) | Sampled data shows survival gaps |
+| MUTCH009 | `NEARLY_SPECIFIED` (4) | Close to full specification — quick profiling win |
+| MUTCH010 | `FUZZY_CANDIDATE` (5) | Needs confirmation profiling (irreducible?) |
+| MUTCH005 | `STALE` (6) | Code changed since last profiling |
+| — | `REFRESH` (7) | Profiled data exists but old |
 
 Safety: Tier 2 runs only when the Tier 1 queue is empty. Serial execution prevents pyproject.toml race conditions. Session caps, debounce intervals, and dedup guards prevent runaway profiling.
 
@@ -285,6 +290,45 @@ controlplane:
 ```
 
 `tier2_auto_schedule` defaults to `false` — opt-in only. The remaining settings flow into `MutationOrchestrator.configure_tier2()` via the existing `ChannelConfig.settings` catch-all.
+
+### Specification Level Classification
+
+After mutation profiling, each function is classified into a `SpecificationLevel` that captures its position on the theory's specification gradient:
+
+| Level | Criteria | Meaning |
+|---|---|---|
+| `UNSPECIFIED` | No mutation data (`total == 0`) | No tests exercise this function |
+| `TANGLED` | ≥50% survival, 3+ surviving categories | Multi-concern function needing decomposition |
+| `DECOMPOSITION_CANDIDATE` | <50% survival, 2+ surviving categories | Partial specification, multi-axis gaps |
+| `FUZZY_ATOMIC` | ≥50% survival, ≤2 categories | Irreducible creative decision — not further decomposable |
+| `NEARLY_SPECIFIED` | <20% survival, ≤1 category | Close to full spec — targeted tests reach specification |
+| `SPECIFIED` | 0% survival | Fully specified by tests |
+
+Classification is performed by `classify_specification_level()` in `prescriptions.py` and persisted on `FunctionMutationState.spec_level`. It runs during ControlPlane execution and after Tier 2 background profiling.
+
+**Cross-channel gate integration**: The performance channel's `classify_properties()` uses `spec_level` to modulate optimization confidence — `SPECIFIED` boosts to 0.95, `FUZZY_ATOMIC` and `TANGLED` crush to 0.10 with hint suppression. This ensures optimization suggestions are only made for functions with sufficient specification evidence.
+
+### Mutation Channel Findings
+
+The mutation channel emits theory-informed findings based on specification classification:
+
+| Code | Severity | Trigger | Description |
+|---|---|---|---|
+| MUTCH009 | informational | `NEARLY_SPECIFIED` | Single-category survival — targeted tests would reach full specification |
+| MUTCH010 | informational | `FUZZY_ATOMIC` | Irreducible survival — terminal classification, no further decomposition |
+| MUTCH011 | warning | `TANGLED` | Multi-category high survival — decomposition prescribed along surviving axes |
+
+Each surviving mutation category maps to a specific extraction prescription via `CATEGORY_PRESCRIPTION_MAP`:
+
+| Category | Extraction Type | SICP Target? |
+|---|---|---|
+| `string` | vocabulary_extraction | Yes |
+| `conditional` | predicate_extraction | Yes |
+| `boundary` / `number` | constant_extraction | Yes |
+| `arithmetic` | computation_extraction | Yes |
+| `keyword` | control_flow_simplification | No (may be fuzzy) |
+
+SICP targets are fully testable extractions. Non-SICP targets may be irreducibly fuzzy — the classification distinguishes the two so the agent knows when to stop decomposing.
 
 ### Cold-Start Bootstrap Pipeline
 
@@ -1750,7 +1794,7 @@ debounce:
 # ControlPlane (opt-in)
 controlplane:
   enabled: false
-  latency_budget_ms: 15000
+  latency_budget_ms: 120000  # 2 min default; MCP surface scales dynamically with project size
   advisory_default: true
   session_memory: true
   session_max_age_hours: 4.0
@@ -2146,9 +2190,11 @@ lintgate/
 │   │   └── behavioral_contracts.py  # Deterministic contract generation from AST
 │   ├── mutation/                    # Mutation testing subsystem
 │   │   ├── engine.py                # MutationEngine (sampling + profiling)
-│   │   ├── state.py                 # MutationStateManager + CoverageDepth
-│   │   ├── decomposition.py         # DecompositionCoordinator (static/dynamic/converged merge)
-│   │   ├── prescriptions.py         # PrescriptionEngine (category → action mapping)
+│   │   ├── state.py                 # MutationStateManager + CoverageDepth + SpecificationLevel
+│   │   ├── decomposition.py         # DecompositionCoordinator (static/dynamic/converged merge) + CATEGORY_PRESCRIPTION_MAP
+│   │   ├── prescriptions.py         # PrescriptionEngine (category → action mapping) + classify_specification_level()
+│   │   ├── test_generators.py       # Category-specific test template generators for mutation prescriptions
+│   │   ├── automation.py            # MutationOrchestrator (Tier 1/2 background queue + debounce)
 │   │   └── policy.py                # RuntimeBudget + MutationTelemetry
 │   └── channels/                    # ControlPlane channel implementations
 │       ├── lint_channel.py          # Wraps the linter pipeline

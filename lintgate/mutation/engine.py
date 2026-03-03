@@ -26,6 +26,7 @@ except ImportError:
 if TYPE_CHECKING:
     from lintgate.linters.performance_checks.manifest import PropertyManifest
     from lintgate.linters.test_effectiveness.types import TestEffectivenessManifest
+    from lintgate.mutation.predictor import CalibrationStore, SpecificationPrediction
 
 import contextlib
 
@@ -58,6 +59,10 @@ from lintgate.mutation.state import (
 
 logger = logging.getLogger(__name__)
 
+# When True, mutation execution is protected by source backup/restore.
+# Gate auto-enqueue and automation tiers on this flag.
+SOURCE_PROTECTION_ACTIVE = True
+
 
 def _is_mutant_path(path: str) -> bool:
     """Return True if path is inside a mutants/ directory."""
@@ -73,20 +78,43 @@ class MutationEngine:
         state_manager: MutationStateManager,
         budget: RuntimeBudget,
     ):
-        self._recover_pyproject_if_needed()
+        self._recover_if_needed()
         self.state_manager = state_manager
         self.budget = budget
         self.relevance_matrix = OperatorRelevanceMatrix()
 
     @staticmethod
-    def _recover_pyproject_if_needed() -> None:
-        """Restore pyproject.toml from backup if a previous run was interrupted."""
+    def _recover_if_needed() -> None:
+        """Recover from interrupted mutation runs.
+
+        1. Restore pyproject.toml from backup (existing behavior).
+        2. Scan for mutmut trampoline artifacts in Python files — these indicate
+           a crashed run that left source files corrupted in-place.
+        """
         backup = Path("pyproject.toml.lintgate-backup")
         if backup.exists():
             pyproject = Path("pyproject.toml")
             pyproject.write_text(backup.read_text("utf-8"), "utf-8")
             backup.unlink()
             logger.info("Recovered pyproject.toml from stale lintgate-backup")
+
+        # Detect trampoline artifacts from crashed runs
+        corrupted: list[str] = []
+        for py in Path(".").rglob("*.py"):
+            if _is_mutant_path(str(py)):
+                continue
+            try:
+                if "_mutmut_trampoline" in py.read_text("utf-8")[:2000]:
+                    corrupted.append(str(py))
+            except OSError:
+                pass
+        if corrupted:
+            logger.critical(
+                "Detected mutmut trampoline artifacts in %d file(s) from an "
+                "interrupted run. Restore via: git checkout -- %s",
+                len(corrupted),
+                " ".join(corrupted[:10]),
+            )
 
     def run_inline_sampling(
         self,
@@ -228,6 +256,111 @@ class MutationEngine:
         self.state_manager.save()
         return results
 
+    def run_targeted_verification(
+        self,
+        predictions: dict[str, SpecificationPrediction],
+        target_files: list[str],
+        telemetry: MutationTelemetry,
+        project_root: str | None = None,
+        test_mapping: dict[str, list[str]] | None = None,
+        calibration_store: CalibrationStore | None = None,
+    ) -> list[FunctionMutationState]:
+        """Verify uncertain predictions with minimal mutmut execution.
+
+        Only runs mutants in categories predicted as "uncertain" or "survive".
+        Skips categories predicted as "killed" (already covered by tests).
+        Skips functions where prediction doesn't need verification.
+        """
+        if not self.budget.enabled:
+            return []
+
+        results: list[FunctionMutationState] = []
+
+        for file_path in target_files:
+            # Collect predictions for this file that need verification.
+            # Function IDs have format "relpath::funcname" — extract the
+            # file component and compare via os.path to handle absolute
+            # vs relative path differences.
+            norm_path = os.path.normpath(file_path)
+            file_predictions = {
+                fid: pred
+                for fid, pred in predictions.items()
+                if pred.needs_verification
+                and os.path.normpath(fid.split("::")[0]) == norm_path
+            }
+            if not file_predictions:
+                continue
+
+            # Build category filter from uncertain/survive predictions only
+            verify_categories: set[MutationOperatorCategory] = set()
+            for pred in file_predictions.values():
+                for cat_name, outcome in pred.category_predictions.items():
+                    if outcome in ("uncertain", "survive"):
+                        cat = self._category_name_to_enum(cat_name)
+                        if cat is not None:
+                            verify_categories.add(cat)
+
+            if not verify_categories:
+                continue
+
+            # Build test filter from test-impact mapping
+            test_filter = None
+            if test_mapping:
+                relevant_tests = test_mapping.get(file_path, [])
+                if relevant_tests:
+                    test_filter = " ".join(relevant_tests)
+
+            start_t = time.perf_counter()
+            success = self._execute_mutmut(
+                paths=[file_path],
+                depth=CoverageDepth.SAMPLED,
+                test_filter=test_filter,
+                relevant_categories=verify_categories,
+                telemetry=telemetry,
+            )
+            elapsed_ms = (time.perf_counter() - start_t) * 1000
+            telemetry.add_inline_time(elapsed_ms)
+
+            if not success:
+                continue
+
+            file_states = self._parse_mutmut_results(
+                [file_path], project_root=project_root
+            )
+            for func_id, state in file_states.items():
+                state.depth = CoverageDepth.SAMPLED
+                self.state_manager.update_state(state, project_root=project_root)
+                results.append(state)
+
+                # Update calibration if we have a prediction for this function
+                if calibration_store and func_id in predictions:
+                    pred = predictions[func_id]
+                    actual_level = state.spec_level
+                    # Extract the decision-tree path from signals
+                    signal_key = self._extract_signal_key(pred)
+                    calibration_store.record(
+                        signal_key, pred.predicted_level, actual_level
+                    )
+
+        self.state_manager.save()
+        return results
+
+    @staticmethod
+    def _category_name_to_enum(name: str) -> MutationOperatorCategory | None:
+        """Convert a category name string to MutationOperatorCategory enum."""
+        try:
+            return MutationOperatorCategory(name)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _extract_signal_key(pred: SpecificationPrediction) -> str:
+        """Extract the decision-tree path name from a prediction's signals."""
+        for signal in pred.signals_used:
+            if signal.startswith("path="):
+                return signal[5:]
+        return "unknown"
+
     def _execute_mutmut(
         self,
         paths: list[str],
@@ -255,6 +388,12 @@ class MutationEngine:
         if pyproject_path.exists():
             original_pyproject = pyproject_path.read_text("utf-8")
 
+        # Snapshot source files BEFORE mutmut rewrites them in-place
+        source_backups: dict[str, str] = {}
+        for p in paths:
+            with contextlib.suppress(OSError):
+                source_backups[p] = Path(p).read_text("utf-8")
+
         try:
             if original_pyproject is not None:
                 backup_path.write_text(original_pyproject, "utf-8")
@@ -277,6 +416,21 @@ class MutationEngine:
         except (subprocess.SubprocessError, FileNotFoundError):
             return False
         finally:
+            # Restore source files FIRST (most critical)
+            for p, content in source_backups.items():
+                try:
+                    Path(p).write_text(content, "utf-8")
+                except OSError:
+                    logger.critical("FAILED to restore %s after mutation run", p)
+            # Hash verification
+            for p, content in source_backups.items():
+                try:
+                    restored = Path(p).read_text("utf-8")
+                    if compute_content_hash(restored) != compute_content_hash(content):
+                        logger.critical("Hash mismatch after restore: %s", p)
+                except OSError:
+                    pass
+            # Restore pyproject.toml
             if original_pyproject is not None:
                 pyproject_path.write_text(original_pyproject, "utf-8")
             if backup_path.exists():
@@ -348,15 +502,24 @@ class MutationEngine:
         original_pyproject: str | None,
         paths: list[str],
     ) -> None:
-        """Rewrite [tool.mutmut] paths_to_mutate to scope to target files."""
+        """Rewrite [tool.mutmut] paths_to_mutate to scope to target files.
+
+        If the [tool.mutmut] section or paths_to_mutate key doesn't exist,
+        appends the section so mutmut knows which files to mutate.
+        """
         if not original_pyproject or not paths:
             return
         scoped_paths = json.dumps(paths)
-        new_content = _re.sub(
+        new_content, count = _re.subn(
             r"(paths_to_mutate\s*=\s*)\[[^\]]*\]",
             f"paths_to_mutate = {scoped_paths}",
             original_pyproject,
         )
+        if count == 0:
+            # No existing paths_to_mutate — append [tool.mutmut] section
+            new_content = original_pyproject.rstrip() + (
+                f"\n\n[tool.mutmut]\npaths_to_mutate = {scoped_paths}\n"
+            )
         pyproject_path.write_text(new_content, "utf-8")
 
     def _build_mutmut_command(

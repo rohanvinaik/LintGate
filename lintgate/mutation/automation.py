@@ -14,12 +14,20 @@ from lintgate.mutation.policy import MutationTelemetry
 
 
 class Tier2Priority(IntEnum):
-    """Priority levels for Tier 2 background profiling queue."""
+    """Priority levels for Tier 2 background profiling queue.
 
-    NO_DATA = 0  # MUTCH008: pure function with zero mutation state
-    CONFIRMED_GAP = 1  # MUT003/MUTCH006: sampled data shows survival gaps
-    STALE = 2  # MUTCH005: code_hash mismatch on existing profiled data
-    REFRESH = 3  # Profiled data exists but old
+    Queue is ephemeral (session-scoped, not persisted). All references use
+    enum names, so renumbering is safe.
+    """
+
+    TANGLED = 0  # MUTCH011: multi-category high survival — highest payoff
+    UNSPECIFIED = 1  # No mutation data — needs baseline
+    NO_DATA = 2  # MUTCH008: pure function with zero mutation state (backward compat)
+    CONFIRMED_GAP = 3  # MUT003/MUTCH006: sampled data shows survival gaps
+    NEARLY_SPECIFIED = 4  # MUTCH009: close to full spec — quick win
+    FUZZY_CANDIDATE = 5  # MUTCH010: needs confirmation profiling
+    STALE = 6  # MUTCH005: code_hash mismatch on existing profiled data
+    REFRESH = 7  # Profiled data exists but old
 
 
 @dataclass(order=True)
@@ -202,8 +210,19 @@ class MutationOrchestrator:
                         self._tier2_last_run[item.file_path] = time.time()
 
     def _run_tier1(self, file_path: str, project_root: str | None) -> None:
-        """Execute a Tier 1 (sampling) mutation run for one file."""
+        """Execute a Tier 1 (sampling) mutation run for one file.
+
+        When the predictor is available, uses targeted verification to only
+        run mutants in uncertain categories. Falls back to full inline
+        sampling if the predictor is unavailable or all predictions are
+        confident.
+        """
         try:
+            from lintgate.mutation.engine import SOURCE_PROTECTION_ACTIVE
+
+            if not SOURCE_PROTECTION_ACTIVE:
+                return
+
             from lintgate.mutation.policy import RuntimeBudget
             from lintgate.mutation.state import MutationStateManager
             from lintgate.state import MUTATION_CACHE_DIR
@@ -214,15 +233,71 @@ class MutationOrchestrator:
             engine = MutationEngine(state_manager, budget)
 
             telemetry = MutationTelemetry("background_trigger")
-            engine.run_inline_sampling(
-                [file_path], telemetry, project_root=project_root
-            )
+
+            # Try prediction-guided targeted verification first.
+            # Only use predictions when we have at least a teff manifest —
+            # without it, every function predicts UNSPECIFIED/0.95 which
+            # silently skips all mutation execution.
+            used_predictions = False
+            try:
+                from lintgate.mutation.predictor import predict_for_file
+
+                # Try to load cached teff manifest from disk
+                teff_manifest = None
+                try:
+                    from lintgate.linters.test_effectiveness.manifest import (
+                        build_test_effectiveness_manifest,
+                    )
+
+                    teff_manifest = build_test_effectiveness_manifest(
+                        project_root or ".", [file_path], []
+                    )
+                    if teff_manifest and not teff_manifest.functions:
+                        teff_manifest = None
+                except Exception:
+                    pass
+
+                if teff_manifest is not None:
+                    predictions = predict_for_file(
+                        file_path,
+                        property_manifest=None,
+                        teff_manifest=teff_manifest,
+                        project_root=project_root,
+                    )
+                    if any(p.needs_verification for p in predictions.values()):
+                        engine.run_targeted_verification(
+                            predictions,
+                            [file_path],
+                            telemetry,
+                            project_root=project_root,
+                        )
+                        used_predictions = True
+                    elif predictions:
+                        # All predictions confident AND we had real signal
+                        used_predictions = True
+            except Exception:
+                pass  # Fall back to original inline sampling
+
+            if not used_predictions:
+                engine.run_inline_sampling(
+                    [file_path], telemetry, project_root=project_root
+                )
         except Exception as e:
             print(f"[MutationOrchestrator] Tier 1 error for {file_path}: {e}")
 
     def _run_tier2(self, file_path: str, project_root: str | None) -> None:
-        """Execute a Tier 2 (full profiling) mutation run for one file."""
+        """Execute a Tier 2 (full profiling) mutation run for one file.
+
+        When the predictor and test-impact mapping are available, uses
+        targeted verification with test filtering. Falls back to full
+        background profiling otherwise.
+        """
         try:
+            from lintgate.mutation.engine import SOURCE_PROTECTION_ACTIVE
+
+            if not SOURCE_PROTECTION_ACTIVE:
+                return
+
             from lintgate.mutation.policy import RuntimeBudget
             from lintgate.mutation.state import MutationStateManager
             from lintgate.state import MUTATION_CACHE_DIR
@@ -233,12 +308,77 @@ class MutationOrchestrator:
             engine = MutationEngine(state_manager, budget)
 
             telemetry = MutationTelemetry("tier2_background")
-            engine.run_background_profiling(
-                target_files=[file_path],
-                test_mapping={},  # Full test suite fallback
-                telemetry=telemetry,
-                project_root=project_root,
-            )
+
+            # Load test-impact mapping (useful regardless of prediction path)
+            test_mapping: dict[str, list[str]] | None = None
+            try:
+                from lintgate.mutation.test_impact import load_test_impact_mapping
+
+                if project_root:
+                    test_mapping = load_test_impact_mapping(project_root)
+            except Exception:
+                pass
+
+            # Try prediction-guided targeted verification.
+            # Only trust predictions when we have a teff manifest —
+            # without it, every function predicts UNSPECIFIED/0.95.
+            used_predictions = False
+            try:
+                from lintgate.mutation.predictor import predict_for_file
+
+                teff_manifest = None
+                try:
+                    from lintgate.linters.test_effectiveness.manifest import (
+                        build_test_effectiveness_manifest,
+                    )
+
+                    teff_manifest = build_test_effectiveness_manifest(
+                        project_root or ".", [file_path], []
+                    )
+                    if teff_manifest and not teff_manifest.functions:
+                        teff_manifest = None
+                except Exception:
+                    pass
+
+                if teff_manifest is not None:
+                    predictions = predict_for_file(
+                        file_path,
+                        property_manifest=None,
+                        teff_manifest=teff_manifest,
+                        project_root=project_root,
+                    )
+                    if any(p.needs_verification for p in predictions.values()):
+                        engine.run_targeted_verification(
+                            predictions,
+                            [file_path],
+                            telemetry,
+                            project_root=project_root,
+                            test_mapping=test_mapping or {},
+                        )
+                        used_predictions = True
+                    elif predictions:
+                        used_predictions = True
+            except Exception:
+                pass
+
+            if not used_predictions:
+                engine.run_background_profiling(
+                    target_files=[file_path],
+                    test_mapping=test_mapping or {},
+                    telemetry=telemetry,
+                    project_root=project_root,
+                )
+
+            # Post-profiling: classify specification level for profiled functions
+            from lintgate.mutation.prescriptions import classify_specification_level
+
+            classified = False
+            for state in state_manager.state.values():
+                if state.file_path == file_path:
+                    state.spec_level = classify_specification_level(state)
+                    classified = True
+            if classified:
+                state_manager.save()
         except Exception as e:
             print(f"[MutationOrchestrator] Tier 2 error for {file_path}: {e}")
 
