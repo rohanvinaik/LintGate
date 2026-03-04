@@ -136,11 +136,12 @@ class TestGenerateTemplateForCategory:
         result = generate_template_for_category("unknown_cat", state)
         assert result is None
 
-    def test_keyword_returns_none(self):
-        """Keyword category has no template generator."""
+    def test_keyword_returns_template(self):
+        """Keyword category has a template generator."""
         state = _make_state()
         result = generate_template_for_category("keyword", state)
-        assert result is None
+        assert result is not None
+        assert "keyword" in result.lower() or "Keywords" in result
 
     def test_category_generators_dict(self):
         assert "arithmetic" in CATEGORY_GENERATORS
