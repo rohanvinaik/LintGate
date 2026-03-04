@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 78 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 84 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -163,6 +163,15 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `nsil_verify_action` | Dry-run action verification | Before risky actions |
 | `nsil_export_training_data` | Export alignment data for fine-tuning | Training data collection |
 | `nsil_benchmark` | Run safety enforcement benchmarks | Validate safety coverage |
+
+### GitHub Project Organization
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `project_organize_audit` | Audit GitHub labels, milestones, templates, wiki | Project setup, organization review |
+| `project_organize_apply` | Create missing labels/milestones (dry-run default) | After audit identifies gaps |
+| `project_wiki_sync` | Sync theory/compass/design to wiki pages (dry-run default) | Publishing project knowledge to wiki |
+| `project_wiki_read` | Read a GitHub wiki page | Wiki content for theory extraction |
 
 ### Telemetry
 

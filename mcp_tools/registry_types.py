@@ -62,5 +62,15 @@ class ToolRegistry(Protocol):
     global_memory_status: Callable[..., str]
     global_memory_reset: Callable[..., str]
 
+    # -- gh_tools --
+    project_organize_audit: Callable[..., str]
+    project_organize_apply: Callable[..., str]
+    project_wiki_sync: Callable[..., str]
+    project_wiki_read: Callable[..., str]
+
+    # -- wiki_tools --
+    wiki_materialize: Callable[..., str]
+    wiki_status: Callable[..., str]
+
     # -- and other modules (dynamic/backward compat layer can sit here, but core should be typed) --
     # For now, we will add explicit signatures to the main ones and allow Any for the rest.

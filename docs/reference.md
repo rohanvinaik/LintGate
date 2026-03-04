@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 78 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 84 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (78)
+## MCP Tools (84)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (78 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (82 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -157,6 +157,17 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `refactor_checkpoint` | Record progress on a file during a refactoring session                 |
 | `refactor_resume`     | Load refactor state and provide structured summary for session resumption |
 | `refactor_thesis`     | Record or update the agent's structural thesis about the codebase      |
+
+### GitHub Project Organization
+
+| Tool                       | Purpose                                                         |
+| -------------------------- | --------------------------------------------------------------- |
+| `project_organize_audit`   | Audit GitHub labels, milestones, templates, wiki status         |
+| `project_organize_apply`   | Create missing labels and milestones (dry-run by default)       |
+| `project_wiki_sync`        | Sync theory/compass/design data to GitHub wiki pages            |
+| `project_wiki_read`        | Read a GitHub wiki page (local clone or remote)                 |
+| `wiki_materialize`         | Generate wiki pages locally from manifest (dry-run or write)    |
+| `wiki_status`              | Show wiki freshness state — stale/fresh/missing page counts     |
 
 ---
 
@@ -336,7 +347,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 78 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 82 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 
