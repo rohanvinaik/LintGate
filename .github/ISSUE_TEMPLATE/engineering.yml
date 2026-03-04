@@ -1,0 +1,52 @@
+name: Engineering
+description: Directly implementable coding task
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is broken or missing?
+      placeholder: One paragraph on the issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation
+      description: Exact file paths, function names, mechanism.
+      placeholder: Describe the implementation approach with specifics.
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to Modify
+      description: Bulleted list of files that need changes.
+      placeholder: |
+        - path/to/file.py
+        - path/to/other.py
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests to Add/Update
+      description: Test case descriptions.
+      placeholder: Describe the test cases needed to verify this change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Checklist of conditions for completion.
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: true
