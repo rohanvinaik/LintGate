@@ -23,9 +23,10 @@ controlplane:
   latency_budget_ms: 90000
   channels:
     mutation:
+      enabled: false
       timeout_ms: 15000
-      tier2_auto_schedule: true
-      tier2_max_per_session: 3
+      tier2_auto_schedule: false
+      tier2_max_per_session: 0
       tier2_timeout_s: 300
       tier2_debounce_s: 120.0
       enforcement_mode: audit
