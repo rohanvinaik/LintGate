@@ -657,6 +657,19 @@ def _discover_md_files(project_root: str) -> list[str]:
                 if len(found) >= _MAX_MD_FILES:
                     return found
 
+    # Scan .lintgate/wiki/ — wiki content feeds back into theory extraction.
+    # .lintgate/ is a hidden dir that should_skip_dir() would skip, so it
+    # needs explicit inclusion (same pattern as .claude/rules/ above).
+    wiki_dir = root / ".lintgate" / "wiki"
+    if wiki_dir.is_dir():
+        for fname in sorted(os.listdir(wiki_dir)):
+            if fname.lower().endswith(".md"):
+                fpath = str(wiki_dir / fname)
+                if fpath not in found:
+                    found.append(fpath)
+                    if len(found) >= _MAX_MD_FILES:
+                        return found
+
     from .discovery import CANONICAL_EXCLUDE_DIRS, should_skip_dir
 
     skip_all = CANONICAL_EXCLUDE_DIRS | _EXTRA_MD_SKIP_DIRS

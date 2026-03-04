@@ -84,7 +84,7 @@ _MCP_INSTRUCTIONS = (
     "Compass workflow: compass_update(path, write=true) → compass_interview(path) → "
     "compass_update(path, targets=['all'], write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "49 tools total — use getting_started or lint_status to explore."
+    "82 tools total — use getting_started or lint_status to explore."
 )
 
 
