@@ -1,1 +1,5 @@
 /.lake
+/.mypy_cache
+/.DS_Store
+**/.DS_Store
+/scripts/output/*.json
