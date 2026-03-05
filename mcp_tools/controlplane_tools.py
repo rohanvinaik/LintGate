@@ -149,6 +149,36 @@ def _resolve_scope_files(project_root, scope, files, helpers):
     return dedup(py_files)
 
 
+def _compute_dynamic_budget_ms(
+    configured_ms: int,
+    file_count: int,
+    scope: str | None,
+) -> int:
+    """Scale the latency budget based on project size and scope.
+
+    Tiers (based on file count):
+      <=20 files  → 30s
+      <=100 files → 60s
+      <=500 files → 120s
+      >500 files  → 300s
+      full_sweep  → 600s (10 min)
+
+    The configured value is treated as a floor — if the user set an explicit
+    budget in lintgate.yaml that exceeds the dynamic value, honour it.
+    """
+    if scope == "full_sweep":
+        dynamic = 600_000
+    elif file_count > 500:
+        dynamic = 300_000
+    elif file_count > 100:
+        dynamic = 120_000
+    elif file_count > 20:
+        dynamic = 60_000
+    else:
+        dynamic = 30_000
+    return max(configured_ms, dynamic)
+
+
 def _collect_files_for_event(project_root, scope, files, helpers):
     """Collect Python files for the supervision event."""
     return _resolve_scope_files(project_root, scope, files, helpers)
@@ -394,7 +424,7 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
     # Config
     cp_config = load_controlplane_config(project_root)
     if not cp_config:
-        cp_config = ControlPlaneConfig(enabled=True, latency_budget_ms=30000)
+        cp_config = ControlPlaneConfig(enabled=True)
 
     # Channels
     channel_registry = _build_channel_registry()
@@ -402,6 +432,11 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
 
     # Event
     files_for_event = _collect_files_for_event(project_root, scope, files, helpers)
+
+    # Dynamic budget: scale with project size unless explicitly configured
+    cp_config.latency_budget_ms = _compute_dynamic_budget_ms(
+        cp_config.latency_budget_ms, len(files_for_event), scope
+    )
     event = _build_supervision_event(
         project_root, files_for_event, strictness, requested
     )

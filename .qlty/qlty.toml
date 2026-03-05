@@ -31,6 +31,8 @@ exclude_patterns = [
   "**/.ruff_cache/**",
   "**/.pytest_cache/**",
   "**/.benchmarks/**",
+  "**/mutants/**",
+  "**/.mutmut-cache/**",
 ]
 
 test_patterns = [

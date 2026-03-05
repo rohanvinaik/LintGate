@@ -17,7 +17,6 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from .bootstrap_state import BootstrapState
@@ -203,33 +202,17 @@ class BootstrapPipeline:
 
     def _discover_source_files(self) -> list[str]:
         """Discover Python source files (excluding tests, configs, __init__)."""
-        root = Path(self.project_root)
+        from lintgate.discovery import discover_project_files
+
+        all_py = discover_project_files(self.project_root)
         source_files: list[str] = []
-
-        for py_file in sorted(root.rglob("*.py")):
-            # Skip test files, configs, __init__, hidden dirs, site-packages
-            resolved = str(py_file.resolve())
-            if any(seg in resolved for seg in ("/site-packages/", "/dist-packages/")):
-                continue
-
-            name = py_file.stem
-
-            # Skip test files, __init__, setup, conftest
+        for f in all_py:
+            name = os.path.splitext(os.path.basename(f))[0]
             if name.startswith("test_") or name.endswith("_test"):
                 continue
             if name in ("__init__", "setup", "conftest"):
                 continue
-            # Skip hidden directories and common non-source dirs
-            if any(part.startswith(".") for part in py_file.parts):
-                continue
-            if any(
-                part in ("node_modules", "venv", ".venv", "build", "dist")
-                for part in py_file.parts
-            ):
-                continue
-
-            source_files.append(str(py_file))
-
+            source_files.append(f)
         return source_files
 
     def _generate_skeleton(self, source_file: str) -> str | None:

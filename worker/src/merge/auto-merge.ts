@@ -109,6 +109,39 @@ export async function deleteBranch(
 }
 
 /**
+ * Close a PR without merging (used by stale branch cleanup).
+ */
+export async function closePR(
+  token: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  comment: string,
+): Promise<void> {
+  // Post a comment explaining the closure
+  await postPRComment(token, owner, repo, prNumber, comment);
+
+  const resp = await fetch(
+    `${GITHUB_API}/repos/${owner}/${repo}/pulls/${prNumber}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ state: "closed" }),
+    },
+  );
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.warn(`Failed to close PR #${prNumber}: ${resp.status} ${text}`);
+  }
+}
+
+/**
  * Get the GraphQL node_id for a PR (needed for enableAutoMerge mutation).
  */
 export async function getPRNodeId(

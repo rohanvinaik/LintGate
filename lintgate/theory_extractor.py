@@ -45,26 +45,10 @@ from .context_guidance import build_context_guidance
 # Max files to scan (prevent runaway on huge repos)
 _MAX_MD_FILES = 100
 
-# Directories to skip when scanning for .md files.
-# Note: .claude is skipped EXCEPT for .claude/rules/ which is scanned
-# explicitly in _discover_md_files(). This avoids picking up session
-# transcripts and temp files while still finding theory in rules docs.
-_SKIP_DIRS = {
-    ".git",
-    "node_modules",
-    ".venv",
-    "venv",
-    "__pycache__",
-    ".tox",
-    "dist",
-    "build",
-    ".eggs",
-    ".mypy_cache",
-    ".pytest_cache",
-    "downloaded",
-    ".claude",
-    "retrospectives",
-}
+# Extra directories to skip when scanning for .md files (on top of canonical).
+# .claude is skipped EXCEPT for .claude/rules/ which is scanned explicitly
+# in _discover_md_files(). "downloaded" and "retrospectives" are theory-specific.
+_EXTRA_MD_SKIP_DIRS = frozenset({"downloaded", ".claude", "retrospectives"})
 
 # Heading patterns that signal theory-relevant sections
 _THEORY_HEADING_SIGNALS: dict[str, list[str]] = {
@@ -673,11 +657,28 @@ def _discover_md_files(project_root: str) -> list[str]:
                 if len(found) >= _MAX_MD_FILES:
                     return found
 
+    # Scan .lintgate/wiki/ — wiki content feeds back into theory extraction.
+    # .lintgate/ is a hidden dir that should_skip_dir() would skip, so it
+    # needs explicit inclusion (same pattern as .claude/rules/ above).
+    wiki_dir = root / ".lintgate" / "wiki"
+    if wiki_dir.is_dir():
+        for fname in sorted(os.listdir(wiki_dir)):
+            if fname.lower().endswith(".md"):
+                fpath = str(wiki_dir / fname)
+                if fpath not in found:
+                    found.append(fpath)
+                    if len(found) >= _MAX_MD_FILES:
+                        return found
+
+    from .discovery import CANONICAL_EXCLUDE_DIRS, should_skip_dir
+
+    skip_all = CANONICAL_EXCLUDE_DIRS | _EXTRA_MD_SKIP_DIRS
+
     # Main walk — skips hidden dirs and known noise dirs
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune skip dirs in-place
         dirnames[:] = sorted(
-            [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+            [d for d in dirnames if d not in skip_all and not should_skip_dir(d)]
         )
 
         for fname in sorted(filenames):

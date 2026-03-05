@@ -14,6 +14,12 @@ export const PROTECTED_BRANCHES = new Set(["main", "badges"]);
 /** Default number of days before a merged branch is considered stale. */
 export const STALE_BRANCH_DAYS = 30;
 
+/** Days before an unmerged disposable branch is cleaned up. */
+export const DISPOSABLE_STALE_DAYS = 7;
+
+/** Branch prefixes that are safe to close+delete when stale and unmerged. */
+export const DISPOSABLE_BRANCH_PREFIXES = ["dependabot/", "codex/ship-"];
+
 /** GitHub API base URL. */
 export const GITHUB_API = "https://api.github.com";
 

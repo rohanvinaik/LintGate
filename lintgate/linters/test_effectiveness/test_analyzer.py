@@ -25,38 +25,27 @@ from .types import (
 
 def _discover_test_files(project_root: str, max_files: int | None = None) -> list[str]:
     """Discover test files in the project."""
+    from lintgate.discovery import discover_project_files
+
+    all_py = discover_project_files(project_root, limit=max_files)
+    # Filter to test files only, excluding nested subprojects (#69)
     test_files: list[str] = []
     root = os.path.abspath(project_root)
-
-    for dirpath, dirnames, filenames in os.walk(root):
-        # (#69) Exclude subprojects (directories with pyproject.toml/setup.py that are not root)
-        # Also standard exclusions
-        excluded_names = (
-            "node_modules",
-            "__pycache__",
-            ".venv",
-            "venv",
-            "build",
-            "dist",
-            ".git",
-            ".tox",
-            "mutants",
-            ".mutmut",
-        )
-
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not d.startswith(".")
-            and d not in excluded_names
-            and not os.path.exists(os.path.join(dirpath, d, "pyproject.toml"))
-            and not os.path.exists(os.path.join(dirpath, d, "setup.py"))
-        ]
-        for f in filenames:
-            if f.startswith("test_") and f.endswith(".py"):
-                test_files.append(os.path.join(dirpath, f))
-                if max_files is not None and len(test_files) >= max_files:
-                    return test_files
+    for f in all_py:
+        if not os.path.basename(f).startswith("test_"):
+            continue
+        # (#69) Skip nested subprojects
+        rel = os.path.relpath(f, root)
+        parts = rel.split(os.sep)[:-1]  # directory parts
+        if any(
+            os.path.exists(os.path.join(root, *parts[:i + 1], marker))
+            for i in range(1, len(parts))
+            for marker in ("pyproject.toml", "setup.py")
+        ):
+            continue
+        test_files.append(f)
+        if max_files is not None and len(test_files) >= max_files:
+            break
 
     return test_files
 
@@ -65,37 +54,30 @@ def _discover_source_files(
     project_root: str, max_files: int | None = None
 ) -> list[str]:
     """Discover non-test Python source files."""
+    from lintgate.discovery import discover_project_files
+
+    all_py = discover_project_files(project_root, limit=max_files)
     source_files: list[str] = []
     root = os.path.abspath(project_root)
-
-    for dirpath, dirnames, filenames in os.walk(root):
-        # (#69) Exclude subprojects and standard directories
-        excluded_names = (
-            "node_modules",
-            "__pycache__",
-            ".venv",
-            "venv",
-            "build",
-            "dist",
-            ".git",
-            ".tox",
-            "tests",
-            "mutants",
-            ".mutmut",
-        )
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not d.startswith(".")
-            and d not in excluded_names
-            and not os.path.exists(os.path.join(dirpath, d, "pyproject.toml"))
-            and not os.path.exists(os.path.join(dirpath, d, "setup.py"))
-        ]
-        for f in filenames:
-            if f.endswith(".py") and not f.startswith("test_"):
-                source_files.append(os.path.join(dirpath, f))
-                if max_files is not None and len(source_files) >= max_files:
-                    return source_files
+    for f in all_py:
+        basename = os.path.basename(f)
+        if basename.startswith("test_") or basename.endswith("_test.py"):
+            continue
+        # Skip "tests" directories
+        if os.sep + "tests" + os.sep in f:
+            continue
+        # (#69) Skip nested subprojects
+        rel = os.path.relpath(f, root)
+        parts = rel.split(os.sep)[:-1]
+        if any(
+            os.path.exists(os.path.join(root, *parts[:i + 1], marker))
+            for i in range(1, len(parts))
+            for marker in ("pyproject.toml", "setup.py")
+        ):
+            continue
+        source_files.append(f)
+        if max_files is not None and len(source_files) >= max_files:
+            break
 
     return source_files
 

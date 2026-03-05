@@ -5,11 +5,54 @@ from __future__ import annotations
 import ast
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lintgate.mutation.state import MutationStateManager
     from lintgate.types import Prescription
+
+
+# Maps surviving mutation categories to extraction prescriptions.
+# Each entry describes the architectural move prescribed by the theory
+# (mutation-theory.md Section 3.4, retrospective Part V §2).
+CATEGORY_PRESCRIPTION_MAP: dict[str, dict[str, Any]] = {
+    "string": {
+        "extraction_type": "vocabulary_extraction",
+        "description": "Extract string vocabulary into testable constants or registry",
+        "sicp_target": True,
+        "example": "Extract delimiter constants, format patterns, or domain vocabulary map",
+    },
+    "conditional": {
+        "extraction_type": "predicate_extraction",
+        "description": "Extract conditional logic into standalone boolean predicate function",
+        "sicp_target": True,
+        "example": "Extract 'is_benchmark_table()', 'matches_family()' as pure functions",
+    },
+    "boundary": {
+        "extraction_type": "constant_extraction",
+        "description": "Extract boundary conditions into named predicates with explicit semantics",
+        "sicp_target": True,
+        "example": "Extract 'is_within_range()', 'is_last_element()' with precise contracts",
+    },
+    "number": {
+        "extraction_type": "constant_extraction",
+        "description": "Extract magic numbers and thresholds into named constants or configuration",
+        "sicp_target": True,
+        "example": "Extract thresholds, limits, scaling factors as named constants",
+    },
+    "arithmetic": {
+        "extraction_type": "computation_extraction",
+        "description": "Extract arithmetic computation into pure function with typed signature",
+        "sicp_target": True,
+        "example": "Extract scoring formula, normalization logic as standalone pure function",
+    },
+    "keyword": {
+        "extraction_type": "control_flow_simplification",
+        "description": "Simplify control flow by extracting loop body or state transition logic",
+        "sicp_target": False,
+        "example": "Extract iteration body, state machine transition as separate function",
+    },
+}
 
 
 @dataclass
@@ -26,6 +69,8 @@ class DecompositionCandidate:
     actionability: str = "investigate"  # "extract" | "split" | "investigate"
     expected_benefit: str = ""  # "lower CC" | "fewer mixed responsibilities"
     prescriptions: list[Prescription] = field(default_factory=list)
+    sicp_extractions: list[dict[str, Any]] = field(default_factory=list)
+    fuzzy_remainders: list[dict[str, Any]] = field(default_factory=list)
 
 
 class DecompositionDetector:
@@ -58,6 +103,7 @@ class DecompositionDetector:
                 rate >= self.DECOMPOSITION_THRESHOLD
                 and len(surviving_cats) >= self.MIN_CATEGORIES
             ):
+                sicp, fuzzy = _classify_extractions(surviving_cats, state)
                 candidates.append(
                     DecompositionCandidate(
                         function_id=f"{state.file_path}::{state.function_name}",
@@ -74,10 +120,46 @@ class DecompositionDetector:
                         evidence=["mutation_survival", "category_spread"],
                         actionability="extract",
                         expected_benefit="mutation hotspot isolation",
+                        sicp_extractions=sicp,
+                        fuzzy_remainders=fuzzy,
                     )
                 )
 
         return sorted(candidates, key=lambda c: c.survival_rate or 0, reverse=True)
+
+
+def _classify_extractions(
+    surviving_cats: list[str],
+    state: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Classify surviving categories into SICP (fully testable) and fuzzy (irreducible).
+
+    Uses CATEGORY_PRESCRIPTION_MAP to look up each surviving category and classify
+    its extraction as either an SICP target (precise specification achievable) or
+    a fuzzy remainder (irreducible creative decision).
+
+    Returns:
+        (sicp_extractions, fuzzy_remainders) — each a list of dicts with
+        category, extraction_type, description, survivor_count.
+    """
+    sicp: list[dict[str, Any]] = []
+    fuzzy: list[dict[str, Any]] = []
+
+    for cat in surviving_cats:
+        prescription = CATEGORY_PRESCRIPTION_MAP.get(cat)
+        survivor_count = state.survived_by_category.get(cat, 0) if hasattr(state, "survived_by_category") else 0
+        entry = {
+            "category": cat,
+            "extraction_type": prescription["extraction_type"] if prescription else "unknown",
+            "description": prescription["description"] if prescription else f"No prescription mapped for '{cat}'",
+            "survivor_count": survivor_count,
+        }
+        if prescription and prescription.get("sicp_target", False):
+            sicp.append(entry)
+        else:
+            fuzzy.append(entry)
+
+    return sicp, fuzzy
 
 
 class DecompositionCoordinator:
@@ -256,19 +338,6 @@ def _discover_files(project_root: str, file_path: str | None) -> list[str]:
         )
         return [full] if os.path.isfile(full) else []
 
-    py_files: list[str] = []
-    for dirpath, _, filenames in os.walk(project_root):
-        basename = os.path.basename(dirpath)
-        if basename.startswith(".") or basename in (
-            "__pycache__",
-            "node_modules",
-            ".git",
-        ):
-            continue
-        resolved = os.path.realpath(dirpath)
-        if "/site-packages/" in resolved or "/dist-packages/" in resolved:
-            continue
-        for fn in filenames:
-            if fn.endswith(".py"):
-                py_files.append(os.path.join(dirpath, fn))
-    return py_files
+    from lintgate.discovery import discover_project_files
+
+    return discover_project_files(project_root)

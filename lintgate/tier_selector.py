@@ -14,11 +14,9 @@ when the agent makes rapid sequential edits.
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 
-from .path_filters import is_backup_like_directory
 from .types import SKIP_TIER, ChangeClassification, LintTier, ProjectConfig
 
 # ─── Tier definitions ────────────────────────────────────────────────────
@@ -73,20 +71,6 @@ _DEBOUNCE_FILE = Path.home() / ".claude" / "lintgate" / "debounce.json"
 _DEBOUNCE_MAX_ENTRIES = 200  # Cap to prevent unbounded growth
 _PROJECT_WIDE_CHANGE_KINDS = frozenset({"config", "dependency", "build"})
 _PROJECT_SCAN_FILE_LIMIT = 200
-_PROJECT_SCAN_SKIP_DIRS = {
-    ".git",
-    "__pycache__",
-    ".venv",
-    "venv",
-    "node_modules",
-    ".tox",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    "dist",
-    "build",
-    ".eggs",
-}
 
 
 def select_tier(
@@ -254,24 +238,9 @@ def _collect_project_python_files(
     limit: int = _PROJECT_SCAN_FILE_LIMIT,
 ) -> list[str]:
     """Collect a bounded set of Python files from project root."""
-    if not project_root or not os.path.isdir(project_root):
-        return []
+    from .discovery import discover_project_files
 
-    files: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if d not in _PROJECT_SCAN_SKIP_DIRS and not is_backup_like_directory(d)
-        ]
-        for filename in filenames:
-            if not filename.endswith(".py"):
-                continue
-            files.append(os.path.join(dirpath, filename))
-            if len(files) >= limit:
-                return sorted(files)
-
-    return sorted(files)
+    return discover_project_files(project_root, limit=limit)
 
 
 def _load_debounce_state() -> dict[str, float]:

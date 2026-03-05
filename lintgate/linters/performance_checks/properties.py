@@ -201,8 +201,7 @@ def _check_idempotent(
     if (
         isinstance(expr, ast.Call)
         and isinstance(expr.func, ast.Name)
-        and expr.func.id
-        in ("abs", "set", "list", "dict", "str", "int", "float", "bool")
+        and expr.func.id in ("abs", "set", "list", "dict", "str", "int", "float", "bool")
     ):
         # Type casting is generally idempotent
         return AlgebraicProperty(
@@ -310,6 +309,59 @@ def _check_commutative_associative(
     return None, None
 
 
+def _apply_spec_level_gate(
+    mutation_state: FunctionMutationState | None,
+    confidence: float,
+    evidence_prefix: str,
+) -> tuple[bool, float, str]:
+    """Apply SpecificationLevel-aware confidence gating.
+
+    Returns (handled, confidence, evidence_prefix). When handled=True, the
+    caller should skip the numeric cross-channel gate.
+    """
+    if not (mutation_state and mutation_state.total > 0 and hasattr(mutation_state, "spec_level")):
+        return False, confidence, evidence_prefix
+
+    from lintgate.mutation.state import SpecificationLevel
+
+    if mutation_state.spec_level == SpecificationLevel.FUZZY_ATOMIC:
+        rate = mutation_state.survival_rate
+        return (
+            True,
+            min(confidence, 0.10),
+            (
+                f"[FUZZY_ATOMIC: survival={rate:.0%}, "
+                f"irreducibly fuzzy — optimization not applicable] "
+            ),
+        )
+    if mutation_state.spec_level == SpecificationLevel.SPECIFIED:
+        return True, max(confidence, 0.95), "[SPECIFIED: fully verified by mutation testing] "
+    if mutation_state.spec_level == SpecificationLevel.TANGLED:
+        rate = mutation_state.survival_rate
+        cats = [c for c, n in mutation_state.survived_by_category.items() if n > 0]
+        return (
+            True,
+            min(confidence, 0.10),
+            (f"[TANGLED: survival={rate:.0%}, decompose along: {cats}] "),
+        )
+    return False, confidence, evidence_prefix
+
+
+def _apply_spec_level_hint_suppression(
+    mutation_state: FunctionMutationState | None,
+    hints: list[str],
+) -> list[str]:
+    """Suppress optimization hints for FUZZY_ATOMIC and TANGLED functions."""
+    if not (mutation_state and mutation_state.total > 0 and hasattr(mutation_state, "spec_level")):
+        return hints
+
+    from lintgate.mutation.state import SpecificationLevel
+
+    if mutation_state.spec_level in (SpecificationLevel.FUZZY_ATOMIC, SpecificationLevel.TANGLED):
+        return []
+    return hints
+
+
 def classify_properties(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     purity: PurityResult,
@@ -328,8 +380,13 @@ def classify_properties(
     confidence = purity.confidence
     evidence_prefix = ""
 
+    # SpecificationLevel-aware gate (mutation theory integration)
+    _spec_level_handled, confidence, evidence_prefix = _apply_spec_level_gate(
+        mutation_state, confidence, evidence_prefix
+    )
+
     # Integrated Cross-Channel Gate (#207: depth/confidence/assertion-aware)
-    if mutation_state and mutation_state.total > 0:
+    if not _spec_level_handled and mutation_state and mutation_state.total > 0:
         survival_rate = mutation_state.survival_rate
         spec_strength = mutation_state.specification_strength
 
@@ -340,6 +397,7 @@ def classify_properties(
             should_gate = survival_rate > 0.5
             if not should_gate and enforcement_mode != "audit":
                 from lintgate.mutation.prescriptions import resolve_gate_status
+
                 gate_status, _ = resolve_gate_status(spec_strength, enforcement_mode)
                 should_gate = gate_status != "pass"
 
@@ -420,6 +478,9 @@ def classify_properties(
         hints.append("parallelizable")
         hints.append("map-reduce-compatible")
 
+    # SpecificationLevel hint suppression (checked before numeric gate)
+    hints = _apply_spec_level_hint_suppression(mutation_state, hints)
+
     # #207: Hard gate — suppress hints when gateable evidence says specification is weak.
     # Applied after all property detection so ALL hints are subject to the gate.
     if mutation_state and mutation_state.is_gateable and mutation_state.total > 0:
@@ -429,6 +490,7 @@ def classify_properties(
         should_suppress = survival_rate > 0.5
         if not should_suppress and enforcement_mode != "audit":
             from lintgate.mutation.prescriptions import resolve_gate_status
+
             gate_status, _ = resolve_gate_status(spec_strength, enforcement_mode)
             should_suppress = gate_status != "pass"
 

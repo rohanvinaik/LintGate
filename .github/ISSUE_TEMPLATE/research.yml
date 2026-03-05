@@ -1,0 +1,57 @@
+name: Research
+description: Exploratory or theoretical investigation
+labels: ["type:research", "enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What limitation or gap motivates this research?
+      placeholder: Describe the current limitation and why it matters.
+    validations:
+      required: true
+
+  - type: textarea
+    id: research-context
+    attributes:
+      label: Research Context
+      description: Prior work, literature, analogous systems.
+      placeholder: What existing work is relevant? Include links to papers, repos, prior art.
+    validations:
+      required: true
+
+  - type: textarea
+    id: connection
+    attributes:
+      label: Connection to Existing System
+      description: Which files, functions, or modules are relevant?
+      placeholder: List specific files and components this research touches.
+    validations:
+      required: true
+
+  - type: textarea
+    id: exploration
+    attributes:
+      label: Proposed Exploration
+      description: What to investigate and key questions to resolve.
+      placeholder: Describe the investigation plan and open questions.
+    validations:
+      required: true
+
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Success Criteria
+      description: Measurable outcomes that indicate this research is complete.
+      placeholder: How will we know this research succeeded?
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links to papers, repos, prior art.
+      placeholder: Optional links and citations.
+    validations:
+      required: false

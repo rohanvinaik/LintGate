@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 from lintgate.code_inference import (
     _FRAMEWORK_MAP,
     _MAX_CONFIDENCE,
-    _SKIP_DIRS,
     _claim,
     _collect_py_files,
     _extract_first_paragraph,
@@ -25,6 +24,7 @@ from lintgate.code_inference import (
     _scan_test_dir,
     infer_from_code,
 )
+from lintgate.discovery import CANONICAL_EXCLUDE_DIRS
 
 # ── _infer_from_pyproject ─────────────────────────────────────────────
 
@@ -425,8 +425,8 @@ class TestCommitInference:
 
 class TestConstantsSanity:
     def test_skip_dirs(self) -> None:
-        assert ".git" in _SKIP_DIRS
-        assert "__pycache__" in _SKIP_DIRS
+        assert ".git" in CANONICAL_EXCLUDE_DIRS
+        assert "__pycache__" in CANONICAL_EXCLUDE_DIRS
 
     def test_framework_map(self) -> None:
         assert "fastapi" in _FRAMEWORK_MAP

@@ -132,7 +132,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     # Build config
     cp_config = ControlPlaneConfig(
         enabled=True,
-        latency_budget_ms=30000,  # CLI gets more time
+        latency_budget_ms=120_000,  # 2 min default; dynamic budget in MCP surface
     )
 
     # Run mesh
@@ -175,34 +175,9 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
 def _discover_python_files(project_root: str, max_files: int = 50) -> list[str]:
     """Discover Python files in the project for CLI analysis."""
-    files: list[str] = []
-    root = os.path.abspath(project_root)
+    from lintgate.discovery import discover_project_files
 
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Skip hidden dirs and common non-source dirs
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not d.startswith(".")
-            and d
-            not in (
-                "node_modules",
-                "__pycache__",
-                ".venv",
-                "venv",
-                "build",
-                "dist",
-                ".git",
-                ".tox",
-            )
-        ]
-        for f in filenames:
-            if f.endswith(".py"):
-                files.append(os.path.join(dirpath, f))
-                if len(files) >= max_files:
-                    return files
-
-    return files
+    return discover_project_files(project_root, limit=max_files)
 
 
 def _print_human_readable(mesh_result) -> None:

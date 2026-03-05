@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 76 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 84 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -110,11 +110,13 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `mutation_run_sampling` | Fast sampled mutation run | After editing specific files |
-| `mutation_run_full` | Deep exhaustive mutation profiling | Verify test quality of component |
+| `mutation_run_full` | Deep exhaustive mutation profiling (Tier 2) | Verify test quality of component; also auto-scheduled by ControlPlane when `tier2_auto_schedule: true` |
 | `mutation_get_state` | Current mutation state and metrics | Review previous runs |
 | `mutation_prescribe` | Deterministic prescriptions from profiles | After mutation run |
 | `mutation_decompose` | Find entangled functions (mode: auto/static/dynamic) | Refactoring decisions, cold-start projects |
 | `mutation_refactor_loop` | Re-profile after test improvement | Close the test improvement loop |
+| `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles | After `mutation_prescribe` identifies surviving categories |
+| `mutation_validate_tests` | Re-profile and compute per-category survival deltas | After writing prescribed tests |
 | `mutation_clear_state` | Clear mutation state | Code has drifted significantly |
 
 ### Bootstrap (Cold-Start)
@@ -161,6 +163,15 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `nsil_verify_action` | Dry-run action verification | Before risky actions |
 | `nsil_export_training_data` | Export alignment data for fine-tuning | Training data collection |
 | `nsil_benchmark` | Run safety enforcement benchmarks | Validate safety coverage |
+
+### GitHub Project Organization
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `project_organize_audit` | Audit GitHub labels, milestones, templates, wiki | Project setup, organization review |
+| `project_organize_apply` | Create missing labels/milestones (dry-run default) | After audit identifies gaps |
+| `project_wiki_sync` | Sync theory/compass/design to wiki pages (dry-run default) | Publishing project knowledge to wiki |
+| `project_wiki_read` | Read a GitHub wiki page | Wiki content for theory extraction |
 
 ### Telemetry
 

@@ -84,7 +84,7 @@ _MCP_INSTRUCTIONS = (
     "Compass workflow: compass_update(path, write=true) → compass_interview(path) → "
     "compass_update(path, targets=['all'], write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "49 tools total — use getting_started or lint_status to explore."
+    "84 tools total — use getting_started or lint_status to explore."
 )
 
 
@@ -156,20 +156,6 @@ TIER_LINTERS = {
 }
 
 _VALID_STRICTNESS = {"relaxed", "normal", "strict"}
-_SKIP_DIRS = {
-    ".git",
-    "__pycache__",
-    ".venv",
-    "venv",
-    "node_modules",
-    ".tox",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    "dist",
-    "build",
-    ".eggs",
-}
 
 
 # ─── Helper functions (shared with domain modules via helpers dict) ─────
@@ -268,15 +254,9 @@ def _build_onboarding_status(project_root: str) -> dict[str, Any]:
 
 def _collect_python_files(project_root: str) -> list[str]:
     """Recursively find all .py files under project_root."""
-    py_files = []
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        # Prune uninteresting directories.
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
-        for name in filenames:
-            if name.endswith(".py"):
-                py_files.append(os.path.join(dirpath, name))
+    from lintgate.discovery import discover_project_files
 
-    return sorted(py_files)
+    return discover_project_files(project_root)
 
 
 def _resolve_files(files: list[str], project_root: str) -> tuple[list[str], list[str]]:

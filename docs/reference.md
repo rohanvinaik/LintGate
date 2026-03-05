@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 76 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 84 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (73)
+## MCP Tools (84)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (49 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (82 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -56,6 +56,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `mutation_prescribe`      | Generate deterministic refactoring prescriptions from mutation profiles |
 | `mutation_decompose`      | Identify multi-category entangled functions requiring decomposition     |
 | `mutation_refactor_loop`  | Orchestrate before/after delta measurement for test reinforcement       |
+| `mutation_prescribe_tests` | Generate targeted test skeletons from mutation survival profiles       |
+| `mutation_validate_tests` | Re-profile after test changes and compute per-category survival deltas  |
 | `calibrate_assertion_weights` | Run mutation-backed calibration pipeline to adjust assertion weights |
 | `run_property_tests`     | Execute generated property tests for a function and capture counterexamples |
 
@@ -155,6 +157,17 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `refactor_checkpoint` | Record progress on a file during a refactoring session                 |
 | `refactor_resume`     | Load refactor state and provide structured summary for session resumption |
 | `refactor_thesis`     | Record or update the agent's structural thesis about the codebase      |
+
+### GitHub Project Organization
+
+| Tool                       | Purpose                                                         |
+| -------------------------- | --------------------------------------------------------------- |
+| `project_organize_audit`   | Audit GitHub labels, milestones, templates, wiki status         |
+| `project_organize_apply`   | Create missing labels and milestones (dry-run by default)       |
+| `project_wiki_sync`        | Sync theory/compass/design data to GitHub wiki pages            |
+| `project_wiki_read`        | Read a GitHub wiki page (local clone or remote)                 |
+| `wiki_materialize`         | Generate wiki pages locally from manifest (dry-run or write)    |
+| `wiki_status`              | Show wiki freshness state — stale/fresh/missing page counts     |
 
 ---
 
@@ -334,7 +347,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 49 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 82 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 

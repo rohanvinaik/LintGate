@@ -167,6 +167,37 @@ def _run_prepass(event: SupervisionEvent) -> None:
             event.context["property_manifest"] = manifest
             event.context["python_files"] = py_files
 
+    with contextlib.suppress(Exception):
+        from lintgate.linters.test_effectiveness.manifest import (
+            build_test_effectiveness_manifest,
+        )
+
+        test_files = _discover_test_files(event.project_root)
+        if test_files:
+            # Reuse python_files from property manifest block, or
+            # discover independently if that block failed.
+            src_files = event.context.get("python_files")
+            if not src_files:
+                from lintgate.channels.performance_channel import (
+                    _discover_python_files,
+                )
+
+                src_files = _discover_python_files(event.project_root)
+            if src_files:
+                teff_manifest = build_test_effectiveness_manifest(
+                    event.project_root, src_files, test_files
+                )
+                event.context["test_effectiveness_manifest"] = teff_manifest
+
+
+def _discover_test_files(project_root: str) -> list[str]:
+    """Discover test files for the test effectiveness manifest."""
+    from lintgate.linters.test_effectiveness.test_analyzer import (
+        _discover_test_files as discover,
+    )
+
+    return discover(project_root)
+
 
 def _collect_git_context(
     event: SupervisionEvent,

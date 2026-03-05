@@ -65,7 +65,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
 
     cp_config = ControlPlaneConfig(
         enabled=cp_raw.get("enabled", False),
-        latency_budget_ms=cp_raw.get("latency_budget_ms", 15000),
+        latency_budget_ms=cp_raw.get("latency_budget_ms", 120_000),
         advisory_default=cp_raw.get("advisory_default", True),
         session_memory=cp_raw.get("session_memory", False),
         session_max_age_hours=float(cp_raw.get("session_max_age_hours", 4.0)),
@@ -273,6 +273,16 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
 
     # Timeout
     config.total_timeout_ms = raw.get("total_timeout_ms", 8000)
+
+    # Discovery scope
+    discovery_raw = raw.get("discovery", {})
+    if isinstance(discovery_raw, dict):
+        sp = discovery_raw.get("source_paths", [])
+        if isinstance(sp, list):
+            config.discovery_source_paths = [str(p) for p in sp if p]
+        ep = discovery_raw.get("exclude_paths", [])
+        if isinstance(ep, list):
+            config.discovery_exclude_paths = [str(p) for p in ep if p]
 
     # Quality policy
     qp_raw = raw.get("quality_policy", {})

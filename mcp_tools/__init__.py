@@ -26,6 +26,8 @@ Domain modules:
                   compass_reset, theory_mode_enter, theory_mode_freeze, setup_hooks
 - refactor_tools: refactor_checkpoint, refactor_resume, refactor_thesis
 - convergence_tools: convergence_analyze, extraction_plan, optimization_landscape
+- gh_tools: project_organize_audit, project_organize_apply, project_wiki_sync, project_wiki_read
+- wiki_tools: wiki_materialize, wiki_status
 """
 
 from . import (
@@ -36,6 +38,7 @@ from . import (
     controlplane_tools,
     convergence_tools,
     dep_tools,
+    gh_tools,
     habit_tools,
     lint_tools,
     model_tools,
@@ -46,6 +49,7 @@ from . import (
     refactor_tools,
     telemetry_tools,
     test_effectiveness_tools,
+    wiki_tools,
 )
 
 ALL_MODULES = [
@@ -66,6 +70,8 @@ ALL_MODULES = [
     nsil_tools,
     refactor_tools,
     convergence_tools,
+    gh_tools,
+    wiki_tools,
 ]
 
 

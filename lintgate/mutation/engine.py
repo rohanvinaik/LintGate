@@ -26,9 +26,23 @@ except ImportError:
 if TYPE_CHECKING:
     from lintgate.linters.performance_checks.manifest import PropertyManifest
     from lintgate.linters.test_effectiveness.types import TestEffectivenessManifest
+    from lintgate.mutation.predictor import CalibrationStore, SpecificationPrediction
 
 import contextlib
 
+from lintgate.mutation.mutant_parsing import (
+    FunctionCharacteristicVisitor,
+    is_mutant_relevant,
+)
+from lintgate.mutation.mutant_parsing import (
+    demangle_mutmut_name as _demangle_mutmut_name,
+)
+from lintgate.mutation.mutant_parsing import (
+    match_path as _match_path,
+)
+from lintgate.mutation.mutant_parsing import (
+    tally_status as _tally_status,
+)
 from lintgate.mutation.policy import (
     MutationOperatorCategory,
     MutationTelemetry,
@@ -39,10 +53,21 @@ from lintgate.mutation.state import (
     CoverageDepth,
     FunctionMutationState,
     MutationStateManager,
+    _path_to_mutmut_module,
     compute_content_hash,
 )
 
 logger = logging.getLogger(__name__)
+
+# When True, mutation execution is protected by source backup/restore.
+# Gate auto-enqueue and automation tiers on this flag.
+SOURCE_PROTECTION_ACTIVE = True
+
+
+def _is_mutant_path(path: str) -> bool:
+    """Return True if path is inside a mutants/ directory."""
+    parts = Path(path).resolve().parts
+    return "mutants" in parts
 
 
 class MutationEngine:
@@ -53,9 +78,43 @@ class MutationEngine:
         state_manager: MutationStateManager,
         budget: RuntimeBudget,
     ):
+        self._recover_if_needed()
         self.state_manager = state_manager
         self.budget = budget
         self.relevance_matrix = OperatorRelevanceMatrix()
+
+    @staticmethod
+    def _recover_if_needed() -> None:
+        """Recover from interrupted mutation runs.
+
+        1. Restore pyproject.toml from backup (existing behavior).
+        2. Scan for mutmut trampoline artifacts in Python files — these indicate
+           a crashed run that left source files corrupted in-place.
+        """
+        backup = Path("pyproject.toml.lintgate-backup")
+        if backup.exists():
+            pyproject = Path("pyproject.toml")
+            pyproject.write_text(backup.read_text("utf-8"), "utf-8")
+            backup.unlink()
+            logger.info("Recovered pyproject.toml from stale lintgate-backup")
+
+        # Detect trampoline artifacts from crashed runs
+        corrupted: list[str] = []
+        for py in Path(".").rglob("*.py"):
+            if _is_mutant_path(str(py)):
+                continue
+            try:
+                if "_mutmut_trampoline" in py.read_text("utf-8")[:2000]:
+                    corrupted.append(str(py))
+            except OSError:
+                pass
+        if corrupted:
+            logger.critical(
+                "Detected mutmut trampoline artifacts in %d file(s) from an "
+                "interrupted run. Restore via: git checkout -- %s",
+                len(corrupted),
+                " ".join(corrupted[:10]),
+            )
 
     def run_inline_sampling(
         self,
@@ -79,13 +138,10 @@ class MutationEngine:
         results = []
         for file_path in target_files:
             # Check budgets
-            if (
-                telemetry.inline_time_ms_spent
-                >= self.budget.max_inline_ms_per_function * len(target_files)
+            if telemetry.inline_time_ms_spent >= self.budget.max_inline_ms_per_function * len(
+                target_files
             ):
-                logger.warning(
-                    f"Mutation inline budget exhausted. Skipping {file_path}"
-                )
+                logger.warning(f"Mutation inline budget exhausted. Skipping {file_path}")
                 break
 
             # Heuristic: discover functions in file to compute per-function relevance.
@@ -124,14 +180,10 @@ class MutationEngine:
             telemetry.add_inline_time(elapsed_ms)
 
             if success:
-                file_states = self._parse_mutmut_results(
-                    [file_path], project_root=project_root
-                )
+                file_states = self._parse_mutmut_results([file_path], project_root=project_root)
                 for state in file_states.values():
                     state.depth = CoverageDepth.SAMPLED
-                    self.state_manager.update_state(
-                        state, project_root=project_root
-                    )
+                    self.state_manager.update_state(state, project_root=project_root)
                     results.append(state)
 
         self.state_manager.save()
@@ -195,18 +247,119 @@ class MutationEngine:
             telemetry.background_functions_profiled += 1
 
             if success:
-                file_states = self._parse_mutmut_results(
-                    [file_path], project_root=project_root
-                )
+                file_states = self._parse_mutmut_results([file_path], project_root=project_root)
                 for state in file_states.values():
                     state.depth = CoverageDepth.PROFILED
-                    self.state_manager.update_state(
-                        state, project_root=project_root
-                    )
+                    self.state_manager.update_state(state, project_root=project_root)
                     results.append(state)
 
         self.state_manager.save()
         return results
+
+    def run_targeted_verification(
+        self,
+        predictions: dict[str, SpecificationPrediction],
+        target_files: list[str],
+        telemetry: MutationTelemetry,
+        project_root: str | None = None,
+        test_mapping: dict[str, list[str]] | None = None,
+        calibration_store: CalibrationStore | None = None,
+    ) -> list[FunctionMutationState]:
+        """Verify uncertain predictions with minimal mutmut execution.
+
+        Only runs mutants in categories predicted as "uncertain" or "survive".
+        Skips categories predicted as "killed" (already covered by tests).
+        Skips functions where prediction doesn't need verification.
+        """
+        if not self.budget.enabled:
+            return []
+
+        results: list[FunctionMutationState] = []
+
+        for file_path in target_files:
+            # Collect predictions for this file that need verification.
+            # Function IDs have format "relpath::funcname" — extract the
+            # file component and compare via os.path to handle absolute
+            # vs relative path differences.
+            norm_path = os.path.normpath(file_path)
+            file_predictions = {
+                fid: pred
+                for fid, pred in predictions.items()
+                if pred.needs_verification
+                and os.path.normpath(fid.split("::")[0]) == norm_path
+            }
+            if not file_predictions:
+                continue
+
+            # Build category filter from uncertain/survive predictions only
+            verify_categories: set[MutationOperatorCategory] = set()
+            for pred in file_predictions.values():
+                for cat_name, outcome in pred.category_predictions.items():
+                    if outcome in ("uncertain", "survive"):
+                        cat = self._category_name_to_enum(cat_name)
+                        if cat is not None:
+                            verify_categories.add(cat)
+
+            if not verify_categories:
+                continue
+
+            # Build test filter from test-impact mapping
+            test_filter = None
+            if test_mapping:
+                relevant_tests = test_mapping.get(file_path, [])
+                if relevant_tests:
+                    test_filter = " ".join(relevant_tests)
+
+            start_t = time.perf_counter()
+            success = self._execute_mutmut(
+                paths=[file_path],
+                depth=CoverageDepth.SAMPLED,
+                test_filter=test_filter,
+                relevant_categories=verify_categories,
+                telemetry=telemetry,
+            )
+            elapsed_ms = (time.perf_counter() - start_t) * 1000
+            telemetry.add_inline_time(elapsed_ms)
+
+            if not success:
+                continue
+
+            file_states = self._parse_mutmut_results(
+                [file_path], project_root=project_root
+            )
+            for func_id, state in file_states.items():
+                state.depth = CoverageDepth.SAMPLED
+                self.state_manager.update_state(state, project_root=project_root)
+                results.append(state)
+
+                # Update calibration if we have a prediction for this function
+                if calibration_store and func_id in predictions:
+                    pred = predictions[func_id]
+                    actual_level = state.spec_level
+                    # Extract the decision-tree path from signals
+                    signal_key = self._extract_signal_key(pred)
+                    calibration_store.record(
+                        signal_key, pred.predicted_level, actual_level
+                    )
+
+        self.state_manager.save()
+        return results
+
+    @staticmethod
+    def _category_name_to_enum(name: str) -> MutationOperatorCategory | None:
+        """Convert a category name string to MutationOperatorCategory enum."""
+        try:
+            return MutationOperatorCategory(name)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _extract_signal_key(pred: SpecificationPrediction) -> str:
+        """Extract the decision-tree path name from a prediction's signals."""
+        for signal in pred.signals_used:
+            if signal.startswith("path="):
+                return signal[5:]
+        return "unknown"
 
     def _execute_mutmut(
         self,
@@ -230,13 +383,25 @@ class MutationEngine:
         Returns True if successful (mutants killed/survived normally), False on runner crash.
         """
         pyproject_path = Path("pyproject.toml")
+        backup_path = pyproject_path.with_suffix(".toml.lintgate-backup")
         original_pyproject = None
         if pyproject_path.exists():
             original_pyproject = pyproject_path.read_text("utf-8")
 
+        # Snapshot source files BEFORE mutmut rewrites them in-place
+        source_backups: dict[str, str] = {}
+        for p in paths:
+            with contextlib.suppress(OSError):
+                source_backups[p] = Path(p).read_text("utf-8")
+
         try:
+            if original_pyproject is not None:
+                backup_path.write_text(original_pyproject, "utf-8")
+
             mutants_to_run, filter_active = self._filter_mutants_by_category(
-                paths, relevant_categories, telemetry,
+                paths,
+                relevant_categories,
+                telemetry,
                 per_function_categories=per_function_categories,
             )
 
@@ -247,14 +412,29 @@ class MutationEngine:
                 # Everything was filtered out; nothing to run.
                 return True
 
-            return self._run_mutmut_subprocess(
-                cmd, telemetry, filter_active, mutants_to_run
-            )
+            return self._run_mutmut_subprocess(cmd, telemetry, filter_active, mutants_to_run)
         except (subprocess.SubprocessError, FileNotFoundError):
             return False
         finally:
+            # Restore source files FIRST (most critical)
+            for p, content in source_backups.items():
+                try:
+                    Path(p).write_text(content, "utf-8")
+                except OSError:
+                    logger.critical("FAILED to restore %s after mutation run", p)
+            # Hash verification
+            for p, content in source_backups.items():
+                try:
+                    restored = Path(p).read_text("utf-8")
+                    if compute_content_hash(restored) != compute_content_hash(content):
+                        logger.critical("Hash mismatch after restore: %s", p)
+                except OSError:
+                    pass
+            # Restore pyproject.toml
             if original_pyproject is not None:
                 pyproject_path.write_text(original_pyproject, "utf-8")
+            if backup_path.exists():
+                backup_path.unlink()
 
     def _filter_mutants_by_category(
         self,
@@ -277,29 +457,44 @@ class MutationEngine:
 
         mutants_to_run: list[str] = []
         for path in paths:
-            try:
-                source = Path(path).read_text("utf-8")
-                cat_map = self._build_mutant_category_map(path, source)
-                for mutant_id, cat in cat_map.items():
-                    # Phase 4: Per-function filtering when available
-                    if per_function_categories is not None:
-                        func_name = _extract_func_name_from_mutant_id(mutant_id)
-                        if func_name and func_name in per_function_categories:
-                            if cat in per_function_categories[func_name]:
-                                mutants_to_run.append(mutant_id)
-                            elif telemetry:
-                                telemetry.mutants_skipped_policy += 1
-                            continue
-                    # Fallback: file-level category check
-                    if cat in relevant_categories:
-                        mutants_to_run.append(mutant_id)
-                    elif telemetry:
-                        telemetry.mutants_skipped_policy += 1
-            except Exception as e:
-                logger.debug(f"Failed to generate explicit mutant list for {path}: {e}")
+            selected, ok = self._collect_relevant_mutants(
+                path,
+                relevant_categories,
+                per_function_categories,
+                telemetry,
+            )
+            if not ok:
                 return [], False
+            mutants_to_run.extend(selected)
 
         return mutants_to_run, True
+
+    def _collect_relevant_mutants(
+        self,
+        path: str,
+        relevant_categories: set[MutationOperatorCategory],
+        per_function_categories: dict[str, set[MutationOperatorCategory]] | None,
+        telemetry: MutationTelemetry | None,
+    ) -> tuple[list[str], bool]:
+        """Collect relevant mutants for a single file.
+
+        Returns (selected_mutant_ids, success).
+        """
+        try:
+            source = Path(path).read_text("utf-8")
+            cat_map = self._build_mutant_category_map(path, source)
+        except Exception as e:
+            logger.debug(f"Failed to generate explicit mutant list for {path}: {e}")
+            return [], False
+
+        selected: list[str] = []
+        for mutant_id, cat in cat_map.items():
+            if is_mutant_relevant(mutant_id, cat, per_function_categories, relevant_categories):
+                selected.append(mutant_id)
+            elif telemetry:
+                telemetry.mutants_skipped_policy += 1
+
+        return selected, True
 
     @staticmethod
     def _scope_pyproject_paths(
@@ -307,15 +502,24 @@ class MutationEngine:
         original_pyproject: str | None,
         paths: list[str],
     ) -> None:
-        """Rewrite [tool.mutmut] paths_to_mutate to scope to target files."""
+        """Rewrite [tool.mutmut] paths_to_mutate to scope to target files.
+
+        If the [tool.mutmut] section or paths_to_mutate key doesn't exist,
+        appends the section so mutmut knows which files to mutate.
+        """
         if not original_pyproject or not paths:
             return
         scoped_paths = json.dumps(paths)
-        new_content = _re.sub(
+        new_content, count = _re.subn(
             r"(paths_to_mutate\s*=\s*)\[[^\]]*\]",
             f"paths_to_mutate = {scoped_paths}",
             original_pyproject,
         )
+        if count == 0:
+            # No existing paths_to_mutate — append [tool.mutmut] section
+            new_content = original_pyproject.rstrip() + (
+                f"\n\n[tool.mutmut]\npaths_to_mutate = {scoped_paths}\n"
+            )
         pyproject_path.write_text(new_content, "utf-8")
 
     def _build_mutmut_command(
@@ -345,9 +549,7 @@ class MutationEngine:
         mutants_to_run: list[str],
     ) -> bool:
         """Run mutmut subprocess and interpret exit code."""
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, check=False, timeout=300
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=300)
         # mutmut v3: 0 = all killed, 2 = survivors found, 1 = other
         if proc.returncode not in (0, 1, 2):
             return False
@@ -455,9 +657,7 @@ class MutationEngine:
                 continue
             try:
                 source = Path(path).read_text("utf-8")
-                mutant_category_map.update(
-                    self._build_mutant_category_map(path, source)
-                )
+                mutant_category_map.update(self._build_mutant_category_map(path, source))
             except Exception as e:
                 logger.debug(f"Failed to build category map for {path}: {e}")
         return mutant_category_map
@@ -531,9 +731,7 @@ class MutationEngine:
                     code_content = Path(matched_path).read_text("utf-8")
 
             if project_root is not None:
-                func_id = canonicalize_function_id(
-                    matched_path, func_name, project_root
-                )
+                func_id = canonicalize_function_id(matched_path, func_name, project_root)
             else:
                 func_id = f"{matched_path}::{func_name}"
 
@@ -558,9 +756,7 @@ class MutationEngine:
         Prefers mutmut's native operator stream (when available) and falls back to
         a lightweight AST-based approximation when optional dependencies are missing.
         """
-        module_name = os.path.splitext(path)[0].replace("/", ".")
-        if module_name.startswith("."):
-            module_name = module_name[1:]
+        module_name = _path_to_mutmut_module(path)
 
         # Preferred path: match mutmut internals as closely as possible.
         native_map = self._build_mutant_category_map_with_mutmut(module_name, source)
@@ -604,9 +800,7 @@ class MutationEngine:
                             (s[1] for s in reversed(self._stack) if s[0] == "class"),
                             None,
                         )
-                        mangled = mangle_function_name(
-                            name=node.name.value, class_name=class_name
-                        )
+                        mangled = mangle_function_name(name=node.name.value, class_name=class_name)
                         self._stack.append(("func", mangled))
 
                     if isinstance(node, (cst.Annotation, cst.Decorator)):
@@ -622,9 +816,7 @@ class MutationEngine:
                                     inventions = list(operator(node))
                                     if inventions:
                                         op_name = operator.__name__
-                                        cat = self._map_op_name_to_category(
-                                            op_name, node
-                                        )
+                                        cat = self._map_op_name_to_category(op_name, node)
                                         for _ in inventions:
                                             self.mutants.append((current_func, cat))
                                 except Exception:
@@ -632,10 +824,7 @@ class MutationEngine:
                     return True
 
                 def on_leave(self, node: cst.CSTNode):
-                    if (
-                        isinstance(node, (cst.ClassDef, cst.FunctionDef))
-                        and self._stack
-                    ):
+                    if isinstance(node, (cst.ClassDef, cst.FunctionDef)) and self._stack:
                         self._stack.pop()
 
                 def _map_op_name_to_category(self, op_name: str, node: Any) -> str:
@@ -683,9 +872,7 @@ class MutationEngine:
             )
             return {}
 
-    def _build_mutant_category_map_with_ast(
-        self, module_name: str, source: str
-    ) -> dict[str, str]:
+    def _build_mutant_category_map_with_ast(self, module_name: str, source: str) -> dict[str, str]:
         """Approximate mutmut category IDs using plain AST traversal."""
 
         class_sep = "\u01c1"
@@ -707,9 +894,7 @@ class MutationEngine:
                 return "conditional"
             if isinstance(node, ast.Compare):
                 return "conditional"
-            if isinstance(
-                node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.Match)
-            ):
+            if isinstance(node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.Match)):
                 return "conditional"
             if isinstance(node, ast.Constant):
                 if isinstance(node.value, str):
@@ -742,9 +927,7 @@ class MutationEngine:
                 self.generic_visit(node)
                 self.class_stack.pop()
 
-            def _visit_function(
-                self, node: ast.FunctionDef | ast.AsyncFunctionDef
-            ) -> None:
+            def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
                 if self.class_stack:
                     base = f"x{class_sep}{self.class_stack[-1]}{class_sep}{node.name}"
                 else:
@@ -774,174 +957,5 @@ class MutationEngine:
             visitor.visit(tree)
             return visitor.id_map
         except (SyntaxError, ValueError, TypeError) as e:
-            logger.debug(
-                f"Exception in _build_mutant_category_map_with_ast for {module_name}: {e}"
-            )
+            logger.debug(f"Exception in _build_mutant_category_map_with_ast for {module_name}: {e}")
             return {}
-
-
-def _extract_func_name_from_mutant_id(mutant_id: str) -> str | None:
-    """Extract the simple function name from a mutmut mutant ID.
-
-    Mutant IDs follow the format ``{module}.{base}__mutmut_{n}`` where
-    ``base`` is one of:
-    - ``x_funcname`` for module-level functions
-    - ``x\\u01c1ClassName\\u01c1method_name`` for class methods
-
-    Returns the simple function/method name (matching AST ``node.name``),
-    or ``None`` if the ID cannot be parsed.
-
-    Examples::
-
-        >>> _extract_func_name_from_mutant_id("mod.sub.x_compute__mutmut_3")
-        'compute'
-        >>> _extract_func_name_from_mutant_id("mod.sub.x\\u01c1Cls\\u01c1run__mutmut_1")
-        'run'
-        >>> _extract_func_name_from_mutant_id("mod.sub.x__private__mutmut_2")
-        '_private'
-    """
-    # Strip __mutmut_N suffix
-    mutmut_idx = mutant_id.find("__mutmut_")
-    if mutmut_idx == -1:
-        return None
-
-    prefix = mutant_id[:mutmut_idx]
-
-    class_sep = "\u01c1"  # mutmut's CLASS_NAME_SEPARATOR
-
-    # Class method: look for .xǁ pattern
-    class_marker = ".x" + class_sep
-    class_idx = prefix.rfind(class_marker)
-    if class_idx != -1:
-        remainder = prefix[class_idx + 2:]  # skip '.x'
-        parts = [p for p in remainder.split(class_sep) if p]
-        # parts = ['ClassName', 'method_name'] — return the method name
-        return parts[-1] if parts else None
-
-    # Module-level: look for .x_ pattern
-    func_marker = ".x_"
-    func_idx = prefix.rfind(func_marker)
-    if func_idx != -1:
-        return prefix[func_idx + 3:]  # skip '.x_' → 'funcname'
-
-    return None
-
-
-def _tally_status(
-    entry: dict[str, Any],
-    status: str,
-    name_part: str,
-    mutant_category_map: dict[str, str],
-) -> None:
-    """Increment the appropriate counter in *entry* based on *status*."""
-    if status == "killed":
-        entry["killed"] += 1
-    elif status == "survived":
-        entry["survived"] += 1
-        cat = mutant_category_map.get(name_part)
-        if cat:
-            entry["survived_by_category"][cat] = (
-                entry["survived_by_category"].get(cat, 0) + 1
-            )
-    elif status == "timeout":
-        entry["timeout"] += 1
-
-
-def _match_path(file_path: str, paths: list[str]) -> str | None:
-    """Map a demangled *file_path* back to an entry in *paths*.
-
-    Returns the absolute matched path, or None when *paths* is non-empty and
-    no match is found.  When *paths* is empty the demangled path is returned
-    as-is.
-    """
-    if not paths:
-        return file_path
-
-    for p in paths:
-        abs_p = os.path.abspath(p)
-        # Use endswith check to handle absolute vs relative or missing leading slash
-        if abs_p.endswith(os.path.normpath(file_path)):
-            return abs_p
-
-    return None
-
-
-def _demangle_mutmut_name(mangled: str) -> tuple[str, str]:
-    """Convert mutmut v3 mangled name to (file_path, function_name).
-
-    mutmut v3 mangles as:
-      Module-level: module.path.x_funcname
-      Class method: module.path.x\u01c1ClassName\u01c1method_name
-
-    The separator is '.x' followed by either '_' (module-level) or
-    '\u01c1' (class method, U+01C1 Latin Letter Lateral Click).
-
-    Examples:
-        'lintgate.mutation.ci_stats.x_compute_badge_color'
-            -> ('lintgate/mutation/ci_stats.py', 'compute_badge_color')
-        'lintgate.mutation.ci_stats.x__enrich_function_names'
-            -> ('lintgate/mutation/ci_stats.py', '_enrich_function_names')
-        'lintgate.linters.purity.x\u01c1_PureFunctionVisitor\u01c1visit_Call'
-            -> ('lintgate/linters/purity.py', '_PureFunctionVisitor.visit_Call')
-    """
-    class_sep = "\u01c1"  # mutmut's CLASS_NAME_SEPARATOR
-
-    # Class method format: .xǁClassǁmethod
-    class_idx = mangled.rfind(".x" + class_sep)
-    if class_idx != -1:
-        module_dotted = mangled[:class_idx]
-        remainder = mangled[class_idx + 2 :]  # skip '.x'
-        # remainder is like 'ǁClassǁmethod' — split on separator
-        parts = remainder.split(class_sep)
-        # parts = ['', 'ClassName', 'method_name']
-        parts = [p for p in parts if p]
-        func_name = ".".join(parts) if len(parts) >= 2 else (parts[0] if parts else "")
-        file_path = module_dotted.replace(".", "/") + ".py"
-        return (file_path, func_name)
-
-    # Module-level format: .x_funcname
-    idx = mangled.rfind(".x_")
-    if idx == -1:
-        return ("", "")
-    module_dotted = mangled[:idx]
-    func_name = mangled[idx + 3 :]  # skip '.x_'
-    file_path = module_dotted.replace(".", "/") + ".py"
-    return (file_path, func_name)
-
-
-class FunctionCharacteristicVisitor(ast.NodeVisitor):
-    """AST visitor to extract structural characteristics for mutation policy."""
-
-    def __init__(self):
-        self.branch_count = 0
-        self.has_strings = False
-        self.has_numbers = False
-
-    def _count_branch(self, node: ast.AST) -> None:
-        self.branch_count += 1
-        self.generic_visit(node)
-
-    def visit_If(self, node: ast.If):
-        self._count_branch(node)
-
-    def visit_While(self, node: ast.While):
-        self._count_branch(node)
-
-    def visit_For(self, node: ast.For):
-        self._count_branch(node)
-
-    def visit_BoolOp(self, node: ast.BoolOp):
-        # and/or also represent branching/logic complexity
-        self._count_branch(node)
-
-    def visit_Constant(self, node: ast.Constant):
-        if isinstance(node.value, str):
-            self.has_strings = True
-        elif isinstance(node.value, (int, float)):
-            self.has_numbers = True
-
-    def visit_Str(self, node: ast.Str):  # Support Python < 3.8
-        self.has_strings = True
-
-    def visit_Num(self, node: ast.Num):  # Support Python < 3.8
-        self.has_numbers = True
