@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .aggregator import (
     adapt_cochange_file,
@@ -20,7 +20,6 @@ from .aggregator import (
 
 if TYPE_CHECKING:
     from lintgate.controlplane.types import ChannelResult
-    from lintgate.mutation.decomposition import DecompositionCandidate
 
     from .evidence import ConvergenceResult, LensEvidence
 
@@ -85,9 +84,9 @@ def convergence_to_metrics(results: list[ConvergenceResult]) -> dict:
 
 
 def enrich_decomposition_candidates(
-    candidates: list[DecompositionCandidate],
+    candidates: list[Any],
     convergence: list[ConvergenceResult],
-) -> list[DecompositionCandidate]:
+) -> list[Any]:
     """Enrich decomposition candidates with convergence data.
 
     If a convergence result matches a candidate's target, boost confidence

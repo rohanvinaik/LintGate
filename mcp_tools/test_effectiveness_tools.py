@@ -7,13 +7,6 @@ import os
 import time
 from typing import Any
 
-from lintgate.linters.test_effectiveness.calibration import (
-    CALIBRATION_FILE,
-    calibrate_weights,
-    get_effective_weights,
-    get_mutation_data_hash,
-    save_calibration,
-)
 from lintgate.linters.test_effectiveness.test_effectiveness_logic import (
     AnalysisState,
     analyze_function_effectiveness,
@@ -38,9 +31,8 @@ def _analyze_test_strength_impl(
 
     project_root = helpers["_validate_project_root"](path)
 
-    # Load calibrated weights if available
-    survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
-    effective_weights = get_effective_weights(project_root, survivors_path)
+    # Mutation-backed calibration is archived; keep baseline weighting only.
+    effective_weights = None
 
     manifest, py_files, test_files, source_files = build_manifest_for_project(
         project_root, effective_weights=effective_weights
@@ -115,21 +107,7 @@ def _analyze_test_strength_impl(
         result["state"] = AnalysisState.SUCCESS.value
         result["analysis_truncated"] = False
 
-    # Check for calibration staleness
-    cal_path = os.path.join(project_root, CALIBRATION_FILE)
-    if os.path.exists(cal_path):
-        current_hash = get_mutation_data_hash(survivors_path)
-        with open(cal_path) as f:
-            stored_hash = json.load(f).get("source_hash")
-        if stored_hash != current_hash:
-            result["calibration_stale"] = True
-            result["calibration_note"] = (
-                "Calibration stale. Underlying mutation data has changed. Run calibrate_assertion_weights(path) to refresh."
-            )
-        else:
-            result["calibration_stale"] = False
-    else:
-        result["calibration_stale"] = None  # Never calibrated
+    result["calibration_stale"] = None
 
     apply_filters(result, file_filter, function_filter)
 
@@ -151,17 +129,15 @@ def _analyze_test_strength_impl(
             "note": "coverage.json not found. Run pytest --cov --cov-report=json to enable reconciliation."
         }
 
-    from lintgate.mutation.ci_stats import MutationCIStats, load_mutation_hotspots
-
-    stats_path = os.path.join(project_root, "mutants", "mutmut-cicd-stats.json")
-    survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
-
-    result["mutation_ci_context"] = MutationCIStats.from_json_path(stats_path).to_dict()
-    result["mutation_hotspots"] = load_mutation_hotspots(survivors_path)
+    result["mutation_ci_context"] = {
+        "status": "archived",
+        "note": "Mutation CI integration has been archived.",
+    }
+    result["mutation_hotspots"] = []
 
     result["next_actions"] = [
         "inspect_test_assertions(path, test_file) — drill into specific test file",
-        "controlplane_test_skeleton(source_file) — generate mutation-aware test stubs",
+        "controlplane_test_skeleton(source_file) — generate test stubs",
         "generate_property_tests(path) — Hypothesis templates for pure functions",
     ]
 
@@ -205,16 +181,7 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
     _truncate_results(result)
     _compute_test_summary(result, target_files)
 
-    from lintgate.mutation.ci_stats import load_mutation_hotspots
-
-    survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
-    all_hotspots = load_mutation_hotspots(survivors_path)
-
-    # Filter hotspots to only include files we analyzed
-    analyzed_relpaths = {os.path.relpath(f, project_root) for f in target_files}
-    result["mutation_hotspots"] = [
-        h for h in all_hotspots if h.get("file") in analyzed_relpaths
-    ]
+    result["mutation_hotspots"] = []
 
     return helpers["_json_dumps"](result)
 
@@ -397,44 +364,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         """
         return _inspect_test_assertions_impl(path, test_file, helpers)
 
-    @mcp.tool()
-    def calibrate_assertion_weights(path: str) -> str:
-        """Run the mutation-backed calibration pipeline to adjust assertion weights.
-
-        WHEN TO USE: After mutation testing (mutmut) has been run and you want
-        to provide evidence-based weighting for assertion kinds. Persists results
-        to .lintgate/calibration.json with a hash for staleness detection.
-        """
-        project_root = helpers["_validate_project_root"](path)
-        survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
-
-        if not os.path.exists(survivors_path):
-            return json.dumps(
-                {
-                    "error": "Mutation survivors file not found at mutants/mutmut-survivors.json",
-                    "hint": "Run mutation testing first.",
-                }
-            )
-
-        manifest, py_files, test_files, _ = build_manifest_for_project(project_root)
-        if not manifest or not manifest.functions:
-            return json.dumps({"error": "No functions found to calibrate against."})
-
-        weights = calibrate_weights(project_root, survivors_path, manifest)
-        source_hash = get_mutation_data_hash(survivors_path)
-        save_calibration(project_root, weights, source_hash)
-
-        return json.dumps(
-            {
-                "status": "success",
-                "message": "Assertion weights calibrated and saved.",
-                "source_hash": source_hash,
-                "weights_changed": len(weights),
-            }
-        )
-
     return {
         "analyze_test_strength": analyze_test_strength,
         "inspect_test_assertions": inspect_test_assertions,
-        "calibrate_assertion_weights": calibrate_assertion_weights,
     }

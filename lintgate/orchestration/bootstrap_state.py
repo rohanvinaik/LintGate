@@ -28,7 +28,6 @@ PHASES = (
     "skeletons",
     "properties",
     "contracts",
-    "mutation",
     "complete",
 )
 
@@ -38,7 +37,6 @@ class BootstrapArtifacts:
     """Artifacts produced by the bootstrap pipeline."""
 
     generated_test_dir: str = "tests/generated"
-    mutation_output_path: str | None = None
     proposal_output_path: str | None = None
     test_files: list[str] = field(default_factory=list)
 
@@ -73,6 +71,19 @@ class BootstrapState:
             with open(state_path) as f:
                 data = json.load(f)
             artifacts_data = data.pop("artifacts", {})
+            # Backward compatibility: drop archived mutation artifacts/state.
+            artifacts_data.pop("mutation_output_path", None)
+
+            if data.get("phase") == "mutation":
+                data["phase"] = "contracts"
+
+            files_processed = data.get("files_processed")
+            if isinstance(files_processed, dict):
+                data["files_processed"] = {
+                    k: ("contracts" if v == "mutation" else v)
+                    for k, v in files_processed.items()
+                }
+
             state = cls(**{k: v for k, v in data.items() if k != "artifacts"})
             state.artifacts = BootstrapArtifacts(**artifacts_data)
             return state

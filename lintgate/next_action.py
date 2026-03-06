@@ -5,7 +5,6 @@ can follow tool-suggested actions without understanding the underlying theory.
 
 Four previously incompatible formats are replaced:
 - CP reporter: {"tool", "args", "reason", "priority"}
-- mutation_prescribe: list[str] (bare tool names)
 - convergence_tools: {"tool", "when"}
 - mcp_server lint: {"tool", "args", "safe", "reason", "priority"}
 
@@ -24,7 +23,7 @@ class NextAction:
     """A single suggested follow-up tool call.
 
     Attributes:
-        tool: MCP tool name (e.g. ``"mutation_run_sampling"``).
+        tool: MCP tool name (e.g. ``"lint_files"``).
         args: Tool arguments dict (e.g. ``{"path": ".", "files": ["src/core.py"]}``).
         reason: Human-readable explanation of *why* this action is suggested.
         priority: 1 = highest urgency, 10 = lowest. Default 5.

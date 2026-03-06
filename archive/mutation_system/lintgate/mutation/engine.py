@@ -59,9 +59,16 @@ from lintgate.mutation.state import (
 
 logger = logging.getLogger(__name__)
 
-# When True, mutation execution is protected by source backup/restore.
-# Gate auto-enqueue and automation tiers on this flag.
-SOURCE_PROTECTION_ACTIVE = True
+# Mutation execution kill switch.
+# Default is OFF to prevent hidden mutmut side effects (source trampolines,
+# pyproject rewriting) while the subsystem is being redesigned.
+# Set LINTGATE_MUTATION_ENABLED=1 to re-enable explicitly.
+SOURCE_PROTECTION_ACTIVE = os.getenv("LINTGATE_MUTATION_ENABLED", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def _is_mutant_path(path: str) -> bool:
@@ -78,7 +85,8 @@ class MutationEngine:
         state_manager: MutationStateManager,
         budget: RuntimeBudget,
     ):
-        self._recover_if_needed()
+        if SOURCE_PROTECTION_ACTIVE:
+            self._recover_if_needed()
         self.state_manager = state_manager
         self.budget = budget
         self.relevance_matrix = OperatorRelevanceMatrix()
@@ -132,7 +140,7 @@ class MutationEngine:
         When *project_root* is provided, state keys use canonical identity
         (``relpath::qualname``) matching the manifest convention.
         """
-        if not self.budget.enabled:
+        if not SOURCE_PROTECTION_ACTIVE or not self.budget.enabled:
             return []
 
         results = []
@@ -207,7 +215,7 @@ class MutationEngine:
         When *project_root* is provided, state keys use canonical identity
         (``relpath::qualname``) matching the manifest convention.
         """
-        if not self.budget.enabled:
+        if not SOURCE_PROTECTION_ACTIVE or not self.budget.enabled:
             return []
 
         results = []
@@ -271,7 +279,7 @@ class MutationEngine:
         Skips categories predicted as "killed" (already covered by tests).
         Skips functions where prediction doesn't need verification.
         """
-        if not self.budget.enabled:
+        if not SOURCE_PROTECTION_ACTIVE or not self.budget.enabled:
             return []
 
         results: list[FunctionMutationState] = []

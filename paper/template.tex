@@ -1,0 +1,106 @@
+% arXiv-style LaTeX template for pandoc
+\documentclass[11pt,a4paper]{article}
+
+% ---- Fonts (xelatex/lualatex) ----
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\setmonofont{DejaVu Sans Mono}[Scale=0.85]
+\usepackage{microtype}
+
+% ---- Colors (must come before hyperref) ----
+\usepackage[dvipsnames]{xcolor}
+
+% ---- Page geometry ----
+\usepackage[margin=1in]{geometry}
+
+% ---- Math ----
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{unicode-math}
+
+% ---- Tables ----
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+
+% ---- Links ----
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+% ---- Code listings ----
+\usepackage{listings}
+\lstset{
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  frame=single,
+  framesep=6pt,
+  xleftmargin=12pt,
+  xrightmargin=6pt,
+  aboveskip=10pt,
+  belowskip=10pt,
+  columns=flexible,
+  keepspaces=true,
+  commentstyle=\color[rgb]{0.4,0.4,0.4},
+  keywordstyle=\bfseries,
+}
+
+% ---- Graphics (if needed) ----
+\usepackage{graphicx}
+
+% ---- Theorem environments ----
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ---- Pandoc tightlist ----
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% ---- Bulletless itemize (indented paragraphs, no symbol) ----
+\usepackage{enumitem}
+\setlist[itemize]{label={}, leftmargin=1.5em, itemsep=6pt, parsep=4pt}
+
+% ---- CSL / pandoc cite ----
+$if(csl-refs)$
+\newlength{\cslhangindent}
+\setlength{\cslhangindent}{1.5em}
+\newlength{\csllabelwidth}
+\setlength{\csllabelwidth}{3em}
+\newenvironment{CSLReferences}[2]%
+  {\begin{list}{}{%
+  \setlength{\itemindent}{0pt}
+  \setlength{\leftmargin}{0pt}
+  \setlength{\parsep}{0pt}
+  \setlength{\itemsep}{\parsep}}}
+  {\end{list}}
+\newcommand{\CSLBlock}[1]{#1\hfill\break}
+\newcommand{\CSLLeftMargin}[1]{\parbox[t]{\csllabelwidth}{#1}}
+\newcommand{\CSLRightInline}[1]{\parbox[t]{\linewidth - \csllabelwidth}{#1}\break}
+\newcommand{\CSLIndent}[1]{\hspace{\cslhangindent}#1}
+$endif$
+
+% ---- Title block ----
+\title{$title$}
+\author{$for(author)$$author$$sep$ \and $endfor$}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+$if(abstract)$
+\begin{abstract}
+$abstract$
+\end{abstract}
+$endif$
+
+$body$
+
+\end{document}

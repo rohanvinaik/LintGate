@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
-from typing import TYPE_CHECKING
+from typing import Any
 
 from lintgate.linters.performance_checks.algebra_types import (
     AlgebraicProperty,
@@ -13,9 +13,6 @@ from lintgate.linters.performance_checks.algebra_types import (
     PropertyKind,
     PurityResult,
 )
-
-if TYPE_CHECKING:
-    from lintgate.mutation.state import FunctionMutationState
 
 
 def _get_return_nodes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Return]:
@@ -310,128 +307,42 @@ def _check_commutative_associative(
 
 
 def _apply_spec_level_gate(
-    mutation_state: FunctionMutationState | None,
+    mutation_state: Any | None,
     confidence: float,
     evidence_prefix: str,
 ) -> tuple[bool, float, str]:
-    """Apply SpecificationLevel-aware confidence gating.
-
-    Returns (handled, confidence, evidence_prefix). When handled=True, the
-    caller should skip the numeric cross-channel gate.
-    """
-    if not (mutation_state and mutation_state.total > 0 and hasattr(mutation_state, "spec_level")):
-        return False, confidence, evidence_prefix
-
-    from lintgate.mutation.state import SpecificationLevel
-
-    if mutation_state.spec_level == SpecificationLevel.FUZZY_ATOMIC:
-        rate = mutation_state.survival_rate
-        return (
-            True,
-            min(confidence, 0.10),
-            (
-                f"[FUZZY_ATOMIC: survival={rate:.0%}, "
-                f"irreducibly fuzzy — optimization not applicable] "
-            ),
-        )
-    if mutation_state.spec_level == SpecificationLevel.SPECIFIED:
-        return True, max(confidence, 0.95), "[SPECIFIED: fully verified by mutation testing] "
-    if mutation_state.spec_level == SpecificationLevel.TANGLED:
-        rate = mutation_state.survival_rate
-        cats = [c for c, n in mutation_state.survived_by_category.items() if n > 0]
-        return (
-            True,
-            min(confidence, 0.10),
-            (f"[TANGLED: survival={rate:.0%}, decompose along: {cats}] "),
-        )
+    """Compatibility shim retained after mutation-system archival."""
+    _ = mutation_state
     return False, confidence, evidence_prefix
 
 
 def _apply_spec_level_hint_suppression(
-    mutation_state: FunctionMutationState | None,
+    mutation_state: Any | None,
     hints: list[str],
 ) -> list[str]:
-    """Suppress optimization hints for FUZZY_ATOMIC and TANGLED functions."""
-    if not (mutation_state and mutation_state.total > 0 and hasattr(mutation_state, "spec_level")):
-        return hints
-
-    from lintgate.mutation.state import SpecificationLevel
-
-    if mutation_state.spec_level in (SpecificationLevel.FUZZY_ATOMIC, SpecificationLevel.TANGLED):
-        return []
+    """Compatibility shim retained after mutation-system archival."""
+    _ = mutation_state
     return hints
 
 
 def classify_properties(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     purity: PurityResult,
-    mutation_state: FunctionMutationState | None = None,
+    mutation_state: Any | None = None,
     enforcement_mode: str = "audit",
     mutation_system_active: bool = False,
 ) -> FunctionProperties:
     """
     Given a known-pure function, attempt to classify its algebraic properties.
 
-    When ``mutation_system_active`` is True but ``mutation_state`` is None,
-    the function is treated as MUTATION_UNKNOWN with reduced confidence (0.4).
-    When ``mutation_system_active`` is False (mutation infrastructure unavailable),
-    the default behavior is preserved for backward compatibility.
+    ``mutation_state`` and ``mutation_system_active`` are retained for backward
+    compatibility, but mutation-derived gating is disabled.
     """
+    _ = enforcement_mode
+    _ = mutation_system_active
+
     confidence = purity.confidence
     evidence_prefix = ""
-
-    # SpecificationLevel-aware gate (mutation theory integration)
-    _spec_level_handled, confidence, evidence_prefix = _apply_spec_level_gate(
-        mutation_state, confidence, evidence_prefix
-    )
-
-    # Integrated Cross-Channel Gate (#207: depth/confidence/assertion-aware)
-    if not _spec_level_handled and mutation_state and mutation_state.total > 0:
-        survival_rate = mutation_state.survival_rate
-        spec_strength = mutation_state.specification_strength
-
-        if mutation_state.is_gateable:
-            # Hard gate: sufficient evidence to modify hints
-            # Survival > 0.5 always gates (independent of enforcement mode)
-            # Spec-strength < 0.5 only gates when enforcement_mode != "audit"
-            should_gate = survival_rate > 0.5
-            if not should_gate and enforcement_mode != "audit":
-                from lintgate.mutation.prescriptions import resolve_gate_status
-
-                gate_status, _ = resolve_gate_status(spec_strength, enforcement_mode)
-                should_gate = gate_status != "pass"
-
-            if should_gate:
-                confidence = min(confidence, 0.1)
-                evidence_prefix = (
-                    f"[MUTATION GATED: survival={survival_rate:.0%}, "
-                    f"spec_strength={spec_strength:.0%}] "
-                )
-            elif survival_rate > 0.2:
-                confidence *= 0.5
-                evidence_prefix = f"[MUTATION PENALIZED: survival={survival_rate:.0%}] "
-            else:
-                confidence = max(confidence, 0.9)
-                evidence_prefix = (
-                    f"[MUTATION VERIFIED: survival={survival_rate:.0%}, "
-                    f"spec_strength={spec_strength:.0%}] "
-                )
-        else:
-            # Advisory only: sampled/low-confidence — hints NOT modified
-            if survival_rate > 0.3:
-                evidence_prefix = (
-                    f"[MUTATION ADVISORY: survival={survival_rate:.0%}, "
-                    f"depth={mutation_state.depth.value}] "
-                )
-            elif survival_rate <= 0.2:
-                confidence = max(confidence, 0.9)
-                evidence_prefix = f"[MUTATION VERIFIED: survival={survival_rate:.0%}] "
-
-    # MUTATION_UNKNOWN: mutation system is active but no data for this function.
-    # Treat absence of evidence as epistemic uncertainty, not evidence of safety.
-    elif mutation_system_active and purity.is_pure and mutation_state is None:
-        confidence = 0.4
-        evidence_prefix = "[MUTATION_UNKNOWN: no specification data] "
 
     properties: list[AlgebraicProperty] = [
         AlgebraicProperty(
@@ -480,24 +391,6 @@ def classify_properties(
 
     # SpecificationLevel hint suppression (checked before numeric gate)
     hints = _apply_spec_level_hint_suppression(mutation_state, hints)
-
-    # #207: Hard gate — suppress hints when gateable evidence says specification is weak.
-    # Applied after all property detection so ALL hints are subject to the gate.
-    if mutation_state and mutation_state.is_gateable and mutation_state.total > 0:
-        survival_rate = mutation_state.survival_rate
-        spec_strength = mutation_state.specification_strength
-        # Survival > 0.5 always suppresses hints
-        should_suppress = survival_rate > 0.5
-        if not should_suppress and enforcement_mode != "audit":
-            from lintgate.mutation.prescriptions import resolve_gate_status
-
-            gate_status, _ = resolve_gate_status(spec_strength, enforcement_mode)
-            should_suppress = gate_status != "pass"
-
-        if should_suppress:
-            hints = []  # Fully gated — no optimization hints
-        elif survival_rate > 0.2:
-            hints = [h for h in hints if h == "cacheable"]  # Only cacheable survives
 
     return FunctionProperties(
         purity=purity,

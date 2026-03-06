@@ -6,7 +6,7 @@ impure functions. No LLM calls — fully AST-based.
 
 Execution model:
 - Lock-guarded (only one pipeline per project)
-- Phase-ordered (algebra → skeletons → properties → contracts → mutation → complete)
+- Phase-ordered (algebra → skeletons → properties → contracts → complete)
 - Incremental (per-file tracking in ``files_processed``)
 - Heartbeat-aware (long phases call ``heartbeat()`` to prevent stale lock)
 """
@@ -65,7 +65,7 @@ class BootstrapPipeline:
     """Resumable pipeline that generates tests for cold-start projects.
 
     V1 generates test skeletons and property tests. Behavioral contracts
-    and mutation sampling are added in later phases.
+    are added in later phases.
     """
 
     def __init__(self, project_root: str):
@@ -152,11 +152,6 @@ class BootstrapPipeline:
                     self.state.heartbeat()
 
                 self.state.advance_phase("contracts")
-
-            # Phase 5: Mutation sampling (added by C2+)
-            if not self.state.phase_completed("mutation"):
-                self._run_mutation_sampling()
-                self.state.advance_phase("mutation")
 
             # Complete
             self.state.status = "complete"
@@ -297,53 +292,6 @@ class BootstrapPipeline:
             return generate_contracts(self.project_root, manifest)
         except (ImportError, Exception):
             return {}
-
-    def _run_mutation_sampling(self) -> None:
-        """Run mutation sampling against generated tests.
-
-        Uses MutationEngine.run_inline_sampling (Tier 1, fast)
-        capped at 20 source files. Stores results via MutationStateManager.
-        Gracefully degrades if mutation infrastructure is unavailable.
-        """
-        try:
-            from lintgate.mutation.engine import MutationEngine
-            from lintgate.mutation.state import MutationStateManager
-        except ImportError:
-            return  # Mutation infrastructure not available
-
-        # Get source files that have generated tests
-        source_files = [
-            os.path.join(self.project_root, rel_path)
-            for rel_path in self.state.files_processed
-            if os.path.isfile(os.path.join(self.project_root, rel_path))
-        ]
-        if not source_files:
-            return
-
-        try:
-            state_dir = os.path.join(self.project_root, ".lintgate")
-            os.makedirs(state_dir, exist_ok=True)
-            state_manager = MutationStateManager(
-                os.path.join(state_dir, "mutation_state.json")
-            )
-
-            # Build telemetry and budget objects
-            from lintgate.mutation.policy import MutationTelemetry, RuntimeBudget
-
-            budget = RuntimeBudget()
-            telemetry = MutationTelemetry(run_id=self.state.run_id or "bootstrap")
-
-            engine = MutationEngine(state_manager, budget)
-            engine.run_inline_sampling(
-                target_files=source_files[:20],  # Cap for performance
-                telemetry=telemetry,
-                project_root=self.project_root,
-            )
-            self.state.heartbeat()
-
-            state_manager.save()
-        except Exception:
-            pass  # Graceful degradation — mutation is optional
 
     # ── File I/O ────────────────────────────────────────────────────────
 
