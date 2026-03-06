@@ -146,7 +146,7 @@ def _run_prepass(event: SupervisionEvent) -> None:
     """Phase 0: Build shared artifacts once for all channels.
 
     Currently builds the property manifest (expensive AST parsing) and
-    stores it in ``event.context`` so performance and mutation channels
+    stores it in ``event.context`` so performance and related channels
     can share it instead of rebuilding independently.
 
     Gracefully degrades: if manifest build fails, channels fall back to

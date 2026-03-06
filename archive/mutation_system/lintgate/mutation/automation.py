@@ -78,8 +78,12 @@ class MutationOrchestrator:
         self._tier2_debounce_seconds: float = 120.0
         self._tier2_last_run: dict[str, float] = {}
 
-        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
-        self._worker_thread.start()
+        from lintgate.mutation.engine import SOURCE_PROTECTION_ACTIVE
+
+        self._worker_thread: threading.Thread | None = None
+        if SOURCE_PROTECTION_ACTIVE:
+            self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+            self._worker_thread.start()
 
     def configure_tier2(
         self,
@@ -99,9 +103,9 @@ class MutationOrchestrator:
 
     def enqueue(self, file_path: str, project_root: str | None = None):
         """Request a Tier 1 (sampling) mutation run for a file."""
-        from lintgate.mutation.engine import _is_mutant_path
+        from lintgate.mutation.engine import SOURCE_PROTECTION_ACTIVE, _is_mutant_path
 
-        if _is_mutant_path(file_path):
+        if not SOURCE_PROTECTION_ACTIVE or _is_mutant_path(file_path):
             return
         with self._lock:
             now = time.time()
@@ -125,10 +129,10 @@ class MutationOrchestrator:
 
         Returns True if accepted, False if rejected by guards.
         """
-        from lintgate.mutation.engine import _is_mutant_path
+        from lintgate.mutation.engine import SOURCE_PROTECTION_ACTIVE, _is_mutant_path
 
         # Guard 1: mutant path check
-        if _is_mutant_path(file_path):
+        if not SOURCE_PROTECTION_ACTIVE or _is_mutant_path(file_path):
             return False
 
         with self._lock:

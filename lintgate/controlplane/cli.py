@@ -35,8 +35,8 @@ def main(argv: list[str] | None = None) -> None:
     run_parser.add_argument("path", help="Project root path")
     run_parser.add_argument(
         "--channels",
-        default="lint,tests,deps,git,performance,test_effectiveness,mutation",
-        help="Comma-separated channel list (default: lint,tests,deps,git,performance,test_effectiveness,mutation)",
+        default="lint,tests,deps,git,performance,test_effectiveness",
+        help="Comma-separated channel list (default: lint,tests,deps,git,performance,test_effectiveness)",
     )
     run_parser.add_argument(
         "--strictness",
@@ -70,7 +70,6 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from lintgate.channels.dependency_channel import DependencyChannel
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
-    from lintgate.channels.mutation_channel import MutationChannel
     from lintgate.channels.performance_channel import PerformanceChannel
     from lintgate.channels.test_channel import TestChannel
     from lintgate.channels.test_effectiveness_channel import TestEffectivenessChannel
@@ -89,7 +88,6 @@ def _cmd_run(args: argparse.Namespace) -> None:
         "git": GitChannel(),
         "performance": PerformanceChannel(),
         "test_effectiveness": TestEffectivenessChannel(),
-        "mutation": MutationChannel(),
     }
 
     # Select requested channels
@@ -170,7 +168,6 @@ def _cmd_status(args: argparse.Namespace) -> None:
     print("  ✓ git       — Git hygiene")
     print("  ✓ performance — Algebraic performance analysis")
     print("  ✓ test_effectiveness — Test assertion quality analysis")
-    print("  ✓ mutation — Mutation testing and specification quality")
 
 
 def _discover_python_files(project_root: str, max_files: int = 50) -> list[str]:

@@ -419,15 +419,19 @@ def map_tests_to_source(
             (ex.get("symbol", ""), ex.get("reason", ""))
             for ex in diagnostics._drop_examples
         )
-        ranked_examples: list[dict[str, str]] = []
-        for (sym, reason), _count in sorted(
-            drop_freq.items(), key=lambda kv: (-kv[1], kv[0])
-        ):
-            # Find first matching entry to preserve strategy label
-            for ex in diagnostics._drop_examples:
-                if ex.get("symbol") == sym and ex.get("reason") == reason:
-                    ranked_examples.append(ex)
-                    break
+        # Index first occurrence by (symbol, reason) for O(1) lookup
+        first_occurrence: dict[tuple[str, str], dict[str, str]] = {}
+        for ex in diagnostics._drop_examples:
+            key = (ex.get("symbol", ""), ex.get("reason", ""))
+            if key not in first_occurrence:
+                first_occurrence[key] = ex
+        ranked_examples: list[dict[str, str]] = [
+            first_occurrence[key]
+            for key, _count in sorted(
+                drop_freq.items(), key=lambda kv: (-kv[1], kv[0])
+            )
+            if key in first_occurrence
+        ]
         diagnostics.drop_analysis.top_examples = ranked_examples[:5]
 
     return mapping

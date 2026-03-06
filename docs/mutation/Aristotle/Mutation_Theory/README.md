@@ -51,7 +51,8 @@ They are intentionally not the public entrypoint surface.
   (`rewriteLicense`, `survivorExistence`, `fixedPointPartition` migrated; remaining T4 theorems still bridged from `Legacy`)
 - Phase 7: canonical interface now includes extended layers from scratch proofs
   (`FreeEnergy`, `Redundancy`, `SpectrumEvolution`, `RegimeDynamics`,
-  `RegimeDecomposition`, `CompositionGap`) through organized wrappers in
+  `RegimeDecomposition`, `CompositionGap`, `SheafCondition`,
+  `ObstructionClass`, `DistributedConvergence`) through organized wrappers in
   `MutationTheory/Phase7/*.lean`; theorem-number aliases live in
   `MutationTheory/Phase7/TheoremMap.lean` keyed to
   `PHASE_7_SPECIFICATION_DYNAMICS.md`; proof backbones are now local under

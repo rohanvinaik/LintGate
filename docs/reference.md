@@ -1,14 +1,14 @@
 # LintGate Reference
 
-Technical reference for LintGate's 84 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 74 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (84)
+## MCP Tools (74)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
-LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (82 on-demand tools). The hook requires no interaction. The tools below are called explicitly.
+LintGate operates as both a PostToolUse hook (automatic, fires on every code change) and an MCP server (on-demand tools). The hook requires no interaction. The tools below are called explicitly.
 
 ### Onboarding
 
@@ -49,16 +49,6 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `generate_property_tests` | Generate Hypothesis + icontract templates from algebraic properties  |
 | `analyze_test_strength`   | Test assertion quality: vulnerability scores, semantic ratios, upgrades |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind/strength |
-| `mutation_run_sampling`   | Fast inline mutation sampling on specific files (Tier 1)                |
-| `mutation_run_full`       | Deep background mutation profiling with test-impact selection (Tier 2)  |
-| `mutation_get_state`      | View per-function mutation state (survival rates, depth, confidence)    |
-| `mutation_clear_state`    | Clear mutation state for specific files or all state                    |
-| `mutation_prescribe`      | Generate deterministic refactoring prescriptions from mutation profiles |
-| `mutation_decompose`      | Identify multi-category entangled functions requiring decomposition     |
-| `mutation_refactor_loop`  | Orchestrate before/after delta measurement for test reinforcement       |
-| `mutation_prescribe_tests` | Generate targeted test skeletons from mutation survival profiles       |
-| `mutation_validate_tests` | Re-profile after test changes and compute per-category survival deltas  |
-| `calibrate_assertion_weights` | Run mutation-backed calibration pipeline to adjust assertion weights |
 | `run_property_tests`     | Execute generated property tests for a function and capture counterexamples |
 
 ### Bootstrap

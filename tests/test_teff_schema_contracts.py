@@ -1,4 +1,4 @@
-"""Phase 2 schema contract tests. Ensure test_effectiveness tools output Mutation signals."""
+"""Schema contract tests for test_effectiveness tools."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def test_teff_schema_version_is_current():
 
 
 def test_analyze_test_strength_schema_contract(tmp_path):
-    """Verify analyze_test_strength output schema hasn't regressed and includes Phase 2 fields."""
+    """Verify analyze_test_strength output schema hasn't regressed."""
     from mcp_tools.test_effectiveness_tools import _analyze_test_strength_impl
 
     # Setup a minimal valid project so analysis reaches the success state
@@ -73,34 +73,15 @@ def test_analyze_test_strength_schema_contract(tmp_path):
     assert result["state"] == "success"
     assert result["schema_version"] == "2.0.0"
 
-    # --- Phase 2 Additions ---
+    # Mutation integration is archived; keep stable placeholder keys.
     assert "mutation_ci_context" in result
     ci_context = result["mutation_ci_context"]
-    assert ci_context["run_state"] == "missing"
-    assert ci_context["source"] == "missing"
-    assert "score" in ci_context
-    assert "total" in ci_context
-
-    # --- Phase 4 Additions ---
-    assert "equivalent_suspect" in ci_context
-    assert "skipped_equivalent_policy" in ci_context
-    assert "effective_total_for_score" in ci_context
+    assert ci_context["status"] == "archived"
+    assert "note" in ci_context
 
     assert "mutation_hotspots" in result
     assert isinstance(result["mutation_hotspots"], list)
-    if result["mutation_hotspots"]:
-        # Check unified schema contract on fields if any exist
-        hs = result["mutation_hotspots"][0]
-        assert "run_id" in hs
-        assert "file" in hs
-        assert "line" in hs
-        assert "function" in hs
-        assert "operator" in hs
-        assert "status" in hs
-        assert "category" in hs
-        assert "mutation_id" in hs
-        assert isinstance(hs["test_ids"], list)
-        assert "confidence" in hs
+    assert result["mutation_hotspots"] == []
 
     # --- Pre-existing Schema Contracts (Regression Check) ---
     assert "summary" in result
@@ -114,7 +95,7 @@ def test_analyze_test_strength_schema_contract(tmp_path):
 
 
 def test_inspect_test_assertions_schema_contract(tmp_path):
-    """Verify inspect_test_assertions output schema includes Phase 2 fields."""
+    """Verify inspect_test_assertions output schema includes stable additive fields."""
     from mcp_tools.test_effectiveness_tools import _inspect_test_assertions_impl
 
     src = tmp_path / "src"
@@ -142,6 +123,6 @@ def test_inspect_test_assertions_schema_contract(tmp_path):
     assert "test_functions" in result
     assert "summary" in result
 
-    # --- Phase 2 Additions ---
     assert "mutation_hotspots" in result
     assert isinstance(result["mutation_hotspots"], list)
+    assert result["mutation_hotspots"] == []

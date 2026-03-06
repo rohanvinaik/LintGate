@@ -117,79 +117,15 @@ def _generate_from_prescriptions(
     max_functions: int,
     helpers: Any,
 ) -> str:
-    """Generate tests from mutation prescription data (#210).
-
-    Runs mutation_prescribe internally, collects prescriptions with
-    suggested_test_template, and returns them as structured output.
-    """
-    import contextlib
-
-    from lintgate.mutation.prescriptions import PrescriptionEngine
-    from lintgate.mutation.state import MutationStateManager
-    from lintgate.state import MUTATION_CACHE_DIR
-
+    """Backward-compat placeholder for archived mutation-prescription mode."""
+    _ = function
+    _ = max_functions
     helpers["_validate_project_root"](path)
-
-    state_path = os.path.join(MUTATION_CACHE_DIR, "state.json")
-    try:
-        state_manager = MutationStateManager(str(state_path))
-    except (OSError, ValueError):
-        return json.dumps(
-            {"error": "No mutation state found. Run mutation_run_sampling first."}
-        )
-
-    with contextlib.suppress(OSError, ValueError):
-        state_manager.load()
-
-    if not state_manager.state:
-        return json.dumps(
-            {"error": "No mutation state found. Run mutation_run_sampling first."}
-        )
-
-    p_engine = PrescriptionEngine()
-    templates: list[dict[str, Any]] = []
-    count = 0
-
-    for _key, state in state_manager.state.items():
-        if function and state.function_name != function:
-            continue
-        if state.total == 0:
-            continue
-
-        diag = p_engine.diagnose(state)
-        for p in diag.prescriptions:
-            if p.suggested_test_template:
-                templates.append(
-                    {
-                        "function": f"{state.file_path}::{state.function_name}",
-                        "survivor_category": p.survivor_category,
-                        "prescription_category": p.category.value,
-                        "suggested_action": p.suggested_action,
-                        "test_template": p.suggested_test_template,
-                        "gate_lift_projection_percent": p.gate_lift_projection_percent,
-                    }
-                )
-                count += 1
-        if count >= max_functions:
-            break
-
-    if not templates:
-        return json.dumps(
-            {
-                "note": "No templateable prescriptions found.",
-                "suggestion": "Run mutation_run_sampling first, then mutation_prescribe to see prescriptions.",
-            }
-        )
-
     return json.dumps(
         {
-            "generated_from": "prescriptions",
-            "templates": templates,
-            "count": len(templates),
-            "note": "Review and customize generated code before saving. Use Write tool to create test files.",
-            "next_actions": ["mutation_refactor_loop"],
-        },
-        indent=2,
+            "error": "Mutation prescription mode has been archived and is unavailable.",
+            "hint": "Use generate_property_tests(path) without from_prescriptions.",
+        }
     )
 
 
@@ -213,6 +149,7 @@ def _select_property_candidates(
     """Select the top pure functions with interesting algebraic properties."""
     from lintgate.linters.performance_checks.algebra_types import PropertyKind
 
+    _ = hotspot_functions
     candidates: list[tuple[str, Any, int]] = []
     for name, func in manifest.functions.items():
         if not func.purity.is_pure:
@@ -222,15 +159,6 @@ def _select_property_candidates(
             continue
         if function_filter and function_filter.lower() not in name.lower():
             continue
-
-        # If prefer_mutation_hotspots is on, heavily boost functions that are in the hotspot list
-        # Note: manifest name is fully qualified (e.g. "src.file.func"), but hotspots from
-        # line-based mutmut exports generally only have the base function name via AST.
-        base_name = name.split(".")[-1]
-        if hotspot_functions and (
-            name in hotspot_functions or base_name in hotspot_functions
-        ):
-            interesting += 100
 
         candidates.append((name, func, interesting))
 
@@ -385,17 +313,13 @@ def _impl_generate_property_tests(
     if from_prescriptions:
         return _generate_from_prescriptions(path, function, max_functions, helpers)
 
-    from lintgate.mutation.ci_stats import load_mutation_hotspots
-
     project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
     if not py_files or manifest is None:
         return json.dumps({"error": "No Python files found in project"})
 
     hotspot_functions = None
     if prefer_mutation_hotspots:
-        survivors_path = os.path.join(project_root, "mutants", "mutmut-survivors.json")
-        hotspots = load_mutation_hotspots(survivors_path)
-        hotspot_functions = {str(h["function"]) for h in hotspots if h.get("function")}
+        hotspot_functions = set()
 
     candidates = _select_property_candidates(
         manifest, function, max_functions, hotspot_functions
@@ -423,6 +347,10 @@ def _impl_generate_property_tests(
         "functions": results,
         "note": "Review and customize generated code before saving. Use Write tool to create test files.",
     }
+    if prefer_mutation_hotspots:
+        output["note_mutation_hotspots"] = (
+            "prefer_mutation_hotspots is ignored because the mutation subsystem is archived."
+        )
 
     return helpers["_json_dumps"](output)
 
@@ -482,8 +410,8 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         Also generates icontract decorator suggestions for runtime enforcement.
 
-        When from_prescriptions=True, generates tests targeting specific survivor
-        categories identified by mutation_prescribe instead of algebraic properties.
+        `from_prescriptions=True` is retained for compatibility but currently
+        unavailable because the mutation subsystem has been archived.
 
         Example: generate_property_tests(path="/my/project")
         Example: generate_property_tests(path="/my/project", function="compute_score")
@@ -494,8 +422,8 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             function: Optional function name to generate tests for. If not given,
                 generates for the top functions with the most algebraic properties.
             max_functions: Max number of functions to generate tests for (default 5).
-            prefer_mutation_hotspots: If True, prioritizes generation for pure functions that have surviving mutations.
-            from_prescriptions: If True, generate tests from mutation prescription data targeting specific survivor categories.
+            prefer_mutation_hotspots: Deprecated compatibility flag (ignored).
+            from_prescriptions: Deprecated compatibility flag (returns archived notice).
         """
         return _impl_generate_property_tests(
             path,

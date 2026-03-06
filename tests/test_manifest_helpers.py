@@ -183,10 +183,9 @@ def test_compute_file_hash_changes_with_content(tmp_path):
 
 def test_load_cache_missing_file(tmp_path):
     cache_path = tmp_path / "missing.json"
-    manifest, metadata, mutation_mtime = _load_manifest_cache(cache_path)
+    manifest, metadata = _load_manifest_cache(cache_path)
     assert manifest.functions == {}
     assert metadata == {}
-    assert mutation_mtime == 0.0
 
 
 def test_save_and_load_roundtrip(tmp_path):
@@ -196,20 +195,18 @@ def test_save_and_load_roundtrip(tmp_path):
     m.update_metrics()
     meta = {"file.py": {"hash": "abc123", "functions": ["fn"]}}
 
-    _save_manifest_cache(cache_path, m, meta, mutation_mtime=42.0)
-    loaded_m, loaded_meta, loaded_mtime = _load_manifest_cache(cache_path)
+    _save_manifest_cache(cache_path, m, meta)
+    loaded_m, loaded_meta = _load_manifest_cache(cache_path)
     assert "fn" in loaded_m.functions
     assert loaded_meta["file.py"]["hash"] == "abc123"
-    assert loaded_mtime == 42.0
 
 
 def test_load_cache_corrupt_json(tmp_path):
     cache_path = tmp_path / "bad.json"
     cache_path.write_text("not valid json{{{")
-    manifest, metadata, mutation_mtime = _load_manifest_cache(cache_path)
+    manifest, metadata = _load_manifest_cache(cache_path)
     assert manifest.functions == {}
     assert metadata == {}
-    assert mutation_mtime == 0.0
 
 
 # ── _restore_cached_functions ───────────────────────────────────────

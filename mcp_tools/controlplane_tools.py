@@ -15,7 +15,7 @@ from typing import Any, Literal
 # ── Channel selection helpers ───────────────────────────────────────────
 
 _ALL_CHANNEL_NAMES = (
-    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,mutation"
+    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness"
 )
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
@@ -34,7 +34,7 @@ _AVAILABLE_CHANNEL_DESCRIPTIONS = {
         "Algebraic performance analysis "
         "(purity detection, algebraic properties, optimization hints)"
     ),
-    "mutation": "Mutation testing and specification quality (Tier 1 sampling, Tier 2 profiling)",
+    "test_effectiveness": "Test assertion quality and vulnerability analysis",
 }
 
 
@@ -44,7 +44,6 @@ def _build_channel_registry():
     from lintgate.channels.dependency_channel import DependencyChannel
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
-    from lintgate.channels.mutation_channel import MutationChannel
     from lintgate.channels.performance_channel import PerformanceChannel
     from lintgate.channels.structure_channel import StructureChannel
     from lintgate.channels.test_channel import TestChannel
@@ -59,7 +58,6 @@ def _build_channel_registry():
         "structure": StructureChannel(),
         "performance": PerformanceChannel(),
         "test_effectiveness": TestEffectivenessChannel(),
-        "mutation": MutationChannel(),
     }
 
 

@@ -726,6 +726,23 @@ lemma Harmonic_P5_le_log_add_one (n : ℕ) :
   rw [Harmonic_P5_eq_harmonic]
   simpa [add_comm, add_left_comm, add_assoc] using (harmonic_le_one_add_log n)
 
+def coveredByPrefix_P5 (sem : Program D R → D → R) (oracle : Test D R → R → Bool)
+    (MS : MutationSystem D R) (P : Program D R)
+    (seq : ℕ → Test D R) (k : ℕ) : Finset (Program D R) :=
+  (Finset.range k).biUnion (fun i => killedSet sem oracle MS P {seq i})
+
+def survivorsByPrefix_P5 (sem : Program D R → D → R) (oracle : Test D R → R → Bool)
+    (MS : MutationSystem D R) (P : Program D R)
+    (seq : ℕ → Test D R) (k : ℕ) : Finset (Program D R) :=
+  nonEquivMutants sem MS P \ coveredByPrefix_P5 sem oracle MS P seq k
+
+/-- `k` is the first index whose greedy prefix covers all non-equivalent mutants. -/
+def IsFirstCoverIndex_P5 (sem : Program D R → D → R) (oracle : Test D R → R → Bool)
+    (MS : MutationSystem D R) (P : Program D R)
+    (seq : ℕ → Test D R) (k : ℕ) : Prop :=
+  nonEquivMutants sem MS P ⊆ coveredByPrefix_P5 sem oracle MS P seq k ∧
+  ∀ j, j < k → (survivorsByPrefix_P5 sem oracle MS P seq j).Nonempty
+
 /-
 The fastest achievable convergence rate determines κ. Moreover, the greedy trajectory achieves n ≤ κ · (H(|S_0|)) where H is the harmonic number, and this is optimal up to the O(ln n) factor.
 -/
@@ -735,17 +752,70 @@ theorem T5_12_greedy_approximation_ratio
     (seq : ℕ → Test D R)
     (h_greedy : IsGreedySequence_P5 sem oracle MS P T_univ seq)
     (k_greedy : ℕ)
-    (h_covers : nonEquivMutants sem MS P ⊆ (Finset.range k_greedy).biUnion (fun i => killedSet sem oracle MS P {seq i}))
+    (h_first_cover : IsFirstCoverIndex_P5 sem oracle MS P seq k_greedy)
     (T_opt : Finset (Test D R))
     (h_opt : achievesFullSC' sem oracle MS P T_opt)
+    (h_step_decay :
+      ∀ i,
+        ((survivorsByPrefix_P5 sem oracle MS P seq (i + 1)).card : ℝ) ≤
+          (survivorsByPrefix_P5 sem oracle MS P seq i).card *
+            (1 - 1 / (T_opt.card : ℝ)))
     (n : ℕ)
-    (h_greedy_harmonic : (k_greedy : ℝ) ≤ T_opt.card * Harmonic_P5 n)
-    (h_n : n = (nonEquivMutants sem MS P).card) (h_n_pos : 0 < n) :
+    (h_n : n = (nonEquivMutants sem MS P).card) (h_n_pos : 0 < n)
+    (h_k_greedy_pos : 0 < k_greedy) :
     (k_greedy : ℝ) ≤ T_opt.card * (Real.log n + 1) := by
-  have h_harmonic_log : Harmonic_P5 n ≤ Real.log n + 1 := Harmonic_P5_le_log_add_one n
-  have h_mul : T_opt.card * Harmonic_P5 n ≤ T_opt.card * (Real.log n + 1) := by
-    exact mul_le_mul_of_nonneg_left h_harmonic_log (by positivity)
-  exact le_trans h_greedy_harmonic h_mul
+  have h_nonempty_ne : (nonEquivMutants sem MS P).Nonempty := by
+    have h_card_pos_ne : 0 < (nonEquivMutants sem MS P).card := by
+      simpa [h_n] using h_n_pos
+    exact Finset.card_pos.mp h_card_pos_ne
+
+  have h_topt_nonempty : T_opt.Nonempty := by
+    rcases h_nonempty_ne with ⟨m, hm⟩
+    have hm_killed : m ∈ killedSet sem oracle MS P T_opt := h_opt hm
+    rcases Finset.mem_filter.mp hm_killed with ⟨_, hm_witness⟩
+    rcases hm_witness with ⟨t, htT, _⟩
+    exact ⟨t, htT⟩
+
+  have h_topt_pos_nat : 0 < T_opt.card := Finset.card_pos.mpr h_topt_nonempty
+  have h_topt_ge_one : (1 : ℝ) ≤ (T_opt.card : ℝ) := by
+    exact_mod_cast Nat.succ_le_of_lt h_topt_pos_nat
+
+  have h_decay :=
+    Phase7_T7_2.exponential_decay_of_survivors
+      (S := fun i => survivorsByPrefix_P5 sem oracle MS P seq i)
+      (κ := T_opt.card)
+      h_topt_pos_nat
+      h_step_decay
+
+  have h_surv0_card :
+      (survivorsByPrefix_P5 sem oracle MS P seq 0).card = n := by
+    simp [survivorsByPrefix_P5, coveredByPrefix_P5, h_n]
+
+  have h_prev_nonempty :
+      (survivorsByPrefix_P5 sem oracle MS P seq (Nat.pred k_greedy)).Nonempty := by
+    exact h_first_cover.2 (Nat.pred k_greedy) (Nat.pred_lt (Nat.ne_of_gt h_k_greedy_pos))
+
+  have h_prev_not_gt :
+      ¬ ((Nat.pred k_greedy : ℝ) > (T_opt.card : ℝ) * Real.log n) := by
+    intro h_gt
+    have h_zero_prev :
+        (survivorsByPrefix_P5 sem oracle MS P seq (Nat.pred k_greedy)).card = 0 := by
+      have h_zero_from_decay := (h_decay.2 (Nat.pred k_greedy))
+      exact h_zero_from_decay (by simpa [h_surv0_card] using h_gt)
+    exact (Finset.card_ne_zero.mpr h_prev_nonempty) h_zero_prev
+
+  have h_prev_le : (Nat.pred k_greedy : ℝ) ≤ (T_opt.card : ℝ) * Real.log n :=
+    le_of_not_gt h_prev_not_gt
+
+  have hk_eq : (k_greedy : ℝ) = (Nat.pred k_greedy : ℝ) + 1 := by
+    have hk_nat : k_greedy = Nat.pred k_greedy + 1 := by
+      simpa [Nat.succ_eq_add_one] using (Nat.succ_pred_eq_of_pos h_k_greedy_pos).symm
+    exact_mod_cast hk_nat
+
+  calc
+    (k_greedy : ℝ) = (Nat.pred k_greedy : ℝ) + 1 := hk_eq
+    _ ≤ (T_opt.card : ℝ) * Real.log n + 1 := by linarith
+    _ ≤ (T_opt.card : ℝ) * (Real.log n + 1) := by nlinarith [h_topt_ge_one]
 
 end
 end Phase7_T7_6
@@ -817,6 +887,26 @@ def randomTestingSufficient {D R : Type} [Fintype D] [DecidableEq D] [DecidableE
     (MS : MutationSystem D R) (P : Program D R) (ρ : D → ℝ) (n : ℕ) (ε : ℝ) : Prop :=
   criticalSampleSize sem oracle MS P ρ ≤ n ∧ 0 ≤ ε
 
+def coveredByPrefix_P5 {D R : Type}
+    (sem : Program D R → D → R) (oracle : Test D R → R → Bool)
+    (MS : MutationSystem D R) (P : Program D R)
+    (seq : ℕ → Test D R) (k : ℕ) : Finset (Program D R) :=
+  (Finset.range k).biUnion (fun i => killedSet sem oracle MS P {seq i})
+
+def survivorsByPrefix_P5 {D R : Type}
+    (sem : Program D R → D → R) (oracle : Test D R → R → Bool)
+    (MS : MutationSystem D R) (P : Program D R)
+    (seq : ℕ → Test D R) (k : ℕ) : Finset (Program D R) :=
+  nonEquivMutants sem MS P \ coveredByPrefix_P5 sem oracle MS P seq k
+
+/-- `k` is the first index whose greedy prefix covers all non-equivalent mutants. -/
+def IsFirstCoverIndex_P5 {D R : Type}
+    (sem : Program D R → D → R) (oracle : Test D R → R → Bool)
+    (MS : MutationSystem D R) (P : Program D R)
+    (seq : ℕ → Test D R) (k : ℕ) : Prop :=
+  nonEquivMutants sem MS P ⊆ coveredByPrefix_P5 sem oracle MS P seq k ∧
+  ∀ j, j < k → (survivorsByPrefix_P5 sem oracle MS P seq j).Nonempty
+
 theorem T5_12_greedy_approximation_ratio
   {D R : Type} [DecidableEq D]
     (sem : Program D R → D → R) (oracle : Test D R → R → Bool) (MS : MutationSystem D R) (P : Program D R)
@@ -824,17 +914,70 @@ theorem T5_12_greedy_approximation_ratio
     (seq : ℕ → Test D R)
     (h_greedy : IsGreedySequence_P5 sem oracle MS P T_univ seq)
     (k_greedy : ℕ)
-    (h_covers : nonEquivMutants sem MS P ⊆ (Finset.range k_greedy).biUnion (fun i => killedSet sem oracle MS P {seq i}))
+    (h_first_cover : IsFirstCoverIndex_P5 sem oracle MS P seq k_greedy)
     (T_opt : TestSuite D R)
     (h_opt : achievesFullSC' sem oracle MS P T_opt)
+    (h_step_decay :
+      ∀ i,
+        ((survivorsByPrefix_P5 sem oracle MS P seq (i + 1)).card : ℝ) ≤
+          (survivorsByPrefix_P5 sem oracle MS P seq i).card *
+            (1 - 1 / (T_opt.card : ℝ)))
     (n : ℕ)
-    (h_greedy_harmonic : (k_greedy : ℝ) ≤ T_opt.card * Harmonic_P5 n)
-    (h_n : n = (nonEquivMutants sem MS P).card) (h_n_pos : 0 < n) :
+    (h_n : n = (nonEquivMutants sem MS P).card) (h_n_pos : 0 < n)
+    (h_k_greedy_pos : 0 < k_greedy) :
     (k_greedy : ℝ) ≤ T_opt.card * (Real.log n + 1) := by
-  have h_harmonic_log : Harmonic_P5 n ≤ Real.log n + 1 := Harmonic_P5_le_log_add_one n
-  have h_mul : T_opt.card * Harmonic_P5 n ≤ T_opt.card * (Real.log n + 1) := by
-    exact mul_le_mul_of_nonneg_left h_harmonic_log (by positivity)
-  exact le_trans h_greedy_harmonic h_mul
+  have h_nonempty_ne : (nonEquivMutants sem MS P).Nonempty := by
+    have h_card_pos_ne : 0 < (nonEquivMutants sem MS P).card := by
+      simpa [h_n] using h_n_pos
+    exact Finset.card_pos.mp h_card_pos_ne
+
+  have h_topt_nonempty : T_opt.Nonempty := by
+    rcases h_nonempty_ne with ⟨m, hm⟩
+    have hm_killed : m ∈ killedSet sem oracle MS P T_opt := h_opt hm
+    rcases Finset.mem_filter.mp hm_killed with ⟨_, hm_witness⟩
+    rcases hm_witness with ⟨t, htT, _⟩
+    exact ⟨t, htT⟩
+
+  have h_topt_pos_nat : 0 < T_opt.card := Finset.card_pos.mpr h_topt_nonempty
+  have h_topt_ge_one : (1 : ℝ) ≤ (T_opt.card : ℝ) := by
+    exact_mod_cast Nat.succ_le_of_lt h_topt_pos_nat
+
+  have h_decay :=
+    Phase7_T7_2.exponential_decay_of_survivors
+      (S := fun i => survivorsByPrefix_P5 sem oracle MS P seq i)
+      (κ := T_opt.card)
+      h_topt_pos_nat
+      h_step_decay
+
+  have h_surv0_card :
+      (survivorsByPrefix_P5 sem oracle MS P seq 0).card = n := by
+    simp [survivorsByPrefix_P5, coveredByPrefix_P5, h_n]
+
+  have h_prev_nonempty :
+      (survivorsByPrefix_P5 sem oracle MS P seq (Nat.pred k_greedy)).Nonempty := by
+    exact h_first_cover.2 (Nat.pred k_greedy) (Nat.pred_lt (Nat.ne_of_gt h_k_greedy_pos))
+
+  have h_prev_not_gt :
+      ¬ ((Nat.pred k_greedy : ℝ) > (T_opt.card : ℝ) * Real.log n) := by
+    intro h_gt
+    have h_zero_prev :
+        (survivorsByPrefix_P5 sem oracle MS P seq (Nat.pred k_greedy)).card = 0 := by
+      have h_zero_from_decay := (h_decay.2 (Nat.pred k_greedy))
+      exact h_zero_from_decay (by simpa [h_surv0_card] using h_gt)
+    exact (Finset.card_ne_zero.mpr h_prev_nonempty) h_zero_prev
+
+  have h_prev_le : (Nat.pred k_greedy : ℝ) ≤ (T_opt.card : ℝ) * Real.log n :=
+    le_of_not_gt h_prev_not_gt
+
+  have hk_eq : (k_greedy : ℝ) = (Nat.pred k_greedy : ℝ) + 1 := by
+    have hk_nat : k_greedy = Nat.pred k_greedy + 1 := by
+      simpa [Nat.succ_eq_add_one] using (Nat.succ_pred_eq_of_pos h_k_greedy_pos).symm
+    exact_mod_cast hk_nat
+
+  calc
+    (k_greedy : ℝ) = (Nat.pred k_greedy : ℝ) + 1 := hk_eq
+    _ ≤ (T_opt.card : ℝ) * Real.log n + 1 := by linarith
+    _ ≤ (T_opt.card : ℝ) * (Real.log n + 1) := by nlinarith [h_topt_ge_one]
 
 /-
 Let T^G be the greedy trajectory and T^R be a random trajectory (tests chosen uniformly from the domain). Then:
@@ -853,11 +996,15 @@ theorem T7_7_trajectory_comparison
     (seq : ℕ → Test D R)
     (h_greedy : IsGreedySequence_P5 sem oracle MS P T_univ seq)
     (k_greedy : ℕ)
-    (h_covers : nonEquivMutants sem MS P ⊆ (Finset.range k_greedy).biUnion (fun i => killedSet sem oracle MS P {seq i}))
+    (h_first_cover : IsFirstCoverIndex_P5 sem oracle MS P seq k_greedy)
     (T_opt : TestSuite D R)
     (h_opt : achievesFullSC' sem oracle MS P T_opt)
+    (h_step_decay :
+      ∀ i,
+        ((survivorsByPrefix_P5 sem oracle MS P seq (i + 1)).card : ℝ) ≤
+          (survivorsByPrefix_P5 sem oracle MS P seq i).card *
+            (1 - 1 / (T_opt.card : ℝ)))
     (n : ℕ)
-    (h_greedy_harmonic : (k_greedy : ℝ) ≤ T_opt.card * Harmonic_P5 n)
     (h_n : n = (nonEquivMutants sem MS P).card) (h_n_pos : 0 < n)
     -- Random hypotheses
     (h_nonempty : (nonEquivMutants sem MS P).Nonempty)
@@ -867,7 +1014,8 @@ theorem T7_7_trajectory_comparison
     Nat.ceil (1 / (2 * minDisagreement sem ρ MS P h_nonempty)) ≤ criticalSampleSize sem oracle MS P ρ ∧
     0 ≤ (criticalSampleSize sem oracle MS P ρ : ℝ) / k_greedy := by
       refine ⟨?_, ?_, ?_⟩
-      · exact T5_12_greedy_approximation_ratio sem oracle MS P T_univ seq h_greedy k_greedy h_covers T_opt h_opt n h_greedy_harmonic h_n h_n_pos
+      · exact T5_12_greedy_approximation_ratio sem oracle MS P T_univ seq
+          h_greedy k_greedy h_first_cover T_opt h_opt h_step_decay n h_n h_n_pos h_k_greedy_pos
       · have h_pos6 : 0 < Phase6.minDisagreement sem ρ MS P h_nonempty := by
           simpa [minDisagreement] using h_pos
         exact Phase6.T6_3_GLLSZ_lower_bound sem oracle MS P ρ h_dist h_sum h_nonempty h_pos6

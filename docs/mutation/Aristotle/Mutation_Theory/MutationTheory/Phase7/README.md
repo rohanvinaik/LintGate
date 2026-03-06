@@ -26,9 +26,17 @@ Primary canonical modules:
 - `RegimeDynamics.lean` (`T7.13`)
 - `RegimeDecomposition.lean` (`T7.14`)
 - `CompositionGap.lean` (`T7.15`, `T7.16`)
+- `SheafCondition.lean` (`T7.17`)
+- `ObstructionClass.lean` (`T7.18`)
+- `DistributedConvergence.lean` (`T7.19`, `T7.20`)
 
 Canonical Phase 7 modules import only `MutationTheory/Phase7/*` and do not
 depend on `MutationTheory/Legacy/*`.
 
-`T7.17`–`T7.23` are tracked in the reference markdown but are not yet formalized
+Greedy approximation internals (`T5.12` / `T7.7`) are expressed via:
+- `IsFirstCoverIndex_P5` (first full-cover prefix witness)
+- `survivorsByPrefix_P5` (prefix survivor dynamics)
+- explicit per-step decay hypotheses on survivor cardinality
+
+`T7.21`–`T7.23` are tracked in the reference markdown but are not yet formalized
 as canonical Lean theorems in this repository.

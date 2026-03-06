@@ -15,8 +15,7 @@ from lintgate.linters.performance_checks.algebra_types import (
 )
 from lintgate.linters.performance_checks.properties import classify_properties
 from lintgate.linters.performance_checks.purity import analyze_purity
-from lintgate.mutation.state import MutationStateManager
-from lintgate.state import MUTATION_CACHE_DIR, PERF_CACHE_DIR
+from lintgate.state import PERF_CACHE_DIR
 
 
 @dataclass
@@ -144,25 +143,20 @@ def _compute_file_hash(filepath: str) -> str:
 
 def _load_manifest_cache(
     cache_path: Any,
-) -> tuple[PropertyManifest, dict[str, dict[str, Any]], float]:
+) -> tuple[PropertyManifest, dict[str, dict[str, Any]]]:
     """Load cached manifest and metadata from disk, returning empty defaults on failure.
-
-    Returns:
-        (manifest, per_file_metadata, mutation_mtime) — the mutation_mtime is the
-        mutation state file mtime at the time the cache was written.
     """
     if not cache_path.exists():
-        return PropertyManifest(), {}, 0.0
+        return PropertyManifest(), {}
     try:
         with open(cache_path) as f:
             cached_data = json.load(f)
             return (
                 PropertyManifest.from_dict(cached_data.get("manifest", {})),
                 cached_data.get("metadata", {}),
-                cached_data.get("mutation_mtime", 0.0),
             )
     except (json.JSONDecodeError, OSError, KeyError):
-        return PropertyManifest(), {}, 0.0
+        return PropertyManifest(), {}
 
 
 def _restore_cached_functions(
@@ -181,7 +175,6 @@ def _scan_file(
     manifest: PropertyManifest,
     filepath: str,
     project_root: str,
-    mutation_manager: MutationStateManager | None = None,
     enforcement_mode: str = "audit",
 ) -> list[str]:
     """Parse a Python file, run purity + property analysis, and populate the manifest.
@@ -211,16 +204,10 @@ def _scan_file(
         found_funcs.append(unique_key)
 
         if purity.is_pure:
-            mutation_state = None
-            if mutation_manager:
-                mutation_state = mutation_manager.get_state(f"{relpath}::{qualname}")
-
             props = classify_properties(
                 func_node,
                 purity,
-                mutation_state,
-                enforcement_mode,
-                mutation_system_active=(mutation_manager is not None),
+                enforcement_mode=enforcement_mode,
             )
             func_props = FunctionProperties(
                 purity=props.purity,
@@ -255,7 +242,6 @@ def _save_manifest_cache(
     cache_path: Any,
     manifest: PropertyManifest,
     metadata: dict[str, dict[str, Any]],
-    mutation_mtime: float = 0.0,
 ) -> None:
     """Persist manifest and per-file metadata to disk cache."""
     try:
@@ -264,7 +250,6 @@ def _save_manifest_cache(
                 {
                     "manifest": manifest.to_dict(),
                     "metadata": metadata,
-                    "mutation_mtime": mutation_mtime,
                 },
                 f,
             )
@@ -275,65 +260,14 @@ def _save_manifest_cache(
 # ── Public API ──────────────────────────────────────────────────────────
 
 
-def _get_mutation_mtime(mutation_state_path: Any) -> float:
-    """Return the mtime of the mutation state file, or 0.0 if unavailable."""
-    try:
-        return mutation_state_path.stat().st_mtime
-    except (OSError, AttributeError):
-        return 0.0
-
-
-def _files_affected_by_mutation(
-    mutation_manager: MutationStateManager | None,
-    project_root: str,
-) -> set[str]:
-    """Return absolute file paths that have entries in mutation state.
-
-    These files need re-scanning when mutation state is newer than the
-    manifest cache so that ``classify_properties()`` picks up the enriched
-    mutation data.
-    """
-    if mutation_manager is None:
-        return set()
-    affected: set[str] = set()
-    for func_id in mutation_manager.state:
-        # func_id is ``relpath::qualname`` (canonical) or legacy ``abs_path::name``
-        parts = func_id.split("::", 1)
-        if not parts:
-            continue
-        file_part = parts[0]
-        if os.path.isabs(file_part):
-            affected.add(file_part)
-        else:
-            affected.add(os.path.join(project_root, file_part))
-    return affected
-
-
 def build_manifest(project_root: str, python_files: list[str], enforcement_mode: str = "audit") -> PropertyManifest:
     """Build a PropertyManifest by scanning Python files, with incremental caching."""
     PERF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     project_hash = hashlib.sha256(project_root.encode()).hexdigest()[:16]
-    # Bump cache version to v2 to invalidate non-unique key caches
-    cache_path = PERF_CACHE_DIR / f"{project_hash}_v2.json"
+    # v3: mutation-state invalidation removed with mutation subsystem archival.
+    cache_path = PERF_CACHE_DIR / f"{project_hash}_v3.json"
 
-    cached_manifest, cache_metadata, cached_mutation_mtime = _load_manifest_cache(
-        cache_path
-    )
-
-    # Mutation engine/tools persist state here; read from the same canonical path.
-    mutation_state_path = MUTATION_CACHE_DIR / "state.json"
-    try:
-        mutation_manager = MutationStateManager(str(mutation_state_path))
-    except (OSError, ValueError):
-        mutation_manager = None
-
-    # Detect mutation state changes — invalidate cache for affected files
-    current_mutation_mtime = _get_mutation_mtime(mutation_state_path)
-    mutation_invalidated_files: set[str] = set()
-    if current_mutation_mtime > cached_mutation_mtime:
-        mutation_invalidated_files = _files_affected_by_mutation(
-            mutation_manager, project_root
-        )
+    cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
 
     manifest = PropertyManifest()
     new_metadata: dict[str, dict[str, Any]] = {}
@@ -344,23 +278,23 @@ def build_manifest(project_root: str, python_files: list[str], enforcement_mode:
         except OSError:
             continue
 
-        # Force re-scan if mutation state has new data for this file
-        abs_filepath = os.path.abspath(filepath)
-        mutation_stale = abs_filepath in mutation_invalidated_files
-
         cached_entry = cache_metadata.get(filepath)
         if (
             cached_entry
             and cached_entry.get("hash") == file_hash
-            and not mutation_stale
         ):
             _restore_cached_functions(manifest, filepath, cached_manifest, cached_entry)
             new_metadata[filepath] = cached_entry
         else:
-            found_funcs = _scan_file(manifest, filepath, project_root, mutation_manager, enforcement_mode)
+            found_funcs = _scan_file(
+                manifest,
+                filepath,
+                project_root,
+                enforcement_mode,
+            )
             new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
 
     manifest.update_metrics()
-    _save_manifest_cache(cache_path, manifest, new_metadata, current_mutation_mtime)
+    _save_manifest_cache(cache_path, manifest, new_metadata)
 
     return manifest
