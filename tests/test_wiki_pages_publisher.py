@@ -162,7 +162,7 @@ def test_publish_sitemap_content(tmp_path):
 
     with open(os.path.join(out_dir, "sitemap.xml")) as f:
         sitemap = f.read()
-    assert "https://example.com/" in sitemap
+    assert "<loc>https://example.com/" in sitemap
     assert "getting-started" in sitemap
 
 
