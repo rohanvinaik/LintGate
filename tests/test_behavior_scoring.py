@@ -658,6 +658,7 @@ class TestConstants:
             "serial_discovery",
             "tool_repetition",
             "consecutive_failures",
+            "integration_verification_debt",
         }
         assert set(SIGNAL_THEORY_MAP.keys()) == expected_signals
 

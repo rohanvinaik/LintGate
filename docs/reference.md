@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 76 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 81 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -140,6 +140,15 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `extraction_plan`         | Build stepwise extraction plan for a specific function               |
 | `optimization_landscape`  | Project-wide optimization opportunity map                            |
 
+### Specification Complexity
+
+| Tool                | Purpose                                                                  |
+| ------------------- | ------------------------------------------------------------------------ |
+| `spec_analyze`      | Specification complexity analysis (sigma, regime, phase, risk, DFT)      |
+| `spec_prescribe`    | Risk-prioritized test prescriptions with expanded taxonomy               |
+| `spec_composition`  | Composition gap and sheaf condition analysis across modules              |
+| `spec_gate_check`   | Optimization gate validation with stop criteria                          |
+
 ### Refactor Checkpointing
 
 | Tool                  | Purpose                                                                |
@@ -160,6 +169,12 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `wiki_publish_pages`       | Publish wiki pages as a static GitHub Pages site                |
 | `wiki_check_links`         | Check link integrity across all materialized wiki pages         |
 | `wiki_status`              | Show wiki freshness state — stale/fresh/missing page counts     |
+
+### Contract Auditing
+
+| Tool                       | Purpose                                                         |
+| -------------------------- | --------------------------------------------------------------- |
+| `contract_audit`           | Audit channel metric contract health (wiring, sheaf, size)      |
 
 ---
 

@@ -20,6 +20,9 @@ class LensKind(str, Enum):
     IMPORT_TRACING = "import_tracing"
     CALL_GRAPH = "call_graph"
     CROSS_CHANNEL = "cross_channel"
+    SPECIFICATION = "specification"
+    COMPOSITION_GAP = "composition_gap"
+    CONTRACT_COVERAGE = "contract_coverage"
 
 
 class Actionability(str, Enum):

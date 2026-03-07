@@ -63,6 +63,10 @@ SIGNAL_THEORY_MAP: dict[str, dict[str, Any]] = {
         "facets": ["problem_solving"],
         "keywords": ["failure", "constraint", "pause"],
     },
+    "integration_verification_debt": {
+        "facets": ["alignment", "anti_patterns"],
+        "keywords": ["integration", "composition", "sheaf", "wiring"],
+    },
 }
 
 _THEORY_CODA_MAX_CHARS = 150

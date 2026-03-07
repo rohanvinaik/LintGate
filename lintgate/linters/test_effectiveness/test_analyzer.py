@@ -11,6 +11,8 @@ import ast
 import os
 from typing import Any
 
+from lintgate.keys import canonical_function_key, canonical_relpath
+
 from .assertion_classifier import classify_test_file_from_path
 from .source_mapper import build_source_function_index, map_tests_to_source
 from .types import (
@@ -335,8 +337,8 @@ def analyze_effectiveness(
             all_public_functions.append((func_name, sf))
 
     for func_name, filepath in all_public_functions:
-        relpath = os.path.relpath(filepath, project_root)
-        unique_key = f"{relpath}::{func_name}"
+        relpath = canonical_relpath(filepath, project_root)
+        unique_key = canonical_function_key(relpath, func_name)
 
         test_funcs = source_to_tests.get(unique_key, [])
         # Deduplicate

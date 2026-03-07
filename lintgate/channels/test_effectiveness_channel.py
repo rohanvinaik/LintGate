@@ -29,6 +29,7 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
+from lintgate.keys import canonical_function_key
 from lintgate.linters.test_effectiveness.manifest import (
     build_test_effectiveness_manifest,
 )
@@ -393,7 +394,7 @@ def _analyze_complexity_block(
         return None
 
     relpath = os.path.relpath(filepath, project_root)
-    unique_key = f"{relpath}::{func_name}"
+    unique_key = canonical_function_key(relpath, func_name)
 
     fe = manifest.functions.get(unique_key)
     if not fe or fe.test_count == 0 or fe.semantic_ratio >= 0.5:

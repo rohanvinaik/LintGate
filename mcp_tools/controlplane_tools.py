@@ -15,7 +15,7 @@ from typing import Any, Literal
 # ── Channel selection helpers ───────────────────────────────────────────
 
 _ALL_CHANNEL_NAMES = (
-    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness"
+    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,specification"
 )
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
@@ -35,6 +35,10 @@ _AVAILABLE_CHANNEL_DESCRIPTIONS = {
         "(purity detection, algebraic properties, optimization hints)"
     ),
     "test_effectiveness": "Test assertion quality and vulnerability analysis",
+    "specification": (
+        "Specification complexity analysis "
+        "(sigma estimation, regime classification, risk model, optimization gate)"
+    ),
 }
 
 
@@ -45,6 +49,7 @@ def _build_channel_registry():
     from lintgate.channels.git_channel import GitChannel
     from lintgate.channels.lint_channel import LintChannel
     from lintgate.channels.performance_channel import PerformanceChannel
+    from lintgate.channels.specification_channel import SpecificationChannel
     from lintgate.channels.structure_channel import StructureChannel
     from lintgate.channels.test_channel import TestChannel
     from lintgate.channels.test_effectiveness_channel import TestEffectivenessChannel
@@ -58,6 +63,7 @@ def _build_channel_registry():
         "structure": StructureChannel(),
         "performance": PerformanceChannel(),
         "test_effectiveness": TestEffectivenessChannel(),
+        "specification": SpecificationChannel(),
     }
 
 
@@ -74,6 +80,91 @@ def _select_channels(channels_str, channel_registry):
     if not active:
         raise ValueError(f"No valid channels. Unknown: {unknown}")
     return active, requested, unknown
+
+
+def _validate_channel_wiring(active_channel_names: list[str]) -> list:
+    """Run schema wiring validation. Returns list of LintIssue for WIRE001/WIRE002."""
+    findings = []
+    try:
+        from lintgate.controlplane.metric_schema import (
+            register_all_schemas,
+            validate_wiring,
+        )
+
+        register_all_schemas()
+        issues = validate_wiring(active_channel_names)
+        if issues:
+            from lintgate.linters.lint_types import LintIssue
+
+            for issue in issues:
+                code = "WIRE001" if issue.issue_type == "missing_publisher" else "WIRE002"
+                findings.append(
+                    LintIssue(
+                        file="<schema>",
+                        line=0,
+                        col=0,
+                        linter="metric_schema",
+                        kind=code,
+                        message=(
+                            f"Channel '{issue.consumer}' consumes '{issue.key}' "
+                            f"but {issue.missing_publisher}"
+                        ),
+                        severity="warning",
+                    )
+                )
+    except Exception:
+        pass  # Graceful degradation — schema validation is advisory
+    return findings
+
+
+def _append_schema_findings(mesh_result, wiring_findings: list) -> None:
+    """Append WIRE findings + per-channel WIRE002 to mesh result."""
+    if not wiring_findings and not mesh_result.channel_results:
+        return
+
+    try:
+        from lintgate.controlplane.metric_schema import validate_result
+        from lintgate.linters.lint_types import LintIssue
+
+        # Per-channel output validation (skip-aware)
+        for cr in mesh_result.channel_results:
+            missing = validate_result(cr.channel, cr.metrics, status=cr.status)
+            for key in missing:
+                wiring_findings.append(
+                    LintIssue(
+                        file="<schema>",
+                        line=0,
+                        col=0,
+                        linter="metric_schema",
+                        kind="WIRE002",
+                        message=(
+                            f"Channel '{cr.channel}' declared key '{key}' "
+                            f"but did not publish it"
+                        ),
+                        severity="informational",
+                    )
+                )
+
+        # Attach wiring findings to the first channel result (or create a synthetic one)
+        if wiring_findings:
+            if mesh_result.channel_results:
+                # Append to the last channel result's findings
+                cr = mesh_result.channel_results[-1]
+                cr.findings = list(cr.findings or []) + wiring_findings
+            else:
+                from lintgate.controlplane.types import ChannelResult
+
+                mesh_result.channel_results.append(
+                    ChannelResult(
+                        channel="schema_validation",
+                        status="fail",
+                        severity="warning",
+                        findings=wiring_findings,
+                        metrics={},
+                    )
+                )
+    except Exception:
+        pass  # Graceful degradation
 
 
 # ── controlplane_run helpers ────────────────────────────────────────────
@@ -428,6 +519,11 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
     channel_registry = _build_channel_registry()
     active_channels, requested, unknown = _select_channels(channels, channel_registry)
 
+    # Schema wiring validation (runtime advisory)
+    wiring_findings = _validate_channel_wiring(
+        [ch.name for ch in active_channels]
+    )
+
     # Event
     files_for_event = _collect_files_for_event(project_root, scope, files, helpers)
 
@@ -459,6 +555,9 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
 
     # Run mesh
     mesh_result = run_mesh(event, cp_config, active_channels, session=session)
+
+    # Post-mesh schema validation: check channel outputs match declared schemas
+    _append_schema_findings(mesh_result, wiring_findings)
 
     # Finding index and delta
     current_finding_index = build_finding_index(mesh_result)

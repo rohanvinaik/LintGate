@@ -133,6 +133,69 @@ def adapt_mutation(data: dict) -> list[LensEvidence]:
     return results
 
 
+def adapt_specification(data: dict) -> list[LensEvidence]:
+    """Adapt specification complexity data.
+
+    Input: {func_key: {spec_level, regime, sigma, is_pure, risk_score, priority_band}}
+    Under-specified Regime B → support decomposition.
+    Well-specified → oppose decomposition.
+    """
+    results: list[LensEvidence] = []
+    for func_key, info in (data or {}).items():
+        spec_level = info.get("spec_level", 0.0)
+        regime = info.get("regime", "unknown")
+
+        if regime == "B" and spec_level < 0.5:
+            conf = min(1.0 - spec_level, 1.0)
+            results.append(
+                LensEvidence(
+                    lens=LensKind.SPECIFICATION,
+                    target=func_key,
+                    confidence=conf,
+                    signal="support",
+                    detail=f"Regime B, spec_level={spec_level:.2f} (under-specified)",
+                    raw=info,
+                )
+            )
+        elif spec_level >= 0.7:
+            results.append(
+                LensEvidence(
+                    lens=LensKind.SPECIFICATION,
+                    target=func_key,
+                    confidence=min(spec_level, 1.0),
+                    signal="oppose",
+                    detail=f"Well-specified (spec_level={spec_level:.2f})",
+                    raw=info,
+                )
+            )
+    return results
+
+
+def adapt_composition_gap(data: dict) -> list[LensEvidence]:
+    """Adapt composition gap data.
+
+    Input: {edge_key: {gamma, integration_surface, spec_independent}}
+    High gamma → support decomposition at boundary.
+    """
+    results: list[LensEvidence] = []
+    for edge_key, info in (data or {}).items():
+        gamma = info.get("gamma", 0.0)
+        if gamma <= 0:
+            continue
+        conf = min(gamma / 5.0, 1.0)
+        results.append(
+            LensEvidence(
+                lens=LensKind.COMPOSITION_GAP,
+                target=edge_key,
+                confidence=conf,
+                signal="support",
+                detail=f"Composition gap gamma={gamma:.2f}",
+                raw=info,
+            )
+        )
+    return results
+
+
 def adapt_cohesion(data: dict) -> list[LensEvidence]:
     """Adapt cohesion analysis output.
 
@@ -241,15 +304,9 @@ def adapt_dep_clustering(
     """
     results: list[LensEvidence] = []
     for p in prescriptions or []:
-        target = (
-            getattr(p, "target", str(p))
-            if not isinstance(p, dict)
-            else p.get("target", "")
-        )
+        target = getattr(p, "target", str(p)) if not isinstance(p, dict) else p.get("target", "")
         conf = (
-            getattr(p, "confidence", 0.5)
-            if not isinstance(p, dict)
-            else p.get("confidence", 0.5)
+            getattr(p, "confidence", 0.5) if not isinstance(p, dict) else p.get("confidence", 0.5)
         )
         results.append(
             LensEvidence(
@@ -453,9 +510,7 @@ def adapt_fan_in_file(data: dict, threshold: int = 5) -> list[LensEvidence]:
     return results
 
 
-def adapt_cochange_file(
-    data: dict, filepath: str, threshold: float = 0.4
-) -> list[LensEvidence]:
+def adapt_cochange_file(data: dict, filepath: str, threshold: float = 0.4) -> list[LensEvidence]:
     """Adapt file-level co-change data filtered to a specific filepath.
 
     Input: {pairs: [{file_a, file_b, coupling_strength}]} filtered to filepath.
@@ -576,12 +631,10 @@ def aggregate_file(
 
         # Apply weights before probability union
         weighted_support = [
-            _apply_weight(e.confidence, _FILE_LENS_WEIGHTS.get(e.lens, 1.0))
-            for e in support
+            _apply_weight(e.confidence, _FILE_LENS_WEIGHTS.get(e.lens, 1.0)) for e in support
         ]
         weighted_oppose = [
-            _apply_weight(e.confidence, _FILE_LENS_WEIGHTS.get(e.lens, 1.0))
-            for e in oppose
+            _apply_weight(e.confidence, _FILE_LENS_WEIGHTS.get(e.lens, 1.0)) for e in oppose
         ]
 
         support_prob = _probability_union(weighted_support)
@@ -592,9 +645,7 @@ def aggregate_file(
         opposing_lenses = sorted({e.lens for e in oppose}, key=lambda lk: lk.value)
 
         cohesion_data = (cohesion_map or {}).get(target)
-        actionability = classify_file_actionability(
-            net, len(supporting_lenses), cohesion_data
-        )
+        actionability = classify_file_actionability(net, len(supporting_lenses), cohesion_data)
 
         proposals = (split_proposals_map or {}).get(target, [])
 
@@ -617,6 +668,42 @@ def aggregate_file(
 
 
 # ── Function-level adapters ─────────────────────────────────────────
+
+
+def adapt_contract_coverage(
+    published_targets: dict,
+    consumed_targets: dict,
+) -> list[LensEvidence]:
+    """Adapt contract coverage data.
+
+    When a target function appears in a channel's published metrics but NOT
+    in a consuming channel's expected format, this is convergence evidence
+    supporting decomposition — the function sits at a contract boundary
+    where coverage gaps indicate structural coupling.
+
+    Input:
+        published_targets: {func_key: {channel, metric_key}} — functions in published metrics
+        consumed_targets: {func_key: {channel, metric_key}} — functions in consumed metrics
+    """
+    results: list[LensEvidence] = []
+    published_only = set(published_targets.keys()) - set(consumed_targets.keys())
+
+    for func_key in published_only:
+        info = published_targets[func_key]
+        results.append(
+            LensEvidence(
+                lens=LensKind.CONTRACT_COVERAGE,
+                target=func_key,
+                confidence=0.5,
+                signal="support",
+                detail=(
+                    f"Published by {info.get('channel', '?')} "
+                    f"but not consumed by any downstream channel"
+                ),
+                raw=info,
+            )
+        )
+    return results
 
 
 def adapt_cross_channel(findings: list[LintIssue] | list | None) -> list[LensEvidence]:

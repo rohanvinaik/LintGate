@@ -1,4 +1,4 @@
-"""Cross-channel coherence pass for performance × test-effectiveness.
+"""Cross-channel coherence pass for performance × test-effectiveness × specification.
 
 Runs after channel execution and cross-references signals that only appear
 when combining purity analysis with assertion-quality analysis.
@@ -6,6 +6,9 @@ when combining purity analysis with assertion-quality analysis.
 Finding codes:
 - COH001: Pure function + structural-heavy assertions
 - COH002: Pure function + minimal branch-testing assertions
+- COH101: Pure + optimization hint + low spec_level (performance × specification)
+- COH102: Regime B + high fan-out (specification × structure)
+- COH103: High composition gap at module boundary (specification × structure)
 """
 
 from __future__ import annotations
@@ -45,6 +48,11 @@ def cross_channel_coherence(channel_results: list[ChannelResult]) -> list[LintIs
 
         _check_coh001(func_name, file_path, assertions, findings)
         _check_coh002(func_name, file_path, assertions, findings)
+
+    # Specification cross-channel checks (COH101-103)
+    spec = _find_channel(channel_results, "specification")
+    if spec is not None:
+        _check_coh101_103(spec, pure_functions, findings)
 
     return findings
 
@@ -140,6 +148,112 @@ def _extract_pure_functions(perf: ChannelResult | None) -> dict[str, dict[str, A
         if name:
             result[name] = entry
     return result
+
+
+def _check_coh101_103(
+    spec: ChannelResult,
+    pure_functions: dict[str, dict[str, Any]],
+    findings: list[LintIssue],
+) -> None:
+    """COH101-103: Specification cross-channel coherence checks."""
+    spec_metrics = spec.metrics if isinstance(spec.metrics, dict) else {}
+    spec_funcs = spec_metrics.get("specification_function_list", {})
+
+    _check_coh101(spec_funcs, findings)
+
+    comp_gaps = spec_metrics.get("composition_gaps")
+    if comp_gaps is not None:
+        _check_coh102_103(spec_funcs, comp_gaps, findings)
+
+
+def _check_coh101(
+    spec_funcs: dict[str, Any],
+    findings: list[LintIssue],
+) -> None:
+    """COH101: Pure + optimization hint + low spec_level."""
+    for func_key, func_info in spec_funcs.items():
+        hints = func_info.get("optimization_hints", [])
+        spec_level = func_info.get("spec_level", 0.0)
+        is_pure = func_info.get("is_pure", False)
+        if is_pure and hints and spec_level < 0.5:
+            findings.append(
+                LintIssue(
+                    linter="coherence",
+                    kind="COH101",
+                    message=(
+                        f"Pure function '{func_key}' has optimization hints {hints} "
+                        f"but spec_level={spec_level:.2f} (needs specification work)"
+                    ),
+                    file=func_key,
+                    severity="warning",
+                    confidence=0.8,
+                    evidence={
+                        "spec_level": spec_level,
+                        "hints": hints,
+                        "contributing_channels": ["performance", "specification"],
+                    },
+                )
+            )
+
+
+def _check_coh102_103(
+    spec_funcs: dict[str, Any],
+    comp_gaps: dict[str, Any],
+    findings: list[LintIssue],
+) -> None:
+    """COH102: Regime B + high fan-out. COH103: High composition gap."""
+    # Derive per-function cross-module fan-out from composition edges
+    cross_module_fan_out: dict[str, int] = {}
+    for edge_key in comp_gaps:
+        parts = edge_key.split("::", 2)
+        if len(parts) >= 2:
+            caller = parts[0] if len(parts) == 2 else f"{parts[0]}::{parts[1]}"
+            cross_module_fan_out[caller] = cross_module_fan_out.get(caller, 0) + 1
+
+    for func_key, func_info in spec_funcs.items():
+        regime = func_info.get("regime", "unknown")
+        if regime != "B":
+            continue
+        fan_out = cross_module_fan_out.get(func_key, 0)
+        if fan_out >= 5:
+            findings.append(
+                LintIssue(
+                    linter="coherence",
+                    kind="COH102",
+                    message=(
+                        f"Regime B function '{func_key}' has cross-module fan-out={fan_out} "
+                        f"— forced decomposition signal"
+                    ),
+                    file=func_key,
+                    severity="warning",
+                    confidence=0.75,
+                    evidence={
+                        "regime": "B",
+                        "fan_out": fan_out,
+                        "contributing_channels": ["specification", "structure"],
+                    },
+                )
+            )
+
+    for edge_key, gap_info in comp_gaps.items():
+        gamma = gap_info.get("gamma", 0.0)
+        if gamma > 3.0:
+            findings.append(
+                LintIssue(
+                    linter="coherence",
+                    kind="COH103",
+                    message=(
+                        f"High composition gap (gamma={gamma:.2f}) at module boundary: {edge_key}"
+                    ),
+                    file=edge_key,
+                    severity="warning",
+                    confidence=0.7,
+                    evidence={
+                        "gamma": gamma,
+                        "contributing_channels": ["specification", "structure"],
+                    },
+                )
+            )
 
 
 def _extract_assertion_quality(teff: ChannelResult | None) -> dict[str, dict[str, Any]]:

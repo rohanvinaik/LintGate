@@ -15,6 +15,8 @@ import ast
 import os
 from typing import TYPE_CHECKING
 
+from lintgate.keys import canonical_function_key, canonical_relpath
+
 if TYPE_CHECKING:
     from lintgate.linters.test_effectiveness.types import MappingDiagnostics
 
@@ -484,8 +486,8 @@ def _try_add_match(
 
     chosen = candidates[0]
     if use_unique_keys and project_root:
-        relpath = os.path.relpath(chosen, project_root)
-        matched_keys.add(f"{relpath}::{func_name}")
+        relpath = canonical_relpath(chosen, project_root)
+        matched_keys.add(canonical_function_key(relpath, func_name))
     else:
         matched_keys.add(func_name)
 

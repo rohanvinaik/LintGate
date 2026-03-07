@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 84 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 81 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -104,6 +104,15 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `convergence_analyze` | Multi-lens convergence aggregation on functions/files | After controlplane_run identifies decomposition candidates |
 | `extraction_plan` | Build stepwise extraction plan for a specific function | After convergence_analyze shows EXTRACT actionability |
 | `optimization_landscape` | Project-wide optimization opportunity map | Strategic view of codebase optimization potential |
+
+### Specification Complexity
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `spec_analyze` | Specification complexity analysis (sigma, regime, phase, risk, DFT) | Understanding function specification state |
+| `spec_prescribe` | Risk-prioritized test prescriptions with expanded taxonomy | After spec_analyze reveals under-specified functions |
+| `spec_composition` | Composition gap and sheaf condition analysis across modules | Understanding cross-module specification dependencies |
+| `spec_gate_check` | Optimization gate validation with stop criteria | Checking if optimization hints are backed by specification |
 
 ### Mutation Testing
 

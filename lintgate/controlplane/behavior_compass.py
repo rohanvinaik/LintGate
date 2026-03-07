@@ -325,6 +325,9 @@ def record_tool_event(
     if tool_name == "Bash" and exit_code is not None and exit_code != 0 and error_sig:
         _auto_generate_hypothesis(compass, command_sig, error_sig, now, cfg)
 
+    # Integration verification tracking (Phase 3)
+    _update_integration_counters(compass, tool_name, tool_input, command_sig, now)
+
     # Decay stale hypotheses
     decay_stale(compass, now, cfg)
 
@@ -333,6 +336,52 @@ def record_tool_event(
     compass.uncertainty_zones = compute_uncertainty_zones(compass)
 
     return []  # Alerts computed by channel, not here
+
+
+def _update_integration_counters(
+    compass: BehaviorCompass,
+    tool_name: str,
+    tool_input: dict[str, Any] | str,
+    command_sig: str,
+    now: float,
+) -> None:
+    """Update integration verification tracking counters.
+
+    Increments on Edit/Write to integration paths.
+    Resets on verification tools or integration test bash commands.
+    """
+    from lintgate.channels.behavior_detection import (
+        INTEGRATION_PATHS,
+        INTEGRATION_VERIFY_BASH_PATTERNS,
+        INTEGRATION_VERIFY_TOOLS,
+    )
+
+    # Check for verification events (reset counter)
+    if tool_name in INTEGRATION_VERIFY_TOOLS:
+        compass.integration_edits_since_verify = 0
+        compass.last_integration_verify_ts = now
+        return
+
+    if tool_name == "Bash" and command_sig:
+        for pattern in INTEGRATION_VERIFY_BASH_PATTERNS:
+            if re.search(pattern, command_sig):
+                compass.integration_edits_since_verify = 0
+                compass.last_integration_verify_ts = now
+                return
+
+    # Check for edits to integration paths (increment counter)
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        file_path = ""
+        if isinstance(tool_input, dict):
+            file_path = tool_input.get("file_path", "")
+        elif isinstance(tool_input, str):
+            file_path = tool_input
+        # Normalize to forward slashes for matching
+        file_path = file_path.replace("\\", "/")
+        for integration_path in INTEGRATION_PATHS:
+            if integration_path in file_path:
+                compass.integration_edits_since_verify += 1
+                return
 
 
 def _update_error_memory(

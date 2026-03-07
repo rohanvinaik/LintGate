@@ -49,6 +49,7 @@ from .behavior_detection import (
     detect_brute_force_escalation,
     detect_consecutive_failures,
     detect_failure_amnesia,
+    detect_integration_verification_debt,
     detect_mass_delegation,
     detect_premature_action,
     detect_redundant_planning,
@@ -279,7 +280,7 @@ class BehaviorChannel:
             recent_codas=recent_codas,
         )
 
-        # Run all 11 detection rules
+        # Run all 12 detection rules
         detect_approach_cycling(compass, thresholds, coord, scorer)
         detect_failure_amnesia(compass, thresholds, coord, scorer)
         detect_brute_force_escalation(compass, thresholds, coord, scorer)
@@ -291,6 +292,7 @@ class BehaviorChannel:
         detect_stale_model(compass, thresholds, coord, scorer)
         detect_mass_delegation(compass, thresholds, coord, scorer)
         detect_redundant_planning(compass, thresholds, coord, scorer)
+        detect_integration_verification_debt(compass, thresholds, coord, scorer)
 
         _apply_prediction_modulation(coord.findings, compass, config)
 
