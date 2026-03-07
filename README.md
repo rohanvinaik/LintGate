@@ -63,7 +63,7 @@ That example is an instance of a general chain: **mutation pressure → specific
 
 ## How It Works
 
-**The hook** fires on every code change — classifies what changed, selects a lint tier, runs linters in parallel, returns a compact report. Silent when you're doing fine. Loud when it matters.
+**The hook** fires on every code change — classifies what changed, selects a lint tier, runs 18 linters in parallel, returns a compact report. Silent when you're doing fine. Loud when it matters.
 
 **The ControlPlane** runs 6 independent channels in parallel — lint, tests, deps, git, behavior, structure — and a coherence engine computes the state from their agreement pattern: stable, isolated, coupled, systemic, degraded. The state tells you the *character* of your problems, not just the count.
 

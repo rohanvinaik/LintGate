@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 74 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 76 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -157,6 +157,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `project_wiki_sync`        | Sync theory/compass/design data to GitHub wiki pages            |
 | `project_wiki_read`        | Read a GitHub wiki page (local clone or remote)                 |
 | `wiki_materialize`         | Generate wiki pages locally from manifest (dry-run or write)    |
+| `wiki_publish_pages`       | Publish wiki pages as a static GitHub Pages site                |
+| `wiki_check_links`         | Check link integrity across all materialized wiki pages         |
 | `wiki_status`              | Show wiki freshness state — stale/fresh/missing page counts     |
 
 ---
