@@ -141,7 +141,7 @@ def test_rewrite_links_preserves_urls():
     text = "Visit [site](https://example.com) or [file](docs/foo.md)"
     result = rewrite_links(text, link_fn)
     # URLs and file paths should not be rewritten
-    assert "https://example.com" in result  # lgtm[py/incomplete-url-substring-sanitization]
+    assert "(https://example.com)" in result
     assert "docs/foo.md" in result
 
 
