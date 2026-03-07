@@ -33,9 +33,7 @@ Vibe coding works — remarkably well — until it doesn't. And when it fails, i
 
 The agent introduces a bad import at edit 5. Nothing flags it. Thirty edits later the codebase is syntactically valid and architecturally broken. The type error compounded. The hallucinated import propagated. The function that should have been decomposed got stuffed with logic because nobody told the agent the project values composition.
 
-But the code problems are downstream. Before the agent writes the wrong code, it *reasons* wrong. It tries an approach, fails, tries a variant instead of updating its model. It encounters an error, moves on, hits the same error twenty minutes later. It acts before it understands.
-
-This is **behavioral drift** — the agent's reasoning strategy diverging from effective problem-solving. It is upstream of code drift. Catch the reasoning failure early enough and you never write the bad code.
+But the code problems are downstream. Before the agent writes the wrong code, it *reasons* wrong. It tries an approach, fails, tries a variant instead of updating its model. It acts before it understands. This is **behavioral drift** — the agent's reasoning strategy diverging from effective problem-solving. It is upstream of code drift. Catch the reasoning failure early enough and you never write the bad code.
 
 A senior engineer catches all of this. Not by being smarter — by having instincts. Check imports after refactoring. Verify types after changing signatures. Notice when complexity creeps. These aren't intelligence problems. They're discipline problems. And right now, the only way to get that discipline is to hire a senior engineer.
 
@@ -57,31 +55,27 @@ The downstream consequence is stranger than the mechanism: **when discipline is 
 
 Clean code and well-tested code are usually treated as separate virtues. They're not — they're the same property viewed from different angles.
 
-A surviving mutant is a version of your function that behaves differently and no test notices. If no test can tell the difference, the test suite doesn't fully specify what the function does. In Sussman's framing (SICP): the function is an ambiguous specification of a computational process. And ambiguous specifications resist optimization, because you can't prove two things are equivalent when you haven't defined what equivalence means.
+Point LintGate at a module with 99% line coverage and the algebra pipeline says `_get_parameter_count` is pure and cacheable. Then the mutation gate fires: 75% of mutants survive. The tests execute the code but don't verify what it computes. Confidence drops from 80% to 10%, and the gate tells you *why* — 12 surviving mutants across conditional and arithmetic categories — which is the surgical target for the 2–3 tests that would make the optimization safe.
 
-But the surviving mutants aren't just a score. They're a **map**. Each one is a specific behavioral degree of freedom that isn't pinned down — the function could wobble in that dimension and nobody would know. The *category* of surviving mutants (conditional, arithmetic, string, keyword) tells you *why* the function is underspecified. And that tells you exactly what to do about it: which tests to write, or — when multiple categories survive — which axis to decompose along. The mutation profile is a constructive specification of the negative space between the code as it is and the code as it should be.
-
-This creates an operational chain that doesn't appear elsewhere in the literature: **mutation pressure → specification gap → forced decomposition → algebraically tractable units → safe optimization**. You can't fully specify a tangled function — the test surface is combinatorially large. Decomposition makes specification tractable. Fully specified functions naturally exhibit purity, cacheability, parallelizability. The act of driving toward zero surviving mutants *is* what produces clean, optimizable code.
-
-LintGate makes this concrete. Point it at a module with 99% line coverage and the algebra pipeline says `_get_parameter_count` is pure and cacheable. Then the mutation gate fires: 75% of mutants survive. The tests execute the code but don't verify what it computes. Confidence drops from 80% to 10%, and the gate tells you *why* — 12 surviving mutants across conditional and arithmetic categories — which is the surgical target for the 2-3 tests that would make the optimization safe. ([Full theory](docs/mutation-theory.md))
+That example is an instance of a general chain: **mutation pressure → specification gap → forced decomposition → algebraically tractable units → safe optimization**. A surviving mutant is a version of your function that behaves differently and no test notices. If no test can tell the difference, the test suite doesn't fully specify what the function does — and ambiguous specifications resist optimization, because you can't prove two things are equivalent when you haven't defined what equivalence means. But surviving mutants aren't just a score. They're a *map* — each one is a specific behavioral degree of freedom that isn't pinned down. The act of driving toward zero surviving mutants *is* what produces clean, optimizable code. ([Full theory](docs/design.md))
 
 ---
 
 ## How It Works
 
-**The hook** fires on every code change. It classifies what changed, selects a lint tier (up to 18 linters across 4 escalating tiers), runs them in parallel, and returns a compact report — or `{}` when nothing is wrong. Silent when you're doing fine. Loud when it matters.
+**The hook** fires on every code change — classifies what changed, selects a lint tier, runs linters in parallel, returns a compact report. Silent when you're doing fine. Loud when it matters.
 
-**The ControlPlane** runs 6 independent channels in parallel: lint, tests, deps, git, behavior, structure. A coherence engine reads the pattern of agreement and disagreement across channels and computes a state — stable, isolated, coupled, systemic, degraded. The state tells you the *character* of your problems, not just the count. When three channels pass and one fails, the passing channels are actively narrowing your problem space.
+**The ControlPlane** runs 6 independent channels in parallel — lint, tests, deps, git, behavior, structure — and a coherence engine computes the state from their agreement pattern: stable, isolated, coupled, systemic, degraded. The state tells you the *character* of your problems, not just the count.
 
-**The behavioral compass** tracks the agent's reasoning strategy in real time: live hypotheses, approach history, intent patterns, coverage metrics. When the strategy drifts — retrying failed approaches, ignoring discovered constraints, acting without verifying — the behavior channel catches it and intervenes *before* the bad reasoning produces bad code. Nine detection rules, deterministic scoring, no LLM calls.
+**The behavioral compass** tracks the agent's reasoning strategy: live hypotheses, approach history, coverage metrics. When the strategy drifts, the behavior channel intervenes *before* the bad reasoning produces bad code. Deterministic scoring, no LLM calls.
 
-**The Algebraic Properties Bridge** performs formal analysis of your codebase's mathematical structure. It detects function purity (side-effect isolation), classifies algebraic properties (idempotency, commutativity, associativity), and identifies optimization opportunities like trivially safe parallelization or zero-invalidation caching. It bridges structural analysis with formal verification.
+**The algebra pipeline** performs formal analysis of your codebase's mathematical structure — function purity, algebraic properties, mutation-backed specification completeness — and connects them to safe optimization opportunities.
 
 ---
 
 ## The Economics
 
-The fundamental unit is **output tokens** — the model's actual generation work: code written, reasoning produced, decisions made. Input tokens are dominated by context re-reading and aren't meaningful for cost comparison. LintGate's tools are symbolic, deterministic, and run locally — they don't call the model API. Its cost is the small number of API calls where the agent invoked a LintGate tool.
+The fundamental unit is **output tokens** — the model's actual generation work. LintGate's tools are symbolic, deterministic, and run locally — they don't call the model API.
 
 ### The Bottom Line
 
@@ -101,7 +95,7 @@ The zero in the debugging column is not a typo. Six modules between 900 and 1,50
 
 ### Why the Gap Compounds
 
-Discipline failures don't add — they multiply. Each wasted output token degrades the context for everything that follows, causing subsequent output to be even less efficient:
+Discipline failures don't add — they multiply. Each wasted output token degrades the context for everything that follows:
 
 | Metric | Unsupervised | Supervised |
 | --- | --- | --- |
@@ -125,8 +119,6 @@ LintGate's ControlPlane diagnosed it as "systemic" — 132 blockers, 253 warning
 | **Ruff violations** | 266 | 0 | **-100%** |
 | **High-complexity blocks (D+)** | 27 | 10 | **-63%** |
 | **Very high complexity (F grade)** | 5 | 1 | **-80%** |
-| **Worst single function CC** | 95 | 79 | -17% |
-| **Python files** | 91 | 57 | restructured |
 | **Test suite** | 477 pass | 477 pass | 0 regressions |
 
 The 7 remaining blockers are irreducible architectural characteristics — 5 cohesive files that happen to be long, 2 data classes that genuinely need many fields. Not debt. Just shape.
@@ -135,7 +127,7 @@ Three things stand out:
 
 **The highest-ROI fix was not a code change.** 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Adding two lines to `pyproject.toml` eliminated them all. Configuration before code.
 
-**The maintainability index broke.** Not "decreased" — the metric stopped being comparable. The file count changed from 91 to 57 because the codebase was *restructured*. Fewer files, each scoring better than the originals. The denominator of the measurement changed because the shape of the codebase changed.
+**The maintainability index broke.** Not "decreased" — the metric stopped being comparable. The file count changed from 91 to 57 because the codebase was *restructured*. The denominator of the measurement changed because the shape of the codebase changed.
 
 **The largest god-function was decomposed into 15 methods with zero regressions.** `Orchestrator.generate()` — 620 lines, CC=95, 231 statements — was split along phase boundaries into a clean pipeline tree. All 25 orchestrator tests passed on the first run.
 
@@ -145,24 +137,11 @@ Full session data: [ModelAtlas build](docs/retrospectives/hf-model-search-2026-0
 
 We pointed LintGate's performance tools at its own codebase and told the smallest model we could find to optimize it. Gemini 2.5 Flash Lite — **0.77 billion parameters**, half the size of GPT-2 — running against a professional Python codebase with the full ControlPlane stack.
 
-It received 2,639 structured PERFCH005 findings and correctly identified:
-
-- Signal-to-noise problem: per-function findings should be collapsed into top-N summaries
-- The manifest-to-lint bridge gap: purity analysis results weren't flowing to the lint checkers
-- Six monolithic functions that should be decomposed into focused helpers
-- A `set` vs `tuple` optimization for O(1) membership checks
-
-Every diagnosis was correct. Every proposed decomposition was architecturally sound. Claude Opus 4.6 — a model with 1,000x+ the parameters — reviewed the architectural proposals and kept them: *"The manifest decomposition is genuinely good — I want to keep the helper extraction."*
+It received 2,639 structured PERFCH005 findings and correctly identified signal-to-noise problems, the manifest-to-lint bridge gap, six monolithic functions that should be decomposed, and a `set` vs `tuple` optimization for O(1) membership checks. Every diagnosis was correct. Every proposed decomposition was architecturally sound. Claude Opus 4.6 — a model with 1,000x+ the parameters — reviewed the architectural proposals and kept them: *"The manifest decomposition is genuinely good — I want to keep the helper extraction."*
 
 Flash Lite produced **zero bytes of working code**. It couldn't construct valid Edit tool calls — the exact-string-matching requirement exceeded its 0.77B working memory. It entered a behavioral loop, restating its plan 9 times, each restatement coherent and slightly rephrased. It eventually pivoted to providing code snippets for "manual application" — the correct degradation strategy for a model that knows its hands don't work.
 
 Gemini 2.5 Flash (7B parameters) then executed Flash Lite's designs. The composite system — 0.77B for diagnosis, 7B for execution, deterministic infrastructure for validation — produced performance engineering that would challenge senior developers.
-
-| Model | Parameters | Diagnosis | Architecture | Execution | Behavioral Control |
-| --- | --- | --- | --- | --- | --- |
-| Flash Lite | 0.77B | Correct | Correct | Failed (0 bytes) | Looped |
-| Flash | 7B | Correct | Correct | Succeeded | Stable |
-| Opus 4.6 | 1T+ | Reviewed and validated | Kept the designs | Restored gutted files | Full editorial control |
 
 **Why this happened**: Flash Lite scores 34% on LiveCodeBench (code generation) but **0.84 on tool selection quality** — in the same range as models 100x its size. LintGate's structured findings shifted the task from code generation (Flash Lite's weakness) to structured interpretation and action proposal (its strength). The conceptual burden of performance engineering was lower than the burden of typing.
 
@@ -245,9 +224,7 @@ This is a complete theory of alignment in its own right. [Full architecture and 
 
 The badges at the top of this README are not decorations. They are a self-referential proof system.
 
-LintGate enforces quality gates on code that passes through it. LintGate's own code passes through those same gates. The badges are generated by those gates running on this codebase — every test suite run, every SonarCloud scan, every algebraic property extraction. The merge commits are GPG-signed by `lintgate[bot]`, proving no human bypassed the gates. The issues are auto-generated by the App's own finding triage, demonstrating that the classification pipeline works.
-
-This means anyone evaluating LintGate can verify its claims without trusting its documentation. The Tests badge proves the test suite passes. The Coverage badge proves the tests exercise the code. The Side-Effect-Free and Algebraic Properties badges prove the formal analysis pipeline works — on itself. The Security badge proves the security scanners found nothing. Each badge is independently auditable, backed by CI logs that anyone can inspect.
+LintGate enforces quality gates on code that passes through it. LintGate's own code passes through those same gates. The badges are generated by those gates running on this codebase — every test suite run, every SonarCloud scan, every algebraic property extraction. The merge commits are GPG-signed by `lintgate[bot]`, proving no human bypassed the gates.
 
 This is the strongest possible form of credibility for a quality tool: it holds itself to the standards it enforces, and the evidence is cryptographic, empirical, and publicly auditable.
 
@@ -263,7 +240,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*74 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*76 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
 

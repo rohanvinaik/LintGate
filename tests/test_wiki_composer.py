@@ -122,13 +122,15 @@ def test_cross_links_inferred(tmp_path):
     assert "See Also" in core.content
 
 
-def test_breadcrumb_present(tmp_path):
+def test_no_composer_breadcrumb(tmp_path):
+    """Composer should NOT add breadcrumb — transforms layer handles it."""
     manifest = _make_manifest_and_sources(tmp_path)
     pages = compose_all_pages(manifest, str(tmp_path))
 
     core = next(p for p in pages if p.name == "Theory-Core")
-    assert "**Theory**" in core.content
-    assert "[Home](Home)" in core.content
+    # Breadcrumb is added by apply_common_transforms in the publisher,
+    # not by the composer. Verify no duplicate breadcrumb line.
+    assert "**Theory** |" not in core.content
 
 
 def test_managed_section_markers(tmp_path):

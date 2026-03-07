@@ -27,7 +27,7 @@ Domain modules:
 - refactor_tools: refactor_checkpoint, refactor_resume, refactor_thesis
 - convergence_tools: convergence_analyze, extraction_plan, optimization_landscape
 - gh_tools: project_organize_audit, project_organize_apply, project_wiki_sync, project_wiki_read
-- wiki_tools: wiki_materialize, wiki_status
+- wiki_tools: wiki_materialize, wiki_status, wiki_publish_pages, wiki_check_links
 """
 
 from . import (
