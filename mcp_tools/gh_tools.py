@@ -540,9 +540,17 @@ def _impl_project_wiki_sync(
             pages["Theory-Compass"] = f"_Error loading compass: {exc}_"
 
     if "design" in scopes:
-        design_path = os.path.join(path, "docs", "design.md")
-        design_pages = _split_design_md(design_path)
-        pages.update(design_pages)
+        docs_dir = os.path.join(path, "docs")
+        if os.path.isdir(docs_dir):
+            for fname in sorted(os.listdir(docs_dir)):
+                if fname.endswith(".md") and os.path.isfile(os.path.join(docs_dir, fname)):
+                    design_pages = _split_design_md(os.path.join(docs_dir, fname))
+                    pages.update(design_pages)
+        else:
+            # Fallback: single design.md
+            design_path = os.path.join(path, "docs", "design.md")
+            design_pages = _split_design_md(design_path)
+            pages.update(design_pages)
 
     if not write:
         return {

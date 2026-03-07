@@ -1,4 +1,4 @@
-"""Behavioral drift detection rules — 11 signal detectors.
+"""Behavioral drift detection rules — 12 signal detectors.
 
 Hard signals (severity="warning", participate in coherence):
 1. approach_cycling: Repeatedly trying failed approaches without updating model
@@ -13,9 +13,10 @@ Soft signals (severity="informational", coherence-neutral):
 8. stale_model: Approach changes without hypothesis model updates
 9. mass_delegation: 3+ Agent/Task spawns in short window during refactoring
 10. redundant_planning: EnterPlanMode after controlplane_run with findings
+11. integration_verification_debt: Channel code edited without integration testing
 
 Trigger-only (produces nudge but not finding):
-11. consecutive_failures: 3+ consecutive Bash failures
+12. consecutive_failures: 3+ consecutive Bash failures
 
 Extracted from behavior_channel.py for module size compliance.
 """
@@ -729,6 +730,88 @@ def detect_redundant_planning(
         precheck_nudge={
             "tool": "controlplane_get_details",
             "reason": "redundant_planning — drill into existing findings instead of re-planning",
+        },
+        decomposition=decomp,
+    )
+
+
+# ── Integration Verification Debt (#Phase3) ──────────────────────────
+
+INTEGRATION_PATHS = {
+    "lintgate/channels/",
+    "lintgate/controlplane/",
+    "lintgate/convergence/",
+    "mcp_tools/",
+    "lintgate/specification/",
+}
+
+INTEGRATION_VERIFY_TOOLS = {
+    "controlplane_run",
+    "controlplane_get_details",
+    "controlplane_status",
+}
+
+INTEGRATION_VERIFY_BASH_PATTERNS = [
+    r"pytest.*test_integration",
+    r"pytest.*test_metric_schemas",
+    r"pytest.*test_.*channel",
+    r"pytest.*-k.*integration",
+]
+
+
+def detect_integration_verification_debt(
+    compass: BehaviorCompass,
+    thresholds: dict[str, Any],
+    coord: SignalCoordinator,
+    scorer: IntentBiasScorer,
+) -> None:
+    """Detect channel/integration code edited without integration testing.
+
+    Fires when:
+    - 5+ edits to INTEGRATION_PATHS without verification, OR
+    - git commit attempted with any unverified integration edits
+    """
+
+    edit_threshold = thresholds.get("integration_verification_debt_edits", 5)
+    edits = compass.integration_edits_since_verify
+
+    # Check for commit with unverified edits (any count > 0)
+    commit_with_unverified = False
+    if edits > 0 and compass.action_history:
+        last = compass.action_history[-1]
+        sig = last.get("sig", "")
+        if last.get("tool") == "Bash" and "commit" in sig:
+            commit_with_unverified = True
+
+    if edits < edit_threshold and not commit_with_unverified:
+        return
+
+    trigger = "commit with unverified edits" if commit_with_unverified else f"{edits} edits"
+
+    decomp = SignalSourceDecomposition(
+        signal_name="integration_verification_debt",
+        pattern_score=min(1.0, edits / edit_threshold),
+        outcome_score=0.8 if commit_with_unverified else 0.5,
+    )
+
+    coord.add_finding(
+        "integration_verification_debt",
+        LintIssue(
+            linter="behavior_channel",
+            kind="integration_verification_debt",
+            message=(
+                f"Channel/integration code modified ({trigger}) without "
+                "integration verification. Unit tests verify modules; "
+                "integration tests verify composition (sheaf condition). "
+                "Run controlplane_run or pytest test_integration* to verify wiring."
+            ),
+            severity="warning",
+            evidence=scorer.build_evidence_trace(),
+        ),
+        is_hard=True,
+        precheck_nudge={
+            "tool": "controlplane_run",
+            "reason": "integration_verification_debt — verify channel wiring after edits",
         },
         decomposition=decomp,
     )

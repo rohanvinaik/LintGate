@@ -27,7 +27,9 @@ Domain modules:
 - refactor_tools: refactor_checkpoint, refactor_resume, refactor_thesis
 - convergence_tools: convergence_analyze, extraction_plan, optimization_landscape
 - gh_tools: project_organize_audit, project_organize_apply, project_wiki_sync, project_wiki_read
-- wiki_tools: wiki_materialize, wiki_status
+- wiki_tools: wiki_materialize, wiki_status, wiki_publish_pages, wiki_check_links
+- specification_tools: spec_analyze, spec_prescribe, spec_composition, spec_gate_check
+- contract_tools: contract_audit
 """
 
 from . import (
@@ -35,6 +37,7 @@ from . import (
     bootstrap_tools,
     compass_tools,
     context_tools,
+    contract_tools,
     controlplane_tools,
     convergence_tools,
     dep_tools,
@@ -46,6 +49,7 @@ from . import (
     onboarding_tools,
     performance_tools,
     refactor_tools,
+    specification_tools,
     telemetry_tools,
     test_effectiveness_tools,
     wiki_tools,
@@ -70,6 +74,8 @@ ALL_MODULES = [
     convergence_tools,
     gh_tools,
     wiki_tools,
+    specification_tools,
+    contract_tools,
 ]
 
 

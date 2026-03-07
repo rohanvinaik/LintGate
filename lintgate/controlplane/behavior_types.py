@@ -362,6 +362,9 @@ class BehaviorCompass:
     predictions: PredictionStateContainer = field(
         default_factory=PredictionStateContainer
     )
+    # Integration verification tracking (Phase 3)
+    integration_edits_since_verify: int = 0
+    last_integration_verify_ts: float = 0.0
 
     # ── Backward-compatible property accessors for SignalState ──
 
@@ -481,6 +484,9 @@ class BehaviorCompass:
         d.update(self.signals.to_dict())
         d.update(self.nudges.to_dict())
         d.update(self.predictions.to_dict())
+        # Integration verification tracking
+        d["integration_edits_since_verify"] = self.integration_edits_since_verify
+        d["last_integration_verify_ts"] = self.last_integration_verify_ts
         return d
 
     @classmethod
@@ -502,6 +508,8 @@ class BehaviorCompass:
             signals=SignalState.from_dict(data),
             nudges=NudgeState.from_dict(data),
             predictions=PredictionStateContainer.from_dict(data),
+            integration_edits_since_verify=data.get("integration_edits_since_verify", 0),
+            last_integration_verify_ts=data.get("last_integration_verify_ts", 0.0),
         )
 
 

@@ -5,10 +5,10 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
-import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from lintgate.keys import canonical_function_key, canonical_relpath
 from lintgate.linters.performance_checks.algebra_types import (
     FunctionProperties,
     PropertyKind,
@@ -193,14 +193,14 @@ def _scan_file(
     finder.visit(tree)
 
     found_funcs: list[str] = []
-    relpath = os.path.relpath(filepath, project_root)
+    relpath = canonical_relpath(filepath, project_root)
 
     for qualname, purity in purity_results.items():
         func_node = finder.nodes.get(qualname)
         if not func_node:
             continue
 
-        unique_key = f"{relpath}::{qualname}"
+        unique_key = canonical_function_key(relpath, qualname)
         found_funcs.append(unique_key)
 
         if purity.is_pure:

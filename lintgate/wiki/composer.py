@@ -39,20 +39,43 @@ def compose_all_pages(
 ) -> list[ComposedPage]:
     """Compose all pages declared in the manifest.
 
-    Returns a list of ComposedPage objects including an auto-generated Home page.
+    If the manifest includes a page named "home" (case-insensitive), it is
+    used as the Home page.  Otherwise an auto-generated Home is prepended.
     """
     pages: list[ComposedPage] = []
+    has_home = False
 
     for wiki_page in manifest.pages:
         composed = _compose_page(wiki_page, manifest, project_root, theory, compass)
         if composed is not None:
+            if composed.name.lower() == "home":
+                has_home = True
             pages.append(composed)
 
-    # Generate Home page
-    home = _compose_home(manifest, pages)
-    pages.insert(0, home)
+    # Only generate a Home page if the manifest doesn't declare one
+    if not has_home:
+        home = _compose_home(manifest, pages)
+        pages.insert(0, home)
 
     return pages
+
+
+def _has_related_section(content: str) -> bool:
+    """Check if content already has a Related/See Also section."""
+    lower = content.lower()
+    return any(marker in lower for marker in [
+        "## related", "## see also", "## related concepts",
+        "## further reading", "## references",
+    ])
+
+
+def _strip_managed_markers(text: str) -> str:
+    """Remove LINTGATE_WIKI:BEGIN/END markers from output."""
+    lines = text.split("\n")
+    return "\n".join(
+        line for line in lines
+        if not line.strip().startswith("<!-- LINTGATE_WIKI:")
+    )
 
 
 def _compose_page(
@@ -62,36 +85,54 @@ def _compose_page(
     theory: dict[str, Any] | None,
     compass: dict[str, Any] | None,
 ) -> ComposedPage | None:
-    """Compose a single wiki page."""
+    """Compose a single wiki page.
+
+    For pages with file sources (``kind: file``), the source content is used
+    directly — the composer does not add frontmatter, breadcrumbs, or H1
+    (the publisher's ``apply_common_transforms`` handles those).
+
+    For pages with section sources, content is assembled from extracted
+    sections with headings.  Generated pages use their generator function.
+    """
     parts: list[str] = []
     source_files: list[str] = []
+    is_whole_file = (
+        len(page.sources) == 1
+        and page.sources[0].kind == "file"
+        and not page.generator
+    )
 
-    # Frontmatter
-    parts.append(_frontmatter(page))
-
-    # Navigation breadcrumb
-    parts.append(_breadcrumb(page))
-    parts.append("")
-
-    # Title
-    parts.append(f"# {page.title}")
-    parts.append("")
-
-    # Handle generated pages
     if page.generator:
+        # Generated pages get frontmatter + title
+        parts.append(_frontmatter(page))
+        parts.append(f"# {page.title}")
+        parts.append("")
         gen_content = _generate_content(page.generator, theory, compass)
         if gen_content:
-            parts.append(_MANAGED_BEGIN.format(section_id=page.generator))
             parts.append(gen_content)
-            parts.append(_MANAGED_END.format(section_id=page.generator))
             parts.append("")
+    elif is_whole_file:
+        # Whole-file source: use content directly (transforms handle the rest)
+        src = page.sources[0]
+        abs_path = os.path.join(project_root, src.file)
+        sec = extract_whole_file(abs_path)
+        if sec:
+            source_files.append(abs_path)
+            parts.append(sec.content)
+        elif src.required:
+            parts.append(f"*Missing source: `{src.file}`*")
     else:
-        # Extract and compose source sections
+        # Section-based composition: frontmatter + title + sections
+        # Note: breadcrumb is added by apply_common_transforms() in the publisher,
+        # so we do NOT add one here to avoid duplication.
+        parts.append(_frontmatter(page))
+        parts.append(f"# {page.title}")
+        parts.append("")
         sections_content = _extract_sources(page, project_root)
         for i, (src_file, heading, content) in enumerate(sections_content):
             if src_file not in source_files:
                 source_files.append(src_file)
-            section_id = f"{page.name}_{i}"
+            section_id = f"{page.name}:{heading or f'section_{i}'}"
             parts.append(_MANAGED_BEGIN.format(section_id=section_id))
             if heading:
                 parts.append(f"## {heading}")
@@ -103,26 +144,28 @@ def _compose_page(
                 parts.append("---")
             parts.append("")
 
-    # Inferred cross-links
-    cross_links = manifest.infer_cross_links(page)
-    if cross_links:
-        parts.append("## See Also")
+    # Source attribution footer (section-based and generated pages only)
+    if not is_whole_file and source_files:
         parts.append("")
-        for link_name in cross_links:
-            parts.append(f"- [{link_name}]({link_name})")
-        parts.append("")
-
-    # Source attribution
-    if source_files:
         parts.append("---")
-        rel_paths = [os.path.relpath(f, project_root) for f in source_files]
-        parts.append(f"*Sources: {', '.join(f'`{p}`' for p in rel_paths)}*")
-        parts.append("")
+        rel_files = [os.path.relpath(f, project_root) for f in source_files]
+        parts.append(f"*Sources: {', '.join(f'`{f}`' for f in rel_files)}*")
+
+    full_content = "\n".join(parts)
+
+    # Inferred cross-links — only if source doesn't already have a related section
+    if not _has_related_section(full_content):
+        cross_links = manifest.infer_cross_links(page)
+        if cross_links:
+            full_content += "\n## See Also\n\n"
+            for link_name in cross_links:
+                full_content += f"- [{link_name}]({link_name})\n"
+            full_content += "\n"
 
     return ComposedPage(
         name=page.name,
         title=page.title,
-        content="\n".join(parts),
+        content=full_content,
         pillar=page.pillar,
         theory_scope=page.theory_scope,
         source_files=source_files,
@@ -143,8 +186,24 @@ def _frontmatter(page: WikiPage) -> str:
 
 def _breadcrumb(page: WikiPage) -> str:
     """Generate navigation breadcrumb."""
-    pillar_label = page.pillar.title()
-    return f"**{pillar_label}** | [Home](Home)"
+    from .transforms import _rail_display_name
+
+    parts: list[str] = []
+
+    if page.rail:
+        parts.append(f"**{_rail_display_name(page.rail)}**")
+    else:
+        parts.append(f"**{page.pillar.title()}**")
+
+    if page.chapter:
+        parts.append(f"Chapter {page.chapter}")
+
+    if page.prerequisites:
+        prereqs = ", ".join(f"[{p}]({p})" for p in page.prerequisites)
+        parts.append(f"Prerequisites: {prereqs}")
+
+    parts.append("[Home](Home)")
+    return " | ".join(parts)
 
 
 def _extract_sources(
