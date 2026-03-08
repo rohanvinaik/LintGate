@@ -537,25 +537,34 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     def spec_project_rollup(
         path: str,
         use_cache: bool = True,
+        analyze_uncached: bool = False,
     ) -> str:
         """Project-wide specification rollup with file-level caching.
 
         WHEN TO USE: To get a high-level overview of specification health
         across the entire project. Aggregates per-file analysis into totals
         for sigma, regime/risk/phase distributions, and hotspot files.
-        Uses content-hash caching so unchanged files are not re-analyzed.
+
+        Default mode is cache-read-only: reads existing cache entries and
+        reports cache_misses for files not yet analyzed. Use
+        analyze_uncached=True to analyze missing files live (slower).
 
         Example: spec_project_rollup(path="/my/project")
-        Example: spec_project_rollup(path="/my/project", use_cache=False)
+        Example: spec_project_rollup(path="/my/project", analyze_uncached=True)
 
         Args:
             path: Project root path.
             use_cache: Use file-level content-hash caching (default True).
+            analyze_uncached: Analyze files with no cache entry (default False).
         """
         from lintgate.specification.project_rollup import rollup_project
 
         project_root = helpers["_validate_project_root"](path)
-        rollup = rollup_project(project_root, use_cache=use_cache)
+        rollup = rollup_project(
+            project_root,
+            use_cache=use_cache,
+            analyze_uncached=analyze_uncached,
+        )
         output = rollup.to_dict()
         output["next_actions"] = serialize_next_actions(
             [

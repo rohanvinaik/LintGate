@@ -61,12 +61,22 @@ class ProjectRollup:
 def rollup_project(
     project_root: str,
     use_cache: bool = True,
+    analyze_uncached: bool = False,
 ) -> ProjectRollup:
-    """Analyze all Python files and aggregate into a project rollup.
+    """Aggregate specification data across all Python files.
+
+    Default mode is cache-read-only: reads existing cache entries and
+    skips files without cached results. This is O(files) with no
+    heavy recomputation.
+
+    Set analyze_uncached=True to analyze cache misses live (slower,
+    builds manifests + call graph per uncached file).
 
     Args:
         project_root: Absolute path to the project root.
         use_cache: Whether to use file-level content-hash caching.
+        analyze_uncached: If True, analyze files with no cache entry.
+            If False (default), skip uncached files for fast rollup.
 
     Returns:
         ProjectRollup with aggregated specification data.
@@ -81,35 +91,43 @@ def rollup_project(
     if cache_dir:
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Per-file analysis with caching
+    # Per-file analysis: cache-read-only by default
     file_results: list[FileSpecResult] = []
     for fpath in py_files:
-        result = _analyze_cached(fpath, project_root, cache_dir)
+        result = _analyze_with_cache(fpath, project_root, cache_dir, analyze_uncached)
+        if result is None:
+            # Cache miss in read-only mode — skip
+            rollup.cache_misses += 1
+            continue
         if result.error:
             rollup.errors.append(f"{result.file}: {result.error}")
             continue
         if result.functions:
             file_results.append(result)
-            if cache_dir and not _cache_hit(fpath, cache_dir):
-                rollup.cache_misses += 1
-            else:
-                rollup.cache_hits += 1
+            rollup.cache_hits += 1
 
     # Aggregate
     _aggregate(rollup, file_results)
     return rollup
 
 
-def _analyze_cached(
+def _analyze_with_cache(
     file_path: str,
     project_root: str,
     cache_dir: Path | None,
-) -> FileSpecResult:
-    """Analyze a file, using cache if available and fresh."""
+    analyze_uncached: bool,
+) -> FileSpecResult | None:
+    """Load from cache or optionally analyze live.
+
+    Returns None when cache_dir is set, no cache entry exists,
+    and analyze_uncached is False (cache-read-only mode).
+    """
     if cache_dir:
         cached = _load_file_cache(file_path, cache_dir)
         if cached is not None:
             return cached
+        if not analyze_uncached:
+            return None
 
     result = analyze_file(file_path, project_root)
 
