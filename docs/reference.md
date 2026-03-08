@@ -146,6 +146,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | ------------------- | ------------------------------------------------------------------------ |
 | `spec_analyze`      | Specification complexity analysis (sigma, regime, phase, risk, DFT)      |
 | `spec_prescribe`    | Risk-prioritized test prescriptions with expanded taxonomy               |
+| `spec_file_analyze` | Single-file specification analysis — fast, resource-bounded              |
+| `spec_file_prescribe` | Single-file test prescriptions — risk-prioritized for one file         |
 | `spec_composition`  | Composition gap and sheaf condition analysis across modules              |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
 
