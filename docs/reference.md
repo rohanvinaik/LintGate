@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 81 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 84 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -146,6 +146,9 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | ------------------- | ------------------------------------------------------------------------ |
 | `spec_analyze`      | Specification complexity analysis (sigma, regime, phase, risk, DFT)      |
 | `spec_prescribe`    | Risk-prioritized test prescriptions with expanded taxonomy               |
+| `spec_file_analyze` | Single-file specification analysis — fast, resource-bounded              |
+| `spec_file_prescribe` | Single-file test prescriptions — risk-prioritized for one file         |
+| `spec_project_rollup` | Project-wide specification rollup with file-level caching              |
 | `spec_composition`  | Composition gap and sheaf condition analysis across modules              |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
 

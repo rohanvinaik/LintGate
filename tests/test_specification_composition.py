@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from lintgate.specification.call_graph import CrossModuleCallGraph
 from lintgate.specification.composition import (
+    _count_interface_mutation_points,
     analyze_composition,
     compute_composition_edge,
     compute_integration_surface,
@@ -11,6 +12,7 @@ from lintgate.specification.composition import (
 from lintgate.specification.types import (
     ASTMetrics,
     FunctionSpecification,
+    IntegrationSurface,
     SpecCore,
     SpecificationLedger,
     TestabilityProfile,
@@ -52,10 +54,12 @@ def _make_graph(edges: dict[str, list[str]]) -> CrossModuleCallGraph:
 
 class TestIntegrationSurface:
     def test_basic_surface(self):
-        ledger = _make_ledger({
-            "a::caller": {"params": 2},
-            "b::callee": {"params": 3},
-        })
+        ledger = _make_ledger(
+            {
+                "a::caller": {"params": 2},
+                "b::callee": {"params": 3},
+            }
+        )
         graph = _make_graph({"a::caller": ["b::callee"]})
         surface = compute_integration_surface("a::caller", "b::callee", graph, ledger)
         assert surface.callee_param_count == 3
@@ -63,10 +67,12 @@ class TestIntegrationSurface:
         assert surface.interface_complexity > 0
 
     def test_shared_mutable_state(self):
-        ledger = _make_ledger({
-            "a::caller": {"params": 2, "stateful": True},
-            "b::callee": {"params": 2, "stateful": True},
-        })
+        ledger = _make_ledger(
+            {
+                "a::caller": {"params": 2, "stateful": True},
+                "b::callee": {"params": 2, "stateful": True},
+            }
+        )
         graph = _make_graph({"a::caller": ["b::callee"]})
         surface = compute_integration_surface("a::caller", "b::callee", graph, ledger)
         assert surface.shared_mutable_state is True
@@ -75,34 +81,42 @@ class TestIntegrationSurface:
 
 class TestCompositionEdge:
     def test_spec_independent_pure_high_spec(self):
-        ledger = _make_ledger({
-            "a::caller": {"spec_level": 0.5},
-            "b::callee": {"spec_level": 0.96, "is_pure": True},
-        })
+        ledger = _make_ledger(
+            {
+                "a::caller": {"spec_level": 0.5},
+                "b::callee": {"spec_level": 0.96, "is_pure": True},
+            }
+        )
         graph = _make_graph({"a::caller": ["b::callee"]})
         edge = compute_composition_edge("a::caller", "b::callee", graph, ledger)
         assert edge.specification_independent is True
         assert edge.gamma == 0.0
 
     def test_nonzero_gamma_for_impure(self):
-        ledger = _make_ledger({
-            "a::caller": {"spec_level": 0.5},
-            "b::callee": {"spec_level": 0.3, "is_pure": False, "params": 3},
-        })
+        ledger = _make_ledger(
+            {
+                "a::caller": {"spec_level": 0.5},
+                "b::callee": {"spec_level": 0.3, "is_pure": False, "params": 3},
+            }
+        )
         graph = _make_graph({"a::caller": ["b::callee"]})
         edge = compute_composition_edge("a::caller", "b::callee", graph, ledger)
         assert edge.gamma > 0.0
         assert edge.specification_independent is False
 
     def test_gamma_decreases_with_spec_level(self):
-        ledger_low = _make_ledger({
-            "a::caller": {},
-            "b::callee": {"spec_level": 0.2, "params": 3},
-        })
-        ledger_high = _make_ledger({
-            "a::caller": {},
-            "b::callee": {"spec_level": 0.8, "params": 3},
-        })
+        ledger_low = _make_ledger(
+            {
+                "a::caller": {},
+                "b::callee": {"spec_level": 0.2, "params": 3},
+            }
+        )
+        ledger_high = _make_ledger(
+            {
+                "a::caller": {},
+                "b::callee": {"spec_level": 0.8, "params": 3},
+            }
+        )
         graph = _make_graph({"a::caller": ["b::callee"]})
         edge_low = compute_composition_edge("a::caller", "b::callee", graph, ledger_low)
         edge_high = compute_composition_edge("a::caller", "b::callee", graph, ledger_high)
@@ -111,38 +125,46 @@ class TestCompositionEdge:
 
 class TestAnalyzeComposition:
     def test_same_module_no_edges(self):
-        ledger = _make_ledger({
-            "a::f1": {"spec_level": 0.5},
-            "a::f2": {"spec_level": 0.5},
-        })
+        ledger = _make_ledger(
+            {
+                "a::f1": {"spec_level": 0.5},
+                "a::f2": {"spec_level": 0.5},
+            }
+        )
         graph = _make_graph({"a::f1": ["a::f2"]})
         result = analyze_composition(graph, ledger)
         assert len(result.edges) == 0
 
     def test_cross_module_edges(self):
-        ledger = _make_ledger({
-            "a::f1": {"spec_level": 0.5},
-            "b::f2": {"spec_level": 0.3, "params": 3},
-        })
+        ledger = _make_ledger(
+            {
+                "a::f1": {"spec_level": 0.5},
+                "b::f2": {"spec_level": 0.3, "params": 3},
+            }
+        )
         graph = _make_graph({"a::f1": ["b::f2"]})
         result = analyze_composition(graph, ledger)
         assert len(result.edges) == 1
         assert result.total_gamma > 0
 
     def test_sheaf_holds_low_gamma(self):
-        ledger = _make_ledger({
-            "a::f1": {},
-            "b::f2": {"spec_level": 0.9, "is_pure": True},
-        })
+        ledger = _make_ledger(
+            {
+                "a::f1": {},
+                "b::f2": {"spec_level": 0.9, "is_pure": True},
+            }
+        )
         graph = _make_graph({"a::f1": ["b::f2"]})
         result = analyze_composition(graph, ledger)
         assert result.sheaf_holds is True
 
     def test_to_dict(self):
-        ledger = _make_ledger({
-            "a::f1": {},
-            "b::f2": {"spec_level": 0.3, "params": 3},
-        })
+        ledger = _make_ledger(
+            {
+                "a::f1": {},
+                "b::f2": {"spec_level": 0.3, "params": 3},
+            }
+        )
         graph = _make_graph({"a::f1": ["b::f2"]})
         result = analyze_composition(graph, ledger)
         d = result.to_dict()
@@ -156,3 +178,49 @@ class TestAnalyzeComposition:
         result = analyze_composition(graph, ledger)
         assert len(result.edges) == 0
         assert result.sheaf_holds is True
+
+
+class TestInterfaceMutationPoints:
+    """Tests for _count_interface_mutation_points — AST-based counting."""
+
+    def test_zero_params(self):
+        surface = IntegrationSurface(callee_param_count=0)
+        assert _count_interface_mutation_points(surface) == 0
+
+    def test_one_param_no_state(self):
+        surface = IntegrationSurface(callee_param_count=1)
+        # 1 value mutation, 0 swaps, 0 state
+        assert _count_interface_mutation_points(surface) == 1
+
+    def test_two_params_no_state(self):
+        surface = IntegrationSurface(callee_param_count=2)
+        # 2 value + 1 swap + 0 state = 3
+        assert _count_interface_mutation_points(surface) == 3
+
+    def test_three_params_no_state(self):
+        surface = IntegrationSurface(callee_param_count=3)
+        # 3 value + 3 swap + 0 state = 6
+        assert _count_interface_mutation_points(surface) == 6
+
+    def test_shared_mutable_state_adds_two(self):
+        surface = IntegrationSurface(callee_param_count=2, shared_mutable_state=True)
+        # 2 value + 1 swap + 2 state = 5
+        assert _count_interface_mutation_points(surface) == 5
+
+    def test_zero_params_with_state(self):
+        surface = IntegrationSurface(callee_param_count=0, shared_mutable_state=True)
+        # 0 value + 0 swap + 2 state = 2
+        assert _count_interface_mutation_points(surface) == 2
+
+    def test_interface_mutant_count_in_edge(self):
+        """compute_composition_edge uses _count_interface_mutation_points."""
+        ledger = _make_ledger(
+            {
+                "a::caller": {},
+                "b::callee": {"spec_level": 0.3, "params": 3},
+            }
+        )
+        graph = _make_graph({"a::caller": ["b::callee"]})
+        edge = compute_composition_edge("a::caller", "b::callee", graph, ledger)
+        # 3 params → 3 value + 3 swap = 6 (no shared state)
+        assert edge.interface_mutant_count == 6
