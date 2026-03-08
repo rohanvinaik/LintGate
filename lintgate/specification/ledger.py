@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
     from lintgate.linters.performance_checks.manifest import PropertyManifest
     from lintgate.linters.test_effectiveness.types import TestEffectivenessManifest
+    from lintgate.specification.call_graph import CrossModuleCallGraph
 
 
 def build_specification_ledger(
@@ -39,6 +40,7 @@ def build_specification_ledger(
     project_root: str,
     py_files: list[str] | None = None,
     test_files: list[str] | None = None,
+    call_graph: CrossModuleCallGraph | None = None,
 ) -> SpecificationLedger:
     """Build specification ledger from existing channel manifests.
 
@@ -48,6 +50,7 @@ def build_specification_ledger(
         project_root: Project root for relative path resolution.
         py_files: Python source files for AST parsing.
         test_files: Test files for traceability extraction.
+        call_graph: Optional call graph for fan-in/fan-out risk scoring.
     """
     ledger = SpecificationLedger()
     test_coverage_map = _build_test_coverage_map(test_files or [])
@@ -59,6 +62,7 @@ def build_specification_ledger(
             teff_manifest=teff_manifest,
             project_root=project_root,
             test_coverage_map=test_coverage_map,
+            call_graph=call_graph,
         )
         if func_spec is not None:
             ledger.functions[func_key] = func_spec
@@ -73,6 +77,7 @@ def _build_function_spec(
     teff_manifest: TestEffectivenessManifest,
     project_root: str,
     test_coverage_map: dict[str, list[str]],
+    call_graph: CrossModuleCallGraph | None = None,
 ) -> FunctionSpecification | None:
     """Build a single FunctionSpecification from channel data."""
     # Parse AST for the function
@@ -110,10 +115,12 @@ def _build_function_spec(
 
     # Risk model
     covering = test_coverage_map.get(func_name, [])
+    fan_in = call_graph.fan_in(func_key) if call_graph else 0
+    fan_out = call_graph.fan_out(func_key) if call_graph else 0
     risk = compute_risk_score(
         is_pure=func_props.purity.is_pure,
-        fan_in=0,
-        fan_out=0,
+        fan_in=fan_in,
+        fan_out=fan_out,
         is_public=not func_name.startswith("_"),
         testability_score=result.testability.testability_score,
         regime=result.regime,
