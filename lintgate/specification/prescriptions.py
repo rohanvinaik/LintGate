@@ -40,7 +40,7 @@ def prescribe(
     """Generate risk-prioritized test prescriptions for a function."""
     phase = func_spec.core.phase
     sigma = func_spec.core.estimated_sigma
-    assertion_count = len(func_spec.traceability.covering_tests)
+    assertion_count = func_spec.traceability.assertion_count
     history = set(func_spec.traceability.prescription_history)
 
     prescriptions: list[TestPrescription] = []

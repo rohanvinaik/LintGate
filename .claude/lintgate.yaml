@@ -115,12 +115,7 @@ controlplane:
             reason: "Coverage quirk for implicit else branch; tested logically."
           - symbol: "lintgate/change_classifier.py::_classify_change_kind"
             reason: "Coverage quirk for final return branch after refactoring; tested logically."
-          - symbol: "lintgate/channels/mutation_channel.py::*"
-            reason: "New mutation channel introduced in Issue #102; behavioral coverage exists, but changed-line symbol coverage is still being expanded."
-          - symbol: "lintgate/mutation/*.py::*"
-            reason: "Issue #102 mutation subsystem is newly added; integration tests pass, but per-symbol changed-line coverage is still being backfilled."
-          - symbol: "mcp_tools/mutation_tools.py::*"
-            reason: "New MCP mutation tools are validated via schema/integration tests; symbol-gate line coverage will be tightened in follow-up."
+          # Mutation system moved to archive/ — waivers removed (2026-03-07)
           - symbol: "lintgate/linters/test_effectiveness/types.py::FunctionEffectiveness.compute_scores"
             reason: "Coverage delta from mutation-aware integration touched this symbol; behavior is verified by test-effectiveness suites."
           - symbol: "mcp_tools/performance_tools.py::_build_manifest_summary"
@@ -131,12 +126,7 @@ controlplane:
             reason: "Template generation branch is exercised indirectly; explicit symbol coverage deferred."
           - symbol: "mcp_tools/performance_tools.py::register"
             reason: "MCP registration closure with mutation-hotspot option; helper-level behavior is tested."
-          - symbol: "scripts/mutation_calibration_report.py::main"
-            reason: "Operational reporting script; validated manually and by lint/test gates."
-          - symbol: "scripts/parse_mutation_stats.py::main"
-            reason: "CI parser script validated through workflow contracts and unit coverage around consumers."
-          - symbol: "scripts/validate_mutation_policy.py::*"
-            reason: "Validation script entrypoints are integration-only; symbol gate waived for ship stability."
+          # Mutation scripts moved to archive/ — waivers removed (2026-03-07)
   quality_gate:
     enabled: true
   inquiry:

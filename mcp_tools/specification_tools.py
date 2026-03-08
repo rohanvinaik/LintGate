@@ -5,21 +5,53 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from lintgate.discovery import discover_project_files
 from lintgate.next_action import NextAction, serialize_next_actions
 
+# Hard guardrails — fail closed, never silently truncate.
+_MAX_FILES_PER_RUN = 500
+_MAX_TOTAL_LINES = 500_000
 
-def _discover_python_files(project_root: str) -> list[str]:
-    """Discover Python files in a project."""
-    py_files: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".git", "archive")
-        ]
-        for fn in filenames:
-            if fn.endswith(".py"):
-                py_files.append(os.path.join(dirpath, fn))
+# Extra directories to exclude beyond canonical discovery for spec analysis.
+_SPEC_EXTRA_EXCLUDE = frozenset({"archive"})
+
+
+def _resolve_py_files(project_root: str, file: str | None) -> list[str] | dict[str, Any]:
+    """Resolve file list: single file if specified, canonical discovery otherwise.
+
+    Returns a list of paths on success, or an error dict on failure.
+    The error dict should be returned directly to the caller.
+    """
+    if file:
+        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        if not os.path.isfile(full):
+            return {"error": f"File not found: {file}"}
+        return [full]
+
+    py_files = discover_project_files(project_root, extra_exclude_dirs=_SPEC_EXTRA_EXCLUDE)
+
+    if len(py_files) > _MAX_FILES_PER_RUN:
+        return {
+            "error": "File budget exceeded — use the `file` parameter to analyze a single file.",
+            "files_scanned": len(py_files),
+            "file_budget": _MAX_FILES_PER_RUN,
+        }
+
+    # Quick line count check (read first 1 byte to verify readability, count newlines)
+    total_lines = 0
+    for f in py_files:
+        try:
+            with open(f, encoding="utf-8", errors="ignore") as fh:
+                total_lines += sum(1 for _ in fh)
+        except OSError:
+            continue
+        if total_lines > _MAX_TOTAL_LINES:
+            return {
+                "error": "Line budget exceeded — use the `file` parameter to analyze a single file.",
+                "lines_scanned": total_lines,
+                "line_budget": _MAX_TOTAL_LINES,
+            }
+
     return py_files
 
 
@@ -62,15 +94,12 @@ def _impl_spec_analyze(
 ) -> dict[str, Any]:
     """Implementation for spec_analyze."""
     project_root = helpers["_validate_project_root"](path)
-    py_files = _discover_python_files(project_root)
+    result = _resolve_py_files(project_root, file)
+    if isinstance(result, dict):
+        return result
+    py_files = result
     if not py_files:
         return {"error": "No Python files found"}
-
-    if file:
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
-        py_files = [f for f in py_files if f == full]
-        if not py_files:
-            return {"error": f"File not found: {file}"}
 
     prop_manifest, teff_manifest = _build_manifests(project_root, py_files)
     ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest)
@@ -140,7 +169,10 @@ def _impl_spec_prescribe(
     from lintgate.specification.prescriptions import prescribe
 
     project_root = helpers["_validate_project_root"](path)
-    py_files = _discover_python_files(project_root)
+    result = _resolve_py_files(project_root, None)
+    if isinstance(result, dict):
+        return result
+    py_files = result
     if not py_files:
         return {"error": "No Python files found"}
 
@@ -202,7 +234,10 @@ def _impl_spec_composition(
     from lintgate.specification.composition import analyze_composition
 
     project_root = helpers["_validate_project_root"](path)
-    py_files = _discover_python_files(project_root)
+    result = _resolve_py_files(project_root, None)
+    if isinstance(result, dict):
+        return result
+    py_files = result
     if not py_files:
         return {"error": "No Python files found"}
 
@@ -210,8 +245,8 @@ def _impl_spec_composition(
     ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest)
     call_graph = build_cross_module_call_graph(py_files, project_root)
 
-    result = analyze_composition(call_graph, ledger)
-    output = result.to_dict()
+    composition = analyze_composition(call_graph, ledger)
+    output = composition.to_dict()
 
     # Filter by module if requested
     if module_a or module_b:
@@ -240,7 +275,10 @@ def _impl_spec_gate_check(
     from lintgate.specification.optimization_gate import check_gate
 
     project_root = helpers["_validate_project_root"](path)
-    py_files = _discover_python_files(project_root)
+    result = _resolve_py_files(project_root, None)
+    if isinstance(result, dict):
+        return result
+    py_files = result
     if not py_files:
         return {"error": "No Python files found"}
 
