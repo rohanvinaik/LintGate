@@ -24,6 +24,8 @@ def _discover_python_files(
     project_root: str, file_filter: str | None = None
 ) -> list[str]:
     """Discover Python files in a project, optionally filtered."""
+    from lintgate.discovery import discover_project_files
+
     if file_filter:
         full = (
             os.path.join(project_root, file_filter)
@@ -32,18 +34,9 @@ def _discover_python_files(
         )
         return [full] if os.path.isfile(full) else []
 
-    py_files: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not d.startswith(".")
-            and d not in ("__pycache__", "node_modules", ".git")
-        ]
-        for fn in filenames:
-            if fn.endswith(".py"):
-                py_files.append(os.path.join(dirpath, fn))
-    return py_files
+    return discover_project_files(
+        project_root, extra_exclude_dirs=frozenset({"archive"})
+    )
 
 
 def _impl_convergence_analyze(

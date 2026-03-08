@@ -131,3 +131,83 @@ class TestFunctionSpecification:
         assert d["estimated_sigma"] == 3
         assert d["is_pure"] is True
         assert d["regime"] == "A"
+
+
+class TestFindFuncNode:
+    """Tests for _find_func_node — qualified name resolution including nested classes."""
+
+    def test_top_level_function(self, tmp_path):
+        from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
+
+        src = tmp_path / "mod.py"
+        src.write_text("def greet(name):\n    return f'Hello {name}'\n")
+        _AST_TREE_CACHE.pop(str(src), None)
+
+        node = _find_func_node(str(src), "mod.py::greet")
+        assert node is not None
+        assert node.name == "greet"
+
+    def test_class_method(self, tmp_path):
+        from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
+
+        src = tmp_path / "mod.py"
+        src.write_text(
+            "class Calc:\n"
+            "    def add(self, a, b):\n"
+            "        return a + b\n"
+        )
+        _AST_TREE_CACHE.pop(str(src), None)
+
+        node = _find_func_node(str(src), "mod.py::Calc.add")
+        assert node is not None
+        assert node.name == "add"
+
+    def test_nested_class_method(self, tmp_path):
+        from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
+
+        src = tmp_path / "mod.py"
+        src.write_text(
+            "class Outer:\n"
+            "    class Inner:\n"
+            "        def process(self):\n"
+            "            pass\n"
+        )
+        _AST_TREE_CACHE.pop(str(src), None)
+
+        node = _find_func_node(str(src), "mod.py::Outer.Inner.process")
+        assert node is not None
+        assert node.name == "process"
+
+    def test_missing_function_returns_none(self, tmp_path):
+        from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
+
+        src = tmp_path / "mod.py"
+        src.write_text("def greet():\n    pass\n")
+        _AST_TREE_CACHE.pop(str(src), None)
+
+        assert _find_func_node(str(src), "mod.py::nonexistent") is None
+
+    def test_missing_class_returns_none(self, tmp_path):
+        from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
+
+        src = tmp_path / "mod.py"
+        src.write_text("def greet():\n    pass\n")
+        _AST_TREE_CACHE.pop(str(src), None)
+
+        assert _find_func_node(str(src), "mod.py::NoClass.method") is None
+
+    def test_async_function(self, tmp_path):
+        from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
+
+        src = tmp_path / "mod.py"
+        src.write_text("async def fetch(url):\n    pass\n")
+        _AST_TREE_CACHE.pop(str(src), None)
+
+        node = _find_func_node(str(src), "mod.py::fetch")
+        assert node is not None
+        assert node.name == "fetch"
+
+    def test_nonexistent_file_returns_none(self):
+        from lintgate.specification.ledger import _find_func_node
+
+        assert _find_func_node("/nonexistent/path.py", "func") is None

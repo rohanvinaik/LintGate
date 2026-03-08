@@ -141,3 +141,32 @@ class TestOrthogonalArrayHinting:
         dt_rxs = [r for r in rxs if r.prescription_kind == "decision_table"]
         if dt_rxs:
             assert "pairwise" in dt_rxs[0].description.lower() or "covering" in dt_rxs[0].description.lower()
+
+
+class TestAssertionCountFix:
+    """Verify prescriptions use assertion_count, not len(covering_tests)."""
+
+    def test_assertion_count_closes_gap(self):
+        """When assertion_count >= sigma, no exact_value prescription is generated."""
+        spec = _make_spec(
+            phase="bulk",
+            sigma=3,
+            covering_tests=["test_a"],  # Only 1 covering test
+        )
+        # Override assertion_count to match sigma (gap = 0)
+        spec.traceability.assertion_count = 3
+        rxs = prescribe(spec)
+        kinds = [r.prescription_kind for r in rxs]
+        assert "exact_value" not in kinds
+
+    def test_covering_tests_alone_do_not_close_gap(self):
+        """covering_tests count is NOT used for gap computation."""
+        spec = _make_spec(
+            phase="bulk",
+            sigma=3,
+            covering_tests=["test_a", "test_b", "test_c", "test_d", "test_e"],
+        )
+        # assertion_count defaults to 0, so gap = sigma - 0 = 3
+        rxs = prescribe(spec)
+        kinds = [r.prescription_kind for r in rxs]
+        assert "exact_value" in kinds

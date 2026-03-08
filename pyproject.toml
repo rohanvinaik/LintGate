@@ -78,6 +78,7 @@ packages = ["lintgate", "mcp_tools"]
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+exclude = ["archive/", "docs/mutation/Aristotle/Mutation_Theory/.lake/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TC"]
@@ -94,9 +95,10 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Gradual typing
 check_untyped_defs = true
+exclude = ["archive/", "docs/mutation/Aristotle/Mutation_Theory/\\.lake/"]
 
-[tool.mutmut]
-paths_to_mutate = ["lintgate/"]
+[tool.ty]
+exclude = ["archive/", "docs/mutation/Aristotle/Mutation_Theory/.lake/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -149,6 +149,11 @@ def _run_prepass(event: SupervisionEvent) -> None:
     stores it in ``event.context`` so performance and related channels
     can share it instead of rebuilding independently.
 
+    When ``event.files_changed`` contains a small number of Python files
+    (≤5), the prepass scopes discovery to those files only, avoiding a
+    full project walk.  For larger change sets or when no files are
+    specified, full canonical discovery runs.
+
     Gracefully degrades: if manifest build fails, channels fall back to
     building their own.
     """
@@ -158,10 +163,9 @@ def _run_prepass(event: SupervisionEvent) -> None:
         return
 
     with contextlib.suppress(Exception):
-        from lintgate.channels.performance_channel import _discover_python_files
         from lintgate.linters.performance_checks.manifest import build_manifest
 
-        py_files = _discover_python_files(event.project_root)
+        py_files = _scoped_discover(event)
         if py_files:
             manifest = build_manifest(event.project_root, py_files)
             event.context["property_manifest"] = manifest
@@ -178,16 +182,43 @@ def _run_prepass(event: SupervisionEvent) -> None:
             # discover independently if that block failed.
             src_files = event.context.get("python_files")
             if not src_files:
-                from lintgate.channels.performance_channel import (
-                    _discover_python_files,
-                )
-
-                src_files = _discover_python_files(event.project_root)
+                src_files = _scoped_discover(event)
             if src_files:
                 teff_manifest = build_test_effectiveness_manifest(
                     event.project_root, src_files, test_files
                 )
                 event.context["test_effectiveness_manifest"] = teff_manifest
+
+
+def _scoped_discover(event: SupervisionEvent) -> list[str]:
+    """Discover Python files, scoped to files_changed when possible.
+
+    Returns scoped file list when 1-5 .py files are in files_changed and
+    all resolve to paths within the project root.  Falls back to full
+    canonical discovery otherwise.
+    """
+    import os
+
+    from lintgate.discovery import discover_project_files
+
+    changed_py = [
+        f for f in (event.files_changed or []) if f.endswith(".py")
+    ]
+
+    if changed_py and len(changed_py) <= 5:
+        project_root = os.path.abspath(event.project_root)
+        scoped: list[str] = []
+        for f in changed_py:
+            full = os.path.abspath(
+                os.path.join(project_root, f) if not os.path.isabs(f) else f
+            )
+            # Sanitize: must be within project root and must exist
+            if full.startswith(project_root + os.sep) and os.path.isfile(full):
+                scoped.append(full)
+        if scoped:
+            return scoped
+
+    return discover_project_files(event.project_root)
 
 
 def _discover_test_files(project_root: str) -> list[str]:

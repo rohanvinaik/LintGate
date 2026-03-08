@@ -260,35 +260,69 @@ def _deserialize_func_spec(d: dict) -> FunctionSpecification:
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
-_FUNC_NODE_CACHE: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
+_AST_TREE_CACHE: dict[str, ast.Module | None] = {}
+
+
+def _get_ast_tree(source_file: str) -> ast.Module | None:
+    """Parse and cache the AST for a source file."""
+    import ast as ast_mod
+
+    if source_file not in _AST_TREE_CACHE:
+        try:
+            with open(source_file) as f:
+                _AST_TREE_CACHE[source_file] = ast_mod.parse(f.read())
+        except (OSError, SyntaxError):
+            _AST_TREE_CACHE[source_file] = None
+    return _AST_TREE_CACHE[source_file]
 
 
 def _find_func_node(source_file: str, func_key: str) -> ast.FunctionDef | None:
-    """Parse source file and find the function AST node."""
+    """Parse source file and find the function AST node.
+
+    Resolves qualified names including nested classes:
+    - "func"              → top-level function
+    - "Class.method"      → method inside Class
+    - "Outer.Inner.method" → method inside Outer.Inner
+    """
     import ast as ast_mod
 
     if not source_file or not Path(source_file).exists():
         return None
 
-    func_name = func_key.split("::")[-1] if "::" in func_key else func_key
-    # Handle qualified names like Class.method
-    simple_name = func_name.split(".")[-1] if "." in func_name else func_name
+    tree = _get_ast_tree(source_file)
+    if tree is None:
+        return None
 
-    if source_file not in _FUNC_NODE_CACHE:
-        try:
-            with open(source_file) as f:
-                tree = ast_mod.parse(f.read())
-            nodes = [
-                n
-                for n in ast_mod.walk(tree)
-                if isinstance(n, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef))
-            ]
-            _FUNC_NODE_CACHE[source_file] = nodes
-        except (OSError, SyntaxError):
+    func_name = func_key.split("::")[-1] if "::" in func_key else func_key
+
+    if "." not in func_name:
+        # Top-level function: search module-level and class-level
+        for node in ast_mod.walk(tree):
+            if isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef)) and node.name == func_name:
+                return node
+        return None
+
+    # Qualified name: walk the chain (e.g., "Outer.Inner.method")
+    parts = func_name.split(".")
+    method_name = parts[-1]
+    class_chain = parts[:-1]
+
+    # Navigate class hierarchy
+    scope: ast.AST = tree
+    for class_name in class_chain:
+        found = False
+        children = scope.body if hasattr(scope, "body") else []
+        for node in children:
+            if isinstance(node, ast_mod.ClassDef) and node.name == class_name:
+                scope = node
+                found = True
+                break
+        if not found:
             return None
 
-    for node in _FUNC_NODE_CACHE.get(source_file, []):
-        if node.name == simple_name and isinstance(node, ast_mod.FunctionDef):
+    # Find method within the resolved class scope
+    for node in getattr(scope, "body", []):
+        if isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef)) and node.name == method_name:
             return node
     return None
 
