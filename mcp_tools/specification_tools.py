@@ -220,9 +220,20 @@ def _impl_spec_prescribe(
 
     next_actions = [
         NextAction(
+            tool="mutation_run_sampling",
+            args={"path": path},
+            reason="Empirically verify specification gaps via mutation analysis",
+        ),
+        NextAction(
             tool="spec_analyze",
             args={"path": path},
             reason="View full specification analysis",
+        ),
+        NextAction(
+            tool="generate_property_tests",
+            args={"path": path},
+            reason="Generate Hypothesis property tests for pure functions",
+            condition="if any prescribed functions are pure",
         ),
     ]
 
@@ -459,27 +470,38 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     def spec_file_analyze(
         path: str,
         file: str,
+        enrich: bool = True,
     ) -> str:
         """Single-file specification analysis — fast, resource-bounded.
 
         WHEN TO USE: To analyze specification complexity for one file at a time.
-        Faster than spec_analyze for interactive use. Builds manifests, call graph,
-        and ledger scoped to the single file.
+        Faster than spec_analyze for interactive use.
+
+        When enrich=True (default), builds property/test-effectiveness manifests
+        and call graph for full analysis including purity, risk scoring, and
+        assertion-based spec_level.
+
+        When enrich=False, uses pure AST analysis only (symbolic baseline).
+        No manifest dependencies — faster, but purity/risk/assertion data
+        are unavailable. Useful for quick structural overview.
 
         Returns per-function sigma, regime, phase, risk, testability, and design
         signals for all functions in the file.
 
         Example: spec_file_analyze(path="/my/project", file="utils.py")
+        Example: spec_file_analyze(path="/my/project", file="utils.py", enrich=False)
 
         Args:
             path: Project root path.
             file: Relative or absolute path to the Python file to analyze.
+            enrich: Build manifests for full analysis (default True).
+                Set False for AST-only symbolic baseline.
         """
         from lintgate.specification.file_analyzer import analyze_file
 
         project_root = helpers["_validate_project_root"](path)
         full = os.path.join(project_root, file) if not os.path.isabs(file) else file
-        result = analyze_file(full, project_root)
+        result = analyze_file(full, project_root, enrich=enrich)
         output = result.to_dict()
         output["next_actions"] = serialize_next_actions(
             [
@@ -524,6 +546,11 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         output = result.to_dict()
         output["next_actions"] = serialize_next_actions(
             [
+                NextAction(
+                    tool="mutation_run_sampling",
+                    args={"path": path, "file": file},
+                    reason="Run mutation sampling to empirically verify prescriptions",
+                ),
                 NextAction(
                     tool="spec_file_analyze",
                     args={"path": path, "file": file},

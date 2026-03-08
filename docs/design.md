@@ -257,11 +257,50 @@ MCP tools:
 - `analyze_test_strength(path)` — project-wide effectiveness report with top vulnerable functions and assertion upgrade suggestions
 - `inspect_test_assertions(path, test_file)` — per-assertion drill-down into a single test file
 
-### Mutation Channel — Tier 2 Auto-Scheduling
+### Mutation Testing Engine
 
-The mutation subsystem has been archived and removed from active runtime registration.
-This section is retained as historical context only. Archived implementation and tests now
-live under `archive/mutation_system/`.
+The mutation subsystem provides 9 MCP tools for inline AST mutation analysis. It generates mutants across 5 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE), evaluates them against existing tests, and produces survival profiles that reveal specification gaps.
+
+**Two-tier execution model**:
+- `mutation_run_sampling` — fast sampled run (<=3 mutants per category, time-budgeted). Use after editing files for quick feedback.
+- `mutation_run_full` — exhaustive profiling with full kill matrix. Use to verify test quality of a component. Produces gateable results.
+
+**Prescription pipeline**: `mutation_prescribe` analyzes survival profiles and recommends specific test improvements per surviving category. `mutation_prescribe_tests` generates pytest skeletons targeting those categories. `mutation_validate_tests` re-profiles and computes per-category survival deltas to close the loop.
+
+**Decomposition detection**: `mutation_decompose` identifies functions where multiple mutation categories survive, suggesting the function has too many responsibilities. Supports three modes: `auto` (merged static + dynamic), `static` (AST-only, no test data needed), `dynamic` (mutation-data-driven).
+
+| Tool | Purpose |
+|---|---|
+| `mutation_run_sampling(path, file, function?, budget_ms?)` | Fast sampled mutation run — inline AST mutation sampling |
+| `mutation_run_full(path, file, function?)` | Deep exhaustive mutation profiling (full kill matrix) |
+| `mutation_get_state(path, file?, function?)` | View cached mutation state and metrics |
+| `mutation_prescribe(path, file?, function?)` | Deterministic prescriptions from survival profiles |
+| `mutation_decompose(path, file?, function?, mode?)` | Find entangled functions (auto/static/dynamic) |
+| `mutation_refactor_loop(path, file?, function?)` | Re-profile after test improvement |
+| `mutation_prescribe_tests(path, file?, function?)` | Generate test skeletons from mutation profiles |
+| `mutation_validate_tests(path, file?, function?)` | Re-profile and compute survival deltas |
+| `mutation_clear_state(path, file?)` | Clear stale mutation state |
+
+**Integration with specification pipeline**: Mutation tools compose with specification tools (`spec_file_analyze`, `spec_prescribe`, `spec_gate_check`) in a closed-loop pipeline:
+
+```
+spec_file_analyze → mutation_run_sampling → mutation_run_full → mutation_prescribe
+    → mutation_prescribe_tests → [write tests] → mutation_validate_tests → spec_gate_check
+```
+
+Each tool's `next_actions` output suggests the next step in the pipeline.
+
+**Purity-aware filtering**: `filter_categories(func_node, is_pure=True)` excludes STATE mutations for pure functions. Purity is detected via `analyze_purity()` from the algebra pipeline and passed through `MutationContext.purity_map`.
+
+**Real test selection**: Tests are loaded dynamically via `build_test_impact_map(test_files)` (AST-based static mapping from source functions to test functions) and `load_test_callables()` (dynamic import). Kill/survive results reflect actual test assertions, not theoretical coverage.
+
+**Post-profiling analysis** (automatic in `mutation_run_full`):
+- **Greedy convergence (Thm 3.2)**: `analyze_convergence(profiling_result, sigma)` validates each test adds ≥1/σ specification. Results in `analysis.convergence`.
+- **Symmetry regime classification (Thm 4.1)**: `classify_regime_from_mutations(pr, sigma, is_pure, param_count)` uses kill-set equivalence classes for empirical regime determination. Results in `analysis.symmetry`.
+
+**Cross-run trajectory**: The specification ledger accepts `prior_ledger` and calls `update_trajectory()` / `detect_phase_from_trajectory()` to accumulate ΔK across mutation→validate cycles, driving phase detection (bulk → transition → tail → complete).
+
+The original Tier 2 auto-scheduling implementation has been archived under `archive/mutation_system/`.
 
 ### Cold-Start Bootstrap Pipeline
 
@@ -1300,7 +1339,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 73 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
+LintGate exposes 93 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
 
 ### Core Lint Workflow
 
@@ -1396,6 +1435,24 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `theory_mode_enter(path)` | Enter theory exploration mode (Normal→Theory). Runs extraction and gap detection. |
 | `theory_mode_freeze(path)` | Freeze compass and exit theory mode to Normal. Validates minimum axis depth. |
 | `setup_hooks(path, write)` | Generate `.claude/settings.json` hook configuration for compass hooks. Preview by default. |
+
+### Specification Complexity
+
+| Tool | Purpose |
+|---|---|
+| `spec_analyze(path)` | Project-wide specification complexity analysis (sigma, regime, phase, risk, DFT) |
+| `spec_prescribe(path, function?)` | Risk-prioritized test prescriptions with expanded taxonomy |
+| `spec_composition(path, module_a?, module_b?)` | Composition gap (γ) and sheaf condition analysis across modules |
+| `spec_gate_check(path, function?)` | Optimization gate validation — checks specification level against hint thresholds |
+| `spec_file_analyze(path, file, enrich?)` | Single-file spec analysis. Default `enrich=True` builds manifests for full analysis; `enrich=False` runs AST-only symbolic baseline (no manifest dependencies, faster). |
+| `spec_file_prescribe(path, file, max_prescriptions?)` | Single-file test prescriptions sorted by risk priority |
+| `spec_project_rollup(path, use_cache?, analyze_uncached?)` | Project-wide rollup with file-level content-hash caching. Default is cache-read-only; `analyze_uncached=True` runs live analysis on cache misses. |
+
+The specification system estimates **σ(P,μ)** — the minimum tests to fully specify a function under mutation policy — using a 6-path AST decision tree, test design signals, DFT scoring, and TPA calibration. It classifies functions into **regimes** (A = tractable via standard testing, B = requires alternative strategies) with an explicit **rationale** string explaining the classification. **Phase detection** (bulk → transition → tail → complete) uses design signal density as a trajectory-aware proxy for convergence rate (Theorem 3.4). Each prediction produces a **TrajectoryState** with convergence rate and estimated remaining specification points.
+
+**Composition analysis** computes the composition gap γ(A,B) for cross-module call edges. Interface mutation point counting uses value mutations (per parameter), swap mutations (C(n,2) transpositions), and state mutations (shared mutable coupling), weighted by callee uncertainty — well-specified callees reduce effective mutation points. The sheaf condition holds when total obstruction < threshold.
+
+**Pipeline integration with mutation testing**: Specification analysis is the diagnostic entry point; mutation testing is the empirical verification layer. The full pipeline: `spec_file_analyze` (diagnose σ, regime, phase) → `mutation_run_sampling`/`mutation_run_full` (profile which mutation categories survive) → `mutation_prescribe` → `mutation_prescribe_tests` → [write tests] → `mutation_validate_tests` (survival deltas) → `spec_gate_check` (stop criteria). The ledger accumulates ΔK across these cycles via `prior_ledger` parameter, enabling trajectory-aware phase detection. See the [Mutation Testing Engine](#mutation-testing-engine) section for execution details.
 
 ### Telemetry
 

@@ -42,9 +42,7 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
     # Compute extraction_safety distribution
     safety_dist: dict[str, int] = {"safe": 0, "needs_module_state": 0, "unsafe": 0}
     for func in manifest.functions.values():
-        safety_dist[func.extraction_safety] = (
-            safety_dist.get(func.extraction_safety, 0) + 1
-        )
+        safety_dist[func.extraction_safety] = safety_dist.get(func.extraction_safety, 0) + 1
 
     return {
         "project": project_root,
@@ -53,8 +51,7 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             "pure_functions": manifest.pure_count,
             "impure_functions": manifest.impure_count,
             "purity_ratio": round(
-                manifest.pure_count
-                / max(manifest.pure_count + manifest.impure_count, 1),
+                manifest.pure_count / max(manifest.pure_count + manifest.impure_count, 1),
                 3,
             ),
             "property_distribution": {
@@ -63,9 +60,7 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
             "optimization_opportunities": len(manifest.optimization_potential),
             "extraction_safety": safety_dist,
         },
-        "pure_functions_by_file": {
-            k: sorted(v) for k, v in sorted(pure_by_file.items())
-        },
+        "pure_functions_by_file": {k: sorted(v) for k, v in sorted(pure_by_file.items())},
         "files": dict(sorted(by_file.items())),
     }
 
@@ -82,11 +77,7 @@ def _matches_filter(
     entry: dict[str, Any], filter_type: str | None, func_filter: str | None
 ) -> bool:
     """Check if a single function entry passes the requested filters."""
-    if (
-        filter_type
-        and filter_type in _FILTER_CHECKS
-        and not _FILTER_CHECKS[filter_type](entry)
-    ):
+    if filter_type and filter_type in _FILTER_CHECKS and not _FILTER_CHECKS[filter_type](entry):
         return False
     return not (func_filter and func_filter.lower() not in entry["name"].lower())
 
@@ -117,14 +108,32 @@ def _generate_from_prescriptions(
     max_functions: int,
     helpers: Any,
 ) -> str:
-    """Backward-compat placeholder for archived mutation-prescription mode."""
+    """Redirect to the live mutation prescription tools."""
+    from lintgate.next_action import NextAction, serialize_next_actions
+
     _ = function
     _ = max_functions
     helpers["_validate_project_root"](path)
+    next_actions = serialize_next_actions(
+        [
+            NextAction(
+                tool="mutation_run_sampling",
+                args={"path": path},
+                reason="Run mutation sampling to generate survival profiles",
+            ),
+            NextAction(
+                tool="mutation_prescribe_tests",
+                args={"path": path},
+                reason="Generate targeted test skeletons from mutation profiles",
+                condition="after mutation_run_sampling or mutation_run_full",
+            ),
+        ]
+    )
     return json.dumps(
         {
-            "error": "Mutation prescription mode has been archived and is unavailable.",
-            "hint": "Use generate_property_tests(path) without from_prescriptions.",
+            "note": "from_prescriptions mode has moved to dedicated mutation tools.",
+            "workflow": "mutation_run_sampling → mutation_prescribe → mutation_prescribe_tests",
+            "next_actions": next_actions,
         }
     )
 
@@ -249,13 +258,9 @@ def _parse_property_test_output(
     return refinement_hints, counterexample
 
 
-def _execute_property_tests(
-    template: str, project_root: str, function: str
-) -> dict[str, Any]:
+def _execute_property_tests(template: str, project_root: str, function: str) -> dict[str, Any]:
     """Write template to temp file, execute via pytest, and return structured result."""
-    with tempfile.NamedTemporaryFile(
-        suffix=".py", mode="w", dir=project_root, delete=False
-    ) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", dir=project_root, delete=False) as tmp:
         tmp.write(template)
         tmp_path = tmp.name
 
@@ -321,17 +326,13 @@ def _impl_generate_property_tests(
     if prefer_mutation_hotspots:
         hotspot_functions = set()
 
-    candidates = _select_property_candidates(
-        manifest, function, max_functions, hotspot_functions
-    )
+    candidates = _select_property_candidates(manifest, function, max_functions, hotspot_functions)
 
     if not candidates:
         note = "No pure functions with algebraic properties found"
         if function:
             note += f" matching '{function}'"
-        return json.dumps(
-            {"note": note, "suggestion": "Run inspect_algebra to see all functions"}
-        )
+        return json.dumps({"note": note, "suggestion": "Run inspect_algebra to see all functions"})
 
     results = [_build_test_entry(name, func) for name, func in candidates]
 
@@ -349,7 +350,7 @@ def _impl_generate_property_tests(
     }
     if prefer_mutation_hotspots:
         output["note_mutation_hotspots"] = (
-            "prefer_mutation_hotspots is ignored because the mutation subsystem is archived."
+            "prefer_mutation_hotspots: use mutation_run_full → mutation_prescribe for hotspot data."
         )
 
     return helpers["_json_dumps"](output)
@@ -410,8 +411,8 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         Also generates icontract decorator suggestions for runtime enforcement.
 
-        `from_prescriptions=True` is retained for compatibility but currently
-        unavailable because the mutation subsystem has been archived.
+        `from_prescriptions=True` redirects to the dedicated mutation tools
+        (mutation_run_sampling → mutation_prescribe → mutation_prescribe_tests).
 
         Example: generate_property_tests(path="/my/project")
         Example: generate_property_tests(path="/my/project", function="compute_score")
@@ -462,14 +463,10 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             )
 
         func = manifest.functions[function]
-        template = _prepare_hypothesis_template(
-            function, func, max_examples, deadline_ms
-        )
+        template = _prepare_hypothesis_template(function, func, max_examples, deadline_ms)
 
         if not template:
-            return json.dumps(
-                {"error": "Failed to generate Hypothesis template for function."}
-            )
+            return json.dumps({"error": "Failed to generate Hypothesis template for function."})
 
         return json.dumps(_execute_property_tests(template, project_root, function))
 

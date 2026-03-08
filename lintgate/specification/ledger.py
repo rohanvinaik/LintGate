@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from lintgate.keys import SCHEMA_VERSION, try_parse_function_key
 
-from .predictor import PredictorInput, predict
+from .predictor import PredictorInput, detect_phase_from_trajectory, predict, update_trajectory
 from .risk_model import compute_risk_score
 from .types import (
     ASTMetrics,
@@ -24,6 +24,7 @@ from .types import (
     SpecCore,
     SpecificationLedger,
     Traceability,
+    TrajectoryState,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ def build_specification_ledger(
     py_files: list[str] | None = None,
     test_files: list[str] | None = None,
     call_graph: CrossModuleCallGraph | None = None,
+    prior_ledger: SpecificationLedger | None = None,
 ) -> SpecificationLedger:
     """Build specification ledger from existing channel manifests.
 
@@ -51,11 +53,13 @@ def build_specification_ledger(
         py_files: Python source files for AST parsing.
         test_files: Test files for traceability extraction.
         call_graph: Optional call graph for fan-in/fan-out risk scoring.
+        prior_ledger: Previous ledger for cross-run trajectory accumulation.
     """
     ledger = SpecificationLedger()
     test_coverage_map = _build_test_coverage_map(test_files or [])
 
     for func_key, func_props in property_manifest.functions.items():
+        prior_spec = prior_ledger.functions.get(func_key) if prior_ledger else None
         func_spec = _build_function_spec(
             func_key=func_key,
             func_props=func_props,
@@ -63,6 +67,7 @@ def build_specification_ledger(
             project_root=project_root,
             test_coverage_map=test_coverage_map,
             call_graph=call_graph,
+            prior_spec=prior_spec,
         )
         if func_spec is not None:
             ledger.functions[func_key] = func_spec
@@ -78,6 +83,7 @@ def _build_function_spec(
     project_root: str,
     test_coverage_map: dict[str, list[str]],
     call_graph: CrossModuleCallGraph | None = None,
+    prior_spec: FunctionSpecification | None = None,
 ) -> FunctionSpecification | None:
     """Build a single FunctionSpecification from channel data."""
     # Parse AST for the function
@@ -133,6 +139,20 @@ def _build_function_spec(
     hints = list(func_props.optimization_hints)
     stop_met = _check_stop_criteria(result.spec_level, hints)
 
+    # Cross-run trajectory (Thm 3.4): accumulate ΔK from prior ledger
+    trajectory = result.trajectory
+    phase = result.phase
+    if prior_spec is not None:
+        prior_traj = prior_spec.trajectory
+        prior_level = prior_spec.core.specification_level
+        trajectory = update_trajectory(
+            prior_traj,
+            result.spec_level,
+            prior_level,
+            sigma=result.sigma,
+        )
+        phase = detect_phase_from_trajectory(trajectory, result.spec_level)
+
     return FunctionSpecification(
         function_key=func_key,
         source_file=source_file,
@@ -140,9 +160,10 @@ def _build_function_spec(
             estimated_sigma=result.sigma,
             sigma_confidence=result.sigma_confidence,
             regime=result.regime,
+            regime_rationale=result.regime_rationale,
             specification_level=result.spec_level,
             behavioral_dimensions=result.sigma,
-            phase=result.phase,
+            phase=phase,
             is_pure=func_props.purity.is_pure,
             semantic_ratio=semantic_ratio,
             weakness_taxonomy=weakness,
@@ -165,6 +186,7 @@ def _build_function_spec(
             covering_tests=covering,
             assertion_count=assertion_count,
         ),
+        trajectory=trajectory,
         stop_criteria_met=stop_met,
         optimization_hints=hints,
         file_hash=_file_hash(source_file),
@@ -221,6 +243,7 @@ def _deserialize_func_spec(d: dict) -> FunctionSpecification:
             estimated_sigma=d.get("estimated_sigma", 0),
             sigma_confidence=d.get("sigma_confidence", 1.0),
             regime=d.get("regime", "unknown"),
+            regime_rationale=d.get("regime_rationale", ""),
             specification_level=d.get("specification_level", 0.0),
             behavioral_dimensions=d.get("behavioral_dimensions", 0),
             phase=d.get("phase", "bulk"),
@@ -257,10 +280,23 @@ def _deserialize_func_spec(d: dict) -> FunctionSpecification:
             prescription_history=d.get("prescription_history", []),
             assertion_count=d.get("assertion_count", 0),
         ),
+        trajectory=_deserialize_trajectory(d.get("trajectory", {})),
         stop_criteria_met=d.get("stop_criteria_met", False),
         optimization_hints=d.get("optimization_hints", []),
         file_hash=d.get("file_hash", ""),
         computed_at=d.get("computed_at", 0.0),
+    )
+
+
+def _deserialize_trajectory(d: dict | None) -> TrajectoryState:
+    """Deserialize a TrajectoryState from dict."""
+    if not d or not isinstance(d, dict):
+        return TrajectoryState()
+    return TrajectoryState(
+        delta_k=d.get("delta_k", []),
+        transition_index=d.get("transition_index"),
+        estimated_remaining=d.get("estimated_remaining", 0),
+        convergence_rate=d.get("convergence_rate", 0.0),
     )
 
 
@@ -305,7 +341,10 @@ def _find_func_node(source_file: str, func_key: str) -> ast.FunctionDef | None:
     if "." not in func_name:
         # Top-level function: search module-level and class-level
         for node in ast_mod.walk(tree):
-            if isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef)) and node.name == func_name:
+            if (
+                isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef))
+                and node.name == func_name
+            ):
                 return node
         return None
 
@@ -329,7 +368,10 @@ def _find_func_node(source_file: str, func_key: str) -> ast.FunctionDef | None:
 
     # Find method within the resolved class scope
     for node in getattr(scope, "body", []):
-        if isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef)) and node.name == method_name:
+        if (
+            isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef))
+            and node.name == method_name
+        ):
             return node
     return None
 

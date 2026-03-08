@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 84 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 93 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -113,9 +113,9 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `spec_prescribe` | Risk-prioritized test prescriptions with expanded taxonomy | After spec_analyze reveals under-specified functions |
 | `spec_composition` | Composition gap and sheaf condition analysis across modules | Understanding cross-module specification dependencies |
 | `spec_gate_check` | Optimization gate validation with stop criteria | Checking if optimization hints are backed by specification |
-| `spec_file_analyze` | Single-file specification analysis (fast, resource-bounded) | Interactive per-file spec analysis |
+| `spec_file_analyze` | Single-file spec analysis. `enrich=True` (default) builds manifests; `enrich=False` runs AST-only symbolic baseline. Returns regime rationale and trajectory state. | Interactive per-file spec analysis |
 | `spec_file_prescribe` | Single-file test prescriptions with risk prioritization | After spec_file_analyze shows under-specified functions |
-| `spec_project_rollup` | Project-wide specification rollup with file-level caching | Getting project-wide spec health overview |
+| `spec_project_rollup` | Project-wide specification rollup with file-level caching. Default cache-read-only; `analyze_uncached=True` for live analysis. | Getting project-wide spec health overview |
 
 ### Mutation Testing
 
@@ -130,6 +130,41 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles | After `mutation_prescribe` identifies surviving categories |
 | `mutation_validate_tests` | Re-profile and compute per-category survival deltas | After writing prescribed tests |
 | `mutation_clear_state` | Clear mutation state | Code has drifted significantly |
+
+## Orchestration: Spec → Mutation → Convergence Pipeline
+
+The specification, mutation, and convergence tools form a closed-loop pipeline. Each tool's `next_actions` output suggests the next step. Follow this sequence to systematically close specification gaps:
+
+```
+spec_file_analyze ──→ mutation_run_sampling ──→ mutation_run_full
+       │                      │                        │
+  (σ, regime,            (per-category          (full kill matrix +
+   phase, DFT)           kill/survive)          convergence analysis +
+       │                      │                symmetry classification)
+       │                      │                        │
+       ▼                      ▼                        ▼
+spec_prescribe         mutation_prescribe ──→ mutation_prescribe_tests
+  (prioritized            (category →              (pytest skeletons)
+   test recs)              action map)                    │
+                                                          ▼
+                                                   [Write tests]
+                                                          │
+                                                          ▼
+                                              mutation_validate_tests
+                                                (survival deltas)
+                                                          │
+                                                          ▼
+                                                  spec_gate_check
+                                               (stop criteria met?)
+```
+
+**Quick feedback loop** (after editing): `spec_file_analyze` → `mutation_run_sampling` → `mutation_prescribe`
+
+**Full verification loop** (before shipping): `spec_file_analyze` → `mutation_run_full` → `mutation_prescribe` → `mutation_prescribe_tests` → [write tests] → `mutation_validate_tests` → `spec_gate_check`
+
+**Cross-module composition**: `spec_composition` computes composition gaps γ(A,B) weighted by callee uncertainty. Use after individual files pass gate checks to verify cross-module specification integrity.
+
+**Key internals**: Mutation tools auto-detect purity (pure functions skip STATE mutations), load real tests via test-impact mapping, and accumulate trajectory (ΔK) across runs for phase detection. `mutation_run_full` automatically runs greedy convergence analysis (Thm 3.2) and symmetry-based regime classification (Thm 4.1) — results appear in the `analysis` field.
 
 ### Bootstrap (Cold-Start)
 

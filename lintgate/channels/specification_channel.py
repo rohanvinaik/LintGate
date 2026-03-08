@@ -66,6 +66,7 @@ class SpecificationChannel:
         from lintgate.specification.composition import analyze_composition
         from lintgate.specification.ledger import (
             build_specification_ledger,
+            load_cached_ledger,
             save_cached_ledger,
         )
         from lintgate.state import SPEC_CACHE_DIR
@@ -80,6 +81,7 @@ class SpecificationChannel:
             call_graph = build_cross_module_call_graph(source_files, event.project_root)
 
         project_hash = hashlib.sha256(event.project_root.encode()).hexdigest()[:16]
+        prior_ledger = load_cached_ledger(SPEC_CACHE_DIR, project_hash)
         ledger = build_specification_ledger(
             prop_manifest,
             teff_manifest,
@@ -87,6 +89,7 @@ class SpecificationChannel:
             py_files=py_files,
             test_files=test_files,
             call_graph=call_graph,
+            prior_ledger=prior_ledger,
         )
         save_cached_ledger(SPEC_CACHE_DIR, project_hash, ledger)
 

@@ -61,6 +61,7 @@ class SpecCore:
     estimated_sigma: int = 0
     sigma_confidence: float = 1.0
     regime: str = "unknown"
+    regime_rationale: str = ""
     specification_level: float = 0.0
     behavioral_dimensions: int = 0
     phase: str = "bulk"
@@ -79,17 +80,33 @@ class ASTMetrics:
 
 
 @dataclass
+class TrajectoryState:
+    """Trajectory state for dynamic phase detection (Thm 3.4).
+
+    Tracks specification convergence history to enable ΔK-based
+    phase transition detection rather than static thresholds.
+    """
+
+    delta_k: list[float] = field(default_factory=list)
+    transition_index: int | None = None
+    estimated_remaining: int = 0
+    convergence_rate: float = 0.0
+
+
+@dataclass
 class PredictionResult:
     """Output of the specification predictor for a single function."""
 
     spec_level: float = 0.0
     regime: str = "unknown"
+    regime_rationale: str = ""
     sigma: int = 0
     phase: str = "bulk"
     sigma_confidence: float = 1.0
     testability: TestabilityProfile = field(default_factory=TestabilityProfile)
     design_signals: TestDesignSignals = field(default_factory=TestDesignSignals)
     tpa: TPAResult = field(default_factory=TPAResult)
+    trajectory: TrajectoryState = field(default_factory=TrajectoryState)
 
 
 @dataclass
@@ -108,6 +125,7 @@ class FunctionSpecification:
     tpa: TPAResult = field(default_factory=TPAResult)
     risk: RiskProfile = field(default_factory=RiskProfile)
     traceability: Traceability = field(default_factory=Traceability)
+    trajectory: TrajectoryState = field(default_factory=TrajectoryState)
     stop_criteria_met: bool = False
     optimization_hints: list[str] = field(default_factory=list)
     file_hash: str = ""
@@ -120,6 +138,7 @@ class FunctionSpecification:
             "estimated_sigma": self.core.estimated_sigma,
             "sigma_confidence": round(self.core.sigma_confidence, 3),
             "regime": self.core.regime,
+            "regime_rationale": self.core.regime_rationale,
             "specification_level": round(self.core.specification_level, 3),
             "behavioral_dimensions": self.core.behavioral_dimensions,
             "phase": self.core.phase,
@@ -143,6 +162,12 @@ class FunctionSpecification:
             "covering_tests": self.traceability.covering_tests,
             "prescription_history": self.traceability.prescription_history,
             "assertion_count": self.traceability.assertion_count,
+            "trajectory": {
+                "delta_k": self.trajectory.delta_k,
+                "transition_index": self.trajectory.transition_index,
+                "estimated_remaining": self.trajectory.estimated_remaining,
+                "convergence_rate": self.trajectory.convergence_rate,
+            },
             "stop_criteria_met": self.stop_criteria_met,
             "optimization_hints": self.optimization_hints,
             "file_hash": self.file_hash,

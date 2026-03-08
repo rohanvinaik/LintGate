@@ -1452,8 +1452,26 @@ def register(mcp, helpers):
         if not os.path.exists(target_file):
             raise ValueError(f"Source file not found: {target_file}")
 
+        from lintgate.next_action import NextAction, serialize_next_actions
+
         skeleton = generate_test_skeleton(target_file, project_root=project_root)
         test_path = generate_test_path(target_file, project_root)
+        rel_file = os.path.relpath(target_file, project_root)
+
+        next_actions = serialize_next_actions(
+            [
+                NextAction(
+                    tool="mutation_run_sampling",
+                    args={"path": path, "file": rel_file},
+                    reason="Run mutation sampling to validate generated skeleton",
+                ),
+                NextAction(
+                    tool="spec_file_analyze",
+                    args={"path": path, "file": rel_file},
+                    reason="View specification analysis for test prioritization",
+                ),
+            ]
+        )
 
         return json.dumps(
             {
@@ -1461,6 +1479,7 @@ def register(mcp, helpers):
                 "test_path": test_path,
                 "skeleton": skeleton,
                 "note": "Review and customize before saving. Use Write tool to create the file.",
+                "next_actions": next_actions,
             },
             indent=2,
         )

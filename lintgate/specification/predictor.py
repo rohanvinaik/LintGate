@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from .test_design_signals import extract_all as extract_design_signals
 from .tpa_calibration import calibrate_sigma, compute_tpa_points
-from .types import PredictionResult, TestabilityProfile, TestDesignSignals
+from .types import PredictionResult, TestabilityProfile, TestDesignSignals, TrajectoryState
 
 
 @dataclass
@@ -42,7 +42,7 @@ def predict(
     testability = compute_dft_score(func_node)
 
     # 6-path decision tree → base sigma
-    sigma_base, regime = _decision_tree(
+    sigma_base, regime, regime_rationale = _decision_tree(
         is_pure=signals.is_pure,
         semantic_ratio=signals.semantic_ratio,
         weakness_taxonomy=signals.weakness_taxonomy,
@@ -74,15 +74,20 @@ def predict(
     # Phase detection — uses design signal density for trajectory awareness
     phase = _detect_phase(spec_level, design_signals, sigma)
 
+    # Trajectory state — initial snapshot (no history yet)
+    trajectory = _build_trajectory(spec_level, design_signals, sigma)
+
     return PredictionResult(
         spec_level=spec_level,
         regime=regime,
+        regime_rationale=regime_rationale,
         sigma=sigma,
         phase=phase,
         sigma_confidence=sigma_confidence,
         testability=testability,
         design_signals=design_signals,
         tpa=tpa,
+        trajectory=trajectory,
     )
 
 
@@ -96,8 +101,8 @@ def _decision_tree(
     ast_category_count: int,
     branch_count: int,
     parameter_count: int,
-) -> tuple[int, str]:
-    """6-path decision tree. Returns (sigma_estimate, regime)."""
+) -> tuple[int, str, str]:
+    """6-path decision tree. Returns (sigma_estimate, regime, rationale)."""
     if is_pure:
         if semantic_ratio >= 0.5 and weakness_taxonomy in ("", "HEALTHY"):
             # Path 1: well-specified
@@ -118,8 +123,8 @@ def _decision_tree(
         # Path 6: hardest to specify
         sigma = ast_category_count + branch_count + parameter_count + 2
 
-    regime = _classify_regime(sigma, is_pure, semantic_ratio, weakness_taxonomy)
-    return sigma, regime
+    regime, rationale = _classify_regime(sigma, is_pure, semantic_ratio, weakness_taxonomy)
+    return sigma, regime, rationale
 
 
 def _classify_regime(
@@ -127,8 +132,10 @@ def _classify_regime(
     is_pure: bool,
     semantic_ratio: float,
     weakness_taxonomy: str,
-) -> str:
-    """Multi-factor regime classification.
+) -> tuple[str, str]:
+    """Multi-factor regime classification with rationale.
+
+    Returns (regime, rationale) where rationale explains the classification.
 
     Regime A: specifiable through standard testing (unit, property, BVA).
     Regime B: requires alternative strategies (formal methods, design changes,
@@ -142,20 +149,23 @@ def _classify_regime(
     """
     # Pure functions are always regime A — I/O testing covers them
     if is_pure:
-        return "A"
+        return "A", "pure function: I/O testing scales linearly"
 
     # High sigma alone → B
     if sigma > 20:
-        return "B"
+        return "B", f"sigma={sigma} exceeds tractability threshold (>20)"
 
     # Moderate sigma with compounding risk factors → B
     # Known weakness + poor coverage = specification intractable via standard testing
     has_weakness = weakness_taxonomy not in ("", "HEALTHY")
     poorly_specified = semantic_ratio < 0.3
     if sigma > 12 and has_weakness and poorly_specified:
-        return "B"
+        return "B", (
+            f"compounding factors: sigma={sigma}>12, "
+            f"weakness={weakness_taxonomy}, semantic_ratio={semantic_ratio:.2f}<0.3"
+        )
 
-    return "A"
+    return "A", f"sigma={sigma} within tractable range"
 
 
 # ── AST helpers ──────────────────────────────────────────────────────
@@ -345,8 +355,134 @@ def _detect_phase(
     return "tail"
 
 
+def _build_trajectory(
+    spec_level: float,
+    design_signals: TestDesignSignals | None,
+    sigma: int,
+) -> TrajectoryState:
+    """Build initial trajectory state from current prediction snapshot.
+
+    On first measurement there's no delta_k history. We estimate
+    convergence_rate from design signal density (proxy for how much
+    specification progress each new test yields) and estimated_remaining
+    from the gap between sigma and current coverage.
+    """
+    signal_density = 0.0
+    if design_signals is not None and sigma > 0:
+        signal_total = (
+            design_signals.boundary_points
+            + design_signals.equivalence_partitions
+            + design_signals.decision_rule_count
+            + design_signals.predicate_effect_links
+        )
+        signal_density = signal_total / sigma
+
+    # Convergence rate: higher signal density → faster convergence
+    convergence_rate = min(signal_density, 1.0)
+
+    # Estimated remaining specification points
+    remaining = max(0, round(sigma * (1.0 - spec_level)))
+
+    return TrajectoryState(
+        delta_k=[],
+        transition_index=None,
+        estimated_remaining=remaining,
+        convergence_rate=round(convergence_rate, 3),
+    )
+
+
 def _compute_spec_level(sigma: int, assertion_count: int) -> float:
     """Compute specification level as coverage ratio."""
     if sigma <= 0:
         return 1.0 if assertion_count > 0 else 0.0
     return min(assertion_count / sigma, 1.0)
+
+
+# ── Cross-run trajectory (Thm 3.4) ───────────────────────────────
+
+
+_TRANSITION_THRESHOLD = 0.02
+_TRANSITION_WINDOW = 3
+
+
+def update_trajectory(
+    previous: TrajectoryState,
+    new_spec_level: float,
+    previous_spec_level: float,
+    sigma: int = 0,
+) -> TrajectoryState:
+    """Append ΔK and detect phase transitions (Thm 3.4).
+
+    Called when a new measurement arrives for a function that has a
+    previous trajectory from the cached ledger. Appends the delta,
+    updates convergence rate via EMA, and detects transition points
+    where |ΔK| drops below threshold for sustained consecutive runs.
+    """
+    delta = new_spec_level - previous_spec_level
+    new_delta_k = previous.delta_k + [delta]
+
+    transition_idx = _detect_transition_point(new_delta_k)
+
+    # EMA of recent |ΔK| for convergence rate
+    window = new_delta_k[-5:] if len(new_delta_k) >= 5 else new_delta_k
+    convergence_rate = sum(abs(d) for d in window) / len(window) if window else 0.0
+
+    # Re-estimate remaining from sigma and current level
+    remaining = max(0, round(sigma * (1.0 - new_spec_level))) if sigma > 0 else 0
+
+    return TrajectoryState(
+        delta_k=new_delta_k,
+        transition_index=transition_idx,
+        estimated_remaining=remaining,
+        convergence_rate=round(convergence_rate, 4),
+    )
+
+
+def _detect_transition_point(delta_k: list[float]) -> int | None:
+    """Find the index where |ΔK| drops below threshold for WINDOW consecutive runs.
+
+    Returns the start index of the transition, or None if not yet detected.
+    """
+    if len(delta_k) < _TRANSITION_WINDOW:
+        return None
+
+    run = 0
+    for i, dk in enumerate(delta_k):
+        if abs(dk) < _TRANSITION_THRESHOLD:
+            run += 1
+            if run >= _TRANSITION_WINDOW:
+                return i - _TRANSITION_WINDOW + 1
+        else:
+            run = 0
+    return None
+
+
+def detect_phase_from_trajectory(trajectory: TrajectoryState, spec_level: float) -> str:
+    """Phase detection using actual ΔK trajectory data (Thm 3.4).
+
+    Preferred over _detect_phase when trajectory.delta_k is populated
+    from cross-run accumulation. Falls back to spec_level thresholds
+    when trajectory data is insufficient.
+    """
+    if spec_level >= 0.95:
+        return "complete"
+
+    # Need at least 2 data points for trajectory-based detection
+    if len(trajectory.delta_k) < 2:
+        # Fall back to static thresholds
+        if spec_level < 0.3:
+            return "bulk"
+        if spec_level < 0.7:
+            return "transition"
+        return "tail"
+
+    # Transition point detected → tail phase
+    if trajectory.transition_index is not None:
+        return "tail"
+
+    # Convergence rate determines phase
+    if trajectory.convergence_rate > 0.1:
+        return "bulk"
+    if trajectory.convergence_rate > 0.03:
+        return "transition"
+    return "tail"
