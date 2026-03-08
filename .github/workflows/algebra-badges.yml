@@ -10,6 +10,9 @@ name: Specification Badges
 on:
   push:
     branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -54,12 +57,14 @@ jobs:
               print(f"  {prop}: {count}")
 
           # ── Specification layer: σ, K/σ, regime ────────────────────
-          from lintgate.linters.test_effectiveness.analyzer import build_test_effectiveness_manifest
+          from lintgate.linters.test_effectiveness.manifest import build_test_effectiveness_manifest
           from lintgate.specification.ledger import build_specification_ledger
 
           test_files = sorted(glob.glob("tests/**/*.py", recursive=True))
           teff_manifest = build_test_effectiveness_manifest(
-              test_files=test_files, source_functions=manifest.functions
+              project_root=".",
+              python_files=py_files,
+              test_files=test_files,
           )
           ledger = build_specification_ledger(
               property_manifest=manifest,
@@ -144,16 +149,30 @@ jobs:
       # ── Push all badges to badges branch ────────────────────────────
 
       - name: Push badges to badges branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           cp .github/badges/*.svg /tmp/
           rm -rf .github/badges
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin badges
-          git checkout badges
+
+          if git ls-remote --exit-code --heads origin badges >/dev/null 2>&1; then
+            git fetch origin badges:badges
+            git switch badges
+          else
+            git switch --orphan badges
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
           mkdir -p .github/badges
           cp /tmp/*.svg .github/badges/
           git add .github/badges/*.svg
-          git commit -m "Update spec badges (σ̄=${{ env.MEAN_SIGMA }}, K/σ=${{ env.SPEC_COVERAGE }}, ${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)" || echo "No changes"
+
+          if git diff --cached --quiet; then
+            echo "No badge changes"
+            exit 0
+          fi
+
+          git commit -m "Update spec badges (σ̄=${{ env.MEAN_SIGMA }}, K/σ=${{ env.SPEC_COVERAGE }}, ${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)"
           git push origin badges
