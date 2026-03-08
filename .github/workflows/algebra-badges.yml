@@ -2,10 +2,11 @@ name: Specification Badges
 
 # Computes symbolic specification metrics from the codebase:
 # - Purity: side-effect-free function count (AST-based)
-# - Algebraic Properties: commutative, associative, monotonic, bounded, idempotent
+# - Algebraic Properties: total detected property instances
 # - σ̄ (mean specification complexity): behavioral dimensions per function
-# - Spec Coverage (K/σ): fraction of behavioral surface pinned by assertions
-# - Regime Distribution: A (tractable) vs B (requires alternatives)
+# - Spec Coverage (K/σ, weighted): global assertion budget over global sigma budget
+# - Spec Coverage (semantic-adjusted): weighted by semantic assertion ratio
+# - Regime Distribution: A (tractable) vs B (requires alternatives), symbolic source
 
 on:
   push:
@@ -39,18 +40,36 @@ jobs:
         id: metrics
         run: |
           python - <<'PY'
-          import glob, os
+          import os
+
+          from lintgate.discovery import discover_project_files
 
           # ── Algebra layer: purity + properties ──────────────────────
           from lintgate.linters.performance_checks.manifest import build_manifest
 
-          py_files = sorted(glob.glob("lintgate/**/*.py", recursive=True))
-          manifest = build_manifest(".", py_files)
+          def _is_test_file(path: str) -> bool:
+              rel = os.path.relpath(path, ".").replace("\\", "/")
+              base = os.path.basename(path)
+              if rel.startswith("tests/") or "/tests/" in rel:
+                  return True
+              if "/" not in rel and (base.startswith("test_") or base.endswith("_test.py")):
+                  return True
+              return False
+
+          all_py_files = discover_project_files(".")
+          source_files = [p for p in all_py_files if not _is_test_file(p)]
+          test_files = [p for p in all_py_files if _is_test_file(p)]
+
+          manifest = build_manifest(".", source_files)
           total_funcs = manifest.pure_count + manifest.impure_count
           props_total = sum(manifest.property_distribution.values())
           purity_pct = round(100 * manifest.pure_count / max(total_funcs, 1))
 
           dist = {k.value: v for k, v in manifest.property_distribution.items()}
+          print(
+              f"Scope: {len(source_files)} source files, "
+              f"{len(test_files)} test files, {len(all_py_files)} total"
+          )
           print(f"Pure functions: {manifest.pure_count} / {total_funcs} ({purity_pct}%)")
           print(f"Algebraic properties: {props_total}")
           for prop, count in sorted(dist.items()):
@@ -60,31 +79,50 @@ jobs:
           from lintgate.linters.test_effectiveness.manifest import build_test_effectiveness_manifest
           from lintgate.specification.ledger import build_specification_ledger
 
-          test_files = sorted(glob.glob("tests/**/*.py", recursive=True))
           teff_manifest = build_test_effectiveness_manifest(
               project_root=".",
-              python_files=py_files,
+              python_files=source_files,
               test_files=test_files,
           )
           ledger = build_specification_ledger(
               property_manifest=manifest,
               teff_manifest=teff_manifest,
               project_root=".",
-              py_files=py_files,
+              py_files=source_files,
               test_files=test_files,
           )
 
           n_funcs = len(ledger.functions)
           mean_sigma = round(ledger.total_sigma / max(n_funcs, 1), 1)
-          spec_cov = round(ledger.specification_coverage, 2)
-          spec_cov_pct = round(spec_cov * 100)
+
+          sigma_total = sum(fs.core.estimated_sigma for fs in ledger.functions.values())
+          raw_k_total = sum(
+              min(fs.traceability.assertion_count, fs.core.estimated_sigma)
+              for fs in ledger.functions.values()
+          )
+          semantic_k_total = sum(
+              min(
+                  fs.traceability.assertion_count * fs.core.semantic_ratio,
+                  fs.core.estimated_sigma,
+              )
+              for fs in ledger.functions.values()
+          )
+          spec_cov_weighted = (raw_k_total / sigma_total) if sigma_total else 0.0
+          spec_cov_sem_weighted = (semantic_k_total / sigma_total) if sigma_total else 0.0
+          spec_cov = round(spec_cov_weighted, 3)
+          spec_cov_pct = round(spec_cov_weighted * 100)
+          spec_cov_sem = round(spec_cov_sem_weighted, 3)
+          spec_cov_sem_pct = round(spec_cov_sem_weighted * 100)
+
           regime_a = ledger.regime_distribution.get("A", 0)
           regime_b = ledger.regime_distribution.get("B", 0)
+          regime_source = "symbolic"
 
           print(f"\nSpecification metrics ({n_funcs} functions):")
           print(f"  Mean σ: {mean_sigma}")
-          print(f"  Spec coverage (K/σ): {spec_cov}")
-          print(f"  Regime A: {regime_a}, B: {regime_b}")
+          print(f"  Spec coverage (K/σ, weighted raw): {spec_cov}")
+          print(f"  Spec coverage (K/σ, weighted semantic): {spec_cov_sem}")
+          print(f"  Regime A: {regime_a}, B: {regime_b} (source={regime_source})")
           print(f"  Mean testability: {round(ledger.mean_testability, 2)}")
           print(f"  Stop criteria met: {ledger.stop_criteria_met_count}")
 
@@ -97,8 +135,11 @@ jobs:
               fh.write(f"MEAN_SIGMA={mean_sigma}\n")
               fh.write(f"SPEC_COVERAGE={spec_cov}\n")
               fh.write(f"SPEC_COVERAGE_PCT={spec_cov_pct}\n")
+              fh.write(f"SPEC_COVERAGE_SEM={spec_cov_sem}\n")
+              fh.write(f"SPEC_COVERAGE_SEM_PCT={spec_cov_sem_pct}\n")
               fh.write(f"REGIME_A={regime_a}\n")
               fh.write(f"REGIME_B={regime_b}\n")
+              fh.write(f"REGIME_SOURCE={regime_source}\n")
               fh.write(f"SPEC_FUNCTIONS={n_funcs}\n")
           PY
 
@@ -116,7 +157,7 @@ jobs:
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
         with:
           label: "Algebraic Properties"
-          status: "${{ env.PROPERTIES_COUNT }} detected"
+          status: "${{ env.PROPERTIES_COUNT }} instances"
           color: "blue"
           path: ".github/badges/properties.svg"
 
@@ -133,8 +174,8 @@ jobs:
       - name: Generate Spec Coverage Badge
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
         with:
-          label: "Spec Coverage"
-          status: "${{ env.SPEC_COVERAGE_PCT }}%"
+          label: "K/σ Coverage"
+          status: "${{ env.SPEC_COVERAGE_PCT }}% raw / ${{ env.SPEC_COVERAGE_SEM_PCT }}% sem"
           color: "0ea5e9"
           path: ".github/badges/spec-coverage.svg"
 
@@ -142,7 +183,7 @@ jobs:
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
         with:
           label: "Regime"
-          status: "${{ env.REGIME_A }}A / ${{ env.REGIME_B }}B"
+          status: "${{ env.REGIME_A }}A / ${{ env.REGIME_B }}B (${{ env.REGIME_SOURCE }})"
           color: "f59e0b"
           path: ".github/badges/regime.svg"
 
@@ -174,5 +215,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Update spec badges (σ̄=${{ env.MEAN_SIGMA }}, K/σ=${{ env.SPEC_COVERAGE }}, ${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)"
+          git commit -m "Update spec badges (σ̄=${{ env.MEAN_SIGMA }}, K/σw=${{ env.SPEC_COVERAGE }}, K/σsem=${{ env.SPEC_COVERAGE_SEM }}, ${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)"
           git push origin badges
