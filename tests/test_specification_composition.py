@@ -212,8 +212,24 @@ class TestInterfaceMutationPoints:
         # 0 value + 0 swap + 2 state = 2
         assert _count_interface_mutation_points(surface) == 2
 
+    def test_callee_uncertainty_reduces_count(self):
+        """Higher callee spec_level reduces effective mutation points."""
+        surface = IntegrationSurface(callee_param_count=3)
+        # raw = 6, spec_level=0.0 → uncertainty=1.0 → 6
+        assert _count_interface_mutation_points(surface, callee_spec_level=0.0) == 6
+        # raw = 6, spec_level=0.5 → uncertainty=0.5 → round(3.0) = 3
+        assert _count_interface_mutation_points(surface, callee_spec_level=0.5) == 3
+        # raw = 6, spec_level=0.9 → uncertainty=0.1 → round(0.6) = 1 (floor)
+        assert _count_interface_mutation_points(surface, callee_spec_level=0.9) == 1
+
+    def test_callee_fully_specified_floor(self):
+        """Fully specified callee still returns floor of 1 when raw > 0."""
+        surface = IntegrationSurface(callee_param_count=2)
+        # raw = 3, spec_level=1.0 → uncertainty=0.0 → max(1, 0) = 1
+        assert _count_interface_mutation_points(surface, callee_spec_level=1.0) == 1
+
     def test_interface_mutant_count_in_edge(self):
-        """compute_composition_edge uses _count_interface_mutation_points."""
+        """compute_composition_edge uses _count_interface_mutation_points with callee spec_level."""
         ledger = _make_ledger(
             {
                 "a::caller": {},
@@ -222,5 +238,6 @@ class TestInterfaceMutationPoints:
         )
         graph = _make_graph({"a::caller": ["b::callee"]})
         edge = compute_composition_edge("a::caller", "b::callee", graph, ledger)
-        # 3 params → 3 value + 3 swap = 6 (no shared state)
-        assert edge.interface_mutant_count == 6
+        # 3 params → raw = 6, callee spec_level=0.3, uncertainty=0.7
+        # round(6 * 0.7) = round(4.2) = 4
+        assert edge.interface_mutant_count == 4

@@ -1,8 +1,11 @@
-name: Algebra Badges
+name: Specification Badges
 
-# Runs static analysis to count pure functions and algebraic properties
-# (commutative, associative, monotonic, bounded, idempotent) across the
-# codebase, then generates badges with the counts.
+# Computes symbolic specification metrics from the codebase:
+# - Purity: side-effect-free function count (AST-based)
+# - Algebraic Properties: commutative, associative, monotonic, bounded, idempotent
+# - σ̄ (mean specification complexity): behavioral dimensions per function
+# - Spec Coverage (K/σ): fraction of behavioral surface pinned by assertions
+# - Regime Distribution: A (tractable) vs B (requires alternatives)
 
 on:
   push:
@@ -12,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  algebra_badges:
+  spec_badges:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -34,25 +37,70 @@ jobs:
         run: |
           python - <<'PY'
           import glob, os
+
+          # ── Algebra layer: purity + properties ──────────────────────
           from lintgate.linters.performance_checks.manifest import build_manifest
+
           py_files = sorted(glob.glob("lintgate/**/*.py", recursive=True))
           manifest = build_manifest(".", py_files)
           total_funcs = manifest.pure_count + manifest.impure_count
           props_total = sum(manifest.property_distribution.values())
-          with open(os.environ["GITHUB_ENV"], "a") as fh:
-              fh.write(f"PURE_COUNT={manifest.pure_count}\n")
-              fh.write(f"TOTAL_FUNCTIONS={total_funcs}\n")
-              fh.write(f"PROPERTIES_COUNT={props_total}\n")
+          purity_pct = round(100 * manifest.pure_count / max(total_funcs, 1))
+
           dist = {k.value: v for k, v in manifest.property_distribution.items()}
-          print(f"Pure functions: {manifest.pure_count} / {total_funcs}")
+          print(f"Pure functions: {manifest.pure_count} / {total_funcs} ({purity_pct}%)")
           print(f"Algebraic properties: {props_total}")
           for prop, count in sorted(dist.items()):
               print(f"  {prop}: {count}")
+
+          # ── Specification layer: σ, K/σ, regime ────────────────────
+          from lintgate.linters.test_effectiveness.analyzer import build_test_effectiveness_manifest
+          from lintgate.specification.ledger import build_specification_ledger
+
+          test_files = sorted(glob.glob("tests/**/*.py", recursive=True))
+          teff_manifest = build_test_effectiveness_manifest(
+              test_files=test_files, source_functions=manifest.functions
+          )
+          ledger = build_specification_ledger(
+              property_manifest=manifest,
+              teff_manifest=teff_manifest,
+              project_root=".",
+              py_files=py_files,
+              test_files=test_files,
+          )
+
+          n_funcs = len(ledger.functions)
+          mean_sigma = round(ledger.total_sigma / max(n_funcs, 1), 1)
+          spec_cov = round(ledger.specification_coverage, 2)
+          spec_cov_pct = round(spec_cov * 100)
+          regime_a = ledger.regime_distribution.get("A", 0)
+          regime_b = ledger.regime_distribution.get("B", 0)
+
+          print(f"\nSpecification metrics ({n_funcs} functions):")
+          print(f"  Mean σ: {mean_sigma}")
+          print(f"  Spec coverage (K/σ): {spec_cov}")
+          print(f"  Regime A: {regime_a}, B: {regime_b}")
+          print(f"  Mean testability: {round(ledger.mean_testability, 2)}")
+          print(f"  Stop criteria met: {ledger.stop_criteria_met_count}")
+
+          # ── Write to GITHUB_ENV ─────────────────────────────────────
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"PURE_COUNT={manifest.pure_count}\n")
+              fh.write(f"TOTAL_FUNCTIONS={total_funcs}\n")
+              fh.write(f"PURITY_PCT={purity_pct}\n")
+              fh.write(f"PROPERTIES_COUNT={props_total}\n")
+              fh.write(f"MEAN_SIGMA={mean_sigma}\n")
+              fh.write(f"SPEC_COVERAGE={spec_cov}\n")
+              fh.write(f"SPEC_COVERAGE_PCT={spec_cov_pct}\n")
+              fh.write(f"REGIME_A={regime_a}\n")
+              fh.write(f"REGIME_B={regime_b}\n")
+              fh.write(f"SPEC_FUNCTIONS={n_funcs}\n")
           PY
+
+      # ── Algebra badges ──────────────────────────────────────────────
 
       - name: Generate Purity Badge
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
-        id: badge_pure
         with:
           label: "Side-Effect-Free"
           status: "${{ env.PURE_COUNT }} / ${{ env.TOTAL_FUNCTIONS }} functions"
@@ -61,17 +109,43 @@ jobs:
 
       - name: Generate Property Badge
         uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
-        id: badge_prop
         with:
           label: "Algebraic Properties"
           status: "${{ env.PROPERTIES_COUNT }} detected"
           color: "blue"
           path: ".github/badges/properties.svg"
 
+      # ── Specification badges ────────────────────────────────────────
+
+      - name: "Generate σ̄ Badge"
+        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        with:
+          label: "Mean σ"
+          status: "${{ env.MEAN_SIGMA }} dimensions"
+          color: "8b5cf6"
+          path: ".github/badges/sigma.svg"
+
+      - name: Generate Spec Coverage Badge
+        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        with:
+          label: "Spec Coverage"
+          status: "${{ env.SPEC_COVERAGE_PCT }}%"
+          color: "0ea5e9"
+          path: ".github/badges/spec-coverage.svg"
+
+      - name: Generate Regime Badge
+        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        with:
+          label: "Regime"
+          status: "${{ env.REGIME_A }}A / ${{ env.REGIME_B }}B"
+          color: "f59e0b"
+          path: ".github/badges/regime.svg"
+
+      # ── Push all badges to badges branch ────────────────────────────
+
       - name: Push badges to badges branch
         run: |
-          cp .github/badges/purity.svg /tmp/purity.svg
-          cp .github/badges/properties.svg /tmp/properties.svg
+          cp .github/badges/*.svg /tmp/
           rm -rf .github/badges
 
           git config user.name "github-actions[bot]"
@@ -79,8 +153,7 @@ jobs:
           git fetch origin badges
           git checkout badges
           mkdir -p .github/badges
-          cp /tmp/purity.svg .github/badges/purity.svg
-          cp /tmp/properties.svg .github/badges/properties.svg
-          git add .github/badges/purity.svg .github/badges/properties.svg
-          git commit -m "Update algebra badges (${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)" || echo "No changes"
+          cp /tmp/*.svg .github/badges/
+          git add .github/badges/*.svg
+          git commit -m "Update spec badges (σ̄=${{ env.MEAN_SIGMA }}, K/σ=${{ env.SPEC_COVERAGE }}, ${{ env.PURE_COUNT }}/${{ env.TOTAL_FUNCTIONS }} pure, ${{ env.PROPERTIES_COUNT }} properties)" || echo "No changes"
           git push origin badges

@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 81 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 93 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 81 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 93 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
@@ -90,6 +90,15 @@ LintGate provides 81 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `analyze_test_strength` | Test assertion quality: vulnerability scores, semantic ratios, upgrade suggestions. |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind and strength. |
 | `run_property_tests` | Execute generated property tests for a function and capture counterexamples. |
+| `mutation_run_sampling` | Fast sampled mutation run — inline AST mutation sampling per semantic category. |
+| `mutation_run_full` | Deep exhaustive mutation profiling — full kill matrix for gateable results. |
+| `mutation_get_state` | View cached mutation state, survival rates, and coverage depth. |
+| `mutation_prescribe` | Deterministic prescriptions from mutation survival profiles. |
+| `mutation_decompose` | Find entangled functions from mutation data (mode: auto/static/dynamic). |
+| `mutation_refactor_loop` | Re-profile after test improvement — compute survival rate delta. |
+| `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles. |
+| `mutation_validate_tests` | Re-profile and compute per-category survival deltas after writing tests. |
+| `mutation_clear_state` | Clear stale mutation state when code has drifted significantly. |
 
 ### Reflect — check yourself before acting
 
@@ -203,6 +212,8 @@ All findings are informational unless corroborated by other channels. The struct
 
 ## Feedback Loops
 
+**Spec → Mutation → Convergence pipeline**: `spec_file_analyze` (diagnose σ, regime, phase) → `mutation_run_sampling` (fast per-category kill/survive) → `mutation_run_full` (exhaustive profiling + convergence + symmetry analysis) → `mutation_prescribe` (category → action) → `mutation_prescribe_tests` (pytest skeletons) → [write tests] → `mutation_validate_tests` (survival deltas) → `spec_gate_check` (stop criteria). Each tool's `next_actions` suggests the next step. The ledger accumulates ΔK across cycles for trajectory-aware phase detection. Purity-aware: pure functions skip STATE mutations. Tests loaded via AST-based test-impact mapping.
+
 **Prediction loop**: `prediction_register` (register prediction) → Bash command → `_check_predictions` (automatic on next tool event) → accuracy computed → modulates signal confidence after 5+ checked predictions. Accuracy > 70% softens signals; accuracy < 30% amplifies them.
 
 **Constraint loop**: Recurring pattern detected → `constraint_proposer` generates rule → `controlplane_agent_feedback` (accept/reject) → accepted constraints flow to `generate_context_patch` → `context_patch_review` → `context_patch_apply`.
@@ -235,4 +246,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 81). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 93). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

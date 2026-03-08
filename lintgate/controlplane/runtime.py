@@ -195,7 +195,7 @@ def _scoped_discover(event: SupervisionEvent) -> list[str]:
 
     Returns scoped file list when 1-5 .py files are in files_changed and
     all resolve to paths within the project root.  Falls back to full
-    canonical discovery otherwise.
+    canonical discovery with nested-subproject filtering otherwise.
     """
     import os
 
@@ -218,7 +218,35 @@ def _scoped_discover(event: SupervisionEvent) -> list[str]:
         if scoped:
             return scoped
 
-    return discover_project_files(event.project_root)
+    # Fallback: full canonical discovery with nested-subproject filtering (#69)
+    all_files = discover_project_files(event.project_root)
+    return _filter_nested_subprojects(all_files, event.project_root)
+
+
+def _filter_nested_subprojects(
+    files: list[str], project_root: str
+) -> list[str]:
+    """Remove files that belong to nested subprojects.
+
+    A nested subproject is a subdirectory (not the root itself) that
+    contains its own pyproject.toml or setup.py.  Same heuristic used
+    by test_analyzer._discover_test_files (#69).
+    """
+    import os
+
+    root = os.path.abspath(project_root)
+    filtered: list[str] = []
+    for f in files:
+        rel = os.path.relpath(f, root)
+        parts = rel.split(os.sep)[:-1]  # directory components only
+        if any(
+            os.path.exists(os.path.join(root, *parts[: i + 1], marker))
+            for i in range(len(parts))
+            for marker in ("pyproject.toml", "setup.py")
+        ):
+            continue
+        filtered.append(f)
+    return filtered
 
 
 def _discover_test_files(project_root: str) -> list[str]:

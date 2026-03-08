@@ -29,6 +29,9 @@ Domain modules:
 - gh_tools: project_organize_audit, project_organize_apply, project_wiki_sync, project_wiki_read
 - wiki_tools: wiki_materialize, wiki_status, wiki_publish_pages, wiki_check_links
 - specification_tools: spec_analyze, spec_prescribe, spec_composition, spec_gate_check
+- mutation_tools: mutation_run_sampling, mutation_run_full, mutation_get_state,
+                  mutation_prescribe, mutation_decompose, mutation_refactor_loop,
+                  mutation_prescribe_tests, mutation_validate_tests, mutation_clear_state
 - contract_tools: contract_audit
 """
 
@@ -45,6 +48,7 @@ from . import (
     habit_tools,
     lint_tools,
     model_tools,
+    mutation_tools,
     nsil_tools,
     onboarding_tools,
     performance_tools,
@@ -75,6 +79,7 @@ ALL_MODULES = [
     gh_tools,
     wiki_tools,
     specification_tools,
+    mutation_tools,
     contract_tools,
 ]
 

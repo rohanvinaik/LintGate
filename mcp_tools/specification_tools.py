@@ -16,6 +16,26 @@ _MAX_TOTAL_LINES = 500_000
 _SPEC_EXTRA_EXCLUDE = frozenset({"archive"})
 
 
+def _validate_file_in_project(project_root: str, file: str) -> str:
+    """Resolve *file* to an absolute path and verify it lives inside *project_root*.
+
+    Resolves symlinks and ``..`` components via ``os.path.realpath`` so that
+    path-traversal tricks like ``../../etc/passwd`` are caught.
+
+    Returns the resolved absolute path on success.
+    Raises ``ValueError`` if the resolved path escapes *project_root*.
+    """
+    full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+    resolved = os.path.realpath(full)
+    root_resolved = os.path.realpath(project_root)
+    # Append os.sep so that "/project-evil" doesn't match "/project".
+    if not resolved.startswith(root_resolved + os.sep) and resolved != root_resolved:
+        raise ValueError(
+            f"File path escapes project root: {file!r} resolves to {resolved}"
+        )
+    return resolved
+
+
 def _resolve_py_files(project_root: str, file: str | None) -> list[str] | dict[str, Any]:
     """Resolve file list: single file if specified, canonical discovery otherwise.
 
@@ -23,7 +43,10 @@ def _resolve_py_files(project_root: str, file: str | None) -> list[str] | dict[s
     The error dict should be returned directly to the caller.
     """
     if file:
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        try:
+            full = _validate_file_in_project(project_root, file)
+        except ValueError as exc:
+            return {"error": str(exc)}
         if not os.path.isfile(full):
             return {"error": f"File not found: {file}"}
         return [full]
@@ -220,9 +243,20 @@ def _impl_spec_prescribe(
 
     next_actions = [
         NextAction(
+            tool="mutation_run_sampling",
+            args={"path": path, "file": "<target_file>"},
+            reason="Empirically verify specification gaps via mutation analysis",
+        ),
+        NextAction(
             tool="spec_analyze",
             args={"path": path},
             reason="View full specification analysis",
+        ),
+        NextAction(
+            tool="generate_property_tests",
+            args={"path": path},
+            reason="Generate Hypothesis property tests for pure functions",
+            condition="if any prescribed functions are pure",
         ),
     ]
 
@@ -459,27 +493,38 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     def spec_file_analyze(
         path: str,
         file: str,
+        enrich: bool = True,
     ) -> str:
         """Single-file specification analysis — fast, resource-bounded.
 
         WHEN TO USE: To analyze specification complexity for one file at a time.
-        Faster than spec_analyze for interactive use. Builds manifests, call graph,
-        and ledger scoped to the single file.
+        Faster than spec_analyze for interactive use.
+
+        When enrich=True (default), builds property/test-effectiveness manifests
+        and call graph for full analysis including purity, risk scoring, and
+        assertion-based spec_level.
+
+        When enrich=False, uses pure AST analysis only (symbolic baseline).
+        No manifest dependencies — faster, but purity/risk/assertion data
+        are unavailable. Useful for quick structural overview.
 
         Returns per-function sigma, regime, phase, risk, testability, and design
         signals for all functions in the file.
 
         Example: spec_file_analyze(path="/my/project", file="utils.py")
+        Example: spec_file_analyze(path="/my/project", file="utils.py", enrich=False)
 
         Args:
             path: Project root path.
             file: Relative or absolute path to the Python file to analyze.
+            enrich: Build manifests for full analysis (default True).
+                Set False for AST-only symbolic baseline.
         """
         from lintgate.specification.file_analyzer import analyze_file
 
         project_root = helpers["_validate_project_root"](path)
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
-        result = analyze_file(full, project_root)
+        full = _validate_file_in_project(project_root, file)
+        result = analyze_file(full, project_root, enrich=enrich)
         output = result.to_dict()
         output["next_actions"] = serialize_next_actions(
             [
@@ -514,7 +559,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         from lintgate.specification.file_analyzer import analyze_file
 
         project_root = helpers["_validate_project_root"](path)
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        full = _validate_file_in_project(project_root, file)
         result = analyze_file(
             full,
             project_root,
@@ -524,6 +569,11 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         output = result.to_dict()
         output["next_actions"] = serialize_next_actions(
             [
+                NextAction(
+                    tool="mutation_run_sampling",
+                    args={"path": path, "file": file},
+                    reason="Run mutation sampling to empirically verify prescriptions",
+                ),
                 NextAction(
                     tool="spec_file_analyze",
                     args={"path": path, "file": file},
@@ -537,25 +587,34 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     def spec_project_rollup(
         path: str,
         use_cache: bool = True,
+        analyze_uncached: bool = False,
     ) -> str:
         """Project-wide specification rollup with file-level caching.
 
         WHEN TO USE: To get a high-level overview of specification health
         across the entire project. Aggregates per-file analysis into totals
         for sigma, regime/risk/phase distributions, and hotspot files.
-        Uses content-hash caching so unchanged files are not re-analyzed.
+
+        Default mode is cache-read-only: reads existing cache entries and
+        reports cache_misses for files not yet analyzed. Use
+        analyze_uncached=True to analyze missing files live (slower).
 
         Example: spec_project_rollup(path="/my/project")
-        Example: spec_project_rollup(path="/my/project", use_cache=False)
+        Example: spec_project_rollup(path="/my/project", analyze_uncached=True)
 
         Args:
             path: Project root path.
             use_cache: Use file-level content-hash caching (default True).
+            analyze_uncached: Analyze files with no cache entry (default False).
         """
         from lintgate.specification.project_rollup import rollup_project
 
         project_root = helpers["_validate_project_root"](path)
-        rollup = rollup_project(project_root, use_cache=use_cache)
+        rollup = rollup_project(
+            project_root,
+            use_cache=use_cache,
+            analyze_uncached=analyze_uncached,
+        )
         output = rollup.to_dict()
         output["next_actions"] = serialize_next_actions(
             [

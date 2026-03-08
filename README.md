@@ -10,6 +10,9 @@
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Side-Effect-Free](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/purity.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
 [![Algebraic Properties](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/properties.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
+[![Mean σ](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/sigma.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
+[![Spec Coverage](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/spec-coverage.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
+[![Regime](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/regime.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
 [![Benchmark](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml)
 <!-- lintgate:quality-badges:end -->
 
@@ -242,7 +245,7 @@ The theory is exploratory and instrumented. We evaluate by operational usefulnes
 
 ---
 
-*84 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
+*93 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
 
 *Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
 

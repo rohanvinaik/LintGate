@@ -4,7 +4,7 @@
 
 This audit evaluates the **current active implementation** (not archived legacy mutation runtime) against:
 
-1. `/Users/rohanvinaik/Desktop/Specification_Complexity_Paper/specification_complexity_paper.md`
+1. The Specification Complexity paper (`specification_complexity_paper.md`)
 2. `docs/mutation/mutation-theory.md`
 
 Goal: identify why analysis can become computationally explosive and what to change to make the system practical, single-file-first, and theory-aligned.

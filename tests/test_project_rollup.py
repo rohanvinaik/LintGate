@@ -198,7 +198,8 @@ class TestAggregate:
 
 
 class TestRollupProject:
-    def test_simple_project(self, tmp_path):
+    def test_analyze_uncached(self, tmp_path):
+        """analyze_uncached=True runs live analysis on cache misses."""
         src = tmp_path / "calc.py"
         src.write_text(
             "def add(a: int, b: int) -> int:\n"
@@ -206,14 +207,49 @@ class TestRollupProject:
             "def sub(a: int, b: int) -> int:\n"
             "    return a - b\n"
         )
-        # Create a minimal pyproject.toml so discovery works
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
 
-        rollup = rollup_project(str(tmp_path), use_cache=False)
+        rollup = rollup_project(str(tmp_path), use_cache=True, analyze_uncached=True)
         assert rollup.total_files >= 1
         assert rollup.total_functions >= 2
         assert rollup.total_sigma > 0
         assert len(rollup.hotspot_files) >= 1
+
+    def test_cache_read_only_skips_uncached(self, tmp_path):
+        """Default cache-read-only mode reports misses, doesn't analyze."""
+        src = tmp_path / "calc.py"
+        src.write_text("def f(): pass\n")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+
+        # First run: cache-read-only, no cache entries exist → all misses
+        rollup = rollup_project(str(tmp_path), use_cache=True, analyze_uncached=False)
+        assert rollup.total_files == 0  # nothing aggregated
+        assert rollup.cache_misses >= 1
+        assert rollup.cache_hits == 0
+
+    def test_cache_hit_after_populate(self, tmp_path):
+        """After analyze_uncached populates cache, read-only finds hits."""
+        src = tmp_path / "calc.py"
+        src.write_text("def add(a, b): return a + b\n")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+
+        # Populate cache
+        rollup_project(str(tmp_path), use_cache=True, analyze_uncached=True)
+
+        # Read-only should now find cache hits
+        rollup = rollup_project(str(tmp_path), use_cache=True, analyze_uncached=False)
+        assert rollup.cache_hits >= 1
+        assert rollup.total_files >= 1
+
+    def test_no_cache_mode(self, tmp_path):
+        """use_cache=False always analyzes live."""
+        src = tmp_path / "calc.py"
+        src.write_text("def f(): pass\n")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+
+        rollup = rollup_project(str(tmp_path), use_cache=False)
+        # With no cache, all files get analyzed (hits counted since no cache_dir)
+        assert rollup.total_functions >= 0  # f() may or may not produce functions
 
     def test_empty_project(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")

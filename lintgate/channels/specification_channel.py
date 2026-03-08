@@ -66,6 +66,7 @@ class SpecificationChannel:
         from lintgate.specification.composition import analyze_composition
         from lintgate.specification.ledger import (
             build_specification_ledger,
+            load_cached_ledger,
             save_cached_ledger,
         )
         from lintgate.state import SPEC_CACHE_DIR
@@ -74,20 +75,27 @@ class SpecificationChannel:
         test_files = [f for f in py_files if _is_test_file(f)]
         source_files = [f for f in py_files if not _is_test_file(f)]
 
+        # Build call graph first so fan-in/fan-out flows into the ledger
+        call_graph = None
+        if source_files:
+            call_graph = build_cross_module_call_graph(source_files, event.project_root)
+
         project_hash = hashlib.sha256(event.project_root.encode()).hexdigest()[:16]
+        prior_ledger = load_cached_ledger(SPEC_CACHE_DIR, project_hash)
         ledger = build_specification_ledger(
             prop_manifest,
             teff_manifest,
             event.project_root,
             py_files=py_files,
             test_files=test_files,
+            call_graph=call_graph,
+            prior_ledger=prior_ledger,
         )
         save_cached_ledger(SPEC_CACHE_DIR, project_hash, ledger)
 
-        # Build composition analysis
+        # Composition analysis reuses the same call graph
         comp_result = None
-        if source_files:
-            call_graph = build_cross_module_call_graph(source_files, event.project_root)
+        if call_graph is not None:
             comp_result = analyze_composition(call_graph, ledger)
 
         findings = _emit_findings(ledger, event.project_root)
@@ -308,7 +316,9 @@ def _is_test_file(filepath: str) -> bool:
     return base.startswith("test_") or base.endswith("_test.py")
 
 
-def _build_metrics(ledger: SpecificationLedger, comp_result: CompositionResult | None = None) -> dict:
+def _build_metrics(
+    ledger: SpecificationLedger, comp_result: CompositionResult | None = None
+) -> dict:
     spec_func_list = {}
     for key, fs in ledger.functions.items():
         spec_func_list[key] = {

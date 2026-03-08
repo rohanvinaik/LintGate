@@ -89,7 +89,7 @@ def compute_composition_edge(
         callee=callee_key,
         gamma=round(gamma, 3),
         integration_surface=surface,
-        interface_mutant_count=_count_interface_mutation_points(surface),
+        interface_mutant_count=_count_interface_mutation_points(surface, spec_level),
         specification_independent=spec_independent,
     )
 
@@ -176,13 +176,22 @@ class CompositionResult:
         }
 
 
-def _count_interface_mutation_points(surface: IntegrationSurface) -> int:
-    """Count distinct interface mutation points from surface metrics.
+def _count_interface_mutation_points(
+    surface: IntegrationSurface,
+    callee_spec_level: float = 0.0,
+) -> int:
+    """Count distinct interface mutation points weighted by callee uncertainty.
 
     Categories:
     - Value mutations: each parameter can receive a wrong value.
     - Swap mutations: parameter pairs that could be transposed.
     - State mutations: shared mutable state adds coupling failure modes.
+
+    Callee uncertainty weighting: a well-specified callee (high spec_level)
+    reduces effective mutation points because its behavior is already
+    characterized — fewer interface mutations can go undetected.
+    Raw count is scaled by (1 - callee_spec_level), with a floor of 1
+    when any mutation points exist.
     """
     n = surface.callee_param_count
 
@@ -195,7 +204,13 @@ def _count_interface_mutation_points(surface: IntegrationSurface) -> int:
     # State mutations: shared mutable state adds pre/post-state coupling
     state_mutations = 2 if surface.shared_mutable_state else 0
 
-    return value_mutations + swap_mutations + state_mutations
+    raw = value_mutations + swap_mutations + state_mutations
+    if raw == 0:
+        return 0
+
+    # Callee uncertainty weighting: well-specified callees reduce effective count
+    uncertainty = max(1.0 - callee_spec_level, 0.0)
+    return max(1, round(raw * uncertainty))
 
 
 def _get_param_count(spec: FunctionSpecification | None) -> int:

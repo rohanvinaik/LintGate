@@ -138,10 +138,10 @@ class TestMCPToolCount:
         )
         assert "$TOOL_COUNT tools by cognitive mode" in integrate
 
-    def test_mcp_tool_count_is_83(self):
-        """Sanity check: we currently have 84 MCP tools."""
+    def test_mcp_tool_count_is_93(self):
+        """Sanity check: we currently have 93 MCP tools."""
         actual = _count_mcp_tools()
-        assert actual == 84, f"Expected 84 MCP tools, got {actual}"
+        assert actual == 93, f"Expected 93 MCP tools, got {actual}"
 
     def test_reference_md_lists_all_tools(self):
         """docs/reference.md tool tables should list all MCP tools."""

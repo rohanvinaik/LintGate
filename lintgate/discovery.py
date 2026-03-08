@@ -101,6 +101,13 @@ def discover_project_files(
     if files is None:
         # git not available or not a git repo — fall back to os.walk
         files = _walk_discover(project_root, suffix, extra_exclude_dirs)
+    elif extra_exclude_dirs:
+        # git ls-files doesn't know about extra_exclude_dirs — post-filter
+        files = [
+            f
+            for f in files
+            if not _path_contains_excluded_dir(f, project_root, extra_exclude_dirs)
+        ]
 
     # Apply source_paths constraint
     if source_paths:
@@ -140,6 +147,20 @@ def discover_project_files(
         files = files[:limit]
 
     return files
+
+
+def _path_contains_excluded_dir(
+    filepath: str, project_root: str, exclude_dirs: frozenset[str]
+) -> bool:
+    """Return True if any component of the relative path is in *exclude_dirs*.
+
+    Used to post-filter git ls-files results against extra_exclude_dirs,
+    since git discovery doesn't know about project-level exclusion sets.
+    """
+    rel = os.path.relpath(filepath, project_root)
+    parts = rel.split(os.sep)
+    # Check directory components only (exclude the filename itself)
+    return any(part in exclude_dirs for part in parts[:-1])
 
 
 def _git_discover(project_root: str, suffix: str) -> list[str] | None:

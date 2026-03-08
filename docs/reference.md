@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 84 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 93 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (74)
+## MCP Tools (93)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -132,6 +132,28 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `nsil_export_training_data`| Export collected alignment and compliance data for model fine-tuning |
 | `nsil_benchmark`           | Run NSIL enforcement benchmarks                                     |
 
+### Mutation Testing
+
+| Tool                       | Purpose                                                              |
+| -------------------------- | -------------------------------------------------------------------- |
+| `mutation_run_sampling`    | Fast sampled mutation run — inline AST mutation sampling per semantic category |
+| `mutation_run_full`        | Deep exhaustive mutation profiling — full kill matrix for gateable results |
+| `mutation_get_state`       | View cached mutation state, survival rates, and coverage depth       |
+| `mutation_prescribe`       | Deterministic prescriptions from mutation survival profiles          |
+| `mutation_decompose`       | Find entangled functions from mutation data (mode: auto/static/dynamic) |
+| `mutation_refactor_loop`   | Re-profile after test improvement — compute survival rate delta      |
+| `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles              |
+| `mutation_validate_tests`  | Re-profile and compute per-category survival deltas after writing tests |
+| `mutation_clear_state`     | Clear stale mutation state when code has drifted significantly       |
+
+**Pipeline integration**: Mutation tools compose with specification tools in a closed loop. Start with `spec_file_analyze` to identify under-specified functions (σ > assertion_count), then use `mutation_run_sampling` or `mutation_run_full` to profile which mutation categories survive. `mutation_run_full` automatically runs convergence analysis (greedy convergence, Thm 3.2) and symmetry-based regime classification (Thm 4.1) — results appear in the `analysis` field. Follow with `mutation_prescribe` → `mutation_prescribe_tests` → [write tests] → `mutation_validate_tests` → `spec_gate_check` to close the loop. Each tool's `next_actions` output suggests the next step.
+
+**Purity-aware filtering**: Mutation tools auto-detect function purity via the algebra pipeline. Pure functions skip STATE mutations (no side effects to test). The `is_pure` field in results confirms the classification.
+
+**Test-impact mapping**: Tests are loaded dynamically via AST-based test-impact analysis — `build_test_impact_map` maps source functions to test functions, then `load_test_callables` imports them at runtime. Results reflect actual test kill power, not theoretical coverage.
+
+**Cross-run trajectory**: The specification ledger accumulates ΔK (specification deltas) across mutation→validate cycles. Repeated loops build convergence history that drives phase detection (bulk → transition → tail → complete).
+
 ### Convergence Analysis
 
 | Tool                      | Purpose                                                              |
@@ -146,10 +168,10 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | ------------------- | ------------------------------------------------------------------------ |
 | `spec_analyze`      | Specification complexity analysis (sigma, regime, phase, risk, DFT)      |
 | `spec_prescribe`    | Risk-prioritized test prescriptions with expanded taxonomy               |
-| `spec_file_analyze` | Single-file specification analysis — fast, resource-bounded              |
+| `spec_file_analyze` | Single-file spec analysis. `enrich=False` for AST-only symbolic baseline; default builds full manifests. Returns regime rationale + trajectory state. |
 | `spec_file_prescribe` | Single-file test prescriptions — risk-prioritized for one file         |
-| `spec_project_rollup` | Project-wide specification rollup with file-level caching              |
-| `spec_composition`  | Composition gap and sheaf condition analysis across modules              |
+| `spec_project_rollup` | Project-wide specification rollup with file-level caching. Default cache-read-only; `analyze_uncached=True` for live analysis. |
+| `spec_composition`  | Composition gap (γ) and sheaf condition analysis with callee-uncertainty-weighted interface mutation points |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
 
 ### Refactor Checkpointing
@@ -309,7 +331,7 @@ lintgate/
 │   ├── controlplane/                # Supervision mesh + behavioral compass
 │   └── channels/                    # 6 independent analysis channels
 ├── mcp_server.py                    # MCP bootstrap
-├── mcp_tools/                       # 73 MCP tool definitions (incl. convergence_tools.py, habit_tools.py, compass_tools.py, bootstrap_tools.py)
+├── mcp_tools/                       # 93 MCP tool definitions (incl. mutation_tools.py, convergence_tools.py, habit_tools.py, compass_tools.py, bootstrap_tools.py)
 ├── tests/                           # 2,180+ tests
 ├── docs/
 │   ├── design.md                    # Full architecture + economics + philosophy
@@ -357,7 +379,7 @@ Configure in `~/.mcp.json` (or project-level `.mcp.json`):
 }
 ```
 
-The hook fires automatically on every code change. The MCP server provides 82 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
+The hook fires automatically on every code change. The MCP server provides 93 on-demand tools. Both use the same venv — always point to the venv binaries, not system Python.
 
 ### Agent Integration
 

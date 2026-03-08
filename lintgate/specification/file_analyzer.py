@@ -49,6 +49,7 @@ def analyze_file(
     project_root: str,
     include_prescriptions: bool = False,
     max_prescriptions: int = 10,
+    enrich: bool = True,
 ) -> FileSpecResult:
     """Analyze specification complexity for a single Python file.
 
@@ -57,6 +58,9 @@ def analyze_file(
         project_root: Project root for import/key resolution.
         include_prescriptions: Whether to generate test prescriptions.
         max_prescriptions: Max prescriptions per function.
+        enrich: If True (default), build property/test-effectiveness manifests
+            and call graph for full analysis. If False, use pure AST analysis
+            only (symbolic baseline — no manifest dependencies).
 
     Returns:
         FileSpecResult with per-function spec data.
@@ -75,7 +79,11 @@ def analyze_file(
         return result
 
     try:
-        return _do_analyze(file_path, project_root, include_prescriptions, max_prescriptions, result)
+        if enrich:
+            return _do_analyze(
+                file_path, project_root, include_prescriptions, max_prescriptions, result
+            )
+        return _do_analyze_symbolic(file_path, project_root, result)
     except Exception as e:
         result.error = f"Analysis failed: {e}"
         return result
@@ -98,12 +106,20 @@ def _do_analyze(
 
     # Build manifests scoped to this single file
     prop_manifest = build_manifest(project_root, py_files)
-    teff_manifest = build_test_effectiveness_manifest(project_root, py_files)
+    # Scope test discovery to files relevant to this source file
+    # instead of triggering full-project test discovery.
+    scoped_test_files = _discover_relevant_test_files(file_path, project_root)
+    teff_manifest = build_test_effectiveness_manifest(
+        project_root, py_files, test_files=scoped_test_files
+    )
     call_graph = build_cross_module_call_graph(py_files, project_root)
 
     ledger = build_specification_ledger(
-        prop_manifest, teff_manifest, project_root,
-        py_files=py_files, call_graph=call_graph,
+        prop_manifest,
+        teff_manifest,
+        project_root,
+        py_files=py_files,
+        call_graph=call_graph,
     )
 
     if not ledger.functions:
@@ -116,6 +132,7 @@ def _do_analyze(
             "sigma": fs.core.estimated_sigma,
             "sigma_confidence": round(fs.core.sigma_confidence, 3),
             "regime": fs.core.regime,
+            "regime_rationale": fs.core.regime_rationale,
             "specification_level": round(fs.core.specification_level, 3),
             "phase": fs.core.phase,
             "is_pure": fs.core.is_pure,
@@ -149,15 +166,17 @@ def _do_analyze(
         for _key, fs in ledger.functions.items():
             rxs = prescribe(fs, max_prescriptions=max_prescriptions)
             for rx in rxs:
-                result.prescriptions.append({
-                    "function": rx.function_key,
-                    "kind": rx.prescription_kind,
-                    "description": rx.description,
-                    "info_gain": round(rx.estimated_info_gain, 3),
-                    "priority_band": rx.priority_band,
-                    "uncovered_dimension": rx.uncovered_dimension,
-                    "suggested_assertion": rx.suggested_assertion,
-                })
+                result.prescriptions.append(
+                    {
+                        "function": rx.function_key,
+                        "kind": rx.prescription_kind,
+                        "description": rx.description,
+                        "info_gain": round(rx.estimated_info_gain, 3),
+                        "priority_band": rx.priority_band,
+                        "uncovered_dimension": rx.uncovered_dimension,
+                        "suggested_assertion": rx.suggested_assertion,
+                    }
+                )
 
         band_order = {"P0": 0, "P1": 1, "P2": 2}
         result.prescriptions.sort(
@@ -165,3 +184,145 @@ def _do_analyze(
         )
 
     return result
+
+
+def _do_analyze_symbolic(
+    file_path: str,
+    project_root: str,
+    result: FileSpecResult,
+) -> FileSpecResult:
+    """Symbolic-only analysis — pure AST, no manifest dependencies.
+
+    Parses the file, walks top-level and class-level function defs,
+    runs the predictor with default PredictorInput (no purity, no
+    semantic_ratio, no assertion_count). Produces baseline sigma,
+    regime, phase, and testability from AST structure alone.
+    """
+    import ast
+
+    from lintgate.keys import canonical_function_key
+    from lintgate.specification.predictor import PredictorInput, predict
+
+    with open(file_path, encoding="utf-8") as fh:
+        source = fh.read()
+    tree = ast.parse(source, filename=file_path)
+
+    rel_path = os.path.relpath(file_path, project_root)
+    default_input = PredictorInput()
+
+    total_spec = 0.0
+    for qualname, node in _walk_functions(tree):
+        func_key = canonical_function_key(rel_path, qualname)
+        pred = predict(node, default_input)
+
+        result.functions[func_key] = {
+            "sigma": pred.sigma,
+            "sigma_confidence": round(pred.sigma_confidence, 3),
+            "regime": pred.regime,
+            "regime_rationale": pred.regime_rationale,
+            "specification_level": round(pred.spec_level, 3),
+            "phase": pred.phase,
+            "is_pure": False,  # unknown without manifests
+            "risk_score": 0.0,  # no risk model without manifests
+            "priority_band": "P2",
+            "testability_score": round(pred.testability.testability_score, 3),
+            "design_signals": {
+                "boundary_points": pred.design_signals.boundary_points,
+                "equivalence_partitions": pred.design_signals.equivalence_partitions,
+                "decision_rule_count": pred.design_signals.decision_rule_count,
+                "predicate_effect_links": pred.design_signals.predicate_effect_links,
+            },
+            "trajectory": {
+                "convergence_rate": pred.trajectory.convergence_rate,
+                "estimated_remaining": pred.trajectory.estimated_remaining,
+            },
+            "optimization_hints": [],
+            "stop_criteria_met": False,
+        }
+        result.total_sigma += pred.sigma
+        total_spec += pred.spec_level
+
+        regime = pred.regime
+        result.regime_distribution[regime] = result.regime_distribution.get(regime, 0) + 1
+        result.risk_distribution["P2"] = result.risk_distribution.get("P2", 0) + 1
+
+    if result.functions:
+        result.mean_spec_level = total_spec / len(result.functions)
+
+    return result
+
+
+def _discover_relevant_test_files(
+    file_path: str, project_root: str
+) -> list[str]:
+    """Discover test files relevant to a single source file.
+
+    Strategy:
+    1. Look for conventional test file names (test_<module>.py) in the
+       project's test directories.
+    2. If no conventional matches found, return an empty list so that
+       build_test_effectiveness_manifest gets an explicit empty set
+       rather than falling through to full-project discovery.
+
+    This avoids triggering full-project test discovery for single-file
+    analysis, which is wasteful and slow on large projects.
+    """
+    basename = os.path.basename(file_path)
+    module_name = basename.removesuffix(".py")
+
+    # Candidate test file names for this module
+    candidates = {
+        f"test_{module_name}.py",
+        f"{module_name}_test.py",
+    }
+
+    # Search common test locations
+    test_dirs = ["tests", "test", "."]
+    found: list[str] = []
+    root = os.path.abspath(project_root)
+
+    for test_dir in test_dirs:
+        search_root = os.path.join(root, test_dir) if test_dir != "." else root
+        if not os.path.isdir(search_root):
+            continue
+        for dirpath, dirnames, filenames in os.walk(search_root):
+            # Skip hidden and cache dirs
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d != "__pycache__"
+            ]
+            for fname in filenames:
+                if fname in candidates:
+                    found.append(os.path.join(dirpath, fname))
+
+    return found
+
+
+def _walk_functions(
+    tree: Any,
+) -> list[tuple[str, Any]]:
+    """Walk AST and yield (qualname, node) for every function/method.
+
+    Builds qualified names so that A.process and B.process produce
+    distinct keys ("A.process" vs "B.process") instead of both
+    collapsing to "process".
+    """
+    results: list[tuple[str, Any]] = []
+    _walk_scope(tree, "", results)
+    return results
+
+
+def _walk_scope(scope: Any, prefix: str, out: list[tuple[str, Any]]) -> None:
+    """Recursively walk a scope (module or class) collecting functions."""
+    import ast
+
+    for node in getattr(scope, "body", []):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            qualname = f"{prefix}{node.name}" if prefix else node.name
+            out.append((qualname, node))
+            # Recurse into function body to discover nested/inner functions
+            func_prefix = f"{qualname}.<locals>."
+            _walk_scope(node, func_prefix, out)
+        elif isinstance(node, ast.ClassDef):
+            class_prefix = f"{prefix}{node.name}." if prefix else f"{node.name}."
+            _walk_scope(node, class_prefix, out)
