@@ -4,7 +4,7 @@ required_checks:
   - "Tests (3.11)"
   - "Tests (3.12)"
   - "Qlty"
-  # "SonarQube Cloud Scan" — temporarily non-blocking (check never reports on PRs)
+  - "SonarQube Cloud Scan"
 
 ci_workflows:
   - ".github/workflows/tests.yml"

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _STATE_FILE = "scheduler_state.json"
+_FLOAT_ZERO_EPS = 1e-12
 
 
 @dataclass
@@ -133,7 +134,7 @@ class MutationScheduler:
             return
 
         # Auto-promote logic
-        if survival_rate == 0.0 and not budget_exhausted:
+        if survival_rate <= _FLOAT_ZERO_EPS and not budget_exhausted:
             # Fully killed — no need to profile
             return
 
