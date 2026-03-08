@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .mutation_engine import ProfilingResult
 
+_FLOAT_ZERO_EPS = 1e-12
+
 
 @dataclass
 class ConvergenceStep:
@@ -115,7 +117,7 @@ def analyze_convergence(
         return ConvergenceResult(
             function_key=profiling_result.function_key,
             sigma=sigma,
-            is_fully_specified=profiling_result.survival_rate == 0.0,
+            is_fully_specified=profiling_result.survival_rate <= _FLOAT_ZERO_EPS,
         )
 
     # Determine test order

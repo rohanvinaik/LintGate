@@ -193,7 +193,7 @@ class _ValueMutator(_BaseMutator):
         if isinstance(v, int):
             return ast.Constant(value=0 if v != 0 else 1)
         if isinstance(v, float):
-            return ast.Constant(value=0.0 if v != 0.0 else 1.0)
+            return ast.Constant(value=0.0 if v else 1.0)
         if isinstance(v, str):
             return ast.Constant(value="" if v else "mutated")
         return node
