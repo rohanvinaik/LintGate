@@ -245,8 +245,8 @@ def _impl_spec_composition(
     ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest)
     call_graph = build_cross_module_call_graph(py_files, project_root)
 
-    result = analyze_composition(call_graph, ledger)
-    output = result.to_dict()
+    composition = analyze_composition(call_graph, ledger)
+    output = composition.to_dict()
 
     # Filter by module if requested
     if module_a or module_b:
