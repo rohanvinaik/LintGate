@@ -241,7 +241,7 @@ def _filter_nested_subprojects(
         parts = rel.split(os.sep)[:-1]  # directory components only
         if any(
             os.path.exists(os.path.join(root, *parts[: i + 1], marker))
-            for i in range(1, len(parts))
+            for i in range(len(parts))
             for marker in ("pyproject.toml", "setup.py")
         ):
             continue
