@@ -1,6 +1,8 @@
 name: SonarQube Cloud Analysis
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_run:
     workflows: ["Tests"]
     types: [completed]
@@ -22,6 +24,7 @@ jobs:
     # Only run when Tests succeeded (or on manual dispatch)
     if: >
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
       github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Check for SONAR_TOKEN
@@ -45,8 +48,32 @@ jobs:
           # For workflow_run, checkout the commit that triggered Tests
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Set up Python for PR coverage
+        if: steps.check_token.outputs.has_token == 'true' && github.event_name == 'pull_request'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies for PR coverage
+        if: steps.check_token.outputs.has_token == 'true' && github.event_name == 'pull_request'
+        run: |
+          python -m pip install --upgrade pip==25.0.1
+          python -m pip install -e ".[dev]" 2>/dev/null \
+            || python -m pip install -e "." 2>/dev/null \
+            || python -m pip install pytest
+          python -m pip install pytest-cov
+
+      - name: Build coverage report for PR Sonar scan
+        if: steps.check_token.outputs.has_token == 'true' && github.event_name == 'pull_request'
+        run: |
+          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi
+          python -m pytest "$TEST_DIR" \
+            --cov=lintgate --cov=mcp_tools --cov-config=.coveragerc \
+            --cov-report=xml:coverage.xml --cov-report=term:skip-covered \
+            --tb=short -q
+
       - name: Download coverage artifact from Tests
-        if: steps.check_token.outputs.has_token == 'true' && github.event_name != 'workflow_dispatch'
+        if: steps.check_token.outputs.has_token == 'true' && github.event_name == 'workflow_run'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: coverage-report-3.12
@@ -58,23 +85,31 @@ jobs:
         if: steps.check_token.outputs.has_token == 'true'
         id: pr_context
         run: |
-          # Extract PR info from the workflow_run event (if triggered by a PR)
-          PR_COUNT='${{ toJSON(github.event.workflow_run.pull_requests) }}'
-          if [ "$PR_COUNT" != "null" ] && [ "$PR_COUNT" != "[]" ]; then
-            PR_NUMBER=$(echo "$PR_COUNT" | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['number'])" 2>/dev/null || echo "")
-            PR_BRANCH='${{ github.event.workflow_run.head_branch }}'
-            PR_BASE=$(echo "$PR_COUNT" | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['base']['ref'])" 2>/dev/null || echo "main")
-            if [ -n "$PR_NUMBER" ]; then
-              echo "is_pr=true" >> "$GITHUB_OUTPUT"
-              echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-              echo "pr_branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
-              echo "pr_base=$PR_BASE" >> "$GITHUB_OUTPUT"
-              echo "Detected PR #$PR_NUMBER: $PR_BRANCH -> $PR_BASE"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "is_pr=true" >> "$GITHUB_OUTPUT"
+            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "pr_branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+            echo "pr_base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+            echo "Detected PR #${{ github.event.pull_request.number }}: ${{ github.head_ref }} -> ${{ github.base_ref }}"
+          else
+            # Extract PR info from the workflow_run event (if triggered by a PR)
+            PR_COUNT='${{ toJSON(github.event.workflow_run.pull_requests) }}'
+            if [ "$PR_COUNT" != "null" ] && [ "$PR_COUNT" != "[]" ]; then
+              PR_NUMBER=$(echo "$PR_COUNT" | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['number'])" 2>/dev/null || echo "")
+              PR_BRANCH='${{ github.event.workflow_run.head_branch }}'
+              PR_BASE=$(echo "$PR_COUNT" | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['base']['ref'])" 2>/dev/null || echo "main")
+              if [ -n "$PR_NUMBER" ]; then
+                echo "is_pr=true" >> "$GITHUB_OUTPUT"
+                echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+                echo "pr_branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+                echo "pr_base=$PR_BASE" >> "$GITHUB_OUTPUT"
+                echo "Detected PR #$PR_NUMBER: $PR_BRANCH -> $PR_BASE"
+              else
+                echo "is_pr=false" >> "$GITHUB_OUTPUT"
+              fi
             else
               echo "is_pr=false" >> "$GITHUB_OUTPUT"
             fi
-          else
-            echo "is_pr=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: SonarQube Cloud Scan
