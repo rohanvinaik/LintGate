@@ -262,58 +262,73 @@ def _run_cross_channel_coherence(channel_results: list[ChannelResult]) -> None:
     import contextlib
 
     with contextlib.suppress(Exception):
-        from .cross_channel import cross_channel_coherence
+        _append_coherence_channel(channel_results)
 
-        coh_findings = cross_channel_coherence(channel_results)
-        if coh_findings:
-            sev_order = {"blocking": 3, "warning": 2, "informational": 1, "none": 0}
-            has_actionable = any(
-                f.severity in ("blocking", "warning") for f in coh_findings
-            )
-            worst_sev: str = max(
-                (f.severity for f in coh_findings),
-                key=lambda s: sev_order.get(s, 0),
-            )
-            channel_results.append(
-                ChannelResult(
-                    channel="coherence",
-                    status="fail" if has_actionable else "pass",
-                    severity=worst_sev,  # type: ignore[arg-type]
-                    findings=coh_findings,
-                    metrics={"cross_channel_findings": len(coh_findings)},
-                    duration_ms=0,
-                )
-            )
+    with contextlib.suppress(Exception):
+        _attach_convergence_metrics(channel_results)
 
-        with contextlib.suppress(Exception):
-            from lintgate.convergence.integration import (
-                convergence_to_metrics,
-                extract_all_evidence,
-            )
+    with contextlib.suppress(Exception):
+        _attach_file_convergence_metrics(channel_results)
 
-            convergence_results = extract_all_evidence(channel_results)
-            if convergence_results:
-                for cr in channel_results:
-                    if cr.channel == "coherence":
-                        cr.metrics["convergence"] = convergence_to_metrics(
-                            convergence_results
-                        )
-                        break
 
-        with contextlib.suppress(Exception):
-            from lintgate.convergence.integration import (
-                extract_file_evidence,
-                file_convergence_to_metrics,
-            )
+def _append_coherence_channel(channel_results: list[ChannelResult]) -> None:
+    """Build and append the coherence synthetic channel result."""
+    from .cross_channel import cross_channel_coherence
 
-            file_conv = extract_file_evidence(channel_results)
-            if file_conv:
-                for cr in channel_results:
-                    if cr.channel == "structure":
-                        cr.metrics["file_convergence"] = file_convergence_to_metrics(
-                            file_conv
-                        )
-                        break
+    coh_findings = cross_channel_coherence(channel_results)
+    if not coh_findings:
+        return
+
+    sev_order = {"blocking": 3, "warning": 2, "informational": 1, "none": 0}
+    has_actionable = any(
+        f.severity in ("blocking", "warning") for f in coh_findings
+    )
+    worst_sev: str = max(
+        (f.severity for f in coh_findings),
+        key=lambda s: sev_order.get(s, 0),
+    )
+    channel_results.append(
+        ChannelResult(
+            channel="coherence",
+            status="fail" if has_actionable else "pass",
+            severity=worst_sev,  # type: ignore[arg-type]
+            findings=coh_findings,
+            metrics={"cross_channel_findings": len(coh_findings)},
+            duration_ms=0,
+        )
+    )
+
+
+def _attach_convergence_metrics(channel_results: list[ChannelResult]) -> None:
+    """Attach function-level convergence metrics to the coherence channel."""
+    from lintgate.convergence.integration import (
+        convergence_to_metrics,
+        extract_all_evidence,
+    )
+
+    convergence_results = extract_all_evidence(channel_results)
+    if not convergence_results:
+        return
+    for cr in channel_results:
+        if cr.channel == "coherence":
+            cr.metrics["convergence"] = convergence_to_metrics(convergence_results)
+            break
+
+
+def _attach_file_convergence_metrics(channel_results: list[ChannelResult]) -> None:
+    """Attach file-level convergence metrics to the structure channel."""
+    from lintgate.convergence.integration import (
+        extract_file_evidence,
+        file_convergence_to_metrics,
+    )
+
+    file_conv = extract_file_evidence(channel_results)
+    if not file_conv:
+        return
+    for cr in channel_results:
+        if cr.channel == "structure":
+            cr.metrics["file_convergence"] = file_convergence_to_metrics(file_conv)
+            break
 
 
 def _compute_final_coherence(

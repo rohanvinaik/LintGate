@@ -228,7 +228,7 @@ def reconcile_with_coverage(
     manifest: TestEffectivenessManifest, coverage_data: dict[str, Any]
 ) -> dict[str, Any]:
     """Reconcile test effectiveness manifest with coverage data."""
-    report = {
+    report: dict[str, Any] = {
         "high_coverage_low_semantic": [],
         "low_coverage_high_semantic": [],
         "coverage_source": "json",
