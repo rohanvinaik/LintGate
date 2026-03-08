@@ -45,7 +45,7 @@ jobs:
 
       - name: Store benchmark results
         if: steps.run_benchmarks.outputs.skip != 'true' && github.ref == 'refs/heads/main'
-        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1
+        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1
         with:
           name: Performance Benchmarks
           tool: 'pytest'
