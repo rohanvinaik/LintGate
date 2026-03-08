@@ -481,13 +481,15 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         full = os.path.join(project_root, file) if not os.path.isabs(file) else file
         result = analyze_file(full, project_root)
         output = result.to_dict()
-        output["next_actions"] = serialize_next_actions([
-            NextAction(
-                tool="spec_file_prescribe",
-                args={"path": path, "file": file},
-                reason="Get test prescriptions for this file",
-            ),
-        ])
+        output["next_actions"] = serialize_next_actions(
+            [
+                NextAction(
+                    tool="spec_file_prescribe",
+                    args={"path": path, "file": file},
+                    reason="Get test prescriptions for this file",
+                ),
+            ]
+        )
         return helpers["_json_dumps"](output, output_mode="compact")
 
     @mcp.tool()
@@ -514,18 +516,61 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         project_root = helpers["_validate_project_root"](path)
         full = os.path.join(project_root, file) if not os.path.isabs(file) else file
         result = analyze_file(
-            full, project_root,
+            full,
+            project_root,
             include_prescriptions=True,
             max_prescriptions=max_prescriptions,
         )
         output = result.to_dict()
-        output["next_actions"] = serialize_next_actions([
-            NextAction(
-                tool="spec_file_analyze",
-                args={"path": path, "file": file},
-                reason="View full specification analysis for this file",
-            ),
-        ])
+        output["next_actions"] = serialize_next_actions(
+            [
+                NextAction(
+                    tool="spec_file_analyze",
+                    args={"path": path, "file": file},
+                    reason="View full specification analysis for this file",
+                ),
+            ]
+        )
+        return helpers["_json_dumps"](output, output_mode="compact")
+
+    @mcp.tool()
+    def spec_project_rollup(
+        path: str,
+        use_cache: bool = True,
+    ) -> str:
+        """Project-wide specification rollup with file-level caching.
+
+        WHEN TO USE: To get a high-level overview of specification health
+        across the entire project. Aggregates per-file analysis into totals
+        for sigma, regime/risk/phase distributions, and hotspot files.
+        Uses content-hash caching so unchanged files are not re-analyzed.
+
+        Example: spec_project_rollup(path="/my/project")
+        Example: spec_project_rollup(path="/my/project", use_cache=False)
+
+        Args:
+            path: Project root path.
+            use_cache: Use file-level content-hash caching (default True).
+        """
+        from lintgate.specification.project_rollup import rollup_project
+
+        project_root = helpers["_validate_project_root"](path)
+        rollup = rollup_project(project_root, use_cache=use_cache)
+        output = rollup.to_dict()
+        output["next_actions"] = serialize_next_actions(
+            [
+                NextAction(
+                    tool="spec_file_analyze",
+                    args={"path": path, "file": "<hotspot_file>"},
+                    reason="Drill into a hotspot file for per-function details",
+                ),
+                NextAction(
+                    tool="spec_prescribe",
+                    args={"path": path},
+                    reason="Get test prescriptions for under-specified functions",
+                ),
+            ]
+        )
         return helpers["_json_dumps"](output, output_mode="compact")
 
     return {
@@ -535,4 +580,5 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         "spec_gate_check": spec_gate_check,
         "spec_file_analyze": spec_file_analyze,
         "spec_file_prescribe": spec_file_prescribe,
+        "spec_project_rollup": spec_project_rollup,
     }

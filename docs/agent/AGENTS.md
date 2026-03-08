@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 83 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 84 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -115,6 +115,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `spec_gate_check` | Optimization gate validation with stop criteria | Checking if optimization hints are backed by specification |
 | `spec_file_analyze` | Single-file specification analysis (fast, resource-bounded) | Interactive per-file spec analysis |
 | `spec_file_prescribe` | Single-file test prescriptions with risk prioritization | After spec_file_analyze shows under-specified functions |
+| `spec_project_rollup` | Project-wide specification rollup with file-level caching | Getting project-wide spec health overview |
 
 ### Mutation Testing
 
