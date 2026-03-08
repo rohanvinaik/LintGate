@@ -89,7 +89,7 @@ def compute_composition_edge(
         callee=callee_key,
         gamma=round(gamma, 3),
         integration_surface=surface,
-        interface_mutant_count=int(gamma),
+        interface_mutant_count=_count_interface_mutation_points(surface),
         specification_independent=spec_independent,
     )
 
@@ -174,6 +174,28 @@ class CompositionResult:
                 if e.gamma > 0
             },
         }
+
+
+def _count_interface_mutation_points(surface: IntegrationSurface) -> int:
+    """Count distinct interface mutation points from surface metrics.
+
+    Categories:
+    - Value mutations: each parameter can receive a wrong value.
+    - Swap mutations: parameter pairs that could be transposed.
+    - State mutations: shared mutable state adds coupling failure modes.
+    """
+    n = surface.callee_param_count
+
+    # Value mutations: one per parameter
+    value_mutations = n
+
+    # Swap mutations: C(n,2) potential argument transpositions
+    swap_mutations = n * (n - 1) // 2 if n > 1 else 0
+
+    # State mutations: shared mutable state adds pre/post-state coupling
+    state_mutations = 2 if surface.shared_mutable_state else 0
+
+    return value_mutations + swap_mutations + state_mutations
 
 
 def _get_param_count(spec: FunctionSpecification | None) -> int:
