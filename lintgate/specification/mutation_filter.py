@@ -28,7 +28,6 @@ def filter_categories(
     has_self_assigns = False
     has_global_nonlocal = False
     has_isinstance = False
-    has_returns = False
 
     for node in ast.walk(func_node):
         if isinstance(node, ast.Compare):
@@ -39,7 +38,7 @@ def filter_categories(
         elif isinstance(node, (ast.Global, ast.Nonlocal)):
             has_global_nonlocal = True
         elif isinstance(node, ast.Return) and node.value is not None:
-            has_returns = True
+            pass  # Return tracking removed — return mutations are separate from state
         elif (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -59,7 +58,8 @@ def filter_categories(
         relevant.add(MutationCategory.BOUNDARY)
 
     # STATE: need self.* assignments or global/nonlocal — but not if pure
-    if not is_pure and (has_self_assigns or has_global_nonlocal or has_returns):
+    # has_returns is excluded: return mutations are a separate concern from state mutations
+    if not is_pure and (has_self_assigns or has_global_nonlocal):
         relevant.add(MutationCategory.STATE)
 
     # TYPE: need isinstance calls

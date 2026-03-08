@@ -16,6 +16,26 @@ _MAX_TOTAL_LINES = 500_000
 _SPEC_EXTRA_EXCLUDE = frozenset({"archive"})
 
 
+def _validate_file_in_project(project_root: str, file: str) -> str:
+    """Resolve *file* to an absolute path and verify it lives inside *project_root*.
+
+    Resolves symlinks and ``..`` components via ``os.path.realpath`` so that
+    path-traversal tricks like ``../../etc/passwd`` are caught.
+
+    Returns the resolved absolute path on success.
+    Raises ``ValueError`` if the resolved path escapes *project_root*.
+    """
+    full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+    resolved = os.path.realpath(full)
+    root_resolved = os.path.realpath(project_root)
+    # Append os.sep so that "/project-evil" doesn't match "/project".
+    if not resolved.startswith(root_resolved + os.sep) and resolved != root_resolved:
+        raise ValueError(
+            f"File path escapes project root: {file!r} resolves to {resolved}"
+        )
+    return resolved
+
+
 def _resolve_py_files(project_root: str, file: str | None) -> list[str] | dict[str, Any]:
     """Resolve file list: single file if specified, canonical discovery otherwise.
 
@@ -23,7 +43,10 @@ def _resolve_py_files(project_root: str, file: str | None) -> list[str] | dict[s
     The error dict should be returned directly to the caller.
     """
     if file:
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        try:
+            full = _validate_file_in_project(project_root, file)
+        except ValueError as exc:
+            return {"error": str(exc)}
         if not os.path.isfile(full):
             return {"error": f"File not found: {file}"}
         return [full]
@@ -221,7 +244,7 @@ def _impl_spec_prescribe(
     next_actions = [
         NextAction(
             tool="mutation_run_sampling",
-            args={"path": path},
+            args={"path": path, "file": "<target_file>"},
             reason="Empirically verify specification gaps via mutation analysis",
         ),
         NextAction(
@@ -500,7 +523,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         from lintgate.specification.file_analyzer import analyze_file
 
         project_root = helpers["_validate_project_root"](path)
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        full = _validate_file_in_project(project_root, file)
         result = analyze_file(full, project_root, enrich=enrich)
         output = result.to_dict()
         output["next_actions"] = serialize_next_actions(
@@ -536,7 +559,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         from lintgate.specification.file_analyzer import analyze_file
 
         project_root = helpers["_validate_project_root"](path)
-        full = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        full = _validate_file_in_project(project_root, file)
         result = analyze_file(
             full,
             project_root,

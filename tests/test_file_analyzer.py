@@ -157,9 +157,9 @@ class TestSymbolicBaseline:
         src.write_text("def f(x):\n    return x * 2\n")
         result = analyze_file(str(src), str(tmp_path), enrich=True)
 
-        if result.functions:
-            func_data = list(result.functions.values())[0]
-            assert "regime_rationale" in func_data
+        assert result.functions, "Expected at least one function from enriched analysis"
+        func_data = list(result.functions.values())[0]
+        assert "regime_rationale" in func_data
 
     def test_symbolic_class_method_qualified_keys(self, tmp_path):
         """Two classes each defining process() must produce distinct keys."""

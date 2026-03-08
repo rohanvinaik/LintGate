@@ -138,10 +138,18 @@ def _analyze_with_cache(
 
 
 def _cache_key(file_path: str) -> str:
-    """Compute content hash for cache key."""
+    """Compute cache key from file path and content hash.
+
+    The key incorporates both the file path and the content so that
+    different files with identical content get separate cache entries.
+    This matters because analyze_file results depend on context
+    (imports, module position) not just content.
+    """
     try:
+        h = hashlib.sha256(file_path.encode("utf-8"))
         with open(file_path, "rb") as f:
-            return hashlib.sha256(f.read()).hexdigest()[:16]
+            h.update(f.read())
+        return h.hexdigest()[:16]
     except OSError:
         return ""
 

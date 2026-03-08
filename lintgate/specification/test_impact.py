@@ -56,7 +56,12 @@ def build_test_impact_map(test_files: list[str]) -> TestImpactMap:
         total_tests += len(tests_in_file)
 
         for test_func_name, called_functions in tests_in_file.items():
+            seen: set[tuple[str, str, str]] = set()
             for called in called_functions:
+                triple = (test_file, test_func_name, called)
+                if triple in seen:
+                    continue
+                seen.add(triple)
                 ref = TestReference(test_file=test_file, test_function=test_func_name)
                 impact.function_to_tests.setdefault(called, []).append(ref)
 
@@ -77,8 +82,9 @@ def _scan_test_file(filepath: str) -> dict[str, list[str]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
             calls = _extract_calls(node)
-            if calls:
-                result[node.name] = calls
+            # Always include the test function, even if it has no extracted calls.
+            # This ensures total_test_functions counts ALL test functions found.
+            result[node.name] = calls
     return result
 
 

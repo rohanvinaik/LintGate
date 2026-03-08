@@ -150,8 +150,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin badges || git checkout --orphan badges
-          git checkout badges || git checkout --orphan badges
+          git fetch origin badges
+          git checkout badges
           mkdir -p .github/badges
           cp /tmp/*.svg .github/badges/
           git add .github/badges/*.svg

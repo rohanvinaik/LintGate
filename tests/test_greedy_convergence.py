@@ -42,7 +42,7 @@ class TestAnalyzeConvergence:
         result = analyze_convergence(profile, sigma=3)
         assert result.is_fully_specified
         assert len(result.redundant_tests) == 0
-        assert result.convergence_efficiency > 0
+        assert result.convergence_efficiency == 1.0
 
     def test_redundant_tests_detected(self):
         """Two tests kill the same mutant → one is redundant."""
@@ -55,13 +55,32 @@ class TestAnalyzeConvergence:
             },
         )
         result = analyze_convergence(profile, sigma=2)
-        # test_b kills nothing new after test_a
-        assert isinstance(result.redundant_tests, list)  # depends on ordering
+        # Greedy ordering: test_a kills 2 mutants (m0, m1), test_b kills 1 (m0).
+        # After test_a runs first, test_b kills nothing new → test_b is redundant.
+        assert result.redundant_tests == ["test_b"]
 
     def test_zero_sigma_trivially_specified(self):
         profile = _make_profiling(total=0, killed=0, kill_matrix={})
         result = analyze_convergence(profile, sigma=0)
         assert result.is_fully_specified
+        assert not result.is_error_state
+
+    def test_zero_sigma_with_mutants_is_error_state(self):
+        """sigma=0 but mutants exist → error state, NOT fully specified."""
+        profile = _make_profiling(total=3, killed=1, kill_matrix={"VALUE_0: m0": ["test_a"]})
+        result = analyze_convergence(profile, sigma=0)
+        assert not result.is_fully_specified
+        assert result.is_error_state
+        assert "sigma=0" in result.error_reason
+        assert "total_mutants=3" in result.error_reason
+
+    def test_negative_sigma_with_mutants_is_error_state(self):
+        """Negative sigma with mutants → error state, NOT fully specified."""
+        profile = _make_profiling(total=2, killed=0, kill_matrix={})
+        result = analyze_convergence(profile, sigma=-1)
+        assert not result.is_fully_specified
+        assert result.is_error_state
+        assert "sigma=-1" in result.error_reason
 
     def test_no_tests_no_convergence(self):
         profile = _make_profiling(total=3, killed=0, kill_matrix={})

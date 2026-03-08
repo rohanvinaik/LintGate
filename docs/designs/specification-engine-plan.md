@@ -549,6 +549,7 @@ def _decide_regime(
 
     # High symmetry reduces effective complexity
     if symmetry_ratio > 0.3:
+        effective = int(sigma * (1 - symmetry_ratio))
         return "A", (f"high symmetry ratio ({symmetry_ratio:.2f}) reduces "
                      f"effective sigma from {sigma} to ~{effective}")
 
@@ -858,4 +859,4 @@ Same guardrails as the symbolic layer:
 - Per-function timeout: hard kill at 2× budget
 - Memory: mutant ASTs are discarded after evaluation (no accumulation)
 - Scheduler: hard budget cap prevents runaway background work
-- Auto-promote: only fires when sampling data is conclusive (not on timeout)
+- Auto-promote: fires when sampling survival > 20% or when sampling was inconclusive (budget exhausted); skipped when survival == 0% or on timeout

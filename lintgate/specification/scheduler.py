@@ -116,7 +116,8 @@ class MutationScheduler:
 
         batch = self._queue[: self.config.batch_size]
         self._queue = self._queue[self.config.batch_size :]
-        self._last_batch_at = now
+        if batch:
+            self._last_batch_at = now
         return batch
 
     def report_result(

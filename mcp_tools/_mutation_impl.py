@@ -478,7 +478,7 @@ def generate_test_skeleton(func_key: str, category: str) -> dict:
             "VALUE": f"def {test_name}():\n    result = {short_name}(...)\n    assert result == EXPECTED_VALUE\n",
             "SWAP": f"def {test_name}():\n    assert {short_name}(a, b) != {short_name}(b, a)\n",
             "BOUNDARY": f"def {test_name}():\n    assert {short_name}(boundary - 1) == BELOW_RESULT\n    assert {short_name}(boundary + 1) == ABOVE_RESULT\n",
-            "STATE": f"def {test_name}():\n    obj = ClassName()\n    obj.{short_name}(input_val)\n    assert obj.state_attr == EXPECTED_STATE\n",
+            "STATE": f"def {test_name}():\n    result = {short_name}(input_val)\n    assert result == EXPECTED_STATE\n",
             "TYPE": f"def {test_name}():\n    assert {short_name}(valid_type) != {short_name}(invalid_type)\n",
         }
     return {

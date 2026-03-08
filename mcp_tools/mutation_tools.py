@@ -22,10 +22,13 @@ from ._mutation_impl import (
     iter_cached_states,
     load_cached_state,
     load_test_callables,
+    parse_file,
     prescription_for_category,
     resolve_function,
     run_on_functions_with_tests,
     run_post_profiling_analysis,
+    save_cached_state,
+    walk_functions,
 )
 
 # ── Tool implementation functions ─────────────────────────────────
@@ -244,18 +247,31 @@ def _impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None
     if err:
         return helpers["_json_dumps"]({"error": err})
 
-    results: list[dict] = []
+    cache_dir = get_cache_dir(project_root)
+
+    # Build list of (qualname, node) pairs to profile
     if func_node and function:
-        rel_path = os.path.relpath(full, project_root)
-        func_key = canonical_function_key(rel_path, function)
-        prev = load_cached_state(get_cache_dir(project_root), func_key)
+        targets = [(function, func_node)]
+    else:
+        tree = parse_file(full)
+        if tree is None:
+            return helpers["_json_dumps"]({"error": f"Parse error: {full}"})
+        targets = walk_functions(tree)
+
+    rel_path = os.path.relpath(full, project_root)
+    test_files = discover_test_files(project_root, full)
+
+    results: list[dict] = []
+    for qualname, node in targets:
+        func_key = canonical_function_key(rel_path, qualname)
+        prev = load_cached_state(cache_dir, func_key)
         prev_survival = prev.get("survival_rate", 1.0) if prev else None
 
-        is_pure = detect_purity(full, function)
-        cats = filter_categories(func_node, is_pure=is_pure)
-        test_files = discover_test_files(project_root, full)
-        tests = load_test_callables(test_files, function)
-        pr = run_function_profiling(func_node, func_key, cats, tests, lambda *a: None)
+        is_pure = detect_purity(full, qualname)
+        cats = filter_categories(node, is_pure=is_pure)
+        bare_name = qualname.split(".")[-1]
+        tests = load_test_callables(test_files, bare_name)
+        pr = run_function_profiling(node, func_key, cats, tests, lambda *a: None)
         result_dict = pr.to_dict()
         result_dict["tests_loaded"] = len(tests)
         result_dict["is_pure"] = is_pure
@@ -263,7 +279,7 @@ def _impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None
             result_dict["previous_survival_rate"] = prev_survival
             result_dict["survival_delta"] = round(pr.survival_rate - prev_survival, 3)
         results.append(result_dict)
-        get_cache_dir(project_root).mkdir(parents=True, exist_ok=True)
+        save_cached_state(cache_dir, func_key, result_dict)
 
     next_actions = [
         NextAction(

@@ -112,7 +112,10 @@ class TestConvergenceCanonicalDiscovery:
         (tmp_path / "main.py").write_text("x = 1\n")
         cache = tmp_path / "__pycache__"
         cache.mkdir()
-        (cache / "main.cpython-311.pyc").write_text("")
+        # Create a .py file inside __pycache__/ so that discovery must
+        # actually exclude the directory (a .pyc file would be ignored
+        # by suffix filtering alone, not testing directory exclusion).
+        (cache / "cached_mod.py").write_text("x = 1\n")
 
         files = _discover_python_files(str(tmp_path))
         assert not any("__pycache__" in f for f in files)
@@ -168,18 +171,30 @@ class TestScopedDiscover:
         result = _scoped_discover(event)
         assert len(result) >= 1
 
-    def test_rejects_paths_outside_project(self, tmp_path):
+    def test_rejects_paths_outside_project(self, tmp_path, monkeypatch):
         from lintgate.controlplane.runtime import _scoped_discover
         from lintgate.controlplane.types import SupervisionEvent
 
         (tmp_path / "a.py").write_text("x = 1\n")
+
+        # Mock isfile so the external path passes the existence check —
+        # this forces the test to exercise the path-boundary rejection
+        # rather than falling back because isfile returns False.
+        _real_isfile = os.path.isfile
+
+        def _patched_isfile(p):
+            if p == "/etc/passwd.py" or p == os.path.abspath("/etc/passwd.py"):
+                return True
+            return _real_isfile(p)
+
+        monkeypatch.setattr(os.path, "isfile", _patched_isfile)
 
         event = SupervisionEvent(
             project_root=str(tmp_path),
             files_changed=["/etc/passwd.py"],
         )
         result = _scoped_discover(event)
-        # Path outside project root → falls back to full discovery
+        # Path outside project root → rejected by boundary check, falls back
         assert not any("/etc/passwd" in f for f in result)
 
     def test_ignores_non_python_files(self, tmp_path):

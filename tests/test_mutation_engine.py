@@ -24,11 +24,11 @@ def _parse_func(source: str) -> ast.FunctionDef:
 
 class TestGenerateMutants:
     def test_value_mutants_for_add(self):
-        func = _parse_func("def add(a, b): return a + b")
+        func = _parse_func("def add(a, b): return a + b + 1")
         mutants = generate_mutants(func, {MutationCategory.VALUE})
-        # Should find constants in the function (none in this case - no literals)
-        # `a + b` has no ast.Constant nodes
-        assert isinstance(mutants, list)
+        # The literal `1` is a VALUE mutation target
+        assert len(mutants) >= 1
+        assert all(m.category == MutationCategory.VALUE for m in mutants)
 
     def test_value_mutants_with_constants(self):
         func = _parse_func("def f(x): return x + 1")

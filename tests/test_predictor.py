@@ -99,10 +99,15 @@ class TestClassifyRegime:
 
 
 class TestDecisionTree:
-    """Decision tree sigma computation + regime integration."""
+    """Decision tree sigma computation (pre-calibration).
+
+    _decision_tree returns only the base sigma estimate. Regime
+    classification is tested via _classify_regime (see TestClassifyRegime)
+    and happens AFTER TPA calibration in predict().
+    """
 
     def test_path1_well_specified_pure(self):
-        sigma, regime, rationale = _decision_tree(
+        sigma = _decision_tree(
             is_pure=True,
             semantic_ratio=0.6,
             weakness_taxonomy="",
@@ -111,11 +116,9 @@ class TestDecisionTree:
             parameter_count=2,
         )
         assert sigma == 3  # max(branch_count, 1)
-        assert regime == "A"
-        assert rationale
 
     def test_path2_under_specified_pure(self):
-        sigma, regime, rationale = _decision_tree(
+        sigma = _decision_tree(
             is_pure=True,
             semantic_ratio=0.3,
             weakness_taxonomy="",
@@ -124,11 +127,9 @@ class TestDecisionTree:
             parameter_count=3,
         )
         assert sigma == 6  # branch + params + 1
-        assert regime == "A"
-        assert rationale
 
     def test_path3_pure_with_weakness(self):
-        sigma, regime, rationale = _decision_tree(
+        sigma = _decision_tree(
             is_pure=True,
             semantic_ratio=0.6,
             weakness_taxonomy="WEAK",
@@ -137,11 +138,9 @@ class TestDecisionTree:
             parameter_count=3,
         )
         assert sigma == 7  # branch + params + 2
-        assert regime == "A"
-        assert rationale
 
     def test_path4_tractable_impure(self):
-        sigma, regime, rationale = _decision_tree(
+        sigma = _decision_tree(
             is_pure=False,
             semantic_ratio=0.3,
             weakness_taxonomy="",
@@ -150,11 +149,9 @@ class TestDecisionTree:
             parameter_count=2,
         )
         assert sigma == 9  # ast_cats + branches
-        assert regime == "A"
-        assert rationale
 
     def test_path5_hard_but_progressing(self):
-        sigma, regime, rationale = _decision_tree(
+        sigma = _decision_tree(
             is_pure=False,
             semantic_ratio=0.6,
             weakness_taxonomy="",
@@ -163,11 +160,9 @@ class TestDecisionTree:
             parameter_count=2,
         )
         assert sigma == 15  # ast_cats + branches + params
-        assert regime == "A"
-        assert rationale
 
-    def test_path6_hardest_regime_b(self):
-        sigma, regime, rationale = _decision_tree(
+    def test_path6_hardest(self):
+        sigma = _decision_tree(
             is_pure=False,
             semantic_ratio=0.3,
             weakness_taxonomy="",
@@ -176,12 +171,12 @@ class TestDecisionTree:
             parameter_count=5,
         )
         assert sigma == 27  # ast_cats + branches + params + 2
-        assert regime == "B"  # sigma > 20
-        assert rationale
+        # Regime classification (B for sigma > 20) is verified in
+        # TestClassifyRegime.test_high_sigma_impure_is_b
 
-    def test_path6_multi_factor_regime_b(self):
-        """Path 6 with moderate sigma but weakness + poor spec → B."""
-        sigma, regime, rationale = _decision_tree(
+    def test_path6_moderate_sigma(self):
+        """Path 6 with moderate sigma — regime depends on calibration."""
+        sigma = _decision_tree(
             is_pure=False,
             semantic_ratio=0.2,
             weakness_taxonomy="WEAK",
@@ -190,8 +185,8 @@ class TestDecisionTree:
             parameter_count=2,
         )
         assert sigma == 15  # ast_cats + branches + params + 2
-        assert regime == "B"  # sigma > 12, weakness, semantic < 0.3
-        assert "compounding" in rationale
+        # Multi-factor regime B classification is verified in
+        # TestClassifyRegime.test_moderate_sigma_with_weakness_and_poor_spec_is_b
 
 
 class TestBuildTrajectory:
@@ -270,8 +265,9 @@ class TestUpdateTrajectory:
         updated = update_trajectory(prev, new_spec_level=0.95, previous_spec_level=0.9, sigma=20)
         # Window is last 5: [0.3, 0.2, 0.1, 0.05] — wait, delta_k has 6 elements now
         # [0.5, 0.4, 0.3, 0.2, 0.1, 0.05], window = [0.2, 0.1, 0.05] — no, last 5
-        # window = [0.4, 0.3, 0.2, 0.1, 0.05], mean = 0.21
-        assert updated.convergence_rate > 0
+        # delta_k = [0.5, 0.4, 0.3, 0.2, 0.1, 0.05], window = last 5 = [0.4, 0.3, 0.2, 0.1, 0.05]
+        # convergence_rate = mean(|window|) = (0.4+0.3+0.2+0.1+0.05)/5 = 0.21
+        assert updated.convergence_rate == pytest.approx(0.21, abs=0.01)
 
 
 class TestDetectTransitionPoint:

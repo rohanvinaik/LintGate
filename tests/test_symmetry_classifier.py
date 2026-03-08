@@ -79,6 +79,41 @@ class TestClassifyRegimeFromMutations:
         result = classify_regime_from_mutations(profile, sigma=10, is_pure=False)
         assert result.data_source == "symbolic"
 
+    def test_survived_only_category_counted_in_independence(self):
+        """Categories with only survived mutants must still count.
+
+        If a category has mutants that all survived (none killed), it will
+        not appear in kill_matrix. The fix ensures per_category seeds the
+        category set so these categories contribute an empty kill set,
+        raising category independence rather than being silently dropped.
+        """
+        # VALUE: 5 killed, BOUNDARY: 5 survived (no kills → not in kill_matrix)
+        profile = ProfilingResult(
+            function_key="test.py::f",
+            total_mutants=10,
+            total_killed=5,
+            total_survived=5,
+            survival_rate=0.5,
+            per_category=[
+                CategoryResult(
+                    category=MutationCategory.VALUE, total=5, killed=5, survived=0
+                ),
+                CategoryResult(
+                    category=MutationCategory.BOUNDARY, total=5, killed=0, survived=5
+                ),
+            ],
+            kill_matrix={
+                "VALUE_0: replace constant": ["test_a"],
+                "VALUE_1: replace constant": ["test_b"],
+            },
+        )
+        result = classify_regime_from_mutations(
+            profile, sigma=15, is_pure=False, parameter_count=2
+        )
+        # BOUNDARY has empty kill set vs VALUE's non-empty kill set →
+        # Jaccard distance is 1.0, so category_independence must be 1.0
+        assert result.category_independence == 1.0
+
     def test_to_dict(self):
         profile = _make_profiling(kill_matrix={"VALUE_0: m": ["test_a"]})
         result = classify_regime_from_mutations(profile, sigma=5, is_pure=False)

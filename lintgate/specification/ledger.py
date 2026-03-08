@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from lintgate.keys import SCHEMA_VERSION, try_parse_function_key
+from lintgate.keys import SCHEMA_VERSION, canonical_function_key, try_parse_function_key
 
 from .predictor import PredictorInput, detect_phase_from_trajectory, predict, update_trajectory
 from .risk_model import compute_risk_score
@@ -121,8 +121,13 @@ def _build_function_spec(
 
     # Risk model
     covering = test_coverage_map.get(func_name, [])
-    fan_in = call_graph.fan_in(func_key) if call_graph else 0
-    fan_out = call_graph.fan_out(func_key) if call_graph else 0
+    # Call graph is indexed by simple name (node.name from ast.walk), not
+    # qualified "Class.method" names.  Extract the bare name for lookup.
+    # func_name may be "Class.method" — we need just "method".
+    bare_name = func_name.rsplit(".", 1)[-1]
+    graph_key = canonical_function_key(parsed[0], bare_name) if parsed else func_key
+    fan_in = call_graph.fan_in(graph_key) if call_graph else 0
+    fan_out = call_graph.fan_out(graph_key) if call_graph else 0
     risk = compute_risk_score(
         is_pure=func_props.purity.is_pure,
         fan_in=fan_in,

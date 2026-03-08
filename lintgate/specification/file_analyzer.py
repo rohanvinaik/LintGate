@@ -106,7 +106,12 @@ def _do_analyze(
 
     # Build manifests scoped to this single file
     prop_manifest = build_manifest(project_root, py_files)
-    teff_manifest = build_test_effectiveness_manifest(project_root, py_files)
+    # Scope test discovery to files relevant to this source file
+    # instead of triggering full-project test discovery.
+    scoped_test_files = _discover_relevant_test_files(file_path, project_root)
+    teff_manifest = build_test_effectiveness_manifest(
+        project_root, py_files, test_files=scoped_test_files
+    )
     call_graph = build_cross_module_call_graph(py_files, project_root)
 
     ledger = build_specification_ledger(
@@ -247,6 +252,52 @@ def _do_analyze_symbolic(
     return result
 
 
+def _discover_relevant_test_files(
+    file_path: str, project_root: str
+) -> list[str]:
+    """Discover test files relevant to a single source file.
+
+    Strategy:
+    1. Look for conventional test file names (test_<module>.py) in the
+       project's test directories.
+    2. If no conventional matches found, return an empty list so that
+       build_test_effectiveness_manifest gets an explicit empty set
+       rather than falling through to full-project discovery.
+
+    This avoids triggering full-project test discovery for single-file
+    analysis, which is wasteful and slow on large projects.
+    """
+    basename = os.path.basename(file_path)
+    module_name = basename.removesuffix(".py")
+
+    # Candidate test file names for this module
+    candidates = {
+        f"test_{module_name}.py",
+        f"{module_name}_test.py",
+    }
+
+    # Search common test locations
+    test_dirs = ["tests", "test", "."]
+    found: list[str] = []
+    root = os.path.abspath(project_root)
+
+    for test_dir in test_dirs:
+        search_root = os.path.join(root, test_dir) if test_dir != "." else root
+        if not os.path.isdir(search_root):
+            continue
+        for dirpath, dirnames, filenames in os.walk(search_root):
+            # Skip hidden and cache dirs
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d != "__pycache__"
+            ]
+            for fname in filenames:
+                if fname in candidates:
+                    found.append(os.path.join(dirpath, fname))
+
+    return found
+
+
 def _walk_functions(
     tree: Any,
 ) -> list[tuple[str, Any]]:
@@ -269,6 +320,9 @@ def _walk_scope(scope: Any, prefix: str, out: list[tuple[str, Any]]) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             qualname = f"{prefix}{node.name}" if prefix else node.name
             out.append((qualname, node))
+            # Recurse into function body to discover nested/inner functions
+            func_prefix = f"{qualname}.<locals>."
+            _walk_scope(node, func_prefix, out)
         elif isinstance(node, ast.ClassDef):
             class_prefix = f"{prefix}{node.name}." if prefix else f"{node.name}."
             _walk_scope(node, class_prefix, out)

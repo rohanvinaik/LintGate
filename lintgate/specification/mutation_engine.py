@@ -164,12 +164,24 @@ class _BaseMutator(ast.NodeTransformer):
 class _ValueMutator(_BaseMutator):
     """Replace constants with boundary values."""
 
+    # Types we can actually mutate — others (None, bytes, complex, Ellipsis)
+    # are left unchanged by _mutate_constant, so we must not count them as
+    # targets or mark ``applied`` when we encounter them.
+    _MUTABLE_TYPES = (bool, int, float, str)
+
     def visit_Constant(self, node: ast.Constant) -> ast.AST:
         if self.applied:
             return node
+        if not isinstance(node.value, self._MUTABLE_TYPES):
+            return node
         if self.current == self.target:
-            self.applied = True
-            return self._mutate_constant(node)
+            mutated = self._mutate_constant(node)
+            if mutated is not node:
+                self.applied = True
+                return mutated
+            # Defensive: if _mutate_constant somehow returned the original,
+            # do not mark applied — skip this target.
+            return node
         self.current += 1
         return node
 
@@ -289,7 +301,14 @@ def _count_targets(func_node: ast.FunctionDef, category: MutationCategory) -> in
 
 
 def _count_value_target(node: ast.AST) -> int:
-    return 1 if isinstance(node, ast.Constant) else 0
+    # Only count constants whose types _ValueMutator can actually mutate.
+    # None, bytes, complex, and Ellipsis are left unchanged by _mutate_constant,
+    # so counting them produces phantom mutants that always survive.
+    if isinstance(node, ast.Constant) and isinstance(
+        node.value, _ValueMutator._MUTABLE_TYPES
+    ):
+        return 1
+    return 0
 
 
 def _count_boundary_target(node: ast.AST) -> int:
@@ -310,12 +329,22 @@ def _is_self_assign(target: ast.AST) -> bool:
     )
 
 
-def _count_state_target(node: ast.AST) -> int:
+def _count_state_assign_target(node: ast.AST) -> int:
+    """Count self.x = ... assignments (remove_assign mode)."""
     if isinstance(node, ast.Assign):
         return sum(1 for t in node.targets if _is_self_assign(t))
+    return 0
+
+
+def _count_state_return_target(node: ast.AST) -> int:
+    """Count return-with-value nodes (return_none mode)."""
     if isinstance(node, ast.Return) and node.value is not None:
         return 1
     return 0
+
+
+def _count_state_target(node: ast.AST) -> int:
+    return _count_state_assign_target(node) + _count_state_return_target(node)
 
 
 def _count_type_target(node: ast.AST) -> int:
@@ -337,6 +366,55 @@ _TARGET_COUNTERS: dict[MutationCategory, Callable[[ast.AST], int]] = {
 }
 
 
+def _generate_state_mutants(
+    func_node: ast.FunctionDef,
+    max_per_category: int,
+) -> list[Mutant]:
+    """Generate STATE mutants across both sub-modes (assign + return).
+
+    STATE has two independent sub-modes with separate target indices:
+    - remove_assign: replaces ``self.x = expr`` with ``pass``
+    - return_none: replaces ``return expr`` with ``return None``
+
+    Each sub-mode gets its own target count and transformer pass so that
+    target indices align correctly with what the transformer visits.
+    """
+    mutants: list[Mutant] = []
+    cat = MutationCategory.STATE
+
+    sub_modes = [
+        ("remove_assign", "remove state assignment", _count_state_assign_target),
+        ("return_none", "replace return with None", _count_state_return_target),
+    ]
+
+    for mode, desc, counter in sub_modes:
+        target_count = sum(counter(node) for node in ast.walk(func_node))
+        limit = (
+            min(target_count, max_per_category)
+            if max_per_category > 0
+            else target_count
+        )
+
+        for i in range(limit):
+            mutated_tree = copy.deepcopy(func_node)
+            transformer = _StateMutator(i, mode)
+            mutated_node = transformer.visit(mutated_tree)
+            ast.fix_missing_locations(mutated_node)
+
+            if transformer.applied:
+                mutants.append(
+                    Mutant(
+                        category=cat,
+                        original_node=func_node,
+                        mutated_node=mutated_node,
+                        description=f"{cat.value}_{mode}_{i}: {desc}",
+                        location=getattr(func_node, "lineno", 0),
+                    )
+                )
+
+    return mutants
+
+
 def generate_mutants(
     func_node: ast.FunctionDef,
     categories: set[MutationCategory],
@@ -352,6 +430,12 @@ def generate_mutants(
     mutants: list[Mutant] = []
 
     for cat in sorted(categories, key=lambda c: c.value):
+        # STATE needs special handling: two independent sub-modes with
+        # separate target counts so indices align with the transformer.
+        if cat == MutationCategory.STATE:
+            mutants.extend(_generate_state_mutants(func_node, max_per_category))
+            continue
+
         target_count = _count_targets(func_node, cat)
         limit = min(target_count, max_per_category) if max_per_category > 0 else target_count
 

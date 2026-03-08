@@ -36,9 +36,11 @@ class ConvergenceResult:
     convergence_efficiency: float = 0.0
     greedy_bound_violations: int = 0
     is_fully_specified: bool = False
+    is_error_state: bool = False
+    error_reason: str = ""
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "function_key": self.function_key,
             "sigma": self.sigma,
             "total_steps": len(self.steps),
@@ -46,6 +48,8 @@ class ConvergenceResult:
             "convergence_efficiency": round(self.convergence_efficiency, 3),
             "greedy_bound_violations": self.greedy_bound_violations,
             "is_fully_specified": self.is_fully_specified,
+            "is_error_state": self.is_error_state,
+            "error_reason": self.error_reason,
             "steps": [
                 {
                     "test_name": s.test_name,
@@ -57,6 +61,7 @@ class ConvergenceResult:
                 for s in self.steps
             ],
         }
+        return result
 
 
 def analyze_convergence(
@@ -70,7 +75,32 @@ def analyze_convergence(
     This gives the best-case convergence. Passing the actual test execution
     order reveals how far the real suite deviates from optimal.
     """
-    if sigma <= 0 or profiling_result.total_mutants == 0:
+    if sigma == 0 and profiling_result.total_mutants == 0:
+        # Truly trivial: no complexity and no mutants → trivially specified
+        return ConvergenceResult(
+            function_key=profiling_result.function_key,
+            sigma=sigma,
+            is_fully_specified=True,
+            convergence_efficiency=0.0,
+        )
+
+    if sigma <= 0 and profiling_result.total_mutants > 0:
+        # Error state: sigma is zero or negative but mutants exist.
+        # This indicates an incorrectly computed sigma — do NOT claim fully specified.
+        return ConvergenceResult(
+            function_key=profiling_result.function_key,
+            sigma=sigma,
+            is_fully_specified=False,
+            convergence_efficiency=0.0,
+            is_error_state=True,
+            error_reason=(
+                f"sigma={sigma} but total_mutants={profiling_result.total_mutants}; "
+                "sigma must be positive when mutants exist"
+            ),
+        )
+
+    if profiling_result.total_mutants == 0:
+        # No mutants generated (sigma > 0 but nothing to test) → trivially specified
         return ConvergenceResult(
             function_key=profiling_result.function_key,
             sigma=sigma,

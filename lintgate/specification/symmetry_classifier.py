@@ -111,8 +111,19 @@ def _compute_category_independence(profiling_result: ProfilingResult) -> float:
     0.0 = all categories killed by the same tests (fully redundant)
     1.0 = each category killed by a unique test set (fully independent)
     """
-    # Build per-category kill sets
+    # Build per-category kill sets from ALL mutants (killed + survived).
+    # Start with every category that has any mutants (from per_category),
+    # seeding with an empty kill set. Then overlay kill_matrix data for
+    # categories that have killed mutants.  This ensures categories with
+    # only survived mutants still contribute an empty kill set, raising
+    # category independence instead of being silently dropped.
     cat_kills: dict[MutationCategory, set[str]] = {}
+
+    # Seed from per_category — covers all mutants regardless of kill status
+    for cr in profiling_result.per_category:
+        cat_kills.setdefault(cr.category, set())
+
+    # Overlay killed-mutant test names from kill_matrix
     for mutant_desc, test_names in profiling_result.kill_matrix.items():
         # Extract category from mutant description (format: "CATEGORY_N: desc")
         cat_str = mutant_desc.split("_")[0] if "_" in mutant_desc else ""

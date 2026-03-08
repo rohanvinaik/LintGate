@@ -42,7 +42,7 @@ def predict(
     testability = compute_dft_score(func_node)
 
     # 6-path decision tree → base sigma
-    sigma_base, regime, regime_rationale = _decision_tree(
+    sigma_base = _decision_tree(
         is_pure=signals.is_pure,
         semantic_ratio=signals.semantic_ratio,
         weakness_taxonomy=signals.weakness_taxonomy,
@@ -64,6 +64,11 @@ def predict(
     tpa_points = compute_tpa_points(func_node)
     tpa = calibrate_sigma(sigma_raw, tpa_points)
     sigma = tpa.tpa_sigma if tpa.tpa_sigma > 0 else sigma_raw
+
+    # Regime classification uses final calibrated sigma (not pre-calibration)
+    regime, regime_rationale = _classify_regime(
+        sigma, signals.is_pure, signals.semantic_ratio, signals.weakness_taxonomy
+    )
 
     # Sigma confidence: base confidence modulated by DFT
     sigma_confidence = signals.purity_confidence * testability.testability_score
@@ -101,8 +106,13 @@ def _decision_tree(
     ast_category_count: int,
     branch_count: int,
     parameter_count: int,
-) -> tuple[int, str, str]:
-    """6-path decision tree. Returns (sigma_estimate, regime, rationale)."""
+) -> int:
+    """6-path decision tree. Returns sigma_estimate (base, pre-calibration).
+
+    Note: regime classification is intentionally NOT done here. It must
+    happen after TPA calibration in predict() so the final calibrated
+    sigma drives the regime decision.
+    """
     if is_pure:
         if semantic_ratio >= 0.5 and weakness_taxonomy in ("", "HEALTHY"):
             # Path 1: well-specified
@@ -123,8 +133,7 @@ def _decision_tree(
         # Path 6: hardest to specify
         sigma = ast_category_count + branch_count + parameter_count + 2
 
-    regime, rationale = _classify_regime(sigma, is_pure, semantic_ratio, weakness_taxonomy)
-    return sigma, regime, rationale
+    return sigma
 
 
 def _classify_regime(
@@ -423,7 +432,7 @@ def update_trajectory(
 
     transition_idx = _detect_transition_point(new_delta_k)
 
-    # EMA of recent |ΔK| for convergence rate
+    # Simple moving average of recent |ΔK| for convergence rate
     window = new_delta_k[-5:] if len(new_delta_k) >= 5 else new_delta_k
     convergence_rate = sum(abs(d) for d in window) / len(window) if window else 0.0
 

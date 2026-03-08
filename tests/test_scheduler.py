@@ -107,3 +107,18 @@ class TestMutationScheduler:
         assert batch == []
         status = sched.status()
         assert status.queue_depth == 0
+
+    def test_empty_batch_does_not_start_cooldown(self):
+        """Regression: next_batch() on empty queue must not block future items."""
+        sched = MutationScheduler(SchedulerConfig(cooldown_s=9999))
+        # Call next_batch on empty queue — should NOT start cooldown
+        batch = sched.next_batch()
+        assert batch == []
+
+        # Enqueue an item after the empty batch
+        sched.enqueue("f1", "a.py", sigma=10)
+
+        # Must return the item immediately, not be blocked by cooldown
+        batch = sched.next_batch()
+        assert len(batch) == 1
+        assert batch[0].function_key == "f1"
