@@ -132,7 +132,7 @@ def format_mesh_report_compact(
         compact["informational_omitted"] = omitted_count
 
     # Work queue: dependency-ordered finding execution (#192)
-    _WORK_QUEUE_CAP = 25
+    work_queue_cap = 25
     try:
         from lintgate.controlplane.work_queue import build_work_queue
 
@@ -143,8 +143,8 @@ def format_mesh_report_compact(
             if wq.items:
                 wq_dict = wq.to_dict()
                 total_items = len(wq_dict.get("items", []))
-                if total_items > _WORK_QUEUE_CAP:
-                    wq_dict["items"] = wq_dict["items"][:_WORK_QUEUE_CAP]
+                if total_items > work_queue_cap:
+                    wq_dict["items"] = wq_dict["items"][:work_queue_cap]
                     wq_dict["truncated"] = True
                     wq_dict["total_items"] = total_items
                 compact["work_queue"] = wq_dict

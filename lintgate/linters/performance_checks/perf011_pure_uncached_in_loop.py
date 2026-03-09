@@ -118,11 +118,7 @@ def _get_assignments_in_statement(stmt: ast.stmt) -> set[str]:
                 name = _extract_assign_target_name(t)
                 if name:
                     names.add(name)
-        elif isinstance(child, ast.AnnAssign):
-            name = _extract_assign_target_name(child.target)
-            if name:
-                names.add(name)
-        elif isinstance(child, ast.AugAssign):
+        elif isinstance(child, (ast.AnnAssign, ast.AugAssign)):
             name = _extract_assign_target_name(child.target)
             if name:
                 names.add(name)
