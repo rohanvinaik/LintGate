@@ -113,3 +113,4 @@ worker/dist/
 mutation_ab_report.json
 .mutation_ab_state.json
 *.py.meta
+.claude/worktrees/
