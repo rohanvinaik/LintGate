@@ -13,7 +13,6 @@ import json
 from dataclasses import dataclass, field
 from unittest.mock import MagicMock, patch
 
-
 from lintgate.controlplane.reporter.compact import format_mesh_report_compact
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -155,10 +154,7 @@ class TestCaptureRefactorCheckpoint:
         state = RefactorState(
             session_id="sess2",
             thesis="Big refactor",
-            files={
-                f"mod{i}.py": FileProgress(status="in_progress")
-                for i in range(5)
-            },
+            files={f"mod{i}.py": FileProgress(status="in_progress") for i in range(5)},
         )
         save_state(str(tmp_path), state)
 
@@ -520,7 +516,9 @@ class TestWorkQueueCap:
 
             def to_dict(self):
                 return {
-                    "items": [{"file": item.file, "priority": item.priority} for item in self.items],
+                    "items": [
+                        {"file": item.file, "priority": item.priority} for item in self.items
+                    ],
                     "total_files": len(self.items),
                 }
 
@@ -572,7 +570,9 @@ class TestWorkQueueCap:
 
             def to_dict(self):
                 return {
-                    "items": [{"file": item.file, "priority": item.priority} for item in self.items],
+                    "items": [
+                        {"file": item.file, "priority": item.priority} for item in self.items
+                    ],
                     "total_files": len(self.items),
                 }
 
@@ -763,7 +763,10 @@ class TestControlplaneGetWorkQueueRegistration:
 
         # The function imports load_controlplane_run locally: from lintgate.state import load_controlplane_run
         # We need to patch it where it's looked up inside the closure
-        with patch("lintgate.state.load_controlplane_run", return_value={"finding_index": {}, "channels": {}}):
+        with patch(
+            "lintgate.state.load_controlplane_run",
+            return_value={"finding_index": {}, "channels": {}},
+        ):
             result_str = get_wq(run_id="run_empty")
 
         result = json.loads(result_str)
@@ -937,9 +940,7 @@ class TestPreCompactHandleRefactorIntegration:
         assert result["continue"] is True
         msg = result.get("systemMessage", "")
         if "<lintgate-compact-state>" in msg:
-            m = re.search(
-                r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL
-            )
+            m = re.search(r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL)
             if m:
                 capsule = json.loads(m.group(1))
                 assert "refactor_progress" not in capsule

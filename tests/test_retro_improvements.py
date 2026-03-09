@@ -46,10 +46,7 @@ class TestContextRuleCheckerPlaceholders:
 
         claude_md = tmp_path / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
-        claude_md.write_text(
-            "LINTGATE_FORBID_REGEX: <regex>\n"
-            "LINTGATE_REQUIRE_REGEX: <pattern>\n"
-        )
+        claude_md.write_text("LINTGATE_FORBID_REGEX: <regex>\nLINTGATE_REQUIRE_REGEX: <pattern>\n")
 
         ctx = LinterContext(files=[], project_root=str(tmp_path))
         checker = ContextRuleChecker()
@@ -67,10 +64,7 @@ class TestContextRuleCheckerPlaceholders:
 
         claude_md = tmp_path / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
-        claude_md.write_text(
-            "LINTGATE_FORBID_REGEX: <regex>\n"
-            "LINTGATE_FORBID_REGEX: print\\(\n"
-        )
+        claude_md.write_text("LINTGATE_FORBID_REGEX: <regex>\nLINTGATE_FORBID_REGEX: print\\(\n")
 
         ctx = LinterContext(files=[], project_root=str(tmp_path))
         checker = ContextRuleChecker()
@@ -542,9 +536,7 @@ class TestDetectHeavyDeps:
     def test_detects_from_pyproject(self, tmp_path):
         from lintgate.linters.mypy_linter import _detect_heavy_deps
 
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\ndependencies = ["scipy>=1.10"]\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["scipy>=1.10"]\n')
         result = _detect_heavy_deps(str(tmp_path))
         assert "scipy" in result
 
@@ -576,9 +568,7 @@ class TestMypyLinterExecuteOverride:
         # Simulate: _detect_heavy_deps finds torch, super().execute() returns timeout
         timeout_result = LinterResult(linter_name="mypy", status="timeout", duration_ms=60000)
         with (
-            patch.object(
-                MypyLinter, "execute", wraps=linter.execute
-            ) as _,
+            patch.object(MypyLinter, "execute", wraps=linter.execute) as _,
             patch(
                 "lintgate.linters.mypy_linter._detect_heavy_deps",
                 return_value=["torch"],
@@ -901,13 +891,15 @@ class TestExtractMockPatchTargets:
         from lintgate.channels.structure.patterns import extract_mock_patch_targets
 
         test_file = tmp_path / "test_example.py"
-        test_file.write_text(textwrap.dedent("""\
+        test_file.write_text(
+            textwrap.dedent("""\
             from unittest.mock import patch
 
             @patch("myapp.module.func")
             def test_something(mock_func):
                 pass
-        """))
+        """)
+        )
 
         targets = extract_mock_patch_targets([str(test_file)])
         assert "myapp.module.func" in targets
@@ -918,12 +910,14 @@ class TestExtractMockPatchTargets:
         from lintgate.channels.structure.patterns import extract_mock_patch_targets
 
         test_file = tmp_path / "test_example.py"
-        test_file.write_text(textwrap.dedent("""\
+        test_file.write_text(
+            textwrap.dedent("""\
             import mock
 
             with mock.patch("pkg.mod.Class"):
                 pass
-        """))
+        """)
+        )
 
         targets = extract_mock_patch_targets([str(test_file)])
         assert "pkg.mod.Class" in targets
@@ -932,10 +926,12 @@ class TestExtractMockPatchTargets:
         from lintgate.channels.structure.patterns import extract_mock_patch_targets
 
         test_file = tmp_path / "test_example.py"
-        test_file.write_text(textwrap.dedent("""\
+        test_file.write_text(
+            textwrap.dedent("""\
             import json
             json.loads('{"key": "value"}')
-        """))
+        """)
+        )
 
         targets = extract_mock_patch_targets([str(test_file)])
         assert targets == {}
@@ -965,7 +961,8 @@ class TestExtractMockPatchTargets:
         from lintgate.channels.structure.patterns import extract_mock_patch_targets
 
         test_file = tmp_path / "test_dup.py"
-        test_file.write_text(textwrap.dedent("""\
+        test_file.write_text(
+            textwrap.dedent("""\
             from unittest.mock import patch
 
             @patch("mod.func")
@@ -973,7 +970,8 @@ class TestExtractMockPatchTargets:
 
             @patch("mod.func")
             def test_two(m): pass
-        """))
+        """)
+        )
 
         targets = extract_mock_patch_targets([str(test_file)])
         assert len(targets["mod.func"]) == 2
@@ -989,13 +987,9 @@ class TestFilterMockTargetsForModules:
             "lintgate.lint_fixer.run_safe_fixes": [
                 {"file": str(tmp_path / "test_fixer.py"), "line": 10}
             ],
-            "lintgate.config.load": [
-                {"file": str(tmp_path / "test_config.py"), "line": 5}
-            ],
+            "lintgate.config.load": [{"file": str(tmp_path / "test_config.py"), "line": 5}],
         }
-        affected = _filter_mock_targets_for_modules(
-            mock_targets, ["lint_fixer"], str(tmp_path)
-        )
+        affected = _filter_mock_targets_for_modules(mock_targets, ["lint_fixer"], str(tmp_path))
         assert len(affected) == 1
         assert "lint_fixer" in affected[0]
 
@@ -1003,25 +997,17 @@ class TestFilterMockTargetsForModules:
         from lintgate.channels.structure.patterns import _filter_mock_targets_for_modules
 
         mock_targets = {
-            "lintgate.config.load": [
-                {"file": str(tmp_path / "test_config.py"), "line": 5}
-            ],
+            "lintgate.config.load": [{"file": str(tmp_path / "test_config.py"), "line": 5}],
         }
-        affected = _filter_mock_targets_for_modules(
-            mock_targets, ["lint_fixer"], str(tmp_path)
-        )
+        affected = _filter_mock_targets_for_modules(mock_targets, ["lint_fixer"], str(tmp_path))
         assert affected == []
 
     def test_multiple_modules_matched(self, tmp_path):
         from lintgate.channels.structure.patterns import _filter_mock_targets_for_modules
 
         mock_targets = {
-            "pkg.lint_fixer.func": [
-                {"file": str(tmp_path / "test_a.py"), "line": 1}
-            ],
-            "pkg.config.load": [
-                {"file": str(tmp_path / "test_b.py"), "line": 2}
-            ],
+            "pkg.lint_fixer.func": [{"file": str(tmp_path / "test_a.py"), "line": 1}],
+            "pkg.config.load": [{"file": str(tmp_path / "test_b.py"), "line": 2}],
         }
         affected = _filter_mock_targets_for_modules(
             mock_targets, ["lint_fixer", "config"], str(tmp_path)
