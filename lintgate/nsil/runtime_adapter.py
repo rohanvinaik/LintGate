@@ -268,10 +268,14 @@ def detect_local_runtimes(timeout_ms: int = 1000) -> list[RuntimeProbeResult]:
         port = runtime["default_port"]
         health_endpoint = runtime["health_endpoint"]
         capabilities = runtime["capabilities"]
-        assert isinstance(name, str)
-        assert isinstance(port, int)
-        assert isinstance(health_endpoint, str)
-        assert isinstance(capabilities, RuntimeCapabilities)
+        if not isinstance(name, str):
+            continue
+        if not isinstance(port, int):
+            continue
+        if not isinstance(health_endpoint, str):
+            continue
+        if not isinstance(capabilities, RuntimeCapabilities):
+            continue
         result = _probe_runtime(
             name=name,
             port=port,
