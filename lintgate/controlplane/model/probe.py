@@ -183,7 +183,7 @@ def get_probe_tasks(probe_set: str = "quick", seed: int | None = None) -> list[d
 
     tasks_out = []
     for task in PROBE_TASKS:
-        variant = rng.choice(task.variants)
+        variant = rng.choice(task.variants)  # NOSONAR — deterministic probe variant selection, not crypto
         tasks_out.append(
             {
                 "id": task.id,
