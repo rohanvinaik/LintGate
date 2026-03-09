@@ -365,6 +365,11 @@ class TestExtractPathRefs:
         refs = extract_path_refs(text)
         assert len(refs) == 0
 
+    def test_excludes_non_https_urls(self):
+        text = "Legacy links: `http://example.com/path` and `ftp://example.com/pub/file`."
+        refs = extract_path_refs(text)
+        assert len(refs) == 0
+
     def test_excludes_shell_commands(self):
         text = "Run `pip install lintgate` to install."
         refs = extract_path_refs(text)

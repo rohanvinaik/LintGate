@@ -16,7 +16,8 @@ from typing import Any
 _BACKTICK_PATH_RE = re.compile(r"`([^`]+)`")
 
 _PATH_EXTENSIONS = (".py", ".md", ".yaml", ".yml", ".toml", ".json")
-_URL_PREFIXES = ("http://", "https://", "ftp://")
+_URL_PREFIXES = ("https://",)
+_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 _SHELL_CMD_PREFIXES = (
     "uv ",
@@ -126,7 +127,7 @@ def extract_path_refs(text: str) -> list[str]:
         is_path_like = "/" in candidate or candidate.endswith(_PATH_EXTENSIONS)
         if not is_path_like:
             continue
-        if candidate.startswith(_URL_PREFIXES):
+        if candidate.startswith(_URL_PREFIXES) or _URL_SCHEME_RE.match(candidate):
             continue
         if "\n" in candidate or "\u251c" in candidate or "\u2514" in candidate or "\u2502" in candidate:
             continue
