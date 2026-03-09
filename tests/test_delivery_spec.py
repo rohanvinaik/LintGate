@@ -419,7 +419,7 @@ class TestPersistStatusErrorHandling:
             # Should not raise even though .lintgate can't be created
             bus._persist_status({"source": "test", "message": "m"})
         finally:
-            os.chmod(str(readonly_dir), 0o755)
+            os.chmod(str(readonly_dir), 0o755)  # nosec B103 — test cleanup restoring tmpdir permissions
 
 
 class TestPersistStatusOverwrite:
