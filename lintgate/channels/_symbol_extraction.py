@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import ast
 import os
-from pathlib import PurePosixPath
 
 from lintgate.channels._symbol_types import SymbolSpan
+from lintgate.keys import canonical_function_key, canonical_relpath
 
 
 def _canonicalize_symbol_key(filepath: str, symbol_name: str, project_root: str) -> str:
@@ -18,21 +18,16 @@ def _canonicalize_symbol_key(filepath: str, symbol_name: str, project_root: str)
 
     Handles Windows paths, trailing slashes, absolute vs relative.
     """
-    # Normalize project root (strip trailing separators)
     root = os.path.normpath(project_root)
     fpath = os.path.normpath(filepath)
 
-    # Make relative to project root
     try:
-        rel = os.path.relpath(fpath, root)
+        rel = canonical_relpath(fpath, root)
     except ValueError:
         # Different drives on Windows
-        rel = fpath
+        rel = fpath.replace(os.sep, "/")
 
-    # Convert to POSIX
-    posix_rel = str(PurePosixPath(*rel.split(os.sep))) if os.sep != "/" else rel
-
-    return f"{posix_rel}::{symbol_name}"
+    return canonical_function_key(rel, symbol_name)
 
 
 def extract_symbol_spans(filepath: str, project_root: str) -> list[SymbolSpan]:
