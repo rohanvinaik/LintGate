@@ -11,7 +11,7 @@ Safe deletion proposals for byte-identical duplicates and fully subsumed files.
 from __future__ import annotations
 
 import time
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -19,12 +19,13 @@ from lintgate.controlplane.types import (
     RepairAction,
     SupervisionEvent,
 )
-from lintgate.types import LintIssue
+
+if TYPE_CHECKING:
+    from lintgate.types import LintIssue
 
 # ── Sub-module imports ───────────────────────────────────────────────
 # Helpers are split into focused sub-modules; re-exported here for
 # backward compatibility.
-
 from ._test_hygiene_ast import (  # noqa: F401
     _extract_class_test_methods,
     _extract_test_functions,

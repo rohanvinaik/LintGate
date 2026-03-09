@@ -10,13 +10,15 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lintgate.channels._symbol_extraction import (
     _canonicalize_symbol_key,
     extract_symbol_spans,
 )
-from lintgate.channels._symbol_types import SymbolSpan
+
+if TYPE_CHECKING:
+    from lintgate.channels._symbol_types import SymbolSpan
 
 
 def get_changed_line_ranges(

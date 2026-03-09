@@ -6,8 +6,10 @@ Extracted from context_bootstrap.py for module size compliance.
 from __future__ import annotations
 
 import re
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from .bootstrap_defaults import ZERO_STATE_ANTI_PATTERNS
 from .context_bootstrap_render import normalize_sentence

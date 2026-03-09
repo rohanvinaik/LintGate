@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -30,13 +30,14 @@ from lintgate.controlplane.types import (
     RepairAction,
     SupervisionEvent,
 )
-from lintgate.types import LintIssue
+
+if TYPE_CHECKING:
+    from lintgate.types import LintIssue
 
 # ── Sub-module imports ────────────────────────────────────────────────────
 # Imported here and re-exported for backward compatibility. All external
 # code that does ``from lintgate.channels.git_channel import X`` continues
 # to work without changes.
-
 from ._git_checks import (  # noqa: F401 — re-exports
     _check_large_changes,
     _check_lockfile_freshness,

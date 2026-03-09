@@ -11,122 +11,49 @@ be fast (< 10ms).
 from __future__ import annotations
 
 import os
-import re
-from pathlib import Path
 from typing import Any
 
+from .change_classifiers._change_diff_analysis import (
+    _analyze_diff,
+    _extract_changed_files,
+    _group_by_language,
+)
+from .change_classifiers._change_diff_analysis import (
+    _as_text,
+)
+from .change_classifiers.file_type_utils import (
+    _is_build_command,
+    _is_config_file,
+    _is_dependency_file,
+    _is_docs_file,
+    _is_readonly_bash,
+    _is_test_file,
+    _matches_pipeline_path,
+    _resolve_path,
+)
 from .types import ChangeClassification, DiffAnalysis, ProjectConfig
 
-# ─── File type detection ─────────────────────────────────────────────────
-
-_DOCS_EXTENSIONS = frozenset({".md", ".rst", ".txt", ".adoc", ".html", ".css"})
-_CONFIG_EXTENSIONS = frozenset({".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"})
-_CONFIG_NAMES = frozenset(
-    {
-        "pyproject.toml",
-        "setup.cfg",
-        "setup.py",
-        ".flake8",
-        ".pylintrc",
-        "mypy.ini",
-        "tox.ini",
-        "Makefile",
-        "Dockerfile",
-        ".dockerignore",
-        ".gitignore",
-        ".editorconfig",
-        "ruff.toml",
-    }
-)
-_DEPENDENCY_NAMES = frozenset(
-    {
-        "requirements.txt",
-        "requirements-dev.txt",
-        "requirements.in",
-        "Pipfile",
-        "Pipfile.lock",
-        "poetry.lock",
-        "uv.lock",
-        "package.json",
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "Cargo.toml",
-        "Cargo.lock",
-        "go.mod",
-        "go.sum",
-    }
-)
-_TEST_PATTERNS = (
-    re.compile(r"test[s]?/"),
-    re.compile(r"test_\w+\.py$"),
-    re.compile(r"\w+_test\.py$"),
-    re.compile(r"__tests__/"),
-    re.compile(r"\.test\.\w+$"),
-    re.compile(r"\.spec\.\w+$"),
-)
-
-# Language detection by extension
-_LANG_MAP: dict[str, str] = {
-    ".py": "python",
-    ".pyi": "python",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".rs": "rust",
-    ".go": "go",
-    ".java": "java",
-    ".rb": "ruby",
-    ".swift": "swift",
-}
-
-# Build commands that modify the project
-_BUILD_COMMAND_PATTERNS = (
-    re.compile(r"^\s*pip\s+install"),
-    re.compile(r"^\s*pip3\s+install"),
-    re.compile(r"^\s*uv\s+(pip\s+)?install"),
-    re.compile(r"^\s*npm\s+install"),
-    re.compile(r"^\s*yarn\s+(add|install)"),
-    re.compile(r"^\s*pnpm\s+(add|install)"),
-    re.compile(r"^\s*cargo\s+(build|add)"),
-    re.compile(r"^\s*make\b"),
-    re.compile(r"^\s*cmake\b"),
-)
-
-# Read-only bash commands that never need linting
-_READONLY_PREFIXES = (
-    "ls ",
-    "cat ",
-    "head ",
-    "tail ",
-    "grep ",
-    "rg ",
-    "find ",
-    "tree ",
-    "git status",
-    "git log",
-    "git diff",
-    "git show",
-    "git branch",
-    "echo ",
-    "wc ",
-    "du ",
-    "df ",
-    "which ",
-    "type ",
-    "file ",
-    "python -c",
-    "python3 -c",
-    "pwd",
-    "env ",
-    "printenv",
-)
-
-# Import statement patterns
-_IMPORT_PATTERN = re.compile(r"^\s*(import |from \S+ import )")
-_FUNC_SIG_PATTERN = re.compile(r"^\s*(async\s+)?def\s+\w+")
-_CLASS_PATTERN = re.compile(r"^\s*class\s+\w+")
+# ─── Re-exports for backward compatibility ───────────────────────────────
+# All names that downstream code imports from lintgate.change_classifier
+# are re-exported here so existing imports continue to work.
+__all__ = [
+    "classify_change",
+    "_analyze_diff",
+    "_as_text",
+    "_classify_change_kind",
+    "_classify_no_file_change",
+    "_classify_risk",
+    "_extract_changed_files",
+    "_group_by_language",
+    "_is_build_command",
+    "_is_config_file",
+    "_is_dependency_file",
+    "_is_docs_file",
+    "_is_readonly_bash",
+    "_is_test_file",
+    "_matches_pipeline_path",
+    "_resolve_path",
+]
 
 
 def classify_change(
@@ -215,194 +142,6 @@ def _classify_no_file_change(
     return ChangeClassification(risk_level="none", tool_name=tool_name)
 
 
-# ─── File extraction ─────────────────────────────────────────────────────
-
-
-def _extract_changed_files(tool_name: str, tool_input: dict[str, Any], cwd: str) -> list[str]:
-    """Extract the list of files affected by this tool use."""
-
-    if tool_name in ("Write", "Edit", "MultiEdit"):
-        fp = tool_input.get("file_path", "")
-        if fp:
-            resolved = _resolve_path(fp, cwd)
-            if resolved:
-                return [resolved]
-
-    if tool_name == "Bash":
-        # For Bash, we can't always know what files changed.
-        # Check for common patterns in the command.
-        command = _as_text(tool_input.get("command", ""))
-
-        # Skip read-only commands
-        if _is_readonly_bash(command):
-            return []
-
-        # Build commands affect the whole project — but we don't
-        # lint individual files for those, we just flag it
-        if _is_build_command(command):
-            return []  # Handled separately via change_kind="build"
-
-        # For other bash commands, we don't have file-level granularity
-        return []
-
-    return []
-
-
-def _resolve_path(filepath: str, cwd: str) -> str:
-    """Resolve a potentially relative path to absolute."""
-    if not isinstance(filepath, str) or not filepath:
-        return ""
-    if not isinstance(cwd, str) or not cwd:
-        cwd = os.getcwd()
-    if os.path.isabs(filepath):
-        return filepath
-    return os.path.normpath(os.path.join(cwd, filepath))
-
-
-# ─── Language detection ──────────────────────────────────────────────────
-
-
-def _group_by_language(files: list[str]) -> dict[str, list[str]]:
-    """Group files by detected programming language."""
-    groups: dict[str, list[str]] = {}
-    for f in files:
-        ext = Path(f).suffix.lower()
-        lang = _LANG_MAP.get(ext, "other")
-        groups.setdefault(lang, []).append(f)
-    return groups
-
-
-# ─── File type checks ────────────────────────────────────────────────────
-
-
-def _is_docs_file(filepath: str) -> bool:
-    p = Path(filepath)
-    return p.suffix.lower() in _DOCS_EXTENSIONS
-
-
-def _is_config_file(filepath: str) -> bool:
-    p = Path(filepath)
-    return p.suffix.lower() in _CONFIG_EXTENSIONS or p.name in _CONFIG_NAMES
-
-
-def _is_dependency_file(filepath: str) -> bool:
-    return Path(filepath).name in _DEPENDENCY_NAMES
-
-
-def _is_test_file(filepath: str) -> bool:
-    return any(pat.search(filepath) for pat in _TEST_PATTERNS)
-
-
-def _is_readonly_bash(command: str) -> bool:
-    """Detect read-only bash commands that don't need linting."""
-    if not isinstance(command, str):
-        return False
-    cmd = command.strip()
-    if not cmd:
-        return True
-    return any(cmd.startswith(p) for p in _READONLY_PREFIXES)
-
-
-def _is_build_command(command: str) -> bool:
-    """Detect build/install commands."""
-    if not isinstance(command, str):
-        return False
-    return any(pat.search(command) for pat in _BUILD_COMMAND_PATTERNS)
-
-
-def _matches_pipeline_path(filepath: str, critical_paths: list[str], cwd: str) -> bool:
-    """Check if a file matches any pipeline-critical path pattern."""
-    if not isinstance(filepath, str) or not filepath:
-        return False
-    if not isinstance(cwd, str) or not cwd:
-        return False
-
-    # Normalize to relative path from project root
-    try:
-        rel = os.path.relpath(filepath, cwd)
-    except ValueError:
-        return False
-
-    for pattern in critical_paths:
-        # Pattern can be a directory (ends with /) or a specific file
-        if pattern.endswith("/"):
-            if rel.startswith(pattern) or rel.startswith(pattern.rstrip("/")):
-                return True
-        else:
-            if rel == pattern:
-                return True
-
-    return False
-
-
-# ─── Diff analysis ───────────────────────────────────────────────────────
-
-
-def _analyze_diff(tool_name: str, tool_input: dict[str, Any]) -> DiffAnalysis:
-    """Analyze the actual text changes from Write/Edit/MultiEdit."""
-
-    if tool_name == "Edit":
-        old_text = _as_text(tool_input.get("old_string", ""))
-        new_text = _as_text(tool_input.get("new_string", ""))
-        is_new = False
-    elif tool_name == "Write":
-        old_text = ""
-        new_text = _as_text(tool_input.get("content", ""))
-        is_new = True
-    elif tool_name == "MultiEdit":
-        edits = tool_input.get("edits", [])
-        if not isinstance(edits, list):
-            edits = []
-        old_text = "\n".join(
-            _as_text(e.get("old_string", "")) for e in edits if isinstance(e, dict)
-        )
-        new_text = "\n".join(
-            _as_text(e.get("new_string", "")) for e in edits if isinstance(e, dict)
-        )
-        is_new = False
-    elif tool_name == "Bash":
-        command = _as_text(tool_input.get("command", ""))
-        return DiffAnalysis(is_build_command=_is_build_command(command))
-    else:
-        return DiffAnalysis.empty()
-
-    # Line-level analysis
-    old_lines = set(old_text.strip().splitlines()) if old_text else set()
-    new_lines = set(new_text.strip().splitlines()) if new_text else set()
-    added = new_lines - old_lines
-    removed = old_lines - new_lines
-    changed_lines = added | removed
-
-    # Check if only import statements changed
-    import_only = bool(changed_lines) and all(
-        _IMPORT_PATTERN.match(line) for line in changed_lines if line.strip()
-    )
-
-    # Check if function signatures changed
-    func_sigs_changed = any(_FUNC_SIG_PATTERN.match(line) for line in changed_lines)
-
-    # Check if class definitions changed
-    class_changed = any(_CLASS_PATTERN.match(line) for line in changed_lines)
-
-    # Check if only formatting/whitespace changed
-    formatting_only = False
-    if old_text and new_text:
-        # Strip all whitespace and compare
-        old_stripped = re.sub(r"\s+", "", old_text)
-        new_stripped = re.sub(r"\s+", "", new_text)
-        formatting_only = old_stripped == new_stripped
-
-    return DiffAnalysis(
-        lines_added=len(added),
-        lines_removed=len(removed),
-        import_only=import_only,
-        function_signatures_changed=func_sigs_changed,
-        class_structure_changed=class_changed,
-        is_new_file=is_new,
-        formatting_only=formatting_only,
-    )
-
-
 # ─── Change kind classification ──────────────────────────────────────────
 
 
@@ -481,8 +220,3 @@ def _classify_risk(
 def _as_dict(value: Any) -> dict[str, Any]:
     """Coerce untrusted hook payload fragments to dict."""
     return value if isinstance(value, dict) else {}
-
-
-def _as_text(value: Any) -> str:
-    """Coerce arbitrary payload values to text for analysis."""
-    return value if isinstance(value, str) else ""

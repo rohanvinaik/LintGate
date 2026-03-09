@@ -15,6 +15,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# Re-export from helper sub-modules for backward compatibility.
+from ._context_bootstrap_helpers import (  # noqa: F401
+    _NEGATIVE_CUE_RE,
+    _NO_THEORY,
+    _PERF_ANTI_PATTERN_CUE,
+    _build_quick_wins,
+    _collect_machine_rule_lines,
+    _project_metadata,
+    _read_readme_description,
+    _recommended_commands,
+    _rule_to_line,
+    _select_actionable_anti_patterns,
+)
+from ._context_bootstrap_review import (  # noqa: F401
+    ReviewItem,
+    _collect_dead_path_review_items,
+    _collect_directive_review_items,
+    _collect_facet_fallback_items,
+    _collect_review_items,
+    _extract_dead_paths,
+)
 from .context_auditor import audit_context_health
 
 # Re-export from extracted modules for backward compatibility.
@@ -39,28 +60,6 @@ from .context_bootstrap_render import (
 )
 from .context_guidance import build_context_guidance
 from .theory_extractor import build_theory_pack, extract_theory
-
-# Re-export from helper sub-modules for backward compatibility.
-from ._context_bootstrap_helpers import (  # noqa: F401
-    _NEGATIVE_CUE_RE,
-    _NO_THEORY,
-    _PERF_ANTI_PATTERN_CUE,
-    _build_quick_wins,
-    _collect_machine_rule_lines,
-    _project_metadata,
-    _read_readme_description,
-    _recommended_commands,
-    _rule_to_line,
-    _select_actionable_anti_patterns,
-)
-from ._context_bootstrap_review import (  # noqa: F401
-    ReviewItem,
-    _collect_dead_path_review_items,
-    _collect_directive_review_items,
-    _collect_facet_fallback_items,
-    _collect_review_items,
-    _extract_dead_paths,
-)
 
 # Backward-compatible underscore aliases.
 _render_claude_md = render_claude_md

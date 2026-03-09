@@ -25,28 +25,30 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-# ── Re-exports from sub-modules (backward compatibility) ─────────────────
-#
-# All public names that were previously defined here are re-exported so that
-# existing imports like `from lintgate.channels.symbol_coverage import X`
-# continue to work unchanged.
-
-from lintgate.channels._symbol_types import (  # noqa: F401
-    FileCoverage,
-    SymbolCoverageGateResult,
-    SymbolCoverageResult,
-    SymbolCoverageWaiver,
-    SymbolSpan,
+from lintgate.channels._coverage_parsing import (  # noqa: F401
+    check_symbol_coverage,
+    parse_coverage_json,
+)
+from lintgate.channels._coverage_parsing import (
+    find_file_coverage as _find_file_coverage,
 )
 from lintgate.channels._symbol_extraction import (  # noqa: F401
     _canonicalize_symbol_key,
     _visit_node,
     extract_symbol_spans,
 )
-from lintgate.channels._coverage_parsing import (  # noqa: F401
-    check_symbol_coverage,
-    find_file_coverage as _find_file_coverage,
-    parse_coverage_json,
+
+# ── Re-exports from sub-modules (backward compatibility) ─────────────────
+#
+# All public names that were previously defined here are re-exported so that
+# existing imports like `from lintgate.channels.symbol_coverage import X`
+# continue to work unchanged.
+from lintgate.channels._symbol_types import (  # noqa: F401
+    FileCoverage,
+    SymbolCoverageGateResult,
+    SymbolCoverageResult,
+    SymbolCoverageWaiver,
+    SymbolSpan,
 )
 from lintgate.channels._target_building import (  # noqa: F401
     _add_overlapping_spans,
@@ -60,9 +62,10 @@ from lintgate.channels._target_building import (  # noqa: F401
 )
 from lintgate.channels._waiver_logic import (  # noqa: F401
     apply_waivers,
+)
+from lintgate.channels._waiver_logic import (
     parse_waivers as _parse_waivers,
 )
-
 
 # ── Gate Orchestrator ────────────────────────────────────────────────────
 
