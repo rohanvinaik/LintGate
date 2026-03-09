@@ -144,9 +144,7 @@ def bootstrap_context_files(
     if model_profile_dict and model_profile_dict.get("custom_anti_patterns"):
         anti_patterns = model_profile_dict["custom_anti_patterns"][:5]
     else:
-        anti_patterns = _select_actionable_anti_patterns(
-            theory_pack.get("anti_patterns", [])
-        )
+        anti_patterns = _select_actionable_anti_patterns(theory_pack.get("anti_patterns", []))
 
     rule_lines = _collect_machine_rule_lines(
         guidance=guidance,
@@ -359,9 +357,7 @@ def _read_readme_description(root: Path) -> str:
     return ""
 
 
-def _select_actionable_anti_patterns(
-    claims: list[str], max_items: int = 5
-) -> list[str]:
+def _select_actionable_anti_patterns(claims: list[str], max_items: int = 5) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()
 
@@ -388,11 +384,7 @@ def _select_actionable_anti_patterns(
     defaults = ZERO_STATE_ANTI_PATTERNS[:max_items]
     if max_items >= 4:
         perf_item = next(
-            (
-                item
-                for item in ZERO_STATE_ANTI_PATTERNS
-                if _PERF_ANTI_PATTERN_CUE in item
-            ),
+            (item for item in ZERO_STATE_ANTI_PATTERNS if _PERF_ANTI_PATTERN_CUE in item),
             None,
         )
         if perf_item and perf_item not in defaults[:4]:
@@ -427,9 +419,7 @@ def _recommended_commands(root: Path) -> list[str]:
         commands.append("cargo test")
 
     if not commands:
-        commands.append(
-            "Run the project's lint and test commands before concluding work."
-        )
+        commands.append("Run the project's lint and test commands before concluding work.")
 
     deduped: list[str] = []
     seen: set[str] = set()
@@ -449,9 +439,7 @@ def _build_quick_wins(
     """Generate actionable quick-win suggestions for the project."""
     wins: list[str] = []
 
-    has_config = (root / "lintgate.yaml").exists() or (
-        root / ".claude" / "lintgate.yaml"
-    ).exists()
+    has_config = (root / "lintgate.yaml").exists() or (root / ".claude" / "lintgate.yaml").exists()
     if not has_config:
         wins.append(
             "Create `.claude/lintgate.yaml` with `controlplane: {enabled: true}` "

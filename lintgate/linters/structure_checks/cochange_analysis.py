@@ -56,9 +56,7 @@ class CoChangeCoupling:
 
     def top_coupled_with(self, filepath: str, limit: int = 5) -> list[CoChangePair]:
         """Get top co-change partners for a given file."""
-        matches = [
-            p for p in self.pairs if p.file_a == filepath or p.file_b == filepath
-        ]
+        matches = [p for p in self.pairs if p.file_a == filepath or p.file_b == filepath]
         return sorted(matches, key=lambda p: p.cochange_count, reverse=True)[:limit]
 
 
@@ -175,9 +173,7 @@ def annotate_split_proposals(
         ]
 
         if coupled_files:
-            max_coupling = float(
-                max(c["coupling_strength"] for c in coupled_files)
-            )
+            max_coupling = float(max(c["coupling_strength"] for c in coupled_files))
 
             if max_coupling > 0.6:
                 proposal["cochange_annotation"] = {

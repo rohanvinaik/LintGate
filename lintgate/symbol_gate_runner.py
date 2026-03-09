@@ -50,9 +50,7 @@ def load_symbol_coverage_settings(project_root: str) -> dict[str, Any]:
         cp = raw.get("controlplane", {})
         channels = cp.get("channels", {}) if isinstance(cp, dict) else {}
         tests_cfg = channels.get("tests", {}) if isinstance(channels, dict) else {}
-        symbol_cfg = (
-            tests_cfg.get("symbol_coverage", {}) if isinstance(tests_cfg, dict) else {}
-        )
+        symbol_cfg = tests_cfg.get("symbol_coverage", {}) if isinstance(tests_cfg, dict) else {}
         if isinstance(symbol_cfg, dict):
             settings.update(symbol_cfg)
     except Exception:
@@ -63,9 +61,7 @@ def load_symbol_coverage_settings(project_root: str) -> dict[str, Any]:
     return settings
 
 
-def _run_git_list(
-    project_root: str, args: list[str], *, timeout: int = 10
-) -> list[str] | None:
+def _run_git_list(project_root: str, args: list[str], *, timeout: int = 10) -> list[str] | None:
     """Run a git command and return stripped output lines on success."""
     try:
         proc = subprocess.run(
@@ -124,9 +120,7 @@ def collect_changed_python_files(
     # When base/head are explicitly provided, a successful diff is authoritative.
     # An empty result means "no Python files changed" — not "scan everything."
     if base and head:
-        ranged = _run_git_list(
-            str(root), ["diff", "--name-only", base, head, "--", "*.py"]
-        )
+        ranged = _run_git_list(str(root), ["diff", "--name-only", base, head, "--", "*.py"])
         if ranged is not None:
             return _normalize(ranged)
     elif base:

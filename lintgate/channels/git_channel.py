@@ -67,9 +67,7 @@ class GitChannel:
         # Skip read-only operations
         return classification.risk_level != "none"
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute git hygiene checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -101,9 +99,7 @@ class GitChannel:
             {os.path.basename(f) for f in event.files_changed} & _DEPENDENCY_FILES
         )
         if run_lockfile_check:
-            lockfile_findings, lockfile_repairs = _check_lockfile_freshness(
-                project_root
-            )
+            lockfile_findings, lockfile_repairs = _check_lockfile_freshness(project_root)
             findings.extend(lockfile_findings)
             repairs.extend(lockfile_repairs)
 
@@ -236,9 +232,7 @@ def collect_working_tree_context(project_root: str) -> dict:
             ins, dels = _parse_diff_stat_totals(result.stdout)
             context["uncommitted_loc_delta"] = ins - dels
             total_uncommitted = context["modified_count"] + context["untracked_count"]
-            context["large_uncommitted_diff"] = (
-                total_uncommitted > 10 or (ins + dels) > 500
-            )
+            context["large_uncommitted_diff"] = total_uncommitted > 10 or (ins + dels) > 500
     except (subprocess.TimeoutExpired, OSError):
         pass
 
@@ -555,9 +549,7 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     ),
     (
         "generic_api_key",
-        re.compile(
-            r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"
-        ),
+        re.compile(r"(?i)(api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"][A-Za-z0-9+/=_\-]{20,}['\"]"),
         0.80,
     ),
     (
@@ -668,9 +660,7 @@ def _check_diff_secrets(project_root: str) -> list[LintIssue]:
 
     findings: list[LintIssue] = []
     for file_path, added_content, approx_line in _iter_diff_additions(result.stdout):
-        finding = _match_secret_pattern(
-            added_content, file_path, approx_line, project_root
-        )
+        finding = _match_secret_pattern(added_content, file_path, approx_line, project_root)
         if finding:
             findings.append(finding)
 

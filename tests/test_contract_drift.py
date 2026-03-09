@@ -370,3 +370,103 @@ class TestBuildAdvisory:
         )
         advisory = _build_advisory(change, [])
         assert advisory == ""
+
+
+# ── SPEC010: find_affected_test_sites specification ───────────────────
+
+
+class TestFindAffectedTestSitesSpec:
+    """Specify exact behavioral contract for find_affected_test_sites."""
+
+    def test_nonexistent_file_skipped_gracefully(self, tmp_path):
+        change = SignatureChange(
+            module="mod",
+            function="func",
+            file="mod.py",
+            change_type="return_arity",
+            old_value=2,
+            new_value=3,
+        )
+        sites = find_affected_test_sites(change, [str(tmp_path / "nonexistent.py")])
+        assert sites == []
+
+    def test_syntax_error_file_skipped_gracefully(self, tmp_path):
+        bad_file = tmp_path / "test_bad.py"
+        bad_file.write_text("def broken(:\n", encoding="utf-8")
+        change = SignatureChange(
+            module="mod",
+            function="func",
+            file="mod.py",
+            change_type="return_arity",
+            old_value=2,
+            new_value=3,
+        )
+        sites = find_affected_test_sites(change, [str(bad_file)])
+        assert sites == []
+
+    def test_param_removed_finds_call_sites(self, tmp_path):
+        test_file = tmp_path / "test_example.py"
+        test_file.write_text(
+            textwrap.dedent("""\
+            def test_it():
+                result = compute(1, 2, 3)
+        """),
+            encoding="utf-8",
+        )
+        change = SignatureChange(
+            module="mod",
+            function="compute",
+            file="mod.py",
+            change_type="param_removed",
+            old_value=["a", "b", "c"],
+            new_value=["a", "b"],
+        )
+        sites = find_affected_test_sites(change, [str(test_file)])
+        assert len(sites) == 1
+        assert sites[0].test_file == str(test_file)
+        assert sites[0].line == 2
+        assert sites[0].call_expression == "compute"
+
+    def test_multiple_files_aggregated(self, tmp_path):
+        f1 = tmp_path / "test_a.py"
+        f2 = tmp_path / "test_b.py"
+        f1.write_text("def test_a():\n    x = compute(1)\n", encoding="utf-8")
+        f2.write_text("def test_b():\n    y = compute(2)\n", encoding="utf-8")
+        change = SignatureChange(
+            module="mod",
+            function="compute",
+            file="mod.py",
+            change_type="param_added",
+            old_value=["a"],
+            new_value=["a", "b"],
+        )
+        sites = find_affected_test_sites(change, [str(f1), str(f2)])
+        assert len(sites) == 2
+        test_files = {s.test_file for s in sites}
+        assert str(f1) in test_files
+        assert str(f2) in test_files
+
+    def test_return_arity_exact_site_attributes(self, tmp_path):
+        test_file = tmp_path / "test_example.py"
+        test_file.write_text(
+            textwrap.dedent("""\
+            def test_it():
+                a, b = obj.finalize()
+        """),
+            encoding="utf-8",
+        )
+        change = SignatureChange(
+            module="mod",
+            function="finalize",
+            file="mod.py",
+            change_type="return_arity",
+            old_value=2,
+            new_value=3,
+        )
+        sites = find_affected_test_sites(change, [str(test_file)])
+        assert len(sites) == 1
+        site = sites[0]
+        assert site.test_file == str(test_file)
+        assert site.line == 2
+        assert site.unpacking_arity == 2
+        assert site.call_expression == "obj.finalize"

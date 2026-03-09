@@ -38,9 +38,7 @@ class TestSelectTestFilesForAnalysis:
         assert len(selected) <= 33  # 10 / 0.3 ≈ 33
 
     def test_empty_list(self):
-        selected, was_sampled = _select_test_files_for_analysis(
-            [], "/project", budget_seconds=90.0
-        )
+        selected, was_sampled = _select_test_files_for_analysis([], "/project", budget_seconds=90.0)
         assert not was_sampled
         assert selected == []
 

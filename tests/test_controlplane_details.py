@@ -60,9 +60,7 @@ class TestControlplaneRunCache:
             # Non-prefixed file should not exist
             assert not (runs_dir / "test_id.json").exists()
 
-    def test_lint_pruning_does_not_delete_controlplane_runs(
-        self, tmp_path: Path
-    ) -> None:
+    def test_lint_pruning_does_not_delete_controlplane_runs(self, tmp_path: Path) -> None:
         runs_dir = tmp_path / "runs"
         runs_dir.mkdir()
         with mock.patch("lintgate.state.RUNS_DIR", runs_dir):
@@ -71,9 +69,7 @@ class TestControlplaneRunCache:
                 save_run_details(f"lint_{i:03d}", {"index": i})
             assert (runs_dir / "cp_keep_cp.json").exists()
 
-    def test_controlplane_pruning_does_not_delete_lint_runs(
-        self, tmp_path: Path
-    ) -> None:
+    def test_controlplane_pruning_does_not_delete_lint_runs(self, tmp_path: Path) -> None:
         runs_dir = tmp_path / "runs"
         runs_dir.mkdir()
         with mock.patch("lintgate.state.RUNS_DIR", runs_dir):
@@ -205,9 +201,7 @@ class TestControlplaneGetDetails:
             assert len(repairs) == 1
             assert repairs[0]["safe"] is True
 
-    def test_tool_default_sections_include_evidence(
-        self, runs_dir: Path, sample_run: str
-    ) -> None:
+    def test_tool_default_sections_include_evidence(self, runs_dir: Path, sample_run: str) -> None:
         from mcp_server import controlplane_get_details
 
         with mock.patch("lintgate.state.RUNS_DIR", runs_dir):

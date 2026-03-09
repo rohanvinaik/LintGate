@@ -261,7 +261,9 @@ class TestPreviewFixesErrorHandling:
         py_file = tmp_path / "foo.py"
         py_file.write_text("import sys\nimport os\n")
 
-        isort_diff = "--- a/foo.py\n+++ b/foo.py\n@@ -1,2 +1,2 @@\n-import sys\n import os\n+import sys\n"
+        isort_diff = (
+            "--- a/foo.py\n+++ b/foo.py\n@@ -1,2 +1,2 @@\n-import sys\n import os\n+import sys\n"
+        )
 
         def mock_run(cmd, *args, **kwargs):
             mock = MagicMock()
@@ -667,10 +669,10 @@ class TestDryRunIntegration:
         py_file = tmp_path / "foo.py"
         py_file.write_text("import sys\nimport os\nx=1\n")
 
-        check_diff = (
-            "--- a/foo.py\n+++ b/foo.py\n@@ -1,2 +1,1 @@\n-import os\n import sys\n"
+        check_diff = "--- a/foo.py\n+++ b/foo.py\n@@ -1,2 +1,1 @@\n-import os\n import sys\n"
+        isort_diff = (
+            "--- a/foo.py\n+++ b/foo.py\n@@ -1,2 +1,2 @@\n-import sys\n import os\n+import sys\n"
         )
-        isort_diff = "--- a/foo.py\n+++ b/foo.py\n@@ -1,2 +1,2 @@\n-import sys\n import os\n+import sys\n"
         format_diff = "--- a/foo.py\n+++ b/foo.py\n@@ -3 +3 @@\n-x=1\n+x = 1\n"
 
         def mock_run(cmd, *args, **kwargs):

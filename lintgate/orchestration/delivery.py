@@ -150,8 +150,7 @@ class DeliveryBus:
 
         # Force full budget if we have blocking or intervention findings
         has_high_auth = any(
-            self._auth_rank(i.authority_level)
-            >= self._auth_rank(AuthorityLevel.WARNING)
+            self._auth_rank(i.authority_level) >= self._auth_rank(AuthorityLevel.WARNING)
             for i in self.items
         )
 
@@ -193,9 +192,7 @@ class DeliveryBus:
         if self.budget_mode == "pulse":
             clean_msg = message.split("\n")[0].strip()
             emoji = self._get_auth_emoji(primary.authority_level)
-            message = (
-                f"{emoji} {clean_msg[:70]}... (run `controlplane_run` for details)"
-            )
+            message = f"{emoji} {clean_msg[:70]}... (run `controlplane_run` for details)"
 
         # Append suppression footer if any
         if self.suppressed_counts:

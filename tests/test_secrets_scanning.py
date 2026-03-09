@@ -49,9 +49,7 @@ class TestSecretPatterns:
         assert self._match("connection_string", "postgres://user:password@host:5432/db")
 
     def test_connection_string_redis(self):
-        assert self._match(
-            "connection_string", "redis://default:secretpass@cache.example.com:6379"
-        )
+        assert self._match("connection_string", "redis://default:secretpass@cache.example.com:6379")
 
     def test_generic_api_key(self):
         assert self._match("generic_api_key", "api_key = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'")
@@ -113,15 +111,11 @@ class TestCheckDiffSecrets:
         )
         findings = self._mock_diff(diff)
         # The AWS key is on a context line (no +), only the comment is an addition
-        assert not any(
-            "aws_access_key" in f.evidence.get("pattern", "") for f in findings
-        )
+        assert not any("aws_access_key" in f.evidence.get("pattern", "") for f in findings)
 
     def test_secret_value_not_in_message(self):
         """Issue messages must never contain actual secret values."""
-        diff = (
-            "+++ b/config.py\n@@ -0,0 +1,1 @@\n+TOKEN = 'ghp_ABCDEFGHIJ1234567890KL'\n"
-        )
+        diff = "+++ b/config.py\n@@ -0,0 +1,1 @@\n+TOKEN = 'ghp_ABCDEFGHIJ1234567890KL'\n"
         findings = self._mock_diff(diff)
         assert len(findings) >= 1
         for finding in findings:
@@ -166,18 +160,14 @@ class TestCheckDiffSecrets:
 
     def test_file_tracking(self):
         """Findings should include the file path."""
-        diff = (
-            "+++ b/src/config.py\n@@ -0,0 +1,1 @@\n+API_KEY = 'AKIAIOSFODNN7EXAMPLE'\n"
-        )
+        diff = "+++ b/src/config.py\n@@ -0,0 +1,1 @@\n+API_KEY = 'AKIAIOSFODNN7EXAMPLE'\n"
         findings = self._mock_diff(diff)
         assert len(findings) >= 1
         assert findings[0].evidence.get("file") == "src/config.py"
 
     def test_line_number_tracking(self):
         """Findings should include approximate line numbers from hunk headers."""
-        diff = (
-            "+++ b/config.py\n@@ -0,0 +10,1 @@\n+TOKEN = 'ghp_ABCDEFGHIJ1234567890KL'\n"
-        )
+        diff = "+++ b/config.py\n@@ -0,0 +10,1 @@\n+TOKEN = 'ghp_ABCDEFGHIJ1234567890KL'\n"
         findings = self._mock_diff(diff)
         assert len(findings) >= 1
         assert findings[0].line == 10

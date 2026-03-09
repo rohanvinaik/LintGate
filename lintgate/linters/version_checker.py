@@ -32,9 +32,7 @@ class VersionChecker(BaseLinter):
             project_config.tool_version_requirements,
             enforced_groups=project_config.enforced_optional_groups,
         )
-        observations = inspect_tool_versions(
-            requirements, project_root=ctx.project_root
-        )
+        observations = inspect_tool_versions(requirements, project_root=ctx.project_root)
 
         for item in observations:
             status = item.get("status", "ok")
@@ -44,9 +42,7 @@ class VersionChecker(BaseLinter):
             tool = str(item.get("tool", "tool"))
             required = str(item.get("required_specifier", "") or "")
             installed = item.get("installed_version")
-            source_path = _source_file_path(
-                item.get("requirement_sources", []), ctx.project_root
-            )
+            source_path = _source_file_path(item.get("requirement_sources", []), ctx.project_root)
 
             severity = "warning"
             is_optional = item.get("is_optional", False)

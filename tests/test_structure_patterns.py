@@ -29,9 +29,7 @@ class TestPackageCandidateBasic:
         (d / "auth_session.py").write_text("pass\n")
         (d / "auth_register.py").write_text("import auth_login\n")
 
-        py_files = [
-            str(d / f) for f in ["auth_login.py", "auth_session.py", "auth_register.py"]
-        ]
+        py_files = [str(d / f) for f in ["auth_login.py", "auth_session.py", "auth_register.py"]]
         # Simplified import graph: module names match stems
         import_graph = {
             "auth_login": {"auth_session"},
@@ -44,9 +42,7 @@ class TestPackageCandidateBasic:
             "auth_register": str(d / "auth_register.py"),
         }
 
-        findings = check_package_candidates(
-            py_files, import_graph, file_map, str(tmp_path)
-        )
+        findings = check_package_candidates(py_files, import_graph, file_map, str(tmp_path))
         assert len(findings) == 1
         f = findings[0]
         assert f.kind == "STRUCT005"
@@ -67,9 +63,7 @@ class TestPackageCandidateNoImports:
         (d / "data_load.py").write_text("pass\n")
         (d / "data_transform.py").write_text("pass\n")
 
-        py_files = [
-            str(d / f) for f in ["data_clean.py", "data_load.py", "data_transform.py"]
-        ]
+        py_files = [str(d / f) for f in ["data_clean.py", "data_load.py", "data_transform.py"]]
         import_graph = {
             "data_clean": set(),
             "data_load": set(),
@@ -81,9 +75,7 @@ class TestPackageCandidateNoImports:
             "data_transform": str(d / "data_transform.py"),
         }
 
-        findings = check_package_candidates(
-            py_files, import_graph, file_map, str(tmp_path)
-        )
+        findings = check_package_candidates(py_files, import_graph, file_map, str(tmp_path))
         assert len(findings) == 0
 
 
@@ -103,9 +95,7 @@ class TestPackageCandidateTooFew:
             "util_b": str(d / "util_b.py"),
         }
 
-        findings = check_package_candidates(
-            py_files, import_graph, file_map, str(tmp_path)
-        )
+        findings = check_package_candidates(py_files, import_graph, file_map, str(tmp_path))
         assert len(findings) == 0
 
 
@@ -123,9 +113,7 @@ class TestPackageCandidateAlreadyExists:
         pkg.mkdir()
         (pkg / "__init__.py").write_text("")
 
-        py_files = [
-            str(d / f) for f in ["cache_store.py", "cache_policy.py", "cache_evict.py"]
-        ]
+        py_files = [str(d / f) for f in ["cache_store.py", "cache_policy.py", "cache_evict.py"]]
         import_graph = {
             "cache_store": {"cache_policy"},
             "cache_policy": set(),
@@ -137,9 +125,7 @@ class TestPackageCandidateAlreadyExists:
             "cache_evict": str(d / "cache_evict.py"),
         }
 
-        findings = check_package_candidates(
-            py_files, import_graph, file_map, str(tmp_path)
-        )
+        findings = check_package_candidates(py_files, import_graph, file_map, str(tmp_path))
         assert len(findings) == 0
 
 
@@ -173,9 +159,7 @@ class TestPackageCandidateDifferentDirs:
             "net_proxy": str(dir_b / "net_proxy.py"),
         }
 
-        findings = check_package_candidates(
-            py_files, import_graph, file_map, str(tmp_path)
-        )
+        findings = check_package_candidates(py_files, import_graph, file_map, str(tmp_path))
         # dir_a has only 2 net_* files (below 3), dir_b has only 1
         assert len(findings) == 0
 
@@ -197,14 +181,7 @@ class TestPackageCandidateMinFilesConfig:
         }
 
         # Default min_files=3 → no findings
-        assert (
-            len(
-                check_package_candidates(
-                    py_files, import_graph, file_map, str(tmp_path)
-                )
-            )
-            == 0
-        )
+        assert len(check_package_candidates(py_files, import_graph, file_map, str(tmp_path))) == 0
 
         # min_files=2 → should emit
         findings = check_package_candidates(
@@ -220,9 +197,7 @@ class TestPackageCandidateMinFilesConfig:
 class TestCrossFilePatternConfigLoading:
     """3 files with expanduser+json.load+try/except → emit STRUCT006."""
 
-    def _write_config_loading_function(
-        self, filepath, func_name: str = "load_config"
-    ) -> None:
+    def _write_config_loading_function(self, filepath, func_name: str = "load_config") -> None:
         code = textwrap.dedent(f"""\
             import json
             import os
@@ -245,9 +220,7 @@ class TestCrossFilePatternConfigLoading:
         py_files = [str(tmp_path / f"mod_{i}.py") for i in range(3)]
         findings = check_cross_file_patterns(py_files, str(tmp_path))
 
-        config_findings = [
-            f for f in findings if f.evidence.get("pattern") == "config_loading"
-        ]
+        config_findings = [f for f in findings if f.evidence.get("pattern") == "config_loading"]
         assert len(config_findings) == 1
         f = config_findings[0]
         assert f.kind == "STRUCT006"

@@ -190,9 +190,7 @@ def test_prune_merged_local_branches(ship_main, monkeypatch):
         if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
             branch = cmd[3]
             returncode = 0 if branch in {"codex/old", "feat/x"} else 1
-            return subprocess.CompletedProcess(
-                cmd, returncode=returncode, stdout="", stderr=""
-            )
+            return subprocess.CompletedProcess(cmd, returncode=returncode, stdout="", stderr="")
         if cmd[:2] == ["git", "branch"]:
             deleted.append(cmd[3])
             return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
@@ -264,9 +262,7 @@ def test_main_push_and_prune_flow(ship_main, monkeypatch):
     monkeypatch.setattr(ship_main, "_check_mergeability", lambda *_: (True, "clean"))
     monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
     monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
-    monkeypatch.setattr(
-        ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7")
-    )
+    monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
     monkeypatch.setattr(
         ship_main,
         "_prune_merged_local_branches",
@@ -285,9 +281,7 @@ def test_main_push_and_prune_flow(ship_main, monkeypatch):
 
 def test_file_level_runtime_error_print(monkeypatch, capsys):
     ship_main = _load_ship_main()
-    monkeypatch.setattr(
-        ship_main, "main", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
-    )
+    monkeypatch.setattr(ship_main, "main", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
 
     with pytest.raises(SystemExit):
         try:
@@ -347,9 +341,7 @@ def test_run_preflight_non_json_non_executable_raises(ship_main, tmp_path):
         ship_main._run_preflight(str(tmp_path), json_mode=False)
 
 
-def test_run_preflight_json_parses_failed_gate_ids(
-    ship_main, monkeypatch, tmp_path, capsys
-):
+def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_path, capsys):
     hook = tmp_path / ".githooks" / "pre-push"
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
@@ -381,9 +373,7 @@ def test_run_preflight_json_parses_failed_gate_ids(
     ]
 
 
-def test_run_preflight_json_uses_fallback_gate_id(
-    ship_main, monkeypatch, tmp_path, capsys
-):
+def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_path, capsys):
     hook = tmp_path / ".githooks" / "pre-push"
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
@@ -407,9 +397,7 @@ def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
     old_argv = os.sys.argv
     os.sys.argv = ["ship_main.py", "--json"]
     try:
-        with pytest.raises(
-            RuntimeError, match="--json can only be used with --preflight"
-        ):
+        with pytest.raises(RuntimeError, match="--json can only be used with --preflight"):
             ship_main.main()
     finally:
         os.sys.argv = old_argv
@@ -454,9 +442,7 @@ def test_run_preflight_json_missing_hook_emits_error(ship_main, tmp_path, capsys
     assert data["error"] == "Missing .githooks/pre-push"
 
 
-def test_run_preflight_json_non_executable_hook_emits_error(
-    ship_main, tmp_path, capsys
-):
+def test_run_preflight_json_non_executable_hook_emits_error(ship_main, tmp_path, capsys):
     import json
 
     hook = tmp_path / ".githooks" / "pre-push"
@@ -483,9 +469,7 @@ def test_run_preflight_non_json_prints_banner(ship_main, monkeypatch, tmp_path, 
     monkeypatch.setattr(ship_main.subprocess, "run", fake_run)
     code = ship_main._run_preflight(str(tmp_path), json_mode=False)
     assert code == 0
-    assert (
-        "[ship] [PREFLIGHT] Running strict local gate stack" in capsys.readouterr().out
-    )
+    assert "[ship] [PREFLIGHT] Running strict local gate stack" in capsys.readouterr().out
 
 
 # ── _check_mergeability ──────────────────────────────────────────────
@@ -500,9 +484,7 @@ def test_check_mergeability_clean(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            [], 0, stdout="", stderr=""
-        ),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="", stderr=""),
     )
     ok, detail = ship_main._check_mergeability("/repo", "feat/x", "main", "origin")
     assert ok is True
@@ -596,9 +578,7 @@ def test_post_merge_sync_success(ship_main, monkeypatch, capsys):
     monkeypatch.setattr(
         ship_main.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            [], 0, stdout="", stderr=""
-        ),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="", stderr=""),
     )
 
     ship_main._post_merge_sync("/repo", "main", "codex/ship-test")
@@ -706,15 +686,11 @@ def test_main_auto_sync_flag(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0)
     )
-    monkeypatch.setattr(
-        ship_main, "_auto_sync_branch", lambda *_: seen.__setitem__("sync", True)
-    )
+    monkeypatch.setattr(ship_main, "_auto_sync_branch", lambda *_: seen.__setitem__("sync", True))
     monkeypatch.setattr(ship_main, "_check_mergeability", lambda *_: (True, "clean"))
     monkeypatch.setattr(ship_main, "_run_local_gate_stack", lambda *_: None)
     monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
-    monkeypatch.setattr(
-        ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7")
-    )
+    monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
 
     old_argv = os.sys.argv
     os.sys.argv = ["ship_main.py", "--auto-sync"]
@@ -750,9 +726,7 @@ def test_main_mergeability_failure_raises(ship_main, monkeypatch):
     monkeypatch.setattr(
         ship_main, "_run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0)
     )
-    monkeypatch.setattr(
-        ship_main, "_check_mergeability", lambda *_: (False, "CONFLICT in foo.py")
-    )
+    monkeypatch.setattr(ship_main, "_check_mergeability", lambda *_: (False, "CONFLICT in foo.py"))
     monkeypatch.setattr(
         ship_main,
         "_run_local_gate_stack",
@@ -831,7 +805,8 @@ def test_post_merge_sync(ship_main, monkeypatch):
 
     monkeypatch.setattr(ship_main, "_run", fake_run)
     monkeypatch.setattr(
-        subprocess, "run",
+        subprocess,
+        "run",
         lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0),
     )
     ship_main._post_merge_sync("/repo", "main", "codex/ship-test")

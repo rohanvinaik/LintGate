@@ -189,9 +189,7 @@ def _print_human_readable(mesh_result) -> None:
         if cr.status == "skip":
             continue
 
-        icon = {"pass": "✓", "fail": "✗", "error": "⚠", "timeout": "⏱"}.get(
-            cr.status, "?"
-        )
+        icon = {"pass": "✓", "fail": "✗", "error": "⚠", "timeout": "⏱"}.get(cr.status, "?")
         print(f"\n  {icon} {cr.channel}: {cr.status}")
 
         if cr.findings:
@@ -216,9 +214,7 @@ def _print_human_readable(mesh_result) -> None:
         print(f"  Action: {coherence.recommended_action}")
 
     if mesh_result.partial:
-        print(
-            f"\n  ⚠ Partial: channels timed out: {', '.join(mesh_result.incomplete_channels)}"
-        )
+        print(f"\n  ⚠ Partial: channels timed out: {', '.join(mesh_result.incomplete_channels)}")
 
     print(f"\n{'═' * 60}")
 

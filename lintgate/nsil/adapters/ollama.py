@@ -7,6 +7,33 @@ from typing import Any
 from lintgate.nsil.runtime_adapter import RuntimeCapabilities
 
 
+def _iter_jsonl_stream(response: Any) -> Generator[str, None, None]:
+    """Yield text chunks from an Ollama JSONL streaming response."""
+    import json
+
+    buffer = b""
+    while True:
+        chunk = response.read(4096)
+        if not chunk:
+            break
+        buffer += chunk
+
+        lines = buffer.decode("utf-8").split("\n")
+        buffer = lines[-1].encode("utf-8") if lines[-1] else b""
+
+        for line in lines[:-1]:
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "response" in data:
+                yield data["response"]
+            if data.get("done", False):
+                return
+
+
 @dataclass
 class OllamaAdapter:
     """Ollama runtime adapter.
@@ -63,15 +90,11 @@ class OllamaAdapter:
         if risk_level := self._injected_state.get("risk_level"):
             parts.append(f"Risk Level: {risk_level}")
         if blocking := self._injected_state.get("blocking_findings"):
-            findings = (
-                ", ".join(blocking[:3]) if isinstance(blocking, list) else str(blocking)
-            )
+            findings = ", ".join(blocking[:3]) if isinstance(blocking, list) else str(blocking)
             parts.append(f"Blocking: {findings}")
         if constraints := self._injected_state.get("active_constraints"):
             constr = (
-                ", ".join(constraints[:3])
-                if isinstance(constraints, list)
-                else str(constraints)
+                ", ".join(constraints[:3]) if isinstance(constraints, list) else str(constraints)
             )
             parts.append(f"Constraints: {constr}")
 
@@ -80,9 +103,7 @@ class OllamaAdapter:
             return f"[NSIL State: {state_context}]\n\n{prompt}"
         return prompt
 
-    def get_generation_stream(
-        self, prompt: str, **kwargs: Any
-    ) -> Generator[str, None, None]:
+    def get_generation_stream(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
         """Get streaming generation from Ollama.
 
         Args:
@@ -92,80 +113,49 @@ class OllamaAdapter:
         Yields:
             Generation chunks
         """
-        import json
         import urllib.error
         import urllib.request
 
-        # Apply state injection
-        full_prompt = self._make_prompt_with_state(prompt)
-
-        model = kwargs.get("model", self.model)
-        temperature = kwargs.get("temperature", 0.7)
-        stream = kwargs.get("stream", True)
-
-        # Build request payload
-        payload = {
-            "model": model,
-            "prompt": full_prompt,
-            "stream": stream,
-            "temperature": temperature,
-        }
-
-        # Add options if provided
-        if options := kwargs.get("options"):
-            payload["options"] = options
-
+        payload = self._build_payload(prompt, **kwargs)
         url = f"{self.endpoint}/api/generate"
 
         try:
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-
+            req = self._make_request(url, payload)
             with urllib.request.urlopen(req, timeout=30) as response:
-                # Read and parse streaming response
-                buffer = b""
-                while True:
-                    chunk = response.read(4096)
-                    if not chunk:
-                        break
-                    buffer += chunk
-
-                    # Process complete lines (Ollama sends JSON lines)
-                    lines = buffer.decode("utf-8").split("\n")
-                    buffer = bytes(lines[-1], "utf-8") if lines[-1] else b""
-
-                    for line in lines[:-1]:
-                        if not line.strip():
-                            continue
-                        try:
-                            data = json.loads(line)
-                            if "response" in data:
-                                raw_response = data["response"]
-                                # Note: We wrap the stream logic below if eager verification is requested
-                                yield raw_response
-                            # Check for done
-                            if data.get("done", False):
-                                return
-                        except json.JSONDecodeError:
-                            # Malformed chunk - ignore and continue (adversarial requirement)
-                            continue
-
+                yield from _iter_jsonl_stream(response)
         except urllib.error.URLError as e:
-            # Runtime unavailable - yield error as message
             yield f"[Error: Ollama unavailable - {e.reason}]"
         except TimeoutError:
             yield "[Error: Ollama request timed out]"
         except Exception as e:
             yield f"[Error: {str(e)}]"
 
-    def get_generation_guarded(
-        self, prompt: str, **kwargs: Any
-    ) -> Generator[str, None, None]:
+    def _build_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+        """Build the Ollama API request payload."""
+        payload: dict[str, Any] = {
+            "model": kwargs.get("model", self.model),
+            "prompt": self._make_prompt_with_state(prompt),
+            "stream": kwargs.get("stream", True),
+            "temperature": kwargs.get("temperature", 0.7),
+        }
+        if options := kwargs.get("options"):
+            payload["options"] = options
+        return payload
+
+    @staticmethod
+    def _make_request(url: str, payload: dict[str, Any]) -> Any:
+        """Create an HTTP request for the Ollama API."""
+        import json
+        import urllib.request
+
+        return urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+    def get_generation_guarded(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
         """Get guarded streaming generation from Ollama.
 
         This wraps get_generation_stream with StreamingGuard.

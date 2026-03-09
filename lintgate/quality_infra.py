@@ -35,9 +35,7 @@ _REQUIRED_ARTIFACTS: dict[str, str] = {
     "workflow_security": os.path.join(".github", "workflows", "security-lite.yml"),
     "workflow_scorecard": os.path.join(".github", "workflows", "scorecard.yml"),
     "workflow_codeql": os.path.join(".github", "workflows", "codeql.yml"),
-    "workflow_quality_gate": os.path.join(
-        ".github", "workflows", "quality-infra-gate.yml"
-    ),
+    "workflow_quality_gate": os.path.join(".github", "workflows", "quality-infra-gate.yml"),
     "pre_push_hook": os.path.join(".githooks", "pre-push"),
     "qlty_toml": os.path.join(".qlty", "qlty.toml"),
     "dependabot": os.path.join(".github", "dependabot.yml"),
@@ -271,8 +269,7 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         extra_remote = sorted(set(remote_checks) - set(required_checks))
         if missing_remote:
             errors.append(
-                "Branch protection missing contract required check(s): "
-                + ", ".join(missing_remote)
+                "Branch protection missing contract required check(s): " + ", ".join(missing_remote)
             )
         if extra_remote:
             errors.append(
@@ -320,17 +317,13 @@ def _check_parity_map(contract: dict[str, Any], errors: list[str]) -> None:
     # Check 1: every required_checks entry appears in parity_map CI names
     for check in required_checks:
         if check not in ci_check_names:
-            errors.append(
-                f"parity_map missing CI mapping for required_check: {check}"
-            )
+            errors.append(f"parity_map missing CI mapping for required_check: {check}")
 
     # Check 2: every local_pre_push ID appears as a parity_map key
     parity_keys = set(parity_map.keys())
     for lid in local_ids:
         if lid not in parity_keys:
-            errors.append(
-                f"parity_map missing key for local_pre_push gate: {lid}"
-            )
+            errors.append(f"parity_map missing key for local_pre_push gate: {lid}")
 
 
 def _branch_protection_fail_closed() -> bool:

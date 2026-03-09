@@ -52,9 +52,7 @@ def _build_posttooluse_context(
     ):
         pairs.append(("edit_related", ",".join(coherence.edit_related_channels)))
     # 6. ambient_debt (when ambient channels exist)
-    if getattr(coherence, "edit_scoped", False) and getattr(
-        coherence, "ambient_channels", None
-    ):
+    if getattr(coherence, "edit_scoped", False) and getattr(coherence, "ambient_channels", None):
         pairs.append(("ambient_debt", ",".join(coherence.ambient_channels)))
     # 7. new_findings (from delta, > 0)
     if delta is not None:
@@ -125,9 +123,7 @@ def _build_telemetry_counters(
         and coherence.classification_notes
         and (
             any("downgraded to stable" in n for n in coherence.classification_notes)
-            or any(
-                "downgraded to isolated" in n for n in coherence.classification_notes
-            )
+            or any("downgraded to isolated" in n for n in coherence.classification_notes)
         )
     ):
         counters["edit_scope_downgrades"] = 1
@@ -152,9 +148,7 @@ def _build_telemetry_counters(
     if delta is not None and all_findings:
         new_count = len(display_findings)
         total = len(all_findings)
-        counters["new_finding_precision"] = (
-            round(100 * new_count / total) if total > 0 else 100
-        )
+        counters["new_finding_precision"] = round(100 * new_count / total) if total > 0 else 100
 
     # session_regressions from baseline
     if baseline_delta is not None:

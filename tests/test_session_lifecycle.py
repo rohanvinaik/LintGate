@@ -206,9 +206,7 @@ class TestSessionEndCleanup:
         def failing_delete(*args, **kwargs):
             raise OSError("permission denied")
 
-        monkeypatch.setattr(
-            "lintgate.runtime_state.delete_runtime_state", failing_delete
-        )
+        monkeypatch.setattr("lintgate.runtime_state.delete_runtime_state", failing_delete)
 
         result = handle({"cwd": str(tmp_path)})
         assert result["continue"] is True

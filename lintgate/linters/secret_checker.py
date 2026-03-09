@@ -44,13 +44,46 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], float, str]] = [
     ("stripe_secret", re.compile(r"sk_live_[A-Za-z0-9]{16,}"), 0.98, "warning"),
     (
         "generic_secret_assignment",
-        re.compile(
-            r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"
-        ),
+        re.compile(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"),
         0.80,
         "informational",
     ),
 ]
+
+
+_SECRET_SUGGESTIONS = [
+    "Move secret to environment variable or secret manager",
+    "Rotate credential if this value is real",
+    "Add file/pattern to ignore list only if this is intentionally synthetic",
+]
+
+
+def _scan_line(linter_name: str, path: str, line_no: int, line: str) -> Iterable[LintIssue]:
+    """Scan a single line for secret patterns."""
+    if _LIKELY_PLACEHOLDER_RE.search(line):
+        return
+
+    has_specific_match = False
+    for name, pattern, confidence, severity in _SECRET_PATTERNS:
+        if name == "generic_secret_assignment" and has_specific_match:
+            continue
+        match = pattern.search(line)
+        if not match:
+            continue
+        if name != "generic_secret_assignment":
+            has_specific_match = True
+        snippet_preview = _redact(match.group(0))
+        yield LintIssue(
+            linter=linter_name,
+            kind=name,
+            message=f"Potential secret detected ({name}): {snippet_preview}",
+            file=path,
+            line=line_no,
+            severity=severity,
+            confidence=confidence,
+            evidence={"pattern": name, "match_preview": snippet_preview},
+            suggestions=_SECRET_SUGGESTIONS,
+        )
 
 
 class SecretChecker(BaseLinter):
@@ -73,37 +106,7 @@ class SecretChecker(BaseLinter):
             with suppress(OSError):
                 text = Path(path).read_text(encoding="utf-8", errors="ignore")
                 for line_no, line in enumerate(text.splitlines(), start=1):
-                    if _LIKELY_PLACEHOLDER_RE.search(line):
-                        continue
-                    has_specific_match = False
-                    for name, pattern, confidence, severity in _SECRET_PATTERNS:
-                        if name == "generic_secret_assignment" and has_specific_match:
-                            continue
-                        match = pattern.search(line)
-                        if not match:
-                            continue
-                        if name != "generic_secret_assignment":
-                            has_specific_match = True
-                        snippet = match.group(0)
-                        snippet_preview = _redact(snippet)
-                        yield LintIssue(
-                            linter=self.name,
-                            kind=name,
-                            message=f"Potential secret detected ({name}): {snippet_preview}",
-                            file=path,
-                            line=line_no,
-                            severity=severity,
-                            confidence=confidence,
-                            evidence={
-                                "pattern": name,
-                                "match_preview": snippet_preview,
-                            },
-                            suggestions=[
-                                "Move secret to environment variable or secret manager",
-                                "Rotate credential if this value is real",
-                                "Add file/pattern to ignore list only if this is intentionally synthetic",
-                            ],
-                        )
+                    yield from _scan_line(self.name, path, line_no, line)
 
     def _filter_files(self, files: list[str]) -> list[str]:
         allowed_suffixes = {

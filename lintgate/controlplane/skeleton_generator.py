@@ -44,17 +44,12 @@ def generate_test_skeleton(
 
     if archetypes:
         # Use requested archetypes
-        matches = [
-            ArchetypeMatch(name=a, confidence=1.0, reason="requested")
-            for a in archetypes
-        ]
+        matches = [ArchetypeMatch(name=a, confidence=1.0, reason="requested") for a in archetypes]
     else:
         matches = select_archetypes(source_file, project_root)
 
     if not matches:
-        matches = [
-            ArchetypeMatch(name="input_validation", confidence=0.3, reason="default")
-        ]
+        matches = [ArchetypeMatch(name="input_validation", confidence=0.3, reason="default")]
 
     # Determine the module import path
     module_name = os.path.splitext(os.path.basename(source_file))[0]
@@ -194,14 +189,10 @@ def _generate_function_tests(
         # Boundary test stubs for functions with arguments
         if func.args:
             lines.append(f"def test_{fn}_boundary_values() -> None:")
-            lines.append(
-                f'    """Test {fn} with edge cases that mutation testing targets."""'
-            )
+            lines.append(f'    """Test {fn} with edge cases that mutation testing targets."""')
             for arg in func.args[:3]:
                 lines.append(f"    # Boundary: {arg}")
-            lines.append(
-                "    # TODO: Test with boundary inputs (0, -1, empty string, None)"
-            )
+            lines.append("    # TODO: Test with boundary inputs (0, -1, empty string, None)")
             lines.append(f"    result = {fn}({', '.join('...' for _ in func.args)})")
             lines.append(
                 "    assert result == EXPECTED  # TODO: Replace with actual expected value"
@@ -210,9 +201,7 @@ def _generate_function_tests(
 
         if func.raises:
             for exc_type in func.raises[:2]:
-                lines.append(
-                    f"def test_{fn}_raises_{exc_type.lower()}_on_invalid_input() -> None:"
-                )
+                lines.append(f"def test_{fn}_raises_{exc_type.lower()}_on_invalid_input() -> None:")
                 lines.append(f'    """Test {fn} raises {exc_type} on invalid input."""')
                 lines.append(f"    with pytest.raises({exc_type}):")
                 lines.append(f"        {fn}(None)")
@@ -256,13 +245,9 @@ def _generate_class_tests(
         if cls.init_defaults > 0:
             lines.append("    def test_override_defaults(self) -> None:")
             lines.append(f'        """Test {cn} with overridden defaults."""')
-            lines.append(
-                "        # TODO: Provide override values and assert exact field values"
-            )
+            lines.append("        # TODO: Provide override values and assert exact field values")
             lines.append(f"        obj = {cn}()")
-            lines.append(
-                "        assert obj == EXPECTED  # TODO: Replace with expected instance"
-            )
+            lines.append("        assert obj == EXPECTED  # TODO: Replace with expected instance")
             lines.append("")
 
     # State invariant tests

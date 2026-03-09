@@ -131,10 +131,7 @@ def should_write(
         return False
 
     # Tool-call cadence: write every N tool calls
-    if (
-        trigger == "tool_call"
-        and scheduler.tool_calls_since_write >= scheduler.tool_call_interval
-    ):
+    if trigger == "tool_call" and scheduler.tool_calls_since_write >= scheduler.tool_call_interval:
         return True
 
     # Lint complete: always write after cooldown if dirty

@@ -151,11 +151,7 @@ class TestFindFuncNode:
         from lintgate.specification.ledger import _AST_TREE_CACHE, _find_func_node
 
         src = tmp_path / "mod.py"
-        src.write_text(
-            "class Calc:\n"
-            "    def add(self, a, b):\n"
-            "        return a + b\n"
-        )
+        src.write_text("class Calc:\n    def add(self, a, b):\n        return a + b\n")
         _AST_TREE_CACHE.pop(str(src), None)
 
         node = _find_func_node(str(src), "mod.py::Calc.add")
@@ -167,10 +163,7 @@ class TestFindFuncNode:
 
         src = tmp_path / "mod.py"
         src.write_text(
-            "class Outer:\n"
-            "    class Inner:\n"
-            "        def process(self):\n"
-            "            pass\n"
+            "class Outer:\n    class Inner:\n        def process(self):\n            pass\n"
         )
         _AST_TREE_CACHE.pop(str(src), None)
 

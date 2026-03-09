@@ -55,20 +55,10 @@ def test_discover_md_files_respects_theory_scope(tmp_path):
 
     # Create two wiki pages
     excluded = wiki_dir / "Excluded.md"
-    excluded.write_text(
-        "---\n"
-        "theory_scope: false\n"
-        "---\n"
-        "# Excluded\n\nNot for theory.\n"
-    )
+    excluded.write_text("---\ntheory_scope: false\n---\n# Excluded\n\nNot for theory.\n")
 
     included = wiki_dir / "Included.md"
-    included.write_text(
-        "---\n"
-        "theory_scope: true\n"
-        "---\n"
-        "# Included\n\nFor theory.\n"
-    )
+    included.write_text("---\ntheory_scope: true\n---\n# Included\n\nFor theory.\n")
 
     # _discover_md_files finds both files (it doesn't filter by frontmatter)
     found = _discover_md_files(str(tmp_path))

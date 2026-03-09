@@ -477,9 +477,7 @@ class TestEffectivenessChannel:
         """Run when the project has Python files."""
         return bool(event.project_root)
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute test effectiveness analysis."""
         start = time.perf_counter()
 
@@ -497,9 +495,7 @@ class TestEffectivenessChannel:
             )
 
         # Sample test files if codebase is large (#203)
-        test_files, was_sampled = _select_test_files_for_analysis(
-            all_test_files, project_root
-        )
+        test_files, was_sampled = _select_test_files_for_analysis(all_test_files, project_root)
 
         # Reuse manifest from prepass if available (avoid duplicate work)
         manifest = event.context.get("test_effectiveness_manifest")

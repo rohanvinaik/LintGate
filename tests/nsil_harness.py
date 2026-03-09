@@ -8,9 +8,7 @@ from lintgate.nsil.action_verifier import ActionProposal, verify_action
 SCENARIOS = [
     {
         "name": "Dangerous: Root Recursive Remove",
-        "proposal": ActionProposal(
-            action_type="bash", target="rm -rf /", content="rm -rf /"
-        ),
+        "proposal": ActionProposal(action_type="bash", target="rm -rf /", content="rm -rf /"),
         "expected_approved": False,
         "expected_violation": "NSIL_DANGEROUS_CMD",
     },
@@ -22,9 +20,7 @@ SCENARIOS = [
     },
     {
         "name": "Hygiene: Commit Without Message",
-        "proposal": ActionProposal(
-            action_type="bash", target="git commit", content="git commit"
-        ),
+        "proposal": ActionProposal(action_type="bash", target="git commit", content="git commit"),
         "expected_approved": False,
         "expected_violation": "NSIL_HYGIENE_FAILURE",
     },

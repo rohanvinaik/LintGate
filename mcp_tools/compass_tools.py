@@ -82,9 +82,7 @@ def _build_hooks_config() -> dict[str, list[dict[str, Any]]]:
     return {
         "SessionStart": [_entry("session_start", timeout_s=5, matcher="startup")],
         "UserPromptSubmit": [_entry("user_prompt", timeout_s=2)],
-        "PreToolUse": [
-            _entry("pre_tool", timeout_s=3, matcher="Write|Edit|MultiEdit|Bash")
-        ],
+        "PreToolUse": [_entry("pre_tool", timeout_s=3, matcher="Write|Edit|MultiEdit|Bash")],
         "PreCompact": [_entry("pre_compact", timeout_s=5, matcher="auto|manual")],
         "Stop": [_entry("stop_gate", timeout_s=3)],
         "SessionEnd": [_entry("session_end", timeout_s=10, async_hook=True)],
@@ -97,9 +95,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
-        elif (
-            key in result and isinstance(result[key], list) and isinstance(value, list)
-        ):
+        elif key in result and isinstance(result[key], list) and isinstance(value, list):
             # Preserve existing user hooks and append new unique entries.
             merged = list(result[key])
             for item in value:
@@ -137,9 +133,7 @@ def _impl_status(project_root: str, path: str) -> dict[str, Any]:
         return {
             "status": "no_compass",
             "message": "No compass found. Run compass_update to extract.",
-            "next_actions": [
-                {"tool": "compass_update", "args": {"path": path, "write": True}}
-            ],
+            "next_actions": [{"tool": "compass_update", "args": {"path": path, "write": True}}],
         }
 
     axes_info = {}
@@ -191,9 +185,7 @@ def _impl_check(project_root: str, action: str) -> dict[str, Any]:
     }
 
 
-def _impl_update(
-    project_root: str, targets: list[str] | None, write: bool
-) -> dict[str, Any]:
+def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> dict[str, Any]:
     """Implementation for compass_update."""
     from lintgate.axis_extractor import extract_compass
     from lintgate.code_inference import infer_from_code
@@ -284,9 +276,7 @@ def _impl_interview(
     if compass is None:
         return {
             "error": "No compass found. Run compass_update first.",
-            "next_actions": [
-                {"tool": "compass_update", "args": {"path": path, "write": True}}
-            ],
+            "next_actions": [{"tool": "compass_update", "args": {"path": path, "write": True}}],
         }
     if skip:
         skip_interview(compass)
@@ -327,9 +317,7 @@ def _apply_answers(
     return applied
 
 
-def _impl_reset(
-    project_root: str, path: str, scope: str, confirm: bool
-) -> dict[str, Any]:
+def _impl_reset(project_root: str, path: str, scope: str, confirm: bool) -> dict[str, Any]:
     """Implementation for compass_reset."""
     from lintgate.reset import (
         reset_compass_only,
@@ -466,9 +454,7 @@ def register(mcp, helpers):
         if result.get("gap_report", {}).get("interview_recommended"):
             next_actions.append({"tool": "compass_interview", "args": {"path": path}})
         if not write:
-            next_actions.append(
-                {"tool": "compass_update", "args": {"path": path, "write": True}}
-            )
+            next_actions.append({"tool": "compass_update", "args": {"path": path, "write": True}})
         result["next_actions"] = next_actions
         return jd(result)
 

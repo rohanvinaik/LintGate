@@ -53,6 +53,16 @@ def test_write_antigravity_config_recovers_from_invalid_json(tmp_path: Path) -> 
 
 
 def test_get_profile_case_insensitive_and_missing() -> None:
-    assert get_profile("CLAUDE") is not None
-    assert get_profile("aNtIgRaViTy") is not None
+    claude = get_profile("CLAUDE")
+    assert claude is not None
+    assert claude.id == "claude"
+    assert claude.display_name == "Claude Desktop"
+    assert claude.schema_strict is False
+
+    antigravity = get_profile("aNtIgRaViTy")
+    assert antigravity is not None
+    assert antigravity.id == "antigravity"
+    assert antigravity.display_name == "Antigravity"
+    assert antigravity.schema_strict is True
+
     assert get_profile("missing-agent") is None

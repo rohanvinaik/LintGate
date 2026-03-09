@@ -52,9 +52,7 @@ def test_audit_git_no_remote(tmp_path: Path) -> None:
 
 @patch("lintgate.quality_infra._check_gate_contract_drift", return_value=[])
 @patch("lintgate.quality_infra._has_github_remote", return_value=True)
-def test_audit_all_present(
-    mock_remote: object, mock_contract: object, tmp_path: Path
-) -> None:
+def test_audit_all_present(mock_remote: object, mock_contract: object, tmp_path: Path) -> None:
     """All artifacts present + badges → complete=True."""
     # Create .git dir
     (tmp_path / ".git").mkdir()
@@ -265,10 +263,7 @@ def test_gate_contract_drift_detects_missing_pre_push_command(tmp_path: Path) ->
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert any(
-        "pre-push missing contract command fragment: qlty check --all" in e
-        for e in errors
-    )
+    assert any("pre-push missing contract command fragment: qlty check --all" in e for e in errors)
 
 
 def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) -> None:
@@ -286,9 +281,7 @@ def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) 
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert any(
-        "Branch protection missing contract required check(s)" in e for e in errors
-    )
+    assert any("Branch protection missing contract required check(s)" in e for e in errors)
 
 
 def test_gate_contract_drift_best_effort_when_remote_unavailable_by_default(
@@ -308,9 +301,7 @@ def test_gate_contract_drift_best_effort_when_remote_unavailable_by_default(
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert not any(
-        "Unable to read main branch protection checks via gh api" in e for e in errors
-    )
+    assert not any("Unable to read main branch protection checks via gh api" in e for e in errors)
 
 
 def test_gate_contract_drift_fails_closed_when_env_enabled(tmp_path: Path) -> None:
@@ -331,9 +322,7 @@ def test_gate_contract_drift_fails_closed_when_env_enabled(tmp_path: Path) -> No
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert any(
-        "Unable to read main branch protection checks via gh api" in e for e in errors
-    )
+    assert any("Unable to read main branch protection checks via gh api" in e for e in errors)
 
 
 def test_gate_contract_drift_detects_empty_sections_and_missing_pre_push(
@@ -357,9 +346,7 @@ local_pre_push: []
     assert any("required_checks is missing or empty" in e for e in errors)
     assert any("ci_workflows is missing or empty" in e for e in errors)
     assert any("local_pre_push is missing or empty" in e for e in errors)
-    assert any(
-        "Missing .githooks/pre-push required by gate contract" in e for e in errors
-    )
+    assert any("Missing .githooks/pre-push required by gate contract" in e for e in errors)
 
 
 def test_gate_contract_drift_detects_missing_workflow_file(tmp_path: Path) -> None:
@@ -385,8 +372,7 @@ local_pre_push:
         errors = _check_gate_contract_drift(str(tmp_path))
 
     assert any(
-        "Contract workflow missing in repo: .github/workflows/tests.yml" in e
-        for e in errors
+        "Contract workflow missing in repo: .github/workflows/tests.yml" in e for e in errors
     )
 
 
@@ -413,9 +399,7 @@ def test_gate_contract_drift_detects_extra_remote_required_checks(
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert any(
-        "extra required check(s) not in contract: Extra Check" in e for e in errors
-    )
+    assert any("extra required check(s) not in contract: Extra Check" in e for e in errors)
 
 
 # ── Contract helper coverage ────────────────────────────────────────────
@@ -495,9 +479,7 @@ def test_fetch_branch_protection_required_checks_paths(tmp_path: Path) -> None:
     ):
         assert _fetch_branch_protection_required_checks(str(tmp_path)) is None
 
-    ok = subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="A\n\nB\n", stderr=""
-    )
+    ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="A\n\nB\n", stderr="")
     with (
         patch("lintgate.quality_infra._github_repo_slug", return_value="owner/repo"),
         patch("lintgate.quality_infra.subprocess.run", return_value=ok),
@@ -533,17 +515,13 @@ def test_is_git_repo_subprocess_timeout(tmp_path: Path) -> None:
 
 def test_is_git_repo_file_not_found(tmp_path: Path) -> None:
     """_is_git_repo returns False when git binary not found (line 146)."""
-    with patch(
-        "lintgate.quality_infra.subprocess.run", side_effect=FileNotFoundError("git")
-    ):
+    with patch("lintgate.quality_infra.subprocess.run", side_effect=FileNotFoundError("git")):
         assert _is_git_repo(str(tmp_path)) is False
 
 
 def test_is_git_repo_os_error(tmp_path: Path) -> None:
     """_is_git_repo returns False on generic OSError (line 147)."""
-    with patch(
-        "lintgate.quality_infra.subprocess.run", side_effect=OSError("disk error")
-    ):
+    with patch("lintgate.quality_infra.subprocess.run", side_effect=OSError("disk error")):
         assert _is_git_repo(str(tmp_path)) is False
 
 
@@ -552,18 +530,14 @@ def test_is_git_repo_os_error(tmp_path: Path) -> None:
 
 def test_has_github_remote_nonzero_returncode(tmp_path: Path) -> None:
     """_has_github_remote returns False when git remote -v fails (branch 160,162)."""
-    mock_result = subprocess.CompletedProcess(
-        args=[], returncode=1, stdout="", stderr=""
-    )
+    mock_result = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
     with patch("lintgate.quality_infra.subprocess.run", return_value=mock_result):
         assert _has_github_remote(str(tmp_path)) is False
 
 
 def test_has_github_remote_empty_stdout(tmp_path: Path) -> None:
     """_has_github_remote returns False when stdout is empty (branch 160,162)."""
-    mock_result = subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="", stderr=""
-    )
+    mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     with patch("lintgate.quality_infra.subprocess.run", return_value=mock_result):
         assert _has_github_remote(str(tmp_path)) is False
 
@@ -738,7 +712,9 @@ def test_parity_map_missing_required_check_fails() -> None:
     }
     errors: list[str] = []
     _check_parity_map(contract, errors)
-    assert any("parity_map missing CI mapping for required_check: Tests (3.11)" in e for e in errors)
+    assert any(
+        "parity_map missing CI mapping for required_check: Tests (3.11)" in e for e in errors
+    )
     assert any(
         "parity_map missing CI mapping for required_check: SonarQube Cloud Scan" in e
         for e in errors

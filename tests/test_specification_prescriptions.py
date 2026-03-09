@@ -140,7 +140,10 @@ class TestOrthogonalArrayHinting:
         rxs = prescribe(spec)
         dt_rxs = [r for r in rxs if r.prescription_kind == "decision_table"]
         if dt_rxs:
-            assert "pairwise" in dt_rxs[0].description.lower() or "covering" in dt_rxs[0].description.lower()
+            assert (
+                "pairwise" in dt_rxs[0].description.lower()
+                or "covering" in dt_rxs[0].description.lower()
+            )
 
 
 class TestAssertionCountFix:

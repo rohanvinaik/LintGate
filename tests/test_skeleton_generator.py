@@ -36,9 +36,7 @@ class TestComputeImportPath:
         assert result == "lintgate.types"
 
     def test_nested_package_path(self) -> None:
-        result = _compute_import_path(
-            "/project/lintgate/controlplane/tools.py", "/project"
-        )
+        result = _compute_import_path("/project/lintgate/controlplane/tools.py", "/project")
         assert result == "lintgate.controlplane.tools"
 
     def test_init_file_excluded(self) -> None:
@@ -129,9 +127,7 @@ class TestGenerateFunctionTests:
         assert "result = ping()" in text
 
     def test_raises_generates_exception_tests(self) -> None:
-        func = FunctionInfo(
-            name="validate", args=["x"], raises=["ValueError", "TypeError"]
-        )
+        func = FunctionInfo(name="validate", args=["x"], raises=["ValueError", "TypeError"])
         lines = _generate_function_tests(func, {"input_validation"}, "mod")
         text = "\n".join(lines)
         assert "test_validate_raises_valueerror_on_invalid_input" in text
@@ -182,9 +178,7 @@ class TestGenerateClassTests:
         assert "test_default_creation" in text
 
     def test_configuration_with_defaults_generates_override_test(self) -> None:
-        cls = ClassInfo(
-            name="Settings", is_dataclass=True, has_init=True, init_defaults=3
-        )
+        cls = ClassInfo(name="Settings", is_dataclass=True, has_init=True, init_defaults=3)
         signals = SourceSignals(classes=[cls])
         lines = _generate_class_tests(cls, signals, {"configuration"}, "mod")
         text = "\n".join(lines)
@@ -350,9 +344,7 @@ class TestGenerateTestPath:
 class TestGenerateTestSkeletonDefaultFallback:
     """Tests for the default archetype fallback in generate_test_skeleton."""
 
-    def test_empty_archetypes_from_selector_uses_default(
-        self, tmp_path: object
-    ) -> None:
+    def test_empty_archetypes_from_selector_uses_default(self, tmp_path: object) -> None:
         """Line 52: When select_archetypes returns [] and no archetypes given, use default."""
         import pathlib
 

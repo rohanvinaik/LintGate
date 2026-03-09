@@ -311,18 +311,98 @@ def _apply_spec_level_gate(
     confidence: float,
     evidence_prefix: str,
 ) -> tuple[bool, float, str]:
-    """Compatibility shim retained after mutation-system archival."""
-    _ = mutation_state
-    return False, confidence, evidence_prefix
+    """Gate confidence based on mutation survival rate.
+
+    Reads lightweight fields from cached mutation results (dict with
+    ``survival_rate``, ``coverage_depth``, ``total_mutants``).
+
+    Three tiers (theory §2, §8.1):
+    - survival > 0.5  → GATED:    conf = 0.10
+    - 0.2 < survival ≤ 0.5 → PENALIZED: conf *= 0.5
+    - survival ≤ 0.2  → VERIFIED: conf = max(conf, 0.90)
+
+    Returns ``(gated, new_confidence, updated_evidence_prefix)``.
+    """
+    if mutation_state is None:
+        return False, confidence, evidence_prefix
+
+    survival = _read_float(mutation_state, "survival_rate", -1.0)
+    total = _read_int(mutation_state, "total_mutants", 0)
+    depth = _read_str(mutation_state, "coverage_depth", "")
+
+    if total == 0 or survival < 0:
+        return False, confidence, evidence_prefix
+
+    is_gateable = depth == "profiled"
+
+    if survival > 0.5:
+        if is_gateable:
+            return True, 0.1, f"[MUTATION GATED surv={survival:.0%}] "
+        return False, confidence, f"[ADVISORY surv={survival:.0%}] "
+
+    if survival > 0.2:
+        label = "MUTATION PENALIZED" if is_gateable else "ADVISORY"
+        new_conf = confidence * 0.5 if is_gateable else confidence
+        return False, new_conf, f"[{label} surv={survival:.0%}] "
+
+    # survival ≤ 0.2 — verified (only gateable data can boost confidence)
+    if is_gateable:
+        return False, max(confidence, 0.9), f"[MUTATION VERIFIED surv={survival:.0%}] "
+    return False, confidence, f"[ADVISORY surv={survival:.0%}] "
 
 
 def _apply_spec_level_hint_suppression(
     mutation_state: Any | None,
     hints: list[str],
 ) -> list[str]:
-    """Compatibility shim retained after mutation-system archival."""
-    _ = mutation_state
+    """Suppress non-essential optimization hints when specification is weak.
+
+    When mutation data is gateable and survival > 50%, strip all hints
+    (the function's behavior is too underspecified for any optimization).
+    When survival is 20–50%, keep only ``cacheable`` (the safest hint).
+    """
+    if mutation_state is None:
+        return hints
+
+    survival = _read_float(mutation_state, "survival_rate", -1.0)
+    total = _read_int(mutation_state, "total_mutants", 0)
+    depth = _read_str(mutation_state, "coverage_depth", "")
+
+    if total == 0 or survival < 0 or depth != "profiled":
+        return hints
+
+    if survival > 0.5:
+        return []
+    if survival > 0.2:
+        return [h for h in hints if h == "cacheable"]
     return hints
+
+
+def _read_float(state: Any, key: str, default: float) -> float:
+    """Read a float from a dict or object attribute, safely."""
+    try:
+        val = state[key] if isinstance(state, dict) else getattr(state, key, default)
+        return float(val)
+    except (TypeError, ValueError, KeyError):
+        return default
+
+
+def _read_int(state: Any, key: str, default: int) -> int:
+    """Read an int from a dict or object attribute, safely."""
+    try:
+        val = state[key] if isinstance(state, dict) else getattr(state, key, default)
+        return int(val)
+    except (TypeError, ValueError, KeyError):
+        return default
+
+
+def _read_str(state: Any, key: str, default: str) -> str:
+    """Read a str from a dict or object attribute, safely."""
+    try:
+        val = state[key] if isinstance(state, dict) else getattr(state, key, default)
+        return str(val)
+    except (TypeError, ValueError, KeyError):
+        return default
 
 
 def classify_properties(
@@ -330,19 +410,19 @@ def classify_properties(
     purity: PurityResult,
     mutation_state: Any | None = None,
     enforcement_mode: str = "audit",
-    mutation_system_active: bool = False,
 ) -> FunctionProperties:
-    """
-    Given a known-pure function, attempt to classify its algebraic properties.
+    """Classify algebraic properties for a known-pure function.
 
-    ``mutation_state`` and ``mutation_system_active`` are retained for backward
-    compatibility, but mutation-derived gating is disabled.
+    When ``mutation_state`` is provided (a dict or object with
+    ``survival_rate``, ``total_mutants``, ``coverage_depth``), the gate
+    modulates confidence and suppresses optimization hints based on
+    specification completeness.
     """
     _ = enforcement_mode
-    _ = mutation_system_active
 
-    confidence = purity.confidence
-    evidence_prefix = ""
+    gated, confidence, evidence_prefix = _apply_spec_level_gate(
+        mutation_state, purity.confidence, ""
+    )
 
     properties: list[AlgebraicProperty] = [
         AlgebraicProperty(

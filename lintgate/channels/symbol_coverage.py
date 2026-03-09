@@ -78,9 +78,7 @@ class SymbolCoverageGateResult:
 
     passed: bool
     symbol_results: list[SymbolCoverageResult] = field(default_factory=list)
-    waivers_applied: list[tuple[str, SymbolCoverageWaiver]] = field(
-        default_factory=list
-    )
+    waivers_applied: list[tuple[str, SymbolCoverageWaiver]] = field(default_factory=list)
     waivers_expired: list[SymbolCoverageWaiver] = field(default_factory=list)
     skipped_reasons: list[str] = field(default_factory=list)
     unresolved_required: list[str] = field(default_factory=list)
@@ -226,9 +224,7 @@ def parse_coverage_json(path: str) -> dict[str, FileCoverage]:
 # ── Symbol Coverage Check ────────────────────────────────────────────────
 
 
-def check_symbol_coverage(
-    symbol: SymbolSpan, file_cov: FileCoverage
-) -> SymbolCoverageResult:
+def check_symbol_coverage(symbol: SymbolSpan, file_cov: FileCoverage) -> SymbolCoverageResult:
     """Check if a symbol span is fully covered (lines + branches).
 
     Binary: covered = (missing_lines ∩ span == ∅) AND
@@ -325,9 +321,7 @@ def build_target_set(
     diff_base = settings.get("diff_base", "HEAD")
 
     if mode in ("changed", "all"):
-        _collect_changed_symbols(
-            changed_files, project_root, diff_base, targets, seen_keys
-        )
+        _collect_changed_symbols(changed_files, project_root, diff_base, targets, seen_keys)
 
     unresolved = _resolve_required_symbols(
         settings.get("required_symbols", []),
@@ -364,9 +358,7 @@ def _collect_changed_symbols(
         if not spans:
             continue
 
-        changed_ranges = get_changed_line_ranges(
-            filepath, project_root, diff_base=diff_base
-        )
+        changed_ranges = get_changed_line_ranges(filepath, project_root, diff_base=diff_base)
 
         if not changed_ranges:
             # Git failure or new/untracked file: target ALL symbols
@@ -443,9 +435,7 @@ def _resolve_required_symbols(
     return unresolved
 
 
-def _find_span_by_key(
-    filepath: str, project_root: str, canonical_key: str
-) -> SymbolSpan | None:
+def _find_span_by_key(filepath: str, project_root: str, canonical_key: str) -> SymbolSpan | None:
     """Find a specific symbol span by its canonical key."""
     for span in extract_symbol_spans(filepath, project_root):
         if span.symbol_key == canonical_key:
@@ -465,9 +455,7 @@ def apply_waivers(
     targets: list[SymbolSpan],
     waivers: list[SymbolCoverageWaiver],
     today: date,
-) -> tuple[
-    list[SymbolSpan], list[tuple[str, SymbolCoverageWaiver]], list[SymbolCoverageWaiver]
-]:
+) -> tuple[list[SymbolSpan], list[tuple[str, SymbolCoverageWaiver]], list[SymbolCoverageWaiver]]:
     """Apply waivers to the target set.
 
     Returns (filtered_targets, applied_waivers, expired_waivers).
@@ -549,9 +537,7 @@ def run_symbol_coverage_gate(
     # Apply waivers
     raw_waivers = _parse_waivers(settings.get("waivers", []))
     today = date.today()
-    filtered_targets, applied_waivers, expired_waivers = apply_waivers(
-        targets, raw_waivers, today
-    )
+    filtered_targets, applied_waivers, expired_waivers = apply_waivers(targets, raw_waivers, today)
 
     # Parse coverage JSON
     coverage_data = parse_coverage_json(coverage_json_path)
@@ -559,17 +545,13 @@ def run_symbol_coverage_gate(
         if surface == "ci":
             return SymbolCoverageGateResult(
                 passed=False,
-                skipped_reasons=[
-                    f"Failed to parse coverage data from {coverage_json_path}"
-                ],
+                skipped_reasons=[f"Failed to parse coverage data from {coverage_json_path}"],
                 unresolved_required=unresolved_required,
             )
         else:
             return SymbolCoverageGateResult(
                 passed=len(unresolved_required) == 0,
-                skipped_reasons=[
-                    f"Failed to parse coverage data from {coverage_json_path}"
-                ],
+                skipped_reasons=[f"Failed to parse coverage data from {coverage_json_path}"],
                 waivers_applied=applied_waivers,
                 waivers_expired=expired_waivers,
                 unresolved_required=unresolved_required,

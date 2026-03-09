@@ -69,9 +69,7 @@ def _cc_suggestions(name: str, cc: int, threshold: int) -> list[str]:
         )
 
     # Universal guidance
-    suggestions.append(
-        "Each early-return guard clause removes one branch from CC count."
-    )
+    suggestions.append("Each early-return guard clause removes one branch from CC count.")
 
     return suggestions
 

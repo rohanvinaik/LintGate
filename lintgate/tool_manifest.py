@@ -151,9 +151,7 @@ def _parse_version_spec(package_with_version: str) -> tuple[str, str]:
     for op in (">=", "<=", "==", "!=", "~=", ">", "<"):
         if op in package_with_version:
             idx = package_with_version.index(op)
-            return package_with_version[:idx].strip(), package_with_version[
-                idx:
-            ].strip()
+            return package_with_version[:idx].strip(), package_with_version[idx:].strip()
     return package_with_version.strip(), ""
 
 
@@ -206,11 +204,7 @@ def load_toolchain_manifest(project_root: str) -> list[ToolRequirement]:
     if not isinstance(toolchain_entries, list) or not toolchain_entries:
         return [_parse_tool_entry(e) for e in _DEFAULT_TOOLCHAIN]
 
-    return [
-        _parse_tool_entry(e)
-        for e in toolchain_entries
-        if isinstance(e, dict) and "id" in e
-    ]
+    return [_parse_tool_entry(e) for e in toolchain_entries if isinstance(e, dict) and "id" in e]
 
 
 # ---------------------------------------------------------------------------
@@ -469,12 +463,8 @@ def full_toolchain_report(project_root: str) -> ManifestReport:
     # Build summary
     installed_count = sum(1 for s in statuses if s.installed)
     total = len(statuses)
-    missing_required = [
-        s for s in statuses if not s.installed and s.requirement.required
-    ]
-    missing_optional = [
-        s for s in statuses if not s.installed and not s.requirement.required
-    ]
+    missing_required = [s for s in statuses if not s.installed and s.requirement.required]
+    missing_optional = [s for s in statuses if not s.installed and not s.requirement.required]
 
     lines = [f"Toolchain: {installed_count}/{total} tools installed"]
     if missing_required:
@@ -533,9 +523,7 @@ def _cli_main() -> int:
 
     if args.check_required:
         statuses = check_tool_health(root)
-        missing_required = [
-            s for s in statuses if not s.installed and s.requirement.required
-        ]
+        missing_required = [s for s in statuses if not s.installed and s.requirement.required]
         if missing_required:
             for s in missing_required:
                 print(f"  {s.id}: {s.install_hint}")

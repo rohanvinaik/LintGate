@@ -97,9 +97,7 @@ class TestCollectFilesForEvent:
         assert result == ["all1.py", "all2.py"]
 
     def test_caps_at_50(self):
-        helpers = _stub_helpers(
-            _collect_python_files=lambda _r: [f"f{i}.py" for i in range(100)]
-        )
+        helpers = _stub_helpers(_collect_python_files=lambda _r: [f"f{i}.py" for i in range(100)])
         result = _collect_files_for_event("/tmp", None, None, helpers)
         assert len(result) == 50
 
@@ -111,9 +109,7 @@ class TestInjectBehaviorPriors:
     def _make_cp_config(self, global_memory=False, behavior_enabled=True):
         cfg = mock.MagicMock()
         cfg.global_memory_enabled = global_memory
-        cfg.channel_enabled = lambda name: (
-            behavior_enabled if name == "behavior" else True
-        )
+        cfg.channel_enabled = lambda name: behavior_enabled if name == "behavior" else True
         cfg.global_memory_ttl_days = 90
         cfg.global_memory_alpha = 0.6
         cfg.global_memory_decay_horizon = 50
@@ -301,11 +297,7 @@ class TestFilterChannelsAndExtract:
 
     def test_extract_findings_truncates(self):
         details = {
-            "channels": {
-                "lint": {
-                    "findings": [{"severity": "warning", "i": i} for i in range(5)]
-                }
-            }
+            "channels": {"lint": {"findings": [{"severity": "warning", "i": i} for i in range(5)]}}
         }
         result = _extract_findings(details, None, None, max_issues=2)
         assert result["total_matching"] == 5
@@ -322,9 +314,7 @@ class TestImplGetDetails:
             mock.patch("lintgate.state.load_controlplane_run", return_value=None),
             pytest.raises(ValueError, match="No ControlPlane run found"),
         ):
-            _impl_controlplane_get_details(
-                "missing", None, None, 10, None, _stub_helpers()
-            )
+            _impl_controlplane_get_details("missing", None, None, 10, None, _stub_helpers())
 
     def test_channel_filter_restricts_findings(self):
         """Branch: channel filter limits findings to a single channel."""
@@ -390,9 +380,7 @@ class TestImplGetDetails:
             },
         }
         with mock.patch("lintgate.state.load_controlplane_run", return_value=details):
-            raw = _impl_controlplane_get_details(
-                "r1", None, None, 10, ["repairs"], _stub_helpers()
-            )
+            raw = _impl_controlplane_get_details("r1", None, None, 10, ["repairs"], _stub_helpers())
         parsed = json.loads(raw)
         assert len(parsed["repairs"]) == 1
         assert parsed["repairs"][0]["action_id"] == "fix1"
@@ -502,16 +490,10 @@ class TestImplControlplaneRun:
                 "mcp_tools.controlplane_tools._build_supervision_event",
                 return_value=mock.MagicMock(),
             ),
-            mock.patch(
-                "mcp_tools.controlplane_tools._setup_session", return_value=None
-            ),
+            mock.patch("mcp_tools.controlplane_tools._setup_session", return_value=None),
             mock.patch("mcp_tools.controlplane_tools._inject_behavior_priors"),
-            mock.patch(
-                "lintgate.controlplane.runtime.run_mesh", return_value=fake_mesh
-            ),
-            mock.patch(
-                "lintgate.controlplane.reporter.build_finding_index", return_value={}
-            ),
+            mock.patch("lintgate.controlplane.runtime.run_mesh", return_value=fake_mesh),
+            mock.patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             mock.patch(
                 "lintgate.controlplane.reporter.format_mesh_report_compact",
                 return_value=dict(fake_compact),

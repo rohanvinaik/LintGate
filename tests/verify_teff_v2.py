@@ -23,13 +23,9 @@ def test_v2_schema_and_taxonomy():
 
     # 2. Test GENUINELY_WEAK
     weak_assertions = [
-        AssertionInfo(
-            kind=AssertionKind.IS_TRUE, target_expression="x", strength=0.2, line=10
-        ),
+        AssertionInfo(kind=AssertionKind.IS_TRUE, target_expression="x", strength=0.2, line=10),
     ]
-    fe_weak = FunctionEffectiveness(
-        function_name="weak_func", assertions=weak_assertions
-    )
+    fe_weak = FunctionEffectiveness(function_name="weak_func", assertions=weak_assertions)
     fe_weak.compute_scores()
     print(f"GENUINELY_WEAK Taxonomy: {fe_weak.weakness_taxonomy}")
     assert fe_weak.weakness_taxonomy == EffectivenessWeakness.GENUINELY_WEAK
@@ -37,15 +33,9 @@ def test_v2_schema_and_taxonomy():
     # 3. Test SENTINEL_HEAVY
     # Needs to NOT be GENUINELY_WEAK (sem_ratio >= 0.3 or effectiveness >= 0.4)
     sentinel_assertions = [
-        AssertionInfo(
-            kind=AssertionKind.EQUALITY, target_expression="y", strength=0.9, line=9
-        ),
-        AssertionInfo(
-            kind=AssertionKind.IS_NOT_NONE, target_expression="x", strength=0.3, line=10
-        ),
-        AssertionInfo(
-            kind=AssertionKind.IS_NOT_NONE, target_expression="x", strength=0.3, line=11
-        ),
+        AssertionInfo(kind=AssertionKind.EQUALITY, target_expression="y", strength=0.9, line=9),
+        AssertionInfo(kind=AssertionKind.IS_NOT_NONE, target_expression="x", strength=0.3, line=10),
+        AssertionInfo(kind=AssertionKind.IS_NOT_NONE, target_expression="x", strength=0.3, line=11),
     ]
     # sem_ratio = 1/3 = 0.33 (> 0.3) -> Not Genuinely Weak
     # effectiveness = (0.9 + 0.3 + 0.3) / 3 = 0.5 (> 0.4) -> Not Genuinely Weak
@@ -71,9 +61,7 @@ def test_v2_schema_and_taxonomy():
             line=11,
         ),
     ]
-    fe_bool = FunctionEffectiveness(
-        function_name="bool_func", assertions=bool_assertions
-    )
+    fe_bool = FunctionEffectiveness(function_name="bool_func", assertions=bool_assertions)
     fe_bool.compute_scores()
     print(f"BOOLEAN_CONTRACT_HEAVY Taxonomy: {fe_bool.weakness_taxonomy}")
     assert fe_bool.weakness_taxonomy == EffectivenessWeakness.BOOLEAN_CONTRACT_HEAVY
@@ -95,20 +83,14 @@ def test_v2_schema_and_taxonomy():
         function_name="structural_func", assertions=structural_assertions
     )
     fe_structural.compute_scores()
-    print(
-        f"STRUCTURAL_ONLY case (actually GENUINELY_WEAK): {fe_structural.weakness_taxonomy}"
-    )
+    print(f"STRUCTURAL_ONLY case (actually GENUINELY_WEAK): {fe_structural.weakness_taxonomy}")
     assert fe_structural.weakness_taxonomy == EffectivenessWeakness.GENUINELY_WEAK
 
     # 6. Test HEALTHY
     healthy_assertions = [
-        AssertionInfo(
-            kind=AssertionKind.EQUALITY, target_expression="x", strength=0.9, line=10
-        ),
+        AssertionInfo(kind=AssertionKind.EQUALITY, target_expression="x", strength=0.9, line=10),
     ]
-    fe_healthy = FunctionEffectiveness(
-        function_name="healthy_func", assertions=healthy_assertions
-    )
+    fe_healthy = FunctionEffectiveness(function_name="healthy_func", assertions=healthy_assertions)
     fe_healthy.compute_scores()
     print(f"HEALTHY Taxonomy: {fe_healthy.weakness_taxonomy}")
     assert fe_healthy.weakness_taxonomy == EffectivenessWeakness.HEALTHY
@@ -121,9 +103,7 @@ def test_v2_schema_and_taxonomy():
     assert diag_dict["scope_provenance"] == {"files": ["a.py", "b.py"]}
 
     # 8. Test analyze_function_effectiveness output
-    data, anti_patterns = analyze_function_effectiveness(
-        "test_func", healthy_assertions
-    )
+    data, anti_patterns = analyze_function_effectiveness("test_func", healthy_assertions)
     print(f"analyze_function_effectiveness keys: {list(data.keys())}")
     assert "weakness_taxonomy" in data
     assert "confidence" in data

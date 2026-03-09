@@ -35,9 +35,7 @@ from lintgate.types import LintIssue
 
 
 def _issue(kind="E001", severity="warning", file="a.py", message="issue"):
-    return LintIssue(
-        linter="test", kind=kind, severity=severity, file=file, message=message
-    )
+    return LintIssue(linter="test", kind=kind, severity=severity, file=file, message=message)
 
 
 def _channel(name, status="fail", severity="warning", findings=None):
@@ -440,9 +438,7 @@ def test_has_actionable_blocking():
 
 
 def test_has_actionable_info_only():
-    r = _channel(
-        "lint", severity="informational", findings=[_issue(severity="informational")]
-    )
+    r = _channel("lint", severity="informational", findings=[_issue(severity="informational")])
     assert _has_actionable_findings(r) is False
 
 
@@ -574,9 +570,7 @@ def test_classify_edit_scope_no_file_evidence():
 
 def test_classify_edit_scope_basename_match(tmp_path):
     failing = [_channel("lint", findings=[_issue(file="a.py")])]
-    edit_related, ambient, unknown = _classify_edit_scope(
-        failing, [str(tmp_path / "a.py")]
-    )
+    edit_related, ambient, unknown = _classify_edit_scope(failing, [str(tmp_path / "a.py")])
     assert "lint" in edit_related
 
 
@@ -633,9 +627,7 @@ def test_apply_edit_scope_ambient_critical_stays_isolated(tmp_path):
         loud_channels=["lint"],
         confidence=0.8,
     )
-    channel_results = [
-        _channel("lint", findings=[_issue(file=str(other), severity="blocking")])
-    ]
+    channel_results = [_channel("lint", findings=[_issue(file=str(other), severity="blocking")])]
     r = _apply_edit_scope(base, channel_results, [str(changed)])
     assert r.edit_scoped is True
     assert r.state == "isolated"  # not downgraded because ambient has blocking
@@ -670,9 +662,7 @@ def test_ambient_critical_blocking():
 
 
 def test_ambient_critical_security_keyword():
-    results = [
-        _channel("lint", findings=[_issue(kind="secret_leak", severity="warning")])
-    ]
+    results = [_channel("lint", findings=[_issue(kind="secret_leak", severity="warning")])]
     assert _has_ambient_critical_findings(results, ["lint"]) is True
 
 
@@ -767,8 +757,7 @@ def test_history_tradeoff():
         _channel(
             "lint",
             "fail",
-            findings=[_issue(kind="cognitive_complexity")] * 2
-            + [_issue(kind="too_many_args")] * 3,
+            findings=[_issue(kind="cognitive_complexity")] * 2 + [_issue(kind="too_many_args")] * 3,
         ),
         _channel("tests", "pass"),
         _channel("deps", "pass"),
@@ -849,8 +838,7 @@ def test_tradeoff_detected():
         _channel(
             "lint",
             "fail",
-            findings=[_issue(kind="cognitive_complexity")] * 2
-            + [_issue(kind="too_many_args")] * 3,
+            findings=[_issue(kind="cognitive_complexity")] * 2 + [_issue(kind="too_many_args")] * 3,
         ),
     ]
     result = _detect_refactoring_tradeoffs(current, session)

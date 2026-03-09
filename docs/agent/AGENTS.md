@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 93 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 99 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -179,6 +179,12 @@ spec_prescribe         mutation_prescribe ──→ mutation_prescribe_tests
 |------|---------|-------------|
 | `analyze_test_strength` | Project-wide assertion quality analysis | Assess test suite health |
 | `inspect_test_assertions` | Per-assertion drill-down into test file | Investigate weak test files |
+| `test_hygiene_scan` | Scan for stubs, weak assertions, duplicates | After editing tests or during health checks |
+| `test_triage` | Rank untested functions by spec priority | Cold-start: decide what to test first |
+| `test_infer_inputs` | Infer inputs from call sites and type hints | Before writing tests for untested functions |
+| `test_characterize` | Generate characterization tests | Lock in current behavior before refactoring |
+| `test_characterize_mark` | Mark characterization test maturity | After reviewing or mutation-validating tests |
+| `test_redundancy_project` | Project-wide kill-matrix redundancy analysis | After exhaustive mutation profiling |
 
 ### Performance & Algebra
 

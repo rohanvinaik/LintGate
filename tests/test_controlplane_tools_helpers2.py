@@ -255,9 +255,7 @@ class TestImplAgentFeedback:
             mock.patch("mcp_tools.controlplane_tools._process_rejected_constraints"),
             mock.patch("mcp_tools.controlplane_tools._generate_living_context_patches"),
         ):
-            raw = _impl_controlplane_agent_feedback(
-                "/tmp", None, None, None, None, _stub_helpers()
-            )
+            raw = _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
         parsed = json.loads(raw)
         assert parsed["session_id"] == "s2"
         rec.assert_not_called()

@@ -247,8 +247,7 @@ def test_duration_in_header() -> None:
     )
     report = format_mesh_report(mesh)
     assert (
-        'duration="42ms"' in report["systemMessage"]
-        or 'duration="43ms"' in report["systemMessage"]
+        'duration="42ms"' in report["systemMessage"] or 'duration="43ms"' in report["systemMessage"]
     )
 
 

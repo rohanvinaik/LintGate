@@ -297,9 +297,7 @@ def _collect_external_tool_gaps(project_root: str) -> dict[str, Any]:
             },
         )
         entry["required_by"].append(linter_name)
-        entry["available"] = entry["available"] and _linter_available(
-            linter, project_root
-        )
+        entry["available"] = entry["available"] and _linter_available(linter, project_root)
 
     missing_tools: list[dict[str, Any]] = []
     for tool in sorted(tool_matrix):
@@ -317,8 +315,7 @@ def _collect_external_tool_gaps(project_root: str) -> dict[str, Any]:
                 "install_command": _format_cmd(install_cmd)
                 if install_cmd
                 else f"pip install {package}",
-                "auto_installable": install_cmd is not None
-                and tool in _OPTIONAL_STARTUP_PACKAGES,
+                "auto_installable": install_cmd is not None and tool in _OPTIONAL_STARTUP_PACKAGES,
             }
         )
 
@@ -422,16 +419,12 @@ def _scaffold_config_yaml(project_root: str, helpers: dict) -> str:
     lines.append("")
 
     # Detect Python source files for critical path analysis
-    py_files = sorted(
-        glob_mod.glob(os.path.join(project_root, "**", "*.py"), recursive=True)
-    )
+    py_files = sorted(glob_mod.glob(os.path.join(project_root, "**", "*.py"), recursive=True))
     # Exclude venv, __pycache__, .git
     py_files = [
         f
         for f in py_files
-        if not any(
-            seg in f for seg in ("/.venv/", "/__pycache__/", "/.git/", "/node_modules/")
-        )
+        if not any(seg in f for seg in ("/.venv/", "/__pycache__/", "/.git/", "/node_modules/"))
     ]
 
     # Find large files (potential critical paths)
@@ -466,12 +459,8 @@ def _scaffold_config_yaml(project_root: str, helpers: dict) -> str:
 
     if has_subprocess:
         lines.append("severity_overrides:")
-        lines.append(
-            "  B603: informational  # subprocess calls — expected for tool orchestration"
-        )
-        lines.append(
-            "  B107: informational  # hardcoded passwords — review if unexpected"
-        )
+        lines.append("  B603: informational  # subprocess calls — expected for tool orchestration")
+        lines.append("  B107: informational  # hardcoded passwords — review if unexpected")
         lines.append("")
 
     # ControlPlane config
@@ -573,9 +562,7 @@ def _reset_project_state(project_root: str) -> list[dict[str, str]]:
         # Compute project hash to find matching habit state files
         import hashlib
 
-        project_hash = hashlib.sha256(
-            os.path.abspath(project_root).encode()
-        ).hexdigest()[:12]
+        project_hash = hashlib.sha256(os.path.abspath(project_root).encode()).hexdigest()[:12]
         for item in habit_base.iterdir():
             if item.is_file() and project_hash in item.name:
                 item.unlink()
@@ -637,9 +624,7 @@ def _handle_tool_installs(
         # Report drift warnings (self-managing loop)
         drift = reconcile_with_registry(project_root)
         if drift:
-            startup_actions.append(
-                {"action": "toolchain_drift_detected", "warnings": drift}
-            )
+            startup_actions.append({"action": "toolchain_drift_detected", "warnings": drift})
 
         if auto_install:
             results = install_missing_tools(project_root, statuses, auto_only=True)
@@ -654,9 +639,7 @@ def _handle_tool_installs(
         # Fallback: legacy path (no tool_manifest module available)
         tool_gaps = _collect_external_tool_gaps(project_root)
         if auto_install and tool_gaps["missing_tools"]:
-            attempts = _auto_install_optional_tools(
-                project_root, tool_gaps["missing_tools"]
-            )
+            attempts = _auto_install_optional_tools(project_root, tool_gaps["missing_tools"])
             if attempts:
                 startup_actions.append(
                     {
@@ -677,9 +660,7 @@ def _handle_quality_bootstrap(
 
     gh = _detect_github_remote(project_root)
     qi_audit = audit_quality_infrastructure(project_root)
-    has_configs = qi_audit.complete and (
-        qi_audit.has_github_remote or not gh.get("detected")
-    )
+    has_configs = qi_audit.complete and (qi_audit.has_github_remote or not gh.get("detected"))
 
     result: dict[str, Any] = {"status": "not_requested"}
     if auto_setup and gh.get("detected") and not has_configs:
@@ -714,15 +695,11 @@ def register(mcp, helpers):
         if reset:
             startup_actions.extend(_reset_project_state(project_root))
 
-        venv_setup = _handle_config_and_venv(
-            project_root, auto_setup, startup_actions, helpers
-        )
+        venv_setup = _handle_config_and_venv(project_root, auto_setup, startup_actions, helpers)
         install_attempts = _handle_tool_installs(
             project_root, auto_install_optional_linters, startup_actions
         )
-        quality_bootstrap = _handle_quality_bootstrap(
-            project_root, auto_setup, startup_actions
-        )
+        quality_bootstrap = _handle_quality_bootstrap(project_root, auto_setup, startup_actions)
 
         config_status = helpers["_build_onboarding_status"](project_root)
         tool_gaps_after = _collect_external_tool_gaps(project_root)
@@ -945,11 +922,7 @@ def register(mcp, helpers):
             with open(config_path, "w") as f:
                 f.write(yaml_content)
 
-        status = (
-            "written"
-            if write
-            else ("preview_existing" if existing_config else "preview")
-        )
+        status = "written" if write else ("preview_existing" if existing_config else "preview")
         output = {
             "status": status,
             "path": config_path,
@@ -963,9 +936,7 @@ def register(mcp, helpers):
             ],
         }
         if existing_config and not write:
-            output["message"] = (
-                "Config already exists. Returning scaffold preview only."
-            )
+            output["message"] = "Config already exists. Returning scaffold preview only."
         return json.dumps(output, indent=2)
 
     @mcp.tool()

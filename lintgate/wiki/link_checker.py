@@ -70,12 +70,14 @@ def check_wiki_links(project_root: str) -> LinkCheckResult:
 
     manifest = load_manifest(project_root)
     if manifest is None:
-        result.errors.append(LinkError(
-            source_page="",
-            target="",
-            kind="missing_config",
-            message="No wiki manifest found",
-        ))
+        result.errors.append(
+            LinkError(
+                source_page="",
+                target="",
+                kind="missing_config",
+                message="No wiki manifest found",
+            )
+        )
         return result
 
     manifest_names = {p.name for p in manifest.pages}
@@ -107,24 +109,28 @@ def check_wiki_links(project_root: str) -> LinkCheckResult:
             target = match.group(2)
             result.links_checked += 1
             if target.lower() not in manifest_names_lower:
-                result.errors.append(LinkError(
-                    source_page=page_name,
-                    target=target,
-                    kind="broken",
-                    message=f"Link to '{target}' but no such page in manifest",
-                ))
+                result.errors.append(
+                    LinkError(
+                        source_page=page_name,
+                        target=target,
+                        kind="broken",
+                        message=f"Link to '{target}' but no such page in manifest",
+                    )
+                )
 
     # Orphan detection: files not in manifest (case-insensitive)
     for fname in found_files:
         if fname.lower() in ("home",):
             continue
         if fname.lower() not in manifest_names_lower:
-            result.errors.append(LinkError(
-                source_page=fname,
-                target="",
-                kind="orphan",
-                message=f"Wiki file '{fname}.md' has no manifest entry",
-            ))
+            result.errors.append(
+                LinkError(
+                    source_page=fname,
+                    target="",
+                    kind="orphan",
+                    message=f"Wiki file '{fname}.md' has no manifest entry",
+                )
+            )
 
     # Missing detection: manifest pages without files (case-insensitive)
     found_lower = {f.lower() for f in found_files}
@@ -132,12 +138,14 @@ def check_wiki_links(project_root: str) -> LinkCheckResult:
         if name.lower() == "home":
             continue
         if name.lower() not in found_lower:
-            result.errors.append(LinkError(
-                source_page="",
-                target=name,
-                kind="missing_config",
-                message=f"Manifest page '{name}' has no materialized file",
-            ))
+            result.errors.append(
+                LinkError(
+                    source_page="",
+                    target=name,
+                    kind="missing_config",
+                    message=f"Manifest page '{name}' has no materialized file",
+                )
+            )
 
     return result
 
@@ -170,9 +178,11 @@ def check_config_completeness(project_root: str) -> list[dict[str, str]]:
             continue  # Skip _Sidebar.md, _Footer.md, _template.html
         rel_path = os.path.join("docs", "wiki", fname)
         if rel_path not in manifest_files:
-            issues.append({
-                "file": rel_path,
-                "message": f"'{fname}' in docs/wiki/ is not referenced by any manifest page",
-            })
+            issues.append(
+                {
+                    "file": rel_path,
+                    "message": f"'{fname}' in docs/wiki/ is not referenced by any manifest page",
+                }
+            )
 
     return issues

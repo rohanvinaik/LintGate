@@ -31,9 +31,7 @@ def build_context_guidance(
         "do": _dedupe_text(_flatten(parsed, "do")),
         "do_not": _dedupe_text(_flatten(parsed, "do_not")),
     }
-    path_hints = sorted(
-        {hint for item in parsed for hint in item.get("path_hints", [])}
-    )
+    path_hints = sorted({hint for item in parsed for hint in item.get("path_hints", [])})
     rules = collect_context_rules(project_root)
 
     resolved_files = _resolve_files(files or [], project_root)

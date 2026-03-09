@@ -15,9 +15,7 @@ def route_finding(finding: dict[str, Any], channel: str) -> dict[str, Any]:
         "tool": "controlplane_get_details",
         "args": {},
         "rationale": "Unknown finding classification. Drill down for details.",
-        "remediation_sequence": [
-            {"step": 1, "action": "Review finding details and context."}
-        ],
+        "remediation_sequence": [{"step": 1, "action": "Review finding details and context."}],
     }
 
     # 1. Complexity findings
@@ -55,9 +53,7 @@ def route_finding(finding: dict[str, Any], channel: str) -> dict[str, Any]:
         )
 
     # 3. Import / Undefined-name / Syntax findings
-    elif any(
-        k in kind.lower() for k in ["import", "undefined", "syntax", "name-error"]
-    ):
+    elif any(k in kind.lower() for k in ["import", "undefined", "syntax", "name-error"]):
         route.update(
             {
                 "tool": "lint_files",

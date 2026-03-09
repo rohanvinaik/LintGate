@@ -223,9 +223,7 @@ class TestTelemetryWithData:
         assert summary["total_runs"] == 1
         assert summary["total_blocking_found"] == 1
 
-    def test_telemetry_includes_token_economics_when_present(
-        self, tmp_path: Path
-    ) -> None:
+    def test_telemetry_includes_token_economics_when_present(self, tmp_path: Path) -> None:
         project = "/tmp/habit_proj"
         self._write_metrics(
             tmp_path,

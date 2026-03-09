@@ -170,36 +170,133 @@ def iter_cached_states(
 
 
 def discover_test_files(project_root: str, source_file: str) -> list[str]:
-    """Find test files relevant to a source file."""
+    """Find test files relevant to a source file.
+
+    Uses multiple strategies:
+    1. Exact match: test_{basename}.py
+    2. Prefix match: test_{basename_prefix}*.py (handles files like
+       perf001_quadratic_membership.py → test_perf*.py won't match,
+       but the parent package name often does)
+    3. Package-aware: for files in subpackages like performance_checks/,
+       also search for test_{package_name}*.py
+    """
     base = os.path.splitext(os.path.basename(source_file))[0]
-    candidates = [f"test_{base}.py", f"{base}_test.py"]
     test_dirs = ["tests", "test"]
+
+    # Build candidate patterns: exact match + parent package match
+    exact_candidates = [f"test_{base}.py", f"{base}_test.py"]
+
+    # For files in subpackages, also try the parent package name
+    # e.g., lintgate/linters/performance_checks/perf001.py → test_performance_checks*.py
+    parent_dir = os.path.basename(os.path.dirname(source_file))
+    package_candidates = []
+    if parent_dir and parent_dir not in ("lintgate", "src", "lib"):
+        package_candidates.append(f"test_{parent_dir}")
+
     found: list[str] = []
+    seen: set[str] = set()
     for td in test_dirs:
         test_dir = os.path.join(project_root, td)
         if not os.path.isdir(test_dir):
             continue
-        for cand in candidates:
-            full = os.path.join(test_dir, cand)
-            if os.path.isfile(full):
-                found.append(full)
+        # Search top-level and subdirectories (e.g. tests/generated/)
+        search_dirs = [test_dir]
+        try:
+            for entry in os.listdir(test_dir):
+                sub = os.path.join(test_dir, entry)
+                if os.path.isdir(sub) and not entry.startswith("."):
+                    search_dirs.append(sub)
+        except OSError:
+            pass
+
+        for sdir in search_dirs:
+            # Exact matches
+            for cand in exact_candidates:
+                full = os.path.join(sdir, cand)
+                if os.path.isfile(full) and full not in seen:
+                    found.append(full)
+                    seen.add(full)
+            # Package-name prefix matches
+            for prefix in package_candidates:
+                try:
+                    for entry in os.listdir(sdir):
+                        if entry.startswith(prefix) and entry.endswith(".py"):
+                            full = os.path.join(sdir, entry)
+                            if full not in seen:
+                                found.append(full)
+                                seen.add(full)
+                except OSError:
+                    continue
+            # Also match characterization tests: test_char_{base}.py
+            char_cand = f"test_char_{base}.py"
+            char_full = os.path.join(sdir, char_cand)
+            if os.path.isfile(char_full) and char_full not in seen:
+                found.append(char_full)
+                seen.add(char_full)
     return found
 
 
 def load_test_callables(test_files: list[str], func_name: str) -> list[Any]:
-    """Discover and import test callables for a function via test-impact map."""
+    """Discover and import test callables for a function via test-impact map.
+
+    Falls back to loading all test functions from the discovered test files
+    when the AST-based impact map finds no direct references to func_name.
+    This handles indirect calls (fixtures, parametrize, helper wrappers)
+    that static name matching misses.
+    """
     from lintgate.specification.test_impact import build_test_impact_map
 
     impact = build_test_impact_map(test_files)
     refs = impact.tests_for(func_name)
-    if not refs:
-        return []
-    return _import_test_functions(refs)
+    if refs:
+        return _import_test_functions(refs)
+
+    # Fallback: load all test functions from the relevant test files.
+    # The test files were already scoped by filename convention in
+    # discover_test_files, so this is bounded and relevant.
+    return _load_all_tests_from_files(test_files)
+
+
+def _load_all_tests_from_files(test_files: list[str]) -> list[Any]:
+    """Import all test_ functions from the given test files.
+
+    Handles both module-level test functions and class-based test methods
+    (e.g., class TestFoo with test_bar methods). For class methods, yields
+    bound methods on fresh instances so they can be called zero-arg.
+    """
+    callables: list[Any] = []
+    for tf in test_files:
+        mod = _try_import_module(tf)
+        if mod is None:
+            continue
+        for name in dir(mod):
+            obj = getattr(mod, name, None)
+            if obj is None:
+                continue
+            # Module-level test functions
+            if name.startswith("test_") and callable(obj):
+                callables.append(obj)
+            # Test classes: extract test methods as bound methods on instances
+            elif isinstance(obj, type) and name.startswith("Test"):
+                try:
+                    instance = obj()
+                except Exception:
+                    continue
+                for method_name in dir(obj):
+                    if method_name.startswith("test_"):
+                        method = getattr(instance, method_name, None)
+                        if callable(method):
+                            callables.append(method)
+    return callables
 
 
 def _import_test_functions(refs: list[Any]) -> list[Any]:
-    """Import test functions from TestReference objects."""
+    """Import test functions from TestReference objects.
 
+    Handles both module-level test functions and class-based test methods.
+    For class methods, searches Test* classes for the method name and yields
+    a bound method on a fresh instance.
+    """
     callables: list[Any] = []
     loaded_modules: dict[str, Any] = {}
     for ref in refs:
@@ -208,10 +305,38 @@ def _import_test_functions(refs: list[Any]) -> list[Any]:
         mod = loaded_modules[ref.test_file]
         if mod is None:
             continue
+        # Try module-level first
         test_fn = getattr(mod, ref.test_function, None)
         if test_fn is not None and callable(test_fn):
             callables.append(test_fn)
+            continue
+        # Search Test* classes for the method
+        found = _find_method_in_test_classes(mod, ref.test_function)
+        if found is not None:
+            callables.append(found)
     return callables
+
+
+def _find_method_in_test_classes(mod: Any, method_name: str) -> Any:
+    """Search Test* classes in a module for a method by name.
+
+    Returns a bound method on a fresh instance, or None.
+    """
+    for name in dir(mod):
+        if not name.startswith("Test"):
+            continue
+        cls = getattr(mod, name, None)
+        if not isinstance(cls, type):
+            continue
+        if hasattr(cls, method_name):
+            try:
+                instance = cls()
+                method = getattr(instance, method_name, None)
+                if callable(method):
+                    return method
+            except Exception:
+                continue
+    return None
 
 
 def _try_import_module(filepath: str) -> Any:

@@ -96,22 +96,34 @@ def _push_wiki(wiki_dir: str, message: str) -> dict[str, Any]:
     try:
         subprocess.run(
             ["git", "add", "-A"],
-            cwd=wiki_dir, capture_output=True, text=True, check=True,
+            cwd=wiki_dir,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         # Check if there's anything to commit
         status = subprocess.run(
             ["git", "status", "--porcelain"],
-            cwd=wiki_dir, capture_output=True, text=True, check=True,
+            cwd=wiki_dir,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         if not status.stdout.strip():
             return {"ok": True, "message": "No changes to push"}
         subprocess.run(
             ["git", "commit", "-m", message],
-            cwd=wiki_dir, capture_output=True, text=True, check=True,
+            cwd=wiki_dir,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         subprocess.run(
             ["git", "push"],
-            cwd=wiki_dir, capture_output=True, text=True, check=True,
+            cwd=wiki_dir,
+            capture_output=True,
+            text=True,
+            check=True,
             timeout=30,
         )
         return {"ok": True}
@@ -241,11 +253,13 @@ def _impl_project_organize_audit(
     # ORG001: Check for issue templates
     template_dir = Path(path) / ".github" / "ISSUE_TEMPLATE"
     if not template_dir.is_dir():
-        gaps.append({
-            "code": "ORG001",
-            "message": "No .github/ISSUE_TEMPLATE/ directory",
-            "severity": "medium",
-        })
+        gaps.append(
+            {
+                "code": "ORG001",
+                "message": "No .github/ISSUE_TEMPLATE/ directory",
+                "severity": "medium",
+            }
+        )
 
     if not repo_full:
         return {
@@ -253,14 +267,16 @@ def _impl_project_organize_audit(
             "repo": None,
             "gaps": gaps,
             "error": "Could not detect GitHub remote. Skipping API-based checks.",
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="project_organize_apply",
-                    args={"path": path, "write": False},
-                    reason="Preview organization changes.",
-                    priority=3,
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="project_organize_apply",
+                        args={"path": path, "write": False},
+                        reason="Preview organization changes.",
+                        priority=3,
+                    ),
+                ]
+            ),
         }
 
     # ORG002: Check for priority labels
@@ -283,25 +299,39 @@ def _impl_project_organize_audit(
     priority_labels = [n for n in label_names if re.match(r"^P[0-3]$", n)]
     if len(priority_labels) < 4:
         missing = [f"P{i}" for i in range(4) if f"P{i}" not in label_names]
-        gaps.append({
-            "code": "ORG002",
-            "message": f"Missing priority labels: {', '.join(missing)}",
-            "severity": "low",
-        })
+        gaps.append(
+            {
+                "code": "ORG002",
+                "message": f"Missing priority labels: {', '.join(missing)}",
+                "severity": "low",
+            }
+        )
 
     # ORG003: Check for type: prefix labels
     type_labels = [n for n in label_names if n.startswith("type:")]
     if not type_labels:
-        gaps.append({
-            "code": "ORG003",
-            "message": "No type: prefix labels defined",
-            "severity": "low",
-        })
+        gaps.append(
+            {
+                "code": "ORG003",
+                "message": "No type: prefix labels defined",
+                "severity": "low",
+            }
+        )
 
     # ORG004: Issues with no labels
     issues_result = _run_gh(
-        ["issue", "list", "--repo", repo_full, "--json", "number,labels",
-         "--state", "open", "--limit", "500"],
+        [
+            "issue",
+            "list",
+            "--repo",
+            repo_full,
+            "--json",
+            "number,labels",
+            "--state",
+            "open",
+            "--limit",
+            "500",
+        ],
     )
     issues_list: list[dict] = []
     if isinstance(issues_result, list):
@@ -316,17 +346,16 @@ def _impl_project_organize_audit(
             except json.JSONDecodeError:
                 pass
 
-    unlabeled = [
-        iss["number"] for iss in issues_list
-        if not iss.get("labels")
-    ]
+    unlabeled = [iss["number"] for iss in issues_list if not iss.get("labels")]
     if unlabeled:
-        gaps.append({
-            "code": "ORG004",
-            "message": f"{len(unlabeled)} issues have no labels",
-            "severity": "medium",
-            "issues": unlabeled[:20],
-        })
+        gaps.append(
+            {
+                "code": "ORG004",
+                "message": f"{len(unlabeled)} issues have no labels",
+                "severity": "medium",
+                "issues": unlabeled[:20],
+            }
+        )
 
     # ORG005: No milestones
     if len(issues_list) > 10:
@@ -339,11 +368,13 @@ def _impl_project_organize_audit(
             with contextlib.suppress(ValueError, TypeError):
                 ms_count = int(raw)
         if ms_count == 0:
-            gaps.append({
-                "code": "ORG005",
-                "message": f"No milestones defined (repo has {len(issues_list)}+ open issues)",
-                "severity": "low",
-            })
+            gaps.append(
+                {
+                    "code": "ORG005",
+                    "message": f"No milestones defined (repo has {len(issues_list)}+ open issues)",
+                    "severity": "low",
+                }
+            )
 
     # ORG006: Wiki disabled
     repo_info = _run_gh(
@@ -352,28 +383,33 @@ def _impl_project_organize_audit(
     if isinstance(repo_info, dict):
         raw = repo_info.get("raw", "")
         if raw.strip().lower() == "false":
-            gaps.append({
-                "code": "ORG006",
-                "message": "Wiki is disabled on this repository",
-                "severity": "low",
-            })
+            gaps.append(
+                {
+                    "code": "ORG006",
+                    "message": "Wiki is disabled on this repository",
+                    "severity": "low",
+                }
+            )
 
     # ORG007: Issues missing priority labels
     if priority_labels and issues_list:
         no_priority = [
-            iss["number"] for iss in issues_list
+            iss["number"]
+            for iss in issues_list
             if not any(
                 lb.get("name", "").startswith("P") and len(lb.get("name", "")) == 2
                 for lb in (iss.get("labels") or [])
             )
         ]
         if no_priority:
-            gaps.append({
-                "code": "ORG007",
-                "message": f"{len(no_priority)} issues missing priority labels",
-                "severity": "low",
-                "issues": no_priority[:20],
-            })
+            gaps.append(
+                {
+                    "code": "ORG007",
+                    "message": f"{len(no_priority)} issues missing priority labels",
+                    "severity": "low",
+                    "issues": no_priority[:20],
+                }
+            )
 
     return {
         "project": path,
@@ -382,22 +418,24 @@ def _impl_project_organize_audit(
         "gaps": gaps,
         "labels_found": len(label_names),
         "open_issues": len(issues_list),
-        "next_actions": serialize_next_actions([
-            NextAction(
-                tool="project_organize_apply",
-                args={"path": path, "write": False},
-                reason="Preview fixes for detected gaps.",
-                priority=2,
-                condition="gaps detected",
-            ),
-            NextAction(
-                tool="project_wiki_sync",
-                args={"path": path, "scope": "all", "write": False},
-                reason="Preview wiki page generation.",
-                priority=4,
-                condition="wiki infrastructure desired",
-            ),
-        ]),
+        "next_actions": serialize_next_actions(
+            [
+                NextAction(
+                    tool="project_organize_apply",
+                    args={"path": path, "write": False},
+                    reason="Preview fixes for detected gaps.",
+                    priority=2,
+                    condition="gaps detected",
+                ),
+                NextAction(
+                    tool="project_wiki_sync",
+                    args={"path": path, "scope": "all", "write": False},
+                    reason="Preview wiki page generation.",
+                    priority=4,
+                    condition="wiki infrastructure desired",
+                ),
+            ]
+        ),
     }
 
 
@@ -444,12 +482,19 @@ def _impl_project_organize_apply(
                 action = {"type": "create_label", "name": label, "color": color}
                 planned.append(action)
                 if write:
-                    result = _run_gh([
-                        "label", "create", label,
-                        "--repo", repo_full,
-                        "--color", color,
-                        "--description", f"Priority {label}",
-                    ])
+                    result = _run_gh(
+                        [
+                            "label",
+                            "create",
+                            label,
+                            "--repo",
+                            repo_full,
+                            "--color",
+                            color,
+                            "--description",
+                            f"Priority {label}",
+                        ]
+                    )
                     action["result"] = result
                     applied.append(action)
 
@@ -465,11 +510,17 @@ def _impl_project_organize_apply(
                 action = {"type": "create_label", "name": label, "color": color}
                 planned.append(action)
                 if write:
-                    result = _run_gh([
-                        "label", "create", label,
-                        "--repo", repo_full,
-                        "--color", color,
-                    ])
+                    result = _run_gh(
+                        [
+                            "label",
+                            "create",
+                            label,
+                            "--repo",
+                            repo_full,
+                            "--color",
+                            color,
+                        ]
+                    )
                     action["result"] = result
                     applied.append(action)
 
@@ -480,22 +531,24 @@ def _impl_project_organize_apply(
         "planned_actions": len(planned),
         "applied_actions": len(applied),
         "actions": planned if not write else applied,
-        "next_actions": serialize_next_actions([
-            NextAction(
-                tool="project_organize_apply",
-                args={"path": path, "actions": all_actions, "write": True},
-                reason="Apply planned changes.",
-                priority=2,
-                condition="dry-run looks good and write=False was used",
-            ),
-            NextAction(
-                tool="project_organize_audit",
-                args={"path": path},
-                reason="Re-audit after applying changes.",
-                priority=3,
-                condition="after applying changes",
-            ),
-        ]),
+        "next_actions": serialize_next_actions(
+            [
+                NextAction(
+                    tool="project_organize_apply",
+                    args={"path": path, "actions": all_actions, "write": True},
+                    reason="Apply planned changes.",
+                    priority=2,
+                    condition="dry-run looks good and write=False was used",
+                ),
+                NextAction(
+                    tool="project_organize_audit",
+                    args={"path": path},
+                    reason="Re-audit after applying changes.",
+                    priority=3,
+                    condition="after applying changes",
+                ),
+            ]
+        ),
     }
 
 
@@ -517,6 +570,7 @@ def _impl_project_wiki_sync(
     if "theory" in scopes:
         try:
             from lintgate.theory_extractor import extract_theory
+
             theory = extract_theory(path)
             pages["Theory-Profile"] = _render_theory_wiki_page(theory)
         except Exception as exc:
@@ -561,15 +615,17 @@ def _impl_project_wiki_sync(
             "pages_generated": len(pages),
             "page_names": sorted(pages.keys()),
             "page_sizes": {k: len(v) for k, v in pages.items()},
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="project_wiki_sync",
-                    args={"path": path, "scope": scope, "write": True},
-                    reason="Push generated pages to wiki.",
-                    priority=2,
-                    condition="dry-run looks good",
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="project_wiki_sync",
+                        args={"path": path, "scope": scope, "write": True},
+                        reason="Push generated pages to wiki.",
+                        priority=2,
+                        condition="dry-run looks good",
+                    ),
+                ]
+            ),
         }
 
     # Write mode: clone wiki, write pages, push
@@ -583,7 +639,7 @@ def _impl_project_wiki_sync(
                 "write": True,
                 "error": clone_result["error"],
                 "hint": "Ensure wiki is enabled: GitHub Settings → Features → Wikis. "
-                        "Create an initial Home page via the GitHub UI first.",
+                "Create an initial Home page via the GitHub UI first.",
             }
 
         for page_name, content in pages.items():
@@ -600,15 +656,17 @@ def _impl_project_wiki_sync(
             "pages_written": len(pages),
             "page_names": sorted(pages.keys()),
             "push_result": push_result,
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="project_wiki_read",
-                    args={"path": path, "page": "Theory-Profile"},
-                    reason="Verify wiki content after sync.",
-                    priority=3,
-                    condition="after successful push",
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="project_wiki_read",
+                        args={"path": path, "page": "Theory-Profile"},
+                        reason="Verify wiki content after sync.",
+                        priority=3,
+                        condition="after successful push",
+                    ),
+                ]
+            ),
         }
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -654,8 +712,7 @@ def _impl_project_wiki_read(
         page_path = os.path.join(tmpdir, f"{page}.md")
         if not os.path.exists(page_path):
             available = [
-                f[:-3] for f in os.listdir(tmpdir)
-                if f.endswith(".md") and not f.startswith(".")
+                f[:-3] for f in os.listdir(tmpdir) if f.endswith(".md") and not f.startswith(".")
             ]
             return {
                 "project": path,
@@ -674,15 +731,17 @@ def _impl_project_wiki_read(
             "page": page,
             "source": "remote",
             "content": content,
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="project_wiki_sync",
-                    args={"path": path, "scope": "all", "write": False},
-                    reason="Sync local theory/compass to wiki.",
-                    priority=4,
-                    condition="wiki content needs updating",
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="project_wiki_sync",
+                        args={"path": path, "scope": "all", "write": False},
+                        reason="Sync local theory/compass to wiki.",
+                        priority=4,
+                        condition="wiki content needs updating",
+                    ),
+                ]
+            ),
         }
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

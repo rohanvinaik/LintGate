@@ -130,9 +130,7 @@ def test_resolve_path_invalid_input():
 
     assert _resolve_path(None, "/tmp") == ""
     assert _resolve_path("", "/tmp") == ""
-    assert _resolve_path("foo.py", None) == os.path.normpath(
-        os.path.join(os.getcwd(), "foo.py")
-    )
+    assert _resolve_path("foo.py", None) == os.path.normpath(os.path.join(os.getcwd(), "foo.py"))
 
 
 # ── _matches_pipeline_path ───────────────────────────────────────────

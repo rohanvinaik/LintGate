@@ -21,6 +21,50 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
+def _should_skip_container(container_name: str, tree: ast.AST, body: list[ast.stmt]) -> bool:
+    """Check if a container name should be skipped for PERF001."""
+    return (
+        _is_set_or_dict_name(container_name, tree)
+        or _is_string_variable(container_name, tree)
+        or _is_small_constant_list(container_name, tree)
+        or _is_mutated_in_body(container_name, body)
+    )
+
+
+def _build_perf001_issue(
+    container_name: str, file_path: str, lineno: int, param_type: str | None
+) -> LintIssue:
+    """Build a PERF001 lint issue for a quadratic membership test."""
+    confidence_map = {"untyped": 0.25, "typed_slow": 0.60}
+    confidence = confidence_map.get(param_type or "", 0.50)
+
+    uncertainty_note = (
+        f" (container `{container_name}` is an untyped parameter"
+        " — add a type annotation to suppress or confirm)"
+        if param_type == "untyped"
+        else ""
+    )
+
+    return LintIssue(
+        linter="performance_checker",
+        kind="PERF001",
+        message=(
+            f"Membership test `in {container_name}` inside loop is "
+            f"O(n²) for lists. Convert `{container_name}` to a set "
+            f"before the loop for O(n) lookup.{uncertainty_note}"
+        ),
+        file=file_path,
+        line=lineno,
+        severity="warning",
+        confidence=confidence,
+        evidence={"container": container_name, "check": "PERF001", "param_type": param_type},
+        suggestions=[
+            f"Add `{container_name}_set = set({container_name})` before the loop.",
+            f"Then use `x in {container_name}_set` instead.",
+        ],
+    )
+
+
 def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIssue]:
     """Flag `x in some_list` inside for-loops when the list is loop-invariant."""
     for loop_node, body in find_loop_bodies(tree):
@@ -28,66 +72,33 @@ def check_quadratic_membership(tree: ast.AST, file_path: str) -> Iterable[LintIs
             if not isinstance(node, ast.Compare):
                 continue
             for op, comparator in zip(node.ops, node.comparators, strict=False):
-                if not isinstance(op, ast.In):
-                    continue
-                if not isinstance(comparator, ast.Name):
+                if not isinstance(op, ast.In) or not isinstance(comparator, ast.Name):
                     continue
 
                 container_name = comparator.id
-
-                if _is_set_or_dict_name(container_name, tree):
+                if _should_skip_container(container_name, tree, body):
                     continue
 
-                if _is_string_variable(container_name, tree):
-                    continue  # Substring search, not membership test
-
-                if _is_small_constant_list(container_name, tree):
-                    continue
-
-                if _is_mutated_in_body(container_name, body):
-                    continue
-
-                # Check if container is a function parameter — type annotation
-                # determines whether to flag, skip, or reduce confidence.
                 param_type = _classify_function_parameter(container_name, tree)
                 if param_type == "typed_fast":
-                    continue  # dict/set/frozenset/str param — already O(1)
-                if param_type == "untyped":
-                    confidence = 0.25
-                elif param_type is None:
-                    confidence = 0.50  # not a function param — moderate
-                else:  # typed_slow (list/tuple)
-                    confidence = 0.60
+                    continue
 
-                uncertainty_note = (
-                    f" (container `{container_name}` is an untyped parameter"
-                    " — add a type annotation to suppress or confirm)"
-                    if param_type == "untyped"
-                    else ""
-                )
+                yield _build_perf001_issue(container_name, file_path, node.lineno, param_type)
 
-                yield LintIssue(
-                    linter="performance_checker",
-                    kind="PERF001",
-                    message=(
-                        f"Membership test `in {container_name}` inside loop is "
-                        f"O(n²) for lists. Convert `{container_name}` to a set "
-                        f"before the loop for O(n) lookup.{uncertainty_note}"
-                    ),
-                    file=file_path,
-                    line=node.lineno,
-                    severity="warning",
-                    confidence=confidence,
-                    evidence={
-                        "container": container_name,
-                        "check": "PERF001",
-                        "param_type": param_type,
-                    },
-                    suggestions=[
-                        f"Add `{container_name}_set = set({container_name})` before the loop.",
-                        f"Then use `x in {container_name}_set` instead.",
-                    ],
-                )
+
+_FAST_CALL_NAMES = frozenset({"set", "frozenset", "dict", "range"})
+_FAST_LITERAL_TYPES = (ast.Set, ast.Dict, ast.DictComp, ast.SetComp)
+
+
+def _value_is_fast_container(value: ast.expr) -> bool:
+    """Check if an expression produces a container with O(1) membership."""
+    if isinstance(value, _FAST_LITERAL_TYPES):
+        return True
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in _FAST_CALL_NAMES
+    )
 
 
 def _is_set_or_dict_name(name: str, tree: ast.AST) -> bool:
@@ -99,23 +110,12 @@ def _is_set_or_dict_name(name: str, tree: ast.AST) -> bool:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == name:
-                    value = node.value
-                    if (
-                        isinstance(value, ast.Call)
-                        and isinstance(value.func, ast.Name)
-                        and value.func.id in ("set", "frozenset", "dict", "range")
-                    ):
-                        return True
-                    if isinstance(value, ast.Set):
-                        return True
-                    if isinstance(value, ast.Dict):
-                        return True
-                    if isinstance(value, ast.DictComp):
-                        return True
-                    if isinstance(value, ast.SetComp):
-                        return True
-        # Type-annotated dicts/sets: x: dict[str, int] = ...
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == name
+                    and _value_is_fast_container(node.value)
+                ):
+                    return True
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
@@ -150,7 +150,11 @@ def _is_string_variable(name: str, tree: ast.AST) -> bool:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == name and _value_is_string(node.value):
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == name
+                    and _value_is_string(node.value)
+                ):
                     return True
         if (
             isinstance(node, ast.AnnAssign)
@@ -207,7 +211,9 @@ def _value_is_string(value: ast.expr) -> bool:
     ):
         return True
     # str() constructor
-    return bool(isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "str")
+    return bool(
+        isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "str"
+    )
 
 
 def _annotation_is_str(ann: ast.expr) -> bool:

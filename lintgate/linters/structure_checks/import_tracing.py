@@ -355,6 +355,22 @@ def _extract_import_modules(node: ast.Import | ast.ImportFrom) -> list[str]:
     return []
 
 
+def _guardian_from_parent(parent: ast.AST) -> str | None:
+    """Determine the guardian type for an import based on its parent node."""
+    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return "function"
+    if isinstance(parent, ast.If):
+        test = parent.test
+        if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
+            return "if_TYPE_CHECKING"
+        if isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING":
+            return "if_TYPE_CHECKING"
+        return "conditional"
+    if isinstance(parent, (ast.ExceptHandler, ast.Try)):
+        return "try_except"
+    return None
+
+
 def _classify_import_context(
     node: ast.Import | ast.ImportFrom,
     tree: ast.Module,
@@ -369,32 +385,12 @@ def _classify_import_context(
     if not module:
         return None
 
-    # Walk the tree to find the import's parent context
     for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            if child is node:
-                if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    return LazyImport(
-                        module=module, guardian="function", line=node.lineno
-                    )
-                if isinstance(parent, ast.If):
-                    # Check for TYPE_CHECKING guard
-                    test = parent.test
-                    if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
-                        return LazyImport(
-                            module=module, guardian="if_TYPE_CHECKING", line=node.lineno
-                        )
-                    if isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING":
-                        return LazyImport(
-                            module=module, guardian="if_TYPE_CHECKING", line=node.lineno
-                        )
-                    return LazyImport(
-                        module=module, guardian="conditional", line=node.lineno
-                    )
-                if isinstance(parent, (ast.ExceptHandler, ast.Try)):
-                    return LazyImport(
-                        module=module, guardian="try_except", line=node.lineno
-                    )
+        if node not in ast.iter_child_nodes(parent):
+            continue
+        guardian = _guardian_from_parent(parent)
+        if guardian is not None:
+            return LazyImport(module=module, guardian=guardian, line=node.lineno)
 
     return None
 

@@ -108,19 +108,13 @@ def build_work_queue(
         severity = _highest_severity(f_list)
 
         # Locality: does this file's module import other finding-files?
-        locality = _compute_locality(
-            module, import_graph, path_to_module, all_finding_files
-        )
+        locality = _compute_locality(module, import_graph, path_to_module, all_finding_files)
 
         # depends_on: other finding-files that this module imports
-        depends_on = _compute_depends_on(
-            module, import_graph, file_map, all_finding_files
-        )
+        depends_on = _compute_depends_on(module, import_graph, file_map, all_finding_files)
 
         # Delegation safety: tier-0, single_file, non-blocking
-        delegation_safe = (
-            tier == 0 and locality == "single_file" and severity != "blocking"
-        )
+        delegation_safe = tier == 0 and locality == "single_file" and severity != "blocking"
 
         finding_ids = [_extract_kind(f) for f in f_list]
 

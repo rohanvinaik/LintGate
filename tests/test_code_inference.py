@@ -75,9 +75,7 @@ def test_infer_from_pyproject_mypy_and_pytest(tmp_path: Path) -> None:
 def test_infer_from_readme_extracts_paragraph(tmp_path: Path) -> None:
     """README.md with title and paragraph produces a claim."""
     readme = tmp_path / "README.md"
-    readme.write_text(
-        "# My Project\n\nThis project does something useful for developers.\n"
-    )
+    readme.write_text("# My Project\n\nThis project does something useful for developers.\n")
 
     claims = _infer_from_readme(str(tmp_path))
 
@@ -197,9 +195,7 @@ def test_infer_from_test_patterns_detects_pytest(tmp_path: Path) -> None:
     (tests_dir / "conftest.py").write_text(
         "import pytest\n\n@pytest.fixture\ndef client():\n    return 'c'\n"
     )
-    (tests_dir / "test_app.py").write_text(
-        "import pytest\n\ndef test_hello():\n    assert True\n"
-    )
+    (tests_dir / "test_app.py").write_text("import pytest\n\ndef test_hello():\n    assert True\n")
 
     claims = _infer_from_test_patterns(str(tmp_path))
 
@@ -339,22 +335,16 @@ def test_infer_from_code_integration(tmp_path: Path) -> None:
 def test_all_claims_have_inferred_provenance(tmp_path: Path) -> None:
     """Every claim from infer_from_code has provenance='inferred'."""
     (tmp_path / "pyproject.toml").write_text('[project]\ndescription = "test"\n')
-    (tmp_path / "README.md").write_text(
-        "# Proj\n\nSome description of the project here.\n"
-    )
+    (tmp_path / "README.md").write_text("# Proj\n\nSome description of the project here.\n")
     src = tmp_path / "src"
     src.mkdir()
-    (src / "mod.py").write_text(
-        '"""Module for handling data transformations."""\nimport pandas\n'
-    )
+    (src / "mod.py").write_text('"""Module for handling data transformations."""\nimport pandas\n')
 
     claims = infer_from_code(str(tmp_path))
 
     assert len(claims) > 0
     for claim in claims:
-        assert claim.provenance == "inferred", (
-            f"Claim '{claim.text}' has wrong provenance"
-        )
+        assert claim.provenance == "inferred", f"Claim '{claim.text}' has wrong provenance"
         assert claim.confidence <= _MAX_CONFIDENCE, (
             f"Claim '{claim.text}' confidence {claim.confidence} exceeds cap {_MAX_CONFIDENCE}"
         )
@@ -412,10 +402,7 @@ class TestCommitInference:
         from unittest.mock import patch
 
         stdout = "\n".join(
-            [
-                f"abc{i:04d} {'feat' if i % 2 == 0 else 'fix'}: something {i}"
-                for i in range(10)
-            ]
+            [f"abc{i:04d} {'feat' if i % 2 == 0 else 'fix'}: something {i}" for i in range(10)]
         )
         with patch("lintgate.code_inference.subprocess.run") as mock_run:
             mock_run.return_value = type("R", (), {"returncode": 0, "stdout": stdout})()

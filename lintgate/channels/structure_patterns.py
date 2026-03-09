@@ -144,9 +144,7 @@ def check_package_candidates(
                 continue
 
             findings.append(
-                _build_package_candidate_finding(
-                    prefix, group_files, import_edges, project_root
-                )
+                _build_package_candidate_finding(prefix, group_files, import_edges, project_root)
             )
 
     return findings
@@ -254,9 +252,7 @@ def check_cross_file_patterns(
 
         catalog_entry = _PATTERN_CATALOG.get(pattern_name, {})
         description = (
-            catalog_entry.get("description", pattern_name)
-            if catalog_entry
-            else pattern_name
+            catalog_entry.get("description", pattern_name) if catalog_entry else pattern_name
         )
 
         findings.append(
@@ -310,11 +306,7 @@ def _collect_structural_features(
         if isinstance(node, (ast.For, ast.While)):
             for child in ast.walk(node):
                 if isinstance(child, ast.ExceptHandler):
-                    tag = (
-                        "for_try_except"
-                        if isinstance(node, ast.For)
-                        else "while_try_except"
-                    )
+                    tag = "for_try_except" if isinstance(node, ast.For) else "while_try_except"
                     structures.add(tag)
 
     return call_names, structures

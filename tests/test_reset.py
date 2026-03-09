@@ -93,9 +93,7 @@ class TestFindManagedSections:
 
     def test_version_number_variations(self):
         for version in ["v1", "v2", "v99"]:
-            text = (
-                f"<!-- LINTGATE:BEGIN FOO {version} -->\nX\n<!-- LINTGATE:END FOO -->\n"
-            )
+            text = f"<!-- LINTGATE:BEGIN FOO {version} -->\nX\n<!-- LINTGATE:END FOO -->\n"
             sections = _find_managed_sections(text)
             assert len(sections) == 1
             assert sections[0][2] == "FOO"
@@ -160,7 +158,9 @@ class TestStripManagedSections:
         assert report.deleted[0]["section_id"] == "X"
 
     def test_strip_dry_run_does_not_modify(self, tmp_path):
-        content = "Header\n\n<!-- LINTGATE:BEGIN Y v1 -->\nContent\n<!-- LINTGATE:END Y -->\n\nFooter\n"
+        content = (
+            "Header\n\n<!-- LINTGATE:BEGIN Y v1 -->\nContent\n<!-- LINTGATE:END Y -->\n\nFooter\n"
+        )
         f = tmp_path / "test.md"
         f.write_text(content)
         report = ResetReport()
@@ -345,9 +345,7 @@ class TestResetFunctions:
         )
         report = reset_project(str(tmp_path), dry_run=True)
         # Should report the managed section
-        section_entries = [
-            d for d in report.deleted if d.get("type") == "managed_section"
-        ]
+        section_entries = [d for d in report.deleted if d.get("type") == "managed_section"]
         assert len(section_entries) == 1
         # File still has section in dry run
         assert "LINTGATE:BEGIN" in (tmp_path / ".claude" / "CLAUDE.md").read_text()

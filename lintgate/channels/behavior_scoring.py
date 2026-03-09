@@ -188,9 +188,7 @@ class IntentBiasScorer:
             self.recent_counts[intent] = self.recent_counts.get(intent, 0) + 1
         self.recent_window = len(recent)
 
-    def _effective_bias_weight(
-        self, signal_name: str, config_key: str, default: float
-    ) -> float:
+    def _effective_bias_weight(self, signal_name: str, config_key: str, default: float) -> float:
         """Merge project bias weight with global prior."""
         project = self.weights.get(config_key, default)
         global_adj = self._global_adjustments.get(signal_name, 0.0)
@@ -212,9 +210,7 @@ class IntentBiasScorer:
 
         threshold = self.weights.get("verification_debt_streak", 8)
         if streak >= threshold and verify_count == 0 and inspect_count == 0:
-            delta = self._effective_bias_weight(
-                "verification_debt", "verification_debt_bias", 0.20
-            )
+            delta = self._effective_bias_weight("verification_debt", "verification_debt_bias", 0.20)
             terms.append(f"execute_streak={streak},verify=0,inspect=0")
             return (min(delta, _BIAS_CAP), terms)
         return (0.0, terms)
@@ -234,11 +230,7 @@ class IntentBiasScorer:
         for i in range(len(history) - 2, -1, -1):
             if history[i].get("err", "") == latest_err:
                 between_count = len(history) - i - 1
-                between = (
-                    self.compass.intent_history[-between_count:]
-                    if between_count > 0
-                    else []
-                )
+                between = self.compass.intent_history[-between_count:] if between_count > 0 else []
                 has_verify = any(intent in ("verify", "inspect") for intent in between)
                 if not has_verify:
                     delta = self._effective_bias_weight(
@@ -360,9 +352,10 @@ class SignalCoordinator:
         """Apply theory grounding to a finding. Returns the theory score."""
         if self._theory_profile is None:
             return 0.0
-        coda, theory_score = _ground_finding_in_theory(
-            finding, signal_name, self._theory_profile
-        )
+        result = _ground_finding_in_theory(finding, signal_name, self._theory_profile)
+        if result is None:
+            return 0.0
+        coda, theory_score = result
         if not coda:
             return theory_score
         prev_coda = self._recent_codas.get(signal_name)
@@ -529,9 +522,7 @@ def _error_like_match(candidate: str, latest: str) -> bool:
         return True
 
     shorter, longer = (
-        (cand_norm, latest_norm)
-        if len(cand_norm) <= len(latest_norm)
-        else (latest_norm, cand_norm)
+        (cand_norm, latest_norm) if len(cand_norm) <= len(latest_norm) else (latest_norm, cand_norm)
     )
     if len(shorter) >= 12 and shorter in longer:
         return True

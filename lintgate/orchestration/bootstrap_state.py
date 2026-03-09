@@ -52,9 +52,7 @@ class BootstrapState:
     started_at: float | None = None
     last_heartbeat: float | None = None
     error: str | None = None
-    files_processed: dict[str, str] = field(
-        default_factory=dict
-    )  # file → last completed phase
+    files_processed: dict[str, str] = field(default_factory=dict)  # file → last completed phase
     tests_generated: int = 0
     artifacts: BootstrapArtifacts = field(default_factory=BootstrapArtifacts)
     last_updated: float = 0.0
@@ -80,8 +78,7 @@ class BootstrapState:
             files_processed = data.get("files_processed")
             if isinstance(files_processed, dict):
                 data["files_processed"] = {
-                    k: ("contracts" if v == "mutation" else v)
-                    for k, v in files_processed.items()
+                    k: ("contracts" if v == "mutation" else v) for k, v in files_processed.items()
                 }
 
             state = cls(**{k: v for k, v in data.items() if k != "artifacts"})

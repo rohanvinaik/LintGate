@@ -105,9 +105,7 @@ def classify_and_check(planned_action: str, project_root: str) -> HygieneResult:
     """
     command_class = _classify_command(planned_action)
     if command_class is None:
-        return HygieneResult(
-            command_class=None, recommendation="No hygiene checks applicable."
-        )
+        return HygieneResult(command_class=None, recommendation="No hygiene checks applicable.")
 
     checks = _COMMAND_CLASSES[command_class]["checks"]
     warnings: list[HygieneWarning] = []
@@ -169,9 +167,7 @@ def _check_venv_active(planned_action: str, project_root: str) -> HygieneWarning
     )
 
 
-def _check_lockfile_exists(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_lockfile_exists(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Check if any lockfile exists in the project."""
     root = Path(project_root)
     for lockfile in _LOCKFILES:
@@ -192,9 +188,7 @@ def _check_lockfile_exists(
     )
 
 
-def _check_pinned_version(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_pinned_version(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Check if pip install commands include version pins."""
     # Extract package names from the command
     # Match patterns like: pip install requests, uv add flask
@@ -255,9 +249,7 @@ def _check_pinned_version(
     )
 
 
-def _check_no_staged_secrets(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_no_staged_secrets(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Quick check for secrets in staged diffs before commit."""
     try:
         from lintgate.channels.git_channel import _check_diff_secrets
@@ -276,9 +268,7 @@ def _check_no_staged_secrets(
     return None
 
 
-def _check_lockfile_fresh(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_lockfile_fresh(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Check if lockfile is newer than manifest."""
     root = Path(project_root)
 
@@ -312,9 +302,7 @@ def _check_lockfile_fresh(
     return None
 
 
-def _check_gitignore_coverage(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_gitignore_coverage(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Check if .env is covered by .gitignore."""
     root = Path(project_root)
     gitignore = root / ".gitignore"
@@ -347,9 +335,7 @@ def _check_gitignore_coverage(
     )
 
 
-def _check_clean_working_tree(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_clean_working_tree(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Check if the working tree is clean (for publish/build commands)."""
     try:
         result = subprocess.run(
@@ -377,9 +363,7 @@ def _check_clean_working_tree(
     return None
 
 
-def _check_quality_infra(
-    planned_action: str, project_root: str
-) -> HygieneWarning | None:
+def _check_quality_infra(planned_action: str, project_root: str) -> HygieneWarning | None:
     """Check if quality infrastructure is deployed for GitHub projects.
 
     Hard enforcement: actionability='immediate' blocks the agent from

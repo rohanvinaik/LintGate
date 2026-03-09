@@ -40,9 +40,7 @@ class TestPredictionExpectation:
         assert d["type"] == "stdout_contains"
 
     def test_roundtrip(self) -> None:
-        exp = PredictionExpectation(
-            type="stdout_contains", value="success", negate=True
-        )
+        exp = PredictionExpectation(type="stdout_contains", value="success", negate=True)
         d = exp.to_dict()
         restored = PredictionExpectation.from_dict(d)
         assert restored.type == "stdout_contains"
@@ -395,9 +393,7 @@ class TestCheckPredictions:
             cfg={},
         )
         assert compass.hypotheses[0].confidence > 0.5
-        assert any(
-            "prediction confirmed" in e for e in compass.hypotheses[0].evidence_for
-        )
+        assert any("prediction confirmed" in e for e in compass.hypotheses[0].evidence_for)
 
     def test_falsified_prediction_weakens_linked_hypothesis(self) -> None:
         compass = self._make_compass()
@@ -425,9 +421,7 @@ class TestCheckPredictions:
             cfg={},
         )
         assert compass.hypotheses[0].confidence < 0.7
-        assert any(
-            "prediction falsified" in e for e in compass.hypotheses[0].evidence_against
-        )
+        assert any("prediction falsified" in e for e in compass.hypotheses[0].evidence_against)
 
 
 # ── compute_prediction_accuracy ──────────────────────────────────────

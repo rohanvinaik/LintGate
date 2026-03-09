@@ -28,9 +28,7 @@ def _make_plan(
 ) -> ExtractionPlan:
     plan = ExtractionPlan(
         source_function=source_function,
-        source_file=source_function.split("::")[0]
-        if "::" in source_function
-        else "mod.py",
+        source_file=source_function.split("::")[0] if "::" in source_function else "mod.py",
         steps=[
             ExtractionStep(order=i + 1, action="create_function", target=f"_f{i}")
             for i in range(steps)

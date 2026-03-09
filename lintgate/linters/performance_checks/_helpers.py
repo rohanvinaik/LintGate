@@ -44,16 +44,12 @@ def has_import(tree: ast.AST, module_name: str) -> bool:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == module_name or alias.name.startswith(
-                    module_name + "."
-                ):
+                if alias.name == module_name or alias.name.startswith(module_name + "."):
                     return True
         elif (
             isinstance(node, ast.ImportFrom)
             and node.module
-            and (
-                node.module == module_name or node.module.startswith(module_name + ".")
-            )
+            and (node.module == module_name or node.module.startswith(module_name + "."))
         ):
             return True
     return False

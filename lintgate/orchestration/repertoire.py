@@ -51,9 +51,7 @@ class RepertoireManager:
             if kind not in active_history:
                 active_history[kind] = {
                     "started_at_event": event_counter,
-                    "action_start_idx": action_history_len - 1
-                    if action_history_len > 0
-                    else 0,
+                    "action_start_idx": action_history_len - 1 if action_history_len > 0 else 0,
                 }
 
     def _capture_resolution(self, kind: str, current_action_idx: int):
@@ -74,9 +72,7 @@ class RepertoireManager:
         record = ResolutionRecord(
             finding_kind=kind,
             finding_message=f"Resolved via {len(steps)} actions",  # Placeholder
-            resolution_steps=[
-                {"intent": s.get("intent"), "tool": s.get("tool")} for s in steps
-            ],
+            resolution_steps=[{"intent": s.get("intent"), "tool": s.get("tool")} for s in steps],
         )
 
         self.session_memory.resolution_repertoire.append(
@@ -89,9 +85,9 @@ class RepertoireManager:
 
         # Keep repertoire bounded manually in case of direct list manipulation
         if len(self.session_memory.resolution_repertoire) > 50:
-            self.session_memory.resolution_repertoire = (
-                self.session_memory.resolution_repertoire[-50:]
-            )
+            self.session_memory.resolution_repertoire = self.session_memory.resolution_repertoire[
+                -50:
+            ]
 
     def get_resolution_hint(self, kind: str) -> str | None:
         """Find a proven resolution hint for a given finding kind."""
@@ -99,9 +95,7 @@ class RepertoireManager:
             if record.get("finding_kind") == kind:
                 steps = record.get("resolution_steps", [])
                 if steps:
-                    intents = [
-                        s.get("intent", "unknown") for s in steps if s.get("intent")
-                    ]
+                    intents = [s.get("intent", "unknown") for s in steps if s.get("intent")]
                     if intents:
                         return f"Previously resolved via: {' -> '.join(intents[-3:])}"
         return None

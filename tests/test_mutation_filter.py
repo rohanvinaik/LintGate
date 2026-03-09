@@ -28,10 +28,7 @@ class TestFilterCategories:
 
     def test_stateful_method_with_comparisons(self):
         func = _parse_func(
-            "def process(self, x):\n"
-            "    if x > 0:\n"
-            "        self.value = x\n"
-            "    return self.value"
+            "def process(self, x):\n    if x > 0:\n        self.value = x\n    return self.value"
         )
         cats = filter_categories(func, is_pure=False)
         assert MutationCategory.VALUE in cats
@@ -60,11 +57,7 @@ class TestFilterCategories:
         assert MutationCategory.TYPE not in cats
 
     def test_pure_excludes_state(self):
-        func = _parse_func(
-            "def f(self, x):\n"
-            "    self.value = x\n"
-            "    return x"
-        )
+        func = _parse_func("def f(self, x):\n    self.value = x\n    return x")
         cats = filter_categories(func, is_pure=True)
         assert MutationCategory.STATE not in cats
 
@@ -74,11 +67,6 @@ class TestFilterCategories:
         assert MutationCategory.VALUE in cats
 
     def test_global_nonlocal_includes_state(self):
-        func = _parse_func(
-            "def f(x):\n"
-            "    global counter\n"
-            "    counter = x\n"
-            "    return counter"
-        )
+        func = _parse_func("def f(x):\n    global counter\n    counter = x\n    return counter")
         cats = filter_categories(func, is_pure=False)
         assert MutationCategory.STATE in cats

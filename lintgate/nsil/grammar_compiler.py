@@ -59,7 +59,9 @@ def _compile_dangerous_command_constraint(constraint: str) -> dict[str, str] | N
                 or pattern_name in pattern
                 or (first_word and pattern_words[0] == first_word)
             ):
-                gbnf = f'  forbidden_{pattern.replace(" ", "_").replace("-", "_")} = "\\"{regex}\\" ;'
+                gbnf = (
+                    f'  forbidden_{pattern.replace(" ", "_").replace("-", "_")} = "\\"{regex}\\" ;'
+                )
                 return {
                     "gbnf": f"grammar ::= (.*\\n)*  ;\\n{gbnf}",
                     "regex": f"(?:{regex})",
@@ -258,9 +260,7 @@ def compile_policy_grammar(
     # Build final outputs
     gbnf_rules = "\n\n".join(gbnf_parts) if gbnf_parts else "grammar ::= .* ;"
     regex_pattern = "(?:" + ")|(".join(regex_parts) + ")" if regex_parts else ".*"
-    explanation = (
-        "; ".join(explanation_parts) if explanation_parts else "No constraints active"
-    )
+    explanation = "; ".join(explanation_parts) if explanation_parts else "No constraints active"
 
     if unsupported_notes:
         explanation += " | Unsupported: " + "; ".join(unsupported_notes)

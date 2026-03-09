@@ -41,9 +41,7 @@ class DependencyChannel:
             return False
         return classification.change_kind in ("dependency", "build", "config")
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute dependency health checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []

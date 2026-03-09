@@ -12,9 +12,7 @@ from lintgate.runtime_state import RuntimeState, save_runtime_state
 def _extract_capsule(result: dict) -> dict:
     """Extract capsule dict from systemMessage's <lintgate-compact-state> tag."""
     msg = result["systemMessage"]
-    m = re.search(
-        r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL
-    )
+    m = re.search(r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL)
     assert m, f"No <lintgate-compact-state> tag in systemMessage: {msg!r}"
     return json.loads(m.group(1))
 
@@ -22,9 +20,7 @@ def _extract_capsule(result: dict) -> dict:
 def _extract_capsule_str(result: dict) -> str:
     """Extract raw capsule JSON string from systemMessage."""
     msg = result["systemMessage"]
-    m = re.search(
-        r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL
-    )
+    m = re.search(r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL)
     assert m, f"No <lintgate-compact-state> tag in systemMessage: {msg!r}"
     return m.group(1)
 
@@ -407,9 +403,7 @@ class TestDualWriteStrategy:
         assert "<lintgate-compact-state>" in result["systemMessage"]
 
         # Read generation from file
-        file_gen = read_generation_from_file(
-            str(tmp_path), ".claude/rules/lg_session.md"
-        )
+        file_gen = read_generation_from_file(str(tmp_path), ".claude/rules/lg_session.md")
         assert file_gen is not None
 
     def test_no_dynamic_files_without_host_dir(self, tmp_path):

@@ -111,9 +111,7 @@ def test_detect_cycles_thresholds():
     assert results[0].reason == CYCLE_REPLACE_FAIL
 
     # Escalation
-    state = EditCycleState(
-        consecutive_replace_failures=THRESHOLD_REPLACE_FAIL, total_detections=3
-    )
+    state = EditCycleState(consecutive_replace_failures=THRESHOLD_REPLACE_FAIL, total_detections=3)
     results = detect_cycles(state)
     assert results[0].escalation_level == "enforced"
 

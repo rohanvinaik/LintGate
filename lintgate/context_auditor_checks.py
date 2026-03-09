@@ -223,9 +223,7 @@ def check_contradictions(
                 f"overlapping concepts: {', '.join(sorted(meaningful_overlap)[:5])}"
             )
         if negation_pairs:
-            evidence_parts.append(
-                f"always/never conflicts: {', '.join(negation_pairs[:3])}"
-            )
+            evidence_parts.append(f"always/never conflicts: {', '.join(negation_pairs[:3])}")
         evidence_str = "; ".join(evidence_parts)
         checks.append(
             {
@@ -303,9 +301,7 @@ def check_rule_coverage(
 
     if total_enforceable == 0:
         arch_note = (
-            f" ({len(architectural)} architectural directive(s) noted)"
-            if architectural
-            else ""
+            f" ({len(architectural)} architectural directive(s) noted)" if architectural else ""
         )
         checks.append(
             {
@@ -488,12 +484,7 @@ def extract_path_refs(text: str) -> list[str]:
             continue
         if candidate.startswith(_URL_PREFIXES):
             continue
-        if (
-            "\n" in candidate
-            or "├" in candidate
-            or "└" in candidate
-            or "│" in candidate
-        ):
+        if "\n" in candidate or "├" in candidate or "└" in candidate or "│" in candidate:
             continue
         if " " in candidate and os.sep not in candidate:
             continue
@@ -524,9 +515,7 @@ def _detect_generated_patterns(project_root: str) -> list[str]:
     if os.path.exists(os.path.join(project_root, "setup.py")) or os.path.exists(
         os.path.join(project_root, "pyproject.toml")
     ):
-        patterns.extend(
-            ["*.egg-info", "*.egg-info/*", "dist", "dist/*", "build", "build/*"]
-        )
+        patterns.extend(["*.egg-info", "*.egg-info/*", "dist", "dist/*", "build", "build/*"])
 
     # Makefile-based builds
     if os.path.exists(os.path.join(project_root, "Makefile")):
@@ -534,9 +523,7 @@ def _detect_generated_patterns(project_root: str) -> list[str]:
 
     # Node.js / webpack / bundlers
     if os.path.exists(os.path.join(project_root, "package.json")):
-        patterns.extend(
-            ["dist", "dist/*", "bundle", "bundle/*", "node_modules", "node_modules/*"]
-        )
+        patterns.extend(["dist", "dist/*", "bundle", "bundle/*", "node_modules", "node_modules/*"])
 
     # Webpack specifically
     if os.path.exists(os.path.join(project_root, "webpack.config.js")):
@@ -644,9 +631,7 @@ def _extract_keywords(directives: set[str]) -> set[str]:
     return keywords
 
 
-def _detect_negation_pairs(
-    do_directives: set[str], do_not_directives: set[str]
-) -> list[str]:
+def _detect_negation_pairs(do_directives: set[str], do_not_directives: set[str]) -> list[str]:
     """Detect "always X" vs "never X" contradictions between directive sets.
 
     Returns list of contradicting terms (e.g., "caching" if DO says

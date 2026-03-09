@@ -50,8 +50,10 @@ class Traceability:
 
     requirement_tags: list[str] = field(default_factory=list)
     covering_tests: list[str] = field(default_factory=list)
+    covering_test_files: list[str] = field(default_factory=list)
     prescription_history: list[str] = field(default_factory=list)
     assertion_count: int = 0
+    coupling_surface: int = 0
 
 
 @dataclass
@@ -63,6 +65,7 @@ class SpecCore:
     regime: str = "unknown"
     regime_rationale: str = ""
     specification_level: float = 0.0
+    data_source: str = "static"
     behavioral_dimensions: int = 0
     phase: str = "bulk"
     is_pure: bool = False
@@ -103,6 +106,7 @@ class PredictionResult:
     sigma: int = 0
     phase: str = "bulk"
     sigma_confidence: float = 1.0
+    data_source: str = "static"
     testability: TestabilityProfile = field(default_factory=TestabilityProfile)
     design_signals: TestDesignSignals = field(default_factory=TestDesignSignals)
     tpa: TPAResult = field(default_factory=TPAResult)
@@ -140,6 +144,7 @@ class FunctionSpecification:
             "regime": self.core.regime,
             "regime_rationale": self.core.regime_rationale,
             "specification_level": round(self.core.specification_level, 3),
+            "data_source": self.core.data_source,
             "behavioral_dimensions": self.core.behavioral_dimensions,
             "phase": self.core.phase,
             "is_pure": self.core.is_pure,
@@ -160,8 +165,10 @@ class FunctionSpecification:
             "priority_band": self.risk.priority_band,
             "requirement_tags": self.traceability.requirement_tags,
             "covering_tests": self.traceability.covering_tests,
+            "covering_test_files": self.traceability.covering_test_files,
             "prescription_history": self.traceability.prescription_history,
             "assertion_count": self.traceability.assertion_count,
+            "coupling_surface": self.traceability.coupling_surface,
             "trajectory": {
                 "delta_k": self.trajectory.delta_k,
                 "transition_index": self.trajectory.transition_index,

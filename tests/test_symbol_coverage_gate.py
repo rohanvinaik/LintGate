@@ -44,9 +44,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 cov_path, [src], str(tmp_path), {"enabled": True, "mode": "changed"}
@@ -76,9 +74,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 6)]
             result = run_symbol_coverage_gate(
                 cov_path, [src], str(tmp_path), {"enabled": True, "mode": "changed"}
@@ -107,9 +103,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 cov_path,
@@ -118,9 +112,7 @@ class TestRunSymbolCoverageGate:
                 {
                     "enabled": True,
                     "mode": "changed",
-                    "waivers": [
-                        {"symbol": "mod.py::waived_func", "reason": "Tested elsewhere"}
-                    ],
+                    "waivers": [{"symbol": "mod.py::waived_func", "reason": "Tested elsewhere"}],
                 },
             )
         assert result.passed is True
@@ -137,9 +129,7 @@ class TestRunSymbolCoverageGate:
 
     def test_missing_coverage_json_mcp(self, tmp_path):
         src = self._write_source(tmp_path, "def func():\n    pass\n")
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 str(tmp_path / "nonexistent.json"),
@@ -153,9 +143,7 @@ class TestRunSymbolCoverageGate:
 
     def test_missing_coverage_json_ci(self, tmp_path):
         src = self._write_source(tmp_path, "def func():\n    pass\n")
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 str(tmp_path / "nonexistent.json"),
@@ -200,9 +188,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 cov_path,
@@ -277,9 +263,7 @@ class TestTestChannelIntegration:
         event, config = self._make_config()
         channel = TestChannel()
         with (
-            patch(
-                "lintgate.channels.test_channel.find_impacted_tests", return_value=[]
-            ),
+            patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]),
             patch(
                 "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
                 return_value=gate_result,
@@ -295,9 +279,7 @@ class TestTestChannelIntegration:
 
         event, config = self._make_config(surface="ci")
         channel = TestChannel()
-        with patch(
-            "lintgate.channels.test_channel.find_impacted_tests", return_value=[]
-        ):
+        with patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]):
             result = channel.execute(event, config)
 
         gate_skipped = [f for f in result.findings if f.kind == "symbol_gate_skipped"]
@@ -373,9 +355,7 @@ class TestTestChannelIntegration:
         from lintgate.channels.test_channel import TestChannel, TestRunResult
 
         (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_smoke.py").write_text(
-            "def test_smoke():\n    assert True\n"
-        )
+        (tmp_path / "tests" / "test_smoke.py").write_text("def test_smoke():\n    assert True\n")
         src = tmp_path / "mod.py"
         src.write_text("def f():\n    return 1\n")
 
@@ -393,12 +373,8 @@ class TestTestChannelIntegration:
 
         channel = TestChannel()
         with (
-            patch(
-                "lintgate.channels.test_channel.find_impacted_tests", return_value=[]
-            ),
-            patch(
-                "lintgate.channels.test_channel.run_tests", return_value=fake_result
-            ) as mock_run,
+            patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]),
+            patch("lintgate.channels.test_channel.run_tests", return_value=fake_result) as mock_run,
             patch(
                 "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
                 return_value=gate_result,
@@ -409,7 +385,5 @@ class TestTestChannelIntegration:
         assert mock_run.call_count == 1
         run_targets = mock_run.call_args.args[0]
         assert any(str(t).endswith("/tests") for t in run_targets)
-        fallback_findings = [
-            f for f in result.findings if f.kind == "symbol_gate_fallback"
-        ]
+        fallback_findings = [f for f in result.findings if f.kind == "symbol_gate_fallback"]
         assert len(fallback_findings) == 1

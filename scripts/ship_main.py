@@ -134,9 +134,7 @@ def _check_mergeability(
             conflicts.append(stripped)
 
     if conflicts:
-        detail = "Merge conflicts detected:\n" + "\n".join(
-            f"  - {c}" for c in conflicts[:10]
-        )
+        detail = "Merge conflicts detected:\n" + "\n".join(f"  - {c}" for c in conflicts[:10])
     else:
         detail = f"Branch cannot merge cleanly (git merge-tree exit code: {result.returncode})"
 
@@ -155,9 +153,7 @@ def _auto_sync_branch(repo_root: str, base_branch: str, remote: str) -> None:
         print("[ship] Branch is up to date with remote base")
         return
 
-    print(
-        f"[ship] Branch is {behind_count} commit(s) behind {remote_base}, rebasing..."
-    )
+    print(f"[ship] Branch is {behind_count} commit(s) behind {remote_base}, rebasing...")
     _run(["git", "rebase", remote_base], cwd=repo_root)
 
 
@@ -247,8 +243,7 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
             ):
                 failed_gate_ids.append("symbol_gate")
             if ("incomplete" in stdout_lower or "incomplete" in stderr_lower) and (
-                "quality infrastructure" in stdout_lower
-                or "quality infrastructure" in stderr_lower
+                "quality infrastructure" in stdout_lower or "quality infrastructure" in stderr_lower
             ):
                 failed_gate_ids.append("quality_infra")
             if "pytest" in stdout_lower and (
@@ -319,13 +314,9 @@ def _resolve_pr(repo_root: str, branch: str, base_branch: str) -> tuple[int, str
     return int(pr["number"]), str(pr["url"])
 
 
-def _prune_merged_local_branches(
-    repo_root: str, base_branch: str, current_branch: str
-) -> None:
+def _prune_merged_local_branches(repo_root: str, base_branch: str, current_branch: str) -> None:
     protected = {base_branch, current_branch}
-    out = _git_output(
-        repo_root, "for-each-ref", "refs/heads", "--format=%(refname:short)"
-    )
+    out = _git_output(repo_root, "for-each-ref", "refs/heads", "--format=%(refname:short)")
     branches = [line.strip() for line in out.splitlines() if line.strip()]
 
     for branch in branches:
@@ -402,12 +393,8 @@ def main() -> int:
         description="Ship current branch to main — local gates then push. "
         "CI monitoring, gate enforcement, and auto-merge are handled by lintgate[bot]."
     )
-    parser.add_argument(
-        "--base", default="main", help="Base branch to merge into (default: main)"
-    )
-    parser.add_argument(
-        "--remote", default="origin", help="Git remote (default: origin)"
-    )
+    parser.add_argument("--base", default="main", help="Base branch to merge into (default: main)")
+    parser.add_argument("--remote", default="origin", help="Git remote (default: origin)")
     parser.add_argument(
         "--prune-merged",
         action="store_true",
@@ -469,9 +456,7 @@ def main() -> int:
         _auto_sync_branch(repo_root, args.base, args.remote)
 
     # Mergeability check: fail fast if branch has conflicts with base
-    mergeable, merge_detail = _check_mergeability(
-        repo_root, branch, args.base, args.remote
-    )
+    mergeable, merge_detail = _check_mergeability(repo_root, branch, args.base, args.remote)
     if not mergeable:
         raise RuntimeError(
             f"Branch '{branch}' cannot merge cleanly into '{args.base}'.\n"

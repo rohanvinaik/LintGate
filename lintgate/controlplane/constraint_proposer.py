@@ -152,9 +152,7 @@ class ProposedConstraint:
     source: str = "pattern_bank"  # Where the proposal originated
     pattern_key: str = ""  # "ruff|F821" — the triggering pattern
     proposed_rule: str = ""  # The rule text (FORBID/REQUIRE/note)
-    rule_type: str = (
-        ""  # "LINTGATE_FORBID_REGEX", "LINTGATE_REQUIRE_REGEX", "theory_note"
-    )
+    rule_type: str = ""  # "LINTGATE_FORBID_REGEX", "LINTGATE_REQUIRE_REGEX", "theory_note"
     rationale: str = ""  # Human-readable explanation
     confidence: float = 0.0  # 0.0-1.0 based on recurrence strength
     status: str = "proposed"  # proposed | accepted | rejected
@@ -171,20 +169,14 @@ class ProposedConstraint:
             "rationale": self.rationale,
             "confidence": self.confidence,
             "status": self.status,
-            "theory_coherence": self.theory_coherence.to_dict()
-            if self.theory_coherence
-            else None,
+            "theory_coherence": self.theory_coherence.to_dict() if self.theory_coherence else None,
             "drift_warning": self.drift_warning,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProposedConstraint:
         tc_data = data.get("theory_coherence")
-        tc = (
-            TheoryCoherenceResult.from_dict(tc_data)
-            if isinstance(tc_data, dict)
-            else None
-        )
+        tc = TheoryCoherenceResult.from_dict(tc_data) if isinstance(tc_data, dict) else None
         return cls(
             source=data.get("source", "pattern_bank"),
             pattern_key=data.get("pattern_key", ""),
@@ -408,14 +400,10 @@ def _resolve_constraint_template(linter: str, kind: str) -> dict[str, Any]:
     return _build_generic_template(linter, kind)
 
 
-def _compute_proposal_confidence(
-    template_data: dict[str, Any], recent_count: int
-) -> float:
+def _compute_proposal_confidence(template_data: dict[str, Any], recent_count: int) -> float:
     """Compute confidence scaling with recurrence count."""
     base_conf = template_data.get("base_confidence", 0.5)
-    recurrence_bonus = (
-        min((recent_count - 3) * 0.075, 0.15) if recent_count > 3 else 0.0
-    )
+    recurrence_bonus = min((recent_count - 3) * 0.075, 0.15) if recent_count > 3 else 0.0
     return float(min(base_conf + recurrence_bonus, 1.0))
 
 

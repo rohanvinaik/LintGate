@@ -169,14 +169,10 @@ class Prescription:
     inputs: list[str] = field(default_factory=list)  # parameters / shared variables
     outputs: list[str] = field(default_factory=list)  # return values / side effects
     basis: list[str] = field(default_factory=list)  # evidence keys
-    expected_delta: dict[str, Any] = field(
-        default_factory=dict
-    )  # e.g. {"cc_reduction": 15}
+    expected_delta: dict[str, Any] = field(default_factory=dict)  # e.g. {"cc_reduction": 15}
     evidence_sources: list[str] = field(default_factory=list)  # which lenses contributed
     converged: bool = False  # whether multiple lenses agree
-    lens_contributions: dict[str, float] = field(
-        default_factory=dict
-    )  # per-lens confidence map
+    lens_contributions: dict[str, float] = field(default_factory=dict)  # per-lens confidence map
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON output."""
@@ -280,9 +276,7 @@ class CoveragePolicy:
 
     global_threshold: int = 80  # --cov-fail-under
     diff_threshold: int = 80  # diff-cover --fail-under
-    source_packages: list[str] = field(
-        default_factory=lambda: ["lintgate", "mcp_tools"]
-    )
+    source_packages: list[str] = field(default_factory=lambda: ["lintgate", "mcp_tools"])
 
 
 @dataclass
@@ -299,9 +293,7 @@ class ToleratedFalsePositive:
 class SecurityPolicy:
     """Security gate policy."""
 
-    tolerated_false_positives: list[ToleratedFalsePositive] = field(
-        default_factory=list
-    )
+    tolerated_false_positives: list[ToleratedFalsePositive] = field(default_factory=list)
 
 
 @dataclass

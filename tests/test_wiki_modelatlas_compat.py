@@ -110,20 +110,12 @@ def _setup_project(tmp_path):
         "```bash\ngit clone ...\n```\n\n"
         "See [Query Examples](Query-Examples) next.\n"
     )
-    (wiki_dir / "query-examples.md").write_text(
-        "# Query Examples\n\nExample content.\n"
-    )
-    (wiki_dir / "system-overview.md").write_text(
-        "# System Overview\n\nArchitecture content.\n"
-    )
-    (wiki_dir / "glossary.md").write_text(
-        "# Glossary\n\n**Anchor**: A semantic label.\n"
-    )
+    (wiki_dir / "query-examples.md").write_text("# Query Examples\n\nExample content.\n")
+    (wiki_dir / "system-overview.md").write_text("# System Overview\n\nArchitecture content.\n")
+    (wiki_dir / "glossary.md").write_text("# Glossary\n\n**Anchor**: A semantic label.\n")
 
     # Metrics file
-    (wiki_dir / "_metrics.yaml").write_text(
-        "model_count: '19,498'\nanchor_count: '170'\n"
-    )
+    (wiki_dir / "_metrics.yaml").write_text("model_count: '19,498'\nanchor_count: '170'\n")
 
     return str(tmp_path)
 
@@ -267,8 +259,8 @@ def test_publish_sidebar_links_have_slugs(tmp_path):
     with open(os.path.join(out_dir, "getting-started", "index.html")) as f:
         html = f.read()
     # Links should go to ../slug/, not ../
-    assert '../getting-started/' in html or '../query-examples/' in html
-    assert '..//' not in html  # No double-slash empty slugs
+    assert "../getting-started/" in html or "../query-examples/" in html
+    assert "..//" not in html  # No double-slash empty slugs
 
 
 def test_publish_content_not_stub(tmp_path):
@@ -321,8 +313,12 @@ def test_publish_sitemap_has_slugs(tmp_path):
     out_dir = str(tmp_path / "_site")
 
     publish_pages(
-        m, composed, root, out_dir,
-        check_links=False, base_url="https://rohanv.me/ModelAtlas",
+        m,
+        composed,
+        root,
+        out_dir,
+        check_links=False,
+        base_url="https://rohanv.me/ModelAtlas",
     )
 
     with open(os.path.join(out_dir, "sitemap.xml")) as f:

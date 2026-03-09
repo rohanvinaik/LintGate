@@ -36,9 +36,7 @@ def tmp_project(tmp_path):
     )
     (tmp_path / "utils.py").write_text("def helper(a):\n    return a * 2\n")
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "test_module.py").write_text(
-        "def test_compute():\n    assert True\n"
-    )
+    (tmp_path / "tests" / "test_module.py").write_text("def test_compute():\n    assert True\n")
     return str(tmp_path)
 
 

@@ -144,9 +144,7 @@ class TestSignalTheoryMap:
 
     def test_all_signals_have_entries(self) -> None:
         for signal in self.EXPECTED_SIGNALS:
-            assert signal in SIGNAL_THEORY_MAP, (
-                f"Missing SIGNAL_THEORY_MAP entry for {signal}"
-            )
+            assert signal in SIGNAL_THEORY_MAP, f"Missing SIGNAL_THEORY_MAP entry for {signal}"
 
     def test_entries_have_facets_and_keywords(self) -> None:
         for signal, mapping in SIGNAL_THEORY_MAP.items():
@@ -212,9 +210,7 @@ class TestSignalCoordinatorTheoryDedup:
         """Different coda from previous run is preserved."""
         coord = self._make_coord(
             theory_profile=SAMPLE_PROFILE,
-            recent_codas={
-                "approach_cycling": " Theory: 'Something completely different'."
-            },
+            recent_codas={"approach_cycling": " Theory: 'Something completely different'."},
         )
         finding = _make_finding("approach_cycling", "3 approaches failed")
         coord.add_finding("approach_cycling", finding, is_hard=True)

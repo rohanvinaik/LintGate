@@ -112,13 +112,9 @@ class TestBuildTargetSet:
         """,
         )
         # Mock git diff to show changes only in lines 4-5 (the changed function)
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(4, 6)]
-            targets, unresolved = build_target_set(
-                [str(mod)], str(tmp_path), {"mode": "changed"}
-            )
+            targets, unresolved = build_target_set([str(mod)], str(tmp_path), {"mode": "changed"})
         names = [t.name for t in targets]
         assert "changed" in names
         assert "unchanged" not in names
@@ -137,13 +133,9 @@ class TestBuildTargetSet:
         """,
         )
         # git diff returns None for new/untracked files
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = None
-            targets, _ = build_target_set(
-                [str(mod)], str(tmp_path), {"mode": "changed"}
-            )
+            targets, _ = build_target_set([str(mod)], str(tmp_path), {"mode": "changed"})
         names = [t.name for t in targets]
         assert "func_a" in names
         assert "func_b" in names
@@ -203,13 +195,9 @@ class TestBuildTargetSet:
     def test_non_python_files_skipped(self, tmp_path):
         txt = tmp_path / "readme.txt"
         txt.write_text("hello")
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 2)]
-            targets, _ = build_target_set(
-                [str(txt)], str(tmp_path), {"mode": "changed"}
-            )
+            targets, _ = build_target_set([str(txt)], str(tmp_path), {"mode": "changed"})
         assert targets == []
 
     def test_diff_base_override(self, tmp_path):
@@ -221,18 +209,14 @@ class TestBuildTargetSet:
                 pass
         """,
         )
-        with patch(
-            "lintgate.channels.symbol_coverage.get_changed_line_ranges"
-        ) as mock_diff:
+        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             build_target_set(
                 [str(mod)],
                 str(tmp_path),
                 {"mode": "changed", "diff_base": "origin/main"},
             )
-            mock_diff.assert_called_once_with(
-                str(mod), str(tmp_path), diff_base="origin/main"
-            )
+            mock_diff.assert_called_once_with(str(mod), str(tmp_path), diff_base="origin/main")
 
 
 # ── TestWaivers ──────────────────────────────────────────────────────────

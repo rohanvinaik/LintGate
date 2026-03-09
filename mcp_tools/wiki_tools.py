@@ -9,15 +9,174 @@ from typing import Any
 from lintgate.next_action import NextAction, serialize_next_actions
 
 
+def _do_wiki_materialize(
+    project_root: str,
+    pages: str,
+    write: bool,
+) -> dict[str, Any]:
+    """Core implementation for wiki_materialize."""
+    from lintgate.wiki.manifest import load_manifest
+
+    manifest = load_manifest(project_root)
+    if manifest is None:
+        return {
+            "error": "No wiki manifest found at .lintgate/wiki_manifest.yaml",
+            "hint": "Create a manifest or check that PyYAML is installed.",
+        }
+
+    from lintgate.wiki.composer import compose_all_pages
+
+    theory = _load_theory(project_root)
+    compass = _load_compass(project_root)
+    composed = compose_all_pages(manifest, project_root, theory, compass)
+
+    if pages:
+        requested = {p.strip() for p in pages.split(",")}
+        composed = [c for c in composed if c.name in requested]
+
+    wiki_dir = os.path.join(project_root, ".lintgate", "wiki")
+    results: list[dict[str, Any]] = []
+
+    if write:
+        results = _write_pages(project_root, manifest, composed, wiki_dir)
+    else:
+        for page in composed:
+            results.append(
+                {
+                    "page": page.name,
+                    "pillar": page.pillar,
+                    "content_length": len(page.content),
+                    "sources": len(page.source_files),
+                    "theory_scope": page.theory_scope,
+                }
+            )
+
+    return {
+        "mode": "write" if write else "dry-run",
+        "pages_count": len(results),
+        "pages": results,
+        "wiki_dir": wiki_dir,
+    }
+
+
+def _write_pages(
+    project_root: str,
+    manifest: Any,
+    composed: list[Any],
+    wiki_dir: str,
+) -> list[dict[str, Any]]:
+    """Write composed wiki pages to disk and update freshness state."""
+    from lintgate.wiki.freshness import (
+        _section_contents_for_page,
+        build_page_freshness,
+        load_freshness_state,
+        save_freshness_state,
+    )
+
+    os.makedirs(wiki_dir, exist_ok=True)
+    state = load_freshness_state(project_root)
+    results: list[dict[str, Any]] = []
+
+    for page in composed:
+        out_path = os.path.join(wiki_dir, f"{page.name}.md")
+        with open(out_path, "w") as f:
+            f.write(page.content)
+
+        section_contents = _section_contents_for_page(page.name, manifest, project_root)
+        manifest_page = next((p for p in manifest.pages if p.name == page.name), None)
+        m_hash = manifest.manifest_hash_for_page(manifest_page) if manifest_page else ""
+        state.pages[page.name] = build_page_freshness(
+            page.name, section_contents, m_hash, page.content
+        )
+
+        results.append(
+            {
+                "page": page.name,
+                "pillar": page.pillar,
+                "written": out_path,
+                "content_length": len(page.content),
+                "sources": len(page.source_files),
+            }
+        )
+
+    save_freshness_state(project_root, state)
+    return results
+
+
+def _do_wiki_publish(
+    project_root: str,
+    out_dir: str,
+    check_links: bool,
+    site_title: str,
+    base_url: str,
+) -> dict[str, Any]:
+    """Core implementation for wiki_publish_pages."""
+    from lintgate.wiki.composer import compose_all_pages
+    from lintgate.wiki.manifest import load_manifest
+    from lintgate.wiki.pages_publisher import publish_pages
+
+    manifest = load_manifest(project_root)
+    if manifest is None:
+        return {
+            "error": "No wiki manifest found",
+            "hint": "Create wiki.yaml or .lintgate/wiki_manifest.yaml first.",
+        }
+
+    theory = _load_theory(project_root)
+    compass = _load_compass(project_root)
+    composed = compose_all_pages(manifest, project_root, theory, compass)
+
+    if not site_title:
+        site_title = _detect_site_title(project_root)
+
+    abs_out = os.path.join(project_root, out_dir)
+    result = publish_pages(
+        manifest=manifest,
+        composed=composed,
+        project_root=project_root,
+        out_dir=abs_out,
+        check_links=check_links,
+        site_title=site_title,
+        base_url=base_url,
+    )
+
+    response: dict[str, Any] = {
+        "out_dir": abs_out,
+        "pages_published": len(result.pages),
+        "pages": [{"name": p.name, "slug": p.slug, "size": p.html_size} for p in result.pages],
+        "sitemap": result.sitemap_written,
+        "link_check": "FAIL" if result.link_errors else "PASS",
+    }
+    if result.link_errors:
+        response["link_errors"] = result.link_errors
+
+    return response
+
+
+def _detect_site_title(project_root: str) -> str:
+    """Auto-detect site title from git remote or directory name."""
+    try:
+        import subprocess
+
+        proc = subprocess.run(
+            ["git", "-C", project_root, "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode == 0:
+            remote = proc.stdout.strip()
+            return remote.rstrip("/").split("/")[-1].replace(".git", "")
+    except Exception:
+        pass
+    return os.path.basename(project_root)
+
+
 def register(mcp, helpers):
     """Register wiki tools on the shared MCP instance."""
 
     @mcp.tool()
-    def wiki_materialize(
-        path: str,
-        pages: str = "",
-        write: bool = False,
-    ) -> str:
+    def wiki_materialize(path: str, pages: str = "", write: bool = False) -> str:
         """Generate wiki pages locally from manifest.
 
         Reads ``.lintgate/wiki_manifest.yaml`` and composes wiki pages from
@@ -31,105 +190,25 @@ def register(mcp, helpers):
             write: If True, write pages to disk. Default is dry-run.
         """
         project_root = helpers["_validate_project_root"](path)
+        result = _do_wiki_materialize(project_root, pages, write)
 
-        from lintgate.wiki.manifest import load_manifest
-
-        manifest = load_manifest(project_root)
-        if manifest is None:
-            return json.dumps({
-                "error": "No wiki manifest found at .lintgate/wiki_manifest.yaml",
-                "hint": "Create a manifest or check that PyYAML is installed.",
-            })
-
-        from lintgate.wiki.composer import compose_all_pages
-        from lintgate.wiki.freshness import (
-            build_page_freshness,
-            save_freshness_state,
+        next_actions = serialize_next_actions(
+            [
+                NextAction(
+                    tool="wiki_status",
+                    args={"path": path},
+                    reason="Check freshness after materialization"
+                    if write
+                    else "Preview freshness state",
+                    priority=3,
+                ),
+            ]
         )
-
-        # Optionally load theory/compass for auto-generated pages
-        theory = _load_theory(project_root)
-        compass = _load_compass(project_root)
-
-        composed = compose_all_pages(manifest, project_root, theory, compass)
-
-        # Filter to requested pages
-        if pages:
-            requested = {p.strip() for p in pages.split(",")}
-            composed = [c for c in composed if c.name in requested]
-
-        wiki_dir = os.path.join(project_root, ".lintgate", "wiki")
-        results: list[dict[str, Any]] = []
-
-        if write:
-            os.makedirs(wiki_dir, exist_ok=True)
-            from lintgate.wiki.freshness import load_freshness_state
-
-            state = load_freshness_state(project_root)
-
-            for page in composed:
-                out_path = os.path.join(wiki_dir, f"{page.name}.md")
-                with open(out_path, "w") as f:
-                    f.write(page.content)
-
-                # Build freshness state
-                from lintgate.wiki.freshness import _section_contents_for_page
-
-                section_contents = _section_contents_for_page(
-                    page.name, manifest, project_root
-                )
-                manifest_page = next(
-                    (p for p in manifest.pages if p.name == page.name), None
-                )
-                m_hash = (
-                    manifest.manifest_hash_for_page(manifest_page)
-                    if manifest_page
-                    else ""
-                )
-                state.pages[page.name] = build_page_freshness(
-                    page.name, section_contents, m_hash, page.content
-                )
-
-                results.append({
-                    "page": page.name,
-                    "pillar": page.pillar,
-                    "written": out_path,
-                    "content_length": len(page.content),
-                    "sources": len(page.source_files),
-                })
-
-            save_freshness_state(project_root, state)
-        else:
-            for page in composed:
-                results.append({
-                    "page": page.name,
-                    "pillar": page.pillar,
-                    "content_length": len(page.content),
-                    "sources": len(page.source_files),
-                    "theory_scope": page.theory_scope,
-                })
-
-        next_actions = serialize_next_actions([
-            NextAction(
-                tool="wiki_status",
-                args={"path": path},
-                reason="Check freshness after materialization" if write else "Preview freshness state",
-                priority=3,
-            ),
-        ])
-
-        return json.dumps({
-            "mode": "write" if write else "dry-run",
-            "pages_count": len(results),
-            "pages": results,
-            "wiki_dir": wiki_dir,
-            "next_actions": next_actions,
-        }, indent=2)
+        result["next_actions"] = next_actions
+        return json.dumps(result, indent=2)
 
     @mcp.tool()
-    def wiki_status(
-        path: str,
-    ) -> str:
+    def wiki_status(path: str) -> str:
         """Show wiki freshness state — stale, fresh, and missing page counts.
 
         Reports which section hashes changed per stale page and overall
@@ -149,15 +228,17 @@ def register(mcp, helpers):
 
         next_actions: list[NextAction] = []
         if status.get("stale", 0) > 0 or status.get("missing", 0) > 0:
-            next_actions.append(NextAction(
-                tool="wiki_materialize",
-                args={"path": path, "write": True},
-                reason=f"{status['stale']} stale + {status['missing']} missing pages",
-                priority=3,
-                safe=False,
-            ))
+            next_actions.append(
+                NextAction(
+                    tool="wiki_materialize",
+                    args={"path": path, "write": True},
+                    reason=f"{status['stale']} stale + {status['missing']} missing pages",
+                    priority=3,
+                    safe=False,
+                )
+            )
 
-        result = {
+        result: dict[str, Any] = {
             "fresh": status["fresh"],
             "stale": status["stale"],
             "missing": status["missing"],
@@ -165,7 +246,6 @@ def register(mcp, helpers):
             "freshness_score": round(status.get("freshness_score", 0.0), 3),
         }
 
-        # Include per-page details for stale/missing pages only
         page_details: dict[str, Any] = {}
         for name, detail in status.get("pages", {}).items():
             if detail.get("stale", False):
@@ -203,90 +283,34 @@ def register(mcp, helpers):
             base_url: Base URL for canonical links and sitemap (e.g. ``https://user.github.io/repo``).
         """
         project_root = helpers["_validate_project_root"](path)
+        response = _do_wiki_publish(project_root, out_dir, check_links, site_title, base_url)
 
-        from lintgate.wiki.composer import compose_all_pages
-        from lintgate.wiki.manifest import load_manifest
-        from lintgate.wiki.pages_publisher import publish_pages
-
-        manifest = load_manifest(project_root)
-        if manifest is None:
-            return json.dumps({
-                "error": "No wiki manifest found",
-                "hint": "Create wiki.yaml or .lintgate/wiki_manifest.yaml first.",
-            })
-
-        theory = _load_theory(project_root)
-        compass = _load_compass(project_root)
-        composed = compose_all_pages(manifest, project_root, theory, compass)
-
-        if not site_title:
-            # Auto-detect from git repo name
-            try:
-                import subprocess
-                proc = subprocess.run(
-                    ["git", "-C", project_root, "remote", "get-url", "origin"],
-                    capture_output=True, text=True, timeout=5,
-                )
-                if proc.returncode == 0:
-                    remote = proc.stdout.strip()
-                    repo_name = remote.rstrip("/").split("/")[-1].replace(".git", "")
-                    site_title = repo_name
-            except Exception:
-                pass
-            if not site_title:
-                site_title = os.path.basename(project_root)
-
-        abs_out = os.path.join(project_root, out_dir)
-        result = publish_pages(
-            manifest=manifest,
-            composed=composed,
-            project_root=project_root,
-            out_dir=abs_out,
-            check_links=check_links,
-            site_title=site_title,
-            base_url=base_url,
-        )
-
-        page_summaries = [
-            {"name": p.name, "slug": p.slug, "size": p.html_size}
-            for p in result.pages
-        ]
-
-        response: dict[str, Any] = {
-            "out_dir": abs_out,
-            "pages_published": len(result.pages),
-            "pages": page_summaries,
-            "sitemap": result.sitemap_written,
-        }
-
-        if result.link_errors:
-            response["link_errors"] = result.link_errors
-            response["link_check"] = "FAIL"
-        else:
-            response["link_check"] = "PASS"
+        if "error" in response:
+            return json.dumps(response)
 
         next_actions_list: list[NextAction] = []
-        if result.link_errors:
-            next_actions_list.append(NextAction(
-                tool="wiki_materialize",
-                args={"path": path, "write": True},
-                reason=f"{len(result.link_errors)} broken links — regenerate pages.",
-                priority=2,
-            ))
-        next_actions_list.append(NextAction(
-            tool="wiki_status",
-            args={"path": path},
-            reason="Verify freshness state.",
-            priority=4,
-        ))
+        if response.get("link_errors"):
+            next_actions_list.append(
+                NextAction(
+                    tool="wiki_materialize",
+                    args={"path": path, "write": True},
+                    reason=f"{len(response['link_errors'])} broken links — regenerate pages.",
+                    priority=2,
+                )
+            )
+        next_actions_list.append(
+            NextAction(
+                tool="wiki_status",
+                args={"path": path},
+                reason="Verify freshness state.",
+                priority=4,
+            )
+        )
         response["next_actions"] = serialize_next_actions(next_actions_list)
-
         return json.dumps(response, indent=2)
 
     @mcp.tool()
-    def wiki_check_links(
-        path: str,
-    ) -> str:
+    def wiki_check_links(path: str) -> str:
         """Check link integrity across all materialized wiki pages.
 
         Validates that internal page links resolve, detects orphan files
@@ -316,19 +340,23 @@ def register(mcp, helpers):
 
         next_actions: list[NextAction] = []
         if not link_result.ok:
-            next_actions.append(NextAction(
-                tool="wiki_materialize",
-                args={"path": path, "write": True},
-                reason="Fix broken links by regenerating.",
-                priority=2,
-            ))
+            next_actions.append(
+                NextAction(
+                    tool="wiki_materialize",
+                    args={"path": path, "write": True},
+                    reason="Fix broken links by regenerating.",
+                    priority=2,
+                )
+            )
         if config_issues:
-            next_actions.append(NextAction(
-                tool="wiki_materialize",
-                args={"path": path},
-                reason=f"{len(config_issues)} docs/wiki/ files not in manifest.",
-                priority=3,
-            ))
+            next_actions.append(
+                NextAction(
+                    tool="wiki_materialize",
+                    args={"path": path},
+                    reason=f"{len(config_issues)} docs/wiki/ files not in manifest.",
+                    priority=3,
+                )
+            )
 
         if next_actions:
             response["next_actions"] = serialize_next_actions(next_actions)

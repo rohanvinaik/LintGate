@@ -8,7 +8,11 @@ import pytest
 
 from lintgate.channels.behavior_channel import (
     BehaviorChannel,
+    _apply_prediction_modulation,
+    _build_channel_result,
+    _compute_nudge_outcomes,
     _IntentBiasScorer,
+    _load_execute_config,
     _SignalCoordinator,
 )
 from lintgate.controlplane.behavior_compass import (
@@ -96,9 +100,7 @@ class TestChannelProtocol:
             )
             for i in range(3)
         ]
-        compass.action_history = [
-            {"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}
-        ]
+        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
 
         cfg = ControlPlaneConfig(
             enabled=True,
@@ -160,9 +162,7 @@ class TestApproachCycling:
             )
             for i in range(2)
         ]
-        compass.action_history = [
-            {"tool": "Bash", "ts": now, "sig": "cmd:1", "exit": 1, "err": ""}
-        ]
+        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:1", "exit": 1, "err": ""}]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -182,9 +182,7 @@ class TestApproachCycling:
             )
             for i in range(4)
         ]
-        compass.action_history = [
-            {"tool": "Bash", "ts": now, "sig": "cmd:3", "exit": 1, "err": ""}
-        ]
+        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:3", "exit": 1, "err": ""}]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -475,9 +473,7 @@ class TestSeverityClassification:
             )
             for i in range(3)
         ]
-        compass.action_history = [
-            {"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}
-        ]
+        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -961,9 +957,7 @@ class TestFailureAmnesiasDualSource:
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": "failed"},
         ]
         compass.intent_history = ["execute"]
-        compass.constraint_check_count_session = (
-            1  # suppress serial_discovery stage-1 noise
-        )
+        compass.constraint_check_count_session = 1  # suppress serial_discovery stage-1 noise
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1",
@@ -993,9 +987,7 @@ class TestFailureAmnesiasDualSource:
             {"tool": "Bash", "ts": now, "sig": "cmd:a", "exit": 1, "err": latest_error},
         ]
         compass.intent_history = ["execute"]
-        compass.constraint_check_count_session = (
-            1  # suppress serial_discovery stage-1 noise
-        )
+        compass.constraint_check_count_session = 1  # suppress serial_discovery stage-1 noise
         compass.hypotheses = [
             BehaviorHypothesis(
                 id="h1",
@@ -1022,9 +1014,7 @@ class TestSignalCooldown:
     def test_signal_suppressed_within_cooldown(self):
         compass = new_compass()
         compass.event_counter = 5
-        compass.last_fired = {
-            "approach_cycling": 3
-        }  # Fired 2 events ago, cooldown is 10
+        compass.last_fired = {"approach_cycling": 3}  # Fired 2 events ago, cooldown is 10
 
         coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
         assert coord.can_fire("approach_cycling") is False
@@ -1083,9 +1073,7 @@ class TestPrecheckNudgeDedup:
         result = ch.execute(_make_event(compass), _default_config())
         next_actions = result.metrics.get("next_actions", [])
         # At most 1 precheck nudge (dedup'd by priority)
-        precheck_nudges = [
-            a for a in next_actions if a.get("tool") == "constraint_check"
-        ]
+        precheck_nudges = [a for a in next_actions if a.get("tool") == "constraint_check"]
         assert len(precheck_nudges) <= 1
 
     def test_higher_priority_signal_wins(self):
@@ -1111,9 +1099,7 @@ class TestPrecheckNudgeDedup:
 
         result = ch.execute(_make_event(compass), _default_config())
         next_actions = result.metrics.get("next_actions", [])
-        precheck_nudges = [
-            a for a in next_actions if a.get("tool") == "constraint_check"
-        ]
+        precheck_nudges = [a for a in next_actions if a.get("tool") == "constraint_check"]
         if precheck_nudges:
             # approach_cycling (priority 1) should win over consecutive_failures (priority 4)
             assert "approach_cycling" in precheck_nudges[0].get("reason", "")
@@ -1152,9 +1138,7 @@ class TestEscalation:
             )
             for i in range(3)
         ]
-        compass.action_history = [
-            {"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}
-        ]
+        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
 
         ch = BehaviorChannel()
         result = ch.execute(_make_event(compass), _default_config())
@@ -1183,9 +1167,7 @@ class TestEvidenceTrace:
         result = ch.execute(_make_event(compass), _default_config())
 
         for f in result.findings:
-            assert "intent_counts" in f.evidence, (
-                f"Finding {f.kind} missing intent_counts"
-            )
+            assert "intent_counts" in f.evidence, f"Finding {f.kind} missing intent_counts"
 
     def test_bias_findings_have_score_delta(self):
         compass = new_compass()
@@ -1333,9 +1315,7 @@ class TestGlobalPriorsIntegration:
         assert "global_alpha" in trace
         assert trace["global_alpha"] == pytest.approx(0.6)
         assert "global_adjustments_applied" in trace
-        assert trace["global_adjustments_applied"][
-            "verification_debt"
-        ] == pytest.approx(0.05)
+        assert trace["global_adjustments_applied"]["verification_debt"] == pytest.approx(0.05)
 
     def test_evidence_trace_no_global_when_alpha_zero(self):
         """When alpha=0, no global fields in evidence trace."""
@@ -1369,9 +1349,7 @@ class TestEffectiveBiasWeight:
             "decay_horizon": 50,
             "computed_bias_adjustments": {"verification_debt": 0.08},
         }
-        scorer = _IntentBiasScorer(
-            compass, {"verification_debt_bias": 0.20}, global_priors=priors
-        )
+        scorer = _IntentBiasScorer(compass, {"verification_debt_bias": 0.20}, global_priors=priors)
         # effective = 0.20 + 0.6 * 0.08 = 0.20 + 0.048 = 0.248
         effective = scorer._effective_bias_weight(
             "verification_debt", "verification_debt_bias", 0.20
@@ -1391,9 +1369,7 @@ class TestEffectiveBiasWeight:
             "computed_bias_adjustments": {"verification_debt": 0.10},
         }
         # project=0.25 + 0.6*0.10 = 0.31, but BIAS_CAP=0.25
-        scorer = _IntentBiasScorer(
-            compass, {"verification_debt_bias": 0.25}, global_priors=priors
-        )
+        scorer = _IntentBiasScorer(compass, {"verification_debt_bias": 0.25}, global_priors=priors)
         effective = scorer._effective_bias_weight(
             "verification_debt", "verification_debt_bias", 0.25
         )
@@ -1413,9 +1389,7 @@ class TestEffectiveBiasWeight:
         }
         scorer = _IntentBiasScorer(compass, {}, global_priors=priors)
         # effective = 0.15 + 0.6 * (-0.10) = 0.15 - 0.06 = 0.09
-        effective = scorer._effective_bias_weight(
-            "failure_amnesia", "failure_amnesia_bias", 0.15
-        )
+        effective = scorer._effective_bias_weight("failure_amnesia", "failure_amnesia_bias", 0.15)
         assert effective == pytest.approx(0.09)
 
     def test_clamp_to_zero_floor(self):
@@ -1537,3 +1511,613 @@ class TestRepertoireHints:
         assert cycling[0].proven_resolution is not None
         assert cycling[0].proven_resolution["repertoire"] == "Just fix it."
         assert "confidence" in cycling[0].proven_resolution
+
+
+# ── SPEC010: BehaviorChannel.execute output specification ─────────────
+
+
+class TestBehaviorChannelExecuteSpec:
+    """Specify exact output contract for BehaviorChannel.execute."""
+
+    def test_empty_compass_output_structure(self):
+        """Empty compass → pass result with full metrics structure."""
+        ch = BehaviorChannel()
+        compass = new_compass()
+        event = _make_event(compass)
+        result = ch.execute(event, _default_config())
+
+        assert result.channel == "behavior"
+        assert result.status == "pass"
+        assert result.severity == "none"
+        assert result.findings == []
+        assert result.duration_ms >= 0
+        assert isinstance(result.metrics, dict)
+        # Required metric keys
+        assert "compass_summary" in result.metrics
+        assert "suppressed_nudges" in result.metrics
+        assert result.metrics["suppressed_nudges"] == 0
+
+    def test_compass_summary_metrics_exact_keys(self):
+        """Compass summary includes expected behavioral counters."""
+        ch = BehaviorChannel()
+        compass = new_compass()
+        compass.event_counter = 5
+        event = _make_event(compass)
+        result = ch.execute(event, _default_config())
+
+        summary = result.metrics.get("compass_summary", {})
+        assert "approaches_total" in summary
+        assert summary["approaches_total"] == 0
+        assert "hypotheses_active" in summary
+        assert "prediction_recall" in summary
+
+    def test_findings_produce_fail_status(self):
+        """When signals fire, status is 'fail' and findings are non-empty."""
+        ch = BehaviorChannel()
+        now = time.time()
+        compass = new_compass()
+        compass.event_counter = 15
+        compass.approaches = [
+            ApproachAttempt(
+                approach_sig=f"cmd:{i}",
+                outcome="failed",
+                started_at=now - 500,
+                last_event=now - 100,
+                event_count=1,
+            )
+            for i in range(3)
+        ]
+        compass.action_history = [{"tool": "Bash", "ts": now, "sig": "cmd:2", "exit": 1, "err": ""}]
+        event = _make_event(compass)
+        result = ch.execute(event, _default_config())
+
+        assert result.status == "fail"
+        assert len(result.findings) > 0
+        # All findings should have standard attributes
+        for f in result.findings:
+            assert f.linter == "behavior_channel"
+            assert isinstance(f.kind, str)
+            assert isinstance(f.message, str)
+
+    def test_behavior_compass_delta_present(self):
+        """Execute always includes behavior_compass_delta in metrics."""
+        ch = BehaviorChannel()
+        compass = new_compass()
+        event = _make_event(compass)
+        result = ch.execute(event, _default_config())
+
+        delta = result.metrics.get("behavior_compass_delta", {})
+        assert isinstance(delta, dict)
+        assert "signal_fire_counts" in delta
+        assert "last_fired" in delta
+
+    def test_mcp_surface_executes_without_compass_data(self):
+        """MCP surface events run even without compass in raw_input."""
+        ch = BehaviorChannel()
+        event = SupervisionEvent(surface="mcp", project_root="/tmp")
+        result = ch.execute(event, _default_config())
+
+        assert result.channel == "behavior"
+        assert result.status == "pass"
+        assert result.duration_ms >= 0
+
+
+# ── Mutant-killing: _load_execute_config ──────────────────────────────
+
+
+class TestLoadExecuteConfig:
+    """Pin exact config extraction behavior for _load_execute_config."""
+
+    def test_default_thresholds_returned(self):
+        """No config overrides → returns exact copy of DEFAULT_THRESHOLDS."""
+        event = _make_event(new_compass())
+        config = _default_config()
+        thresholds, bias_weights, global_priors, theory_profile, recent_codas = (
+            _load_execute_config(event, config)
+        )
+        assert thresholds == dict(DEFAULT_THRESHOLDS)
+        assert bias_weights == {}
+        assert global_priors is None
+        assert theory_profile is None
+        assert recent_codas == {}
+
+    def test_threshold_override_from_channel_settings(self):
+        """Channel settings override specific threshold keys."""
+        config = ControlPlaneConfig(
+            enabled=True,
+            channels={
+                "behavior": ChannelConfig(
+                    enabled=True,
+                    settings={"approach_cycling_count": 99},
+                )
+            },
+        )
+        event = _make_event(new_compass())
+        thresholds, _, _, _, _ = _load_execute_config(event, config)
+        assert thresholds["approach_cycling_count"] == 99
+        # Other keys remain default
+        assert thresholds["failure_amnesia_lookback"] == 30
+
+    def test_nested_thresholds_take_precedence(self):
+        """settings.thresholds nested dict is applied."""
+        config = ControlPlaneConfig(
+            enabled=True,
+            channels={
+                "behavior": ChannelConfig(
+                    enabled=True,
+                    settings={"thresholds": {"signal_cooldown": 42}},
+                )
+            },
+        )
+        event = _make_event(new_compass())
+        thresholds, _, _, _, _ = _load_execute_config(event, config)
+        assert thresholds["signal_cooldown"] == 42
+
+    def test_event_behavior_thresholds_override_all(self):
+        """raw_input['behavior_thresholds'] overrides channel config."""
+        config = ControlPlaneConfig(
+            enabled=True,
+            channels={
+                "behavior": ChannelConfig(
+                    enabled=True,
+                    settings={"signal_cooldown": 42},
+                )
+            },
+        )
+        compass = new_compass()
+        raw_input = {"behavior_thresholds": {"signal_cooldown": 7}}
+        raw_input["behavior_compass"] = compass.to_dict()
+        event = SupervisionEvent(
+            surface="hook",
+            project_root="/tmp/test",
+            tool_name="Bash",
+            raw_input=raw_input,
+        )
+        thresholds, _, _, _, _ = _load_execute_config(event, config)
+        assert thresholds["signal_cooldown"] == 7
+
+    def test_bias_weights_extracted(self):
+        """bias_weights from channel settings are returned."""
+        config = ControlPlaneConfig(
+            enabled=True,
+            channels={
+                "behavior": ChannelConfig(
+                    enabled=True,
+                    settings={"bias_weights": {"verification_debt": 0.30}},
+                )
+            },
+        )
+        event = _make_event(new_compass())
+        _, bias_weights, _, _, _ = _load_execute_config(event, config)
+        assert bias_weights == {"verification_debt": 0.30}
+
+    def test_global_priors_from_event(self):
+        """global_priors extracted from raw_input."""
+        compass = new_compass()
+        raw_input = {"behavior_global_priors": {"some_key": 1.0}}
+        raw_input["behavior_compass"] = compass.to_dict()
+        event = SupervisionEvent(
+            surface="hook",
+            project_root="/tmp/test",
+            tool_name="Bash",
+            raw_input=raw_input,
+        )
+        config = _default_config()
+        _, _, global_priors, _, _ = _load_execute_config(event, config)
+        assert global_priors == {"some_key": 1.0}
+
+    def test_theory_profile_gated_by_config(self):
+        """theory_profile only loaded when inquiry.theory_grounded_signals is True."""
+        compass = new_compass()
+        raw_input = {"theory_profile": {"claims": []}}
+        raw_input["behavior_compass"] = compass.to_dict()
+        event = SupervisionEvent(
+            surface="hook",
+            project_root="/tmp/test",
+            tool_name="Bash",
+            raw_input=raw_input,
+        )
+        # Default config: theory_grounded_signals is False
+        config = _default_config()
+        _, _, _, theory_profile, _ = _load_execute_config(event, config)
+        assert theory_profile is None
+
+    def test_recent_codas_from_compass_data(self):
+        """recent_codas extracted from compass _theory_recent_codas."""
+        compass = new_compass()
+        compass_dict = compass.to_dict()
+        compass_dict["_theory_recent_codas"] = {"sig1": "coda text"}
+        raw_input = {"behavior_compass": compass_dict}
+        event = SupervisionEvent(
+            surface="hook",
+            project_root="/tmp/test",
+            tool_name="Bash",
+            raw_input=raw_input,
+        )
+        config = _default_config()
+        _, _, _, _, recent_codas = _load_execute_config(event, config)
+        assert recent_codas == {"sig1": "coda text"}
+
+
+# ── Mutant-killing: _apply_prediction_modulation ──────────────────────
+
+
+class TestApplyPredictionModulation:
+    """Pin exact confidence modulation at boundary values."""
+
+    def _make_finding(self, severity="informational", confidence=0.80):
+        from lintgate.types import LintIssue
+
+        return LintIssue(
+            linter="behavior_channel",
+            kind="test_signal",
+            message="test",
+            severity=severity,
+            confidence=confidence,
+        )
+
+    def test_no_modulation_when_tracking_disabled(self):
+        """prediction_tracking=False → no confidence change."""
+        config = _default_config()
+        compass = new_compass()
+        finding = self._make_finding(confidence=0.80)
+        _apply_prediction_modulation([finding], compass, config)
+        assert finding.confidence == 0.80
+
+    def test_high_accuracy_softens_informational(self):
+        """Accuracy >0.70 with informational → confidence reduced by 0.15."""
+        from lintgate.controlplane.types import InquiryConfig
+
+        config = ControlPlaneConfig(enabled=True, inquiry=InquiryConfig(prediction_tracking=True))
+        compass = new_compass()
+        # 6 predictions, 5 confirmed → accuracy = 5/6 ≈ 0.833
+        compass.prediction_log = [{"status": "confirmed"} for _ in range(5)] + [
+            {"status": "falsified"}
+        ]
+        finding = self._make_finding(severity="informational", confidence=0.80)
+        _apply_prediction_modulation([finding], compass, config)
+        assert finding.confidence == 0.65  # 0.80 - 0.15
+
+    def test_high_accuracy_does_not_soften_warning(self):
+        """Accuracy >0.70 only softens informational, not warning severity."""
+        from lintgate.controlplane.types import InquiryConfig
+
+        config = ControlPlaneConfig(enabled=True, inquiry=InquiryConfig(prediction_tracking=True))
+        compass = new_compass()
+        compass.prediction_log = [{"status": "confirmed"} for _ in range(6)]
+        finding = self._make_finding(severity="warning", confidence=0.80)
+        _apply_prediction_modulation([finding], compass, config)
+        assert finding.confidence == 0.80  # unchanged
+
+    def test_low_accuracy_amplifies_all(self):
+        """Accuracy <0.30 → confidence increased by 0.15."""
+        from lintgate.controlplane.types import InquiryConfig
+
+        config = ControlPlaneConfig(enabled=True, inquiry=InquiryConfig(prediction_tracking=True))
+        compass = new_compass()
+        # 6 predictions, 1 confirmed → accuracy = 1/6 ≈ 0.167
+        compass.prediction_log = [{"status": "falsified"} for _ in range(5)] + [
+            {"status": "confirmed"}
+        ]
+        finding = self._make_finding(severity="informational", confidence=0.60)
+        _apply_prediction_modulation([finding], compass, config)
+        assert finding.confidence == 0.75  # 0.60 + 0.15
+
+    def test_confidence_clamped_at_zero(self):
+        """Softening doesn't go below 0.0."""
+        from lintgate.controlplane.types import InquiryConfig
+
+        config = ControlPlaneConfig(enabled=True, inquiry=InquiryConfig(prediction_tracking=True))
+        compass = new_compass()
+        compass.prediction_log = [{"status": "confirmed"} for _ in range(6)]
+        finding = self._make_finding(severity="informational", confidence=0.10)
+        _apply_prediction_modulation([finding], compass, config)
+        assert finding.confidence == 0.0  # max(0.0, 0.10 - 0.15)
+
+    def test_confidence_clamped_at_one(self):
+        """Amplification doesn't exceed 1.0."""
+        from lintgate.controlplane.types import InquiryConfig
+
+        config = ControlPlaneConfig(enabled=True, inquiry=InquiryConfig(prediction_tracking=True))
+        compass = new_compass()
+        compass.prediction_log = [{"status": "falsified"} for _ in range(6)]
+        finding = self._make_finding(severity="warning", confidence=0.95)
+        _apply_prediction_modulation([finding], compass, config)
+        assert finding.confidence == 1.0  # min(1.0, 0.95 + 0.15)
+
+
+# ── Mutant-killing: _compute_nudge_outcomes ───────────────────────────
+
+
+class TestComputeNudgeOutcomes:
+    """Pin exact nudge outcome computation."""
+
+    def test_no_pending_returns_empty(self):
+        compass = new_compass()
+        outcomes = _compute_nudge_outcomes(compass, [])
+        assert outcomes == {}
+        assert compass.pending_nudge_signals == []
+
+    def test_pending_accepted_when_constraint_check_increased(self):
+        compass = new_compass()
+        compass.pending_nudge_signals = ["approach_cycling"]
+        compass.pending_nudge_constraint_check_count = 5
+        compass.constraint_check_count_session = 7  # delta > 0 → accepted
+        outcomes = _compute_nudge_outcomes(compass, ["new_signal"])
+        assert outcomes == {"approach_cycling": "accepted"}
+        assert compass.nudge_outcomes == {"approach_cycling": "accepted"}
+        assert compass.pending_nudge_signals == ["new_signal"]
+        assert compass.pending_nudge_constraint_check_count == 7
+
+    def test_pending_ignored_when_no_constraint_check(self):
+        compass = new_compass()
+        compass.pending_nudge_signals = ["stale_model"]
+        compass.pending_nudge_constraint_check_count = 3
+        compass.constraint_check_count_session = 3  # delta == 0 → ignored
+        outcomes = _compute_nudge_outcomes(compass, [])
+        assert outcomes == {"stale_model": "ignored"}
+
+    def test_multiple_pending_all_same_outcome(self):
+        compass = new_compass()
+        compass.pending_nudge_signals = ["sig1", "sig2"]
+        compass.pending_nudge_constraint_check_count = 0
+        compass.constraint_check_count_session = 0
+        outcomes = _compute_nudge_outcomes(compass, [])
+        assert outcomes == {"sig1": "ignored", "sig2": "ignored"}
+
+
+# ── Mutant-killing: _build_channel_result ─────────────────────────────
+
+
+class TestBuildChannelResult:
+    """Pin exact ChannelResult construction."""
+
+    def test_no_findings_produces_pass(self):
+        compass = new_compass()
+        scorer = _IntentBiasScorer(compass, {})
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        result = _build_channel_result(
+            findings=[],
+            next_actions=[],
+            compass=compass,
+            coord=coord,
+            scorer=scorer,
+            nudge_outcomes={},
+            intent_delta={},
+            elapsed_ms=1.5,
+        )
+        assert result.channel == "behavior"
+        assert result.status == "pass"
+        assert result.severity == "none"
+        assert result.findings == []
+        assert result.repairs == []
+        assert result.duration_ms == 1.5
+        assert result.metrics["alert_count"] == 0
+        assert result.metrics["hard_alerts"] == 0
+        assert result.metrics["soft_alerts"] == 0
+
+    def test_informational_finding_produces_fail_informational(self):
+        from lintgate.types import LintIssue
+
+        compass = new_compass()
+        scorer = _IntentBiasScorer(compass, {})
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        finding = LintIssue(
+            linter="behavior_channel",
+            kind="test",
+            message="soft signal",
+            severity="informational",
+        )
+        result = _build_channel_result(
+            findings=[finding],
+            next_actions=[],
+            compass=compass,
+            coord=coord,
+            scorer=scorer,
+            nudge_outcomes={},
+            intent_delta={},
+            elapsed_ms=2.0,
+        )
+        assert result.status == "fail"
+        assert result.severity == "informational"
+        assert result.metrics["alert_count"] == 1
+        assert result.metrics["hard_alerts"] == 0
+        assert result.metrics["soft_alerts"] == 1
+
+    def test_warning_finding_escalates_severity(self):
+        from lintgate.types import LintIssue
+
+        compass = new_compass()
+        scorer = _IntentBiasScorer(compass, {})
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        findings = [
+            LintIssue(
+                linter="behavior_channel",
+                kind="hard",
+                message="hard signal",
+                severity="warning",
+            ),
+            LintIssue(
+                linter="behavior_channel",
+                kind="soft",
+                message="soft signal",
+                severity="informational",
+            ),
+        ]
+        result = _build_channel_result(
+            findings=findings,
+            next_actions=[],
+            compass=compass,
+            coord=coord,
+            scorer=scorer,
+            nudge_outcomes={},
+            intent_delta={},
+            elapsed_ms=3.0,
+        )
+        assert result.status == "fail"
+        assert result.severity == "warning"
+        assert result.metrics["hard_alerts"] == 1
+        assert result.metrics["soft_alerts"] == 1
+
+    def test_compass_summary_structure(self):
+        compass = new_compass()
+        compass.approaches = [
+            ApproachAttempt(
+                approach_sig="cmd:1",
+                outcome="failed",
+                started_at=0,
+                last_event=0,
+                event_count=1,
+            )
+        ]
+        scorer = _IntentBiasScorer(compass, {})
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        result = _build_channel_result(
+            findings=[],
+            next_actions=[],
+            compass=compass,
+            coord=coord,
+            scorer=scorer,
+            nudge_outcomes={},
+            intent_delta={},
+            elapsed_ms=0.5,
+        )
+        summary = result.metrics["compass_summary"]
+        assert summary["approaches_total"] == 1
+        assert summary["hypotheses_active"] == 0
+        assert summary["prediction_recall"] == 0.0
+
+    def test_behavior_compass_delta_keys(self):
+        compass = new_compass()
+        scorer = _IntentBiasScorer(compass, {})
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        result = _build_channel_result(
+            findings=[],
+            next_actions=[],
+            compass=compass,
+            coord=coord,
+            scorer=scorer,
+            nudge_outcomes={},
+            intent_delta={},
+            elapsed_ms=0.1,
+        )
+        delta = result.metrics["behavior_compass_delta"]
+        assert "last_fired" in delta
+        assert "signal_fire_counts" in delta
+        assert "early_nudge_emitted" in delta
+        assert "pending_nudge_signals" in delta
+        assert "pending_nudge_constraint_check_count" in delta
+        assert "nudge_outcomes" in delta
+        assert "_theory_recent_codas" in delta
+
+    def test_global_profile_delta_structure(self):
+        compass = new_compass()
+        scorer = _IntentBiasScorer(compass, {})
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        result = _build_channel_result(
+            findings=[],
+            next_actions=[],
+            compass=compass,
+            coord=coord,
+            scorer=scorer,
+            nudge_outcomes={"sig1": "accepted"},
+            intent_delta={"execute": 3},
+            elapsed_ms=0.1,
+        )
+        gpd = result.metrics["global_profile_delta"]
+        assert gpd["nudge_outcomes"] == {"sig1": "accepted"}
+        assert gpd["intent_summary"] == {"execute": 3}
+        assert gpd["signal_fire_counts"] == {}
+
+
+# ── Mutant-killing: SignalCoordinator methods ─────────────────────────
+
+
+class TestSignalCoordinatorMutantKilling:
+    """Pin exact state transitions for SignalCoordinator."""
+
+    def test_can_fire_first_time_always_true(self):
+        compass = new_compass()
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        assert coord.can_fire("approach_cycling") is True
+
+    def test_can_fire_blocked_within_cooldown(self):
+        compass = new_compass()
+        compass.event_counter = 15
+        compass.last_fired["approach_cycling"] = 10
+        coord = _SignalCoordinator(compass, {"signal_cooldown": 10})
+        # 15 - 10 = 5 < 10 cooldown
+        assert coord.can_fire("approach_cycling") is False
+
+    def test_can_fire_allowed_after_cooldown(self):
+        compass = new_compass()
+        compass.event_counter = 20
+        compass.last_fired["approach_cycling"] = 10
+        coord = _SignalCoordinator(compass, {"signal_cooldown": 10})
+        # 20 - 10 = 10 >= 10 cooldown
+        assert coord.can_fire("approach_cycling") is True
+
+    def test_record_firing_updates_exact_state(self):
+        compass = new_compass()
+        compass.event_counter = 42
+        coord = _SignalCoordinator(compass, dict(DEFAULT_THRESHOLDS))
+        coord.record_firing("verification_debt")
+        assert compass.last_fired["verification_debt"] == 42
+        assert compass.signal_fire_counts["verification_debt"] == 1
+        assert coord.run_fire_counts["verification_debt"] == 1
+        # Fire again
+        compass.event_counter = 55
+        coord.record_firing("verification_debt")
+        assert compass.last_fired["verification_debt"] == 55
+        assert compass.signal_fire_counts["verification_debt"] == 2
+        assert coord.run_fire_counts["verification_debt"] == 2
+
+    def test_add_finding_suppressed_increments_count(self):
+        from lintgate.types import LintIssue
+
+        compass = new_compass()
+        compass.event_counter = 5
+        compass.last_fired["sig"] = 3
+        coord = _SignalCoordinator(compass, {"signal_cooldown": 10})
+        finding = LintIssue(
+            linter="behavior_channel", kind="test", message="test", severity="informational"
+        )
+        coord.add_finding("sig", finding, is_hard=False)
+        assert coord.suppressed_nudge_count == 1
+        assert coord.findings == []
+
+    def test_add_finding_with_precheck_nudge_tracks_priority(self):
+        from lintgate.types import LintIssue
+
+        compass = new_compass()
+        compass.event_counter = 0
+        coord = _SignalCoordinator(compass, {"signal_cooldown": 10})
+        nudge = {"tool": "constraint_check", "reason": "test"}
+        finding = LintIssue(
+            linter="behavior_channel", kind="test", message="test", severity="informational"
+        )
+        coord.add_finding("approach_cycling", finding, is_hard=True, precheck_nudge=nudge)
+        assert "approach_cycling" in coord._nudge_signals
+        assert coord._pending_precheck == nudge
+        assert coord._pending_priority == 1  # approach_cycling priority
+
+    def test_register_nudge_only_tracks_signal(self):
+        compass = new_compass()
+        compass.event_counter = 0
+        coord = _SignalCoordinator(compass, {"signal_cooldown": 10})
+        nudge = {"tool": "constraint_check", "reason": "nudge"}
+        coord.register_nudge_only("failure_amnesia", nudge)
+        assert "failure_amnesia" in coord._nudge_signals
+        assert coord._pending_precheck == nudge
+        assert coord._pending_priority == 2  # failure_amnesia priority
+
+    def test_finalize_returns_exact_tuple(self):
+        compass = new_compass()
+        coord = _SignalCoordinator(compass, {"signal_cooldown": 10})
+        nudge = {"tool": "constraint_check"}
+        coord.register_nudge_only("approach_cycling", nudge)
+        findings, next_actions, nudge_signals, suppressed = coord.finalize()
+        assert findings == []
+        assert next_actions == [nudge]
+        assert nudge_signals == ["approach_cycling"]
+        assert suppressed == 0

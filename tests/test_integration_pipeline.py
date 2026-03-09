@@ -33,15 +33,11 @@ class TestSpecificationIntegration:
         )
 
         py_files = _discover_python_files(pure_calculator)
-        source_files = [
-            f for f in py_files if not os.path.basename(f).startswith("test_")
-        ]
+        source_files = [f for f in py_files if not os.path.basename(f).startswith("test_")]
         test_files = [f for f in py_files if os.path.basename(f).startswith("test_")]
 
         prop_manifest = build_manifest(pure_calculator, source_files)
-        teff_manifest = build_test_effectiveness_manifest(
-            pure_calculator, source_files, test_files
-        )
+        teff_manifest = build_test_effectiveness_manifest(pure_calculator, source_files, test_files)
 
         # Keys must be in canonical format: "relpath.py::qualname"
         for key in prop_manifest.functions:
@@ -60,8 +56,7 @@ class TestSpecificationIntegration:
         # At least some keys should match (pure_calculator has testable functions)
         shared = prop_keys & teff_keys
         assert shared, (
-            f"No shared keys between manifests. "
-            f"prop_keys={prop_keys}, teff_keys={teff_keys}"
+            f"No shared keys between manifests. prop_keys={prop_keys}, teff_keys={teff_keys}"
         )
 
     def test_specification_channel_produces_metrics(self, pure_calculator):
@@ -88,9 +83,7 @@ class TestSpecificationIntegration:
         register_all_schemas()
 
         result = run_channel(pure_calculator, "specification")
-        missing = validate_result(
-            "specification", result.metrics, status=result.status
-        )
+        missing = validate_result("specification", result.metrics, status=result.status)
         # Filter out optional keys
         non_optional_missing = [
             k for k in missing if k not in ("composition_gaps", "sheaf_obstruction")
@@ -148,9 +141,7 @@ class TestSpecificationIntegration:
         from lintgate.specification.call_graph import build_cross_module_call_graph
 
         py_files = _discover_python_files(cross_module)
-        source_files = [
-            f for f in py_files if not os.path.basename(f).startswith("test_")
-        ]
+        source_files = [f for f in py_files if not os.path.basename(f).startswith("test_")]
 
         graph = build_cross_module_call_graph(source_files, cross_module)
 

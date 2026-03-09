@@ -76,11 +76,7 @@ class TestSaveCompass:
         state = CompassState(
             version=1,
             forged_at=12345.0,
-            axes={
-                "problem": CompassAxis(
-                    name="problem", claims=[CompassClaim(text="test")]
-                )
-            },
+            axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
         )
         path = save_compass(str(tmp_path), state)
         assert path.exists()
@@ -102,9 +98,7 @@ class TestSaveCompass:
             CompassClaim(text="Test claim", confidence=0.9, origin_facet="core_theory"),
         ]
         axes = {
-            "problem": CompassAxis(
-                name="problem", claims=claims, depth=1, summary="Test claim"
-            ),
+            "problem": CompassAxis(name="problem", claims=claims, depth=1, summary="Test claim"),
             "solution": CompassAxis(name="solution"),
         }
         directives = [CompassDirective(kind="toward", text="Do X", source="solution")]
@@ -132,11 +126,7 @@ class TestResetCompass:
     def test_deletes_existing_file(self, tmp_path):
         state = CompassState(
             version=1,
-            axes={
-                "problem": CompassAxis(
-                    name="problem", claims=[CompassClaim(text="test")]
-                )
-            },
+            axes={"problem": CompassAxis(name="problem", claims=[CompassClaim(text="test")])},
         )
         save_compass(str(tmp_path), state)
         compass_path = tmp_path / ".claude" / "compass.yaml"
@@ -151,9 +141,7 @@ class TestResetCompass:
 
 class TestExtractTextFromItem:
     def test_dict_with_first_key(self):
-        assert (
-            _extract_text_from_item({"pattern": "hello"}, "pattern", "text") == "hello"
-        )
+        assert _extract_text_from_item({"pattern": "hello"}, "pattern", "text") == "hello"
 
     def test_dict_with_second_key(self):
         assert _extract_text_from_item({"text": "world"}, "pattern", "text") == "world"
@@ -247,9 +235,7 @@ class TestDeriveDirectives:
 
     def test_solution_claims_become_toward(self):
         claims = [
-            CompassClaim(
-                text="Use dependency injection", origin_facet="problem_solving"
-            ),
+            CompassClaim(text="Use dependency injection", origin_facet="problem_solving"),
         ]
         directives = _derive_directives({}, claims)
         assert len(directives) == 1

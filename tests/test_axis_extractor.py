@@ -43,16 +43,10 @@ MOCK_THEORY_RESULT: dict = {
             ]
         },
         "alignment": {"claims": [_C("Hypothesis-with-confidence pattern", 0.85)]},
-        "architecture": {
-            "claims": [_C("Lossy channels provide diagnostic disagreement")]
-        },
-        "anti_patterns": {
-            "claims": [_C("Brute-force escalation destroys understanding", 0.7)]
-        },
+        "architecture": {"claims": [_C("Lossy channels provide diagnostic disagreement")]},
+        "anti_patterns": {"claims": [_C("Brute-force escalation destroys understanding", 0.7)]},
         "abstractions": {"claims": [_C("CompassState is central data model", 0.75)]},
-        "enforceable_rules": {
-            "claims": [_C("Never disable lint channels globally", 0.95)]
-        },
+        "enforceable_rules": {"claims": [_C("Never disable lint channels globally", 0.95)]},
     },
     "anti_patterns": [{"pattern": "Brute-force escalation"}],
     "enforceable_rules": [{"pattern": "no global lint disabling", "type": "forbid"}],
@@ -78,9 +72,7 @@ def _populated_state() -> CompassState:
                 depth=2,
                 summary="Constraints are live hypotheses",
                 claims=[
-                    _claim(
-                        "Constraints are live hypotheses", "Core Theory", "core_theory"
-                    ),
+                    _claim("Constraints are live hypotheses", "Core Theory", "core_theory"),
                     _claim(
                         "Alignment requires confidence tracking",
                         "Alignment",
@@ -142,9 +134,7 @@ def test_extract_compass_produces_nonempty_axes(mock_et: object) -> None:
     nonempty = [n for n in AXIS_NAMES if state.axes.get(n) and state.axes[n].claims]
     assert len(nonempty) >= 2, f"Expected >=2 non-empty axes, got {nonempty}"
     assert state.axes["problem"] is not None and len(state.axes["problem"].claims) >= 1
-    assert (
-        state.axes["solution"] is not None and len(state.axes["solution"].claims) >= 1
-    )
+    assert state.axes["solution"] is not None and len(state.axes["solution"].claims) >= 1
     assert state.gap_report is not None and state.gap_report.axis_depths
 
 
@@ -192,10 +182,7 @@ def test_build_compass_pack_has_expected_keys(mock_et: object) -> None:
         e = pack["axes"][name]
         assert "depth" in e and "summary" in e and "claim_count" in e
         assert isinstance(e["depth"], int) and isinstance(e["claim_count"], int)
-    assert (
-        isinstance(pack["digest_token_estimate"], int)
-        and pack["digest_token_estimate"] >= 0
-    )
+    assert isinstance(pack["digest_token_estimate"], int) and pack["digest_token_estimate"] >= 0
     assert isinstance(pack["gap_report"], dict)
 
 
@@ -297,12 +284,7 @@ def test_score_claim_relevance_no_keywords() -> None:
 
 
 def test_score_claim_relevance_single_match() -> None:
-    assert (
-        _score_claim_relevance(
-            _claim("Uses constraints for validation"), ["constraints"]
-        )
-        == 1
-    )
+    assert _score_claim_relevance(_claim("Uses constraints for validation"), ["constraints"]) == 1
 
 
 def test_score_claim_relevance_multiple_matches() -> None:
@@ -314,12 +296,7 @@ def test_score_claim_relevance_multiple_matches() -> None:
 
 
 def test_score_claim_relevance_no_match() -> None:
-    assert (
-        _score_claim_relevance(
-            _claim("Uses constraints for validation"), ["nonexistent"]
-        )
-        == 0
-    )
+    assert _score_claim_relevance(_claim("Uses constraints for validation"), ["nonexistent"]) == 0
 
 
 def test_score_claim_relevance_case_insensitive() -> None:

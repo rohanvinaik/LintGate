@@ -73,9 +73,7 @@ class TestFindChannel:
 
 class TestExtractHelpers:
     def test_extract_pure_functions(self):
-        perf = _perf_result(
-            [{"name": "add", "file": "logic.py", "hints": ["cacheable"]}]
-        )
+        perf = _perf_result([{"name": "add", "file": "logic.py", "hints": ["cacheable"]}])
         extracted = _extract_pure_functions(perf)
         assert extracted["add"]["file"] == "logic.py"
 

@@ -187,9 +187,7 @@ def find_extraction_candidates(
 
     # Merge: handler candidates take priority, then fill with block candidates
     all_candidates = handler_candidates + block_candidates
-    all_candidates.sort(
-        key=lambda p: p.expected_delta.get("cc_reduction", 0), reverse=True
-    )
+    all_candidates.sort(key=lambda p: p.expected_delta.get("cc_reduction", 0), reverse=True)
 
     func_cc = compute_cognitive_complexity(func_node)
     return _remove_overlapping(all_candidates, _max_candidates(func_cc))
@@ -469,9 +467,7 @@ def _find_nested_handler_candidates(
         captured_reads, captured_writes = _analyze_closure(stmt, outer_vars)
 
         # Decorator-aware naming and confidence
-        has_handler_decorator = any(
-            _is_handler_decorator(d) for d in stmt.decorator_list
-        )
+        has_handler_decorator = any(_is_handler_decorator(d) for d in stmt.decorator_list)
         decorator_name = None
         if stmt.decorator_list:
             decorator_name = _get_decorator_name(stmt.decorator_list[0])

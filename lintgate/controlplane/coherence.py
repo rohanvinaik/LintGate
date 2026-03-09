@@ -151,9 +151,7 @@ def _compute_base_coherence(
 
     # Rule 5: degraded — check before failure rules
     if errored:
-        return _handle_degraded_state(
-            errored, failed, silent, loud, demoted_notes, enabled
-        )
+        return _handle_degraded_state(errored, failed, silent, loud, demoted_notes, enabled)
 
     # Rule 1: stable — all channels pass (includes demoted info-only channels)
     if not failed:
@@ -213,9 +211,7 @@ def _partition_results(
     }
 
 
-def _handle_stable_state(
-    demoted_notes: list[str], silent: list[str]
-) -> CoherenceResult:
+def _handle_stable_state(demoted_notes: list[str], silent: list[str]) -> CoherenceResult:
     """Handle Rule 1: stable state."""
     summary = "All channels clean."
     if demoted_notes:
@@ -241,13 +237,9 @@ def _handle_degraded_state(
 ) -> CoherenceResult:
     """Handle the degraded state when channels error or timeout."""
     errored_names = [r.channel for r in errored]
-    notes: list[str] = demoted_notes + [
-        f"{len(errored_names)} channel(s) errored/timed out"
-    ]
+    notes: list[str] = demoted_notes + [f"{len(errored_names)} channel(s) errored/timed out"]
     if failed:
-        notes.append(
-            f"also {len(failed)} channel(s) failed — failures may be masked by errors"
-        )
+        notes.append(f"also {len(failed)} channel(s) failed — failures may be masked by errors")
 
     return CoherenceResult(
         state="degraded",
@@ -349,20 +341,14 @@ def compute_coherence_with_history(
     if session.coherence_trajectory:
         prev_state = session.coherence_trajectory[-1]
         if state_severity(base.state) > state_severity(prev_state):
-            annotations.append(
-                f"REGRESSION: coherence degraded from {prev_state} → {base.state}"
-            )
+            annotations.append(f"REGRESSION: coherence degraded from {prev_state} → {base.state}")
         elif state_severity(base.state) < state_severity(prev_state):
-            annotations.append(
-                f"IMPROVEMENT: coherence improved from {prev_state} → {base.state}"
-            )
+            annotations.append(f"IMPROVEMENT: coherence improved from {prev_state} → {base.state}")
 
     # 2. PERSISTENT detection: same channel loud 3+ consecutive runs
     persistent_channels = detect_persistent_loud(session, base.loud_channels)
     for ch_name, streak in persistent_channels:
-        annotations.append(
-            f"PERSISTENT: {ch_name} has been failing for {streak} consecutive runs"
-        )
+        annotations.append(f"PERSISTENT: {ch_name} has been failing for {streak} consecutive runs")
 
     # 3. RESOLUTION detection: previously-loud channel now silent
     resolved = detect_resolutions(session, base.silent_channels)
@@ -386,7 +372,9 @@ def compute_coherence_with_history(
     enriched_action = base.recommended_action
     if persistent_channels:
         ch_names = [ch for ch, _ in persistent_channels]
-        enriched_action += f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
+        enriched_action += (
+            f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
+        )
     if any("IMPROVEMENT" in a for a in annotations):
         enriched_action += " Progress detected — continue current approach."
 

@@ -72,9 +72,7 @@ def _find_managed_sections(text: str) -> list[tuple[int, int, str]]:
 
 @dataclass
 class ResetReport:
-    deleted: list[dict[str, Any]] = field(
-        default_factory=list
-    )  # [{path, type, size_bytes}]
+    deleted: list[dict[str, Any]] = field(default_factory=list)  # [{path, type, size_bytes}]
     preserved: list[dict[str, Any]] = field(default_factory=list)  # [{path, reason}]
     errors: list[str] = field(default_factory=list)
 
@@ -94,9 +92,7 @@ def _project_hash(project_root: str) -> str:
     return hashlib.sha256(project_root.encode()).hexdigest()[:16]
 
 
-def _file_entry(
-    path: Path, file_type: str, *, deletable: bool = True
-) -> dict[str, Any]:
+def _file_entry(path: Path, file_type: str, *, deletable: bool = True) -> dict[str, Any]:
     """Build a state-file descriptor."""
     try:
         size = path.stat().st_size
@@ -110,9 +106,7 @@ def _file_entry(
     }
 
 
-def _safe_delete(
-    path: Path, file_type: str, report: ResetReport, *, dry_run: bool
-) -> None:
+def _safe_delete(path: Path, file_type: str, report: ResetReport, *, dry_run: bool) -> None:
     """Delete a single file, appending to *report*."""
     if not path.exists():
         return
@@ -278,9 +272,7 @@ def reset_project(project_root: str, dry_run: bool = True) -> ResetReport:
     _safe_delete(_SESSION_DIR / f"{phash}.json", "session", report, dry_run=dry_run)
 
     # Habit mode state
-    _safe_delete(
-        _HABIT_STATE_DIR / f"{phash}.json", "habit_state", report, dry_run=dry_run
-    )
+    _safe_delete(_HABIT_STATE_DIR / f"{phash}.json", "habit_state", report, dry_run=dry_run)
 
     # Theory extractions
     _safe_delete(root / _THEORY_PATH, "theory", report, dry_run=dry_run)

@@ -54,11 +54,7 @@ class TestGenerateMutants:
         assert len(mutants) == 0
 
     def test_state_mutants_self_assign(self):
-        func = _parse_func(
-            "def f(self, x):\n"
-            "    self.value = x\n"
-            "    return self.value"
-        )
+        func = _parse_func("def f(self, x):\n    self.value = x\n    return self.value")
         mutants = generate_mutants(func, {MutationCategory.STATE})
         assert len(mutants) >= 1
 
@@ -209,7 +205,11 @@ class TestProfiling:
         original = lambda x: x + 1  # noqa: E731
 
         result = run_function_profiling(
-            func, "test.py::f", {MutationCategory.VALUE}, [], original,
+            func,
+            "test.py::f",
+            {MutationCategory.VALUE},
+            [],
+            original,
         )
         d = result.to_dict()
         assert "coverage_depth" in d

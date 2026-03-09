@@ -83,15 +83,11 @@ def register(mcp, helpers):
                             "action": "create_venv",
                             "status": "ok" if proc.returncode == 0 else "error",
                             "returncode": proc.returncode,
-                            "stderr": proc.stderr.strip()[-500:]
-                            if proc.stderr
-                            else None,
+                            "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
                         }
                     )
                 except subprocess.TimeoutExpired:
-                    result["actions"].append(
-                        {"action": "create_venv", "status": "timeout"}
-                    )
+                    result["actions"].append({"action": "create_venv", "status": "timeout"})
 
         if lock:
             try:

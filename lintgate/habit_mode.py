@@ -215,11 +215,7 @@ def update_signals(state: HabitModeState, action_history: list[dict[str, Any]]) 
     Each entry needs at least: {"tool": str, "ts": float, "intent": str}
     Optional: {"sig": str}
     """
-    window = (
-        action_history[-WINDOW_SIZE:]
-        if len(action_history) > WINDOW_SIZE
-        else action_history
-    )
+    window = action_history[-WINDOW_SIZE:] if len(action_history) > WINDOW_SIZE else action_history
     if not window:
         return
 
@@ -705,9 +701,7 @@ def build_compaction_snapshot(
     if compass:
         hypotheses = compass.get("hypotheses", [])
         # Sort by confidence desc, take top 3
-        top_hyps = sorted(
-            hypotheses, key=lambda h: h.get("confidence", 0), reverse=True
-        )[:3]
+        top_hyps = sorted(hypotheses, key=lambda h: h.get("confidence", 0), reverse=True)[:3]
         hyp_summaries = [
             {"claim": h.get("claim", "")[:80], "confidence": h.get("confidence", 0)}
             for h in top_hyps
@@ -779,9 +773,7 @@ def build_compaction_snapshot(
     # Focus directive
     focus_files = ", ".join(state.active_files[:3]) if state.active_files else "none"
     test_str = f"Test: {state.last_test_status}." if state.last_test_status else ""
-    snapshot["focus_directive"] = (
-        f"You are in Habit Mode. Focus: [{focus_files}]. {test_str}"
-    )
+    snapshot["focus_directive"] = f"You are in Habit Mode. Focus: [{focus_files}]. {test_str}"
 
     # Enforce hard cap
     _enforce_snapshot_cap(snapshot)
@@ -823,9 +815,7 @@ def _build_tool_injections(
             {
                 "tool": "prediction_register",
                 "priority": 1,
-                "reason": "5+ edits without test. Register a prediction before running tests."[
-                    :80
-                ],
+                "reason": "5+ edits without test. Register a prediction before running tests."[:80],
             }
         )
 
@@ -837,9 +827,7 @@ def _build_tool_injections(
                 {
                     "tool": "lint_fix",
                     "priority": 1,
-                    "reason": f"{blocking} blocking lint issues. Auto-fix safe issues."[
-                        :80
-                    ],
+                    "reason": f"{blocking} blocking lint issues. Auto-fix safe issues."[:80],
                 }
             )
 
@@ -851,9 +839,7 @@ def _build_tool_injections(
                 {
                     "tool": "controlplane_run",
                     "priority": 2,
-                    "reason": "Systemic coherence state detected. Run full analysis."[
-                        :80
-                    ],
+                    "reason": "Systemic coherence state detected. Run full analysis."[:80],
                 }
             )
 
@@ -861,18 +847,14 @@ def _build_tool_injections(
     if compass:
         approaches = compass.get("approaches", [])
         recent_failed = sum(
-            1
-            for a in approaches[-5:]
-            if isinstance(a, dict) and a.get("outcome") == "failed"
+            1 for a in approaches[-5:] if isinstance(a, dict) and a.get("outcome") == "failed"
         )
         if recent_failed >= 2:
             injections.append(
                 {
                     "tool": "constraint_check",
                     "priority": 1,
-                    "reason": f"{recent_failed} recent failed approaches. Check constraints."[
-                        :80
-                    ],
+                    "reason": f"{recent_failed} recent failed approaches. Check constraints."[:80],
                 }
             )
 
@@ -900,9 +882,7 @@ def load_habit_state(behavior_compass_dict: dict[str, Any]) -> HabitModeState:
     return HabitModeState.from_dict(data)
 
 
-def save_habit_state(
-    behavior_compass_dict: dict[str, Any], state: HabitModeState
-) -> None:
+def save_habit_state(behavior_compass_dict: dict[str, Any], state: HabitModeState) -> None:
     """Save habit state into session.behavior_compass dict."""
     behavior_compass_dict["habit_mode"] = state.to_dict()
 

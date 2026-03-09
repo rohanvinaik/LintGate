@@ -98,9 +98,7 @@ def test_build_interview_priority_ordering() -> None:
 
 
 def test_build_interview_respects_max_questions() -> None:
-    report = GapReport(
-        axis_depths={"problem": 0, "solution": 0, "implementation": 0, "world": 0}
-    )
+    report = GapReport(axis_depths={"problem": 0, "solution": 0, "implementation": 0, "world": 0})
     entries = build_interview(report, max_questions=3)
     assert len(entries) <= 3
 
@@ -141,9 +139,12 @@ def test_skip_interview_clears_recommendation() -> None:
         axes={"problem": CompassAxis(name="problem", claims=[])},
     )
     detect_gaps(state)
-    assert state.gap_report.interview_recommended
+    assert state.gap_report.interview_recommended is True
     skip_interview(state)
-    assert not state.gap_report.interview_recommended
+    assert state.gap_report.interview_recommended is False
+    # Idempotent: calling again doesn't error or change result
+    skip_interview(state)
+    assert state.gap_report.interview_recommended is False
 
 
 # ── optional axes don't inflate spikiness ───────────────────────────

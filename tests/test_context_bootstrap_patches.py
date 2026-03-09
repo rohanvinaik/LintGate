@@ -127,7 +127,9 @@ class TestParseManagedSections:
         assert len(sections) == 0
 
     def test_version_parsed_correctly(self) -> None:
-        text = "<!-- LINTGATE:BEGIN context_map v15 -->\nmap data\n<!-- LINTGATE:END context_map -->\n"
+        text = (
+            "<!-- LINTGATE:BEGIN context_map v15 -->\nmap data\n<!-- LINTGATE:END context_map -->\n"
+        )
         sections = parse_managed_sections(text)
         assert sections["context_map"].version == 15
 
@@ -248,10 +250,7 @@ class TestGenerateContextPatch:
         return str(p)
 
     def test_no_claude_md(self, tmp_path: object) -> None:
-        assert (
-            generate_context_patch(str(tmp_path), "constraint_accepted", {"rule": "x"})
-            is None
-        )
+        assert generate_context_patch(str(tmp_path), "constraint_accepted", {"rule": "x"}) is None
 
     def test_constraint_accepted(self, tmp_path: object) -> None:
         content = (
@@ -261,9 +260,7 @@ class TestGenerateContextPatch:
             "<!-- LINTGATE:END machine_rules -->\n"
         )
         root = self._write_claude_md(tmp_path, content)
-        patch_obj = generate_context_patch(
-            root, "constraint_accepted", {"rule": "- new rule"}
-        )
+        patch_obj = generate_context_patch(root, "constraint_accepted", {"rule": "- new rule"})
         assert patch_obj is not None
         assert patch_obj.section_id == "machine_rules"
         assert "- new rule" in patch_obj.new_content
@@ -277,9 +274,7 @@ class TestGenerateContextPatch:
             "<!-- LINTGATE:END machine_rules -->\n"
         )
         root = self._write_claude_md(tmp_path, content)
-        result = generate_context_patch(
-            root, "constraint_accepted", {"rule": "- existing rule"}
-        )
+        result = generate_context_patch(root, "constraint_accepted", {"rule": "- existing rule"})
         assert result is None
 
     def test_constraint_accepted_empty_rule(self, tmp_path: object) -> None:
@@ -300,15 +295,15 @@ class TestGenerateContextPatch:
             "<!-- LINTGATE:END do_dont -->\n"
         )
         root = self._write_claude_md(tmp_path, content)
-        patch_obj = generate_context_patch(
-            root, "prediction_confirmed", {"entry": "bar after baz"}
-        )
+        patch_obj = generate_context_patch(root, "prediction_confirmed", {"entry": "bar after baz"})
         assert patch_obj is not None
         assert patch_obj.section_id == "do_dont"
         assert "DO NOT: bar after baz" in patch_obj.new_content
 
     def test_recurring_behavioral_signal(self, tmp_path: object) -> None:
-        content = "# Proj\n<!-- LINTGATE:BEGIN do_dont v1 -->\nstuff\n<!-- LINTGATE:END do_dont -->\n"
+        content = (
+            "# Proj\n<!-- LINTGATE:BEGIN do_dont v1 -->\nstuff\n<!-- LINTGATE:END do_dont -->\n"
+        )
         root = self._write_claude_md(tmp_path, content)
         patch_obj = generate_context_patch(
             root, "recurring_behavioral_signal", {"entry": "repeat error"}
@@ -350,25 +345,19 @@ class TestGenerateContextPatch:
         )
         root = self._write_claude_md(tmp_path, content)
         # machine_rules section is missing
-        assert (
-            generate_context_patch(root, "constraint_accepted", {"rule": "x"}) is None
-        )
+        assert generate_context_patch(root, "constraint_accepted", {"rule": "x"}) is None
 
     def test_migration_before_patch(self, tmp_path: object) -> None:
         # CLAUDE.md has no markers, but has matching headings
         content = "# Proj\n## Machine Rules\n- old rule\n## Other\nstuff\n"
         root = self._write_claude_md(tmp_path, content)
-        patch_obj = generate_context_patch(
-            root, "constraint_accepted", {"rule": "- new rule"}
-        )
+        patch_obj = generate_context_patch(root, "constraint_accepted", {"rule": "- new rule"})
         assert patch_obj is not None
 
     def test_prediction_confirmed_empty_entry(self, tmp_path: object) -> None:
         content = "# Proj\n<!-- LINTGATE:BEGIN do_dont v1 -->\nx\n<!-- LINTGATE:END do_dont -->\n"
         root = self._write_claude_md(tmp_path, content)
-        assert (
-            generate_context_patch(root, "prediction_confirmed", {"entry": ""}) is None
-        )
+        assert generate_context_patch(root, "prediction_confirmed", {"entry": ""}) is None
 
     def test_theory_update_empty_update(self, tmp_path: object) -> None:
         content = (
@@ -378,10 +367,7 @@ class TestGenerateContextPatch:
             "<!-- LINTGATE:END theory_alignment -->\n"
         )
         root = self._write_claude_md(tmp_path, content)
-        assert (
-            generate_context_patch(root, "theory_coherence_update", {"update": ""})
-            is None
-        )
+        assert generate_context_patch(root, "theory_coherence_update", {"update": ""}) is None
 
     def test_rationale_from_evidence(self, tmp_path: object) -> None:
         content = (
@@ -434,9 +420,7 @@ class TestApplyContextPatch:
     def test_actual_apply(self, tmp_path: object) -> None:
         root, patch_obj = self._setup(tmp_path)
         with patch("lintgate.context_auditor.audit_context_health") as mock_audit:
-            mock_audit.return_value = {
-                "audit": [{"file": "CLAUDE.md", "status": "pass"}]
-            }
+            mock_audit.return_value = {"audit": [{"file": "CLAUDE.md", "status": "pass"}]}
             result = apply_context_patch(root, patch_obj, dry_run=False)
         assert result["applied"] is True
         assert result["diff_preview"]["new_version"] == 2

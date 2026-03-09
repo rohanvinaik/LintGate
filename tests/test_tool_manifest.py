@@ -204,9 +204,7 @@ class TestCheckToolHealth:
     def test_reports_installed_and_missing(self, tmp_path):
         manifest = [
             _parse_tool_entry(_make_tool_entry(id="python", required=True)),
-            _parse_tool_entry(
-                _make_tool_entry(id="nonexistent_tool_xyz_123", required=True)
-            ),
+            _parse_tool_entry(_make_tool_entry(id="nonexistent_tool_xyz_123", required=True)),
         ]
         with patch(
             "shutil.which",
@@ -265,15 +263,11 @@ class TestBuildInstallHint:
 class TestInstallMissingTools:
     def test_dry_run(self, tmp_path):
         manifest = [
-            _parse_tool_entry(
-                _make_tool_entry(id="nonexistent", required=False, auto_install=True)
-            )
+            _parse_tool_entry(_make_tool_entry(id="nonexistent", required=False, auto_install=True))
         ]
         with patch("shutil.which", return_value=None):
             statuses = check_tool_health(str(tmp_path), manifest)
-            results = install_missing_tools(
-                str(tmp_path), statuses, auto_only=True, dry_run=True
-            )
+            results = install_missing_tools(str(tmp_path), statuses, auto_only=True, dry_run=True)
 
         assert len(results) == 1
         assert results[0]["status"] == "would_install"
@@ -282,16 +276,12 @@ class TestInstallMissingTools:
     def test_skips_non_auto_install(self, tmp_path):
         manifest = [
             _parse_tool_entry(
-                _make_tool_entry(
-                    id="qlty", kind="native_binary", package="", auto_install=False
-                )
+                _make_tool_entry(id="qlty", kind="native_binary", package="", auto_install=False)
             )
         ]
         with patch("shutil.which", return_value=None):
             statuses = check_tool_health(str(tmp_path), manifest)
-            results = install_missing_tools(
-                str(tmp_path), statuses, auto_only=True, dry_run=True
-            )
+            results = install_missing_tools(str(tmp_path), statuses, auto_only=True, dry_run=True)
 
         assert len(results) == 0  # qlty is not auto_install
 

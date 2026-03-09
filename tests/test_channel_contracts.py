@@ -34,9 +34,7 @@ def test_channel_metadata_contract(channel):
     """Verify channel has required architectural metadata."""
     assert hasattr(channel, "name"), f"Channel {type(channel).__name__} missing 'name'"
     assert isinstance(channel.name, str)
-    assert hasattr(channel, "timeout_ms"), (
-        f"Channel {type(channel).__name__} missing 'timeout_ms'"
-    )
+    assert hasattr(channel, "timeout_ms"), f"Channel {type(channel).__name__} missing 'timeout_ms'"
     assert isinstance(channel.timeout_ms, int)
     assert hasattr(channel, "blocking_capable"), (
         f"Channel {type(channel).__name__} missing 'blocking_capable'"

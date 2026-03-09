@@ -78,9 +78,7 @@ def effective_failure_count(
 
 def ordered_failed_channels(failed_results: list[ChannelResult]) -> list[str]:
     """Return failing channels sorted by severity weight (highest first)."""
-    weighted = [
-        (result.channel, channel_failure_weight(result)) for result in failed_results
-    ]
+    weighted = [(result.channel, channel_failure_weight(result)) for result in failed_results]
     weighted.sort(key=lambda item: (-item[1], item[0]))
     return [name for name, _weight in weighted]
 

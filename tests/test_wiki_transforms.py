@@ -162,7 +162,11 @@ def test_apply_common_transforms_full():
     link_fn = make_pages_link_fn(is_root=False)
 
     result = apply_common_transforms(
-        text, page, metrics=metrics, link_fn=link_fn, read_time_min=3,
+        text,
+        page,
+        metrics=metrics,
+        link_fn=link_fn,
+        read_time_min=3,
     )
 
     assert "**How It Works**" in result

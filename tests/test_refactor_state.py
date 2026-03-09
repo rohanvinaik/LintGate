@@ -117,9 +117,7 @@ class TestCheckpoint:
 
     def test_patterns_tracked(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint(
-                tmpdir, "mod.py", "in_progress", patterns_applied=["guard-clause"]
-            )
+            checkpoint(tmpdir, "mod.py", "in_progress", patterns_applied=["guard-clause"])
             state = checkpoint(
                 tmpdir, "mod.py", "in_progress", patterns_applied=["helper-extraction"]
             )
@@ -128,20 +126,14 @@ class TestCheckpoint:
 
     def test_pattern_dedup(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint(
-                tmpdir, "mod.py", "in_progress", patterns_applied=["guard-clause"]
-            )
-            state = checkpoint(
-                tmpdir, "mod.py", "in_progress", patterns_applied=["guard-clause"]
-            )
+            checkpoint(tmpdir, "mod.py", "in_progress", patterns_applied=["guard-clause"])
+            state = checkpoint(tmpdir, "mod.py", "in_progress", patterns_applied=["guard-clause"])
             assert state.files["mod.py"].patterns_applied.count("guard-clause") == 1
 
     def test_global_pattern_record(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint(tmpdir, "a.py", "completed", patterns_applied=["guard-clause"])
-            state = checkpoint(
-                tmpdir, "b.py", "completed", patterns_applied=["guard-clause"]
-            )
+            state = checkpoint(tmpdir, "b.py", "completed", patterns_applied=["guard-clause"])
             pr = state.applied_patterns["guard-clause"]
             assert pr.count == 2
             assert "a.py" in pr.files_applied
@@ -205,15 +197,9 @@ class TestResume:
     def test_active_session_summary(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             set_thesis(tmpdir, "Test thesis")
-            checkpoint(
-                tmpdir, "a.py", "completed", initial_findings=5, remaining_findings=1
-            )
-            checkpoint(
-                tmpdir, "b.py", "in_progress", initial_findings=8, remaining_findings=4
-            )
-            checkpoint(
-                tmpdir, "c.py", "pending", initial_findings=3, remaining_findings=3
-            )
+            checkpoint(tmpdir, "a.py", "completed", initial_findings=5, remaining_findings=1)
+            checkpoint(tmpdir, "b.py", "in_progress", initial_findings=8, remaining_findings=4)
+            checkpoint(tmpdir, "c.py", "pending", initial_findings=3, remaining_findings=3)
 
             result = resume(tmpdir)
             assert result["active"]

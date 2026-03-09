@@ -45,9 +45,9 @@ class TestCoherenceGoldenRegression:
             f"loud_channels changed from {expected['loud_channels']} "
             f"to {coherence.loud_channels}"
         )
-        assert sorted(coherence.silent_channels) == sorted(
-            expected["silent_channels"]
-        ), f"Golden regression for '{scenario_name}': silent_channels changed"
+        assert sorted(coherence.silent_channels) == sorted(expected["silent_channels"]), (
+            f"Golden regression for '{scenario_name}': silent_channels changed"
+        )
 
 
 class TestCoherenceContractInvariants:

@@ -69,9 +69,7 @@ class StreamingGuard:
 
         return True
 
-    def guard_stream(
-        self, stream: Generator[str, None, None]
-    ) -> Generator[str, None, None]:
+    def guard_stream(self, stream: Generator[str, None, None]) -> Generator[str, None, None]:
         """Wrap a token stream with eager verification.
 
         Yields tokens only after they pass the sliding window look-ahead.

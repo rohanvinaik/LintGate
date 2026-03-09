@@ -11,9 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-def check_unnecessary_materialization(
-    tree: ast.AST, file_path: str
-) -> Iterable[LintIssue]:
+def check_unnecessary_materialization(tree: ast.AST, file_path: str) -> Iterable[LintIssue]:
     """Detect unnecessary list materialization (e.g. `sum([x for x in y])` -> `sum(x for x in y)`)."""
 
     aggregators = {"sum", "any", "all", "max", "min"}

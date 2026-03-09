@@ -80,9 +80,7 @@ def test_map_tests_to_source_by_name():
         src.flush()
         src_path = src.name
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", prefix="test_", delete=False
-    ) as test:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", prefix="test_", delete=False) as test:
         test.write(
             "from module import compute\n\ndef test_compute():\n    assert compute() == 42\n"
         )
@@ -400,9 +398,7 @@ def test_map_tests_to_source_alias_call_maps_to_imported_symbol():
         with open(b_path, "w", encoding="utf-8") as f:
             f.write("def foo():\n    return 2\n")
         with open(test_path, "w", encoding="utf-8") as f:
-            f.write(
-                "from a import foo as f\n\ndef test_alias():\n    assert f() == 1\n"
-            )
+            f.write("from a import foo as f\n\ndef test_alias():\n    assert f() == 1\n")
 
         index = build_source_function_index([a_path, b_path])
         mapping = map_tests_to_source(test_path, index, tmpdir)
@@ -674,9 +670,7 @@ def test_diagnostics_normalized_vs_raw():
             f.write("def t(): pass\n")
 
         with open(test_path, "w", encoding="utf-8") as f:
-            f.write(
-                "from a import t\ndef test_1(): t()\ndef test_2(): t()\ndef test_3(): t()\n"
-            )
+            f.write("from a import t\ndef test_1(): t()\ndef test_2(): t()\ndef test_3(): t()\n")
 
         index = build_source_function_index([src_path])
         diag = MappingDiagnostics()

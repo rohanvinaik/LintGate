@@ -11,29 +11,50 @@ from lintgate.wiki.manifest import (
 
 
 def _manifest_with_rails():
-    return WikiManifest(version=1, pages=[
-        WikiPage(
-            name="Quick-Start", title="Quick Start", pillar="guide",
-            rail="getting_value", chapter=1, order=1,
-        ),
-        WikiPage(
-            name="First-Steps", title="First Steps", pillar="guide",
-            rail="getting_value", chapter=2, order=2,
-            prerequisites=["Quick-Start"],
-        ),
-        WikiPage(
-            name="Architecture", title="Architecture", pillar="theory",
-            rail="how_it_works", chapter=1, order=1,
-        ),
-        WikiPage(
-            name="Glossary", title="Glossary", pillar="reference",
-            rail="reference", chapter=1, order=1,
-        ),
-        WikiPage(
-            name="Legacy", title="Legacy Page", pillar="misc",
-            order=1,  # No rail
-        ),
-    ])
+    return WikiManifest(
+        version=1,
+        pages=[
+            WikiPage(
+                name="Quick-Start",
+                title="Quick Start",
+                pillar="guide",
+                rail="getting_value",
+                chapter=1,
+                order=1,
+            ),
+            WikiPage(
+                name="First-Steps",
+                title="First Steps",
+                pillar="guide",
+                rail="getting_value",
+                chapter=2,
+                order=2,
+                prerequisites=["Quick-Start"],
+            ),
+            WikiPage(
+                name="Architecture",
+                title="Architecture",
+                pillar="theory",
+                rail="how_it_works",
+                chapter=1,
+                order=1,
+            ),
+            WikiPage(
+                name="Glossary",
+                title="Glossary",
+                pillar="reference",
+                rail="reference",
+                chapter=1,
+                order=1,
+            ),
+            WikiPage(
+                name="Legacy",
+                title="Legacy Page",
+                pillar="misc",
+                order=1,  # No rail
+            ),
+        ],
+    )
 
 
 def test_pages_by_rail():
@@ -109,11 +130,14 @@ def test_manifest_hash_includes_rail():
 def test_estimate_read_time(tmp_path):
     (tmp_path / "doc.md").write_text(" ".join(["word"] * 400))
     page = WikiPage(
-        name="Test", title="Test", pillar="x",
+        name="Test",
+        title="Test",
+        pillar="x",
         sources=[{"file": "doc.md", "kind": "file"}],
     )
     # Need SourceRef, not dict
     from lintgate.wiki.manifest import SourceRef
+
     page.sources = [SourceRef(file="doc.md", kind="file")]
     m = WikiManifest(version=1, pages=[page])
     rt = m.estimate_read_time(page, str(tmp_path))
@@ -123,8 +147,11 @@ def test_estimate_read_time(tmp_path):
 def test_estimate_read_time_minimum(tmp_path):
     (tmp_path / "short.md").write_text("hello")
     from lintgate.wiki.manifest import SourceRef
+
     page = WikiPage(
-        name="T", title="T", pillar="x",
+        name="T",
+        title="T",
+        pillar="x",
         sources=[SourceRef(file="short.md", kind="file")],
     )
     m = WikiManifest(version=1, pages=[page])

@@ -96,29 +96,26 @@ def _load_execute_config(
     """
     channel_config = config.channels.get("behavior", None)
     thresholds = dict(DEFAULT_THRESHOLDS)
+    valid_keys = frozenset(DEFAULT_THRESHOLDS)
     settings = getattr(channel_config, "settings", {}) if channel_config else {}
     if isinstance(settings, dict):
         nested = settings.get("thresholds", {})
         if isinstance(nested, dict):
             for key, value in nested.items():
-                if key in DEFAULT_THRESHOLDS:
+                if key in valid_keys:
                     thresholds[key] = value
         for key, value in settings.items():
-            if key in DEFAULT_THRESHOLDS:
+            if key in valid_keys:
                 thresholds[key] = value
 
     if "behavior_thresholds" in event.raw_input:
         thresholds.update(event.raw_input["behavior_thresholds"])
 
-    bias_weights = (
-        settings.get("bias_weights", {}) if isinstance(settings, dict) else {}
-    )
+    bias_weights = settings.get("bias_weights", {}) if isinstance(settings, dict) else {}
     global_priors = event.raw_input.get("behavior_global_priors")
 
     theory_profile = (
-        event.raw_input.get("theory_profile")
-        if config.inquiry.theory_grounded_signals
-        else None
+        event.raw_input.get("theory_profile") if config.inquiry.theory_grounded_signals else None
     )
     compass_data = event.raw_input.get("behavior_compass", {})
     recent_codas = compass_data.get("_theory_recent_codas", {})
@@ -165,8 +162,7 @@ def _compute_nudge_outcomes(
     nudge_outcomes: dict[str, str] = {}
     if compass.pending_nudge_signals:
         precheck_delta = (
-            compass.constraint_check_count_session
-            - compass.pending_nudge_constraint_check_count
+            compass.constraint_check_count_session - compass.pending_nudge_constraint_check_count
         )
         outcome = "accepted" if precheck_delta > 0 else "ignored"
         for sig in compass.pending_nudge_signals:
@@ -174,9 +170,7 @@ def _compute_nudge_outcomes(
         compass.nudge_outcomes.update(nudge_outcomes)
 
     compass.pending_nudge_signals = list(nudge_signals)
-    compass.pending_nudge_constraint_check_count = (
-        compass.constraint_check_count_session
-    )
+    compass.pending_nudge_constraint_check_count = compass.constraint_check_count_session
     return nudge_outcomes
 
 
@@ -260,9 +254,7 @@ class BehaviorChannel:
             return True
         return "behavior_compass" in event.raw_input
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute behavioral drift detection against compass state."""
         start = time.perf_counter()
 

@@ -98,9 +98,7 @@ def _generate_sonar_properties(github: dict[str, Any], layout: dict[str, Any]) -
     if "*.sh" not in exclude_parts:
         exclude_parts.append("*.sh")
     exclusions = ",\\\n  ".join(
-        p
-        if (p.endswith("**") or p.endswith("**/*") or p.startswith("*."))
-        else f"{p}**"
+        p if (p.endswith("**") or p.endswith("**/*") or p.startswith("*.")) else f"{p}**"
         for p in exclude_parts
     )
 

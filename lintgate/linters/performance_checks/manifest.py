@@ -61,9 +61,7 @@ class PropertyManifest:
 
         self.property_distribution = dist
         # Sort opportunities by number of hints descending
-        self.optimization_potential = sorted(
-            opps, key=lambda x: len(x[1]), reverse=True
-        )
+        self.optimization_potential = sorted(opps, key=lambda x: len(x[1]), reverse=True)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize manifest to a dictionary."""
@@ -71,9 +69,7 @@ class PropertyManifest:
             "functions": {k: v.to_dict() for k, v in self.functions.items()},
             "pure_count": self.pure_count,
             "impure_count": self.impure_count,
-            "property_distribution": {
-                k.value: v for k, v in self.property_distribution.items()
-            },
+            "property_distribution": {k.value: v for k, v in self.property_distribution.items()},
         }
 
     @classmethod
@@ -124,11 +120,7 @@ class _FuncFinder(ast.NodeVisitor):
         self._class_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        qualname = (
-            f"{'.'.join(self._class_stack)}.{node.name}"
-            if self._class_stack
-            else node.name
-        )
+        qualname = f"{'.'.join(self._class_stack)}.{node.name}" if self._class_stack else node.name
         self.nodes[qualname] = node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
@@ -144,8 +136,7 @@ def _compute_file_hash(filepath: str) -> str:
 def _load_manifest_cache(
     cache_path: Any,
 ) -> tuple[PropertyManifest, dict[str, dict[str, Any]]]:
-    """Load cached manifest and metadata from disk, returning empty defaults on failure.
-    """
+    """Load cached manifest and metadata from disk, returning empty defaults on failure."""
     if not cache_path.exists():
         return PropertyManifest(), {}
     try:
@@ -176,8 +167,15 @@ def _scan_file(
     filepath: str,
     project_root: str,
     enforcement_mode: str = "audit",
+    mutation_cache: dict[str, dict] | None = None,
 ) -> list[str]:
     """Parse a Python file, run purity + property analysis, and populate the manifest.
+
+    ``mutation_cache`` maps ``function_key → mutation result dict`` (with
+    ``survival_rate``, ``total_mutants``, ``coverage_depth``).  When present,
+    mutation state is forwarded to :func:`classify_properties` for gate
+    evaluation.  Loading the cache is the caller's responsibility — this
+    function only reads from it.
 
     Returns the list of qualified function names found, or empty on parse failure.
     """
@@ -204,9 +202,11 @@ def _scan_file(
         found_funcs.append(unique_key)
 
         if purity.is_pure:
+            mut_state = (mutation_cache or {}).get(unique_key)
             props = classify_properties(
                 func_node,
                 purity,
+                mutation_state=mut_state,
                 enforcement_mode=enforcement_mode,
             )
             func_props = FunctionProperties(
@@ -260,12 +260,21 @@ def _save_manifest_cache(
 # ── Public API ──────────────────────────────────────────────────────────
 
 
-def build_manifest(project_root: str, python_files: list[str], enforcement_mode: str = "audit") -> PropertyManifest:
-    """Build a PropertyManifest by scanning Python files, with incremental caching."""
+def build_manifest(
+    project_root: str,
+    python_files: list[str],
+    enforcement_mode: str = "audit",
+    mutation_cache: dict[str, dict] | None = None,
+) -> PropertyManifest:
+    """Build a PropertyManifest by scanning Python files, with incremental caching.
+
+    ``mutation_cache`` maps ``function_key → mutation result dict``.  When
+    provided, the gate in :func:`classify_properties` modulates confidence
+    and suppresses optimization hints for underspecified pure functions.
+    """
     PERF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     project_hash = hashlib.sha256(project_root.encode()).hexdigest()[:16]
-    # v3: mutation-state invalidation removed with mutation subsystem archival.
-    cache_path = PERF_CACHE_DIR / f"{project_hash}_v3.json"
+    cache_path = PERF_CACHE_DIR / f"{project_hash}_v4.json"
 
     cached_manifest, cache_metadata = _load_manifest_cache(cache_path)
 
@@ -279,10 +288,16 @@ def build_manifest(project_root: str, python_files: list[str], enforcement_mode:
             continue
 
         cached_entry = cache_metadata.get(filepath)
-        if (
-            cached_entry
-            and cached_entry.get("hash") == file_hash
-        ):
+        # Invalidate cache when mutation_cache has data for any function
+        # in this file — stale cache would skip the gate update.
+        mutation_invalidates = False
+        if mutation_cache and cached_entry:
+            for name in cached_entry.get("functions", []):
+                if name in mutation_cache:
+                    mutation_invalidates = True
+                    break
+
+        if cached_entry and cached_entry.get("hash") == file_hash and not mutation_invalidates:
             _restore_cached_functions(manifest, filepath, cached_manifest, cached_entry)
             new_metadata[filepath] = cached_entry
         else:
@@ -291,6 +306,7 @@ def build_manifest(project_root: str, python_files: list[str], enforcement_mode:
                 filepath,
                 project_root,
                 enforcement_mode,
+                mutation_cache=mutation_cache,
             )
             new_metadata[filepath] = {"hash": file_hash, "functions": found_funcs}
 

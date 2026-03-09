@@ -256,9 +256,7 @@ class TestBootstrapPipeline:
         """Generated test files should have the bootstrap header comment."""
         from lintgate.orchestration.bootstrap_pipeline import BootstrapPipeline
 
-        (tmp_path / "module.py").write_text(
-            "def compute(x: int) -> int:\n    return x * 2\n"
-        )
+        (tmp_path / "module.py").write_text("def compute(x: int) -> int:\n    return x * 2\n")
 
         pipeline = BootstrapPipeline(str(tmp_path))
         result = pipeline.run(dry_run=True)

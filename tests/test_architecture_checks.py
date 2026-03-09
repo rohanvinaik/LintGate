@@ -64,15 +64,11 @@ class TestFilepathToModule:
         assert result == "app.views"
 
     def test_init_file(self, tmp_path):
-        result = filepath_to_module(
-            str(tmp_path / "app" / "__init__.py"), str(tmp_path)
-        )
+        result = filepath_to_module(str(tmp_path / "app" / "__init__.py"), str(tmp_path))
         assert result == "app"
 
     def test_src_prefix_stripped(self, tmp_path):
-        result = filepath_to_module(
-            str(tmp_path / "src" / "app" / "models.py"), str(tmp_path)
-        )
+        result = filepath_to_module(str(tmp_path / "src" / "app" / "models.py"), str(tmp_path))
         assert result == "app.models"
 
     def test_non_python_returns_none(self, tmp_path):
@@ -180,9 +176,7 @@ class TestLayerContracts:
         )
         issues = list(check_layer_contracts(ctx.files, layers, ctx))
         assert len(issues) >= 1
-        assert any(
-            i.kind == "layer-violation" and i.severity == "blocking" for i in issues
-        )
+        assert any(i.kind == "layer-violation" and i.severity == "blocking" for i in issues)
 
     def test_allowed_import_no_issue(self, tmp_path):
         root = self._make_project(

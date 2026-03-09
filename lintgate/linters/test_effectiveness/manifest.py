@@ -160,9 +160,7 @@ def build_test_effectiveness_manifest(
         project_root, python_files, test_files, effective_weights=effective_weights
     )
 
-    manifest = TestEffectivenessManifest(
-        functions=effectiveness, diagnostics=diagnostics
-    )
+    manifest = TestEffectivenessManifest(functions=effectiveness, diagnostics=diagnostics)
     manifest.diagnostics.scope_provenance = {
         "source_files": [os.path.relpath(f, project_root) for f in python_files],
         "test_files": [os.path.relpath(f, project_root) for f in test_files],
@@ -174,8 +172,6 @@ def build_test_effectiveness_manifest(
     manifest.file_scores = {}
 
     manifest.update_metrics()
-    _save_manifest_cache(
-        cache_path, manifest, new_metadata, scope_fingerprint=scope_fingerprint
-    )
+    _save_manifest_cache(cache_path, manifest, new_metadata, scope_fingerprint=scope_fingerprint)
 
     return manifest

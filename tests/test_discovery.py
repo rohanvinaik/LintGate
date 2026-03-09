@@ -100,9 +100,7 @@ class TestWalkDiscover:
         (deploy / "script.py").write_text("x = 1")
         (tmp_path / "app.py").write_text("x = 1")
 
-        files = _walk_discover(
-            str(tmp_path), ".py", extra_exclude_dirs=frozenset({"deploy"})
-        )
+        files = _walk_discover(str(tmp_path), ".py", extra_exclude_dirs=frozenset({"deploy"}))
         basenames = [os.path.basename(f) for f in files]
         assert "app.py" in basenames
         assert "script.py" not in basenames
@@ -167,9 +165,7 @@ class TestGitDiscover:
 
     def test_returns_none_when_git_not_found(self, tmp_path: Path) -> None:
         """Returns None when git is not installed."""
-        with patch(
-            "lintgate.discovery.subprocess.run", side_effect=FileNotFoundError
-        ):
+        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
             result = _git_discover(str(tmp_path), ".py")
 
         assert result is None

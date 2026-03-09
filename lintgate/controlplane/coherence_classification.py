@@ -59,9 +59,7 @@ def classify_isolated_failure(
             f"Issue reported by {failing_channel}. "
             "No channels passed, so exclusion confidence is limited."
         )
-        low_confidence_notes.append(
-            "no corroborating passes — isolation is assumed, not confirmed"
-        )
+        low_confidence_notes.append("no corroborating passes — isolation is assumed, not confirmed")
     return CoherenceResult(
         state="isolated",
         summary=summary,
@@ -101,9 +99,7 @@ def classify_systemic_failure(
     if eff_count >= 3.0:
         conf = 0.9
         if severity_weighted:
-            systemic_notes.append(
-                f"severity-weighted failure score={eff_count:.2f} (>=3.0)"
-            )
+            systemic_notes.append(f"severity-weighted failure score={eff_count:.2f} (>=3.0)")
     else:
         # Cross-domain with only 2 failures — less certain it's truly systemic
         conf = 0.7

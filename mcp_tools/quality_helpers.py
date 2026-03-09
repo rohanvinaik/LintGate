@@ -250,10 +250,7 @@ def _detect_subprocess_usage(root_path: str) -> bool:
         try:
             with open(f, encoding="utf-8", errors="ignore") as fd:
                 content = fd.read()
-                if (
-                    "import subprocess" in content
-                    or "from subprocess import" in content
-                ):
+                if "import subprocess" in content or "from subprocess import" in content:
                     return True
         except OSError:
             continue

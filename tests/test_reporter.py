@@ -194,9 +194,7 @@ def test_format_header_skips_skip_channels() -> None:
 
 
 def test_format_blocking_single_issue() -> None:
-    findings = [
-        _issue("blocking", message="Undefined name 'foo'", file="/tmp/foo.py", line=5)
-    ]
+    findings = [_issue("blocking", message="Undefined name 'foo'", file="/tmp/foo.py", line=5)]
     result = _format_blocking(findings)
     assert "BLOCKING (1 issue - must fix):" in result
     assert "[ruff/F821]" in result
@@ -457,9 +455,7 @@ def test_format_proposed_constraints_drift_warning_with_contradicting() -> None:
             "proposed_rule": "Use %-formatting.",
             "drift_warning": True,
             "theory_coherence": {
-                "contradicting_claims": [
-                    "Project always uses f-strings for formatting"
-                ],
+                "contradicting_claims": ["Project always uses f-strings for formatting"],
             },
         }
     ]
@@ -526,11 +522,7 @@ def test_dynamic_budget_no_findings() -> None:
 
 def test_dynamic_budget_with_blocking_findings() -> None:
     findings = [_issue("blocking") for _ in range(5)]
-    mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=findings)
-        ]
-    )
+    mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
     budget = _compute_dynamic_budget(findings, mesh, config)
     expected = _BUDGET_BASE + 5 * _BUDGET_PER_BLOCKING
@@ -550,10 +542,7 @@ def test_dynamic_budget_with_mixed_findings() -> None:
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
     budget = _compute_dynamic_budget(all_findings, mesh, config)
     expected = (
-        _BUDGET_BASE
-        + 2 * _BUDGET_PER_BLOCKING
-        + 3 * _BUDGET_PER_WARNING
-        + 4 * _BUDGET_PER_INFO
+        _BUDGET_BASE + 2 * _BUDGET_PER_BLOCKING + 3 * _BUDGET_PER_WARNING + 4 * _BUDGET_PER_INFO
     )
     assert budget == expected
 
@@ -563,9 +552,7 @@ def test_dynamic_budget_includes_repairs() -> None:
     repairs = [_repair() for _ in range(3)]
     mesh = _mesh(
         channel_results=[
-            ChannelResult(
-                channel="lint", status="fail", findings=findings, repairs=repairs
-            ),
+            ChannelResult(channel="lint", status="fail", findings=findings, repairs=repairs),
         ],
     )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=100))
@@ -577,11 +564,7 @@ def test_dynamic_budget_includes_repairs() -> None:
 def test_dynamic_budget_hard_cap() -> None:
     """Massive findings should hit the hard cap."""
     findings = [_issue("blocking") for _ in range(5000)]
-    mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=findings)
-        ]
-    )
+    mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=900))
     budget = _compute_dynamic_budget(findings, mesh, config)
     assert budget == _BUDGET_HARD_CAP
@@ -840,11 +823,7 @@ def test_format_mesh_report_delta_escalated_and_resolved() -> None:
 
     # Current run has escalated finding as blocking
     findings = [issue_escalated]
-    mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=findings)
-        ]
-    )
+    mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)])
 
     # Pass previous_finding_index to trigger delta internal computation
     report = format_mesh_report(mesh, previous_finding_index=prev_index)
@@ -867,9 +846,7 @@ def test_format_mesh_report_tight_budget_truncation() -> None:
     ):
         findings = [_issue("blocking", message=f"Issue {i}") for i in range(10)]
         mesh = _mesh(
-            channel_results=[
-                ChannelResult(channel="lint", status="fail", findings=findings)
-            ]
+            channel_results=[ChannelResult(channel="lint", status="fail", findings=findings)]
         )
 
         # Budget of 38 tokens is tight enough to force cap=1.
@@ -887,9 +864,7 @@ def test_format_mesh_report_tight_budget_truncation() -> None:
 def test_format_mesh_report_minimal_header() -> None:
     """Verify minimal header when budget is too small for full header."""
     with patch("lintgate.controlplane.reporter._BUDGET_BASE", 0):
-        mesh = _mesh(
-            channel_results=[ChannelResult(channel="lint", status="fail", findings=[])]
-        )
+        mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="fail", findings=[])])
         # Force minimal budget of 5 tokens.
         config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=5))
 
@@ -927,9 +902,7 @@ def test_format_mesh_report_hidden_findings_marker() -> None:
     findings = [_issue("warning", message=f"Warn {i}") for i in range(10)]
     mesh = _mesh(
         channel_results=[
-            ChannelResult(
-                channel="lint", status="fail", severity="warning", findings=findings
-            ),
+            ChannelResult(channel="lint", status="fail", severity="warning", findings=findings),
         ],
     )
     report = format_mesh_report(mesh)
@@ -996,9 +969,7 @@ def test_format_mesh_report_delta_resolved() -> None:
         file="/tmp/foo.py",
     )
     prev_mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=[issue_a])
-        ],
+        channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
     prev_index = build_finding_index(prev_mesh)
 
@@ -1026,17 +997,13 @@ def test_format_mesh_report_delta_suppresses_unchanged() -> None:
         file="/tmp/foo.py",
     )
     prev_mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=[issue_a])
-        ],
+        channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
     prev_index = build_finding_index(prev_mesh)
 
     # Current has same finding
     cur_mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=[issue_a])
-        ],
+        channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
     report = format_mesh_report(cur_mesh, previous_finding_index=prev_index)
     # Unchanged finding is suppressed
@@ -1056,16 +1023,12 @@ def test_format_mesh_report_resurfacing_cadence() -> None:
         file="/tmp/foo.py",
     )
     prev_mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=[issue_a])
-        ],
+        channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
     prev_index = build_finding_index(prev_mesh)
 
     cur_mesh = _mesh(
-        channel_results=[
-            ChannelResult(channel="lint", status="fail", findings=[issue_a])
-        ],
+        channel_results=[ChannelResult(channel="lint", status="fail", findings=[issue_a])],
     )
     report = format_mesh_report(
         cur_mesh,
@@ -1097,9 +1060,7 @@ def test_format_mesh_report_tight_budget_minimal_header() -> None:
     findings = [_issue("blocking", message="Big issue " * 50)]
     mesh = _mesh(
         channel_results=[
-            ChannelResult(
-                channel="lint", status="fail", severity="blocking", findings=findings
-            ),
+            ChannelResult(channel="lint", status="fail", severity="blocking", findings=findings),
         ],
     )
     # Extremely tight budget
@@ -1114,9 +1075,7 @@ def test_format_mesh_report_blocking_budget_overflow() -> None:
     findings = [_issue("blocking", message=f"Error {i} " * 20) for i in range(20)]
     mesh = _mesh(
         channel_results=[
-            ChannelResult(
-                channel="lint", status="fail", severity="blocking", findings=findings
-            ),
+            ChannelResult(channel="lint", status="fail", severity="blocking", findings=findings),
         ],
     )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=300))

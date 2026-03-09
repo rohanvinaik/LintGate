@@ -122,9 +122,7 @@ class TestResolveRequiredEdges:
         f.write_text("def func():\n    pass\n")
         targets: list[SymbolSpan] = []
         seen: set[str] = {"mod.py::func"}
-        result = _resolve_required_symbols(
-            ["mod.py::func"], str(tmp_path), targets, seen
-        )
+        result = _resolve_required_symbols(["mod.py::func"], str(tmp_path), targets, seen)
         assert result == []
         assert len(targets) == 0
 
@@ -137,9 +135,7 @@ class TestResolveRequiredEdges:
     def test_missing_file_unresolved(self, tmp_path: Path) -> None:
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
-        result = _resolve_required_symbols(
-            ["nonexistent.py::func"], str(tmp_path), targets, seen
-        )
+        result = _resolve_required_symbols(["nonexistent.py::func"], str(tmp_path), targets, seen)
         assert "nonexistent.py::func" in result
 
 

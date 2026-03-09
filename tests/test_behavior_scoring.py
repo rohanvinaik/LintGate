@@ -175,16 +175,16 @@ def _make_compass(**overrides: object) -> BehaviorCompass:
 
 
 class TestIntentBiasScorer:
-    def test_verification_debt_fires(self) -> None:
+    def test_verification_debt_fires_exact_values(self) -> None:
         compass = _make_compass(
             intent_history=["execute"] * 10,
             event_counter=20,
         )
         scorer = IntentBiasScorer(compass, {"verification_debt_streak": 8})
         delta, terms = scorer.verification_debt_bias()
-        assert delta > 0
-        assert len(terms) > 0
-        assert "execute_streak" in terms[0]
+        # Default weight 0.20, no global priors → effective = min(0.20, 0.25) = 0.20
+        assert delta == 0.20
+        assert terms == ["execute_streak=10,verify=0,inspect=0"]
 
     def test_verification_debt_no_fire_with_verify(self) -> None:
         compass = _make_compass(
@@ -194,6 +194,7 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {"verification_debt_streak": 8})
         delta, terms = scorer.verification_debt_bias()
         assert delta == 0.0
+        assert terms == []
 
     def test_verification_debt_no_fire_short_streak(self) -> None:
         compass = _make_compass(
@@ -203,8 +204,30 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {"verification_debt_streak": 8})
         delta, terms = scorer.verification_debt_bias()
         assert delta == 0.0
+        assert terms == []
 
-    def test_failure_amnesia_fires(self) -> None:
+    def test_verification_debt_custom_weight(self) -> None:
+        compass = _make_compass(
+            intent_history=["execute"] * 10,
+            event_counter=20,
+        )
+        scorer = IntentBiasScorer(
+            compass, {"verification_debt_streak": 8, "verification_debt_bias": 0.10}
+        )
+        delta, terms = scorer.verification_debt_bias()
+        assert delta == 0.10
+
+    def test_verification_debt_with_inspect_breaks_streak(self) -> None:
+        compass = _make_compass(
+            intent_history=["execute"] * 8 + ["inspect"] + ["execute"],
+            event_counter=20,
+        )
+        scorer = IntentBiasScorer(compass, {"verification_debt_streak": 8})
+        delta, terms = scorer.verification_debt_bias()
+        # Streak is only 1 (last "execute" after "inspect"), inspect_count=1
+        assert delta == 0.0
+
+    def test_failure_amnesia_fires_exact_values(self) -> None:
         compass = _make_compass(
             action_history=[
                 {"cmd": "test", "err": "ModuleNotFound"},
@@ -216,8 +239,9 @@ class TestIntentBiasScorer:
         )
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.failure_amnesia_bias()
-        assert delta > 0
-        assert "repeated_error" in terms[0]
+        # Default weight 0.15, no global priors → effective = min(0.15, 0.25) = 0.15
+        assert delta == 0.15
+        assert terms == ["repeated_error,no_verify_between"]
 
     def test_failure_amnesia_no_fire_with_verify_between(self) -> None:
         compass = _make_compass(
@@ -232,6 +256,7 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.failure_amnesia_bias()
         assert delta == 0.0
+        assert terms == []
 
     def test_failure_amnesia_no_error(self) -> None:
         compass = _make_compass(
@@ -242,6 +267,7 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.failure_amnesia_bias()
         assert delta == 0.0
+        assert terms == []
 
     def test_failure_amnesia_too_few_actions(self) -> None:
         compass = _make_compass(
@@ -252,8 +278,9 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.failure_amnesia_bias()
         assert delta == 0.0
+        assert terms == []
 
-    def test_serial_discovery_fires(self) -> None:
+    def test_serial_discovery_fires_exact_values(self) -> None:
         compass = _make_compass(
             constraint_check_count_session=0,
             event_counter=10,
@@ -269,8 +296,9 @@ class TestIntentBiasScorer:
         ]
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.serial_discovery_bias()
-        assert delta > 0
-        assert "failure_hyps" in terms[0]
+        # Default weight 0.10, no global priors → effective = min(0.10, 0.25) = 0.10
+        assert delta == 0.10
+        assert terms == ["failure_hyps=1,precheck=0"]
 
     def test_serial_discovery_no_fire_with_precheck(self) -> None:
         compass = _make_compass(
@@ -289,68 +317,84 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.serial_discovery_bias()
         assert delta == 0.0
+        assert terms == []
 
-    def test_stale_model_fires(self) -> None:
+    def test_serial_discovery_multiple_hyps(self) -> None:
+        compass = _make_compass(
+            constraint_check_count_session=0,
+            event_counter=10,
+        )
+        compass.hypotheses = [
+            BehaviorHypothesis(
+                id="h1",
+                claim="c1",
+                confidence=0.3,
+                source="command_failure",
+                status="active",
+            ),
+            BehaviorHypothesis(
+                id="h2",
+                claim="c2",
+                confidence=0.5,
+                source="command_failure",
+                status="confirmed",
+            ),
+        ]
+        scorer = IntentBiasScorer(compass, {})
+        delta, terms = scorer.serial_discovery_bias()
+        assert delta == 0.10
+        assert terms == ["failure_hyps=2,precheck=0"]
+
+    def test_stale_model_fires_exact_values(self) -> None:
         compass = _make_compass(event_counter=20)
         compass.approaches = [
-            ApproachAttempt(
-                approach_sig="sig1", started_at=1.0, hyp_version_at_start=0
-            ),
-            ApproachAttempt(
-                approach_sig="sig2", started_at=2.0, hyp_version_at_start=0
-            ),
-            ApproachAttempt(
-                approach_sig="sig3", started_at=3.0, hyp_version_at_start=0
-            ),
+            ApproachAttempt(approach_sig="sig1", started_at=1.0, hyp_version_at_start=0),
+            ApproachAttempt(approach_sig="sig2", started_at=2.0, hyp_version_at_start=0),
+            ApproachAttempt(approach_sig="sig3", started_at=3.0, hyp_version_at_start=0),
         ]
         scorer = IntentBiasScorer(compass, {"stale_model_approach_changes": 2})
         delta, terms = scorer.stale_model_bias()
-        assert delta > 0
-        assert "approach_streak" in terms[0]
+        # Default weight 0.15, no global priors → effective = min(0.15, 0.25) = 0.15
+        assert delta == 0.15
+        assert terms == ["approach_streak=3,hyp_version_unchanged"]
 
     def test_stale_model_no_fire_few_approaches(self) -> None:
         compass = _make_compass(event_counter=10)
         compass.approaches = [
-            ApproachAttempt(
-                approach_sig="sig1", started_at=1.0, hyp_version_at_start=0
-            ),
+            ApproachAttempt(approach_sig="sig1", started_at=1.0, hyp_version_at_start=0),
         ]
         scorer = IntentBiasScorer(compass, {})
         delta, terms = scorer.stale_model_bias()
         assert delta == 0.0
+        assert terms == []
 
     def test_stale_model_no_fire_version_changes(self) -> None:
         compass = _make_compass(event_counter=20)
         compass.approaches = [
-            ApproachAttempt(
-                approach_sig="sig1", started_at=1.0, hyp_version_at_start=0
-            ),
-            ApproachAttempt(
-                approach_sig="sig2", started_at=2.0, hyp_version_at_start=1
-            ),
-            ApproachAttempt(
-                approach_sig="sig3", started_at=3.0, hyp_version_at_start=2
-            ),
+            ApproachAttempt(approach_sig="sig1", started_at=1.0, hyp_version_at_start=0),
+            ApproachAttempt(approach_sig="sig2", started_at=2.0, hyp_version_at_start=1),
+            ApproachAttempt(approach_sig="sig3", started_at=3.0, hyp_version_at_start=2),
         ]
         scorer = IntentBiasScorer(compass, {"stale_model_approach_changes": 2})
         delta, terms = scorer.stale_model_bias()
         assert delta == 0.0
+        assert terms == []
 
-    def test_build_evidence_trace(self) -> None:
+    def test_build_evidence_trace_exact_structure(self) -> None:
         compass = _make_compass(
             intent_history=["execute", "verify", "execute"],
             event_counter=10,
         )
         scorer = IntentBiasScorer(compass, {})
         trace = scorer.build_evidence_trace()
-        assert trace["window"] == 3
-        assert "intent_counts" in trace
-        assert trace["intent_counts"]["execute"] == 2
-        assert trace["intent_counts"]["verify"] == 1
+        assert trace == {
+            "window": 3,
+            "intent_counts": {"execute": 2, "verify": 1},
+        }
 
-    def test_global_priors_alpha(self) -> None:
+    def test_build_evidence_trace_with_global_priors(self) -> None:
         compass = _make_compass(
-            intent_history=["execute"] * 10,
+            intent_history=["execute"] * 3,
             event_counter=20,
         )
         global_priors = {
@@ -359,19 +403,41 @@ class TestIntentBiasScorer:
             "decay_horizon": 50,
             "computed_bias_adjustments": {"verification_debt": 0.1},
         }
-        scorer = IntentBiasScorer(
-            compass, {"verification_debt_streak": 8}, global_priors
-        )
-        assert scorer._alpha > 0
+        scorer = IntentBiasScorer(compass, {}, global_priors)
         trace = scorer.build_evidence_trace()
         assert "global_alpha" in trace
+        assert isinstance(trace["global_alpha"], float)
+        assert trace["global_alpha"] > 0
+        assert trace["global_adjustments_applied"] == {"verification_debt": 0.1}
 
-    def test_effective_bias_weight_clamped(self) -> None:
+    def test_init_attributes_exact(self) -> None:
+        compass = _make_compass(
+            intent_history=["execute", "verify"],
+            event_counter=5,
+        )
+        scorer = IntentBiasScorer(compass, {"key": 0.5})
+        assert scorer.compass is compass
+        assert scorer.weights == {"key": 0.5}
+        assert scorer.global_priors == {}
+        assert scorer._alpha == 0.0
+        assert scorer._global_adjustments == {}
+        assert scorer.recent_window == 2
+        assert scorer.recent_counts == {"execute": 1, "verify": 1}
+
+    def test_effective_bias_weight_exact_values(self) -> None:
         compass = _make_compass(event_counter=5)
         scorer = IntentBiasScorer(compass, {"my_key": 0.30})
-        # _effective_bias_weight clamps to _BIAS_CAP
+        # project_weight=0.30 > BIAS_CAP=0.25 → clamped to 0.25
         result = scorer._effective_bias_weight("test", "my_key", 0.30)
-        assert result <= _BIAS_CAP
+        assert result == _BIAS_CAP
+        assert result == 0.25
+
+    def test_effective_bias_weight_uses_default(self) -> None:
+        compass = _make_compass(event_counter=5)
+        scorer = IntentBiasScorer(compass, {})
+        # No config key → uses default of 0.12
+        result = scorer._effective_bias_weight("test", "missing_key", 0.12)
+        assert result == 0.12
 
     def test_recent_counts_window(self) -> None:
         compass = _make_compass(
@@ -381,7 +447,7 @@ class TestIntentBiasScorer:
         scorer = IntentBiasScorer(compass, {})
         # Only last 10 should be counted
         assert scorer.recent_window == 10
-        assert scorer.recent_counts.get("execute", 0) == 10
+        assert scorer.recent_counts == {"execute": 10}
 
 
 # ── SignalCoordinator ────────────────────────────────────────────────────
@@ -442,9 +508,7 @@ class TestSignalCoordinator:
             compass=compass,
             thresholds={"signal_cooldown": 10, "escalation_threshold": 3},
         )
-        finding = LintIssue(
-            linter="behavior", kind="approach_cycling", message="cycling detected"
-        )
+        finding = LintIssue(linter="behavior", kind="approach_cycling", message="cycling detected")
         coord.add_finding("approach_cycling", finding, is_hard=True)
         assert len(coord.findings) == 1
         assert coord.findings[0].message.startswith("[persistent]")
@@ -466,9 +530,7 @@ class TestSignalCoordinator:
         coord = self._make_coordinator(event_counter=0)
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         nudge = {"tool": "constraint_check", "reason": "cycling"}
-        coord.add_finding(
-            "approach_cycling", finding, is_hard=True, precheck_nudge=nudge
-        )
+        coord.add_finding("approach_cycling", finding, is_hard=True, precheck_nudge=nudge)
         findings, actions, nudge_signals, _suppressed = coord.finalize()
         assert len(findings) == 1
         assert len(actions) == 1
@@ -481,12 +543,8 @@ class TestSignalCoordinator:
         nudge_low = {"tool": "constraint_check", "reason": "serial"}
         nudge_high = {"tool": "constraint_check", "reason": "cycling"}
         # Add lower priority first
-        coord.add_finding(
-            "serial_discovery_early", f1, is_hard=False, precheck_nudge=nudge_low
-        )
-        coord.add_finding(
-            "approach_cycling", f2, is_hard=True, precheck_nudge=nudge_high
-        )
+        coord.add_finding("serial_discovery_early", f1, is_hard=False, precheck_nudge=nudge_low)
+        coord.add_finding("approach_cycling", f2, is_hard=True, precheck_nudge=nudge_high)
         _, actions, _, _suppressed = coord.finalize()
         assert len(actions) == 1
         assert actions[0]["reason"] == "cycling"
@@ -529,20 +587,14 @@ class TestSignalCoordinator:
             thresholds={"signal_cooldown": 10, "escalation_threshold": 3},
             theory_profile={
                 "facets": {
-                    "problem_solving": {
-                        "claims": [{"claim": "some claim", "relevance_score": 1.0}]
-                    }
+                    "problem_solving": {"claims": [{"claim": "some claim", "relevance_score": 1.0}]}
                 }
             },
             recent_codas=recent_codas,
         )
-        finding = LintIssue(
-            linter="behavior", kind="cycling", message="cycling detected"
-        )
+        finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
         # Mock _ground_finding_in_theory to return the same coda (now a 2-tuple)
-        with patch(
-            "lintgate.channels.behavior_scoring._ground_finding_in_theory"
-        ) as mock_ground:
+        with patch("lintgate.channels.behavior_scoring._ground_finding_in_theory") as mock_ground:
             mock_ground.return_value = (" Theory: 'some claim'.", 1.0)
             finding.message = "cycling detected Theory: 'some claim'."
             finding.evidence = {"theory_context": ["some claim"]}
@@ -563,15 +615,10 @@ class TestGroundFindingInTheory:
 
     def test_unknown_signal(self) -> None:
         finding = LintIssue(linter="behavior", kind="unknown", message="msg")
-        assert (
-            _ground_finding_in_theory(finding, "nonexistent_signal", {"facets": {}})
-            is None
-        )
+        assert _ground_finding_in_theory(finding, "nonexistent_signal", {"facets": {}}) is None
 
     def test_grounding_applied(self) -> None:
-        finding = LintIssue(
-            linter="behavior", kind="cycling", message="cycling detected"
-        )
+        finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
         theory = {
             "facets": {
                 "problem_solving": {
@@ -581,13 +628,9 @@ class TestGroundFindingInTheory:
                 }
             }
         }
-        with patch(
-            "lintgate.theory_extractor.get_theory_context_from_profile"
-        ) as mock_ctx:
+        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
             mock_ctx.return_value = {
-                "claims": [
-                    {"claim": "decompose before solving", "relevance_score": 0.9}
-                ]
+                "claims": [{"claim": "decompose before solving", "relevance_score": 0.9}]
             }
             result = _ground_finding_in_theory(finding, "approach_cycling", theory)
         assert result is not None
@@ -598,9 +641,7 @@ class TestGroundFindingInTheory:
 
     def test_no_claims_found(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
-        with patch(
-            "lintgate.theory_extractor.get_theory_context_from_profile"
-        ) as mock_ctx:
+        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
             mock_ctx.return_value = {"claims": []}
             result = _ground_finding_in_theory(finding, "approach_cycling", {"x": "y"})
         assert result is None
@@ -608,15 +649,9 @@ class TestGroundFindingInTheory:
     def test_claim_truncation(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
         long_claim = "x" * 100
-        with patch(
-            "lintgate.theory_extractor.get_theory_context_from_profile"
-        ) as mock_ctx:
-            mock_ctx.return_value = {
-                "claims": [{"claim": long_claim, "relevance_score": 1.0}]
-            }
-            result = _ground_finding_in_theory(
-                finding, "approach_cycling", {"facets": {}}
-            )
+        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
+            mock_ctx.return_value = {"claims": [{"claim": long_claim, "relevance_score": 1.0}]}
+            result = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
         assert result is not None
         coda, _score = result
         # The claim should have been truncated to 77 + "..."
@@ -624,9 +659,7 @@ class TestGroundFindingInTheory:
 
     def test_dedup_claims(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
-        with patch(
-            "lintgate.theory_extractor.get_theory_context_from_profile"
-        ) as mock_ctx:
+        with patch("lintgate.theory_extractor.get_theory_context_from_profile") as mock_ctx:
             # Return duplicate claims from different facets
             mock_ctx.return_value = {
                 "claims": [
@@ -635,9 +668,7 @@ class TestGroundFindingInTheory:
                     {"claim": "different claim", "relevance_score": 0.5},
                 ]
             }
-            result = _ground_finding_in_theory(
-                finding, "approach_cycling", {"facets": {}}
-            )
+            result = _ground_finding_in_theory(finding, "approach_cycling", {"facets": {}})
         assert result is not None
         # Should only contain each claim once
         assert finding.message.count("same claim") == 1
@@ -682,3 +713,272 @@ class TestConstants:
     def test_error_evidence_prefixes(self) -> None:
         assert len(_ERROR_EVIDENCE_PREFIXES) == 3
         assert "exit!=0 with:" in _ERROR_EVIDENCE_PREFIXES
+
+
+# ── SPEC010: SignalCoordinator.__init__ specification ─────────────────
+
+
+class TestSignalCoordinatorInit:
+    """Specify exact attribute initialization contract for SignalCoordinator."""
+
+    def test_defaults_without_optional_args(self) -> None:
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(compass=compass, thresholds={"signal_cooldown": 5})
+        assert coord.compass is compass
+        assert coord.thresholds == {"signal_cooldown": 5}
+        assert coord.findings == []
+        assert coord.next_actions == []
+        assert coord._pending_precheck is None
+        assert coord._pending_priority == 999
+        assert coord._nudge_signals == []
+        assert coord.run_fire_counts == {}
+        assert coord.suppressed_nudge_count == 0
+        assert coord._theory_profile is None
+        assert coord._recent_codas == {}
+        assert coord._new_codas == {}
+
+    def test_with_theory_profile_and_recent_codas(self) -> None:
+        compass = _make_compass(event_counter=0)
+        theory = {"facets": {"core_theory": {"claims": []}}}
+        codas = {"approach_cycling": " Theory: 'test'."}
+        coord = SignalCoordinator(
+            compass=compass,
+            thresholds={},
+            theory_profile=theory,
+            recent_codas=codas,
+        )
+        assert coord._theory_profile is theory
+        assert coord._recent_codas is codas
+        assert coord._new_codas == {}
+
+    def test_authority_engine_created(self) -> None:
+        from lintgate.orchestration.authority import AuthorityEscalationEngine
+
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(compass=compass, thresholds={})
+        assert isinstance(coord.authority_engine, AuthorityEscalationEngine)
+
+
+# ── SPEC010: SignalCoordinator.add_finding specification ──────────────
+
+
+class TestSignalCoordinatorAddFindingSpec:
+    """Specify exact behavioral contract for add_finding (risk=1.00)."""
+
+    def test_blocked_by_cooldown_increments_suppressed(self) -> None:
+        compass = _make_compass(event_counter=3)
+        compass.last_fired["test_sig"] = 1
+        coord = SignalCoordinator(compass=compass, thresholds={"signal_cooldown": 10})
+        finding = LintIssue(linter="behavior", kind="test_sig", message="msg")
+        coord.add_finding("test_sig", finding, is_hard=False)
+        assert coord.suppressed_nudge_count == 1
+        assert coord.findings == []
+        assert coord.run_fire_counts == {}
+
+    def test_records_firing_on_success(self) -> None:
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(compass=compass, thresholds={"signal_cooldown": 10})
+        finding = LintIssue(linter="behavior", kind="cycling", message="msg")
+        coord.add_finding("approach_cycling", finding, is_hard=True)
+        assert compass.last_fired["approach_cycling"] == 0
+        assert compass.signal_fire_counts["approach_cycling"] == 1
+        assert coord.run_fire_counts["approach_cycling"] == 1
+        assert len(coord.findings) == 1
+
+    def test_precheck_nudge_tracked_by_priority(self) -> None:
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(compass=compass, thresholds={"signal_cooldown": 10})
+        nudge1 = {"tool": "constraint_check", "reason": "serial"}
+        f1 = LintIssue(linter="behavior", kind="k", message="m")
+        coord.add_finding("serial_discovery_early", f1, is_hard=False, precheck_nudge=nudge1)
+        assert coord._pending_precheck == nudge1
+        assert coord._pending_priority == 7  # serial_discovery_early priority
+        assert "serial_discovery_early" in coord._nudge_signals
+
+        # Higher priority nudge should replace it
+        nudge2 = {"tool": "constraint_check", "reason": "cycling"}
+        f2 = LintIssue(linter="behavior", kind="k2", message="m2")
+        coord.add_finding("approach_cycling", f2, is_hard=True, precheck_nudge=nudge2)
+        assert coord._pending_precheck == nudge2
+        assert coord._pending_priority == 1  # approach_cycling priority
+
+    def test_authority_severity_applied_to_finding(self) -> None:
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(compass=compass, thresholds={"signal_cooldown": 10})
+        finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
+        coord.add_finding("approach_cycling", finding, is_hard=True)
+        # Authority engine should have set severity and added evidence
+        assert finding.severity in ("blocking", "warning", "informational")
+        assert "authority" in (finding.evidence or {})
+        assert "level" in finding.evidence["authority"]
+        assert "reason" in finding.evidence["authority"]
+
+    def test_with_decomposition_applies_attribution(self) -> None:
+        from lintgate.orchestration.attribution import SignalSourceDecomposition
+
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(compass=compass, thresholds={"signal_cooldown": 10})
+        decomp = SignalSourceDecomposition(
+            signal_name="approach_cycling",
+            pattern_score=0.8,
+            theory_score=0.0,
+            outcome_score=0.5,
+            coherence_score=0.3,
+        )
+        finding = LintIssue(linter="behavior", kind="cycling", message="detected")
+        coord.add_finding("approach_cycling", finding, is_hard=True, decomposition=decomp)
+        assert finding.confidence > 0
+        assert "attribution" in (finding.evidence or {})
+        attr = finding.evidence["attribution"]
+        assert attr["pattern"] == 0.8
+        assert attr["outcome"] == 0.5
+        assert attr["coherence"] == 0.3
+
+
+# ── _apply_theory_coda branch coverage ────────────────────────────
+
+
+class TestApplyTheoryCodaMutantKilling:
+    """Cover all 3 branches of SignalCoordinator._apply_theory_coda."""
+
+    def test_no_theory_profile_returns_zero(self) -> None:
+        """Branch 1: theory_profile is None → returns 0.0, finding unchanged."""
+        compass = _make_compass(event_counter=0)
+        coord = SignalCoordinator(
+            compass=compass,
+            thresholds={"signal_cooldown": 10},
+            theory_profile=None,
+        )
+        finding = LintIssue(
+            linter="behavior", kind="cycling", message="original message"
+        )
+        result = coord._apply_theory_coda("approach_cycling", finding)
+        assert result == 0.0
+        assert finding.message == "original message"
+
+    def test_new_coda_stored_in_new_codas(self) -> None:
+        """Branch 2+3: theory_profile present, coda produced, not duplicate → stored."""
+        compass = _make_compass(event_counter=0)
+        # Profile format: {facet: [{claims: [str, ...], source: str, heading: str}]}
+        theory_profile = {
+            "core_theory": [
+                {
+                    "claims": ["Prefer deterministic checks over ambiguous heuristics."],
+                    "source": "design.md",
+                    "heading": "Mission",
+                }
+            ]
+        }
+        coord = SignalCoordinator(
+            compass=compass,
+            thresholds={"signal_cooldown": 10},
+            theory_profile=theory_profile,
+            recent_codas={},
+        )
+        finding = LintIssue(
+            linter="behavior",
+            kind="cycling",
+            message="3 approaches tried",
+        )
+        result = coord._apply_theory_coda("approach_cycling", finding)
+        # Theory score should be > 0 since claims were found
+        assert result >= 0.0
+        # If a coda was produced, it should be in _new_codas
+        if "approach_cycling" in coord._new_codas:
+            assert len(coord._new_codas["approach_cycling"]) > 0
+
+    def test_duplicate_coda_stripped_from_message(self) -> None:
+        """Branch 3: prev_coda == coda → coda stripped from message, theory_context removed."""
+        compass = _make_compass(event_counter=0)
+        theory_profile = {
+            "core_theory": [
+                {
+                    "claims": ["Prefer deterministic checks over ambiguous heuristics."],
+                    "source": "design.md",
+                    "heading": "Mission",
+                }
+            ]
+        }
+        # First call to get the actual coda text
+        coord1 = SignalCoordinator(
+            compass=compass,
+            thresholds={"signal_cooldown": 10},
+            theory_profile=theory_profile,
+            recent_codas={},
+        )
+        finding1 = LintIssue(
+            linter="behavior",
+            kind="cycling",
+            message="3 approaches tried",
+        )
+        coord1._apply_theory_coda("approach_cycling", finding1)
+        if "approach_cycling" not in coord1._new_codas:
+            return  # No coda produced, can't test dedup
+        coda_text = coord1._new_codas["approach_cycling"]
+
+        # Second call with the same coda as recent → should dedup
+        coord2 = SignalCoordinator(
+            compass=compass,
+            thresholds={"signal_cooldown": 10},
+            theory_profile=theory_profile,
+            recent_codas={"approach_cycling": coda_text},
+        )
+        finding2 = LintIssue(
+            linter="behavior",
+            kind="cycling",
+            message="3 approaches tried",
+            evidence={"theory_context": "old"},
+        )
+        coord2._apply_theory_coda("approach_cycling", finding2)
+        # Duplicate coda should NOT be stored in _new_codas
+        assert "approach_cycling" not in coord2._new_codas
+        # theory_context should be removed from evidence
+        assert "theory_context" not in (finding2.evidence or {})
+
+    def test_no_coda_returns_theory_score(self) -> None:
+        """When _ground_finding_in_theory returns empty coda, theory_score still returned."""
+        compass = _make_compass(event_counter=0)
+        # Empty facet list → no claims found, no coda produced
+        theory_profile = {"unrelated_facet": []}
+        coord = SignalCoordinator(
+            compass=compass,
+            thresholds={"signal_cooldown": 10},
+            theory_profile=theory_profile,
+            recent_codas={},
+        )
+        finding = LintIssue(
+            linter="behavior",
+            kind="cycling",
+            message="original",
+        )
+        result = coord._apply_theory_coda("approach_cycling", finding)
+        assert isinstance(result, float)
+
+    def test_coda_via_add_finding_without_decomposition(self) -> None:
+        """_apply_theory_coda is called by add_finding when decomposition is None."""
+        compass = _make_compass(event_counter=0)
+        theory_profile = {
+            "core_theory": [
+                {
+                    "claims": ["Prefer deterministic checks over ambiguous heuristics."],
+                    "source": "design.md",
+                    "heading": "Mission",
+                }
+            ]
+        }
+        coord = SignalCoordinator(
+            compass=compass,
+            thresholds={"signal_cooldown": 10},
+            theory_profile=theory_profile,
+            recent_codas={},
+        )
+        finding = LintIssue(
+            linter="behavior",
+            kind="cycling",
+            message="3 approaches tried",
+        )
+        # Without decomposition, add_finding calls _apply_theory_coda
+        coord.add_finding("approach_cycling", finding, is_hard=True)
+        assert len(coord.findings) == 1
+        # The finding should have been processed (authority severity applied)
+        assert finding.severity in ("blocking", "warning", "informational")

@@ -130,9 +130,7 @@ def project_post_extraction(
     # Check for parallelizable pairs
     pure_funcs = [(fid, p) for fid, p in projected_purities.items() if p.is_pure]
     if len(pure_funcs) >= 2:
-        group_opportunities = _find_parallelizable_groups(
-            pure_funcs, plan.source_function
-        )
+        group_opportunities = _find_parallelizable_groups(pure_funcs, plan.source_function)
         opportunities.extend(group_opportunities)
 
     return opportunities

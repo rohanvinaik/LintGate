@@ -158,18 +158,10 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
         return {"continue": True}
 
     compass_capsule = legacy.get("compass_capsule", {})
-    n_toward = (
-        len(compass_capsule.get("toward", []))
-        if isinstance(compass_capsule, dict)
-        else 0
-    )
-    n_away = (
-        len(compass_capsule.get("away", [])) if isinstance(compass_capsule, dict) else 0
-    )
+    n_toward = len(compass_capsule.get("toward", [])) if isinstance(compass_capsule, dict) else 0
+    n_away = len(compass_capsule.get("away", [])) if isinstance(compass_capsule, dict) else 0
     n_forbidden = (
-        len(compass_capsule.get("forbidden", []))
-        if isinstance(compass_capsule, dict)
-        else 0
+        len(compass_capsule.get("forbidden", [])) if isinstance(compass_capsule, dict) else 0
     )
 
     legacy_str = json.dumps(legacy, ensure_ascii=False)

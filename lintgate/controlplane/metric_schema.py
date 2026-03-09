@@ -133,9 +133,7 @@ def validate_wiring(active_channels: list[str]) -> list[WiringIssue]:
     return issues
 
 
-def validate_result(
-    channel: str, metrics: dict[str, Any], *, status: str = "pass"
-) -> list[str]:
+def validate_result(channel: str, metrics: dict[str, Any], *, status: str = "pass") -> list[str]:
     """Check that a channel's actual metrics contain all declared published keys.
 
     Skipped channels (status="skip") are exempt — they legitimately produce
@@ -240,8 +238,7 @@ def check_schema_size(max_keys: int = 10) -> list[WiringIssue]:
                     consumer=channel_name,
                     key=f"{count} published keys",
                     missing_publisher=(
-                        f"channel publishes {count} keys (>{max_keys}), "
-                        f"consider splitting"
+                        f"channel publishes {count} keys (>{max_keys}), consider splitting"
                     ),
                     issue_type="schema_growth",
                 )
@@ -284,14 +281,10 @@ PERFORMANCE_SCHEMA = ChannelSchema(
 TEST_EFFECTIVENESS_SCHEMA = ChannelSchema(
     channel="test_effectiveness",
     publishes=[
-        MetricField(
-            "project_effectiveness_score", "float", "Overall project effectiveness score"
-        ),
+        MetricField("project_effectiveness_score", "float", "Overall project effectiveness score"),
         MetricField("semantic_ratio", "float", "Ratio of semantic assertions"),
         MetricField("functions_analyzed", "int", "Count of functions analyzed"),
-        MetricField(
-            "mutation_vulnerable_count", "int", "Count of mutation-vulnerable functions"
-        ),
+        MetricField("mutation_vulnerable_count", "int", "Count of mutation-vulnerable functions"),
     ],
 )
 

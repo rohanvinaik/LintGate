@@ -174,9 +174,7 @@ def _infer_from_readme(project_root: str) -> list[CompassClaim]:
 
     para = _extract_first_paragraph(lines)
     if para:
-        claims.append(
-            _claim(f"README: {para}", name, confidence=0.5, origin_facet="core_theory")
-        )
+        claims.append(_claim(f"README: {para}", name, confidence=0.5, origin_facet="core_theory"))
 
     for pattern, badge_claim in _BADGE_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
@@ -214,9 +212,7 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
 
     if (root / "src").is_dir():
         claims.append(
-            _claim(
-                "Uses src/ layout", "directory_structure", origin_facet="abstractions"
-            )
+            _claim("Uses src/ layout", "directory_structure", origin_facet="abstractions")
         )
 
     for test_dir in ("tests", "test"):
@@ -231,9 +227,7 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
             break
 
     if (root / "docs").is_dir():
-        claims.append(
-            _claim("Has docs/ directory", "directory_structure", confidence=0.4)
-        )
+        claims.append(_claim("Has docs/ directory", "directory_structure", confidence=0.4))
 
     for entry in root.iterdir():
         if entry.is_dir() and entry.name in _LAYER_MAP:
@@ -297,15 +291,9 @@ def _infer_from_test_patterns(project_root: str) -> list[CompassClaim]:
     claims: list[CompassClaim] = []
     facet = "enforceable_rules"
     if merged["pytest"]:
-        claims.append(
-            _claim("Uses pytest", "test_patterns", confidence=0.55, origin_facet=facet)
-        )
+        claims.append(_claim("Uses pytest", "test_patterns", confidence=0.55, origin_facet=facet))
     elif merged["unittest"]:
-        claims.append(
-            _claim(
-                "Uses unittest", "test_patterns", confidence=0.55, origin_facet=facet
-            )
-        )
+        claims.append(_claim("Uses unittest", "test_patterns", confidence=0.55, origin_facet=facet))
     if merged["conftest"]:
         claims.append(
             _claim(
@@ -315,9 +303,7 @@ def _infer_from_test_patterns(project_root: str) -> list[CompassClaim]:
             )
         )
     if merged["fixtures"]:
-        claims.append(
-            _claim("Uses pytest fixtures", "test_patterns", origin_facet=facet)
-        )
+        claims.append(_claim("Uses pytest fixtures", "test_patterns", origin_facet=facet))
     count = int(merged["count"])
     if count > 0:
         claims.append(_claim(f"Test suite: {count} test file(s)", "test_patterns"))

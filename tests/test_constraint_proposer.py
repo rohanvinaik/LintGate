@@ -123,9 +123,7 @@ class TestDeduplication:
         )
 
         report = _make_pattern_report([_recurring_alert(kind="F821")])
-        proposals = propose_constraints_from_patterns(
-            report, session=session, threshold=3
-        )
+        proposals = propose_constraints_from_patterns(report, session=session, threshold=3)
 
         assert len(proposals) == 0
 
@@ -140,9 +138,7 @@ class TestDeduplication:
         )
 
         report = _make_pattern_report([_recurring_alert(kind="F401")])
-        proposals = propose_constraints_from_patterns(
-            report, session=session, threshold=3
-        )
+        proposals = propose_constraints_from_patterns(report, session=session, threshold=3)
 
         assert len(proposals) == 1
         assert proposals[0].pattern_key == "ruff|F401"
@@ -167,12 +163,8 @@ class TestDeduplication:
 class TestConfidence:
     def test_confidence_scales_with_recurrence(self):
         """More runs with the pattern → higher confidence."""
-        report_3 = _make_pattern_report(
-            [_recurring_alert(kind="F821", recent_run_count=3)]
-        )
-        report_5 = _make_pattern_report(
-            [_recurring_alert(kind="F821", recent_run_count=5)]
-        )
+        report_3 = _make_pattern_report([_recurring_alert(kind="F821", recent_run_count=3)])
+        report_5 = _make_pattern_report([_recurring_alert(kind="F821", recent_run_count=5)])
 
         proposals_3 = propose_constraints_from_patterns(report_3, threshold=3)
         proposals_5 = propose_constraints_from_patterns(report_5, threshold=3)
@@ -183,9 +175,7 @@ class TestConfidence:
 
     def test_confidence_capped_at_one(self):
         """Confidence should never exceed 1.0."""
-        report = _make_pattern_report(
-            [_recurring_alert(kind="F821", recent_run_count=100)]
-        )
+        report = _make_pattern_report([_recurring_alert(kind="F821", recent_run_count=100)])
         proposals = propose_constraints_from_patterns(report, threshold=3)
 
         assert proposals[0].confidence <= 1.0
@@ -359,9 +349,7 @@ class TestCheckTheoryCoherence:
 
 class TestApplyCoherenceCheck:
     @patch("lintgate.controlplane.constraint_proposer.check_theory_coherence")
-    def test_applies_coherence_and_sets_drift_warning(
-        self, mock_check: MagicMock
-    ) -> None:
+    def test_applies_coherence_and_sets_drift_warning(self, mock_check: MagicMock) -> None:
         mock_check.return_value = TheoryCoherenceResult(
             aligned=False,
             contradicting_claims=["contradicts something"],

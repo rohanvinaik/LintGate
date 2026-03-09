@@ -1339,7 +1339,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 93 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
+LintGate exposes 99 MCP tools. The recommended workflow is: **lint → drill-down → fix → verify**.
 
 ### Core Lint Workflow
 

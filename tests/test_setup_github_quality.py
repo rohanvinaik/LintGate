@@ -133,9 +133,7 @@ class TestDetectProjectLayout:
 
     def test_detects_python_version_from_pyproject(self, tmp_path: Path) -> None:
         """Extract Python version from pyproject.toml."""
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.11"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
         result = _detect_project_layout(str(tmp_path))
         assert result["python_version"] == "3.11"
 
@@ -437,9 +435,7 @@ class TestGeneratePypiPublishWorkflow:
     def test_pins_all_actions_to_sha(self) -> None:
         content = _generate_pypi_publish_workflow()
         assert "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5" in content
-        assert (
-            "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in content
-        )
+        assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in content
         assert "ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e" in content
         assert "a5caf349bc536fbef3668a10ed7f5cd309a4b53d" in content
 
@@ -487,9 +483,7 @@ class TestComputeGitignoreAdditions:
 
     def test_already_present_not_in_missing(self, tmp_path: Path) -> None:
         """Patterns already in .gitignore are not listed as missing."""
-        (tmp_path / ".gitignore").write_text(
-            ".qlty/\n.coverage\ncoverage.xml\n.scannerwork/\n"
-        )
+        (tmp_path / ".gitignore").write_text(".qlty/\n.coverage\ncoverage.xml\n.scannerwork/\n")
         result = _compute_gitignore_additions(str(tmp_path))
         assert result["status"] == "complete"
         assert len(result["missing"]) == 0
@@ -555,9 +549,7 @@ class TestInjectBadgesIntoReadme:
         """Badges injected after first heading."""
         readme = tmp_path / "README.md"
         readme.write_text("# My Project\n\nSome description.\n")
-        result = _inject_badges_into_readme(
-            str(tmp_path), "[![Badge](url)](link)", write=True
-        )
+        result = _inject_badges_into_readme(str(tmp_path), "[![Badge](url)](link)", write=True)
 
         assert result["status"] == "injected"
         content = readme.read_text()
@@ -596,9 +588,7 @@ class TestInjectBadgesIntoReadme:
         assert "metric=security_rating" in content
         assert content.count("lintgate:quality-badges:start") == 1
 
-    def test_readme_has_quality_badges_requires_all_fingerprints(
-        self, tmp_path: Path
-    ) -> None:
+    def test_readme_has_quality_badges_requires_all_fingerprints(self, tmp_path: Path) -> None:
         """README should fail quality badge check if any required fingerprint is missing."""
         readme = tmp_path / "README.md"
         # Missing tests.yml badge and security_rating metric
@@ -613,9 +603,7 @@ class TestInjectBadgesIntoReadme:
         )
         assert _readme_has_quality_badges(str(tmp_path)) is False
 
-    def test_readme_has_quality_badges_requires_tests_badge(
-        self, tmp_path: Path
-    ) -> None:
+    def test_readme_has_quality_badges_requires_tests_badge(self, tmp_path: Path) -> None:
         """README should fail quality badge check if tests.yml badge is missing."""
         readme = tmp_path / "README.md"
         readme.write_text(
@@ -637,9 +625,7 @@ class TestInjectBadgesIntoReadme:
         readme.write_text("# Project\n\nHello.\n")
         original = readme.read_text()
 
-        result = _inject_badges_into_readme(
-            str(tmp_path), "[![Badge](url)](link)", write=False
-        )
+        result = _inject_badges_into_readme(str(tmp_path), "[![Badge](url)](link)", write=False)
         assert result["status"] == "preview"
         assert readme.read_text() == original
 
@@ -848,15 +834,11 @@ class TestSetupGithubQualityTool:
         from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"owner": "a", "repo": "b"}
-        with patch(
-            "mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock
-        ):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             setup_github_quality(str(tmp_path), write=True)
 
         # Second run — gitignore patterns already present, badges block exists
-        with patch(
-            "mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock
-        ):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         assert result["gitignore"]["status"] == "no_changes_needed"
@@ -878,9 +860,7 @@ class TestSetupGithubQualityTool:
         from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"owner": "a", "repo": "b"}
-        with patch(
-            "mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock
-        ):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         assert result["qlty"]["status"] == "written"
@@ -901,9 +881,7 @@ class TestSetupGithubQualityTool:
         from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"owner": "a", "repo": "b"}
-        with patch(
-            "mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock
-        ):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=True))
 
         # drift_repaired is re-normalized to already_exists for qlty in setup_github_quality
@@ -916,9 +894,7 @@ class TestSetupGithubQualityTool:
         from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"owner": "a", "repo": "b"}
-        with patch(
-            "mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock
-        ):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(setup_github_quality(str(tmp_path), write=False))
 
         assert "guidance" in result
@@ -932,9 +908,7 @@ class TestSetupGithubQualityTool:
         from mcp_tools.setup_github_quality import setup_github_quality
 
         gh_mock = {"owner": "a", "repo": "b"}
-        with patch(
-            "mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock
-        ):
+        with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
             result = json.loads(
                 setup_github_quality(
                     str(tmp_path),
@@ -1085,9 +1059,7 @@ class TestBuildQualityGuidance:
         """Guidance includes the three-layer quality stack."""
         github = {"owner": "alice", "repo": "myrepo"}
         layout = {"test_dirs": ["tests"]}
-        guidance = _build_quality_guidance(
-            github, layout, scanner_path="/usr/bin/pysonar-scanner"
-        )
+        guidance = _build_quality_guidance(github, layout, scanner_path="/usr/bin/pysonar-scanner")
 
         assert "three_layer_stack" in guidance
         assert "development" in guidance["three_layer_stack"]
@@ -1109,9 +1081,7 @@ class TestBuildQualityGuidance:
         """When scanner found, guidance structure is unchanged (scanner not tracked)."""
         github = {"owner": "alice", "repo": "myrepo"}
         layout = {"test_dirs": ["tests"]}
-        guidance = _build_quality_guidance(
-            github, layout, scanner_path="/usr/bin/pysonar-scanner"
-        )
+        guidance = _build_quality_guidance(github, layout, scanner_path="/usr/bin/pysonar-scanner")
 
         assert "three_layer_stack" in guidance
         assert "next_steps" in guidance

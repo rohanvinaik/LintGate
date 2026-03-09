@@ -34,9 +34,7 @@ def build_lint_finding_index(aggregated: AggregatedResult) -> dict[str, dict[str
                 "channel": "lint",
                 "kind": issue.kind,
                 "severity": issue.severity,
-                "file": issue.short_location()
-                if hasattr(issue, "short_location")
-                else "",
+                "file": issue.short_location() if hasattr(issue, "short_location") else "",
                 "message": (issue.message or "")[:80],
                 "line": issue.line,
                 "count": 1,

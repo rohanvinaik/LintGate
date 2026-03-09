@@ -29,11 +29,7 @@ def _make_channel_results(
                 channel=name,
                 status="fail",
                 severity="warning",
-                findings=[
-                    LintIssue(
-                        linter=name, kind="E001", severity="warning", message="issue"
-                    )
-                ],
+                findings=[LintIssue(linter=name, kind="E001", severity="warning", message="issue")],
             )
         )
     for name in silent or []:
@@ -130,9 +126,7 @@ class TestRegressionDetection:
 
     def test_improvement_no_regression(self):
         session = _make_session_with_snapshots(
-            snapshots=[
-                {"state": "coupled", "loud": ["lint", "tests"], "silent": ["deps"]}
-            ],
+            snapshots=[{"state": "coupled", "loud": ["lint", "tests"], "silent": ["deps"]}],
             trajectory=["coupled"],
         )
         # Now only lint failing → isolated (improvement!)
@@ -264,9 +258,7 @@ class TestCombinedAnnotations:
 class TestTradeoffDetection:
     """Detect refactoring tradeoff patterns between runs."""
 
-    def _make_session_with_findings(
-        self, finding_index: dict[str, dict]
-    ) -> SessionMemory:
+    def _make_session_with_findings(self, finding_index: dict[str, dict]) -> SessionMemory:
         """Build session with one snapshot containing a finding_index."""
         session = SessionMemory(project_root="/test")
         session.snapshots.append(

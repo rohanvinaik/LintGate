@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 93 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 99 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -50,6 +50,12 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `analyze_test_strength`   | Test assertion quality: vulnerability scores, semantic ratios, upgrades |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind/strength |
 | `run_property_tests`     | Execute generated property tests for a function and capture counterexamples |
+| `test_hygiene_scan`      | Scan test suite for hygiene issues: stubs, weak assertions, duplicates      |
+| `test_triage`            | Rank untested functions by specification priority for cold-start coverage   |
+| `test_infer_inputs`      | Infer candidate inputs from call sites and type hints                       |
+| `test_characterize`      | Generate characterization tests with golden-value capture                   |
+| `test_characterize_mark` | Mark characterization test maturity: unchecked → approved → specified       |
+| `test_redundancy_project`| Project-wide mutation redundancy: zero-unique-kill tests, minimal cover set |
 
 ### Bootstrap
 

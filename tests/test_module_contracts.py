@@ -121,9 +121,7 @@ class _NopLinter(BaseLinter):
 
 
 def test_run_linters_returns_list_of_linter_results() -> None:
-    tier = LintTier(
-        name="test", linters=["nop"], files=["test.py"], reason="contract test"
-    )
+    tier = LintTier(name="test", linters=["nop"], files=["test.py"], reason="contract test")
     config = ProjectConfig(project_root=".")
     registry = {"nop": _NopLinter()}
 
@@ -133,9 +131,7 @@ def test_run_linters_returns_list_of_linter_results() -> None:
 
 
 def test_linter_result_has_required_fields() -> None:
-    tier = LintTier(
-        name="test", linters=["nop"], files=["test.py"], reason="contract test"
-    )
+    tier = LintTier(name="test", linters=["nop"], files=["test.py"], reason="contract test")
     config = ProjectConfig(project_root=".")
     registry = {"nop": _NopLinter()}
 
@@ -152,9 +148,7 @@ def test_linter_result_has_required_fields() -> None:
 
 
 def test_aggregate_results_returns_aggregated_result() -> None:
-    issue = LintIssue(
-        linter="test", kind="test", message="test issue", severity="warning"
-    )
+    issue = LintIssue(linter="test", kind="test", message="test issue", severity="warning")
     linter_result = LinterResult(linter_name="test", issues=[issue], status="ok")
     config = ProjectConfig(project_root=".")
 
@@ -179,9 +173,7 @@ def test_aggregate_results_returns_aggregated_result() -> None:
 def test_format_report_returns_dict_with_system_message() -> None:
     from lintgate.agent_reporter import format_report
 
-    issue = LintIssue(
-        linter="test", kind="test", message="test issue", severity="blocking"
-    )
+    issue = LintIssue(linter="test", kind="test", message="test issue", severity="blocking")
     linter_result = LinterResult(linter_name="test", issues=[issue], status="ok")
     config = ProjectConfig(project_root=".")
     aggregated = aggregate_results([linter_result], config)

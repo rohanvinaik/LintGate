@@ -102,9 +102,7 @@ class KnowledgeManager:
         # 1. Decay Compass Hypotheses (Calibration)
         if knowledge.compass_state:
             compass = BehaviorCompass.from_dict(knowledge.compass_state)
-            initial_count = len(
-                [h for h in compass.hypotheses if h.status != "expired"]
-            )
+            initial_count = len([h for h in compass.hypotheses if h.status != "expired"])
 
             for hyp in compass.hypotheses:
                 if hyp.status == "expired":
@@ -123,24 +121,16 @@ class KnowledgeManager:
             # Decay Compliance Rate toward 1.0
             comp_rate = compass.nudges.compliance_rate
             if comp_rate < 1.0:
-                compass.nudges.compliance_rate = min(
-                    1.0, comp_rate + 0.005 * elapsed_hrs
-                )
+                compass.nudges.compliance_rate = min(1.0, comp_rate + 0.005 * elapsed_hrs)
             elif comp_rate > 1.0:
-                compass.nudges.compliance_rate = max(
-                    1.0, comp_rate - 0.005 * elapsed_hrs
-                )
+                compass.nudges.compliance_rate = max(1.0, comp_rate - 0.005 * elapsed_hrs)
 
             # Prune and re-serialize
-            compass.hypotheses = [
-                h for h in compass.hypotheses if h.status != "expired"
-            ]
+            compass.hypotheses = [h for h in compass.hypotheses if h.status != "expired"]
             knowledge.compass_state = compass.to_dict()
 
             final_count = len(compass.hypotheses)
-            knowledge.survival_ratio = (
-                final_count / initial_count if initial_count > 0 else 1.0
-            )
+            knowledge.survival_ratio = final_count / initial_count if initial_count > 0 else 1.0
 
     def _read_from_disk(self) -> SessionKnowledge | None:
         if not self.knowledge_path.exists():

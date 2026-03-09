@@ -80,11 +80,7 @@ def _discover_python_files(
     if not nested_excluded:
         return base_files
 
-    return [
-        f
-        for f in base_files
-        if not any(f.startswith(ex + os.sep) for ex in nested_excluded)
-    ]
+    return [f for f in base_files if not any(f.startswith(ex + os.sep) for ex in nested_excluded)]
 
 
 # ── Import Graph Construction ────────────────────────────────────────────

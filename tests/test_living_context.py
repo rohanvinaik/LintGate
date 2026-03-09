@@ -237,9 +237,7 @@ class TestGenerateContextPatch:
         assert patch is not None
         assert patch.section_id == "do_dont"
 
-    def test_theory_coherence_update_targets_theory_alignment(
-        self, tmp_path: Path
-    ) -> None:
+    def test_theory_coherence_update_targets_theory_alignment(self, tmp_path: Path) -> None:
         root = self._write_claude_md(tmp_path)
         patch = generate_context_patch(
             root,

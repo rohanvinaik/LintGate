@@ -209,9 +209,7 @@ class TestBehaviorMcpContracts:
         )
         from mcp_server import behavior_precheck
 
-        with patch(
-            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
-        ):
+        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = new_compass()
             compass.hypotheses.append(
@@ -255,9 +253,7 @@ class TestBehaviorMcpContracts:
         )
         from mcp_server import behavior_precheck
 
-        with patch(
-            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
-        ):
+        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
             behavior_precheck(
                 path=str(tmp_path),
                 planned_action="git status",
@@ -284,9 +280,7 @@ class TestBehaviorMcpContracts:
             "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
-        with patch(
-            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
-        ):
+        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = new_compass()
             # Seed state that deterministically fires approach_cycling.
@@ -328,9 +322,7 @@ class TestBehaviorMcpContracts:
         assert "approach_cycling" in updated.last_fired
         assert updated.signal_fire_counts.get("approach_cycling", 0) >= 1
 
-    def test_controlplane_run_uses_delta_after_clean_snapshot(
-        self, tmp_path: Path
-    ) -> None:
+    def test_controlplane_run_uses_delta_after_clean_snapshot(self, tmp_path: Path) -> None:
         from lintgate.controlplane.session_memory import (
             SessionSnapshot,
             get_or_create_session,
@@ -344,9 +336,7 @@ class TestBehaviorMcpContracts:
             "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
-        with patch(
-            "lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"
-        ):
+        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             session.snapshots.append(SessionSnapshot(run_id="prev", finding_index={}))
             save_session(session)
@@ -670,33 +660,23 @@ class TestIssueIdContracts:
     """Issue ID format and stability contracts."""
 
     def test_issue_id_length_is_12(self) -> None:
-        issue = LintIssue(
-            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
-        )
+        issue = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
         assert len(issue.compute_issue_id()) == 12
 
     def test_issue_id_is_hex(self) -> None:
-        issue = LintIssue(
-            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
-        )
+        issue = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
         issue_id = issue.compute_issue_id()
         assert all(c in "0123456789abcdef" for c in issue_id)
 
     def test_issue_id_deterministic(self) -> None:
-        issue = LintIssue(
-            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
-        )
+        issue = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
         id1 = issue.compute_issue_id()
         id2 = issue.compute_issue_id()
         assert id1 == id2
 
     def test_different_issues_different_ids(self) -> None:
-        issue1 = LintIssue(
-            linter="ruff", kind="F821", message="undef foo", file="a.py", line=10
-        )
-        issue2 = LintIssue(
-            linter="ruff", kind="F841", message="unused var", file="a.py", line=20
-        )
+        issue1 = LintIssue(linter="ruff", kind="F821", message="undef foo", file="a.py", line=10)
+        issue2 = LintIssue(linter="ruff", kind="F841", message="unused var", file="a.py", line=20)
         assert issue1.compute_issue_id() != issue2.compute_issue_id()
 
 

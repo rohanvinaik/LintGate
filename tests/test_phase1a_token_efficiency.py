@@ -102,9 +102,7 @@ class TestIssueIds:
         result = aggregate_results([lr], config)
         all_issues = [*result.blocking, *result.warnings, *result.informational]
         for issue in all_issues:
-            assert issue.issue_id != "", (
-                f"issue_id should be set, got empty for {issue.kind}"
-            )
+            assert issue.issue_id != "", f"issue_id should be set, got empty for {issue.kind}"
             assert len(issue.issue_id) == 12
 
     def test_issue_id_excluded_from_to_dict_when_empty(self) -> None:
@@ -114,9 +112,7 @@ class TestIssueIds:
         assert "issue_id" not in d
 
     def test_issue_id_included_in_to_dict_when_set(self) -> None:
-        issue = LintIssue(
-            linter="ruff", kind="F821", message="test", issue_id="abc123def456"
-        )
+        issue = LintIssue(linter="ruff", kind="F821", message="test", issue_id="abc123def456")
         d = issue.to_dict()
         assert d["issue_id"] == "abc123def456"
 
@@ -179,9 +175,7 @@ class TestOutputModes:
     """Test that _run_lint output varies by mode."""
 
     @staticmethod
-    def _make_mock_aggregated(
-        blocking_count: int = 2, warning_count: int = 3, info_count: int = 5
-    ):
+    def _make_mock_aggregated(blocking_count: int = 2, warning_count: int = 3, info_count: int = 5):
         """Create a mock AggregatedResult."""
         blocking = [
             LintIssue(
@@ -383,9 +377,7 @@ class TestSchemaStability:
                 "tier": "tier_2_manual",
                 "project": "/tmp/project",
                 "duration_ms": 150.0,
-                "blocking_issues": [
-                    {"kind": "F821", "message": "undef", "severity": "blocking"}
-                ],
+                "blocking_issues": [{"kind": "F821", "message": "undef", "severity": "blocking"}],
                 "warning_issues": [
                     {"kind": "E501", "message": "line too long", "severity": "warning"}
                 ],

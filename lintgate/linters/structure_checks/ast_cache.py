@@ -205,14 +205,11 @@ def hash_file_imports(tree: ast.Module) -> str:
     When this hash changes, all function caches for the file should be
     invalidated because import changes can affect function behavior.
     """
-    import_nodes = [
-        n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))
-    ]
+    import_nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
     if not import_nodes:
         return "no_imports"
 
     dumped = ";".join(
-        ast.dump(n, annotate_fields=True, include_attributes=False)
-        for n in import_nodes
+        ast.dump(n, annotate_fields=True, include_attributes=False) for n in import_nodes
     )
     return hashlib.sha256(dumped.encode()).hexdigest()[:16]

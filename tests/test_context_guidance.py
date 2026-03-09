@@ -472,9 +472,7 @@ def test_relevant_guidance_always_includes_critical_must_do_not() -> None:
         "do": ["DO use type hints for `src/models.py`"],
         "do_not": ["Do not item"],
     }
-    result = relevant_guidance_for_file(
-        "/project/unrelated.py", "/project", directives, []
-    )
+    result = relevant_guidance_for_file("/project/unrelated.py", "/project", directives, [])
     assert "Critical item" in result
     assert "Must item" in result
     assert "Do not item" in result
@@ -487,9 +485,7 @@ def test_relevant_guidance_includes_do_when_path_matches() -> None:
         "do": ["DO use type hints in `src/models.py`"],
         "do_not": [],
     }
-    result = relevant_guidance_for_file(
-        "/project/src/models.py", "/project", directives, []
-    )
+    result = relevant_guidance_for_file("/project/src/models.py", "/project", directives, [])
     assert "DO use type hints in `src/models.py`" in result
 
 
@@ -500,9 +496,7 @@ def test_relevant_guidance_excludes_do_when_path_mismatches() -> None:
         "do": ["DO use type hints in `src/models.py`"],
         "do_not": [],
     }
-    result = relevant_guidance_for_file(
-        "/project/tests/foo.py", "/project", directives, []
-    )
+    result = relevant_guidance_for_file("/project/tests/foo.py", "/project", directives, [])
     assert result == []
 
 
@@ -514,9 +508,7 @@ def test_relevant_guidance_skips_do_without_path_hints() -> None:
         "do": ["DO use composition over inheritance"],
         "do_not": [],
     }
-    result = relevant_guidance_for_file(
-        "/project/src/foo.py", "/project", directives, []
-    )
+    result = relevant_guidance_for_file("/project/src/foo.py", "/project", directives, [])
     # The do directive has no path hints, so it should not appear
     assert "DO use composition over inheritance" not in result
 
@@ -551,9 +543,7 @@ def test_relevant_guidance_deduplicates() -> None:
 
 def test_collect_context_rules_combines_explicit_and_inferred(tmp_path: Path) -> None:
     md = tmp_path / "CLAUDE.md"
-    md.write_text(
-        "LINTGATE_FORBID_REGEX: eval\\(\nDO NOT use solve_task_ prefix functions\n"
-    )
+    md.write_text("LINTGATE_FORBID_REGEX: eval\\(\nDO NOT use solve_task_ prefix functions\n")
     rules = collect_context_rules(str(tmp_path))
     kinds = [r["kind"] for r in rules]
     assert "forbid_regex" in kinds
@@ -668,6 +658,4 @@ def test_integration_rules_and_directives_together(tmp_path: Path) -> None:
     )
     rules = collect_context_rules(str(tmp_path))
     assert any(r["kind"] == "require_regex" for r in rules)
-    assert any(
-        r["kind"] == "forbid_regex" and "solve_task_" in r["pattern"] for r in rules
-    )
+    assert any(r["kind"] == "forbid_regex" and "solve_task_" in r["pattern"] for r in rules)

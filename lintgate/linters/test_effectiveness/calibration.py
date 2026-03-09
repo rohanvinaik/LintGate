@@ -120,9 +120,7 @@ def save_calibration(
         json.dump(data, f, indent=2)
 
 
-def get_effective_weights(
-    project_root: str, survivors_path: str
-) -> dict[AssertionKind, float]:
+def get_effective_weights(project_root: str, survivors_path: str) -> dict[AssertionKind, float]:
     """Load calibrated weights if valid and hash matches, else return default."""
     cal_path = os.path.join(project_root, CALIBRATION_FILE)
     if not os.path.exists(cal_path):

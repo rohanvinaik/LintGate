@@ -391,14 +391,10 @@ class TestRecordMeshRun:
 
         for count in [2, 0, 3]:
             findings = [
-                LintIssue(
-                    linter="ruff", kind="F821", severity="warning", message=f"issue {i}"
-                )
+                LintIssue(linter="ruff", kind="F821", severity="warning", message=f"issue {i}")
                 for i in range(count)
             ]
-            mesh = _make_mesh_result(
-                coherence_state="stable", loud=["lint"] if count else []
-            )
+            mesh = _make_mesh_result(coherence_state="stable", loud=["lint"] if count else [])
             if count:
                 mesh.channel_results[0].findings = findings
             record_mesh_run(session, mesh)

@@ -37,9 +37,7 @@ class ClaudeRenderer:
 
     def _render_claude_md(self, compass: CompassState, metadata: dict[str, str]) -> str:
         name = project_name(metadata)
-        mission = (
-            axis_summary(compass, "problem") or "Write correct, maintainable code."
-        )
+        mission = axis_summary(compass, "problem") or "Write correct, maintainable code."
         architecture = axis_summary(compass, "solution")
         toward = format_directives(compass.directives, "toward")
         away = format_directives(compass.directives, "away")

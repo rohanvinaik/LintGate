@@ -43,6 +43,7 @@ def build_specification_ledger(
     test_files: list[str] | None = None,
     call_graph: CrossModuleCallGraph | None = None,
     prior_ledger: SpecificationLedger | None = None,
+    mutation_cache: dict[str, dict] | None = None,
 ) -> SpecificationLedger:
     """Build specification ledger from existing channel manifests.
 
@@ -54,9 +55,12 @@ def build_specification_ledger(
         test_files: Test files for traceability extraction.
         call_graph: Optional call graph for fan-in/fan-out risk scoring.
         prior_ledger: Previous ledger for cross-run trajectory accumulation.
+        mutation_cache: Maps function_key → mutation result dict. When present,
+            spec_level is derived from ``1.0 - survival_rate`` (ground truth)
+            instead of static ``assertion_count / sigma``.
     """
     ledger = SpecificationLedger()
-    test_coverage_map = _build_test_coverage_map(test_files or [])
+    test_coverage_map, test_file_coverage_map = _build_test_coverage_map(test_files or [])
 
     for func_key, func_props in property_manifest.functions.items():
         prior_spec = prior_ledger.functions.get(func_key) if prior_ledger else None
@@ -66,8 +70,10 @@ def build_specification_ledger(
             teff_manifest=teff_manifest,
             project_root=project_root,
             test_coverage_map=test_coverage_map,
+            test_file_coverage_map=test_file_coverage_map,
             call_graph=call_graph,
             prior_spec=prior_spec,
+            mutation_cache=mutation_cache,
         )
         if func_spec is not None:
             ledger.functions[func_key] = func_spec
@@ -82,8 +88,10 @@ def _build_function_spec(
     teff_manifest: TestEffectivenessManifest,
     project_root: str,
     test_coverage_map: dict[str, list[str]],
+    test_file_coverage_map: dict[str, set[str]] | None = None,
     call_graph: CrossModuleCallGraph | None = None,
     prior_spec: FunctionSpecification | None = None,
+    mutation_cache: dict[str, dict] | None = None,
 ) -> FunctionSpecification | None:
     """Build a single FunctionSpecification from channel data."""
     # Parse AST for the function
@@ -109,6 +117,19 @@ def _build_function_spec(
         weakness = teff.weakness_taxonomy.value if teff.weakness_taxonomy else ""
         assertion_count = len(teff.assertions)
 
+    # Derive spec_level from mutation data when available (ground truth)
+    mutation_spec_level = None
+    mutation_data_source = None
+    if mutation_cache:
+        mut_state = mutation_cache.get(func_key)
+        if mut_state:
+            survival = mut_state.get("survival_rate")
+            total = mut_state.get("total_mutants", 0)
+            depth = mut_state.get("coverage_depth", "")
+            if survival is not None and total > 0:
+                mutation_spec_level = 1.0 - float(survival)
+                mutation_data_source = f"mutation_{depth}" if depth else "mutation"
+
     # Run predictor
     signals = PredictorInput(
         is_pure=func_props.purity.is_pure,
@@ -116,6 +137,8 @@ def _build_function_spec(
         semantic_ratio=semantic_ratio,
         weakness_taxonomy=weakness,
         assertion_count=assertion_count,
+        mutation_spec_level=mutation_spec_level,
+        mutation_data_source=mutation_data_source,
     )
     result = predict(func_node, signals)
 
@@ -137,8 +160,14 @@ def _build_function_spec(
         regime=result.regime,
     )
 
-    # Traceability
+    # Traceability + coupling surface
     req_tags = _extract_requirement_tags(func_node)
+    covering_files: list[str] = []
+    coupling_surface = 0
+    if test_file_coverage_map:
+        file_set = test_file_coverage_map.get(func_name, set())
+        covering_files = sorted(file_set)
+        coupling_surface = len(file_set)
 
     # Optimization gate stop criteria
     hints = list(func_props.optimization_hints)
@@ -167,6 +196,7 @@ def _build_function_spec(
             regime=result.regime,
             regime_rationale=result.regime_rationale,
             specification_level=result.spec_level,
+            data_source=result.data_source,
             behavioral_dimensions=result.sigma,
             phase=phase,
             is_pure=func_props.purity.is_pure,
@@ -189,7 +219,9 @@ def _build_function_spec(
         traceability=Traceability(
             requirement_tags=req_tags,
             covering_tests=covering,
+            covering_test_files=covering_files,
             assertion_count=assertion_count,
+            coupling_surface=coupling_surface,
         ),
         trajectory=trajectory,
         stop_criteria_met=stop_met,
@@ -250,6 +282,7 @@ def _deserialize_func_spec(d: dict) -> FunctionSpecification:
             regime=d.get("regime", "unknown"),
             regime_rationale=d.get("regime_rationale", ""),
             specification_level=d.get("specification_level", 0.0),
+            data_source=d.get("data_source", "static"),
             behavioral_dimensions=d.get("behavioral_dimensions", 0),
             phase=d.get("phase", "bulk"),
             is_pure=d.get("is_pure", False),
@@ -282,8 +315,10 @@ def _deserialize_func_spec(d: dict) -> FunctionSpecification:
         traceability=Traceability(
             requirement_tags=d.get("requirement_tags", []),
             covering_tests=d.get("covering_tests", []),
+            covering_test_files=d.get("covering_test_files", []),
             prescription_history=d.get("prescription_history", []),
             assertion_count=d.get("assertion_count", 0),
+            coupling_surface=d.get("coupling_surface", 0),
         ),
         trajectory=_deserialize_trajectory(d.get("trajectory", {})),
         stop_criteria_met=d.get("stop_criteria_met", False),
@@ -324,7 +359,36 @@ def _get_ast_tree(source_file: str) -> ast.Module | None:
     return _AST_TREE_CACHE[source_file]
 
 
-def _find_func_node(source_file: str, func_key: str) -> ast.FunctionDef | None:
+def _resolve_class_scope(tree: ast.AST, class_chain: list[str]) -> ast.AST | None:
+    """Navigate a class hierarchy in an AST, returning the innermost class node."""
+    import ast as ast_mod
+
+    scope: ast.AST = tree
+    for class_name in class_chain:
+        children = scope.body if hasattr(scope, "body") else []
+        match = next(
+            (n for n in children if isinstance(n, ast_mod.ClassDef) and n.name == class_name),
+            None,
+        )
+        if match is None:
+            return None
+        scope = match
+    return scope
+
+
+def _find_func_in_scope(scope: ast.AST, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Find a function/method by name in an AST scope's direct body."""
+    import ast as ast_mod
+
+    for node in getattr(scope, "body", []):
+        if isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef)) and node.name == name:
+            return node
+    return None
+
+
+def _find_func_node(
+    source_file: str, func_key: str
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     """Parse source file and find the function AST node.
 
     Resolves qualified names including nested classes:
@@ -344,7 +408,6 @@ def _find_func_node(source_file: str, func_key: str) -> ast.FunctionDef | None:
     func_name = func_key.split("::")[-1] if "::" in func_key else func_key
 
     if "." not in func_name:
-        # Top-level function: search module-level and class-level
         for node in ast_mod.walk(tree):
             if (
                 isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef))
@@ -353,38 +416,17 @@ def _find_func_node(source_file: str, func_key: str) -> ast.FunctionDef | None:
                 return node
         return None
 
-    # Qualified name: walk the chain (e.g., "Outer.Inner.method")
     parts = func_name.split(".")
-    method_name = parts[-1]
-    class_chain = parts[:-1]
-
-    # Navigate class hierarchy
-    scope: ast.AST = tree
-    for class_name in class_chain:
-        found = False
-        children = scope.body if hasattr(scope, "body") else []
-        for node in children:
-            if isinstance(node, ast_mod.ClassDef) and node.name == class_name:
-                scope = node
-                found = True
-                break
-        if not found:
-            return None
-
-    # Find method within the resolved class scope
-    for node in getattr(scope, "body", []):
-        if (
-            isinstance(node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef))
-            and node.name == method_name
-        ):
-            return node
-    return None
+    scope = _resolve_class_scope(tree, parts[:-1])
+    if scope is None:
+        return None
+    return _find_func_in_scope(scope, parts[-1])
 
 
 _REQ_TAG_PATTERN = re.compile(r"(REQ-\d+|US-\d+|SPEC-\d+)", re.IGNORECASE)
 
 
-def _extract_requirement_tags(func_node: ast.FunctionDef) -> list[str]:
+def _extract_requirement_tags(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     """Extract requirement tags from function docstring."""
     import ast as ast_mod
 
@@ -394,15 +436,26 @@ def _extract_requirement_tags(func_node: ast.FunctionDef) -> list[str]:
     return _REQ_TAG_PATTERN.findall(docstring)
 
 
-def _build_test_coverage_map(test_files: list[str]) -> dict[str, list[str]]:
-    """Scan test files for function name references to build coverage map."""
+def _build_test_coverage_map(
+    test_files: list[str],
+) -> tuple[dict[str, list[str]], dict[str, set[str]]]:
+    """Scan test files for function name references to build coverage map.
+
+    Returns:
+        (func_name → [test_func_names], func_name → {test_file_paths})
+    """
     coverage: dict[str, list[str]] = {}
+    file_coverage: dict[str, set[str]] = {}
     for tf in test_files:
-        _scan_test_file(tf, coverage)
-    return coverage
+        _scan_test_file(tf, coverage, file_coverage)
+    return coverage, file_coverage
 
 
-def _scan_test_file(filepath: str, coverage: dict[str, list[str]]) -> None:
+def _scan_test_file(
+    filepath: str,
+    coverage: dict[str, list[str]],
+    file_coverage: dict[str, set[str]] | None = None,
+) -> None:
     """Scan a single test file and update coverage map."""
     import ast as ast_mod
 
@@ -418,10 +471,15 @@ def _scan_test_file(filepath: str, coverage: dict[str, list[str]]) -> None:
         if isinstance(n, ast_mod.FunctionDef) and n.name.startswith("test_")
     ]
     for test_func in test_funcs:
-        _collect_calls_in_test(test_func, coverage)
+        _collect_calls_in_test(test_func, coverage, filepath, file_coverage)
 
 
-def _collect_calls_in_test(test_func: Any, coverage: dict[str, list[str]]) -> None:
+def _collect_calls_in_test(
+    test_func: Any,
+    coverage: dict[str, list[str]],
+    test_filepath: str | None = None,
+    file_coverage: dict[str, set[str]] | None = None,
+) -> None:
     """Find function calls within a test and update coverage map."""
     import ast as ast_mod
 
@@ -431,6 +489,8 @@ def _collect_calls_in_test(test_func: Any, coverage: dict[str, list[str]]) -> No
         name = _extract_call_name(child)
         if name:
             coverage.setdefault(name, []).append(test_func.name)
+            if file_coverage is not None and test_filepath:
+                file_coverage.setdefault(name, set()).add(test_filepath)
 
 
 def _extract_call_name(node: Any) -> str | None:

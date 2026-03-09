@@ -33,11 +33,15 @@ Domain modules:
                   mutation_prescribe, mutation_decompose, mutation_refactor_loop,
                   mutation_prescribe_tests, mutation_validate_tests, mutation_clear_state
 - contract_tools: contract_audit
+- test_hygiene_tools: test_hygiene_scan
+- cold_start_tools: test_triage, test_infer_inputs, test_characterize, test_characterize_mark
+- redundancy_tools: test_redundancy_project
 """
 
 from . import (
     behavior_tools,
     bootstrap_tools,
+    cold_start_tools,
     compass_tools,
     context_tools,
     contract_tools,
@@ -52,10 +56,12 @@ from . import (
     nsil_tools,
     onboarding_tools,
     performance_tools,
+    redundancy_tools,
     refactor_tools,
     specification_tools,
     telemetry_tools,
     test_effectiveness_tools,
+    test_hygiene_tools,
     wiki_tools,
 )
 
@@ -81,6 +87,9 @@ ALL_MODULES = [
     specification_tools,
     mutation_tools,
     contract_tools,
+    test_hygiene_tools,
+    cold_start_tools,
+    redundancy_tools,
 ]
 
 

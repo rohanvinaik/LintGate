@@ -6,12 +6,8 @@ from lintgate.lint_delta import build_lint_finding_index, compute_lint_delta
 from lintgate.types import AggregatedResult, LintIssue
 
 
-def _issue(
-    kind: str, msg: str, file: str = "mod.py", line: int = 10, severity: str = "warning"
-):
-    return LintIssue(
-        linter="ruff", kind=kind, message=msg, file=file, line=line, severity=severity
-    )
+def _issue(kind: str, msg: str, file: str = "mod.py", line: int = 10, severity: str = "warning"):
+    return LintIssue(linter="ruff", kind=kind, message=msg, file=file, line=line, severity=severity)
 
 
 class TestBuildLintFindingIndex:
