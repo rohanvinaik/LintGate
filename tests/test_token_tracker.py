@@ -331,7 +331,6 @@ class TestShouldApiCheckMutantKilling:
         failures=3: effective = 15 * 8 = 120
         failures=4: effective = 15 * 8 = 120 (capped, not 15*16=240)
         """
-        from lintgate.token_tracker import MAX_BACKOFF_EXPONENT
 
         # failures=3: effective_interval = 15 * 2^3 = 120
         tracker_3 = TokenTrackerState(

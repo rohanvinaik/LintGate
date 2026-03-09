@@ -153,6 +153,68 @@ class GitChannel:
 # ── Git context collection (#179) ────────────────────────────────────────
 
 
+def _collect_branch_name(project_root: str) -> str:
+    """Get current git branch name. Returns empty string on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=project_root,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return ""
+
+
+def _collect_file_status(project_root: str) -> tuple[list[str], list[str]]:
+    """Parse git status --porcelain into (modified, untracked) file lists."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=project_root,
+        )
+        if result.returncode == 0:
+            modified: list[str] = []
+            untracked: list[str] = []
+            for line in result.stdout.splitlines():
+                if len(line) < 4:
+                    continue
+                status = line[:2]
+                filepath = line[3:].strip().strip('"')
+                if status == "??":
+                    untracked.append(filepath)
+                else:
+                    modified.append(filepath)
+            return modified, untracked
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return [], []
+
+
+def _collect_loc_delta(project_root: str) -> tuple[int, int]:
+    """Get uncommitted insertions and deletions from git diff --stat HEAD."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--stat", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=project_root,
+        )
+        if result.returncode == 0:
+            return _parse_diff_stat_totals(result.stdout)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return 0, 0
+
+
 def collect_working_tree_context(project_root: str) -> dict:
     """Collect working tree state for git-aware scope signaling.
 
@@ -177,64 +239,18 @@ def collect_working_tree_context(project_root: str) -> dict:
     if not _is_git_repo(project_root):
         return context
 
-    # Get branch name
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            cwd=project_root,
-        )
-        if result.returncode == 0:
-            context["branch"] = result.stdout.strip()
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    context["branch"] = _collect_branch_name(project_root)
 
-    # Get modified and untracked files via git status --porcelain
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode == 0:
-            modified: list[str] = []
-            untracked: list[str] = []
-            for line in result.stdout.splitlines():
-                if len(line) < 4:
-                    continue
-                status = line[:2]
-                filepath = line[3:].strip().strip('"')
-                if status == "??":
-                    untracked.append(filepath)
-                else:
-                    modified.append(filepath)
-            context["modified_files"] = modified
-            context["untracked_files"] = untracked
-            context["modified_count"] = len(modified)
-            context["untracked_count"] = len(untracked)
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    modified, untracked = _collect_file_status(project_root)
+    context["modified_files"] = modified
+    context["untracked_files"] = untracked
+    context["modified_count"] = len(modified)
+    context["untracked_count"] = len(untracked)
 
-    # Get uncommitted LOC delta (unstaged + staged)
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--stat", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode == 0:
-            ins, dels = _parse_diff_stat_totals(result.stdout)
-            context["uncommitted_loc_delta"] = ins - dels
-            total_uncommitted = context["modified_count"] + context["untracked_count"]
-            context["large_uncommitted_diff"] = total_uncommitted > 10 or (ins + dels) > 500
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    ins, dels = _collect_loc_delta(project_root)
+    context["uncommitted_loc_delta"] = ins - dels
+    total_uncommitted = len(modified) + len(untracked)
+    context["large_uncommitted_diff"] = total_uncommitted > 10 or (ins + dels) > 500
 
     return context
 

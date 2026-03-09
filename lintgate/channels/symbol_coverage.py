@@ -451,17 +451,18 @@ def _ranges_overlap(a: range, b: range) -> bool:
 # ── Waiver Application ──────────────────────────────────────────────────
 
 
-def apply_waivers(
-    targets: list[SymbolSpan],
+def _partition_waivers(
     waivers: list[SymbolCoverageWaiver],
     today: date,
-) -> tuple[list[SymbolSpan], list[tuple[str, SymbolCoverageWaiver]], list[SymbolCoverageWaiver]]:
-    """Apply waivers to the target set.
+) -> tuple[dict[str, SymbolCoverageWaiver], list[SymbolCoverageWaiver], list[SymbolCoverageWaiver]]:
+    """Partition waivers into active (by symbol) and expired lists.
 
-    Returns (filtered_targets, applied_waivers, expired_waivers).
+    Returns (active_waivers, glob_waivers, expired_waivers).
+    Active waivers are split into exact-match dict and glob-pattern list.
     """
     expired: list[SymbolCoverageWaiver] = []
-    active_waivers: dict[str, SymbolCoverageWaiver] = {}
+    exact_waivers: dict[str, SymbolCoverageWaiver] = {}
+    glob_waivers: list[SymbolCoverageWaiver] = []
 
     for waiver in waivers:
         if waiver.expires:
@@ -472,34 +473,52 @@ def apply_waivers(
                     continue
             except ValueError:
                 continue  # Invalid date format — skip waiver
-        active_waivers[waiver.symbol] = waiver
 
-    # Separate exact-match and glob-pattern waivers
-    exact_waivers: dict[str, SymbolCoverageWaiver] = {}
-    glob_waivers: list[SymbolCoverageWaiver] = []
-    for sym, waiver in active_waivers.items():
-        if "*" in sym:
+        if "*" in waiver.symbol:
             glob_waivers.append(waiver)
         else:
-            exact_waivers[sym] = waiver
+            exact_waivers[waiver.symbol] = waiver
+
+    return exact_waivers, glob_waivers, expired
+
+
+def _match_target_waiver(
+    target: SymbolSpan,
+    exact_waivers: dict[str, SymbolCoverageWaiver],
+    glob_waivers: list[SymbolCoverageWaiver],
+) -> SymbolCoverageWaiver | None:
+    """Match a target against exact and glob waivers. Returns matched waiver or None."""
+    if target.symbol_key in exact_waivers:
+        return exact_waivers[target.symbol_key]
+
+    from fnmatch import fnmatch
+
+    for gw in glob_waivers:
+        if fnmatch(target.symbol_key, gw.symbol):
+            return gw
+    return None
+
+
+def apply_waivers(
+    targets: list[SymbolSpan],
+    waivers: list[SymbolCoverageWaiver],
+    today: date,
+) -> tuple[list[SymbolSpan], list[tuple[str, SymbolCoverageWaiver]], list[SymbolCoverageWaiver]]:
+    """Apply waivers to the target set.
+
+    Returns (filtered_targets, applied_waivers, expired_waivers).
+    """
+    exact_waivers, glob_waivers, expired = _partition_waivers(waivers, today)
 
     filtered: list[SymbolSpan] = []
     applied: list[tuple[str, SymbolCoverageWaiver]] = []
 
     for target in targets:
-        if target.symbol_key in exact_waivers:
-            applied.append((target.symbol_key, exact_waivers[target.symbol_key]))
+        matched = _match_target_waiver(target, exact_waivers, glob_waivers)
+        if matched is not None:
+            applied.append((target.symbol_key, matched))
         else:
-            matched = False
-            for gw in glob_waivers:
-                from fnmatch import fnmatch
-
-                if fnmatch(target.symbol_key, gw.symbol):
-                    applied.append((target.symbol_key, gw))
-                    matched = True
-                    break
-            if not matched:
-                filtered.append(target)
+            filtered.append(target)
 
     return filtered, applied, expired
 

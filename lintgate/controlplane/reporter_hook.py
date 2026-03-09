@@ -7,20 +7,42 @@ counters for threshold tuning.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .types import MeshResult
 
 
+@dataclass
+class PostToolUseInputs:
+    """Grouped inputs for _build_posttooluse_context.
+
+    Replaces 10 keyword arguments with a single structured object.
+    """
+
+    mesh_result: MeshResult
+    blocking_count: int
+    warning_count: int
+    informational_count: int
+    hidden_findings: int
+    channels_run: int
+    delta: dict[str, Any] | None = None
+    baseline_delta: dict[str, Any] | None = None
+    resurfaced_count: int = 0
+    cycle_alerts: list[str] = field(default_factory=list)
+
+
 def _build_posttooluse_context(
+    inputs: PostToolUseInputs | None = None,
     *,
-    mesh_result: MeshResult,
-    blocking_count: int,
-    warning_count: int,
-    informational_count: int,
-    hidden_findings: int,
-    channels_run: int,
+    # Legacy keyword arguments for backward compatibility
+    mesh_result: MeshResult | None = None,
+    blocking_count: int = 0,
+    warning_count: int = 0,
+    informational_count: int = 0,
+    hidden_findings: int = 0,
+    channels_run: int = 0,
     delta: dict[str, Any] | None = None,
     baseline_delta: dict[str, Any] | None = None,
     resurfaced_count: int = 0,
@@ -30,8 +52,29 @@ def _build_posttooluse_context(
 
     Fixed key order, compact format. Keys with zero/empty values are omitted.
     Max 300 chars — drops least-critical fields from bottom up if exceeded.
+
+    Accepts either a PostToolUseInputs dataclass or individual keyword args
+    (backward compatible).
     """
-    coherence = mesh_result.coherence
+    # Normalize: build inputs from kwargs if not provided as dataclass
+    if inputs is None:
+        if mesh_result is None:
+            msg = "mesh_result is required"
+            raise TypeError(msg)
+        inputs = PostToolUseInputs(
+            mesh_result=mesh_result,
+            blocking_count=blocking_count,
+            warning_count=warning_count,
+            informational_count=informational_count,
+            hidden_findings=hidden_findings,
+            channels_run=channels_run,
+            delta=delta,
+            baseline_delta=baseline_delta,
+            resurfaced_count=resurfaced_count,
+            cycle_alerts=cycle_alerts or [],
+        )
+
+    coherence = inputs.mesh_result.coherence
 
     # Build ordered key-value pairs (fixed order per plan)
     pairs: list[tuple[str, str]] = []
@@ -39,13 +82,37 @@ def _build_posttooluse_context(
     # 1. coherence (always)
     pairs.append(("coherence", coherence.state))
     # 2. channels_run (always)
-    pairs.append(("channels_run", str(channels_run)))
+    pairs.append(("channels_run", str(inputs.channels_run)))
     # 3. blocking (only > 0)
-    if blocking_count > 0:
-        pairs.append(("blocking", str(blocking_count)))
+    if inputs.blocking_count > 0:
+        pairs.append(("blocking", str(inputs.blocking_count)))
     # 4. warnings (only > 0)
-    if warning_count > 0:
-        pairs.append(("warnings", str(warning_count)))
+    if inputs.warning_count > 0:
+        pairs.append(("warnings", str(inputs.warning_count)))
+
+    # 5-10. Edit-scope and delta pairs
+    _append_delta_pairs(pairs, coherence, inputs.delta, inputs.baseline_delta)
+
+    # 11-13. Status pairs (loud channels, resurface, cycles)
+    _append_status_pairs(
+        pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts
+    )
+
+    # Serialize with max length enforcement (300 chars)
+    return _serialize_pairs(pairs, max_len=300)
+
+
+def _append_delta_pairs(
+    pairs: list[tuple[str, str]],
+    coherence: Any,
+    delta: dict[str, Any] | None,
+    baseline_delta: dict[str, Any] | None,
+) -> None:
+    """Append edit-scope and delta-derived pairs to the output list.
+
+    Covers edit_related, ambient_debt, new_findings, resolved, known_debt,
+    and session_regressions.
+    """
     # 5. edit_related (when edit_scoped)
     if getattr(coherence, "edit_scoped", False) and getattr(
         coherence, "edit_related_channels", None
@@ -74,6 +141,15 @@ def _build_posttooluse_context(
         session_new = sum(f.get("count", 1) for f in baseline_delta.get("new", []))
         if session_new > 0:
             pairs.append(("session_regressions", str(session_new)))
+
+
+def _append_status_pairs(
+    pairs: list[tuple[str, str]],
+    mesh_result: MeshResult,
+    resurfaced_count: int,
+    cycle_alerts: list[str],
+) -> None:
+    """Append loud-channel, resurface, and cycle pairs to the output list."""
     # 11. loud (only failing channels)
     loud = ",".join(
         f"{cr.channel}:{cr.status}"
@@ -89,13 +165,17 @@ def _build_posttooluse_context(
     if cycle_alerts:
         pairs.append(("cycles", ",".join(cycle_alerts)))
 
-    # Serialize with max length enforcement (300 chars)
-    max_context_len = 300
+
+def _serialize_pairs(pairs: list[tuple[str, str]], *, max_len: int = 300) -> str:
+    """Serialize key-value pairs with max length enforcement.
+
+    Drops least-critical fields (from the bottom) until the result fits.
+    Always preserves at least the first 2 pairs (coherence + channels_run).
+    """
     result = "; ".join(f"{k}={v}" for k, v in pairs)
-    while len(result) > max_context_len and len(pairs) > 2:
+    while len(result) > max_len and len(pairs) > 2:
         pairs.pop()  # Drop least-critical (bottom) fields
         result = "; ".join(f"{k}={v}" for k, v in pairs)
-
     return result
 
 

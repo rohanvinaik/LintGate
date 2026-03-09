@@ -182,6 +182,75 @@ _PATTERN_CATALOG = {
 }
 
 
+def _collect_file_patterns(
+    filepath: str,
+    rel_path: str,
+    max_file_loc: int,
+) -> dict[str, list[dict]]:
+    """Collect pattern fingerprints from a single file's top-level functions."""
+    matches: dict[str, list[dict]] = defaultdict(list)
+    try:
+        with open(filepath, encoding="utf-8", errors="ignore") as f:
+            source = f.read()
+        if source.count("\n") > max_file_loc:
+            return {}
+    except OSError:
+        return {}
+
+    try:
+        tree = ast.parse(source, filename=filepath)
+    except SyntaxError:
+        return {}
+
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for pattern_name in _fingerprint_function(node):
+            matches[pattern_name].append(
+                {"file": rel_path, "function": node.name, "line": node.lineno}
+            )
+    return matches
+
+
+def _emit_pattern_finding(
+    pattern_name: str,
+    locations: list[dict],
+) -> LintIssue | None:
+    """Emit a STRUCT006 finding if pattern has ≥3 matches across ≥2 files."""
+    if len(locations) < 3:
+        return None
+    unique_files = {loc["file"] for loc in locations}
+    if len(unique_files) < 2:
+        return None
+
+    catalog_entry = _PATTERN_CATALOG.get(pattern_name, {})
+    description = (
+        catalog_entry.get("description", pattern_name) if catalog_entry else pattern_name
+    )
+    return LintIssue(
+        linter="structure_channel",
+        kind="STRUCT006",
+        message=(
+            f"Repeated pattern '{description}' found in {len(locations)} functions "
+            f"across {len(unique_files)} files. Consider extracting a shared utility."
+        ),
+        file=locations[0]["file"],
+        severity="informational",
+        confidence=0.5,
+        evidence={
+            "code": "STRUCT006",
+            "pattern": pattern_name,
+            "locations": locations[:10],
+            "count": len(locations),
+            "file_count": len(unique_files),
+        },
+        suggestions=[
+            f"Extract the '{pattern_name}' pattern into a shared utility module",
+            "Reduces duplication and makes the pattern testable in one place",
+        ],
+    )
+
+
 def check_cross_file_patterns(
     py_files: list[str],
     project_root: str,
@@ -199,87 +268,24 @@ def check_cross_file_patterns(
     Performance: skip files >max_file_loc LOC, cap at max_files files.
     Emits STRUCT006 (informational, confidence 0.5).
     """
-    findings: list[LintIssue] = []
-
-    # Collect pattern matches: pattern_name → list of locations
     pattern_matches: dict[str, list[dict]] = defaultdict(list)
 
     files_analyzed = 0
     for filepath in py_files:
         if files_analyzed >= max_files:
             break
-
-        # Skip large files
-        try:
-            with open(filepath, encoding="utf-8", errors="ignore") as f:
-                source = f.read()
-            if source.count("\n") > max_file_loc:
-                continue
-        except OSError:
-            continue
-
-        try:
-            tree = ast.parse(source, filename=filepath)
-        except SyntaxError:
-            continue
-
-        files_analyzed += 1
         rel_path = os.path.relpath(filepath, project_root)
+        file_matches = _collect_file_patterns(filepath, rel_path, max_file_loc)
+        if file_matches:
+            files_analyzed += 1
+            for name, locs in file_matches.items():
+                pattern_matches[name].extend(locs)
 
-        # Analyze each top-level function
-        for node in tree.body:
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-
-            func_patterns = _fingerprint_function(node)
-            for pattern_name in func_patterns:
-                pattern_matches[pattern_name].append(
-                    {
-                        "file": rel_path,
-                        "function": node.name,
-                        "line": node.lineno,
-                    }
-                )
-
-    # Emit findings for patterns with ≥3 matches across ≥2 files
+    findings: list[LintIssue] = []
     for pattern_name, locations in pattern_matches.items():
-        if len(locations) < 3:
-            continue
-
-        unique_files = {loc["file"] for loc in locations}
-        if len(unique_files) < 2:
-            continue
-
-        catalog_entry = _PATTERN_CATALOG.get(pattern_name, {})
-        description = (
-            catalog_entry.get("description", pattern_name) if catalog_entry else pattern_name
-        )
-
-        findings.append(
-            LintIssue(
-                linter="structure_channel",
-                kind="STRUCT006",
-                message=(
-                    f"Repeated pattern '{description}' found in {len(locations)} functions "
-                    f"across {len(unique_files)} files. Consider extracting a shared utility."
-                ),
-                file=locations[0]["file"],
-                severity="informational",
-                confidence=0.5,
-                evidence={
-                    "code": "STRUCT006",
-                    "pattern": pattern_name,
-                    "locations": locations[:10],  # Cap for output size
-                    "count": len(locations),
-                    "file_count": len(unique_files),
-                },
-                suggestions=[
-                    f"Extract the '{pattern_name}' pattern into a shared utility module",
-                    "Reduces duplication and makes the pattern testable in one place",
-                ],
-            )
-        )
-
+        finding = _emit_pattern_finding(pattern_name, locations)
+        if finding is not None:
+            findings.append(finding)
     return findings
 
 

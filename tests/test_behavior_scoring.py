@@ -849,9 +849,7 @@ class TestApplyTheoryCodaMutantKilling:
             thresholds={"signal_cooldown": 10},
             theory_profile=None,
         )
-        finding = LintIssue(
-            linter="behavior", kind="cycling", message="original message"
-        )
+        finding = LintIssue(linter="behavior", kind="cycling", message="original message")
         result = coord._apply_theory_coda("approach_cycling", finding)
         assert result == 0.0
         assert finding.message == "original message"

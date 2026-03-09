@@ -53,6 +53,7 @@ from .reporter_delta import (  # noqa: F401 — re-exports for backward compat
     compute_finding_fingerprint,
 )
 from .reporter_hook import (  # noqa: F401 — re-exports for backward compat
+    PostToolUseInputs,
     _build_posttooluse_context,
     _build_telemetry_counters,
 )

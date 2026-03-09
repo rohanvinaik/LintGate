@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from lintgate.hooks.pre_compact import handle as pre_compact_handle
 from lintgate.hooks.pre_tool import handle as pre_tool_handle
@@ -170,20 +170,22 @@ class TestStopGateHandleMutantKilling:
 
     def test_no_compass_returns_continue_only(self) -> None:
         """When load_compass returns None, result has no systemMessage key."""
-        with patch("lintgate.compass_io.load_compass", return_value=None):
-            with patch("lintgate.compass.compute_staleness"):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=None),
+            patch("lintgate.compass.compute_staleness"),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert result == {"continue": True}
         assert "systemMessage" not in result
 
     def test_all_axes_populated_staleness_zero(self) -> None:
         """4/4 axes populated, staleness=0% — pin exact message format."""
-        compass = self._make_compass(
-            {"problem": 2, "solution": 3, "implementation": 1, "world": 1}
-        )
-        with patch("lintgate.compass_io.load_compass", return_value=compass):
-            with patch("lintgate.compass.compute_staleness", return_value=0.0):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        compass = self._make_compass({"problem": 2, "solution": 3, "implementation": 1, "world": 1})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=compass),
+            patch("lintgate.compass.compute_staleness", return_value=0.0),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert result["continue"] is True
         assert result["systemMessage"] == (
             "[Compass] Session ending — 4/4 axes populated, staleness=0%."
@@ -192,9 +194,11 @@ class TestStopGateHandleMutantKilling:
     def test_no_axes_populated_staleness_full(self) -> None:
         """0/4 axes populated, staleness=100%."""
         compass = self._make_compass({})
-        with patch("lintgate.compass_io.load_compass", return_value=compass):
-            with patch("lintgate.compass.compute_staleness", return_value=1.0):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=compass),
+            patch("lintgate.compass.compute_staleness", return_value=1.0),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert result["systemMessage"] == (
             "[Compass] Session ending — 0/4 axes populated, staleness=100%."
         )
@@ -202,9 +206,11 @@ class TestStopGateHandleMutantKilling:
     def test_partial_axes_populated(self) -> None:
         """2/4 axes populated — depth>0 is the condition, not depth>=1."""
         compass = self._make_compass({"problem": 3, "solution": 1})
-        with patch("lintgate.compass_io.load_compass", return_value=compass):
-            with patch("lintgate.compass.compute_staleness", return_value=0.5):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=compass),
+            patch("lintgate.compass.compute_staleness", return_value=0.5),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert result["systemMessage"] == (
             "[Compass] Session ending — 2/4 axes populated, staleness=50%."
         )
@@ -212,38 +218,40 @@ class TestStopGateHandleMutantKilling:
     def test_staleness_formatting_rounds_correctly(self) -> None:
         """staleness=0.333 formats as '33%' (:.0% format spec)."""
         compass = self._make_compass({"problem": 1})
-        with patch("lintgate.compass_io.load_compass", return_value=compass):
-            with patch(
-                "lintgate.compass.compute_staleness", return_value=0.333
-            ):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=compass),
+            patch("lintgate.compass.compute_staleness", return_value=0.333),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert "staleness=33%." in result["systemMessage"]
 
     def test_staleness_formatting_rounds_up(self) -> None:
         """staleness=0.255 formats as '26%' (banker's rounding :.0%)."""
         compass = self._make_compass({"problem": 1})
-        with patch("lintgate.compass_io.load_compass", return_value=compass):
-            with patch(
-                "lintgate.compass.compute_staleness", return_value=0.255
-            ):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=compass),
+            patch("lintgate.compass.compute_staleness", return_value=0.255),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert "staleness=26%." in result["systemMessage"]
 
     def test_depth_zero_not_counted(self) -> None:
         """Axes with depth=0 are NOT counted as populated."""
-        compass = self._make_compass(
-            {"problem": 0, "solution": 0, "implementation": 0, "world": 0}
-        )
-        with patch("lintgate.compass_io.load_compass", return_value=compass):
-            with patch("lintgate.compass.compute_staleness", return_value=0.0):
-                result = stop_gate_handle({"cwd": "/tmp"})
+        compass = self._make_compass({"problem": 0, "solution": 0, "implementation": 0, "world": 0})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=compass),
+            patch("lintgate.compass.compute_staleness", return_value=0.0),
+        ):
+            result = stop_gate_handle({"cwd": "/tmp"})
         assert "0/4 axes populated" in result["systemMessage"]
 
     def test_cwd_defaults_to_dot(self) -> None:
         """When cwd not in data, defaults to '.'."""
-        with patch("lintgate.compass_io.load_compass", return_value=None) as mock_load:
-            with patch("lintgate.compass.compute_staleness"):
-                stop_gate_handle({})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=None) as mock_load,
+            patch("lintgate.compass.compute_staleness"),
+        ):
+            stop_gate_handle({})
         mock_load.assert_called_once_with(".")
 
     def test_always_returns_continue_true(self) -> None:
@@ -261,51 +269,57 @@ class TestSessionEndHandleMutantKilling:
     def test_with_compass_calls_save(self) -> None:
         """When compass exists, save_compass is called with project_root and compass."""
         mock_compass = SimpleNamespace(axes={})
-        with patch("lintgate.compass_io.load_compass", return_value=mock_compass):
-            with patch("lintgate.compass_io.save_compass") as mock_save:
-                with patch(
-                    "lintgate.hooks.session_end._cleanup_session_state"
-                ) as mock_cleanup:
-                    result = session_end_handle({"cwd": "/test/project"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=mock_compass),
+            patch("lintgate.compass_io.save_compass") as mock_save,
+            patch("lintgate.hooks.session_end._cleanup_session_state") as mock_cleanup,
+        ):
+            result = session_end_handle({"cwd": "/test/project"})
         assert result == {"continue": True}
         mock_save.assert_called_once_with("/test/project", mock_compass)
         mock_cleanup.assert_called_once_with("/test/project")
 
     def test_no_compass_skips_save(self) -> None:
         """When compass is None, save_compass is NOT called."""
-        with patch("lintgate.compass_io.load_compass", return_value=None):
-            with patch("lintgate.compass_io.save_compass") as mock_save:
-                with patch("lintgate.hooks.session_end._cleanup_session_state"):
-                    result = session_end_handle({"cwd": "/test/project"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=None),
+            patch("lintgate.compass_io.save_compass") as mock_save,
+            patch("lintgate.hooks.session_end._cleanup_session_state"),
+        ):
+            result = session_end_handle({"cwd": "/test/project"})
         assert result == {"continue": True}
         mock_save.assert_not_called()
 
     def test_save_exception_suppressed(self) -> None:
         """save_compass exception is suppressed (contextlib.suppress)."""
         mock_compass = SimpleNamespace(axes={})
-        with patch("lintgate.compass_io.load_compass", return_value=mock_compass):
-            with patch(
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=mock_compass),
+            patch(
                 "lintgate.compass_io.save_compass",
                 side_effect=OSError("disk full"),
-            ):
-                with patch("lintgate.hooks.session_end._cleanup_session_state"):
-                    result = session_end_handle({"cwd": "/test"})
+            ),
+            patch("lintgate.hooks.session_end._cleanup_session_state"),
+        ):
+            result = session_end_handle({"cwd": "/test"})
         assert result == {"continue": True}
 
     def test_cleanup_always_called(self) -> None:
         """_cleanup_session_state is called regardless of compass state."""
-        with patch("lintgate.compass_io.load_compass", return_value=None):
-            with patch("lintgate.compass_io.save_compass"):
-                with patch(
-                    "lintgate.hooks.session_end._cleanup_session_state"
-                ) as mock_cleanup:
-                    session_end_handle({"cwd": "/my/project"})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=None),
+            patch("lintgate.compass_io.save_compass"),
+            patch("lintgate.hooks.session_end._cleanup_session_state") as mock_cleanup,
+        ):
+            session_end_handle({"cwd": "/my/project"})
         mock_cleanup.assert_called_once_with("/my/project")
 
     def test_cwd_defaults_to_dot(self) -> None:
         """When cwd not in data, defaults to '.'."""
-        with patch("lintgate.compass_io.load_compass", return_value=None) as mock_load:
-            with patch("lintgate.compass_io.save_compass"):
-                with patch("lintgate.hooks.session_end._cleanup_session_state"):
-                    session_end_handle({})
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=None) as mock_load,
+            patch("lintgate.compass_io.save_compass"),
+            patch("lintgate.hooks.session_end._cleanup_session_state"),
+        ):
+            session_end_handle({})
         mock_load.assert_called_once_with(".")

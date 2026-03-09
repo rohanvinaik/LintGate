@@ -61,20 +61,30 @@ def _read_source(filepath: str) -> str | None:
         return None
 
 
+def _extract_class_test_methods(
+    class_node: ast.ClassDef,
+) -> list[tuple[str, ast.FunctionDef, str]]:
+    """Extract test methods from a test class."""
+    return [
+        (item.name, item, class_node.name)
+        for item in class_node.body
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and item.name.startswith("test_")
+    ]
+
+
 def _extract_test_functions(
     tree: ast.Module,
 ) -> list[tuple[str, ast.FunctionDef, str | None]]:
     """Extract (name, node, class_name) for all test functions/methods."""
     results: list[tuple[str, ast.FunctionDef, str | None]] = []
     for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.name.startswith("test_"):
-                results.append((node.name, node, None))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+            "test_"
+        ):
+            results.append((node.name, node, None))
         elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
-            for item in node.body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    if item.name.startswith("test_"):
-                        results.append((item.name, item, node.name))
+            results.extend(_extract_class_test_methods(node))
     return results
 
 
@@ -234,7 +244,7 @@ def _thygiene002_weak_only(
     )
     from lintgate.linters.test_effectiveness.types import AssertionKind
 
-    WEAK_ONLY_KINDS = {
+    weak_only_kinds = {
         AssertionKind.IS_NONE,
         AssertionKind.IS_NOT_NONE,
         AssertionKind.IS_TRUE,
@@ -258,7 +268,7 @@ def _thygiene002_weak_only(
             if not assertions:
                 continue  # No assertions = possibly THYGIENE001
             kinds = {a.kind for a in assertions}
-            if kinds <= WEAK_ONLY_KINDS:
+            if kinds <= weak_only_kinds:
                 kind_names = sorted(k.value for k in kinds)
                 findings.append(
                     LintIssue(
@@ -330,6 +340,74 @@ def _build_test_fingerprints(
     return fingerprints
 
 
+def _find_cross_file_duplicates(
+    fingerprints: list[dict],
+    hash_field: str,
+    project_root: str,
+    seen_dupes: set[str],
+    *,
+    duplicate_type: str,
+    severity: str,
+    confidence: float,
+    message_verb: str,
+) -> list[LintIssue]:
+    """Find cross-file duplicate test functions by a given hash field.
+
+    Groups fingerprints by name + hash_field + ctx_hash, then emits findings
+    for duplicates across different files. Mutates seen_dupes to deduplicate
+    across calls.
+    """
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for fp in fingerprints:
+        key = f"{fp['name']}:{fp[hash_field]}:{fp['ctx_hash']}"
+        grouped[key].append(fp)
+
+    findings: list[LintIssue] = []
+    for group in grouped.values():
+        if len(group) < 2:
+            continue
+        files = {fp["file"] for fp in group}
+        if len(files) < 2:
+            continue
+
+        sorted_group = sorted(group, key=lambda fp: fp["file"])
+        keeper = sorted_group[0]
+        keeper_rel = os.path.relpath(keeper["file"], project_root)
+
+        for dup in sorted_group[1:]:
+            dup_key = f"{dup['file']}:{dup['name']}"
+            if dup_key in seen_dupes:
+                continue
+            seen_dupes.add(dup_key)
+
+            dup_rel = os.path.relpath(dup["file"], project_root)
+            display = f"{dup['class_name']}.{dup['name']}" if dup["class_name"] else dup["name"]
+            findings.append(
+                LintIssue(
+                    linter="test_hygiene",
+                    kind="THYGIENE003",
+                    message=(
+                        f"'{display}' in {dup_rel} is {message_verb} to "
+                        f"{keeper_rel}:{keeper['name']}. "
+                        f"{'Safe to remove.' if severity == 'warning' else 'Review before removing.'}"
+                    ),
+                    file=dup["file"],
+                    line=dup["line"],
+                    severity=severity,
+                    confidence=confidence,
+                    evidence={
+                        "code": "THYGIENE003",
+                        "function": dup["name"],
+                        "duplicate_type": duplicate_type,
+                        "keeper_file": keeper_rel,
+                        "keeper_function": keeper["name"],
+                        hash_field: dup[hash_field],
+                    },
+                )
+            )
+    return findings
+
+
 def _thygiene003_duplicates(
     test_files: list[str],
     project_root: str,
@@ -339,109 +417,24 @@ def _thygiene003_duplicates(
     Returns (findings, repair_actions).
     """
     fingerprints = _build_test_fingerprints(test_files)
-    findings: list[LintIssue] = []
     repairs: list[RepairAction] = []
-
-    # Group by name + body_hash + ctx_hash (byte-identical across files,
-    # same decorators and fixture params)
-    by_name_body: dict[str, list[dict]] = defaultdict(list)
-    for fp in fingerprints:
-        key = f"{fp['name']}:{fp['body_hash']}:{fp['ctx_hash']}"
-        by_name_body[key].append(fp)
-
     seen_dupes: set[str] = set()
-    for key, group in by_name_body.items():
-        if len(group) < 2:
-            continue
-        # Only flag cross-file duplicates
-        files = {fp["file"] for fp in group}
-        if len(files) < 2:
-            continue
 
-        # Sort by file path — first occurrence is the "keeper"
-        sorted_group = sorted(group, key=lambda fp: fp["file"])
-        keeper = sorted_group[0]
-        keeper_rel = os.path.relpath(keeper["file"], project_root)
+    # Pass 1: byte-identical duplicates (high confidence)
+    byte_findings = _find_cross_file_duplicates(
+        fingerprints, "body_hash", project_root, seen_dupes,
+        duplicate_type="byte_identical", severity="warning",
+        confidence=0.95, message_verb="byte-identical",
+    )
 
-        for dup in sorted_group[1:]:
-            dup_rel = os.path.relpath(dup["file"], project_root)
-            dup_key = f"{dup['file']}:{dup['name']}"
-            if dup_key in seen_dupes:
-                continue
-            seen_dupes.add(dup_key)
+    # Pass 2: AST-equivalent duplicates (lower confidence, skips already-seen)
+    ast_findings = _find_cross_file_duplicates(
+        fingerprints, "ast_hash", project_root, seen_dupes,
+        duplicate_type="ast_equivalent", severity="informational",
+        confidence=0.75, message_verb="AST-equivalent",
+    )
 
-            display = f"{dup['class_name']}.{dup['name']}" if dup["class_name"] else dup["name"]
-            findings.append(
-                LintIssue(
-                    linter="test_hygiene",
-                    kind="THYGIENE003",
-                    message=(
-                        f"'{display}' in {dup_rel} is byte-identical to "
-                        f"{keeper_rel}:{keeper['name']}. Safe to remove."
-                    ),
-                    file=dup["file"],
-                    line=dup["line"],
-                    severity="warning",
-                    confidence=0.95,
-                    evidence={
-                        "code": "THYGIENE003",
-                        "function": dup["name"],
-                        "duplicate_type": "byte_identical",
-                        "keeper_file": keeper_rel,
-                        "keeper_function": keeper["name"],
-                        "body_hash": dup["body_hash"],
-                    },
-                )
-            )
-
-    # Group by name + ast_hash + ctx_hash (AST-equivalent but not byte-identical,
-    # same decorators and fixture params)
-    by_name_ast: dict[str, list[dict]] = defaultdict(list)
-    for fp in fingerprints:
-        key = f"{fp['name']}:{fp['ast_hash']}:{fp['ctx_hash']}"
-        by_name_ast[key].append(fp)
-
-    for key, group in by_name_ast.items():
-        if len(group) < 2:
-            continue
-        files = {fp["file"] for fp in group}
-        if len(files) < 2:
-            continue
-
-        sorted_group = sorted(group, key=lambda fp: fp["file"])
-        keeper = sorted_group[0]
-        keeper_rel = os.path.relpath(keeper["file"], project_root)
-
-        for dup in sorted_group[1:]:
-            dup_key = f"{dup['file']}:{dup['name']}"
-            if dup_key in seen_dupes:
-                continue  # Already caught by byte-identical
-            seen_dupes.add(dup_key)
-
-            dup_rel = os.path.relpath(dup["file"], project_root)
-            display = f"{dup['class_name']}.{dup['name']}" if dup["class_name"] else dup["name"]
-            findings.append(
-                LintIssue(
-                    linter="test_hygiene",
-                    kind="THYGIENE003",
-                    message=(
-                        f"'{display}' in {dup_rel} is AST-equivalent to "
-                        f"{keeper_rel}:{keeper['name']}. Review before removing."
-                    ),
-                    file=dup["file"],
-                    line=dup["line"],
-                    severity="informational",
-                    confidence=0.75,
-                    evidence={
-                        "code": "THYGIENE003",
-                        "function": dup["name"],
-                        "duplicate_type": "ast_equivalent",
-                        "keeper_file": keeper_rel,
-                        "keeper_function": keeper["name"],
-                        "ast_hash": dup["ast_hash"],
-                    },
-                )
-            )
+    findings = byte_findings + ast_findings
 
     # Check for fully subsumed files (THYGIENE005)
     _add_subsumption_findings(fingerprints, test_files, project_root, findings, repairs)

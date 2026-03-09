@@ -159,6 +159,65 @@ def validate_result(channel: str, metrics: dict[str, Any], *, status: str = "pas
 # ── Sheaf Condition (Phase 5b) ───────────────────────────────────────
 
 
+def _build_publish_map(active_channels: list[str]) -> dict[str, str]:
+    """Build key → publishing channel mapping for active channels."""
+    publish_map: dict[str, str] = {}
+    for channel_name in active_channels:
+        schema = _CHANNEL_SCHEMAS.get(channel_name)
+        if schema is None:
+            continue
+        for mf in schema.publishes:
+            publish_map[mf.key] = channel_name
+    return publish_map
+
+
+def _build_consume_map(active_channels: list[str]) -> dict[str, list[str]]:
+    """Build channel → consumed keys mapping for active channels."""
+    consume_map: dict[str, list[str]] = {}
+    for channel_name in active_channels:
+        schema = _CHANNEL_SCHEMAS.get(channel_name)
+        if schema is None:
+            continue
+        consume_map[channel_name] = [mf.key for mf in schema.consumes]
+    return consume_map
+
+
+def _check_publisher_chain(
+    consumer: str,
+    key: str,
+    publish_map: dict[str, str],
+    active_set: set[str],
+) -> list[WiringIssue]:
+    """Check if a publisher's upstream dependencies are satisfied."""
+    publisher = publish_map.get(key)
+    if publisher is None:
+        return []  # Already caught by validate_wiring
+
+    publisher_schema = _CHANNEL_SCHEMAS.get(publisher)
+    if publisher_schema is None:
+        return []
+
+    issues: list[WiringIssue] = []
+    for upstream_dep in publisher_schema.consumes:
+        if upstream_dep.optional:
+            continue
+        upstream_publisher = publish_map.get(upstream_dep.key)
+        if upstream_publisher is None or upstream_publisher not in active_set:
+            issues.append(
+                WiringIssue(
+                    consumer=consumer,
+                    key=key,
+                    missing_publisher=(
+                        f"chain break: '{consumer}' consumes '{key}' from "
+                        f"'{publisher}', which needs '{upstream_dep.key}' "
+                        f"but no active channel publishes it"
+                    ),
+                    issue_type="sheaf_break",
+                )
+            )
+    return issues
+
+
 def check_sheaf_condition(active_channels: list[str]) -> list[WiringIssue]:
     """Trace multi-hop publish→consume chains and verify format compatibility.
 
@@ -169,56 +228,14 @@ def check_sheaf_condition(active_channels: list[str]) -> list[WiringIssue]:
 
     Finding code: WIRE003.
     """
-    issues: list[WiringIssue] = []
     active_set = set(active_channels)
+    publish_map = _build_publish_map(active_channels)
+    consume_map = _build_consume_map(active_channels)
 
-    # Build publish map: key → publishing channel
-    publish_map: dict[str, str] = {}
-    for channel_name in active_channels:
-        schema = _CHANNEL_SCHEMAS.get(channel_name)
-        if schema is None:
-            continue
-        for mf in schema.publishes:
-            publish_map[mf.key] = channel_name
-
-    # Build consume map: channel → list of consumed keys
-    consume_map: dict[str, list[str]] = {}
-    for channel_name in active_channels:
-        schema = _CHANNEL_SCHEMAS.get(channel_name)
-        if schema is None:
-            continue
-        consume_map[channel_name] = [mf.key for mf in schema.consumes]
-
-    # Trace chains: for each consuming channel, check if its data sources
-    # are themselves fed by active publishers
+    issues: list[WiringIssue] = []
     for consumer, consumed_keys in consume_map.items():
         for key in consumed_keys:
-            publisher = publish_map.get(key)
-            if publisher is None:
-                continue  # Already caught by validate_wiring
-
-            # Check if the publisher itself consumes keys that are missing
-            publisher_schema = _CHANNEL_SCHEMAS.get(publisher)
-            if publisher_schema is None:
-                continue
-
-            for upstream_dep in publisher_schema.consumes:
-                if upstream_dep.optional:
-                    continue
-                upstream_publisher = publish_map.get(upstream_dep.key)
-                if upstream_publisher is None or upstream_publisher not in active_set:
-                    issues.append(
-                        WiringIssue(
-                            consumer=consumer,
-                            key=key,
-                            missing_publisher=(
-                                f"chain break: '{consumer}' consumes '{key}' from "
-                                f"'{publisher}', which needs '{upstream_dep.key}' "
-                                f"but no active channel publishes it"
-                            ),
-                            issue_type="sheaf_break",
-                        )
-                    )
+            issues.extend(_check_publisher_chain(consumer, key, publish_map, active_set))
 
     return issues
 

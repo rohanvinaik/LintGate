@@ -387,15 +387,21 @@ def _find_output_patterns(py_files: list[str], function: str) -> list[str]:
 def _collect_access_patterns(tree: ast.AST, var_name: str, patterns: set[str]) -> None:
     """Collect attribute access and subscript patterns on a variable."""
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.value.id == var_name:
-                patterns.add(f".{node.attr}")
-        elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
-            if node.value.id == var_name:
-                if isinstance(node.slice, ast.Constant):
-                    patterns.add(f"[{repr(node.slice.value)}]")
-                else:
-                    patterns.add("[...]")
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == var_name
+        ):
+            patterns.add(f".{node.attr}")
+        elif (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == var_name
+        ):
+            if isinstance(node.slice, ast.Constant):
+                patterns.add(f"[{repr(node.slice.value)}]")
+            else:
+                patterns.add("[...]")
 
 
 # ── test_characterize implementation ─────────────────────────────────

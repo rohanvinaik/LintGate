@@ -40,14 +40,7 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
     Returns None if the controlplane section is absent or disabled.
     The caller can check `config.enabled` to decide whether to use it.
     """
-    from .controlplane.types import (
-        ChannelConfig,
-        ControlPlaneConfig,
-        DispositionEnforcementConfig,
-        InquiryConfig,
-        QualityGateConfig,
-        TokenPolicy,
-    )
+    from .controlplane.types import ControlPlaneConfig
 
     config_path = os.path.join(cwd, ".claude", "lintgate.yaml")
     if not os.path.exists(config_path) or not _YAML_AVAILABLE:
@@ -79,6 +72,26 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
         weights = coherence_raw.get("channel_weights")
         if isinstance(weights, dict):
             cp_config.coherence_channel_weights = {str(k): float(v) for k, v in weights.items()}
+
+    _parse_channel_configs(cp_config, cp_raw)
+
+    return cp_config
+
+
+def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
+    """Apply subsection configs from raw YAML to a ControlPlaneConfig.
+
+    Parses inquiry, global_memory, token_policy, habit_mode, message
+    arbitration, compass, quality_gate, disposition_enforcement, and
+    per-channel configs.  Mutates *cp_config* in place.
+    """
+    from .controlplane.types import (
+        ChannelConfig,
+        DispositionEnforcementConfig,
+        InquiryConfig,
+        QualityGateConfig,
+        TokenPolicy,
+    )
 
     # Parse inquiry config (Architecture of Inquiry features)
     inquiry_raw = cp_raw.get("inquiry", {})
@@ -165,8 +178,6 @@ def load_controlplane_config(cwd: str) -> ControlPlaneConfig | None:
                 )
             elif isinstance(ch_conf, bool):
                 cp_config.channels[name] = ChannelConfig(enabled=ch_conf)
-
-    return cp_config
 
 
 def load_config(cwd: str) -> ProjectConfig:

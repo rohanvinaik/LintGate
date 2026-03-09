@@ -167,7 +167,10 @@ def _greedy_covering_set(test_kills: dict[str, set[str]], all_mutants: set[str])
 
     while uncovered and remaining:
         # Pick the test that covers the most uncovered mutants
-        best_test = max(remaining, key=lambda t: len(remaining[t] & uncovered))
+        best_test = max(
+            remaining,
+            key=lambda t, uncovered=uncovered: len(remaining[t] & uncovered),
+        )
         covered = remaining[best_test] & uncovered
         if not covered:
             break

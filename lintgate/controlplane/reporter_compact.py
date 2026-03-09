@@ -422,6 +422,31 @@ def _build_bootstrap_progress(mesh_result: MeshResult) -> dict[str, Any] | None:
 # ── Symbol Coverage Blockers ─────────────────────────────────────────────
 
 
+_SYMBOL_COVERAGE_KINDS = frozenset({"symbol_uncovered", "unresolved_required_symbol"})
+
+
+def _finding_to_blocker(finding: Any) -> dict[str, Any] | None:
+    """Convert a single symbol-coverage finding to a blocker dict, or None."""
+    if str(getattr(finding, "severity", "")).lower() != "blocking":
+        return None
+    kind = str(getattr(finding, "kind", "") or "")
+    if kind not in _SYMBOL_COVERAGE_KINDS:
+        return None
+
+    evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
+    symbol_key = str(evidence.get("symbol_key") or evidence.get("symbol") or "").strip()
+    if not symbol_key:
+        symbol_key = str(finding.message or "").strip()[:200]
+
+    blocker: dict[str, Any] = {"kind": kind, "symbol": symbol_key}
+    if finding.file:
+        blocker["file"] = finding.file
+    missing_lines = evidence.get("missing_lines")
+    if isinstance(missing_lines, list) and missing_lines:
+        blocker["missing_lines"] = missing_lines[:12]
+    return blocker
+
+
 def _collect_symbol_coverage_blockers(mesh_result: MeshResult) -> list[dict[str, Any]]:
     """Extract blocking symbol-coverage findings from tests channel."""
     blockers: list[dict[str, Any]] = []
@@ -429,25 +454,7 @@ def _collect_symbol_coverage_blockers(mesh_result: MeshResult) -> list[dict[str,
         if channel_result.channel != "tests":
             continue
         for finding in channel_result.findings:
-            if str(getattr(finding, "severity", "")).lower() != "blocking":
-                continue
-            kind = str(getattr(finding, "kind", "") or "")
-            if kind not in {"symbol_uncovered", "unresolved_required_symbol"}:
-                continue
-
-            evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
-            symbol_key = str(evidence.get("symbol_key") or evidence.get("symbol") or "").strip()
-            if not symbol_key:
-                symbol_key = str(finding.message or "").strip()[:200]
-
-            blocker: dict[str, Any] = {
-                "kind": kind,
-                "symbol": symbol_key,
-            }
-            if finding.file:
-                blocker["file"] = finding.file
-            missing_lines = evidence.get("missing_lines")
-            if isinstance(missing_lines, list) and missing_lines:
-                blocker["missing_lines"] = missing_lines[:12]
-            blockers.append(blocker)
+            blocker = _finding_to_blocker(finding)
+            if blocker is not None:
+                blockers.append(blocker)
     return blockers

@@ -9,15 +9,16 @@ Extracted from behavior_compass.py for module size compliance.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lintgate.orchestration.attribution import SignalSourceDecomposition
 
-from .behavior_types import (
-    BehaviorCompass,
-    Prediction,
-    PredictionExpectation,
-)
+if TYPE_CHECKING:
+    from .behavior_types import (
+        BehaviorCompass,
+        Prediction,
+        PredictionExpectation,
+    )
 
 _PREDICTION_EXPIRY_EVENTS = 20  # Expire predictions after this many events without check
 
