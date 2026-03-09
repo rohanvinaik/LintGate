@@ -419,7 +419,7 @@ def map_tests_to_source(
         # Index first occurrence by (symbol, reason) for O(1) lookup
         first_occurrence: dict[tuple[str, str], dict[str, str]] = {}
         for ex in diagnostics._drop_examples:
-            key = (ex.get("symbol", ""), ex.get("reason", ""))
+            key: tuple[str, str] = (ex.get("symbol", ""), ex.get("reason", ""))
             if key not in first_occurrence:
                 first_occurrence[key] = ex
         ranked_examples: list[dict[str, str]] = [
@@ -535,8 +535,14 @@ def _try_alias_import(
         return False
     alias_hint = _module_hint_from_import(imported_qualified)
     return _try_add_match(
-        imported_symbol, alias_hint, source_function_index, project_root,
-        use_unique_keys, matched_keys, diagnostics, strategy="alias_import",
+        imported_symbol,
+        alias_hint,
+        source_function_index,
+        project_root,
+        use_unique_keys,
+        matched_keys,
+        diagnostics,
+        strategy="alias_import",
     )
 
 
@@ -562,8 +568,14 @@ def _process_test_call(
     module_hint = _resolve_module_hint(call_name, qualifier, import_collector)
     if call_name in source_function_index or qualifier:
         if _try_add_match(
-            call_name, module_hint, source_function_index, project_root,
-            use_unique_keys, matched_keys, diagnostics, strategy="call_graph",
+            call_name,
+            module_hint,
+            source_function_index,
+            project_root,
+            use_unique_keys,
+            matched_keys,
+            diagnostics,
+            strategy="call_graph",
         ):
             return True
         if call_name != bare_name and call_name in source_function_index:
@@ -577,15 +589,26 @@ def _process_test_call(
         or bare_name in import_collector.imported_names
         or bare_hint
     ) and _try_add_match(
-        bare_name, bare_hint, source_function_index, project_root,
-        use_unique_keys, matched_keys, diagnostics, strategy="call_graph",
+        bare_name,
+        bare_hint,
+        source_function_index,
+        project_root,
+        use_unique_keys,
+        matched_keys,
+        diagnostics,
+        strategy="call_graph",
     ):
         success = True
 
     # Alias import resolution
     if _try_alias_import(
-        bare_name, import_collector, source_function_index, project_root,
-        use_unique_keys, matched_keys, diagnostics,
+        bare_name,
+        import_collector,
+        source_function_index,
+        project_root,
+        use_unique_keys,
+        matched_keys,
+        diagnostics,
     ):
         success = True
 

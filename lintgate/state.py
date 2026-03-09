@@ -71,7 +71,10 @@ def load_last_run(cwd: str) -> dict[str, Any] | None:
 
     try:
         with open(state_file) as f:
-            return json.load(f)
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        return None
     except (OSError, json.JSONDecodeError):
         return None
 

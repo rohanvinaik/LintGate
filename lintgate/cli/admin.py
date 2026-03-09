@@ -17,7 +17,8 @@ def _load_contract() -> dict:
     if not contract_path.exists():
         return {}
     with open(contract_path) as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    return dict(data) if isinstance(data, dict) else {}
 
 
 def _is_executable(path: Path) -> bool:

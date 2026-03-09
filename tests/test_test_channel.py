@@ -478,7 +478,10 @@ def test_partial_run_confidence_reduced():
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
     ctx = SymbolGateContext(
-        surface="hook", findings=findings, is_partial_run=True, coverage_ok=True,
+        surface="hook",
+        findings=findings,
+        is_partial_run=True,
+        coverage_ok=True,
     )
     _emit_symbol_findings(gate, ctx)
     assert findings[0].severity == "warning"
@@ -492,7 +495,10 @@ def test_full_run_confidence_1():
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
     ctx = SymbolGateContext(
-        surface="hook", findings=findings, is_partial_run=False, coverage_ok=True,
+        surface="hook",
+        findings=findings,
+        is_partial_run=False,
+        coverage_ok=True,
     )
     _emit_symbol_findings(gate, ctx)
     assert findings[0].severity == "blocking"
@@ -506,9 +512,12 @@ def test_gate_context_in_evidence():
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
     ctx = SymbolGateContext(
-        surface="hook", findings=findings,
-        is_partial_run=True, coverage_ok=True,
-        targets_mode="impacted", coverage_pct=85.0,
+        surface="hook",
+        findings=findings,
+        is_partial_run=True,
+        coverage_ok=True,
+        targets_mode="impacted",
+        coverage_pct=85.0,
     )
     _emit_symbol_findings(gate, ctx)
     ev = findings[0].evidence

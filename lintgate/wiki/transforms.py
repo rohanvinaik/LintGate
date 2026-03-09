@@ -46,8 +46,8 @@ def interpolate_metrics(text: str, metrics: dict[str, str]) -> str:
     if not metrics:
         return text
 
-    def _replace(m: re.Match) -> str:
-        key = m.group(1)
+    def _replace(m: re.Match[str]) -> str:
+        key: str = m.group(1)
         return metrics.get(key, m.group(0))
 
     return _METRIC_RE.sub(_replace, text)
@@ -115,10 +115,10 @@ def rewrite_links(
     """
     known_lower = {p.lower() for p in known_pages} if known_pages else None
 
-    def _rewrite(m: re.Match) -> str:
-        display = m.group(1)
-        target = m.group(2)
-        anchor = m.group(3) or ""  # e.g. "#zero-state"
+    def _rewrite(m: re.Match[str]) -> str:
+        display: str = m.group(1)
+        target: str = m.group(2)
+        anchor: str = m.group(3) or ""  # e.g. "#zero-state"
         # Skip anything that looks like a URL scheme or file path
         # (the regex already excludes / and . but check surrounding context)
         if known_lower is not None and target.lower() not in known_lower:

@@ -169,11 +169,13 @@ def build_assertion_upgrades(
             templates = _ASSERTION_UPGRADE_MAP.get(a.kind)
             if templates:
                 current_tpl, suggested_tpl, reason = templates
-                upgrades.append({
-                    "current": current_tpl.format(expr=a.target_expression),
-                    "suggested": suggested_tpl.format(expr=a.target_expression),
-                    "reason": reason,
-                })
+                upgrades.append(
+                    {
+                        "current": current_tpl.format(expr=a.target_expression),
+                        "suggested": suggested_tpl.format(expr=a.target_expression),
+                        "reason": reason,
+                    }
+                )
 
             if len(upgrades) >= 10:
                 return upgrades

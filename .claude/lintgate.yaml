@@ -208,12 +208,14 @@ exemptions:
       ticket: "LINTGATE-DEBT-116"
   secret_checker:
     "test_secrets_scanning.py":
-      codes: ["private_key"]
-      reason: "Synthetic private key markers used as test fixtures for secret detection."
+      reason: "Synthetic secrets used as test fixtures for secret detection validation."
       ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
     "test_secret_checker_linter.py":
-      codes: ["private_key"]
-      reason: "Synthetic private key markers used as test fixtures for secret detection."
+      reason: "Synthetic secrets used as test fixtures for secret detection validation."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
+    "test_git_channel_helpers.py":
+      codes: ["github_token"]
+      reason: "Synthetic GitHub token in git channel test fixtures."
       ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
   lint:
     "pyproject.toml":

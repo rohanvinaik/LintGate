@@ -214,14 +214,14 @@ class _SignalVisitor(ast.NodeVisitor):
                     class_info.init_defaults = len(item.args.defaults) + len(item.args.kw_defaults)
 
         # Detect mutable fields (assignments in methods)
-        for item in ast.walk(node):
+        for child_node in ast.walk(node):
             if (
-                isinstance(item, ast.Attribute)
-                and isinstance(item.ctx, ast.Store)
-                and isinstance(item.value, ast.Name)
-                and item.value.id == "self"
+                isinstance(child_node, ast.Attribute)
+                and isinstance(child_node.ctx, ast.Store)
+                and isinstance(child_node.value, ast.Name)
+                and child_node.value.id == "self"
             ):
-                class_info.mutable_fields.append(item.attr)
+                class_info.mutable_fields.append(child_node.attr)
 
         self.signals.classes.append(class_info)
 
@@ -231,7 +231,7 @@ class _SignalVisitor(ast.NodeVisitor):
         self.generic_visit(node)
         self._current_class = old_class
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:  # type: ignore[override]
         func_info = FunctionInfo(
             name=node.name,
             is_method=self._current_class is not None,
@@ -669,7 +669,7 @@ def _decorator_name(node: ast.expr) -> str:
 def _attr_name(node: ast.Attribute) -> str:
     """Extract dotted name from Attribute node."""
     parts = []
-    current = node
+    current: ast.expr = node
     while isinstance(current, ast.Attribute):
         parts.append(current.attr)
         current = current.value

@@ -359,7 +359,7 @@ def compute_coherence_with_history(
     tradeoffs = detect_refactoring_tradeoffs(channel_results, session)
     for t in tradeoffs:
         annotations.append(
-            f"TRADEOFF: {t['improved']} improved by {abs(float(t['improved_delta']))}, "
+            f"TRADEOFF: {t['improved']} improved by {abs(float(str(t['improved_delta'])))}, "
             f"but {t['regressed']} increased by {t['regressed_delta']}"
         )
 

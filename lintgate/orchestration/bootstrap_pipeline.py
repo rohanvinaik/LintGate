@@ -95,9 +95,7 @@ class BootstrapPipeline:
             self.state.tests_generated += 1
         self.state.heartbeat()
 
-    def _run_skeletons_phase(
-        self, skeletons: dict[str, str], dry_run: bool, force: bool
-    ) -> None:
+    def _run_skeletons_phase(self, skeletons: dict[str, str], dry_run: bool, force: bool) -> None:
         """Phase 2: Generate test skeletons per source file."""
         source_files = self._discover_source_files()
         for source_file in source_files:

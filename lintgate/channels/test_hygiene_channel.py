@@ -63,7 +63,7 @@ def _read_source(filepath: str) -> str | None:
 
 def _extract_class_test_methods(
     class_node: ast.ClassDef,
-) -> list[tuple[str, ast.FunctionDef, str]]:
+) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, str]]:
     """Extract test methods from a test class."""
     return [
         (item.name, item, class_node.name)
@@ -75,9 +75,9 @@ def _extract_class_test_methods(
 
 def _extract_test_functions(
     tree: ast.Module,
-) -> list[tuple[str, ast.FunctionDef, str | None]]:
+) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, str | None]]:
     """Extract (name, node, class_name) for all test functions/methods."""
-    results: list[tuple[str, ast.FunctionDef, str | None]] = []
+    results: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, str | None]] = []
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
             "test_"
@@ -88,7 +88,7 @@ def _extract_test_functions(
     return results
 
 
-def _function_body_source(source: str, node: ast.FunctionDef) -> str:
+def _function_body_source(source: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     """Extract the body source of a function (excluding the def line and docstring)."""
     body = node.body
     if not body:
@@ -111,7 +111,7 @@ def _function_body_source(source: str, node: ast.FunctionDef) -> str:
     return "\n".join(lines[start_line:end_line])
 
 
-def _function_context_hash(node: ast.FunctionDef) -> str:
+def _function_context_hash(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     """Hash decorators + parameter names to distinguish context-different tests.
 
     Two tests with the same body but different decorators (e.g. parametrize)
@@ -128,7 +128,7 @@ def _function_context_hash(node: ast.FunctionDef) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
 
-def _function_body_ast_hash(node: ast.FunctionDef) -> str:
+def _function_body_ast_hash(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     """Hash the AST-normalized body (strip docstrings, comments, whitespace)."""
     body = list(node.body)
     # Strip leading docstring
@@ -150,7 +150,7 @@ def _function_body_ast_hash(node: ast.FunctionDef) -> str:
 # ── Finding generators ───────────────────────────────────────────────
 
 
-def _is_stub_body(node: ast.FunctionDef) -> str | None:
+def _is_stub_body(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     """Check if a function body is a stub. Returns stub type or None."""
     body = node.body
     # Skip docstring

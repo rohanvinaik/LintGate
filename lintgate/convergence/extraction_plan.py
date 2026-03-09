@@ -610,10 +610,10 @@ def _extract_handler_name(p: dict) -> str:
     if "`" in action:
         parts = action.split("`")
         if len(parts) >= 2:
-            return parts[1]
+            return str(parts[1])
     target = p.get("target", "")
     if "::" in target:
-        return target.split("::")[-1]
+        return str(target.split("::")[-1])
     return ""
 
 
@@ -624,7 +624,7 @@ def _get_fan_in_count(
     fan_in_evidence = evidence_by_lens.get(LensKind.FAN_IN, [])
     for ev in fan_in_evidence:
         if ev.signal == "oppose":
-            return ev.raw.get("fan_in", 0)
+            return int(ev.raw.get("fan_in", 0))
     return 0
 
 
@@ -648,7 +648,7 @@ def _extract_coupled_file(ev: LensEvidence) -> str:
     file_b = raw.get("file_b", "")
     target = ev.target
     if file_a and file_b:
-        return file_b if file_a in target else file_a
+        return str(file_b) if file_a in target else str(file_a)
     # Parse from detail
     detail = ev.detail
     if "with " in detail:
@@ -692,7 +692,7 @@ def _suggest_module_name(candidate: ConvergenceResult) -> str:
     if candidate.split_proposals:
         first = candidate.split_proposals[0]
         if isinstance(first, dict) and "module_name" in first:
-            return first["module_name"]
+            return str(first["module_name"])
     # Default: append _extracted to base name
     base = target.rsplit("/", 1)[-1] if "/" in target else target
     if base.endswith(".py"):
@@ -724,5 +724,5 @@ def _line_count_from_prescription(p: dict) -> int:
     """Estimate line count from a prescription's lines range."""
     lines = p.get("lines")
     if lines and len(lines) == 2:
-        return lines[1] - lines[0] + 1
+        return int(lines[1]) - int(lines[0]) + 1
     return 0
