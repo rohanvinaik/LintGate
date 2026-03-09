@@ -462,50 +462,55 @@ def test_suggestion_no_evidence():
 
 
 def test_message_text_branch_only():
-    from lintgate.channels.test_channel import _emit_symbol_findings
+    from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_branches=[(1, 2), (2, 3)])])
-    _emit_symbol_findings(gate, findings)
+    ctx = SymbolGateContext(surface="hook", findings=findings)
+    _emit_symbol_findings(gate, ctx)
     assert "(missing 2 branches)" in findings[0].message
     assert "missing lines" not in findings[0].message
 
 
 def test_partial_run_confidence_reduced():
-    from lintgate.channels.test_channel import _emit_symbol_findings
+    from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
-    _emit_symbol_findings(gate, findings, is_partial_run=True, coverage_ok=True)
+    ctx = SymbolGateContext(
+        surface="hook", findings=findings, is_partial_run=True, coverage_ok=True,
+    )
+    _emit_symbol_findings(gate, ctx)
     assert findings[0].severity == "warning"
     assert getattr(findings[0], "confidence", 1.0) == 0.6
     assert "downgraded: partial test run with healthy line coverage" in findings[0].message
 
 
 def test_full_run_confidence_1():
-    from lintgate.channels.test_channel import _emit_symbol_findings
+    from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
-    _emit_symbol_findings(gate, findings, is_partial_run=False, coverage_ok=True)
+    ctx = SymbolGateContext(
+        surface="hook", findings=findings, is_partial_run=False, coverage_ok=True,
+    )
+    _emit_symbol_findings(gate, ctx)
     assert findings[0].severity == "blocking"
     assert getattr(findings[0], "confidence", 1.0) == 1.0
     assert "downgraded" not in findings[0].message
 
 
 def test_gate_context_in_evidence():
-    from lintgate.channels.test_channel import _emit_symbol_findings
+    from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
     findings = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
-    _emit_symbol_findings(
-        gate,
-        findings,
-        is_partial_run=True,
-        coverage_ok=True,
-        targets_mode="impacted",
-        coverage_pct=85.0,
+    ctx = SymbolGateContext(
+        surface="hook", findings=findings,
+        is_partial_run=True, coverage_ok=True,
+        targets_mode="impacted", coverage_pct=85.0,
     )
+    _emit_symbol_findings(gate, ctx)
     ev = findings[0].evidence
     assert ev.get("is_partial_run") is True
     assert ev.get("coverage_ok") is True

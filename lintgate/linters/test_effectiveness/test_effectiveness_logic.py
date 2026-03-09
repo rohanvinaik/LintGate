@@ -130,48 +130,53 @@ def handle_no_mapped_functions(
     return json.dumps(result)
 
 
+_ASSERTION_UPGRADE_MAP: dict[AssertionKind, tuple[str, str, str]] = {
+    # kind -> (current_template, suggested_template, reason)
+    AssertionKind.ISINSTANCE_CHECK: (
+        "assert isinstance({expr}, ...)",
+        "assert {expr} == expected_value",
+        "isinstance (0.3) \u2192 equality (0.9): type check doesn't verify value",
+    ),
+    AssertionKind.IS_NOT_NONE: (
+        "assert {expr} is not None",
+        "assert {expr} == expected_value",
+        "is_not_none (0.3) \u2192 equality (0.9): catches value-altering mutants",
+    ),
+    AssertionKind.IS_TRUE: (
+        "assert {expr}",
+        "assert {expr} == expected",
+        "bare assert (0.2) \u2192 equality (0.9): catches -1\u2192+1 sentinel mutations",
+    ),
+}
+
+
 def build_assertion_upgrades(
     manifest: TestEffectivenessManifest,
 ) -> list[dict[str, str]]:
     """Identify high-leverage assertion upgrade opportunities."""
     upgrades: list[dict[str, str]] = []
-    seen_patterns = set()
+    seen_patterns: set[tuple[str, str]] = set()
 
     for _name, fe in manifest.functions.items():
         for a in fe.assertions:
-            if a.confidence == "structural" and a.strength < 0.5:
-                pattern = (a.kind.value, a.target_expression)
-                if pattern in seen_patterns:
-                    continue
-                seen_patterns.add(pattern)
+            if a.confidence != "structural" or a.strength >= 0.5:
+                continue
+            pattern = (a.kind.value, a.target_expression)
+            if pattern in seen_patterns:
+                continue
+            seen_patterns.add(pattern)
 
-                if a.kind == AssertionKind.ISINSTANCE_CHECK:
-                    upgrades.append(
-                        {
-                            "current": f"assert isinstance({a.target_expression}, ...)",
-                            "suggested": f"assert {a.target_expression} == expected_value",
-                            "reason": "isinstance (0.3) \u2192 equality (0.9): type check doesn't verify value",
-                        }
-                    )
-                elif a.kind == AssertionKind.IS_NOT_NONE:
-                    upgrades.append(
-                        {
-                            "current": f"assert {a.target_expression} is not None",
-                            "suggested": f"assert {a.target_expression} == expected_value",
-                            "reason": "is_not_none (0.3) \u2192 equality (0.9): catches value-altering mutants",
-                        }
-                    )
-                elif a.kind == AssertionKind.IS_TRUE:
-                    upgrades.append(
-                        {
-                            "current": f"assert {a.target_expression}",
-                            "suggested": f"assert {a.target_expression} == expected",
-                            "reason": "bare assert (0.2) \u2192 equality (0.9): catches -1\u2192+1 sentinel mutations",
-                        }
-                    )
+            templates = _ASSERTION_UPGRADE_MAP.get(a.kind)
+            if templates:
+                current_tpl, suggested_tpl, reason = templates
+                upgrades.append({
+                    "current": current_tpl.format(expr=a.target_expression),
+                    "suggested": suggested_tpl.format(expr=a.target_expression),
+                    "reason": reason,
+                })
 
-                if len(upgrades) >= 10:
-                    return upgrades
+            if len(upgrades) >= 10:
+                return upgrades
     return upgrades
 
 

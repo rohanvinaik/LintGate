@@ -81,6 +81,76 @@ def _strip_managed_markers(text: str) -> str:
     return "\n".join(line for line in lines if not line.strip().startswith("<!-- LINTGATE_WIKI:"))
 
 
+def _compose_generated(
+    page: WikiPage,
+    theory: dict[str, Any] | None,
+    compass: dict[str, Any] | None,
+) -> tuple[list[str], list[str]]:
+    """Build parts and source_files for a generator-based page."""
+    parts = [_frontmatter(page), f"# {page.title}", ""]
+    gen_content = _generate_content(page.generator, theory, compass)
+    if gen_content:
+        parts.append(gen_content)
+        parts.append("")
+    return parts, []
+
+
+def _compose_whole_file(
+    page: WikiPage,
+    project_root: str,
+) -> tuple[list[str], list[str]]:
+    """Build parts and source_files for a whole-file source page."""
+    parts: list[str] = []
+    source_files: list[str] = []
+    src = page.sources[0]
+    abs_path = os.path.join(project_root, src.file)
+    sec = extract_whole_file(abs_path)
+    if sec:
+        source_files.append(abs_path)
+        parts.append(sec.content)
+    elif src.required:
+        parts.append(f"*Missing source: `{src.file}`*")
+    return parts, source_files
+
+
+def _compose_sections(
+    page: WikiPage,
+    project_root: str,
+) -> tuple[list[str], list[str]]:
+    """Build parts and source_files for a section-based page."""
+    parts = [_frontmatter(page), f"# {page.title}", ""]
+    source_files: list[str] = []
+    sections_content = _extract_sources(page, project_root)
+    for i, (src_file, heading, content) in enumerate(sections_content):
+        if src_file not in source_files:
+            source_files.append(src_file)
+        section_id = f"{page.name}:{heading or f'section_{i}'}"
+        parts.append(_MANAGED_BEGIN.format(section_id=section_id))
+        if heading:
+            parts.append(f"## {heading}")
+            parts.append("")
+        parts.append(content)
+        parts.append(_MANAGED_END.format(section_id=section_id))
+        if i < len(sections_content) - 1:
+            parts.append("")
+            parts.append("---")
+        parts.append("")
+    return parts, source_files
+
+
+def _append_cross_links(full_content: str, manifest: WikiManifest, page: WikiPage) -> str:
+    """Append inferred cross-links if no related section exists."""
+    if _has_related_section(full_content):
+        return full_content
+    cross_links = manifest.infer_cross_links(page)
+    if not cross_links:
+        return full_content
+    full_content += "\n## See Also\n\n"
+    for link_name in cross_links:
+        full_content += f"- [{link_name}]({link_name})\n"
+    return full_content + "\n"
+
+
 def _compose_page(
     page: WikiPage,
     manifest: WikiManifest,
@@ -97,51 +167,14 @@ def _compose_page(
     For pages with section sources, content is assembled from extracted
     sections with headings.  Generated pages use their generator function.
     """
-    parts: list[str] = []
-    source_files: list[str] = []
     is_whole_file = len(page.sources) == 1 and page.sources[0].kind == "file" and not page.generator
 
     if page.generator:
-        # Generated pages get frontmatter + title
-        parts.append(_frontmatter(page))
-        parts.append(f"# {page.title}")
-        parts.append("")
-        gen_content = _generate_content(page.generator, theory, compass)
-        if gen_content:
-            parts.append(gen_content)
-            parts.append("")
+        parts, source_files = _compose_generated(page, theory, compass)
     elif is_whole_file:
-        # Whole-file source: use content directly (transforms handle the rest)
-        src = page.sources[0]
-        abs_path = os.path.join(project_root, src.file)
-        sec = extract_whole_file(abs_path)
-        if sec:
-            source_files.append(abs_path)
-            parts.append(sec.content)
-        elif src.required:
-            parts.append(f"*Missing source: `{src.file}`*")
+        parts, source_files = _compose_whole_file(page, project_root)
     else:
-        # Section-based composition: frontmatter + title + sections
-        # Note: breadcrumb is added by apply_common_transforms() in the publisher,
-        # so we do NOT add one here to avoid duplication.
-        parts.append(_frontmatter(page))
-        parts.append(f"# {page.title}")
-        parts.append("")
-        sections_content = _extract_sources(page, project_root)
-        for i, (src_file, heading, content) in enumerate(sections_content):
-            if src_file not in source_files:
-                source_files.append(src_file)
-            section_id = f"{page.name}:{heading or f'section_{i}'}"
-            parts.append(_MANAGED_BEGIN.format(section_id=section_id))
-            if heading:
-                parts.append(f"## {heading}")
-                parts.append("")
-            parts.append(content)
-            parts.append(_MANAGED_END.format(section_id=section_id))
-            if i < len(sections_content) - 1:
-                parts.append("")
-                parts.append("---")
-            parts.append("")
+        parts, source_files = _compose_sections(page, project_root)
 
     # Source attribution footer (section-based and generated pages only)
     if not is_whole_file and source_files:
@@ -150,16 +183,7 @@ def _compose_page(
         rel_files = [os.path.relpath(f, project_root) for f in source_files]
         parts.append(f"*Sources: {', '.join(f'`{f}`' for f in rel_files)}*")
 
-    full_content = "\n".join(parts)
-
-    # Inferred cross-links — only if source doesn't already have a related section
-    if not _has_related_section(full_content):
-        cross_links = manifest.infer_cross_links(page)
-        if cross_links:
-            full_content += "\n## See Also\n\n"
-            for link_name in cross_links:
-                full_content += f"- [{link_name}]({link_name})\n"
-            full_content += "\n"
+    full_content = _append_cross_links("\n".join(parts), manifest, page)
 
     return ComposedPage(
         name=page.name,

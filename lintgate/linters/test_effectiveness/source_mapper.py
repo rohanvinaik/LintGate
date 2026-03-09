@@ -486,6 +486,60 @@ def _try_add_match(
     return True
 
 
+def _record_shadowed_drop(
+    diagnostics: MappingDiagnostics | None,
+    bare_name: str,
+) -> None:
+    """Record a shadowed-symbol drop in diagnostics."""
+    if diagnostics is None:
+        return
+    diagnostics.counts.dropped_shadowed += 1
+    if "call_graph" not in diagnostics.strategy_breakdown:
+        from lintgate.linters.test_effectiveness.types import StrategyDiagnostics
+
+        diagnostics.strategy_breakdown["call_graph"] = StrategyDiagnostics(strategy="call_graph")
+    diagnostics.strategy_breakdown["call_graph"].dropped_shadowed += 1
+    diagnostics._drop_examples.append(
+        {"symbol": bare_name, "reason": "shadowed", "strategy": "call_graph"}
+    )
+
+
+def _resolve_module_hint(
+    name: str,
+    qualifier: str,
+    import_collector: _ImportCollector,
+) -> str | None:
+    """Resolve a module hint from the import table for a name or its qualifier."""
+    if name in import_collector.imported_names:
+        return _module_hint_from_import(import_collector.imported_names[name])
+    if qualifier and qualifier in import_collector.imported_names:
+        return _module_hint_from_import(import_collector.imported_names[qualifier])
+    return None
+
+
+def _try_alias_import(
+    bare_name: str,
+    import_collector: _ImportCollector,
+    source_function_index: dict[str, str | list[str]],
+    project_root: str | None,
+    use_unique_keys: bool,
+    matched_keys: set[str],
+    diagnostics: MappingDiagnostics | None,
+) -> bool:
+    """Try resolving an aliased import (e.g. import foo as f)."""
+    if bare_name not in import_collector.imported_names:
+        return False
+    imported_qualified = import_collector.imported_names[bare_name]
+    imported_symbol = _symbol_name_from_import(imported_qualified)
+    if imported_symbol == bare_name:
+        return False
+    alias_hint = _module_hint_from_import(imported_qualified)
+    return _try_add_match(
+        imported_symbol, alias_hint, source_function_index, project_root,
+        use_unique_keys, matched_keys, diagnostics, strategy="alias_import",
+    )
+
+
 def _process_test_call(
     call_name: str,
     import_collector: _ImportCollector,
@@ -499,90 +553,41 @@ def _process_test_call(
     bare_name = call_name.rsplit(".", 1)[-1] if "." in call_name else call_name
     qualifier = call_name.rsplit(".", 1)[0] if "." in call_name else ""
 
+    # Drop shadowed local definitions
     if bare_name in local_defs.defined_names and bare_name not in import_collector.imported_names:
-        if diagnostics is not None:
-            diagnostics.counts.dropped_shadowed += 1
-            if "call_graph" not in diagnostics.strategy_breakdown:
-                from lintgate.linters.test_effectiveness.types import (
-                    StrategyDiagnostics,
-                )
-
-                diagnostics.strategy_breakdown["call_graph"] = StrategyDiagnostics(
-                    strategy="call_graph"
-                )
-            diagnostics.strategy_breakdown["call_graph"].dropped_shadowed += 1
-            diagnostics._drop_examples.append(
-                {"symbol": bare_name, "reason": "shadowed", "strategy": "call_graph"}
-            )
+        _record_shadowed_drop(diagnostics, bare_name)
         return False
 
-    module_hint: str | None = None
-    if call_name in import_collector.imported_names:
-        module_hint = _module_hint_from_import(import_collector.imported_names[call_name])
-    elif qualifier and qualifier in import_collector.imported_names:
-        module_hint = import_collector.imported_names[qualifier]
-
-    # Try the exact call name if it looks like a direct match or is a qualified call
+    # Try exact call name first
+    module_hint = _resolve_module_hint(call_name, qualifier, import_collector)
     if call_name in source_function_index or qualifier:
-        success = _try_add_match(
-            call_name,
-            module_hint,
-            source_function_index,
-            project_root,
-            use_unique_keys,
-            matched_keys,
-            diagnostics,
-            strategy="call_graph",
-        )
-        if success:
+        if _try_add_match(
+            call_name, module_hint, source_function_index, project_root,
+            use_unique_keys, matched_keys, diagnostics, strategy="call_graph",
+        ):
             return True
         if call_name != bare_name and call_name in source_function_index:
-            # If it was a direct hit on a non-bare name (e.g. self.foo), we don't fallback
             return False
 
-    # Fallback/alternative matching logic for bare name or imports
-    module_hint = None
-    if bare_name in import_collector.imported_names:
-        module_hint = _module_hint_from_import(import_collector.imported_names[bare_name])
-    elif qualifier and qualifier in import_collector.imported_names:
-        module_hint = import_collector.imported_names[qualifier]
-
+    # Fallback: bare name matching
+    bare_hint = _resolve_module_hint(bare_name, qualifier, import_collector)
     success = False
     if (
         bare_name in source_function_index
         or bare_name in import_collector.imported_names
-        or module_hint
+        or bare_hint
     ) and _try_add_match(
-        bare_name,
-        module_hint,
-        source_function_index,
-        project_root,
-        use_unique_keys,
-        matched_keys,
-        diagnostics,
-        strategy="call_graph",
+        bare_name, bare_hint, source_function_index, project_root,
+        use_unique_keys, matched_keys, diagnostics, strategy="call_graph",
     ):
         success = True
 
-    # (#63) alias_import strategy: if the call uses a local alias (e.g. import foo as f),
-    # try to resolve the underlying symbol name through the import table.
-    if bare_name in import_collector.imported_names:
-        imported_qualified = import_collector.imported_names[bare_name]
-        imported_symbol = _symbol_name_from_import(imported_qualified)
-        if imported_symbol != bare_name:
-            # This is an aliased import — record under dedicated strategy bucket
-            alias_hint = _module_hint_from_import(imported_qualified)
-            if _try_add_match(
-                imported_symbol,
-                alias_hint,
-                source_function_index,
-                project_root,
-                use_unique_keys,
-                matched_keys,
-                diagnostics,
-                strategy="alias_import",  # explicit strategy bucket for alias resolution
-            ):
-                success = True
+    # Alias import resolution
+    if _try_alias_import(
+        bare_name, import_collector, source_function_index, project_root,
+        use_unique_keys, matched_keys, diagnostics,
+    ):
+        success = True
 
     return success
 

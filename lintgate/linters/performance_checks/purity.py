@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 from lintgate.linters.performance_checks._helpers import get_name
 from lintgate.linters.performance_checks.algebra_types import (
@@ -248,6 +252,49 @@ def _get_parameter_count(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     return count
 
 
+def _check_called_impurity(
+    called: str,
+    functions: dict[str, tuple[ast.FunctionDef | ast.AsyncFunctionDef, Any]],
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> SideEffect | None:
+    """Check if a called function introduces impurity. Returns a SideEffect or None."""
+    if called in functions:
+        called_visitor = functions[called][1]
+        if called_visitor.side_effects:
+            return SideEffect(
+                "impure_call",
+                "Call",
+                node.lineno,
+                f"Calls organically impure function '{called}' in same module",
+            )
+    elif called not in _KNOWN_PURE_BUILTINS and not called.islower():
+        return SideEffect(
+            "impure_call",
+            "Call",
+            node.lineno,
+            f"Calls unresolved external function '{called}'",
+        )
+    return None
+
+
+def _propagate_impurity(
+    functions: dict[str, tuple[ast.FunctionDef | ast.AsyncFunctionDef, Any]],
+) -> None:
+    """Propagate impurity transitively: if A calls impure B, A is impure."""
+    changed = True
+    while changed:
+        changed = False
+        for _qualname, (node, visitor) in functions.items():
+            if visitor.side_effects:
+                continue
+            for called in visitor.called_functions:
+                effect = _check_called_impurity(called, functions, node)
+                if effect is not None:
+                    visitor.side_effects.append(effect)
+                    changed = True
+                    break
+
+
 def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
     """
     Two-pass pure function detector.
@@ -290,44 +337,7 @@ def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
 
     # 2. Second pass: Transitive impurity propagation
     # If A calls B, and B has side effects, A has side effects.
-    changed = True
-    while changed:
-        changed = False
-        for _qualname, (node, visitor) in functions.items():
-            if visitor.side_effects:
-                # Already impure, skip
-                continue
-
-            for called in visitor.called_functions:
-                # Simple resolution: if we call something in the same module that is impure
-                if called in functions:
-                    called_visitor = functions[called][1]
-                    if called_visitor.side_effects:
-                        visitor.side_effects.append(
-                            SideEffect(
-                                "impure_call",
-                                "Call",
-                                node.lineno,
-                                f"Calls organically impure function '{called}' in same module",
-                            )
-                        )
-                        changed = True
-                        break
-                elif (
-                    called not in _KNOWN_PURE_BUILTINS and not called.islower()
-                ):  # heuristic for Built-Ins
-                    # We have a call to an unknown, unresolved function (external module).
-                    # We conservatively mark it impure.
-                    visitor.side_effects.append(
-                        SideEffect(
-                            "impure_call",
-                            "Call",
-                            node.lineno,
-                            f"Calls unresolved external function '{called}'",
-                        )
-                    )
-                    changed = True
-                    break
+    _propagate_impurity(functions)
 
     # 3. Build Result objects
     results: dict[str, PurityResult] = {}

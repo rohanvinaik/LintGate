@@ -22,6 +22,7 @@ from .structure_logic import (
     _MIN_FILES_FOR_SIZE_ANALYSIS,
     _NESTED_SUBPROJECT_MARKERS,  # re-export shim — canonical: structure_logic
     _STRUCTURAL_CONFIG_FILES,
+    StructureSnapshotInputs,
     _build_import_graph,
     _build_reexport_map,  # re-export shim — canonical: structure_logic
     _build_structure_snapshot,
@@ -220,16 +221,16 @@ class StructureChannel:
 
         # Build structure snapshot for compact output
         snapshot = _build_structure_snapshot(
-            py_files,
-            import_graph,
-            file_map,
-            file_loc,
-            cycle_findings,
-            size_findings,
-            orphan_findings,
-            cohesion_findings,
-            project_root,
-            module_fan_in=module_fan_in,
+            StructureSnapshotInputs(
+                py_files=py_files,
+                file_map=file_map,
+                file_loc=file_loc,
+                project_root=project_root,
+                cycle_count=len(cycle_findings),
+                orphan_count=len(orphan_findings),
+                cohesion_count=len(cohesion_findings),
+                module_fan_in=module_fan_in,
+            )
         )
 
         status: Literal["pass", "fail"] = "fail" if findings else "pass"

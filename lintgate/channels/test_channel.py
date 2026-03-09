@@ -179,17 +179,16 @@ class TestChannel:
             _check_contract_drift(changed_files, project_root, findings)
 
             # Step 6: Symbol coverage gate
-            gate_result = _run_symbol_gate_if_enabled(
-                cov_cfg,
-                test_result,
-                changed_files,
-                project_root,
-                event.surface,
-                findings,
+            sym_ctx = SymbolGateContext(
+                surface=event.surface,
+                findings=findings,
                 is_partial_run=is_partial_run,
                 coverage_ok=coverage_ok,
                 targets_mode=targets_mode,
                 coverage_pct=coverage_pct,
+            )
+            gate_result = _run_symbol_gate_if_enabled(
+                cov_cfg, test_result, changed_files, project_root, sym_ctx,
             )
 
             return _build_channel_result(
@@ -667,17 +666,24 @@ def _filter_to_source_packages(
     return result
 
 
+@dataclass
+class SymbolGateContext:
+    """Runtime context for symbol coverage gate execution."""
+
+    surface: str
+    findings: list[LintIssue]
+    is_partial_run: bool = False
+    coverage_ok: bool = True
+    targets_mode: str = "unknown"
+    coverage_pct: float | None = None
+
+
 def _run_symbol_gate_if_enabled(
     cov_cfg: dict[str, Any],
     test_result: TestRunResult | None,
     changed_files: list[str],
     project_root: str,
-    surface: str,
-    findings: list[LintIssue],
-    is_partial_run: bool = False,
-    coverage_ok: bool = True,
-    targets_mode: str = "unknown",
-    coverage_pct: float | None = None,
+    ctx: SymbolGateContext,
 ) -> Any:
     """Run symbol coverage gate if enabled. Returns gate result or None."""
     if not cov_cfg["symbol_enabled"]:
@@ -693,12 +699,7 @@ def _run_symbol_gate_if_enabled(
         source_files,
         project_root,
         cov_cfg["symbol_coverage"],
-        surface,
-        findings,
-        is_partial_run=is_partial_run,
-        coverage_ok=coverage_ok,
-        targets_mode=targets_mode,
-        coverage_pct=coverage_pct,
+        ctx,
     )
 
 
@@ -826,6 +827,45 @@ def _compute_severity(
 # ── Impact Detection ─────────────────────────────────────────────────────
 
 
+def _build_search_dirs(root: Path, src_path: Path) -> list[Path]:
+    """Build the list of directories to search for test files."""
+    search_dirs = [
+        root / "tests",
+        root / "test",
+        src_path.parent,
+        src_path.parent / "tests",
+    ]
+    try:
+        rel = src_path.relative_to(root)
+        if len(rel.parts) > 1:
+            package_parts = rel.parts[:-1]
+            if package_parts[0] in ("src", "lib", "lintgate"):
+                package_parts = package_parts[1:]
+            if package_parts:
+                search_dirs.append(root / "tests" / Path(*package_parts))
+    except ValueError:
+        pass
+    return search_dirs
+
+
+def _find_joined_test(root: Path, src_path: Path) -> str | None:
+    """Find underscore-joined test file (e.g. test_foo_bar.py)."""
+    try:
+        rel = src_path.relative_to(root)
+        joined_name = (
+            "test_"
+            + "_".join(p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__"))
+            + ".py"
+        )
+        for test_dir in [root / "tests", root / "test"]:
+            candidate = test_dir / joined_name
+            if candidate.exists():
+                return str(candidate)
+    except ValueError:
+        pass
+    return None
+
+
 def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str]:
     """Find test files impacted by the changed source files.
 
@@ -841,67 +881,27 @@ def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str
 
     for src_file in changed_files:
         src_path = Path(src_file)
-        basename = src_path.stem  # e.g., "bar" from "bar.py"
-
-        # Skip test files themselves and non-Python files
         if src_path.suffix != ".py":
             continue
+
+        basename = src_path.stem
         if basename.startswith("test_") or src_path.name == "conftest.py":
-            # Changed file IS a test file — include it directly
             if src_path.exists() and str(src_path) not in seen:
                 impacted.append(str(src_path))
                 seen.add(str(src_path))
             continue
 
-        # Search patterns for corresponding test files
         test_name = f"test_{basename}.py"
-
-        # Search in common test directories
-        search_dirs = [
-            root / "tests",
-            root / "test",
-            src_path.parent,  # Same directory
-            src_path.parent / "tests",
-        ]
-
-        # Also try to mirror the package structure
-        # e.g., src/foo/bar.py → tests/foo/test_bar.py
-        try:
-            rel = src_path.relative_to(root)
-            if len(rel.parts) > 1:
-                # Build mirrored path: tests/<package>/test_<module>.py
-                package_parts = rel.parts[:-1]  # Everything except filename
-                # Skip common src directories
-                if package_parts[0] in ("src", "lib", "lintgate"):
-                    package_parts = package_parts[1:]
-                if package_parts:
-                    search_dirs.append(root / "tests" / Path(*package_parts))
-        except ValueError:
-            pass
-
-        for search_dir in search_dirs:
+        for search_dir in _build_search_dirs(root, src_path):
             candidate = search_dir / test_name
             if candidate.exists() and str(candidate) not in seen:
                 impacted.append(str(candidate))
                 seen.add(str(candidate))
 
-        # Also check for underscore-joined names: test_foo_bar.py
-        try:
-            rel = src_path.relative_to(root)
-            joined_name = (
-                "test_"
-                + "_".join(
-                    p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__")
-                )
-                + ".py"
-            )
-            for test_dir in [root / "tests", root / "test"]:
-                candidate = test_dir / joined_name
-                if candidate.exists() and str(candidate) not in seen:
-                    impacted.append(str(candidate))
-                    seen.add(str(candidate))
-        except ValueError:
-            pass
+        joined = _find_joined_test(root, src_path)
+        if joined and joined not in seen:
+            impacted.append(joined)
+            seen.add(joined)
 
     return sorted(impacted)
 
@@ -1098,17 +1098,12 @@ def _run_symbol_gate(
     changed_files: list[str],
     project_root: str,
     settings: dict[str, Any],
-    surface: str,
-    findings: list[LintIssue],
-    is_partial_run: bool = False,
-    coverage_ok: bool = True,
-    targets_mode: str = "unknown",
-    coverage_pct: float | None = None,
+    ctx: SymbolGateContext,
 ) -> Any:
     """Run symbol coverage gate and append findings. Returns gate result or None."""
     if not coverage_json_path:
-        if surface == "ci":
-            findings.append(
+        if ctx.surface == "ci":
+            ctx.findings.append(
                 LintIssue(
                     linter="test_channel",
                     kind="symbol_gate_skipped",
@@ -1125,11 +1120,9 @@ def _run_symbol_gate(
         changed_files=changed_files,
         project_root=project_root,
         settings=settings,
-        surface=surface,
+        surface=ctx.surface,
     )
-    _emit_symbol_findings(
-        gate_result, findings, is_partial_run, coverage_ok, targets_mode, coverage_pct
-    )
+    _emit_symbol_findings(gate_result, ctx)
     return gate_result
 
 
@@ -1159,11 +1152,7 @@ def _build_symbol_suggestions(sr: Any) -> list[str]:
 
 def _emit_symbol_findings(
     gate_result: Any,
-    findings: list[LintIssue],
-    is_partial_run: bool = False,
-    coverage_ok: bool = True,
-    targets_mode: str = "unknown",
-    coverage_pct: float | None = None,
+    ctx: SymbolGateContext,
 ) -> None:
     """Convert symbol coverage gate results into LintIssue findings."""
     for sr in gate_result.symbol_results:
@@ -1182,8 +1171,8 @@ def _emit_symbol_findings(
         downgrade_reason = ""
         severity = "blocking"
 
-        if is_partial_run:
-            if coverage_ok:
+        if ctx.is_partial_run:
+            if ctx.coverage_ok:
                 confidence = 0.6
                 severity = "warning"
                 downgrade_reason = " (downgraded: partial test run with healthy line coverage)"
@@ -1193,7 +1182,7 @@ def _emit_symbol_findings(
 
         msg += downgrade_reason
 
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="symbol_uncovered",
@@ -1209,17 +1198,17 @@ def _emit_symbol_findings(
                     "missing_branches": sr.missing_branches,
                     "total_lines": sr.total_lines_in_span,
                     "executed_lines": sr.executed_lines_in_span,
-                    "is_partial_run": is_partial_run,
-                    "coverage_ok": coverage_ok,
-                    "coverage_pct": coverage_pct,
-                    "targets_mode": targets_mode,
+                    "is_partial_run": ctx.is_partial_run,
+                    "coverage_ok": ctx.coverage_ok,
+                    "coverage_pct": ctx.coverage_pct,
+                    "targets_mode": ctx.targets_mode,
                 },
                 suggestions=_build_symbol_suggestions(sr),
             )
         )
 
     for unresolved in gate_result.unresolved_required:
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="unresolved_required_symbol",
@@ -1235,7 +1224,7 @@ def _emit_symbol_findings(
         )
 
     for waiver in gate_result.waivers_expired:
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="waiver_expired",
@@ -1248,7 +1237,7 @@ def _emit_symbol_findings(
         )
 
     for reason in gate_result.skipped_reasons:
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="symbol_gate_skipped",

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import statistics
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any
 
 from lintgate.types import LintIssue
@@ -381,29 +382,31 @@ def _check_package_cohesion(
 # ── Structure Snapshot (compact orientation) ─────────────────────────────
 
 
-def _build_structure_snapshot(
-    py_files: list[str],
-    import_graph: dict[str, set[str]],
-    file_map: dict[str, str],
-    file_loc: dict[str, int],
-    cycle_findings: list[LintIssue],
-    size_findings: list[LintIssue],
-    orphan_findings: list[LintIssue],
-    cohesion_findings: list[LintIssue],
-    project_root: str,
-    *,
-    module_fan_in: dict[str, int] | None = None,
-) -> dict[str, Any]:
+@dataclass
+class StructureSnapshotInputs:
+    """Inputs for building a structure snapshot."""
+
+    py_files: list[str]
+    file_map: dict[str, str]
+    file_loc: dict[str, int]
+    project_root: str
+    cycle_count: int = 0
+    orphan_count: int = 0
+    cohesion_count: int = 0
+    module_fan_in: dict[str, int] | None = None
+
+
+def _build_structure_snapshot(inputs: StructureSnapshotInputs) -> dict[str, Any]:
     """Build a compact structure snapshot for controlplane_run output.
 
     This is the token-saving orientation data: layers, cycles, largest
     modules, orphan count — the mental model a senior engineer carries.
     """
     # Largest modules by LOC
-    sorted_by_loc = sorted(file_loc.items(), key=lambda x: -x[1])
+    sorted_by_loc = sorted(inputs.file_loc.items(), key=lambda x: -x[1])
     largest = [
         {
-            "file": os.path.relpath(fp, project_root),
+            "file": os.path.relpath(fp, inputs.project_root),
             "loc": loc,
         }
         for fp, loc in sorted_by_loc[:3]
@@ -411,7 +414,7 @@ def _build_structure_snapshot(
 
     # Package distribution
     packages: dict[str, int] = defaultdict(int)
-    for module in file_map:
+    for module in inputs.file_map:
         parts = module.split(".")
         if len(parts) >= 2:
             packages[parts[0]] += 1
@@ -419,29 +422,31 @@ def _build_structure_snapshot(
             packages["<top-level>"] += 1
 
     # LOC statistics
-    all_locs = [loc for loc in file_loc.values() if loc > 0]
+    all_locs = [loc for loc in inputs.file_loc.values() if loc > 0]
     median_loc = int(statistics.median(all_locs)) if all_locs else 0
     total_loc = sum(all_locs)
 
     snapshot: dict[str, Any] = {
-        "file_count": len(py_files),
+        "file_count": len(inputs.py_files),
         "total_loc": total_loc,
         "median_module_loc": median_loc,
         "largest_modules": largest,
         "package_count": len(packages),
         "packages": dict(packages),
-        "import_cycle_count": len(cycle_findings),
-        "orphan_count": len(orphan_findings),
-        "low_cohesion_packages": len(cohesion_findings),
+        "import_cycle_count": inputs.cycle_count,
+        "orphan_count": inputs.orphan_count,
+        "low_cohesion_packages": inputs.cohesion_count,
         "checks_run": 4,
     }
 
     # Fan-in enrichment (Gap 1 — import fan-in surfaced)
-    if module_fan_in:
-        snapshot["zero_fan_in_count"] = sum(1 for v in module_fan_in.values() if v == 0)
+    if inputs.module_fan_in:
+        snapshot["zero_fan_in_count"] = sum(
+            1 for v in inputs.module_fan_in.values() if v == 0
+        )
         snapshot["high_fan_in_modules"] = [
             {"module": m, "fan_in": fi}
-            for m, fi in sorted(module_fan_in.items(), key=lambda x: -x[1])[:3]
+            for m, fi in sorted(inputs.module_fan_in.items(), key=lambda x: -x[1])[:3]
             if fi >= 2
         ]
 

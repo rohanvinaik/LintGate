@@ -191,6 +191,56 @@ def summarize_audit(audit: dict[str, Any]) -> dict[str, int]:
     return out
 
 
+def _patch_constraint_accepted(
+    sections: dict[str, ManagedSection],
+    evidence: dict[str, Any],
+) -> tuple[str, str] | None:
+    """Handle constraint_accepted trigger. Returns (section_id, new_content) or None."""
+    rule_text = evidence.get("rule", "")
+    if not rule_text:
+        return None
+    section = sections.get("machine_rules")
+    if section is None or rule_text in section.content:
+        return None
+    return "machine_rules", section.content.rstrip() + f"\n{rule_text}\n"
+
+
+def _patch_do_dont(
+    sections: dict[str, ManagedSection],
+    evidence: dict[str, Any],
+) -> tuple[str, str] | None:
+    """Handle prediction_confirmed / recurring_behavioral_signal triggers."""
+    entry = evidence.get("entry", "")
+    if not entry:
+        return None
+    section = sections.get("do_dont")
+    if section is None or entry in section.content:
+        return None
+    return "do_dont", section.content.rstrip() + f"\n- DO NOT: {entry}\n"
+
+
+def _patch_theory_coherence(
+    sections: dict[str, ManagedSection],
+    evidence: dict[str, Any],
+) -> tuple[str, str] | None:
+    """Handle theory_coherence_update trigger."""
+    update_text = evidence.get("update", "")
+    if not update_text:
+        return None
+    section = sections.get("theory_alignment")
+    if section is None or update_text in section.content:
+        return None
+    return "theory_alignment", section.content.rstrip() + f"\n- {update_text}\n"
+
+
+_TRIGGER_HANDLERS: dict[str, Any] = {
+    "constraint_accepted": _patch_constraint_accepted,
+    "prediction_confirmed": _patch_do_dont,
+    "recurring_behavioral_signal": _patch_do_dont,
+    "theory_coherence_update": _patch_theory_coherence,
+}
+
+
 def generate_context_patch(
     project_root: str,
     trigger: str,
@@ -212,50 +262,21 @@ def generate_context_patch(
         return None
 
     text = claude_path.read_text()
-
     if "LINTGATE:BEGIN" not in text:
         text, _ = migrate_to_managed_sections(text)
 
     sections = parse_managed_sections(text)
 
-    if trigger == "constraint_accepted":
-        section_id = "machine_rules"
-        rule_text = evidence.get("rule", "")
-        if not rule_text:
-            return None
-        section = sections.get(section_id)
-        if section is None:
-            return None
-        if rule_text in section.content:
-            return None
-        new_content = section.content.rstrip() + f"\n{rule_text}\n"
-
-    elif trigger in ("prediction_confirmed", "recurring_behavioral_signal"):
-        section_id = "do_dont"
-        entry = evidence.get("entry", "")
-        if not entry:
-            return None
-        section = sections.get(section_id)
-        if section is None:
-            return None
-        if entry in section.content:
-            return None
-        new_content = section.content.rstrip() + f"\n- DO NOT: {entry}\n"
-
-    elif trigger == "theory_coherence_update":
-        section_id = "theory_alignment"
-        update_text = evidence.get("update", "")
-        if not update_text:
-            return None
-        section = sections.get(section_id)
-        if section is None:
-            return None
-        if update_text in section.content:
-            return None
-        new_content = section.content.rstrip() + f"\n- {update_text}\n"
-
-    else:
+    handler = _TRIGGER_HANDLERS.get(trigger)
+    if handler is None:
         return None
+
+    result = handler(sections, evidence)
+    if result is None:
+        return None
+
+    section_id, new_content = result
+    section = sections[section_id]
 
     return ContextPatch(
         patch_id=uuid.uuid4().hex[:8],

@@ -25,6 +25,37 @@ class CategoryPrior:
     prior: float  # 0.0 = never survives, 1.0 = always survives
 
 
+@dataclass
+class _FunctionSignals:
+    """Structural signals extracted from a function AST for mutation filtering."""
+
+    param_count: int = 0
+    has_comparisons: bool = False
+    has_self_assigns: bool = False
+    has_global_nonlocal: bool = False
+    has_isinstance: bool = False
+
+
+def _collect_signals(func_node: ast.FunctionDef) -> _FunctionSignals:
+    """Walk the function AST to collect structural signals."""
+    signals = _FunctionSignals(param_count=len(func_node.args.args))
+    for node in ast.walk(func_node):
+        if isinstance(node, ast.Compare):
+            signals.has_comparisons = True
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store):
+            if isinstance(node.value, ast.Name) and node.value.id == "self":
+                signals.has_self_assigns = True
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            signals.has_global_nonlocal = True
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "isinstance"
+        ):
+            signals.has_isinstance = True
+    return signals
+
+
 def filter_categories(
     func_node: ast.FunctionDef,
     is_pure: bool = False,
@@ -34,49 +65,16 @@ def filter_categories(
     Returns the set of categories relevant to this function.
     Categories where the function has no structural support are excluded.
     """
-    relevant: set[MutationCategory] = set()
+    sig = _collect_signals(func_node)
+    relevant: set[MutationCategory] = {MutationCategory.VALUE}
 
-    param_count = len(func_node.args.args)
-    has_comparisons = False
-    has_self_assigns = False
-    has_global_nonlocal = False
-    has_isinstance = False
-
-    for node in ast.walk(func_node):
-        if isinstance(node, ast.Compare):
-            has_comparisons = True
-        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store):
-            if isinstance(node.value, ast.Name) and node.value.id == "self":
-                has_self_assigns = True
-        elif isinstance(node, (ast.Global, ast.Nonlocal)):
-            has_global_nonlocal = True
-        elif isinstance(node, ast.Return) and node.value is not None:
-            pass  # Return tracking removed — return mutations are separate from state
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "isinstance"
-        ):
-            has_isinstance = True
-
-    # VALUE: always relevant if function has any constants
-    relevant.add(MutationCategory.VALUE)
-
-    # SWAP: need ≥ 2 parameters
-    if param_count >= 2:
+    if sig.param_count >= 2:
         relevant.add(MutationCategory.SWAP)
-
-    # BOUNDARY: need comparisons
-    if has_comparisons:
+    if sig.has_comparisons:
         relevant.add(MutationCategory.BOUNDARY)
-
-    # STATE: need self.* assignments or global/nonlocal — but not if pure
-    # has_returns is excluded: return mutations are a separate concern from state mutations
-    if not is_pure and (has_self_assigns or has_global_nonlocal):
+    if not is_pure and (sig.has_self_assigns or sig.has_global_nonlocal):
         relevant.add(MutationCategory.STATE)
-
-    # TYPE: need isinstance calls
-    if has_isinstance:
+    if sig.has_isinstance:
         relevant.add(MutationCategory.TYPE)
 
     return relevant

@@ -94,9 +94,7 @@ def _build_posttooluse_context(
     _append_delta_pairs(pairs, coherence, inputs.delta, inputs.baseline_delta)
 
     # 11-13. Status pairs (loud channels, resurface, cycles)
-    _append_status_pairs(
-        pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts
-    )
+    _append_status_pairs(pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts)
 
     # Serialize with max length enforcement (300 chars)
     return _serialize_pairs(pairs, max_len=300)

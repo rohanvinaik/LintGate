@@ -323,6 +323,118 @@ def _build_prev_next(
     return "\n".join(parts)
 
 
+class _MdParser:
+    """Stateful line-by-line markdown-to-HTML converter."""
+
+    def __init__(self) -> None:
+        self.parts: list[str] = []
+        self.in_code_block: bool = False
+        self.in_list: bool = False
+        self.in_table: bool = False
+        self.paragraph_lines: list[str] = []
+
+    def _flush_paragraph(self) -> None:
+        if self.paragraph_lines:
+            text = _inline_format(" ".join(self.paragraph_lines))
+            self.parts.append(f"<p>{text}</p>")
+            self.paragraph_lines.clear()
+
+    def _flush_list(self) -> None:
+        if self.in_list:
+            self.parts.append("</ul>")
+            self.in_list = False
+
+    def _flush_table(self) -> None:
+        if self.in_table:
+            self.parts.append("</tbody></table>")
+            self.in_table = False
+
+    def _flush_all(self) -> None:
+        self._flush_paragraph()
+        self._flush_list()
+        self._flush_table()
+
+    def _handle_code_fence(self, line: str) -> None:
+        if self.in_code_block:
+            self.parts.append("</code></pre>")
+            self.in_code_block = False
+        else:
+            self._flush_all()
+            lang = line[3:].strip()
+            cls = f' class="language-{html.escape(lang)}"' if lang else ""
+            self.parts.append(f"<pre><code{cls}>")
+            self.in_code_block = True
+
+    def _handle_heading(self, match: re.Match[str]) -> None:
+        self._flush_all()
+        level = len(match.group(1))
+        text = _inline_format(match.group(2))
+        anchor = re.sub(r"[^a-z0-9]+", "-", match.group(2).lower()).strip("-")
+        self.parts.append(f'<h{level} id="{anchor}">{text}</h{level}>')
+
+    def _handle_table_row(self, stripped: str) -> bool:
+        """Handle a table row. Returns True if the line was consumed."""
+        self._flush_paragraph()
+        self._flush_list()
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if all(re.match(r"^[-:]+$", c) for c in cells if c):
+            return True  # separator row — skip
+        if not self.in_table:
+            self.parts.append("<table><tbody>")
+            self.in_table = True
+        row_html = "".join(f"<td>{_inline_format(c)}</td>" for c in cells)
+        self.parts.append(f"<tr>{row_html}</tr>")
+        return True
+
+    def _handle_list_item(self, match: re.Match[str]) -> None:
+        self._flush_paragraph()
+        self._flush_table()
+        if not self.in_list:
+            self.parts.append("<ul>")
+            self.in_list = True
+        self.parts.append(f"<li>{_inline_format(match.group(1))}</li>")
+
+    def feed(self, line: str) -> None:
+        """Process a single line of markdown."""
+        if line.startswith("```"):
+            self._handle_code_fence(line)
+            return
+        if self.in_code_block:
+            self.parts.append(html.escape(line))
+            return
+
+        stripped = line.strip()
+        if not stripped:
+            self._flush_all()
+            return
+        if stripped in ("---", "***", "___"):
+            self._flush_all()
+            self.parts.append("<hr>")
+            return
+
+        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if heading_match:
+            self._handle_heading(heading_match)
+            return
+        if stripped.startswith("|"):
+            self._handle_table_row(stripped)
+            return
+        list_match = re.match(r"^[-*+]\s+(.+)$", stripped)
+        if list_match:
+            self._handle_list_item(list_match)
+            return
+
+        self._flush_list()
+        self._flush_table()
+        self.paragraph_lines.append(stripped)
+
+    def finish(self) -> str:
+        self._flush_all()
+        if self.in_code_block:
+            self.parts.append("</code></pre>")
+        return "\n".join(self.parts)
+
+
 def _md_to_html(text: str, link_fn: Any = None) -> str:
     """Minimal markdown-to-HTML conversion.
 
@@ -330,123 +442,13 @@ def _md_to_html(text: str, link_fn: Any = None) -> str:
     tables, and horizontal rules. Not a full markdown parser — sufficient
     for wiki pages that follow our chapter grammar.
     """
-    # Strip managed-section markers before rendering
     lines = [
         line for line in text.split("\n") if not line.strip().startswith("<!-- LINTGATE_WIKI:")
     ]
-    html_parts: list[str] = []
-    in_code_block = False
-    in_list = False
-    in_table = False
-    paragraph_lines: list[str] = []
-
-    def _flush_paragraph() -> None:
-        if paragraph_lines:
-            text = " ".join(paragraph_lines)
-            text = _inline_format(text)
-            html_parts.append(f"<p>{text}</p>")
-            paragraph_lines.clear()
-
-    def _flush_list() -> None:
-        nonlocal in_list
-        if in_list:
-            html_parts.append("</ul>")
-            in_list = False
-
-    def _flush_table() -> None:
-        nonlocal in_table
-        if in_table:
-            html_parts.append("</tbody></table>")
-            in_table = False
-
+    parser = _MdParser()
     for line in lines:
-        # Code blocks
-        if line.startswith("```"):
-            if in_code_block:
-                html_parts.append("</code></pre>")
-                in_code_block = False
-            else:
-                _flush_paragraph()
-                _flush_list()
-                _flush_table()
-                lang = line[3:].strip()
-                cls = f' class="language-{html.escape(lang)}"' if lang else ""
-                html_parts.append(f"<pre><code{cls}>")
-                in_code_block = True
-            continue
-
-        if in_code_block:
-            html_parts.append(html.escape(line))
-            continue
-
-        stripped = line.strip()
-
-        # Empty line
-        if not stripped:
-            _flush_paragraph()
-            _flush_list()
-            _flush_table()
-            continue
-
-        # Horizontal rule
-        if stripped in ("---", "***", "___"):
-            _flush_paragraph()
-            _flush_list()
-            _flush_table()
-            html_parts.append("<hr>")
-            continue
-
-        # Headings
-        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
-        if heading_match:
-            _flush_paragraph()
-            _flush_list()
-            _flush_table()
-            level = len(heading_match.group(1))
-            text = _inline_format(heading_match.group(2))
-            anchor = re.sub(r"[^a-z0-9]+", "-", heading_match.group(2).lower()).strip("-")
-            html_parts.append(f'<h{level} id="{anchor}">{text}</h{level}>')
-            continue
-
-        # Table rows
-        if stripped.startswith("|"):
-            _flush_paragraph()
-            _flush_list()
-            cells = [c.strip() for c in stripped.strip("|").split("|")]
-            # Separator row (---|---) — skip but don't close table
-            if all(re.match(r"^[-:]+$", c) for c in cells if c):
-                continue
-            if not in_table:
-                html_parts.append("<table><tbody>")
-                in_table = True
-            row_html = "".join(f"<td>{_inline_format(c)}</td>" for c in cells)
-            html_parts.append(f"<tr>{row_html}</tr>")
-            continue
-
-        # List items
-        list_match = re.match(r"^[-*+]\s+(.+)$", stripped)
-        if list_match:
-            _flush_paragraph()
-            _flush_table()
-            if not in_list:
-                html_parts.append("<ul>")
-                in_list = True
-            item_text = _inline_format(list_match.group(1))
-            html_parts.append(f"<li>{item_text}</li>")
-            continue
-
-        # Regular text → accumulate paragraph
-        _flush_list()
-        _flush_table()
-        paragraph_lines.append(stripped)
-
-    _flush_paragraph()
-    _flush_list()
-    _flush_table()
-    if in_code_block:
-        html_parts.append("</code></pre>")
-
-    return "\n".join(html_parts)
+        parser.feed(line)
+    return parser.finish()
 
 
 def _inline_format(text: str) -> str:

@@ -508,6 +508,59 @@ def _run_controlplane(
     sys.exit(0)
 
 
+def _detect_write_functions(tool_input: dict) -> list[dict] | None:
+    """Detect top-level functions from a Write tool's content."""
+    import ast as _ast
+
+    content = tool_input.get("content", "")
+    filepath = tool_input.get("file_path", "")
+    if not content or not filepath or not filepath.endswith(".py"):
+        return None
+    try:
+        tree = _ast.parse(content)
+    except SyntaxError:
+        return None
+    results = [
+        {"name": node.name, "file": filepath, "line": node.lineno}
+        for node in tree.body
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+    ]
+    return results or None
+
+
+def _extract_func_name(stripped: str) -> str:
+    """Extract function name from a stripped 'def ...' or 'async def ...' line."""
+    if stripped.startswith("async def "):
+        name_part = stripped[len("async def ") :]
+    elif stripped.startswith("def "):
+        name_part = stripped[len("def ") :]
+    else:
+        return ""
+    return name_part.split("(")[0].strip()
+
+
+def _detect_edit_functions(tool_input: dict) -> list[dict] | None:
+    """Detect newly introduced function defs from an Edit tool's diff."""
+    old_string = tool_input.get("old_string", "")
+    new_string = tool_input.get("new_string", "")
+    filepath = tool_input.get("file_path", "")
+    if not new_string or not filepath or not filepath.endswith(".py"):
+        return None
+
+    old_lines = set(old_string.splitlines())
+    results = []
+    for i, line in enumerate(new_string.splitlines(), 1):
+        stripped = line.lstrip()
+        if not (stripped.startswith("def ") or stripped.startswith("async def ")):
+            continue
+        if line in old_lines:
+            continue
+        func_name = _extract_func_name(stripped)
+        if func_name:
+            results.append({"name": func_name, "file": filepath, "line": i})
+    return results or None
+
+
 def _detect_new_functions(
     tool_name: str,
     tool_input: dict,
@@ -515,72 +568,12 @@ def _detect_new_functions(
 ) -> list[dict] | None:
     """Detect newly added functions from Write/Edit tool use.
 
-    For Write: parse full file content, all top-level defs are "new".
-    For Edit: check if new_string contains 'def ' not in old_string.
-
     Returns list of {"name": str, "file": str, "line": int} or None.
-    Lightweight: string search + optional partial AST parse.
     """
-    import ast as _ast
-
     if tool_name == "Write":
-        content = tool_input.get("content", "")
-        filepath = tool_input.get("file_path", "")
-        if not content or not filepath:
-            return None
-        if not filepath.endswith(".py"):
-            return None
-        try:
-            tree = _ast.parse(content)
-        except SyntaxError:
-            return None
-        results = []
-        for node in tree.body:
-            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-                results.append(
-                    {
-                        "name": node.name,
-                        "file": filepath,
-                        "line": node.lineno,
-                    }
-                )
-        return results if results else None
-
+        return _detect_write_functions(tool_input)
     if tool_name == "Edit":
-        old_string = tool_input.get("old_string", "")
-        new_string = tool_input.get("new_string", "")
-        filepath = tool_input.get("file_path", "")
-        if not new_string or not filepath:
-            return None
-        if not filepath.endswith(".py"):
-            return None
-
-        # Quick check: does new_string introduce a 'def ' not in old_string?
-        new_lines = new_string.splitlines()
-        old_lines = set(old_string.splitlines())
-        results = []
-        for i, line in enumerate(new_lines, 1):
-            stripped = line.lstrip()
-            if (
-                stripped.startswith("def ") or stripped.startswith("async def ")
-            ) and line not in old_lines:
-                # Extract function name
-                name_part = stripped
-                if name_part.startswith("async def "):
-                    name_part = name_part[len("async def ") :]
-                elif name_part.startswith("def "):
-                    name_part = name_part[len("def ") :]
-                func_name = name_part.split("(")[0].strip()
-                if func_name:
-                    results.append(
-                        {
-                            "name": func_name,
-                            "file": filepath,
-                            "line": i,  # Line within the edit
-                        }
-                    )
-        return results if results else None
-
+        return _detect_edit_functions(tool_input)
     return None
 
 

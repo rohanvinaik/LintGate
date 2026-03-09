@@ -278,6 +278,45 @@ def delete_runtime_state(project_root: str) -> bool:
 # ── Builder ──────────────────────────────────────────────────────────
 
 
+def _project_session(state: RuntimeState, session: SessionMemory) -> None:
+    """Project session memory fields into runtime state."""
+    state.session_id = session.session_id
+
+    mode_dict = session.behavior_compass.get("mode_state", {})
+    state.mode = str(mode_dict.get("current", "normal") or "normal")
+
+    if session.snapshots:
+        latest = session.snapshots[-1]
+        if latest.behavior.action_type == "bash" and "test" in latest.behavior.command_signature:
+            state.last_test_status = "pass" if latest.behavior.exit_code == 0 else "fail"
+
+        recent_predictions = [
+            s.behavior.prediction_accuracy
+            for s in session.snapshots[-10:]
+            if s.behavior.prediction_accuracy is not None
+        ]
+        if recent_predictions:
+            state.prediction_accuracy = round(sum(recent_predictions) / len(recent_predictions), 2)
+
+    if session.coherence_trajectory:
+        state.coherence_state = session.coherence_trajectory[-1]
+
+    bc = session.behavior_compass
+    state.approach_failures = bc.get("approach_failures", 0)
+    constraints = bc.get("active_constraints", [])
+    if constraints:
+        state.top_constraint = str(constraints[0])[:80]
+
+
+def _project_tracker(state: RuntimeState, tracker: TokenTrackerState) -> None:
+    """Project token tracker fields into runtime state."""
+    if tracker.context_window_size > 0:
+        state.estimated_tokens_pct = round(
+            tracker.estimated_tokens_used / tracker.context_window_size * 100, 1
+        )
+    state.tool_calls_total = tracker.tool_call_count
+
+
 def build_runtime_state(
     project_root: str,
     *,
@@ -296,24 +335,17 @@ def build_runtime_state(
     This is the single assembly point: callers provide whatever state
     they have, and this function projects it into the canonical form.
     """
-    # Start from existing on-disk state to preserve generation counter
     existing = load_runtime_state(project_root)
     state = existing if existing is not None else RuntimeState()
 
-    # Session identity
     if session is not None:
-        state.session_id = session.session_id
+        _project_session(state, session)
 
-    # Cognitive mode
-    if session is not None:
-        mode_dict = session.behavior_compass.get("mode_state", {})
-        state.mode = str(mode_dict.get("current", "normal") or "normal")
-
-    # Habit score
     if habit_state is not None:
         state.habit_score = round(habit_state.habit_score, 2)
+        state.active_files = list(habit_state.active_files)[:_MAX_ACTIVE_FILES]
+        state.compaction_count = habit_state.compaction_count
 
-    # Compass capsule
     if exec_compass is not None:
         state.true_north = exec_compass.true_north[:_TRUE_NORTH_MAX_CHARS]
         state.toward = exec_compass.toward[:_MAX_DIRECTIVES]
@@ -322,60 +354,16 @@ def build_runtime_state(
     elif compass is not None:
         _populate_from_compass(state, compass)
 
-    # Active files from habit state
-    if habit_state is not None:
-        state.active_files = list(habit_state.active_files)[:_MAX_ACTIVE_FILES]
-
-    # Test status from session snapshots
-    if session is not None and session.snapshots:
-        latest = session.snapshots[-1]
-        # Infer test status from behavior data
-        if latest.behavior.action_type == "bash" and "test" in latest.behavior.command_signature:
-            state.last_test_status = "pass" if latest.behavior.exit_code == 0 else "fail"
-
-    # Coherence state
     if last_coherence_state:
         state.coherence_state = last_coherence_state
-    elif session is not None and session.coherence_trajectory:
-        state.coherence_state = session.coherence_trajectory[-1]
 
-    # Finding counts — None means "no data", 0 means "zero issues"
     if last_blocking is not None:
         state.blocking_issues = last_blocking
     if last_warnings is not None:
         state.warning_issues = last_warnings
 
-    # Prediction accuracy from session
-    if session is not None and session.snapshots:
-        recent_predictions = [
-            s.behavior.prediction_accuracy
-            for s in session.snapshots[-10:]
-            if s.behavior.prediction_accuracy is not None
-        ]
-        if recent_predictions:
-            state.prediction_accuracy = round(sum(recent_predictions) / len(recent_predictions), 2)
-
-    # Token economics
     if tracker is not None:
-        if tracker.context_window_size > 0:
-            state.estimated_tokens_pct = round(
-                tracker.estimated_tokens_used / tracker.context_window_size * 100, 1
-            )
-        state.tool_calls_total = tracker.tool_call_count
-
-    # Compaction count from habit state
-    if habit_state is not None:
-        state.compaction_count = habit_state.compaction_count
-
-    # Behavioral signals from session
-    if session is not None:
-        bc = session.behavior_compass
-        # Approach failures
-        state.approach_failures = bc.get("approach_failures", 0)
-        # Top constraint
-        constraints = bc.get("active_constraints", [])
-        if constraints:
-            state.top_constraint = str(constraints[0])[:80]
+        _project_tracker(state, tracker)
 
     return state
 
