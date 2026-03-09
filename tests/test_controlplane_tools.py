@@ -109,7 +109,7 @@ def test_check_ship_gate_parity_invalid_json(monkeypatch, tmp_path) -> None:
 
         return _Proc()
 
-    monkeypatch.setattr("mcp_tools.controlplane_tools.subprocess.run", fake_run)
+    monkeypatch.setattr("mcp_tools._controlplane_impl_run.subprocess.run", fake_run)
     result = _check_ship_gate_parity(str(tmp_path), "strict")
     assert result["status"] == "error"
     assert result["exit_code"] == 2
@@ -124,7 +124,7 @@ def test_check_ship_gate_parity_subprocess_exception(monkeypatch, tmp_path) -> N
     def fake_run(*_args, **_kwargs):
         raise OSError("spawn failed")
 
-    monkeypatch.setattr("mcp_tools.controlplane_tools.subprocess.run", fake_run)
+    monkeypatch.setattr("mcp_tools._controlplane_impl_run.subprocess.run", fake_run)
     result = _check_ship_gate_parity(str(tmp_path), "strict")
     assert result["status"] == "error"
     assert "spawn failed" in result["error"]

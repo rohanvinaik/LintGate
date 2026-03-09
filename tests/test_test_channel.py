@@ -216,7 +216,7 @@ def test_parse_no_output() -> None:
 # ── Test runner (mocked) ────────────────────────────────────────────────
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_run_tests_success(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(
         stdout="3 passed in 0.03s",
@@ -228,7 +228,7 @@ def test_run_tests_success(mock_run: MagicMock) -> None:
     assert result.failed == 0
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_run_tests_failure(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(
         stdout="FAILED tests/test_app.py::test_x - AssertionError\n1 failed in 0.01s",
@@ -240,7 +240,7 @@ def test_run_tests_failure(mock_run: MagicMock) -> None:
     assert len(result.failures) == 1
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_run_tests_timeout(mock_run: MagicMock) -> None:
     import subprocess
 
@@ -249,7 +249,7 @@ def test_run_tests_timeout(mock_run: MagicMock) -> None:
     assert result.timed_out is True
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_run_tests_preserves_coverage_json_for_symbol_gate(mock_run: MagicMock) -> None:
     """coverage.json path returned by run_tests should exist for downstream gating."""
     import re
@@ -345,7 +345,7 @@ def test_channel_proposes_skeleton_repair(tmp_path: Path) -> None:
     assert result.repairs[0].channel == "tests"
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_channel_reports_test_failures(mock_run: MagicMock, tmp_path: Path) -> None:
     """Channel runs impacted tests and reports failures."""
     src = tmp_path / "app.py"
@@ -528,7 +528,11 @@ def test_gate_context_in_evidence():
 
 
 def test_reconciliation_metadata_in_channel_result():
-    from lintgate.channels.test_channel import TestChannelContext, _build_channel_result
+    from lintgate.channels.test_channel import (
+        CoverageEvaluation,
+        TestChannelContext,
+        _build_channel_result,
+    )
 
     cfg = {"measure": True, "threshold": 80.0}
     gate = MockGateResult([MockSymbolResult(covered=False)])
@@ -541,10 +545,12 @@ def test_reconciliation_metadata_in_channel_result():
         test_result=None,
         cov_cfg=cfg,
         gate_result=gate,
-        targets_mode="fallback",
-        coverage_pct=90.0,
-        is_partial_run=False,
-        coverage_ok=True,
+        cov_eval=CoverageEvaluation(
+            targets_mode="fallback",
+            coverage_pct=90.0,
+            is_partial_run=False,
+            coverage_ok=True,
+        ),
     )
     res = _build_channel_result(ctx)
     sym_ctx = res.metrics.get("symbol_gate_context")

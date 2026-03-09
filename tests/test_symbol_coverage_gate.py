@@ -328,7 +328,7 @@ class TestTestChannelIntegration:
                 return_value=["test_mod.py"],
             ),
             patch(
-                "lintgate.channels.test_channel.run_tests",
+                "lintgate.channels._test_channel_runner.run_tests",
                 return_value=fake_test_result,
             ),
             patch(
@@ -374,7 +374,7 @@ class TestTestChannelIntegration:
         channel = TestChannel()
         with (
             patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]),
-            patch("lintgate.channels.test_channel.run_tests", return_value=fake_result) as mock_run,
+            patch("lintgate.channels._test_channel_runner.run_tests", return_value=fake_result) as mock_run,
             patch(
                 "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
                 return_value=gate_result,

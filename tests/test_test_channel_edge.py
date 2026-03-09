@@ -265,7 +265,7 @@ def test_filter_to_source_packages_skips_unrelatable_paths() -> None:
 
 def test_filter_to_source_packages_value_error(tmp_path: Path) -> None:
     files = ["/some/file.py", str(tmp_path / "lintgate" / "ok.py")]
-    with patch("lintgate.channels.test_channel.os.path.relpath", side_effect=ValueError):
+    with patch("lintgate.channels._test_channel_symbol_gate.os.path.relpath", side_effect=ValueError):
         result = _filter_to_source_packages(files, ["lintgate"], str(tmp_path))
     assert result == []
 
@@ -303,7 +303,7 @@ def test_parse_coverage_settings_empty_string_falls_back() -> None:
 
 def test_run_tests_os_error(tmp_path: Path) -> None:
     with patch(
-        "lintgate.channels.test_channel.subprocess.run",
+        "lintgate.channels._test_channel_runner.subprocess.run",
         side_effect=OSError("no pytest"),
     ):
         result = run_tests(str(tmp_path), ["tests/test_x.py"])
@@ -315,7 +315,7 @@ def test_run_tests_os_error(tmp_path: Path) -> None:
 # ── TestChannel.execute: ephemeral JSON cleanup ─────────────────────────
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_execute_cleans_up_ephemeral_coverage_json(
     mock_run: MagicMock,
     tmp_path: Path,
@@ -348,12 +348,12 @@ def test_execute_cleans_up_ephemeral_coverage_json(
             risk_level="moderate",
         ),
     )
-    with patch("lintgate.channels.test_channel.run_tests", return_value=fake_result):
+    with patch("lintgate.channels._test_channel_runner.run_tests", return_value=fake_result):
         TestChannel().execute(event, ControlPlaneConfig())
     assert not Path(ephemeral_path).exists()
 
 
-@patch("lintgate.channels.test_channel.subprocess.run")
+@patch("lintgate.channels._test_channel_runner.subprocess.run")
 def test_execute_skips_cleanup_when_not_ephemeral(
     mock_run: MagicMock,
     tmp_path: Path,
@@ -386,7 +386,7 @@ def test_execute_skips_cleanup_when_not_ephemeral(
             risk_level="moderate",
         ),
     )
-    with patch("lintgate.channels.test_channel.run_tests", return_value=fake_result):
+    with patch("lintgate.channels._test_channel_runner.run_tests", return_value=fake_result):
         TestChannel().execute(event, ControlPlaneConfig())
     assert Path(persistent_path).exists()
     os.unlink(persistent_path)

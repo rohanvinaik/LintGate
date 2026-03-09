@@ -247,13 +247,13 @@ class TestImplAgentFeedback:
                 return_value=fake_session,
             ),
             mock.patch("lintgate.controlplane.session_memory.save_session"),
-            mock.patch("mcp_tools.controlplane_tools._record_disagreement") as rec,
+            mock.patch("mcp_tools._controlplane_impl_feedback._record_disagreement") as rec,
             mock.patch(
-                "mcp_tools.controlplane_tools._process_accepted_constraints",
+                "mcp_tools._controlplane_impl_feedback._process_accepted_constraints",
                 return_value=[],
             ),
-            mock.patch("mcp_tools.controlplane_tools._process_rejected_constraints"),
-            mock.patch("mcp_tools.controlplane_tools._generate_living_context_patches"),
+            mock.patch("mcp_tools._controlplane_impl_feedback._process_rejected_constraints"),
+            mock.patch("mcp_tools._controlplane_impl_feedback._generate_living_context_patches"),
         ):
             raw = _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
         parsed = json.loads(raw)
@@ -272,13 +272,13 @@ class TestImplAgentFeedback:
                 return_value=fake_session,
             ),
             mock.patch("lintgate.controlplane.session_memory.save_session"),
-            mock.patch("mcp_tools.controlplane_tools._record_disagreement") as rec,
+            mock.patch("mcp_tools._controlplane_impl_feedback._record_disagreement") as rec,
             mock.patch(
-                "mcp_tools.controlplane_tools._process_accepted_constraints",
+                "mcp_tools._controlplane_impl_feedback._process_accepted_constraints",
                 return_value=[],
             ),
-            mock.patch("mcp_tools.controlplane_tools._process_rejected_constraints"),
-            mock.patch("mcp_tools.controlplane_tools._generate_living_context_patches"),
+            mock.patch("mcp_tools._controlplane_impl_feedback._process_rejected_constraints"),
+            mock.patch("mcp_tools._controlplane_impl_feedback._generate_living_context_patches"),
         ):
             raw = _impl_controlplane_agent_feedback(
                 "/tmp", "run1", "disagree", ["c1"], ["c2"], _stub_helpers()
@@ -313,7 +313,7 @@ class TestPersistSessionAfterMeshBehaviorBranch:
                 "lintgate.controlplane.session_memory.save_session",
             ),
             mock.patch(
-                "mcp_tools.controlplane_tools._persist_behavior_compass_delta",
+                "mcp_tools._controlplane_impl_run._persist_behavior_compass_delta",
             ) as persist_bc,
         ):
             from mcp_tools.controlplane_tools import _persist_session_after_mesh
@@ -344,7 +344,7 @@ class TestCollectPendingRepairs:
             {"action_id": "a2", "safe": True},
         ]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs",
+            "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
             result = _collect_pending_repairs(session, ["a1"], False)
@@ -358,7 +358,7 @@ class TestCollectPendingRepairs:
             {"action_id": "a2", "safe": False},
         ]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs",
+            "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
             result = _collect_pending_repairs(session, None, True)
@@ -369,7 +369,7 @@ class TestCollectPendingRepairs:
         session = self._make_session(["a1"], repair_outcomes={"a1": "applied"})
         repairs = [{"action_id": "a1", "safe": True}]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs",
+            "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
             result = _collect_pending_repairs(session, None, False)
@@ -383,7 +383,7 @@ class TestCollectPendingRepairs:
             {"action_id": "a_unknown", "safe": True},  # NOT in proposed_ids
         ]
         with mock.patch(
-            "mcp_tools.controlplane_tools._load_all_repairs",
+            "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
             result = _collect_pending_repairs(session, None, False)
@@ -500,7 +500,7 @@ class TestImplApplyRepairs:
             ),
             mock.patch("lintgate.controlplane.session_memory.save_session"),
             mock.patch(
-                "mcp_tools.controlplane_tools._collect_pending_repairs",
+                "mcp_tools._controlplane_impl_feedback._collect_pending_repairs",
                 return_value=[
                     {
                         "action_id": "r1",
@@ -510,7 +510,7 @@ class TestImplApplyRepairs:
                 ],
             ),
             mock.patch(
-                "mcp_tools.controlplane_tools._execute_single_repair",
+                "mcp_tools._controlplane_impl_feedback._execute_single_repair",
                 return_value={"action_id": "r1", "status": "ok"},
             ) as exec_fn,
         ):
