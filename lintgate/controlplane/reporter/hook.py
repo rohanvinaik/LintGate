@@ -203,7 +203,7 @@ def compute_hook_fingerprint(mesh_result: MeshResult) -> str:
     )
 
     parts = f"{coherence_state}|b={blocking}|w={warning}|{','.join(loud)}"
-    return hashlib.md5(parts.encode()).hexdigest()[:12]  # NOSONAR — not crypto, just fingerprinting
+    return hashlib.md5(parts.encode(), usedforsecurity=False).hexdigest()[:12]  # nosec B324 — not crypto, just fingerprinting
 
 
 def _build_telemetry_counters(
