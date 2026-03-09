@@ -44,7 +44,7 @@ def run_nsil_benchmark(scenarios: list[dict[str, Any]]) -> list[BenchmarkResult]
                     name=scenario["name"],
                     passed=passed,
                     latency_ms=latency,
-                    violations=res.violation_codes,
+                    violations=list(res.violation_codes),
                 )
             )
         except Exception as e:

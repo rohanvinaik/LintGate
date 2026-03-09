@@ -714,6 +714,7 @@ class TestWordsToPattern:
 # Exact-value tests for pure helpers (TEFF007 — raise semantic assertion ratio)
 # ══════════════════════════════════════════════════════════════════════
 
+
 class TestStripMarkdownExact:
     """Exact-value tests for _strip_markdown."""
 
@@ -964,7 +965,9 @@ class TestBuildValidityReportExact:
             "proposed_rules": [{"x": 1}],
             "existing_rule_count": 2,
         }
-        report = _build_validity_report(profile, docs_scanned=2, sections_scanned=3, enforceable=enforceable)
+        report = _build_validity_report(
+            profile, docs_scanned=2, sections_scanned=3, enforceable=enforceable
+        )
         assert report["status"] == "strong"
         assert report["total_claims"] == 7
         assert report["claims_per_doc"] == 3.5
@@ -985,9 +988,15 @@ class TestBuildValidityReportExact:
             "abstractions": [],
         }
         enforceable = {"proposed_rules": [], "existing_rule_count": 0}
-        report = _build_validity_report(profile, docs_scanned=0, sections_scanned=0, enforceable=enforceable)
+        report = _build_validity_report(
+            profile, docs_scanned=0, sections_scanned=0, enforceable=enforceable
+        )
         assert report["status"] == "weak"
-        assert set(report["missing_required_facets"]) == {"core_theory", "problem_solving", "alignment"}
+        assert set(report["missing_required_facets"]) == {
+            "core_theory",
+            "problem_solving",
+            "alignment",
+        }
         assert report["total_claims"] == 0
 
     def test_weak_status_few_claims(self) -> None:
@@ -998,14 +1007,18 @@ class TestBuildValidityReportExact:
             "alignment": [{"heading": "H", "source": "c.md:1", "claims": ["c3"]}],
         }
         enforceable = {"proposed_rules": [{"x": 1}], "existing_rule_count": 1}
-        report = _build_validity_report(profile, docs_scanned=1, sections_scanned=3, enforceable=enforceable)
+        report = _build_validity_report(
+            profile, docs_scanned=1, sections_scanned=3, enforceable=enforceable
+        )
         assert report["status"] == "weak"
         assert report["total_claims"] == 3
 
     def test_docs_scanned_zero_no_division_error(self) -> None:
         profile = {"core_theory": []}
         enforceable = {"proposed_rules": [], "existing_rule_count": 0}
-        report = _build_validity_report(profile, docs_scanned=0, sections_scanned=0, enforceable=enforceable)
+        report = _build_validity_report(
+            profile, docs_scanned=0, sections_scanned=0, enforceable=enforceable
+        )
         assert report["claims_per_doc"] == 0.0
 
     def test_traceability_with_empty_sources(self) -> None:
@@ -1016,7 +1029,9 @@ class TestBuildValidityReportExact:
             ],
         }
         enforceable = {"proposed_rules": [], "existing_rule_count": 0}
-        report = _build_validity_report(profile, docs_scanned=1, sections_scanned=2, enforceable=enforceable)
+        report = _build_validity_report(
+            profile, docs_scanned=1, sections_scanned=2, enforceable=enforceable
+        )
         assert report["traceability_pct"] == 50.0
 
 
@@ -1036,7 +1051,14 @@ class TestBuildTheoryProfileExact:
 
     def test_all_facet_keys_present(self) -> None:
         result = _build_theory_profile([])
-        expected_keys = {"core_theory", "problem_solving", "alignment", "architecture", "anti_patterns", "abstractions"}
+        expected_keys = {
+            "core_theory",
+            "problem_solving",
+            "alignment",
+            "architecture",
+            "anti_patterns",
+            "abstractions",
+        }
         assert set(result.keys()) == expected_keys
 
 
@@ -1104,7 +1126,11 @@ class TestGetTheoryContextFromProfileExact:
     def test_single_match_exact_structure(self) -> None:
         profile = {
             "core_theory": [
-                {"claims": ["Composition enables evolution"], "source": "a.md:1", "heading": "Core"},
+                {
+                    "claims": ["Composition enables evolution"],
+                    "source": "a.md:1",
+                    "heading": "Core",
+                },
             ],
         }
         result = get_theory_context_from_profile(profile, keywords=["composition"])
@@ -1126,9 +1152,7 @@ class TestGetTheoryContextFromProfileExact:
                 {"claims": ["composition only"], "source": "b.md:1", "heading": "H2"},
             ],
         }
-        result = get_theory_context_from_profile(
-            profile, keywords=["composition", "modular"]
-        )
+        result = get_theory_context_from_profile(profile, keywords=["composition", "modular"])
         # First result should be the one matching both keywords (score=2)
         assert result["claims"][0]["relevance_score"] == 2
         assert result["claims"][0]["claim"] == "composition modular design"

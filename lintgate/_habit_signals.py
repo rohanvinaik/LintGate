@@ -6,6 +6,7 @@ mode enter/exit logic, user message handling, and declaration API.
 
 from __future__ import annotations
 
+import re
 import statistics
 from typing import Any
 
@@ -166,10 +167,17 @@ def detect_test_result(
     if not out_lower:
         return
 
-    # Check for pass/fail keywords
-    if "passed" in out_lower and "failed" not in out_lower and "error" not in out_lower:
+    # Check for pass/fail keywords.
+    # pytest outputs "N passed, 0 failed" — naive substring match on "failed"
+    # would misclassify passing runs.  Exclude "0 failed" / "0 errors" patterns
+    # but still match standalone "ERROR" messages (e.g. "ERROR collecting tests").
+    zero_fail = bool(re.search(r"\b0\s+failed", out_lower))
+    zero_error = bool(re.search(r"\b0\s+error", out_lower))
+    has_fail = "failed" in out_lower and not zero_fail
+    has_error = "error" in out_lower and not zero_error
+    if "passed" in out_lower and not has_fail and not has_error:
         state.last_test_status = "pass"
-    elif "failed" in out_lower or "error" in out_lower:
+    elif has_fail or has_error:
         state.last_test_status = "fail"
 
 

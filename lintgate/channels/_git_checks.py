@@ -6,10 +6,10 @@ Extracted from git_channel.py to keep the main channel file under 400 lines.
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
 from lintgate.controlplane.types import RepairAction
+from lintgate.subprocess_utils import run_cmd
 from lintgate.types import LintIssue
 
 from ._git_helpers import _parse_diff_stat_totals
@@ -20,17 +20,8 @@ def _check_working_tree_scope(project_root: str) -> list[LintIssue]:
 
     Counts both modified/staged files and untracked files separately.
     """
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode != 0:
-            return []
-    except (subprocess.TimeoutExpired, OSError):
+    result = run_cmd(["git", "status", "--porcelain"], cwd=project_root, timeout=3)
+    if result is None:
         return []
 
     modified_count = 0
@@ -69,17 +60,8 @@ def _check_working_tree_scope(project_root: str) -> list[LintIssue]:
 
 def _check_large_changes(project_root: str) -> list[LintIssue]:
     """Check for large uncommitted changes (>500 lines)."""
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--stat", "--cached"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode != 0:
-            return []
-    except (subprocess.TimeoutExpired, OSError):
+    result = run_cmd(["git", "diff", "--stat", "--cached"], cwd=project_root, timeout=3)
+    if result is None:
         return []
 
     insertions, deletions = _parse_diff_stat_totals(result.stdout)
@@ -184,36 +166,26 @@ def _check_sensitive_files(project_root: str) -> list[LintIssue]:
         "id_ed25519",
     }
 
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode != 0:
-            return findings
+    result = run_cmd(["git", "status", "--porcelain"], cwd=project_root, timeout=3)
+    if result is None:
+        return findings
 
-        for line in result.stdout.splitlines():
-            status = line[:2].strip()
-            filename = line[3:].strip().strip('"')
+    for line in result.stdout.splitlines():
+        status = line[:2].strip()
+        filename = line[3:].strip().strip('"')
 
-            # Check if this is a sensitive file that's being tracked/staged
-            basename = os.path.basename(filename)
-            if basename in sensitive_patterns and status in ("A", "??", "M"):
-                findings.append(
-                    LintIssue(
-                        linter="git_channel",
-                        kind="sensitive_file",
-                        message=f"Sensitive file detected: {filename}. Ensure it's in .gitignore.",
-                        file=os.path.join(project_root, filename),
-                        severity="warning",
-                    )
+        # Check if this is a sensitive file that's being tracked/staged
+        basename = os.path.basename(filename)
+        if basename in sensitive_patterns and status in ("A", "??", "M"):
+            findings.append(
+                LintIssue(
+                    linter="git_channel",
+                    kind="sensitive_file",
+                    message=f"Sensitive file detected: {filename}. Ensure it's in .gitignore.",
+                    file=os.path.join(project_root, filename),
+                    severity="warning",
                 )
-
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+            )
 
     return findings
 

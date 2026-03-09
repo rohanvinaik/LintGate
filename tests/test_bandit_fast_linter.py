@@ -57,9 +57,9 @@ class TestIsTestOrDocsContext:
         assert _is_test_or_docs_context("/project/DOCS/example.py", "/project") is True
 
     def test_deeply_nested(self):
-        assert _is_test_or_docs_context(
-            "/project/src/lib/tests/unit/test_core.py", "/project"
-        ) is True
+        assert (
+            _is_test_or_docs_context("/project/src/lib/tests/unit/test_core.py", "/project") is True
+        )
 
     def test_non_matching_dir(self):
         assert _is_test_or_docs_context("/project/src/lib/core.py", "/project") is False

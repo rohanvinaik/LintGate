@@ -41,8 +41,8 @@ class TestNormalizeCommandSig:
 
     def test_env_wrapper(self):
         result = normalize_command_sig("env FOO=bar python script.py")
-        # env wrapper strips env then skips VAR=val tokens
-        assert result.startswith("python:") or "python" in result
+        # env wrapper strips "env", skips "FOO=bar", leaving "python script.py"
+        assert result == "python:script"
 
     def test_absolute_path_binary(self):
         result = normalize_command_sig("/usr/bin/idevicerestore -e custom.ipsw")

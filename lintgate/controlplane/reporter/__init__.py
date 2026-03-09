@@ -4,14 +4,14 @@ Converts MeshResult into systemMessage + hookSpecificOutput JSON
 suitable for Claude Code's PostToolUse hook protocol.
 
 Token budget strategy (OTP-inspired):
-- Dynamic budget: scales proportionally to finding volume (worse code → bigger report)
+- Dynamic budget: scales proportionally to finding volume (worse code -> bigger report)
 - Static hook_max_tokens serves as floor for clean codebases
-- Only inject non-zero channels (silent channels omitted — silence IS info)
+- Only inject non-zero channels (silent channels omitted -- silence IS info)
 - Strict priority order for sections
 - Token counting + truncation of low-priority sections when budget is exhausted
 - Truncation metadata always emitted
 
-Section priority order (highest → lowest):
+Section priority order (highest -> lowest):
 1. Header (coherence state, duration)
 2. Blocking findings (from any channel)
 3. Coherence summary + recommended action
@@ -27,23 +27,25 @@ Protocol note:
   {"hookEventName": "PostToolUse", "additionalContext": "..."}
 
 Sub-modules:
-- reporter_budget: Dynamic token budget constants and computation
-- reporter_sections: Section formatters (_format_*, _short_path, _estimate_tokens,
+- budget: Dynamic token budget constants and computation
+- sections: Section formatters (_format_*, _short_path, _estimate_tokens,
   _assemble_report_sections)
-- reporter_delta: Finding fingerprint, index, delta computation, and display filtering
-- reporter_hook: PostToolUse context and telemetry counters
-- reporter_compact: Compact MCP tool response formatting
+- delta: Finding fingerprint, index, delta computation, and display filtering
+- hook: PostToolUse context and telemetry counters
+- compact: Compact MCP tool response formatting
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from ..types import ControlPlaneConfig, MeshResult
+
 # ── Re-exports from sub-modules (backward compatibility) ─────────────────
-# All public symbols that were previously defined here are imported and
-# re-exported so that existing ``from lintgate.controlplane.reporter import X``
-# statements continue to work without modification.
-from .reporter_budget import (  # noqa: F401 — re-exports for backward compat
+# All public symbols that were previously defined in the flat reporter_* modules
+# are imported and re-exported so that existing
+# ``from lintgate.controlplane.reporter import X`` statements continue to work.
+from .budget import (  # noqa: F401
     _BUDGET_BASE,
     _BUDGET_HARD_CAP,
     _BUDGET_PER_BLOCKING,
@@ -52,11 +54,11 @@ from .reporter_budget import (  # noqa: F401 — re-exports for backward compat
     _BUDGET_PER_WARNING,
     _compute_dynamic_budget,
 )
-from .reporter_compact import (  # noqa: F401 — re-exports for backward compat
+from .compact import (  # noqa: F401
     _build_cp_next_actions,
     format_mesh_report_compact,
 )
-from .reporter_delta import (  # noqa: F401 — re-exports for backward compat
+from .delta import (  # noqa: F401
     _SEVERITY_ORDER,
     DisplayFilterResult,
     build_finding_index,
@@ -64,12 +66,12 @@ from .reporter_delta import (  # noqa: F401 — re-exports for backward compat
     compute_finding_fingerprint,
     filter_display_findings,
 )
-from .reporter_hook import (  # noqa: F401 — re-exports for backward compat
+from .hook import (  # noqa: F401
     PostToolUseInputs,
     _build_posttooluse_context,
     _build_telemetry_counters,
 )
-from .reporter_sections import (  # noqa: F401 — re-exports for backward compat
+from .sections import (  # noqa: F401
     _assemble_report_sections,
     _estimate_tokens,
     _format_blocking,
@@ -83,7 +85,6 @@ from .reporter_sections import (  # noqa: F401 — re-exports for backward compa
     _format_warnings,
     _short_path,
 )
-from .types import ControlPlaneConfig, MeshResult
 
 
 def format_mesh_report(

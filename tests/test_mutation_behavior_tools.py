@@ -105,9 +105,7 @@ def test_constraint_check_delegates_to_impl(mock_impl: MagicMock) -> None:
         planned_action="run tests",
         known_constraints=["fixture needed"],
     )
-    mock_impl.assert_called_once_with(
-        helpers, "/project", "run tests", ["fixture needed"]
-    )
+    mock_impl.assert_called_once_with(helpers, "/project", "run tests", ["fixture needed"])
     assert result == '{"coverage_gap": 0}'
 
 
@@ -176,8 +174,12 @@ def test_prediction_register_string_value(mock_impl: MagicMock) -> None:
         prediction_value="match_text",
     )
     mock_impl.assert_called_once_with(
-        helpers, "/project", "grep for pattern", "Pattern found",
-        "stdout_contains", "match_text",
+        helpers,
+        "/project",
+        "grep for pattern",
+        "Pattern found",
+        "stdout_contains",
+        "match_text",
     )
 
 
@@ -248,7 +250,9 @@ def test_behavior_precheck_delegates_to_impl(mock_impl: MagicMock) -> None:
     assert call_args[0][0] == helpers
     assert isinstance(call_args[0][1], dict)  # _tools dict
     assert set(call_args[0][1].keys()) == {
-        "constraint_check", "prediction_register", "hygiene_check"
+        "constraint_check",
+        "prediction_register",
+        "hygiene_check",
     }
     assert call_args[0][2] == "/project"
     assert call_args[0][3] == "run tests"

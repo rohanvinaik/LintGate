@@ -188,7 +188,10 @@ def test_skip_interview_exact_gap_report_values() -> None:
     detect_gaps(state)
 
     assert state.gap_report.axis_depths == {
-        "problem": 0, "solution": 0, "implementation": 0, "world": 0,
+        "problem": 0,
+        "solution": 0,
+        "implementation": 0,
+        "world": 0,
     }
     assert state.gap_report.spikiness == 0.0
     assert set(state.gap_report.sparse_axes) == {"problem", "solution", "implementation", "world"}
@@ -199,7 +202,10 @@ def test_skip_interview_exact_gap_report_values() -> None:
     # Only interview_recommended changes to False
     assert state.gap_report.interview_recommended is False
     assert state.gap_report.axis_depths == {
-        "problem": 0, "solution": 0, "implementation": 0, "world": 0,
+        "problem": 0,
+        "solution": 0,
+        "implementation": 0,
+        "world": 0,
     }
     assert state.gap_report.spikiness == 0.0
     assert set(state.gap_report.sparse_axes) == {"problem", "solution", "implementation", "world"}

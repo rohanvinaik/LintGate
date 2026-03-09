@@ -194,7 +194,7 @@ def test_requirements_txt_counts_as_lockfile(tmp_path: Path) -> None:
 # ── Sensitive files ──────────────────────────────────────────────────────
 
 
-@patch("lintgate.channels._git_checks.subprocess.run")
+@patch("lintgate.subprocess_utils.subprocess.run")
 def test_sensitive_env_file_detected(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(
         stdout="?? .env\n",
@@ -209,7 +209,7 @@ def test_sensitive_env_file_detected(mock_run: MagicMock) -> None:
     assert ".env" in findings[0].message
 
 
-@patch("lintgate.channels._git_checks.subprocess.run")
+@patch("lintgate.subprocess_utils.subprocess.run")
 def test_no_sensitive_files(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(
         stdout="M app.py\nM tests/test_app.py\n",
@@ -224,7 +224,7 @@ def test_no_sensitive_files(mock_run: MagicMock) -> None:
 # ── Large changes ────────────────────────────────────────────────────────
 
 
-@patch("lintgate.channels._git_checks.subprocess.run")
+@patch("lintgate.subprocess_utils.subprocess.run")
 def test_large_staged_changes_detected(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(
         stdout=" 5 files changed, 400 insertions(+), 200 deletions(-)\n",
@@ -239,7 +239,7 @@ def test_large_staged_changes_detected(mock_run: MagicMock) -> None:
     assert "600" in findings[0].message or "400" in findings[0].message
 
 
-@patch("lintgate.channels._git_checks.subprocess.run")
+@patch("lintgate.subprocess_utils.subprocess.run")
 def test_small_changes_no_finding(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(
         stdout=" 2 files changed, 10 insertions(+), 5 deletions(-)\n",
@@ -391,7 +391,7 @@ class TestWorkingTreeScope:
         untracked_lines = [f"?? newfile{i}.py" for i in range(5)]
         porcelain = "\n".join(modified_lines + untracked_lines) + "\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run") as mock_run:
+        with patch("lintgate.subprocess_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=porcelain)
             findings = _check_working_tree_scope("/fake/repo")
 
@@ -406,7 +406,7 @@ class TestWorkingTreeScope:
         """5 files → no finding."""
         porcelain = "\n".join(f" M file{i}.py" for i in range(5)) + "\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run") as mock_run:
+        with patch("lintgate.subprocess_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=porcelain)
             findings = _check_working_tree_scope("/fake/repo")
 
@@ -564,7 +564,7 @@ class TestCheckLargeChangesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = " 3 files changed, 300 insertions(+), 200 deletions(-)\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_large_changes(str(tmp_path))
         assert findings == []
 
@@ -574,7 +574,7 @@ class TestCheckLargeChangesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = " 5 files changed, 400 insertions(+), 101 deletions(-)\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_large_changes(str(tmp_path))
         assert len(findings) == 1
         f = findings[0]
@@ -591,14 +591,14 @@ class TestCheckLargeChangesMutantKilling:
         mock_result = MagicMock()
         mock_result.returncode = 128
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_large_changes(str(tmp_path))
         assert findings == []
 
     def test_timeout_returns_empty(self, tmp_path: Path) -> None:
         """Subprocess timeout → graceful empty return."""
         with patch(
-            "lintgate.channels._git_checks.subprocess.run",
+            "lintgate.subprocess_utils.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="git", timeout=3),
         ):
             findings = _check_large_changes(str(tmp_path))
@@ -610,14 +610,14 @@ class TestCheckLargeChangesMutantKilling:
         mock_500.returncode = 0
         mock_500.stdout = " 1 file changed, 500 insertions(+)\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_500):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_500):
             assert _check_large_changes(str(tmp_path)) == []
 
         mock_501 = MagicMock()
         mock_501.returncode = 0
         mock_501.stdout = " 1 file changed, 501 insertions(+)\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_501):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_501):
             findings = _check_large_changes(str(tmp_path))
             assert len(findings) == 1
 
@@ -634,7 +634,7 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = "A  .env\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert len(findings) == 1
         f = findings[0]
@@ -650,7 +650,7 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = "?? credentials.json\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert len(findings) == 1
         assert findings[0].kind == "sensitive_file"
@@ -661,7 +661,7 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = "M  .env.local\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert len(findings) == 1
 
@@ -671,7 +671,7 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = "D  .env\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert findings == []
 
@@ -681,7 +681,7 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = "A  main.py\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert findings == []
 
@@ -691,7 +691,7 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result.returncode = 0
         mock_result.stdout = "A  .env\n?? secrets.yaml\nA  main.py\n"
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert len(findings) == 2
         kinds = {f.kind for f in findings}
@@ -701,13 +701,13 @@ class TestCheckSensitiveFilesMutantKilling:
         mock_result = MagicMock()
         mock_result.returncode = 128
 
-        with patch("lintgate.channels._git_checks.subprocess.run", return_value=mock_result):
+        with patch("lintgate.subprocess_utils.subprocess.run", return_value=mock_result):
             findings = _check_sensitive_files(str(tmp_path))
         assert findings == []
 
     def test_timeout_returns_empty(self, tmp_path: Path) -> None:
         with patch(
-            "lintgate.channels._git_checks.subprocess.run",
+            "lintgate.subprocess_utils.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="git", timeout=3),
         ):
             findings = _check_sensitive_files(str(tmp_path))

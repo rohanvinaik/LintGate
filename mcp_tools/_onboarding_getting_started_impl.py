@@ -19,6 +19,7 @@ from typing import Any
 # ``mock.patch("mcp_tools.onboarding_tools._foo")`` works correctly.
 # ---------------------------------------------------------------------------
 
+
 def _ot():  # noqa: ANN202
     """Return the onboarding_tools module (lazy to avoid circular imports)."""
     import mcp_tools.onboarding_tools as _mod

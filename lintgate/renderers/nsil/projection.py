@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from lintgate.renderers.nsil.types import (
     AgentState,
@@ -36,7 +36,7 @@ def project_snapshot(
     primary_goal = (
         "Resolve active findings" if session.active_finding_history else "Analyze codebase"
     )
-    mode = "execution" if session.action_history else "planning"
+    mode: Literal["planning", "execution"] = "execution" if session.action_history else "planning"
 
     intent = UserIntent(
         primary_goal=primary_goal,

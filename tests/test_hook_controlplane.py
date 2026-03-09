@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from lintgate.hook_controlplane import (
+from lintgate.hooks.controlplane import (
     _SESSION_TELEMETRY_UPDATE_CAP,
     accumulate_session_telemetry,
     apply_behavior_delta,
@@ -161,20 +161,20 @@ class TestCanApplySessionTelemetry:
 class TestResolveEventModelKey:
     def test_model_field(self):
         with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
+            "lintgate.controlplane.model.profiles.resolve_model_key",
             return_value="anthropic:claude-3",
         ):
             result = resolve_event_model_key({"model": "claude-3"})
         assert result == "anthropic:claude-3"
 
     def test_no_candidates(self):
-        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value=None):
+        with patch("lintgate.controlplane.model.profiles.resolve_model_key", return_value=None):
             result = resolve_event_model_key({})
         assert result is None
 
     def test_session_dict_branch(self):
         with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
+            "lintgate.controlplane.model.profiles.resolve_model_key",
             return_value="found",
         ):
             result = resolve_event_model_key({"session": {"model": "x"}})
@@ -182,40 +182,40 @@ class TestResolveEventModelKey:
 
     def test_tool_input_dict_branch(self):
         with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
+            "lintgate.controlplane.model.profiles.resolve_model_key",
             return_value="found",
         ):
             result = resolve_event_model_key({"tool_input": {"model": "x"}})
         assert result == "found"
 
     def test_session_not_dict_skipped(self):
-        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value=None):
+        with patch("lintgate.controlplane.model.profiles.resolve_model_key", return_value=None):
             result = resolve_event_model_key({"session": "not-dict"})
         assert result is None
 
     def test_metadata_dict(self):
         with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key",
+            "lintgate.controlplane.model.profiles.resolve_model_key",
             return_value="found",
         ):
             result = resolve_event_model_key({"metadata": {"model": "x"}})
         assert result == "found"
 
     def test_blank_candidates_skipped(self):
-        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value=None):
+        with patch("lintgate.controlplane.model.profiles.resolve_model_key", return_value=None):
             result = resolve_event_model_key({"model": "", "model_id": "  "})
         assert result is None
 
 
 class TestSelectTelemetryProfile:
     def test_no_model_key(self):
-        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value=None):
+        with patch("lintgate.hooks.controlplane.resolve_event_model_key", return_value=None):
             assert select_telemetry_profile(MagicMock(), {}) is None
 
     def test_profile_missing(self):
         store = MagicMock()
         store.profiles = {}
-        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
+        with patch("lintgate.hooks.controlplane.resolve_event_model_key", return_value="key"):
             assert select_telemetry_profile(store, {}) is None
 
     def test_profile_not_usable(self):
@@ -223,7 +223,7 @@ class TestSelectTelemetryProfile:
         profile.is_usable.return_value = False
         store = MagicMock()
         store.profiles = {"key": profile}
-        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
+        with patch("lintgate.hooks.controlplane.resolve_event_model_key", return_value="key"):
             assert select_telemetry_profile(store, {}) is None
 
     def test_profile_usable(self):
@@ -231,7 +231,7 @@ class TestSelectTelemetryProfile:
         profile.is_usable.return_value = True
         store = MagicMock()
         store.profiles = {"key": profile}
-        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
+        with patch("lintgate.hooks.controlplane.resolve_event_model_key", return_value="key"):
             assert select_telemetry_profile(store, {}) == profile
 
 
@@ -489,9 +489,7 @@ class TestSetupSessionAndGate:
                 return_value=not_ready,
             ),
         ):
-            session, advisory = setup_session_and_gate(
-                cfg, "/tmp", "Edit", event, channels, None
-            )
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "Edit", event, channels, None)
 
         # Exact advisory format
         assert advisory == (
@@ -538,9 +536,7 @@ class TestSetupSessionAndGate:
                 return_value=ready,
             ),
         ):
-            session, advisory = setup_session_and_gate(
-                cfg, "/tmp", "Write", event, channels, None
-            )
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "Write", event, channels, None)
 
         assert advisory is None
         assert fake_session.behavior_compass["_session_ready"] is True
@@ -574,9 +570,7 @@ class TestSetupSessionAndGate:
                 "lintgate.context_auditor.check_session_readiness",
             ) as readiness_fn,
         ):
-            session, advisory = setup_session_and_gate(
-                cfg, "/tmp", "Read", event, [], None
-            )
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "Read", event, [], None)
 
         assert advisory is None
         readiness_fn.assert_not_called()
@@ -608,9 +602,7 @@ class TestSetupSessionAndGate:
                 "lintgate.context_auditor.check_session_readiness",
             ) as readiness_fn,
         ):
-            session, advisory = setup_session_and_gate(
-                cfg, "/tmp", "Edit", event, [], None
-            )
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "Edit", event, [], None)
 
         assert advisory is None
         readiness_fn.assert_not_called()
@@ -631,9 +623,7 @@ class TestSetupSessionAndGate:
 
         from lintgate.context_auditor import SessionReadiness
 
-        not_ready = SessionReadiness(
-            ready=False, missing=["alignment"], recommendation="Fix it"
-        )
+        not_ready = SessionReadiness(ready=False, missing=["alignment"], recommendation="Fix it")
 
         with (
             patch(
@@ -649,13 +639,10 @@ class TestSetupSessionAndGate:
                 return_value=not_ready,
             ),
         ):
-            session, advisory = setup_session_and_gate(
-                cfg, "/tmp", "MultiEdit", event, [], None
-            )
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "MultiEdit", event, [], None)
 
         assert advisory == (
-            "[Session Advisory] Context not ready for deep supervision. "
-            "Missing: alignment. Fix it"
+            "[Session Advisory] Context not ready for deep supervision. Missing: alignment. Fix it"
         )
 
     def test_get_or_create_session_exception_suppressed(self):
@@ -692,9 +679,7 @@ class TestSetupSessionAndGate:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=fake_session,
         ):
-            session, advisory = setup_session_and_gate(
-                cfg, "/tmp", "Edit", event, [], priors
-            )
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "Edit", event, [], priors)
         assert event.raw_input["behavior_compass"] is compass
         assert event.raw_input["behavior_global_priors"] == {"enabled": True, "alpha": 0.5}
         assert advisory is None
@@ -1227,7 +1212,7 @@ class TestPostProcessSession:
                 return_value=MagicMock(),
             ),
             patch("lintgate.controlplane.session_memory.save_session"),
-            patch("lintgate.hook_controlplane.run_constraint_proposer", return_value=[]),
+            patch("lintgate.hooks.controlplane.run_constraint_proposer", return_value=[]),
         ):
             result = post_process_session(session, mesh, {}, MagicMock(), {}, "E", {}, "")
         assert result == []
@@ -1314,10 +1299,12 @@ class TestRefreshRuntimeAfterRun:
         fake_session = MagicMock()
         fake_mesh = MagicMock()
         with (
-            patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session") as fn,
+            patch("lintgate.hooks.runtime_state.refresh_runtime_state_with_session") as fn,
             patch("lintgate.controlplane.session_memory.save_session") as save_fn,
         ):
-            refresh_runtime_after_run("/proj", fake_session, MagicMock(), fake_mesh, "Bash", {"command": "ls"})
+            refresh_runtime_after_run(
+                "/proj", fake_session, MagicMock(), fake_mesh, "Bash", {"command": "ls"}
+            )
         fn.assert_called_once()
         call_args, call_kwargs = fn.call_args
         assert call_args[0] == "/proj"
@@ -1331,7 +1318,7 @@ class TestRefreshRuntimeAfterRun:
     def test_session_present_save_exception_suppressed(self):
         """EP2: save_session raises => no crash (contextlib.suppress)."""
         with (
-            patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session"),
+            patch("lintgate.hooks.runtime_state.refresh_runtime_state_with_session"),
             patch(
                 "lintgate.controlplane.session_memory.save_session",
                 side_effect=RuntimeError("disk full"),
@@ -1346,7 +1333,7 @@ class TestRefreshRuntimeAfterRun:
         cfg.habit_mode_enabled = False
         cfg.session_memory = True
         fake_mesh = MagicMock()
-        with patch("lintgate.hook_runtime_state.refresh_runtime_state_lightweight") as fn:
+        with patch("lintgate.hooks.runtime_state.refresh_runtime_state_lightweight") as fn:
             refresh_runtime_after_run("/proj", None, cfg, fake_mesh, "Write", {"path": "/a"})
         fn.assert_called_once()
         call_kwargs = fn.call_args[1]
@@ -1360,7 +1347,7 @@ class TestRefreshRuntimeAfterRun:
         cfg = MagicMock()
         cfg.habit_mode_enabled = True
         cfg.session_memory = True  # This makes the inner `if` false
-        with patch("lintgate.hook_runtime_state.refresh_runtime_state_lightweight") as fn:
+        with patch("lintgate.hooks.runtime_state.refresh_runtime_state_lightweight") as fn:
             refresh_runtime_after_run("/tmp", None, cfg, MagicMock(), "Edit", {})
         fn.assert_called_once()
 
@@ -1382,7 +1369,7 @@ class TestRefreshRuntimeAfterRun:
 
         with (
             patch(
-                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                "lintgate.hooks.runtime_state.refresh_runtime_state_lightweight",
                 return_value=updated_scheduler,
             ) as refresh_fn,
             patch(
@@ -1420,7 +1407,7 @@ class TestRefreshRuntimeAfterRun:
         cfg.session_memory = False
         with (
             patch(
-                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                "lintgate.hooks.runtime_state.refresh_runtime_state_lightweight",
                 return_value="not-dict",
             ),
             patch(
@@ -1441,7 +1428,7 @@ class TestRefreshRuntimeAfterRun:
         cfg.session_memory = False
         with (
             patch(
-                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                "lintgate.hooks.runtime_state.refresh_runtime_state_lightweight",
                 return_value={"result": True},
             ) as refresh_fn,
             patch(
@@ -1474,7 +1461,7 @@ class TestRefreshRuntimeAfterRun:
         }
         with (
             patch(
-                "lintgate.hook_runtime_state.refresh_runtime_state_lightweight",
+                "lintgate.hooks.runtime_state.refresh_runtime_state_lightweight",
                 return_value={"ok": True},
             ),
             patch("lintgate.habit_mode.load_standalone_extras", return_value=extras),

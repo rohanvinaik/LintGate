@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from lintgate.controlplane.model_probe import (
+from lintgate.controlplane.model.probe import (
     NEUTRAL_PRIOR,
     NEUTRAL_PRIOR_CONFIDENCE,
     PROBE_MAX_CONFIDENCE,

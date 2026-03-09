@@ -87,7 +87,7 @@ class TestRunControlplane:
 
         with (
             patch(
-                "lintgate.hook_posttooluse.classify_change",
+                "lintgate.hooks.posttooluse.classify_change",
                 return_value=mock_classification,
             ),
             patch(
@@ -99,42 +99,42 @@ class TestRunControlplane:
                 return_value={"systemMessage": "all good"},
             ),
             patch(
-                "lintgate.hook_habit.record_behavior_event",
+                "lintgate.hooks.habit.record_behavior_event",
             ),
             patch(
-                "lintgate.hook_habit.record_habit_event_lightweight",
+                "lintgate.hooks.habit.record_habit_event_lightweight",
             ),
             patch(
-                "lintgate.hook_controlplane.load_global_priors",
+                "lintgate.hooks.controlplane.load_global_priors",
                 return_value={},
             ),
             patch(
-                "lintgate.hook_controlplane.setup_session_and_gate",
+                "lintgate.hooks.controlplane.setup_session_and_gate",
                 return_value=(mock_session, None),
             ),
             patch(
-                "lintgate.hook_controlplane.extract_finding_indexes",
+                "lintgate.hooks.controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
             ),
             patch(
-                "lintgate.hook_controlplane.post_process_session",
+                "lintgate.hooks.controlplane.post_process_session",
                 return_value=[],
             ),
             patch(
-                "lintgate.hook_controlplane.save_run_details",
+                "lintgate.hooks.controlplane.save_run_details",
             ),
             patch(
-                "lintgate.hook_controlplane.accumulate_session_telemetry",
+                "lintgate.hooks.controlplane.accumulate_session_telemetry",
             ),
             patch(
-                "lintgate.hook_controlplane.refresh_runtime_after_run",
+                "lintgate.hooks.controlplane.refresh_runtime_after_run",
             ),
             patch(
-                "lintgate.hook_arbitration.arbitrate_output",
+                "lintgate.hooks.arbitration.arbitrate_output",
                 return_value={"systemMessage": "all good"},
             ),
             patch(
-                "lintgate.hook_posttooluse.log_metric",
+                "lintgate.hooks.posttooluse.log_metric",
             ),
             patch("builtins.print") as mock_print,
             patch("sys.exit") as mock_exit,
@@ -182,7 +182,7 @@ class TestRunControlplane:
 
         with (
             patch(
-                "lintgate.hook_posttooluse.classify_change",
+                "lintgate.hooks.posttooluse.classify_change",
                 return_value=mock_classification,
             ),
             patch(
@@ -194,42 +194,42 @@ class TestRunControlplane:
                 return_value={"systemMessage": "all good"},
             ),
             patch(
-                "lintgate.hook_habit.record_behavior_event",
+                "lintgate.hooks.habit.record_behavior_event",
             ),
             patch(
-                "lintgate.hook_habit.record_habit_event_lightweight",
+                "lintgate.hooks.habit.record_habit_event_lightweight",
             ),
             patch(
-                "lintgate.hook_controlplane.load_global_priors",
+                "lintgate.hooks.controlplane.load_global_priors",
                 return_value={},
             ),
             patch(
-                "lintgate.hook_controlplane.setup_session_and_gate",
+                "lintgate.hooks.controlplane.setup_session_and_gate",
                 return_value=(mock_session, None),
             ),
             patch(
-                "lintgate.hook_controlplane.extract_finding_indexes",
+                "lintgate.hooks.controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
             ),
             patch(
-                "lintgate.hook_controlplane.post_process_session",
+                "lintgate.hooks.controlplane.post_process_session",
                 return_value=[],
             ),
             patch(
-                "lintgate.hook_controlplane.save_run_details",
+                "lintgate.hooks.controlplane.save_run_details",
             ),
             patch(
-                "lintgate.hook_controlplane.accumulate_session_telemetry",
+                "lintgate.hooks.controlplane.accumulate_session_telemetry",
             ),
             patch(
-                "lintgate.hook_controlplane.refresh_runtime_after_run",
+                "lintgate.hooks.controlplane.refresh_runtime_after_run",
             ),
             patch(
-                "lintgate.hook_arbitration.arbitrate_output",
+                "lintgate.hooks.arbitration.arbitrate_output",
                 return_value={"systemMessage": "all good"},
             ),
             patch(
-                "lintgate.hook_posttooluse.log_metric",
+                "lintgate.hooks.posttooluse.log_metric",
             ),
             patch(
                 "lintgate.channels.structure_channel.StructureChannel",
@@ -286,7 +286,7 @@ class TestRunControlplane:
 
         with (
             patch(
-                "lintgate.hook_posttooluse.classify_change",
+                "lintgate.hooks.posttooluse.classify_change",
                 return_value=mock_classification,
             ),
             patch(
@@ -301,42 +301,42 @@ class TestRunControlplane:
                 },
             ),
             patch(
-                "lintgate.hook_habit.record_behavior_event",
+                "lintgate.hooks.habit.record_behavior_event",
             ),
             patch(
-                "lintgate.hook_habit.record_habit_event_lightweight",
+                "lintgate.hooks.habit.record_habit_event_lightweight",
             ),
             patch(
-                "lintgate.hook_controlplane.load_global_priors",
+                "lintgate.hooks.controlplane.load_global_priors",
                 return_value={},
             ),
             patch(
-                "lintgate.hook_controlplane.setup_session_and_gate",
+                "lintgate.hooks.controlplane.setup_session_and_gate",
                 return_value=(mock_session, None),
             ),
             patch(
-                "lintgate.hook_controlplane.extract_finding_indexes",
+                "lintgate.hooks.controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
             ),
             patch(
-                "lintgate.hook_controlplane.post_process_session",
+                "lintgate.hooks.controlplane.post_process_session",
                 return_value=[],
             ),
             patch(
-                "lintgate.hook_controlplane.save_run_details",
+                "lintgate.hooks.controlplane.save_run_details",
             ),
             patch(
-                "lintgate.hook_controlplane.accumulate_session_telemetry",
+                "lintgate.hooks.controlplane.accumulate_session_telemetry",
             ),
             patch(
-                "lintgate.hook_controlplane.refresh_runtime_after_run",
+                "lintgate.hooks.controlplane.refresh_runtime_after_run",
             ),
             patch(
-                "lintgate.hook_arbitration.arbitrate_output",
+                "lintgate.hooks.arbitration.arbitrate_output",
                 return_value={"systemMessage": "all good"},
             ),
             patch(
-                "lintgate.hook_posttooluse.log_metric",
+                "lintgate.hooks.posttooluse.log_metric",
             ) as mock_log_metric,
             patch("builtins.print") as mock_print,
             patch("sys.exit"),
@@ -390,7 +390,7 @@ class TestRunControlplane:
 
         with (
             patch(
-                "lintgate.hook_posttooluse.classify_change",
+                "lintgate.hooks.posttooluse.classify_change",
                 return_value=mock_classification,
             ),
             patch(
@@ -402,42 +402,42 @@ class TestRunControlplane:
                 return_value={"systemMessage": "all good"},
             ),
             patch(
-                "lintgate.hook_habit.record_behavior_event",
+                "lintgate.hooks.habit.record_behavior_event",
             ),
             patch(
-                "lintgate.hook_habit.record_habit_event_lightweight",
+                "lintgate.hooks.habit.record_habit_event_lightweight",
             ),
             patch(
-                "lintgate.hook_controlplane.load_global_priors",
+                "lintgate.hooks.controlplane.load_global_priors",
                 return_value={},
             ),
             patch(
-                "lintgate.hook_controlplane.setup_session_and_gate",
+                "lintgate.hooks.controlplane.setup_session_and_gate",
                 return_value=(mock_session, None),
             ),
             patch(
-                "lintgate.hook_controlplane.extract_finding_indexes",
+                "lintgate.hooks.controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
             ),
             patch(
-                "lintgate.hook_controlplane.post_process_session",
+                "lintgate.hooks.controlplane.post_process_session",
                 return_value=[],
             ),
             patch(
-                "lintgate.hook_controlplane.save_run_details",
+                "lintgate.hooks.controlplane.save_run_details",
             ),
             patch(
-                "lintgate.hook_controlplane.accumulate_session_telemetry",
+                "lintgate.hooks.controlplane.accumulate_session_telemetry",
             ),
             patch(
-                "lintgate.hook_controlplane.refresh_runtime_after_run",
+                "lintgate.hooks.controlplane.refresh_runtime_after_run",
             ),
             patch(
-                "lintgate.hook_arbitration.arbitrate_output",
+                "lintgate.hooks.arbitration.arbitrate_output",
                 return_value={"systemMessage": "all good"},
             ) as mock_arbitrate,
             patch(
-                "lintgate.hook_posttooluse.log_metric",
+                "lintgate.hooks.posttooluse.log_metric",
             ),
             patch("builtins.print"),
             patch("sys.exit"),
@@ -468,12 +468,12 @@ class TestRunControlplane:
 
         with (
             patch(
-                "lintgate.hook_posttooluse.classify_change",
+                "lintgate.hooks.posttooluse.classify_change",
                 return_value=mock_classification,
             ),
-            patch("lintgate.hook_habit.record_behavior_event"),
-            patch("lintgate.hook_habit.record_habit_event_lightweight"),
-            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.hooks.habit.record_behavior_event"),
+            patch("lintgate.hooks.habit.record_habit_event_lightweight"),
+            patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
             patch("builtins.print"),
             patch("sys.exit", side_effect=SystemExit(0)),
             contextlib.suppress(SystemExit),

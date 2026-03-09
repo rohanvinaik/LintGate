@@ -108,7 +108,8 @@ def _check_unlabeled_issues(issues_list: list[dict]) -> list[dict[str, Any]]:
 
 
 def _check_milestones(
-    repo_full: str, issue_count: int,
+    repo_full: str,
+    issue_count: int,
 ) -> list[dict[str, Any]]:
     """ORG005: No milestones when >10 open issues."""
     if issue_count <= 10:
@@ -151,7 +152,8 @@ def _check_wiki_enabled(repo_full: str) -> list[dict[str, Any]]:
 
 
 def _check_issues_missing_priority(
-    issues_list: list[dict], label_names: list[str],
+    issues_list: list[dict],
+    label_names: list[str],
 ) -> list[dict[str, Any]]:
     """ORG007: Issues missing priority labels."""
     priority_labels = [n for n in label_names if re.match(r"^P[0-3]$", n)]
@@ -192,9 +194,16 @@ def _fetch_issues(repo_full: str) -> list[dict]:
     """Fetch open issues (number + labels) from GitHub."""
     issues_result = _run_gh(
         [
-            "issue", "list", "--repo", repo_full,
-            "--json", "number,labels",
-            "--state", "open", "--limit", "500",
+            "issue",
+            "list",
+            "--repo",
+            repo_full,
+            "--json",
+            "number,labels",
+            "--state",
+            "open",
+            "--limit",
+            "500",
         ],
     )
     return _parse_issues_list(issues_result)
@@ -204,7 +213,9 @@ def _fetch_issues(repo_full: str) -> list[dict]:
 
 
 def _plan_missing_labels(
-    existing: list[str], repo_full: str, write: bool,
+    existing: list[str],
+    repo_full: str,
+    write: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return (planned, applied) for priority + type labels."""
     planned: list[dict[str, Any]] = []

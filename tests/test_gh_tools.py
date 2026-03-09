@@ -35,9 +35,7 @@ from mcp_tools.gh_tools import register
 class TestRunGh:
     @patch("mcp_tools._gh_helpers.subprocess.run")
     def test_success_json(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout='{"key": "value"}', stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout='{"key": "value"}', stderr="")
         result = _run_gh(["api", "repos/owner/repo"])
         assert result == {"key": "value"}
         mock_run.assert_called_once()
@@ -53,17 +51,13 @@ class TestRunGh:
 
     @patch("mcp_tools._gh_helpers.subprocess.run")
     def test_success_non_json_stdout(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="plain text output", stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="plain text output", stderr="")
         result = _run_gh(["api", "test"])
         assert result == {"raw": "plain text output"}
 
     @patch("mcp_tools._gh_helpers.subprocess.run")
     def test_nonzero_returncode_stderr(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="some error"
-        )
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="some error")
         result = _run_gh(["api", "test"])
         assert result == {"error": "some error"}
 
@@ -201,23 +195,13 @@ class TestRenderTheoryWikiPage:
         assert "- claim two" in result
 
     def test_facets_with_dict_claims(self):
-        theory = {
-            "facets": {
-                "problem_solving": {
-                    "claims": [{"text": "solve via X"}]
-                }
-            }
-        }
+        theory = {"facets": {"problem_solving": {"claims": [{"text": "solve via X"}]}}}
         result = _render_theory_wiki_page(theory)
         assert "## Problem Solving" in result
         assert "- solve via X" in result
 
     def test_facets_with_string_claims(self):
-        theory = {
-            "facets": {
-                "alignment": ["align to quality", "align to speed"]
-            }
-        }
+        theory = {"facets": {"alignment": ["align to quality", "align to speed"]}}
         result = _render_theory_wiki_page(theory)
         assert "- align to quality" in result
         assert "- align to speed" in result
@@ -400,9 +384,7 @@ class TestImplProjectOrganizeApply:
 
     @patch("mcp_tools._gh_organize_impl._repo_full_name", return_value="")
     def test_no_repo_returns_error(self, mock_repo, tmp_path):
-        result = _impl_project_organize_apply(
-            str(tmp_path), None, False, self._make_helpers()
-        )
+        result = _impl_project_organize_apply(str(tmp_path), None, False, self._make_helpers())
         assert result == {"error": "Could not detect GitHub remote."}
 
     @patch("mcp_tools._gh_organize_impl._run_gh")
@@ -420,9 +402,7 @@ class TestImplProjectOrganizeApply:
     @patch("mcp_tools._gh_organize_impl._repo_full_name", return_value="owner/repo")
     def test_write_applies_labels(self, mock_repo, mock_gh, tmp_path):
         mock_gh.return_value = []  # no existing labels, then mock create calls
-        result = _impl_project_organize_apply(
-            str(tmp_path), ["labels"], True, self._make_helpers()
-        )
+        result = _impl_project_organize_apply(str(tmp_path), ["labels"], True, self._make_helpers())
         assert result["write"] is True
         assert result["applied_actions"] > 0
 
@@ -448,9 +428,7 @@ class TestImplProjectWikiSync:
 
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="")
     def test_no_repo_returns_error(self, mock_repo, tmp_path):
-        result = _impl_project_wiki_sync(
-            str(tmp_path), "theory", False, self._make_helpers()
-        )
+        result = _impl_project_wiki_sync(str(tmp_path), "theory", False, self._make_helpers())
         assert result == {"error": "Could not detect GitHub remote."}
 
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="owner/repo")
@@ -460,18 +438,14 @@ class TestImplProjectWikiSync:
             patch("lintgate.theory_extractor.extract_theory", return_value={}),
         ):
             mock_render.return_value = "# Theory\ntest"
-            result = _impl_project_wiki_sync(
-                str(tmp_path), "theory", False, self._make_helpers()
-            )
+            result = _impl_project_wiki_sync(str(tmp_path), "theory", False, self._make_helpers())
         assert result["write"] is False
         assert "Theory-Profile" in result["page_names"]
         assert result["pages_generated"] >= 1
 
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="owner/repo")
     def test_dry_run_compass_no_file(self, mock_repo, tmp_path):
-        result = _impl_project_wiki_sync(
-            str(tmp_path), "compass", False, self._make_helpers()
-        )
+        result = _impl_project_wiki_sync(str(tmp_path), "compass", False, self._make_helpers())
         assert result["write"] is False
         assert "Theory-Compass" in result["page_names"]
 
@@ -485,9 +459,7 @@ class TestImplProjectWikiRead:
 
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="")
     def test_no_repo_returns_error(self, mock_repo, tmp_path):
-        result = _impl_project_wiki_read(
-            str(tmp_path), "Home", self._make_helpers()
-        )
+        result = _impl_project_wiki_read(str(tmp_path), "Home", self._make_helpers())
         assert result == {"error": "Could not detect GitHub remote."}
 
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="owner/repo")
@@ -495,9 +467,7 @@ class TestImplProjectWikiRead:
         wiki_dir = tmp_path / ".lintgate" / "wiki"
         wiki_dir.mkdir(parents=True)
         (wiki_dir / "Home.md").write_text("# Home\nWelcome")
-        result = _impl_project_wiki_read(
-            str(tmp_path), "Home", self._make_helpers()
-        )
+        result = _impl_project_wiki_read(str(tmp_path), "Home", self._make_helpers())
         assert result["source"] == "local"
         assert result["content"] == "# Home\nWelcome"
         assert result["page"] == "Home"
@@ -506,9 +476,7 @@ class TestImplProjectWikiRead:
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="owner/repo")
     def test_clone_error_returns_error(self, mock_repo, mock_clone, tmp_path):
         mock_clone.return_value = {"error": "Clone failed"}
-        result = _impl_project_wiki_read(
-            str(tmp_path), "Home", self._make_helpers()
-        )
+        result = _impl_project_wiki_read(str(tmp_path), "Home", self._make_helpers())
         assert "error" in result
         assert "Clone failed" in result["error"]
 

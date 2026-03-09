@@ -285,7 +285,7 @@ def load_manifest(project_root: str) -> WikiManifest | None:
     if isinstance(raw_rails, dict):
         for rail_id, rail_data in raw_rails.items():
             if isinstance(rail_data, dict):
-                rail_names[rail_id] = rail_data.get("name", rail_id)
+                rail_names[rail_id] = str(rail_data.get("name", rail_id))
             elif isinstance(rail_data, str):
                 rail_names[rail_id] = rail_data
 

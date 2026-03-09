@@ -25,7 +25,7 @@ class PolicyGrammar:
 
 
 # Known constraint families with their compile functions
-_CONSTRAINT_COMPILERS: dict[str, Callable[..., dict[str, str] | None]] = {}
+_CONSTRAINT_COMPILERS: list[Callable[..., dict[str, str] | None]] = []
 
 
 def _compile_dangerous_command_constraint(constraint: str) -> dict[str, str] | None:
@@ -232,7 +232,7 @@ def compile_policy_grammar(
         compiled = None
 
         # Try each compiler in priority order
-        for compiler in _CONSTRAINT_COMPILERS.values():
+        for compiler in _CONSTRAINT_COMPILERS:
             compiled = compiler(constraint)
             if compiled is not None:
                 break

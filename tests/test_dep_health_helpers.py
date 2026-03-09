@@ -42,9 +42,7 @@ def test_to_dict_with_suggestion():
 
 
 def test_to_dict_with_evidence():
-    hc = HealthCheck(
-        name="check3", status="error", message="bad", evidence={"lockfile": "uv.lock"}
-    )
+    hc = HealthCheck(name="check3", status="error", message="bad", evidence={"lockfile": "uv.lock"})
     d = hc.to_dict()
     assert d["evidence"] == {"lockfile": "uv.lock"}
     assert "suggestion" not in d

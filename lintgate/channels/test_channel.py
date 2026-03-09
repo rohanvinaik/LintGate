@@ -145,8 +145,14 @@ class TestChannel:
         try:
             # Step 4: Run selected tests (impacted or fallback)
             test_result, remaining_ms = _run_selected_tests(
-                tests_to_run, project_root, cov_cfg, event.surface,
-                config, self.timeout_ms, start, findings,
+                tests_to_run,
+                project_root,
+                cov_cfg,
+                event.surface,
+                config,
+                self.timeout_ms,
+                start,
+                findings,
             )
 
             # Step 5: Check coverage threshold
@@ -159,7 +165,10 @@ class TestChannel:
 
             # Evaluate coverage context for downstream gates
             cov_eval = _evaluate_coverage_context(
-                tests_to_run, impacted_tests, test_result, cov_cfg,
+                tests_to_run,
+                impacted_tests,
+                test_result,
+                cov_cfg,
             )
 
             # Step 5b: Contract drift detection (#184)

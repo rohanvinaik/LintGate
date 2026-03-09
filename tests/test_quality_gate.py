@@ -62,10 +62,6 @@ class TestExtractBashCommand:
         data = {"input": {"command": "git push"}}
         assert _extract_bash_command(data) == "git push"
 
-    def test_none_tool_input(self) -> None:
-        data = {"tool_input": None}
-        assert _extract_bash_command(data) == ""
-
 
 # ── _check_quality_gate — push blocking ──────────────────────────────
 

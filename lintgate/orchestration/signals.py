@@ -33,7 +33,7 @@ class SignalExtractor:
     """Universal parser for extracting structured signals from raw text or JSON."""
 
     def __init__(self):
-        self._regex_cache = {}
+        self._regex_cache: dict[str, re.Pattern[str]] = {}
 
     def extract(self, raw_input: Any, channel_type: str = "generic") -> list[ExtractedSignal]:
         """Extract signals from raw input."""

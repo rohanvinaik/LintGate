@@ -52,7 +52,7 @@ def test_readonly_cat():
 
 
 def test_readonly_not_string():
-    assert _is_readonly_bash(123) is False
+    assert _is_readonly_bash(123) is False  # type: ignore[arg-type]  # intentional wrong-type test
 
 
 def test_readonly_empty():

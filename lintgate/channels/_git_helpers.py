@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from pathlib import Path
+
+from lintgate.subprocess_utils import run_cmd
 
 
 def _is_git_repo(project_root: str) -> bool:
@@ -17,78 +18,41 @@ def _is_git_repo(project_root: str) -> bool:
     if git_dir.exists():
         return True
     # Check parent directories
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            cwd=project_root,
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, OSError):
-        return False
+    return run_cmd(["git", "rev-parse", "--git-dir"], cwd=project_root, timeout=2) is not None
 
 
 def _collect_branch_name(project_root: str) -> str:
     """Get current git branch name. Returns empty string on failure."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            cwd=project_root,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    result = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=project_root, timeout=2)
+    if result is not None:
+        return result.stdout.strip()
     return ""
 
 
 def _collect_file_status(project_root: str) -> tuple[list[str], list[str]]:
     """Parse git status --porcelain into (modified, untracked) file lists."""
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode == 0:
-            modified: list[str] = []
-            untracked: list[str] = []
-            for line in result.stdout.splitlines():
-                if len(line) < 4:
-                    continue
-                status = line[:2]
-                filepath = line[3:].strip().strip('"')
-                if status == "??":
-                    untracked.append(filepath)
-                else:
-                    modified.append(filepath)
-            return modified, untracked
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    result = run_cmd(["git", "status", "--porcelain"], cwd=project_root, timeout=3)
+    if result is not None:
+        modified: list[str] = []
+        untracked: list[str] = []
+        for line in result.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            status = line[:2]
+            filepath = line[3:].strip().strip('"')
+            if status == "??":
+                untracked.append(filepath)
+            else:
+                modified.append(filepath)
+        return modified, untracked
     return [], []
 
 
 def _collect_loc_delta(project_root: str) -> tuple[int, int]:
     """Get uncommitted insertions and deletions from git diff --stat HEAD."""
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--stat", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            cwd=project_root,
-        )
-        if result.returncode == 0:
-            return _parse_diff_stat_totals(result.stdout)
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    result = run_cmd(["git", "diff", "--stat", "HEAD"], cwd=project_root, timeout=3)
+    if result is not None:
+        return _parse_diff_stat_totals(result.stdout)
     return 0, 0
 
 

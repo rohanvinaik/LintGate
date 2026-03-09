@@ -13,6 +13,7 @@ from .host_adapter import WINDSURF_CAPABILITIES, HostCapabilities
 
 if TYPE_CHECKING:
     from ..compass import CompassState
+    from ..runtime_state import RuntimeState
 
 _SESSION_PATH = ".windsurf/rules/lg_session.md"
 _FOCUS_PATH = ".windsurf/rules/lg_focus.md"
@@ -66,11 +67,11 @@ class WindsurfRenderer:
 
     # ── Dynamic rule files ───────────────────────────────────────────
 
-    def render_session(self, runtime: object) -> dict[str, str]:
+    def render_session(self, runtime: RuntimeState) -> dict[str, str]:
         """Render dynamic session state to .windsurf/rules/lg_session.md."""
         return {_SESSION_PATH: render_session_content(runtime)}
 
-    def render_focus(self, runtime: object) -> dict[str, str]:
+    def render_focus(self, runtime: RuntimeState) -> dict[str, str]:
         """Render dynamic focus state to .windsurf/rules/lg_focus.md."""
         return {_FOCUS_PATH: render_focus_content(runtime)}
 

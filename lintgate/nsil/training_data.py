@@ -55,7 +55,8 @@ def _parse_json_safely(content: str) -> dict[str, Any] | None:
     import json
 
     try:
-        return json.loads(content)
+        result: dict[str, Any] | None = json.loads(content)
+        return result
     except (json.JSONDecodeError, ValueError):
         return None
 

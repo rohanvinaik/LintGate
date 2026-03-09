@@ -1,6 +1,6 @@
 """Lint-level delta computation — shows finding changes between consecutive runs.
 
-Reuses the stable fingerprinting from controlplane.reporter_delta but operates
+Reuses the stable fingerprinting from controlplane.reporter.delta but operates
 on AggregatedResult (lint pipeline output) rather than MeshResult (controlplane).
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from lintgate.controlplane.reporter_delta import (
+from lintgate.controlplane.reporter.delta import (
     compute_finding_delta,
     compute_finding_fingerprint,
 )

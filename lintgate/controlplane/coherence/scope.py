@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .types import CoherenceResult
+from ..types import CoherenceResult
 
 if TYPE_CHECKING:
-    from .types import ChannelResult
+    from ..types import ChannelResult
 
 
 # Security-critical rule IDs — ambient findings with these never downgrade to stable

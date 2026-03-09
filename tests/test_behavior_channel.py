@@ -1430,8 +1430,13 @@ class TestNudgeOutcomeTracking:
         result = ch.execute(_make_event(compass), _default_config())
 
         delta = result.metrics.get("behavior_compass_delta", {})
-        # pending_nudge_signals should be non-empty if any signal produced a nudge
-        assert isinstance(delta.get("pending_nudge_signals"), list)
+        nudge_signals = delta.get("pending_nudge_signals")
+        assert isinstance(nudge_signals, list)
+        # With 3 consecutive failures the consecutive_failures signal should fire
+        assert len(nudge_signals) >= 1
+        # Each recorded signal must be a non-empty string
+        for sig in nudge_signals:
+            assert isinstance(sig, str) and len(sig) > 0
 
     def test_nudge_outcomes_accepted_when_precheck_used(self):
         """Previously pending nudges are marked 'accepted' when precheck_count > 0."""
@@ -1719,8 +1724,19 @@ class TestLoadExecuteConfig:
         )
         # Default config: theory_grounded_signals is False
         config = _default_config()
+        assert config.inquiry.theory_grounded_signals is False
         _, _, _, theory_profile, _ = _load_execute_config(event, config)
         assert theory_profile is None
+
+        # Contrast: when theory_grounded_signals is True, profile IS loaded
+        from lintgate.controlplane.types import InquiryConfig
+
+        config_enabled = ControlPlaneConfig(
+            enabled=True,
+            inquiry=InquiryConfig(theory_grounded_signals=True),
+        )
+        _, _, _, theory_profile_enabled, _ = _load_execute_config(event, config_enabled)
+        assert theory_profile_enabled == {"claims": []}
 
     def test_recent_codas_from_compass_data(self):
         """recent_codas extracted from compass _theory_recent_codas."""

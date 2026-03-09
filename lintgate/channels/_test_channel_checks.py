@@ -128,11 +128,7 @@ def _evaluate_coverage_context(
         coverage_pct = test_result.coverage_pct
 
     coverage_ok = True
-    if (
-        cov_cfg["measure"]
-        and coverage_pct is not None
-        and cov_cfg.get("threshold") is not None
-    ):
+    if cov_cfg["measure"] and coverage_pct is not None and cov_cfg.get("threshold") is not None:
         coverage_ok = coverage_pct >= float(cov_cfg["threshold"])
 
     return CoverageEvaluation(
@@ -467,7 +463,11 @@ def _check_contract_drift(
 
     for source_file in source_files:
         _check_single_file_contract_drift(
-            source_file, project_root, test_files, analyze_contract_drift, findings,
+            source_file,
+            project_root,
+            test_files,
+            analyze_contract_drift,
+            findings,
         )
 
 

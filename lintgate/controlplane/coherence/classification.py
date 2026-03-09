@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .coherence_scoring import (
+from ..types import CoherenceResult
+from .scoring import (
     channel_finding_summary,
     effective_failure_count,
     find_shared_files,
     is_cross_domain_failure,
     ordered_failed_channels,
 )
-from .types import CoherenceResult
 
 if TYPE_CHECKING:
-    from .types import ChannelResult
+    from ..types import ChannelResult
 
 
 def classify_isolated_failure(

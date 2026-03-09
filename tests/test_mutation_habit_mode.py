@@ -408,6 +408,7 @@ class TestSaveHabitStateStandaloneExact:
         save_habit_state_standalone("/proj", state, [], tracker_dict=tracker)
 
         from lintgate.habit_mode import load_standalone_extras
+
         extras = load_standalone_extras("/proj")
         assert extras["token_tracker"]["estimated_tokens_used"] == 5000
         assert extras["token_tracker"]["tool_call_count"] == 42
@@ -419,6 +420,7 @@ class TestSaveHabitStateStandaloneExact:
         save_habit_state_standalone("/proj", state, [], config_overrides=overrides)
 
         from lintgate.habit_mode import load_standalone_extras
+
         extras = load_standalone_extras("/proj")
         assert extras["config_overrides"]["enter_score"] == 0.8
         assert extras["config_overrides"]["exit_score"] == 0.3
@@ -430,6 +432,7 @@ class TestSaveHabitStateStandaloneExact:
         save_habit_state_standalone("/proj", state, [], last_snapshot=snapshot)
 
         from lintgate.habit_mode import load_standalone_extras
+
         extras = load_standalone_extras("/proj")
         assert extras["habit_last_snapshot"]["mode"]["active"] is True
         assert extras["habit_last_snapshot"]["focus_directive"] == "test focus"
@@ -441,6 +444,7 @@ class TestSaveHabitStateStandaloneExact:
         save_habit_state_standalone("/proj", state, [], scheduler_dict=scheduler)
 
         from lintgate.habit_mode import load_standalone_extras
+
         extras = load_standalone_extras("/proj")
         assert extras["write_scheduler"]["pending_writes"] == 3
         assert extras["write_scheduler"]["batch_size"] == 10
@@ -452,6 +456,7 @@ class TestSaveHabitStateStandaloneExact:
         save_habit_state_standalone("/proj", state, [], signal_fire_counts=counts)
 
         from lintgate.habit_mode import load_standalone_extras
+
         extras = load_standalone_extras("/proj")
         assert extras["signal_fire_counts"]["approach_cycle"] == 5
         assert extras["signal_fire_counts"]["verification_debt"] == 2
@@ -459,6 +464,7 @@ class TestSaveHabitStateStandaloneExact:
     def test_action_ring_capped_at_max(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         from lintgate.habit_mode import MAX_ACTION_RING
+
         state = HabitModeState()
         ring = [{"tool": f"T{i}", "ts": float(i), "intent": "x"} for i in range(50)]
         save_habit_state_standalone("/proj", state, ring)
@@ -483,15 +489,12 @@ class TestSaveHabitStateStandaloneExact:
         monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState()
         # First save with tracker
-        save_habit_state_standalone(
-            "/proj", state, [], tracker_dict={"tokens": 100}
-        )
+        save_habit_state_standalone("/proj", state, [], tracker_dict={"tokens": 100})
         # Second save without tracker but with config
-        save_habit_state_standalone(
-            "/proj", state, [], config_overrides={"enter_score": 0.9}
-        )
+        save_habit_state_standalone("/proj", state, [], config_overrides={"enter_score": 0.9})
 
         from lintgate.habit_mode import load_standalone_extras
+
         extras = load_standalone_extras("/proj")
         # Both should be present — merge preserves existing
         assert extras["token_tracker"]["tokens"] == 100

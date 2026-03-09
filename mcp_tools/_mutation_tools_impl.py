@@ -59,7 +59,12 @@ def impl_run_sampling(
         func_node,
         function,
         lambda node, key, cats, tests, orig: run_function_sampling(
-            node, key, cats, tests, orig, budget_ms=budget_ms,
+            node,
+            key,
+            cats,
+            tests,
+            orig,
+            budget_ms=budget_ms,
         ),
         filter_categories,
         canonical_function_key,
@@ -74,16 +79,18 @@ def impl_run_sampling(
             reason="Run exhaustive profiling for deeper analysis",
         )
     ]
-    return str(helpers["_json_dumps"](
-        {
-            "file": file,
-            "functions_sampled": len(results),
-            "tests_discovered": len(ctx.test_files),
-            "results": results,
-            "next_actions": serialize_next_actions(next_actions),
-        },
-        output_mode="compact",
-    ))
+    return str(
+        helpers["_json_dumps"](
+            {
+                "file": file,
+                "functions_sampled": len(results),
+                "tests_discovered": len(ctx.test_files),
+                "results": results,
+                "next_actions": serialize_next_actions(next_actions),
+            },
+            output_mode="compact",
+        )
+    )
 
 
 def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> str:
@@ -102,7 +109,11 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         func_node,
         function,
         lambda node, key, cats, tests, orig: run_function_profiling(
-            node, key, cats, tests, orig,
+            node,
+            key,
+            cats,
+            tests,
+            orig,
         ),
         filter_categories,
         canonical_function_key,
@@ -124,41 +135,47 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
             reason="View current mutation state",
         ),
     ]
-    return str(helpers["_json_dumps"](
-        {
-            "file": file,
-            "functions_profiled": len(results),
-            "tests_discovered": len(ctx.test_files),
-            "results": results,
-            "analysis": analysis,
-            "next_actions": serialize_next_actions(next_actions),
-        },
-        output_mode="compact",
-    ))
+    return str(
+        helpers["_json_dumps"](
+            {
+                "file": file,
+                "functions_profiled": len(results),
+                "tests_discovered": len(ctx.test_files),
+                "results": results,
+                "analysis": analysis,
+                "next_actions": serialize_next_actions(next_actions),
+            },
+            output_mode="compact",
+        )
+    )
 
 
 def impl_get_state(helpers: Any, path: str, file: str | None, function: str | None) -> str:
     project_root = helpers["_validate_project_root"](path)
     cache_dir = get_cache_dir(project_root)
     if not cache_dir.exists():
-        return str(helpers["_json_dumps"](
-            {
-                "note": "No mutation data yet",
-                "next_actions": serialize_next_actions(
-                    [
-                        NextAction(
-                            tool="mutation_run_sampling",
-                            args={"path": path, "file": file or "<file>"},
-                            reason="Run sampling first",
-                        ),
-                    ]
-                ),
-            }
-        ))
+        return str(
+            helpers["_json_dumps"](
+                {
+                    "note": "No mutation data yet",
+                    "next_actions": serialize_next_actions(
+                        [
+                            NextAction(
+                                tool="mutation_run_sampling",
+                                args={"path": path, "file": file or "<file>"},
+                                reason="Run sampling first",
+                            ),
+                        ]
+                    ),
+                }
+            )
+        )
     states = iter_cached_states(cache_dir, file, function)
-    return str(helpers["_json_dumps"](
-        {"total_functions": len(states), "states": states}, output_mode="compact"
-    ))
+    return str(
+        helpers["_json_dumps"](
+            {"total_functions": len(states), "states": states}, output_mode="compact"
+        )
+    )
 
 
 def impl_prescribe(helpers: Any, path: str, file: str | None, function: str | None) -> str:
@@ -180,14 +197,16 @@ def impl_prescribe(helpers: Any, path: str, file: str | None, function: str | No
                 reason="Generate test skeletons for surviving categories",
             ),
         ]
-    return str(helpers["_json_dumps"](
-        {
-            "total_prescriptions": len(prescriptions),
-            "prescriptions": prescriptions,
-            "next_actions": serialize_next_actions(next_actions),
-        },
-        output_mode="compact",
-    ))
+    return str(
+        helpers["_json_dumps"](
+            {
+                "total_prescriptions": len(prescriptions),
+                "prescriptions": prescriptions,
+                "next_actions": serialize_next_actions(next_actions),
+            },
+            output_mode="compact",
+        )
+    )
 
 
 def _collect_prescriptions(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -226,9 +245,9 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
                     "recommendation": "Consider decomposition — multiple surviving categories",
                 }
             )
-    return str(helpers["_json_dumps"](
-        {"mode": mode, "candidates": candidates}, output_mode="compact"
-    ))
+    return str(
+        helpers["_json_dumps"]({"mode": mode, "candidates": candidates}, output_mode="compact")
+    )
 
 
 def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None) -> str:
@@ -253,14 +272,16 @@ def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None)
             reason="Check if specification level now meets optimization hint thresholds",
         ),
     ]
-    return str(helpers["_json_dumps"](
-        {
-            "file": file,
-            "results": results,
-            "next_actions": serialize_next_actions(next_actions),
-        },
-        output_mode="compact",
-    ))
+    return str(
+        helpers["_json_dumps"](
+            {
+                "file": file,
+                "results": results,
+                "next_actions": serialize_next_actions(next_actions),
+            },
+            output_mode="compact",
+        )
+    )
 
 
 def _resolve_refactor_targets(
@@ -334,13 +355,15 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
                 condition="after implementing the test skeletons",
             ),
         ]
-    return str(helpers["_json_dumps"](
-        {
-            "skeletons": skeletons,
-            "next_actions": serialize_next_actions(next_actions),
-        },
-        output_mode="compact",
-    ))
+    return str(
+        helpers["_json_dumps"](
+            {
+                "skeletons": skeletons,
+                "next_actions": serialize_next_actions(next_actions),
+            },
+            output_mode="compact",
+        )
+    )
 
 
 def impl_clear_state(helpers: Any, path: str, file: str | None) -> str:

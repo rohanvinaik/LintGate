@@ -265,7 +265,9 @@ def test_filter_to_source_packages_skips_unrelatable_paths() -> None:
 
 def test_filter_to_source_packages_value_error(tmp_path: Path) -> None:
     files = ["/some/file.py", str(tmp_path / "lintgate" / "ok.py")]
-    with patch("lintgate.channels._test_channel_symbol_gate.os.path.relpath", side_effect=ValueError):
+    with patch(
+        "lintgate.channels._test_channel_symbol_gate.os.path.relpath", side_effect=ValueError
+    ):
         result = _filter_to_source_packages(files, ["lintgate"], str(tmp_path))
     assert result == []
 

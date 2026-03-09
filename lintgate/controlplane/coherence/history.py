@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .session_memory import SessionMemory
-    from .types import ChannelResult
+    from ..session_memory import SessionMemory
+    from ..types import ChannelResult
 
 
 _STATE_SEVERITY = {

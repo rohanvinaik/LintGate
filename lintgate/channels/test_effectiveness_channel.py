@@ -433,7 +433,7 @@ def _teff007_complex_weak_tests(
 ) -> list[LintIssue]:
     """TEFF007 — Complex function with weak tests (cross-channel with radon)."""
     try:
-        from radon.complexity import cc_visit
+        from radon.complexity import cc_visit  # type: ignore[import-untyped]
     except ImportError:
         return []
 

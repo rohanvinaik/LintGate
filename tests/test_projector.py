@@ -376,22 +376,28 @@ class TestProjectedOpportunityToDictExactValues:
 
     def test_to_dict_confidence_rounds_to_3_decimals(self):
         opp = ProjectedOpportunity(
-            function_id="f", opportunity="cacheable",
-            confidence=0.9999, precondition="p",
+            function_id="f",
+            opportunity="cacheable",
+            confidence=0.9999,
+            precondition="p",
         )
         assert opp.to_dict()["confidence"] == 1.0
 
     def test_to_dict_confidence_rounds_down(self):
         opp = ProjectedOpportunity(
-            function_id="f", opportunity="cacheable",
-            confidence=0.1234, precondition="p",
+            function_id="f",
+            opportunity="cacheable",
+            confidence=0.1234,
+            precondition="p",
         )
         assert opp.to_dict()["confidence"] == 0.123
 
     def test_to_dict_empty_evidence(self):
         opp = ProjectedOpportunity(
-            function_id="f", opportunity="jit_candidate",
-            confidence=0.5, precondition="pre",
+            function_id="f",
+            opportunity="jit_candidate",
+            confidence=0.5,
+            precondition="pre",
         )
         d = opp.to_dict()
         assert d["evidence"] == []
@@ -401,13 +407,19 @@ class TestProjectedOpportunityToDictExactValues:
 
     def test_to_dict_keys_exactly_five(self):
         opp = ProjectedOpportunity(
-            function_id="a", opportunity="b",
-            confidence=0.1, precondition="c",
+            function_id="a",
+            opportunity="b",
+            confidence=0.1,
+            precondition="c",
             evidence=["d"],
         )
         d = opp.to_dict()
         assert set(d.keys()) == {
-            "function_id", "opportunity", "confidence", "precondition", "evidence",
+            "function_id",
+            "opportunity",
+            "confidence",
+            "precondition",
+            "evidence",
         }
 
 

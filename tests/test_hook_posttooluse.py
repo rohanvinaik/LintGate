@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from lintgate.controlplane.model_profiles import ModelProfile, ModelProfileStore
+from lintgate.controlplane.model.profiles import ModelProfile, ModelProfileStore
 from lintgate.hook_posttooluse import (
     _can_apply_session_telemetry,
     _mark_session_telemetry_applied,
@@ -209,10 +209,10 @@ class TestRunControlplane:
         mock_cp_config.channel_enabled.return_value = False
 
         with (
-            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
-            patch("lintgate.hook_habit.record_behavior_event"),
-            patch("lintgate.hook_habit.record_habit_event_lightweight"),
-            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.hooks.posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hooks.habit.record_behavior_event"),
+            patch("lintgate.hooks.habit.record_habit_event_lightweight"),
+            patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
             pytest.raises(SystemExit) as exc,
         ):
             _run_controlplane(
@@ -262,27 +262,27 @@ class TestRunControlplane:
         monkeypatch.setattr(sys, "stdout", stdout_capture)
 
         with (
-            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
-            patch("lintgate.hook_habit.record_behavior_event"),
-            patch("lintgate.hook_habit.record_habit_event_lightweight"),
-            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.hooks.posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hooks.habit.record_behavior_event"),
+            patch("lintgate.hooks.habit.record_habit_event_lightweight"),
+            patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
             patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
             patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             patch(
-                "lintgate.hook_controlplane.extract_finding_indexes",
+                "lintgate.hooks.controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
             ),
             patch(
-                "lintgate.hook_controlplane.setup_session_and_gate",
+                "lintgate.hooks.controlplane.setup_session_and_gate",
                 return_value=(mock_session, None),
             ),
-            patch("lintgate.hook_controlplane.post_process_session", return_value=[]),
-            patch("lintgate.hook_controlplane.save_run_details"),
+            patch("lintgate.hooks.controlplane.post_process_session", return_value=[]),
+            patch("lintgate.hooks.controlplane.save_run_details"),
             patch("lintgate.controlplane.reporter.format_mesh_report", return_value={}),
-            patch("lintgate.hook_controlplane.accumulate_session_telemetry"),
-            patch("lintgate.hook_controlplane.refresh_runtime_after_run"),
-            patch("lintgate.hook_arbitration.arbitrate_output", return_value={}),
-            patch("lintgate.hook_posttooluse.log_metric"),
+            patch("lintgate.hooks.controlplane.accumulate_session_telemetry"),
+            patch("lintgate.hooks.controlplane.refresh_runtime_after_run"),
+            patch("lintgate.hooks.arbitration.arbitrate_output", return_value={}),
+            patch("lintgate.hooks.posttooluse.log_metric"),
             pytest.raises(SystemExit) as exc,
         ):
             _run_controlplane(
@@ -337,33 +337,33 @@ class TestRunControlplane:
         monkeypatch.setattr(sys, "stdout", stdout_capture)
 
         with (
-            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
-            patch("lintgate.hook_habit.record_behavior_event"),
-            patch("lintgate.hook_habit.record_habit_event_lightweight"),
-            patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
+            patch("lintgate.hooks.posttooluse.classify_change", return_value=classification),
+            patch("lintgate.hooks.habit.record_behavior_event"),
+            patch("lintgate.hooks.habit.record_habit_event_lightweight"),
+            patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
             patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
             patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             patch(
-                "lintgate.hook_controlplane.extract_finding_indexes",
+                "lintgate.hooks.controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
             ),
             patch(
-                "lintgate.hook_controlplane.setup_session_and_gate",
+                "lintgate.hooks.controlplane.setup_session_and_gate",
                 return_value=(mock_session, advisory_msg),
             ),
-            patch("lintgate.hook_controlplane.post_process_session", return_value=[]),
-            patch("lintgate.hook_controlplane.save_run_details"),
+            patch("lintgate.hooks.controlplane.post_process_session", return_value=[]),
+            patch("lintgate.hooks.controlplane.save_run_details"),
             patch(
                 "lintgate.controlplane.reporter.format_mesh_report",
                 return_value={"systemMessage": "lint report"},
             ),
-            patch("lintgate.hook_controlplane.accumulate_session_telemetry"),
-            patch("lintgate.hook_controlplane.refresh_runtime_after_run"),
+            patch("lintgate.hooks.controlplane.accumulate_session_telemetry"),
+            patch("lintgate.hooks.controlplane.refresh_runtime_after_run"),
             patch(
-                "lintgate.hook_arbitration.arbitrate_output",
+                "lintgate.hooks.arbitration.arbitrate_output",
                 side_effect=lambda r, *a, **kw: r,
             ),
-            patch("lintgate.hook_posttooluse.log_metric"),
+            patch("lintgate.hooks.posttooluse.log_metric"),
             pytest.raises(SystemExit) as exc,
         ):
             _run_controlplane(

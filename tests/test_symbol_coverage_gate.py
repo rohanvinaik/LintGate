@@ -374,7 +374,9 @@ class TestTestChannelIntegration:
         channel = TestChannel()
         with (
             patch("lintgate.channels.test_channel.find_impacted_tests", return_value=[]),
-            patch("lintgate.channels._test_channel_runner.run_tests", return_value=fake_result) as mock_run,
+            patch(
+                "lintgate.channels._test_channel_runner.run_tests", return_value=fake_result
+            ) as mock_run,
             patch(
                 "lintgate.channels.symbol_coverage.run_symbol_coverage_gate",
                 return_value=gate_result,

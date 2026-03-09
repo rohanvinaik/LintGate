@@ -257,7 +257,7 @@ class TestBootstrapModelProfileIntegration:
         """Usable model profile should inject calibrated guardrails."""
         (tmp_path / "README.md").write_text("# Repo\n")
 
-        from lintgate.controlplane.model_profiles import ModelProfile
+        from lintgate.controlplane.model.profiles import ModelProfile
 
         fake_profile = ModelProfile(
             model_key="anthropic:claude-opus-4",
@@ -328,7 +328,7 @@ class TestBootstrapModelProfileIntegration:
         """Model-specific anti-patterns replace defaults in do_dont section."""
         (tmp_path / "README.md").write_text("# Repo\n")
 
-        from lintgate.controlplane.model_profiles import ModelProfile
+        from lintgate.controlplane.model.profiles import ModelProfile
 
         fake_profile = ModelProfile(
             model_key="anthropic:claude-opus-4",

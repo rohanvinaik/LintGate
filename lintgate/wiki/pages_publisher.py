@@ -19,6 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ._types import PublishedPage  # noqa: F401 — re-exported
 from .manifest import WikiManifest, load_metrics
 
 if TYPE_CHECKING:
@@ -47,16 +48,6 @@ from ._pages_publisher_render import (  # noqa: F401
 from .transforms import apply_common_transforms, make_pages_link_fn
 
 _WIKI_LINK_RE = re.compile(r"\[([^\]]+)\]\(([A-Z][A-Za-z0-9_-]+)\)")
-
-
-@dataclass
-class PublishedPage:
-    """A page written to the output directory."""
-
-    name: str
-    path: str
-    slug: str
-    html_size: int
 
 
 @dataclass

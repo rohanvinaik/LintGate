@@ -17,6 +17,7 @@ from .host_adapter import CLAUDE_CAPABILITIES, HostCapabilities
 
 if TYPE_CHECKING:
     from ..compass import CompassState
+    from ..runtime_state import RuntimeState
 
 _SESSION_PATH = ".claude/rules/lg_session.md"
 _FOCUS_PATH = ".claude/rules/lg_focus.md"
@@ -101,12 +102,12 @@ class ClaudeRenderer:
 
     # ── Dynamic rule files ───────────────────────────────────────────
 
-    def render_session(self, runtime: object) -> dict[str, str]:
+    def render_session(self, runtime: RuntimeState) -> dict[str, str]:
         """Render dynamic session state to .claude/rules/lg_session.md."""
         content = _FRONTMATTER + render_session_content(runtime)
         return {_SESSION_PATH: content}
 
-    def render_focus(self, runtime: object) -> dict[str, str]:
+    def render_focus(self, runtime: RuntimeState) -> dict[str, str]:
         """Render dynamic focus state to .claude/rules/lg_focus.md."""
         content = _FRONTMATTER + render_focus_content(runtime)
         return {_FOCUS_PATH: content}

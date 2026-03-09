@@ -1,28 +1,18 @@
-"""Behavioral drift detection rules — 12 signal detectors.
-
-Re-export facade: all detectors are split across behavior_detection_hard.py
-and behavior_detection_soft.py for module size compliance. This module
-re-exports all public names for backward compatibility.
-"""
+"""Backward-compatibility shim — canonical location: behavior/detection.py."""
 
 from __future__ import annotations
 
-# Hard signals
-from .behavior_detection_hard import (
+from .behavior.detection import (  # noqa: F401
+    INTEGRATION_PATHS,
+    INTEGRATION_VERIFY_BASH_PATTERNS,
+    INTEGRATION_VERIFY_TOOLS,
     _detect_amnesia_from_action_history,
     _detect_amnesia_from_error_memory,
     _detect_amnesia_from_hypotheses,
     detect_approach_cycling,
     detect_brute_force_escalation,
-    detect_failure_amnesia,
-)
-
-# Soft signals + trigger-only + constants
-from .behavior_detection_soft import (
-    INTEGRATION_PATHS,
-    INTEGRATION_VERIFY_BASH_PATTERNS,
-    INTEGRATION_VERIFY_TOOLS,
     detect_consecutive_failures,
+    detect_failure_amnesia,
     detect_integration_verification_debt,
     detect_mass_delegation,
     detect_premature_action,

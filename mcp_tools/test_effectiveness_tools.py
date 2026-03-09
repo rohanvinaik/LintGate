@@ -49,7 +49,9 @@ def _analyze_test_strength_impl(
     analysis_truncated = max_runtime_ms is not None and elapsed_ms > max_runtime_ms
 
     result = build_summary(manifest, project_root)
-    _apply_truncation_state(result, analysis_truncated, max_runtime_ms, elapsed_ms, source_files, test_files)
+    _apply_truncation_state(
+        result, analysis_truncated, max_runtime_ms, elapsed_ms, source_files, test_files
+    )
 
     result["calibration_stale"] = None
 
