@@ -35,7 +35,7 @@ def detect_approach_cycling(
     scorer: IntentBiasScorer,
 ) -> None:
     """Detect repeated failed approaches within a time window. Hard signal."""
-    count_threshold = thresholds.get("approach_cycling_count", 3)
+    count_threshold = max(1, thresholds.get("approach_cycling_count", 3))
     window_min = thresholds.get("approach_cycling_window_min", 30)
 
     if not compass.approaches:

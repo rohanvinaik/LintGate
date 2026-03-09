@@ -18,6 +18,8 @@ from .structure.discovery import (  # noqa: F401
     _discover_python_files,
 )
 from .structure.logic import (  # noqa: F401
+    _MIN_FILES_FOR_SIZE_ANALYSIS,
+    _STRUCTURAL_CONFIG_FILES,
     StructureSnapshotInputs,
     _build_structure_snapshot,
     _check_import_cycles,
@@ -36,6 +38,8 @@ from .structure.orphans import (  # noqa: F401
 
 __all__ = [
     "StructureChannel",
+    "_MIN_FILES_FOR_SIZE_ANALYSIS",
+    "_STRUCTURAL_CONFIG_FILES",
     "_select_cohesion_candidates",
     "_build_import_graph",
     "_build_reexport_map",

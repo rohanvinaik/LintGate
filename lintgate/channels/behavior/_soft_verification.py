@@ -203,7 +203,7 @@ def detect_integration_verification_debt(
 
     decomp = SignalSourceDecomposition(
         signal_name="integration_verification_debt",
-        pattern_score=min(1.0, edits / edit_threshold),
+        pattern_score=min(1.0, edits / max(1, edit_threshold)),
         outcome_score=0.8 if commit_with_unverified else 0.5,
     )
 
