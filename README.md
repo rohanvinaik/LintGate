@@ -19,6 +19,8 @@
 An MCP server for real-time code quality supervision.
 
 > `--dangerously-skip-permissions`, minus the danger.
+>
+> A proof-of-concept that the speed-quality tradeoff in software — one of the most robust empirical findings in the field — can be categorically broken.
 
 ---
 
@@ -60,6 +62,10 @@ The core idea comes from how good instruments work in science: multiple cheap, l
 
 ## What Happened When We Tried It
 
+Some context on baselines. A 60,000-line Python codebase typically carries a cyclomatic complexity average between 7 and 12, duplication above 3% (the industry quality gate), and a maintainability profile that degrades toward the bottom of the file list. The standard estimate for net quality code production — accounting for design, testing, debugging, and refactoring — is 50 to 200 lines per day. The upper bound for highly productive developers on well-understood problems is around 500.
+
+LintGate's codebase — 636 files, ~70,000 lines — was produced in two weeks by a non-programmer using LintGate to supervise Claude's output. The SonarQube profile: 0.2% duplication, ~4.3 average cyclomatic complexity, zero bugs, zero vulnerabilities, uniform A maintainability ratings across all files.
+
 ### Self-Audit
 
 I pointed LintGate at its own codebase and said: *"Professionalize this codebase."* Three words. What followed: 33,700 lines, 92 Python files, 3 context windows, 6 monolithic modules decomposed into clean components. Every refactoring step passed the linter and test suite on the first run.
@@ -85,7 +91,7 @@ The more interesting test: what happens on a codebase built entirely *without* L
 
 ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline. 100 Python files, ~37,500 LOC. Built through vibe-coding over a week of intensive development. Working code, passing tests, zero architectural planning.
 
-LintGate's ControlPlane diagnosed it as "systemic." What happened next took 46 minutes.
+LintGate's ControlPlane diagnosed it as "systemic." Remediation of a systemic quality profile at this scale — 132 blockers across 100 files — is typically scoped as a multi-sprint initiative. What happened next took 46 minutes.
 
 | Metric | Before | After |
 | --- | --- | --- |
@@ -107,7 +113,7 @@ It couldn't write the code — the exact-string-matching requirement for Edit to
 
 What made this possible: Flash Lite scores 34% on LiveCodeBench (code generation) but 0.84 on tool selection quality — in the same range as models 100x its size. The structured findings shifted the task from generation to interpretation. That's a task it could do.
 
-Full session data: [Self-audit](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md) · [Small model experiment](docs/retrospectives/lintgate-2026-02-23-tier2-refactoring-debugging.md) · [Agent retrospectives](docs/retrospectives/)
+Full session data: [Self-audit](docs/retrospectives/Archive/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge](docs/retrospectives/Archive/shortcutforge-2026-02-20-tier2-audit.md) · [Small model experiment](docs/retrospectives/Archive/lintgate-2026-02-23-tier2-refactoring-debugging.md) · [Agent retrospectives](docs/retrospectives/)
 
 ---
 
@@ -176,7 +182,7 @@ During sustained execution — bulk editing, test marathons, refactoring sweeps 
 
 ## Research Context
 
-LintGate grew out of a broader research program on relational alignment — the idea that alignment quality is a property of the human-model interaction, not of the model alone. The theoretical foundations are in [docs/research.md](docs/research.md). The design architecture is in [docs/design.md](docs/design.md).
+LintGate grew out of a broader research program on relational alignment — the idea that alignment quality is a property of the human-model interaction, not of the model alone. The author's background is in philosophy and alignment theory, not software engineering; every line of implementation was produced by AI under LintGate's supervision. The theoretical foundations are in [docs/research.md](docs/research.md). The design architecture is in [docs/design.md](docs/design.md).
 
 ---
 
