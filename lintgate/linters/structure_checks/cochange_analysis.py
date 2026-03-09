@@ -173,7 +173,11 @@ def annotate_split_proposals(
         ]
 
         if coupled_files:
-            max_coupling = float(max(float(c["coupling_strength"]) for c in coupled_files))
+            coupling_values = [
+                float(c["coupling_strength"])  # type: ignore[arg-type]
+                for c in coupled_files
+            ]
+            max_coupling = max(coupling_values)
 
             if max_coupling > 0.6:
                 proposal["cochange_annotation"] = {

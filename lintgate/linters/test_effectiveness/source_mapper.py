@@ -419,13 +419,13 @@ def map_tests_to_source(
         # Index first occurrence by (symbol, reason) for O(1) lookup
         first_occurrence: dict[tuple[str, str], dict[str, str]] = {}
         for ex in diagnostics._drop_examples:
-            key: tuple[str, str] = (ex.get("symbol", ""), ex.get("reason", ""))
-            if key not in first_occurrence:
-                first_occurrence[key] = ex
+            drop_key: tuple[str, str] = (ex.get("symbol", ""), ex.get("reason", ""))
+            if drop_key not in first_occurrence:
+                first_occurrence[drop_key] = ex
         ranked_examples: list[dict[str, str]] = [
-            first_occurrence[key]
-            for key, _count in sorted(drop_freq.items(), key=lambda kv: (-kv[1], kv[0]))
-            if key in first_occurrence
+            first_occurrence[rk]
+            for rk, _count in sorted(drop_freq.items(), key=lambda kv: (-kv[1], kv[0]))
+            if rk in first_occurrence
         ]
         diagnostics.drop_analysis.top_examples = ranked_examples[:5]
 

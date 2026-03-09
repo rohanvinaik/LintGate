@@ -63,7 +63,7 @@ class CustomLinter(BaseLinter):
         self._parse_mode = parse_mode
         self.timeout_ms = timeout_ms
 
-    def available(self) -> bool:
+    def available(self, project_root: str | None = None) -> bool:
         """Check if the custom command's first token is an executable."""
         import shutil
 

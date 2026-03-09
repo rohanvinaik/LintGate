@@ -217,6 +217,11 @@ def test_query_compass_axis_and_keyword_filter() -> None:
 def test_query_compass_no_match() -> None:
     result = query_compass(_populated_state(), keywords=["nonexistent_keyword_xyz"])
     assert result["total_matched"] == 0 and result["matched_claims"] == []
+    # Exact-value: verify full return structure on no-match
+    assert result["returned_count"] == 0
+    assert result["truncated"] is False
+    assert result["query"]["axis"] is None
+    assert result["query"]["keywords"] == ["nonexistent_keyword_xyz"]
 
 
 def test_query_compass_truncation() -> None:

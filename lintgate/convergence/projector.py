@@ -192,5 +192,5 @@ def _step_function_id(step: ExtractionStep) -> str:
     """Get a function identifier from an extraction step."""
     detail = step.detail
     if step.action == "extract_handler":
-        return detail.get("proposed_name", step.target)
-    return detail.get("proposed_name", step.target)
+        return str(detail.get("proposed_name", step.target))
+    return str(detail.get("proposed_name", step.target))

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from lintgate.types import LintIssue
 
 if TYPE_CHECKING:
-    from lintgate.controlplane.behavior_compass import BehaviorCompass
+    from lintgate.controlplane.behavior_types import BehaviorCompass
 
     from .behavior_scoring import (
         IntentBiasScorer,

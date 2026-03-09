@@ -101,7 +101,8 @@ def run_linters(
 def _collect_future_result(fut, linter: BaseLinter) -> LinterResult:
     """Safely collect a completed future's result."""
     try:
-        return fut.result(timeout=0.1)
+        result: LinterResult = fut.result(timeout=0.1)
+        return result
     except Exception as e:
         return LinterResult(
             linter_name=linter.name,

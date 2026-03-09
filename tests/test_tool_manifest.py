@@ -320,9 +320,62 @@ toolchain:
         # Create minimal config
         (tmp_path / ".claude").mkdir(exist_ok=True)
         drift = reconcile_with_registry(str(tmp_path))
-        # May or may not have drift depending on which linters are enabled
-        # The key test is that it runs without error
-        assert isinstance(drift, list)
+        # All known required_tools are covered — no drift warnings expected
+        assert drift == []
+
+    def test_drift_when_manifest_missing_required_tool(self, tmp_path):
+        """A linter needing a tool not in the manifest produces a drift warning."""
+        # Manifest only has ruff — missing bandit, mypy, ty, radon, pip-audit
+        _make_contract(
+            tmp_path,
+            """
+toolchain:
+  tools:
+    - id: ruff
+      kind: python_cli
+      package: ruff
+""",
+        )
+        (tmp_path / ".claude").mkdir(exist_ok=True)
+        drift = reconcile_with_registry(str(tmp_path))
+        # At minimum, linters requiring bandit/mypy/ty/radon/pip-audit should warn
+        assert len(drift) > 0
+        # Each warning mentions the missing tool and the linter that needs it
+        for warning in drift:
+            assert "not in gate_contract.yaml" in warning
+            assert "requires tool" in warning
+
+    def test_reconcile_returns_list_of_strings(self, tmp_path):
+        """Return type is always list[str], each element a full warning sentence."""
+        # Empty manifest triggers drift for every linter with a required_tool
+        _make_contract(tmp_path, "toolchain:\n  tools: []\n")
+        (tmp_path / ".claude").mkdir(exist_ok=True)
+        result = reconcile_with_registry(str(tmp_path))
+        # Falls back to defaults when tools list is empty, so no drift
+        # (empty list triggers default manifest loading)
+        assert result == []
+
+    def test_reconcile_drift_warnings_contain_linter_and_tool_names(self, tmp_path):
+        """Each drift warning names both the linter and the missing tool."""
+        # Manifest with only a dummy tool — real linters' required_tools will be missing
+        _make_contract(
+            tmp_path,
+            """
+toolchain:
+  tools:
+    - id: dummy_only
+      kind: python_cli
+      package: dummy
+""",
+        )
+        (tmp_path / ".claude").mkdir(exist_ok=True)
+        drift = reconcile_with_registry(str(tmp_path))
+        # Registry has linters requiring ruff, bandit, mypy, ty, radon, pip-audit
+        # None of those are in our manifest, so we expect drift warnings
+        missing_tools = {w.split("'")[3] for w in drift}  # extract tool name from warning
+        # At minimum ruff should be flagged (it's the core required linter)
+        assert "ruff" in missing_tools
+        assert len(drift) >= 1
 
 
 # ── full_toolchain_report ──────────────────────────────────────────

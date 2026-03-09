@@ -147,6 +147,64 @@ def test_skip_interview_clears_recommendation() -> None:
     assert state.gap_report.interview_recommended is False
 
 
+def test_skip_interview_returns_none() -> None:
+    """skip_interview returns None (pure side-effect on state)."""
+    state = CompassState(
+        axes={"problem": CompassAxis(name="problem", claims=[])},
+    )
+    detect_gaps(state)
+    result = skip_interview(state)
+    assert result is None
+
+
+def test_skip_interview_preserves_other_gap_report_fields() -> None:
+    """skip_interview only mutates interview_recommended; other fields are unchanged."""
+    state = CompassState(
+        axes={
+            "problem": CompassAxis(name="problem", claims=_make_claims(10)),
+            "solution": CompassAxis(name="solution", claims=[]),
+        }
+    )
+    detect_gaps(state)
+    # Capture pre-skip values
+    pre_spikiness = state.gap_report.spikiness
+    pre_axis_depths = dict(state.gap_report.axis_depths)
+    pre_sparse_axes = list(state.gap_report.sparse_axes)
+
+    assert state.gap_report.interview_recommended is True
+    skip_interview(state)
+
+    # interview_recommended is the only field that changes
+    assert state.gap_report.interview_recommended is False
+    assert state.gap_report.spikiness == pre_spikiness
+    assert state.gap_report.axis_depths == pre_axis_depths
+    assert state.gap_report.sparse_axes == pre_sparse_axes
+
+
+def test_skip_interview_exact_gap_report_values() -> None:
+    """Verify skip_interview against exact computed gap report values."""
+    # All axes empty → all depths 0, all sparse, spikiness 0.0
+    state = CompassState(axes={})
+    detect_gaps(state)
+
+    assert state.gap_report.axis_depths == {
+        "problem": 0, "solution": 0, "implementation": 0, "world": 0,
+    }
+    assert state.gap_report.spikiness == 0.0
+    assert set(state.gap_report.sparse_axes) == {"problem", "solution", "implementation", "world"}
+    assert state.gap_report.interview_recommended is True
+
+    skip_interview(state)
+
+    # Only interview_recommended changes to False
+    assert state.gap_report.interview_recommended is False
+    assert state.gap_report.axis_depths == {
+        "problem": 0, "solution": 0, "implementation": 0, "world": 0,
+    }
+    assert state.gap_report.spikiness == 0.0
+    assert set(state.gap_report.sparse_axes) == {"problem", "solution", "implementation", "world"}
+
+
 # ── optional axes don't inflate spikiness ───────────────────────────
 
 

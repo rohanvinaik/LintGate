@@ -11,9 +11,12 @@ Extracted from behavior_detection.py for module size compliance.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from lintgate.controlplane.behavior_compass import BehaviorCompass, error_memory_key
+from lintgate.controlplane.command_normalization import error_memory_key
+
+if TYPE_CHECKING:
+    from lintgate.controlplane.behavior_types import BehaviorCompass
 from lintgate.orchestration.attribution import SignalSourceDecomposition
 from lintgate.types import LintIssue
 
