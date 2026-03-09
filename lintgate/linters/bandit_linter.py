@@ -10,45 +10,17 @@ Uses bandit's JSON output for structured results.
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..types import LinterContext, LintIssue
+from .bandit_fast_linter import _B105_LOW_SIGNAL_DIRS, _is_test_or_docs_context
 from .base import BaseLinter
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-# Directories where B105 (hardcoded password) has low signal
-_B105_LOW_SIGNAL_DIRS = frozenset(
-    {
-        "test",
-        "tests",
-        "testing",
-        "docs",
-        "doc",
-        "examples",
-        "fixtures",
-        "conftest",
-    }
-)
-
-
-def _is_test_or_docs_context(filepath: str, project_root: str) -> bool:
-    """Check if file is in a test/docs directory (lower B105 signal).
-
-    B105 hardcoded-password findings in test/docs directories are almost
-    always false positives (test fixtures, example values, UI symbols).
-    Only suppress B105 in these contexts — never in production code paths.
-    """
-    try:
-        rel = os.path.relpath(filepath, project_root)
-    except ValueError:
-        return False
-    parts = Path(rel).parts
-    return any(p.lower() in _B105_LOW_SIGNAL_DIRS for p in parts[:-1])
-
+# Re-export for backward compatibility
+__all__ = ["BanditLinter", "_is_test_or_docs_context", "_B105_LOW_SIGNAL_DIRS"]
 
 # Bandit severity mapping
 _SEVERITY_MAP = {

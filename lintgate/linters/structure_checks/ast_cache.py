@@ -179,10 +179,10 @@ class FunctionAnalysisCache:
         all_entries.sort()
         evict_count = self.total_entries - self.max_entries
         for _, fp, fn in all_entries[:evict_count]:
-            file_state = self._files.get(fp)
-            if file_state:
-                file_state.functions.pop(fn, None)
-                if not file_state.functions:
+            evict_state = self._files.get(fp)
+            if evict_state:
+                evict_state.functions.pop(fn, None)
+                if not evict_state.functions:
                     del self._files[fp]
 
 

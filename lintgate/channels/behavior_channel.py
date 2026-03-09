@@ -34,7 +34,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any, Literal
 
-from lintgate.controlplane.behavior_compass import (
+from lintgate.controlplane.behavior_types import (
     DEFAULT_THRESHOLDS,
     BehaviorCompass,
 )
@@ -137,7 +137,7 @@ def _apply_prediction_modulation(
     if not config.inquiry.prediction_tracking:
         return
 
-    from lintgate.controlplane.behavior_compass import compute_prediction_accuracy
+    from lintgate.controlplane.behavior_compass_predictions import compute_prediction_accuracy
 
     pred_accuracy = compute_prediction_accuracy(compass)
     if pred_accuracy is None:

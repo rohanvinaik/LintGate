@@ -74,6 +74,11 @@ class TestFilepathToModule:
     def test_non_python_returns_none(self, tmp_path):
         result = filepath_to_module(str(tmp_path / "data.json"), str(tmp_path))
         assert result is None
+        # Verify exact None (not falsy) and boundary: .json extension triggers None
+        assert type(result) is type(None)
+        # Other non-.py extensions also return None
+        assert filepath_to_module(str(tmp_path / "readme.md"), str(tmp_path)) is None
+        assert filepath_to_module(str(tmp_path / "config.yaml"), str(tmp_path)) is None
 
 
 class TestIsProjectLocal:
@@ -130,7 +135,12 @@ class TestBuildLayerMapAndFindLayer:
 
     def test_find_no_match(self):
         layer_map = build_layer_map([{"name": "core", "modules": ["app.core"]}])
-        assert find_layer("other.module", layer_map) is None
+        result = find_layer("other.module", layer_map)
+        assert result is None
+        # Verify exact None (not falsy) and boundary: partial prefix doesn't match
+        assert type(result) is type(None)
+        assert find_layer("app.cor", layer_map) is None  # partial, not a real prefix
+        assert find_layer("otherapp.core", layer_map) is None  # different root
 
 
 # ─── Layer Contracts ──────────────────────────────────────────────────

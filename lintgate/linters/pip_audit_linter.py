@@ -50,8 +50,8 @@ class PipAuditLinter(BaseLinter):
         requirement_files = _discover_requirement_files(ctx.project_root, ctx.config)
         scan_targets: list[tuple[str, str | None]] = []
         if requirement_files:
-            for req_file in requirement_files:
-                scan_targets.append((f"requirements:{os.path.basename(req_file)}", req_file))
+            for rf in requirement_files:
+                scan_targets.append((f"requirements:{os.path.basename(rf)}", rf))
         else:
             # Fallback: audit active environment if no requirements files are present.
             scan_targets.append(("environment", None))

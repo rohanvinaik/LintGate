@@ -49,7 +49,7 @@ class DeadCodeChecker(BaseLinter):
     timeout_ms = 8000
     required_tool = None  # Falls back to AST if vulture unavailable
 
-    def available(self) -> bool:
+    def available(self, project_root: str | None = None) -> bool:
         """Always available — AST fallback doesn't need external tools."""
         return True
 

@@ -105,7 +105,7 @@ def _check_file(file_path: str, disabled: set[str]) -> Iterable[LintIssue]:
         if check_id in disabled:
             continue
         for issue in check_fn(tree, file_path):
-            key = (file_path, issue.line, issue.kind)
+            key = (file_path, issue.line or 0, issue.kind)
             if key not in seen:
                 seen.add(key)
                 yield issue

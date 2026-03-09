@@ -5,40 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from lintgate.linters.bandit_linter import (
-    BanditLinter,
-    _is_test_or_docs_context,
-)
+from lintgate.linters.bandit_linter import BanditLinter
 from lintgate.types import LinterContext
-
-# ── _is_test_or_docs_context ────────────────────────────────────────
-
-
-class TestIsTestOrDocsContext:
-    def test_file_in_tests_dir(self):
-        assert _is_test_or_docs_context("/project/tests/test_foo.py", "/project") is True
-
-    def test_file_in_docs_dir(self):
-        assert _is_test_or_docs_context("/project/docs/example.py", "/project") is True
-
-    def test_file_in_examples_dir(self):
-        assert _is_test_or_docs_context("/project/examples/demo.py", "/project") is True
-
-    def test_file_in_fixtures_dir(self):
-        assert _is_test_or_docs_context("/project/fixtures/data.py", "/project") is True
-
-    def test_file_in_src_not_test(self):
-        assert _is_test_or_docs_context("/project/src/core.py", "/project") is False
-
-    def test_file_at_root(self):
-        assert _is_test_or_docs_context("/project/setup.py", "/project") is False
-
-    def test_nested_test_dir(self):
-        assert _is_test_or_docs_context("/project/pkg/tests/util.py", "/project") is True
-
-    def test_case_insensitive(self):
-        assert _is_test_or_docs_context("/project/TESTS/foo.py", "/project") is True
-
 
 # ── BanditLinter metadata ───────────────────────────────────────────
 

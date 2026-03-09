@@ -23,7 +23,10 @@ from unittest.mock import patch
 import pytest
 
 from lintgate.theory_extractor import (
+    _build_summary,
+    _build_theory_profile,
     _build_validity_report,
+    _dedupe_facet_entries,
     _extract_claims,
     _extract_enforceable_rules,
     _has_frontmatter_opt_out,
@@ -32,10 +35,13 @@ from lintgate.theory_extractor import (
     _pick_best_summary_claim,
     _score_claim,
     _split_sentences,
+    _strip_markdown,
     _words_to_pattern,
     build_theory_pack,
+    check_theory_staleness,
     extract_constraints,
     get_theory_context,
+    get_theory_context_from_profile,
 )
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
@@ -702,3 +708,632 @@ class TestWordsToPattern:
         """Normal case: multi-word phrase joined with regex separators."""
         result = _words_to_pattern("hello world")
         assert r"[_\s-]*" in result
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Exact-value tests for pure helpers (TEFF007 — raise semantic assertion ratio)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestStripMarkdownExact:
+    """Exact-value tests for _strip_markdown."""
+
+    def test_bold_stripped(self) -> None:
+        assert _strip_markdown("**bold text**") == "bold text"
+
+    def test_italic_stripped(self) -> None:
+        assert _strip_markdown("*italic text*") == "italic text"
+
+    def test_bold_italic_stripped(self) -> None:
+        assert _strip_markdown("***bold italic***") == "bold italic"
+
+    def test_inline_code_preserved(self) -> None:
+        assert _strip_markdown("`some_code`") == "some_code"
+
+    def test_numbered_list_prefix_stripped(self) -> None:
+        assert _strip_markdown("1. First item") == "First item"
+
+    def test_plain_text_unchanged(self) -> None:
+        assert _strip_markdown("plain text") == "plain text"
+
+    def test_mixed_formatting(self) -> None:
+        assert _strip_markdown("1. **DO NOT** use `eval`") == "DO NOT use eval"
+
+    def test_leading_trailing_whitespace_stripped(self) -> None:
+        assert _strip_markdown("  hello  ") == "hello"
+
+    def test_empty_string(self) -> None:
+        assert _strip_markdown("") == ""
+
+    def test_only_asterisks(self) -> None:
+        assert _strip_markdown("***") == ""
+
+    def test_multiple_inline_code_spans(self) -> None:
+        assert _strip_markdown("`foo` and `bar`") == "foo and bar"
+
+    def test_numbered_prefix_with_bold(self) -> None:
+        assert _strip_markdown("3. **MUST** import `os`") == "MUST import os"
+
+
+class TestWordsToPatternExact:
+    """Exact-value tests for _words_to_pattern."""
+
+    def test_single_word(self) -> None:
+        assert _words_to_pattern("hello") == "hello"
+
+    def test_two_words_space(self) -> None:
+        assert _words_to_pattern("hello world") == r"hello[_\s-]*world"
+
+    def test_hyphenated(self) -> None:
+        assert _words_to_pattern("foo-bar") == r"foo[_\s-]*bar"
+
+    def test_three_words(self) -> None:
+        expected = r"one[_\s-]*two[_\s-]*three"
+        assert _words_to_pattern("one two three") == expected
+
+    def test_special_chars_escaped(self) -> None:
+        # re.escape("foo.bar") -> "foo\\.bar"
+        import re as _re
+
+        result = _words_to_pattern("foo.bar")
+        assert result == _re.escape("foo.bar")
+
+    def test_mixed_separators(self) -> None:
+        # "hello-world test" splits on both hyphen and space
+        assert _words_to_pattern("hello-world test") == r"hello[_\s-]*world[_\s-]*test"
+
+
+class TestDedupeFacetEntriesExact:
+    """Exact-value tests for _dedupe_facet_entries."""
+
+    def test_no_duplicates_unchanged(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["claim A"]},
+            {"heading": "H2", "source": "b.md:1", "claims": ["claim B"]},
+        ]
+        result = _dedupe_facet_entries(entries)
+        assert len(result) == 2
+        assert result[0]["claims"] == ["claim A"]
+        assert result[1]["claims"] == ["claim B"]
+
+    def test_exact_duplicate_removed(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["Same claim"]},
+            {"heading": "H2", "source": "b.md:1", "claims": ["Same claim"]},
+        ]
+        result = _dedupe_facet_entries(entries)
+        assert len(result) == 1
+        assert result[0]["claims"] == ["Same claim"]
+
+    def test_case_insensitive_dedup(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["Hello World"]},
+            {"heading": "H2", "source": "b.md:1", "claims": ["hello world"]},
+        ]
+        result = _dedupe_facet_entries(entries)
+        assert len(result) == 1
+        assert result[0]["claims"] == ["Hello World"]
+
+    def test_whitespace_normalized_dedup(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["hello  world"]},
+            {"heading": "H2", "source": "b.md:1", "claims": ["hello world"]},
+        ]
+        result = _dedupe_facet_entries(entries)
+        assert len(result) == 1
+
+    def test_partial_overlap_keeps_unique(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["claim A", "claim B"]},
+            {"heading": "H2", "source": "b.md:1", "claims": ["claim B", "claim C"]},
+        ]
+        result = _dedupe_facet_entries(entries)
+        assert len(result) == 2
+        assert result[0]["claims"] == ["claim A", "claim B"]
+        # Second entry should only keep "claim C" since "claim B" is a duplicate
+        assert result[1]["claims"] == ["claim C"]
+
+    def test_all_duplicates_in_entry_drops_entry(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["claim A"]},
+            {"heading": "H2", "source": "b.md:1", "claims": ["claim A"]},
+        ]
+        result = _dedupe_facet_entries(entries)
+        # Second entry has no unique claims, so it is dropped
+        assert len(result) == 1
+
+    def test_empty_input(self) -> None:
+        assert _dedupe_facet_entries([]) == []
+
+    def test_preserves_non_claim_fields(self) -> None:
+        entries = [
+            {"heading": "H1", "source": "a.md:1", "claims": ["unique"], "extra": "data"},
+        ]
+        result = _dedupe_facet_entries(entries)
+        assert result[0]["heading"] == "H1"
+        assert result[0]["source"] == "a.md:1"
+        assert result[0]["extra"] == "data"
+
+
+class TestBuildSummaryExact:
+    """Exact-value tests for _build_summary (theory_extractor version)."""
+
+    def test_empty_profile(self) -> None:
+        profile: dict = {
+            "core_theory": [],
+            "problem_solving": [],
+            "alignment": [],
+        }
+        result = _build_summary(profile)
+        assert result == {
+            "core_theory": {"claim_count": 0, "source_count": 0, "top_claims": []},
+            "problem_solving": {"claim_count": 0, "source_count": 0, "top_claims": []},
+            "alignment": {"claim_count": 0, "source_count": 0, "top_claims": []},
+        }
+
+    def test_single_facet_single_entry(self) -> None:
+        profile = {
+            "core_theory": [
+                {"heading": "H", "source": "a.md:1", "claims": ["C1", "C2"]},
+            ],
+        }
+        result = _build_summary(profile)
+        assert result["core_theory"]["claim_count"] == 2
+        assert result["core_theory"]["source_count"] == 1
+        assert result["core_theory"]["top_claims"] == ["C1", "C2"]
+
+    def test_top_claims_capped_at_three(self) -> None:
+        profile = {
+            "x": [
+                {"heading": "H", "source": "a.md:1", "claims": ["A", "B", "C", "D"]},
+            ],
+        }
+        result = _build_summary(profile)
+        assert len(result["x"]["top_claims"]) == 3
+        assert result["x"]["top_claims"] == ["A", "B", "C"]
+
+    def test_top_claims_from_richest_entry_first(self) -> None:
+        profile = {
+            "x": [
+                {"heading": "H1", "source": "a.md:1", "claims": ["small"]},
+                {"heading": "H2", "source": "b.md:1", "claims": ["big1", "big2", "big3"]},
+            ],
+        }
+        result = _build_summary(profile)
+        # Sorted by len(claims) descending, so "big" entry (3 claims) comes first
+        assert result["x"]["claim_count"] == 4
+        assert result["x"]["source_count"] == 2
+        assert result["x"]["top_claims"] == ["big1", "big2", "big3"]
+
+    def test_multiple_facets(self) -> None:
+        profile = {
+            "a": [{"heading": "H", "source": "x.md:1", "claims": ["c1"]}],
+            "b": [],
+        }
+        result = _build_summary(profile)
+        assert result["a"]["claim_count"] == 1
+        assert result["b"]["claim_count"] == 0
+
+
+class TestIsCoveredByExistingExact:
+    """Exact-value tests for _is_covered_by_existing."""
+
+    def test_exact_pattern_match_returns_true(self) -> None:
+        assert _is_covered_by_existing(r"\beval\b", {r"\beval\b"}, []) is True
+
+    def test_no_match_returns_false(self) -> None:
+        assert _is_covered_by_existing(r"\beval\b", set(), []) is False
+
+    def test_regex_match_via_existing_rule(self) -> None:
+        # Existing rule pattern "eval" matches inside r"\beval\b"
+        rules = [{"pattern": "eval"}]
+        assert _is_covered_by_existing(r"\beval\b", set(), rules) is True
+
+    def test_non_matching_regex_returns_false(self) -> None:
+        rules = [{"pattern": "something_else"}]
+        assert _is_covered_by_existing(r"\beval\b", set(), rules) is False
+
+    def test_invalid_regex_skipped_returns_false(self) -> None:
+        rules = [{"pattern": "[invalid"}]
+        assert _is_covered_by_existing(r"\beval\b", set(), rules) is False
+
+    def test_empty_pattern_skipped(self) -> None:
+        rules = [{"pattern": ""}]
+        assert _is_covered_by_existing(r"\beval\b", set(), rules) is False
+
+    def test_multiple_rules_first_match_wins(self) -> None:
+        rules = [
+            {"pattern": "no_match_here"},
+            {"pattern": "eval"},
+        ]
+        assert _is_covered_by_existing(r"\beval\b", set(), rules) is True
+
+
+class TestBuildValidityReportExact:
+    """Exact-value tests for _build_validity_report."""
+
+    def test_strong_status(self) -> None:
+        profile = {
+            "core_theory": [{"heading": "H", "source": "a.md:1", "claims": ["c1", "c2", "c3"]}],
+            "problem_solving": [{"heading": "H", "source": "b.md:1", "claims": ["c4", "c5"]}],
+            "alignment": [{"heading": "H", "source": "c.md:1", "claims": ["c6", "c7"]}],
+            "architecture": [],
+            "anti_patterns": [],
+            "abstractions": [],
+        }
+        enforceable = {
+            "proposed_rules": [{"x": 1}],
+            "existing_rule_count": 2,
+        }
+        report = _build_validity_report(profile, docs_scanned=2, sections_scanned=3, enforceable=enforceable)
+        assert report["status"] == "strong"
+        assert report["total_claims"] == 7
+        assert report["claims_per_doc"] == 3.5
+        assert report["missing_required_facets"] == []
+        assert report["existing_rules"] == 2
+        assert report["proposed_rules"] == 1
+        assert report["warnings"] == []
+        assert report["recommendations"] == []
+        assert report["traceability_pct"] == 100.0
+
+    def test_weak_status_missing_required(self) -> None:
+        profile = {
+            "core_theory": [],
+            "problem_solving": [],
+            "alignment": [],
+            "architecture": [],
+            "anti_patterns": [],
+            "abstractions": [],
+        }
+        enforceable = {"proposed_rules": [], "existing_rule_count": 0}
+        report = _build_validity_report(profile, docs_scanned=0, sections_scanned=0, enforceable=enforceable)
+        assert report["status"] == "weak"
+        assert set(report["missing_required_facets"]) == {"core_theory", "problem_solving", "alignment"}
+        assert report["total_claims"] == 0
+
+    def test_weak_status_few_claims(self) -> None:
+        # All required facets present but total < 6
+        profile = {
+            "core_theory": [{"heading": "H", "source": "a.md:1", "claims": ["c1"]}],
+            "problem_solving": [{"heading": "H", "source": "b.md:1", "claims": ["c2"]}],
+            "alignment": [{"heading": "H", "source": "c.md:1", "claims": ["c3"]}],
+        }
+        enforceable = {"proposed_rules": [{"x": 1}], "existing_rule_count": 1}
+        report = _build_validity_report(profile, docs_scanned=1, sections_scanned=3, enforceable=enforceable)
+        assert report["status"] == "weak"
+        assert report["total_claims"] == 3
+
+    def test_docs_scanned_zero_no_division_error(self) -> None:
+        profile = {"core_theory": []}
+        enforceable = {"proposed_rules": [], "existing_rule_count": 0}
+        report = _build_validity_report(profile, docs_scanned=0, sections_scanned=0, enforceable=enforceable)
+        assert report["claims_per_doc"] == 0.0
+
+    def test_traceability_with_empty_sources(self) -> None:
+        profile = {
+            "core_theory": [
+                {"heading": "H1", "source": "a.md:1", "claims": ["c1"]},
+                {"heading": "H2", "source": "", "claims": ["c2"]},
+            ],
+        }
+        enforceable = {"proposed_rules": [], "existing_rule_count": 0}
+        report = _build_validity_report(profile, docs_scanned=1, sections_scanned=2, enforceable=enforceable)
+        assert report["traceability_pct"] == 50.0
+
+
+class TestBuildTheoryProfileExact:
+    """Exact-value tests for _build_theory_profile."""
+
+    def test_empty_sections(self) -> None:
+        result = _build_theory_profile([])
+        assert result == {
+            "core_theory": [],
+            "problem_solving": [],
+            "alignment": [],
+            "architecture": [],
+            "anti_patterns": [],
+            "abstractions": [],
+        }
+
+    def test_all_facet_keys_present(self) -> None:
+        result = _build_theory_profile([])
+        expected_keys = {"core_theory", "problem_solving", "alignment", "architecture", "anti_patterns", "abstractions"}
+        assert set(result.keys()) == expected_keys
+
+
+class TestExtractClaimsExact:
+    """Exact-value tests for _extract_claims."""
+
+    def test_empty_body_returns_empty(self) -> None:
+        section = _make_section("")
+        assert _extract_claims(section, "core_theory") == []
+
+    def test_short_sentence_filtered_out(self) -> None:
+        # Sentences < 20 chars are skipped
+        section = _make_section("Short.")
+        assert _extract_claims(section, "core_theory") == []
+
+    def test_code_block_stripped(self) -> None:
+        body = (
+            "The system uses composition because it enables modular evolution.\n\n"
+            "```python\ndef foo(): pass\n```\n\n"
+            "The architecture enables independent testing because each module is isolated."
+        )
+        section = _make_section(body)
+        claims = _extract_claims(section, "core_theory")
+        # No claim should contain "def foo"
+        for claim in claims:
+            assert "def foo" not in claim
+
+    def test_claims_capped_at_eight(self) -> None:
+        # Build a body with many scoreable sentences
+        lines = []
+        for i in range(15):
+            lines.append(
+                f"The system is designed because principle {i} "
+                "enables modular architecture rather than monolithic structure."
+            )
+        body = "\n\n".join(lines)
+        section = _make_section(body)
+        claims = _extract_claims(section, "core_theory")
+        assert len(claims) <= 8
+
+
+class TestGetTheoryContextFromProfileExact:
+    """Exact-value tests for get_theory_context_from_profile."""
+
+    def test_none_profile_exact_output(self) -> None:
+        result = get_theory_context_from_profile(None, facet="core_theory", keywords=["x"])
+        assert result == {
+            "claims": [],
+            "total_matched": 0,
+            "returned_count": 0,
+            "truncated": False,
+            "query": {"facet": "core_theory", "keywords": ["x"]},
+        }
+
+    def test_zero_max_claims_exact_output(self) -> None:
+        result = get_theory_context_from_profile({"core_theory": []}, max_claims=0)
+        assert result == {
+            "claims": [],
+            "total_matched": 0,
+            "returned_count": 0,
+            "truncated": False,
+            "query": {"facet": None, "keywords": None},
+        }
+
+    def test_single_match_exact_structure(self) -> None:
+        profile = {
+            "core_theory": [
+                {"claims": ["Composition enables evolution"], "source": "a.md:1", "heading": "Core"},
+            ],
+        }
+        result = get_theory_context_from_profile(profile, keywords=["composition"])
+        assert result["total_matched"] == 1
+        assert result["returned_count"] == 1
+        assert result["truncated"] is False
+        assert result["claims"][0] == {
+            "facet": "core_theory",
+            "claim": "Composition enables evolution",
+            "source": "a.md:1",
+            "heading": "Core",
+            "relevance_score": 1,
+        }
+
+    def test_multi_keyword_scores_higher(self) -> None:
+        profile = {
+            "core_theory": [
+                {"claims": ["composition modular design"], "source": "a.md:1", "heading": "H"},
+                {"claims": ["composition only"], "source": "b.md:1", "heading": "H2"},
+            ],
+        }
+        result = get_theory_context_from_profile(
+            profile, keywords=["composition", "modular"]
+        )
+        # First result should be the one matching both keywords (score=2)
+        assert result["claims"][0]["relevance_score"] == 2
+        assert result["claims"][0]["claim"] == "composition modular design"
+
+    def test_facet_filter_restricts_scope(self) -> None:
+        profile = {
+            "core_theory": [
+                {"claims": ["core claim"], "source": "a.md:1", "heading": "H"},
+            ],
+            "alignment": [
+                {"claims": ["alignment claim"], "source": "b.md:1", "heading": "H2"},
+            ],
+        }
+        result = get_theory_context_from_profile(profile, facet="alignment")
+        assert all(c["facet"] == "alignment" for c in result["claims"])
+        assert result["total_matched"] == 1
+
+    def test_truncation_flag(self) -> None:
+        profile = {
+            "core_theory": [
+                {"claims": ["c1", "c2", "c3"], "source": "a.md:1", "heading": "H"},
+            ],
+        }
+        result = get_theory_context_from_profile(profile, max_claims=1)
+        assert result["truncated"] is True
+        assert result["total_matched"] == 3
+        assert result["returned_count"] == 1
+
+    def test_missing_source_heading_defaults(self) -> None:
+        profile = {
+            "core_theory": [
+                {"claims": ["claim text"]},
+            ],
+        }
+        result = get_theory_context_from_profile(profile)
+        assert result["claims"][0]["source"] == ""
+        assert result["claims"][0]["heading"] == ""
+
+
+class TestCheckTheoryStalenessExact:
+    """Exact-value tests for check_theory_staleness boundary cases."""
+
+    def test_no_py_files_exact(self) -> None:
+        result = check_theory_staleness(
+            "/project",
+            theory_profile={"core_theory": []},
+            git_context={"modified_files": ["README.md"], "untracked_files": ["data.csv"]},
+        )
+        assert result == {
+            "stale": False,
+            "uncovered_files": [],
+            "total_uncommitted_py": 0,
+            "recommendation": "",
+        }
+
+    def test_test_and_pycache_files_filtered_exact(self) -> None:
+        result = check_theory_staleness(
+            "/project",
+            theory_profile=None,
+            git_context={
+                "modified_files": ["tests/test_foo.py", "__pycache__/bar.py"],
+                "untracked_files": ["test_baz.py"],
+            },
+        )
+        assert result["total_uncommitted_py"] == 0
+        assert result["stale"] is False
+
+    def test_none_profile_with_py_files_exact_recommendation(self) -> None:
+        result = check_theory_staleness(
+            "/project",
+            theory_profile=None,
+            git_context={
+                "modified_files": ["src/engine.py", "src/parser.py"],
+                "untracked_files": [],
+            },
+        )
+        assert result["stale"] is True
+        assert result["total_uncommitted_py"] == 2
+        assert result["uncovered_files"] == ["src/engine.py", "src/parser.py"]
+        assert "No theory profile exists" in result["recommendation"]
+        assert "2 uncommitted Python files" in result["recommendation"]
+
+    def test_uncovered_capped_at_20(self) -> None:
+        files = [f"mod_{i}.py" for i in range(25)]
+        result = check_theory_staleness(
+            "/project",
+            theory_profile=None,
+            git_context={"modified_files": files, "untracked_files": []},
+        )
+        assert len(result["uncovered_files"]) == 20
+
+    def test_covered_source_with_colon_parsed(self, tmp_path: Path) -> None:
+        # Create a Python file with a docstring
+        py_file = tmp_path / "module.py"
+        py_file.write_text(
+            '"""Design intent for this module.\n\n'
+            "This module handles the core pipeline logic\n"
+            "because compositional boundaries matter.\n"
+            '"""\n'
+        )
+        # Source "module.py:10" should cover "module.py"
+        profile = {
+            "core_theory": [
+                {"source": "module.py:10", "heading": "Core", "claims": ["c"]},
+            ],
+        }
+        result = check_theory_staleness(
+            str(tmp_path),
+            theory_profile=profile,
+            git_context={"modified_files": ["module.py"], "untracked_files": []},
+        )
+        assert result["stale"] is False
+
+    def test_syntax_error_file_skipped(self, tmp_path: Path) -> None:
+        bad_file = tmp_path / "bad.py"
+        bad_file.write_text("def (: broken syntax\n")
+        profile = {"core_theory": []}
+        result = check_theory_staleness(
+            str(tmp_path),
+            theory_profile=profile,
+            git_context={"modified_files": ["bad.py"], "untracked_files": []},
+        )
+        # File with syntax error is skipped in the uncovered check
+        assert "bad.py" not in result["uncovered_files"]
+
+    def test_short_docstring_not_flagged(self, tmp_path: Path) -> None:
+        # Docstrings < 30 chars stripped are not considered substantive
+        short_file = tmp_path / "short.py"
+        short_file.write_text('"""Short doc."""\nx = 1\n')
+        profile = {"core_theory": []}
+        result = check_theory_staleness(
+            str(tmp_path),
+            theory_profile=profile,
+            git_context={"modified_files": ["short.py"], "untracked_files": []},
+        )
+        assert result["stale"] is False
+        assert "short.py" not in result["uncovered_files"]
+
+    def test_nonexistent_file_skipped(self, tmp_path: Path) -> None:
+        profile = {"core_theory": []}
+        result = check_theory_staleness(
+            str(tmp_path),
+            theory_profile=profile,
+            git_context={"modified_files": ["ghost.py"], "untracked_files": []},
+        )
+        assert "ghost.py" not in result["uncovered_files"]
+
+
+class TestExtractEnforceableRulesExact:
+    """Exact-value tests for _extract_enforceable_rules."""
+
+    def test_empty_guidance_exact(self) -> None:
+        guidance: dict = {"directives": {"do_not": [], "must": [], "critical": []}, "rules": []}
+        result = _extract_enforceable_rules(guidance, set(), [])
+        assert result == {
+            "proposed_rules": [],
+            "existing_rule_count": 0,
+            "directives_analyzed": 0,
+            "already_covered": 0,
+        }
+
+    def test_do_not_use_generates_forbid_regex(self) -> None:
+        guidance = {
+            "directives": {"do_not": ["DO NOT use eval"], "must": [], "critical": []},
+            "rules": [],
+        }
+        result = _extract_enforceable_rules(guidance, set(), [])
+        assert len(result["proposed_rules"]) == 1
+        rule = result["proposed_rules"][0]
+        assert rule["proposed_rule"]["kind"] == "forbid_regex"
+        assert rule["proposed_rule"]["pattern"] == r"\beval\b"
+        assert rule["proposed_rule"]["severity"] == "blocking"
+        assert rule["confidence"] == "high"
+        assert "LINTGATE_FORBID_REGEX" in rule["add_line"]
+
+    def test_must_use_generates_require_regex(self) -> None:
+        guidance = {
+            "directives": {"do_not": [], "must": ["MUST use pathlib"], "critical": []},
+            "rules": [],
+        }
+        result = _extract_enforceable_rules(guidance, set(), [])
+        assert len(result["proposed_rules"]) == 1
+        rule = result["proposed_rules"][0]
+        assert rule["proposed_rule"]["kind"] == "require_regex"
+        assert rule["proposed_rule"]["severity"] == "warning"
+        assert "LINTGATE_REQUIRE_REGEX" in rule["add_line"]
+
+    def test_duplicate_patterns_deduped(self) -> None:
+        guidance = {
+            "directives": {
+                "do_not": ["DO NOT use eval"],
+                "must": [],
+                "critical": ["DO NOT use eval"],
+            },
+            "rules": [],
+        }
+        result = _extract_enforceable_rules(guidance, set(), [])
+        # Same pattern should be deduped
+        patterns = [r["proposed_rule"]["pattern"] for r in result["proposed_rules"]]
+        assert len(patterns) == len(set(patterns))
+
+    def test_directives_analyzed_counts_all_categories(self) -> None:
+        guidance = {
+            "directives": {"do_not": ["a", "b"], "must": ["c"], "critical": ["d"]},
+            "rules": [],
+        }
+        result = _extract_enforceable_rules(guidance, set(), [])
+        assert result["directives_analyzed"] == 4

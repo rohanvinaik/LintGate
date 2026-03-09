@@ -92,7 +92,7 @@ def _check_dangerous_command(proposal: ActionProposal) -> list[tuple[str, str]]:
     """Check for dangerous command patterns."""
     import re
 
-    violations = []
+    violations: list[tuple[str, str]] = []
 
     # Only check bash actions
     if proposal.action_type != "bash":

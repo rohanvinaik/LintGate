@@ -234,7 +234,7 @@ class VLLMAdapter:
 
         This wraps get_generation_stream with StreamingGuard.
         """
-        from .streaming import StreamingGuard
+        from .streaming import StreamingGuard  # type: ignore[import-untyped]
 
         guard = StreamingGuard(
             project_root=kwargs.get("project_root", "."),
@@ -244,7 +244,7 @@ class VLLMAdapter:
         )
 
         raw_stream = self.get_generation_stream(prompt, **kwargs)
-        return guard.guard_stream(raw_stream)
+        return guard.guard_stream(raw_stream)  # type: ignore[no-any-return]
 
     def apply_grammar_constraint(self, grammar: dict[str, Any] | PolicyGrammar) -> bool:
         """Apply a grammar constraint to generation.

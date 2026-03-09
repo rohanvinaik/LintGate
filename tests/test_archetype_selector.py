@@ -63,8 +63,16 @@ def test_extract_signals_from_try_except(tmp_path: Path) -> None:
     )
     signals = extract_signals(source)
     assert signals.has_try_except
+    assert signals.has_try_except is True
     assert signals.has_file_io
+    assert signals.has_file_io is True
     assert signals.has_json_dump_load
+    assert signals.has_json_dump_load is True
+    # Exact-value: one function (parse_config) with typed annotations
+    assert len(signals.functions) == 1
+    assert signals.functions[0].name == "parse_config"
+    assert "json" in signals.imports
+    assert signals.has_typed_functions is True
 
 
 def test_extract_signals_from_http_imports(tmp_path: Path) -> None:
@@ -80,6 +88,12 @@ def test_extract_signals_from_http_imports(tmp_path: Path) -> None:
     )
     signals = extract_signals(source)
     assert signals.has_http_imports
+    assert signals.has_http_imports is True
+    # Exact-value: requests is in the import set, one function extracted
+    assert "requests" in signals.imports
+    assert "requests" in signals.import_modules
+    assert len(signals.functions) == 1
+    assert signals.functions[0].name == "fetch_data"
 
 
 def test_extract_signals_from_subprocess(tmp_path: Path) -> None:
@@ -95,6 +109,12 @@ def test_extract_signals_from_subprocess(tmp_path: Path) -> None:
     )
     signals = extract_signals(source)
     assert signals.has_subprocess
+    assert signals.has_subprocess is True
+    # Exact-value: subprocess is in imports, one function extracted
+    assert "subprocess" in signals.imports
+    assert "subprocess" in signals.import_modules
+    assert len(signals.functions) == 1
+    assert signals.functions[0].name == "run_command"
 
 
 def test_extract_signals_from_dataclass(tmp_path: Path) -> None:
@@ -154,7 +174,14 @@ def test_extract_signals_from_encode_decode(tmp_path: Path) -> None:
     )
     signals = extract_signals(source)
     assert signals.has_encode_decode
+    assert signals.has_encode_decode is True
     assert signals.has_json_dump_load
+    assert signals.has_json_dump_load is True
+    # Exact-value: two functions with encode/decode in names
+    assert len(signals.functions) == 2
+    func_names = {f.name for f in signals.functions}
+    assert func_names == {"encode_message", "decode_message"}
+    assert "json" in signals.imports
 
 
 def test_extract_signals_from_to_from_pairs(tmp_path: Path) -> None:
@@ -170,6 +197,11 @@ def test_extract_signals_from_to_from_pairs(tmp_path: Path) -> None:
     )
     signals = extract_signals(source)
     assert signals.has_to_from_pairs
+    assert signals.has_to_from_pairs is True
+    # Exact-value: two functions forming to_/from_ pair
+    assert len(signals.functions) == 2
+    func_names = {f.name for f in signals.functions}
+    assert func_names == {"to_dict", "from_dict"}
 
 
 def test_extract_signals_from_yaml_import(tmp_path: Path) -> None:
@@ -185,7 +217,14 @@ def test_extract_signals_from_yaml_import(tmp_path: Path) -> None:
     )
     signals = extract_signals(source)
     assert signals.has_yaml_toml_json
+    assert signals.has_yaml_toml_json is True
     assert signals.has_file_io
+    assert signals.has_file_io is True
+    # Exact-value: yaml is in imports, one function extracted
+    assert "yaml" in signals.imports
+    assert "yaml" in signals.import_modules
+    assert len(signals.functions) == 1
+    assert signals.functions[0].name == "load_config"
 
 
 # ── Archetype selection tests ────────────────────────────────────────────

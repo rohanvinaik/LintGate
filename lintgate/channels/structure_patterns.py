@@ -325,12 +325,15 @@ def _fingerprint_function(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[
 
     matches: list[str] = []
     for pattern_name, pattern_def in _PATTERN_CATALOG.items():
-        req_calls = set(pattern_def["required_calls"])  # type: ignore[arg-type]
+        raw_calls = pattern_def["required_calls"]
+        req_calls = raw_calls if isinstance(raw_calls, set) else set()
         matching_calls = call_names & req_calls
-        min_calls = int(pattern_def["min_calls"])  # type: ignore[arg-type]
+        raw_min = pattern_def["min_calls"]
+        min_calls = raw_min if isinstance(raw_min, int) else 0
         if len(matching_calls) < min_calls:
             continue
-        req_structs = set(pattern_def["required_structures"])  # type: ignore[arg-type]
+        raw_structs = pattern_def["required_structures"]
+        req_structs = raw_structs if isinstance(raw_structs, set) else set()
         if req_structs and not (structures & req_structs):
             continue
         matches.append(pattern_name)

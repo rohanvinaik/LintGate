@@ -134,7 +134,7 @@ def _compute_dependency_order(
 
 def _unlock_value(plan: ExtractionPlan) -> float:
     """Score how much downstream value an extraction unlocks."""
-    return sum(opp.confidence for opp in plan.post_extraction_opportunities)
+    return float(sum(opp.confidence for opp in plan.post_extraction_opportunities))
 
 
 def _parse_precondition_deps(
