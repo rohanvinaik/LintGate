@@ -16,238 +16,171 @@
 [![Benchmark](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml)
 <!-- lintgate:quality-badges:end -->
 
-An MCP server for real-time code quality supervision — built entirely through vibe coding by a biochemist with no formal CS training.
+An MCP server for real-time code quality supervision.
 
 > `--dangerously-skip-permissions`, minus the danger.
 
-A biochemist kept running into the same problem with AI-generated code. Not complex bugs — *discipline* bugs. The agent would act before it understood. It would hit an error, move on, and hit the same error twenty minutes later.
+---
 
-These aren't intelligence failures. They're infrastructure failures. So he built the infrastructure.
+## The Observation
 
-Then he pointed it at its own codebase and said: *"Professionalize this codebase."*
+Ask a senior engineer what makes them effective and they usually won't say "I know more algorithms." They'll describe something closer to instinct — check imports after refactoring, verify types after changing signatures, notice when complexity creeps, feel when a function is doing too much before any metric confirms it. Junior engineers with the same knowledge, the same tools, the same specifications produce measurably worse code. The gap isn't knowledge. It's something harder to name.
 
-And it did. Three words. Zero debugging.
+The field has always treated this as experience — something you accumulate over years and can't transfer. But if you look at what the instincts actually *are*, they're pattern recognition over structural invariants. "This function is doing too much" is a statement about cyclomatic complexity and cohesion. "Check imports after refactoring" is a dependency graph constraint. "Notice when complexity creeps" is a rate-of-change signal on a well-defined metric.
+
+Pattern recognition over structural invariants is what symbolic systems do.
+
+That's the idea behind LintGate: take the things that make a senior engineer's code better than a junior engineer's code, express them as symbolic checks, and run them automatically on every edit. If it works, the limiting factor in producing quality code stops being years of human experience and becomes compute on a CPU.
 
 ---
 
-## The Problem
+## What Goes Wrong Without It
 
-Vibe coding works — remarkably well — until it doesn't. And when it fails, it fails silently.
+Here's what happens when an AI agent writes code unsupervised. It introduces a bad import at edit 5. Nothing flags it. Thirty edits later the codebase is syntactically valid and architecturally broken. The type error compounded. The hallucinated import propagated. A function that should have been decomposed got stuffed with logic because nothing told the agent the project values composition.
 
-The agent introduces a bad import at edit 5. Nothing flags it. Thirty edits later the codebase is syntactically valid and architecturally broken. The type error compounded. The hallucinated import propagated. The function that should have been decomposed got stuffed with logic because nobody told the agent the project values composition.
+But the code problems are downstream of something subtler. Before the agent writes wrong code, it *reasons* wrong. It tries an approach, hits an error, tries a variant of the same approach instead of updating its mental model. It acts before it understands. This is behavioral drift — the reasoning strategy diverging from effective problem-solving. Catch the reasoning failure early enough and you never write the bad code.
 
-But the code problems are downstream. Before the agent writes the wrong code, it *reasons* wrong. It tries an approach, fails, tries a variant instead of updating its model. It acts before it understands. This is **behavioral drift** — the agent's reasoning strategy diverging from effective problem-solving. It is upstream of code drift. Catch the reasoning failure early enough and you never write the bad code.
-
-A senior engineer catches all of this. Not by being smarter — by having instincts. Check imports after refactoring. Verify types after changing signatures. Notice when complexity creeps. These aren't intelligence problems. They're discipline problems. And right now, the only way to get that discipline is to hire a senior engineer.
-
-That's an access problem. LintGate solves it.
-
----
-
-## The Insight
-
-This might look like a linter suite. It's not. A linter catches syntax errors after you write them. LintGate prevents the reasoning failures that cause you to write them.
-
-The core mechanism, borrowed from how good instruments work: **multiple cheap, lossy lenses whose errors are uncorrelated compose into something that looks like intelligence.** Ruff can't judge architecture. Tests can't judge code quality. The dependency checker knows nothing about syntax. But when the type checker, the import analyzer, and the test runner all disagree in a *specific pattern*, that disagreement is diagnostic. Three silent channels and one loud one concentrates your attention. Two failures on overlapping files reveals coupling. No single tool is smart. The agreement pattern is the signal.
-
-The downstream consequence is stranger than the mechanism: **when discipline is infrastructure, the conceptual burden of hard engineering problems drops below the burden of typing.** Structured deterministic findings — file paths, line numbers, severity codes, check IDs — shift the task from "understand code + reason + write code" to "read structured findings + propose actions." That means the bottleneck for using these tools is not intelligence. It's dexterity.
-
----
-
-## The Deeper Signal
-
-Clean code and well-tested code are usually treated as separate virtues. They're not — they're the same property viewed from different angles.
-
-Point LintGate at a module with 99% line coverage and the algebra pipeline says `_get_parameter_count` is pure and cacheable. Then the mutation gate fires: 75% of mutants survive. The tests execute the code but don't verify what it computes. Confidence drops from 80% to 10%, and the gate tells you *why* — 12 surviving mutants across conditional and arithmetic categories — which is the surgical target for the 2–3 tests that would make the optimization safe.
-
-That example is an instance of a general chain: **mutation pressure → specification gap → forced decomposition → algebraically tractable units → safe optimization**. A surviving mutant is a version of your function that behaves differently and no test notices. If no test can tell the difference, the test suite doesn't fully specify what the function does — and ambiguous specifications resist optimization, because you can't prove two things are equivalent when you haven't defined what equivalence means. But surviving mutants aren't just a score. They're a *map* — each one is a specific behavioral degree of freedom that isn't pinned down. The act of driving toward zero surviving mutants *is* what produces clean, optimizable code. ([Full theory](docs/design.md))
+A senior engineer catches all of this naturally. LintGate tries to do the same thing with infrastructure.
 
 ---
 
 ## How It Works
 
-**The hook** fires on every code change — classifies what changed, selects a lint tier, runs 18 linters in parallel, returns a compact report. Silent when you're doing fine. Loud when it matters.
+The core idea comes from how good instruments work in science: multiple cheap, lossy measurements whose errors are uncorrelated can compose into something surprisingly reliable. No single linter is smart. Ruff can't judge architecture. Tests can't judge code quality. The dependency checker knows nothing about syntax. But when the type checker, the import analyzer, and the test runner disagree in a specific pattern, the pattern itself is diagnostic. Three silent channels and one loud one concentrates your attention. Two failures on overlapping files reveals coupling.
 
-**The ControlPlane** runs 6 independent channels in parallel — lint, tests, deps, git, behavior, structure — and a coherence engine computes the state from their agreement pattern: stable, isolated, coupled, systemic, degraded. The state tells you the *character* of your problems, not just the count.
+**The hook** fires on every code change — classifies what changed, selects a lint tier, runs 18 linters in parallel. Silent when you're doing fine. Loud when it matters.
 
-**The behavioral compass** tracks the agent's reasoning strategy: live hypotheses, approach history, coverage metrics. When the strategy drifts, the behavior channel intervenes *before* the bad reasoning produces bad code. Deterministic scoring, no LLM calls.
+**The ControlPlane** runs 6 independent channels — lint, tests, deps, git, behavior, structure — and a coherence engine computes system state from their agreement: stable, isolated, coupled, systemic, degraded. The state tells you the *character* of your problems, not just the count. When three channels converge on the same files, that convergence is the diagnosis — and across every session so far, it has been the single most useful signal for deciding what to work on first.
 
-**The algebra pipeline** performs formal analysis of your codebase's mathematical structure — function purity, algebraic properties, mutation-backed specification completeness — and connects them to safe optimization opportunities.
+**The behavioral compass** tracks the agent's reasoning strategy: live hypotheses, approach history, prediction accuracy. When the strategy drifts, the behavior channel intervenes *before* bad reasoning produces bad code. Deterministic scoring, no LLM calls.
+
+**The algebra pipeline** does formal analysis of the codebase's mathematical structure — function purity, algebraic properties, mutation-backed specification completeness — and connects them to safe optimization opportunities. A surviving mutant is a version of your function that behaves differently and no test notices. Driving toward zero surviving mutants turns out to be the same thing as producing clean, optimizable code. An interesting side effect: the specification analysis converts test-writing from a creative task into an engineering task. "Which behavioral dimensions of this function are unconstrained?" turns out to have a computable answer.
 
 ---
 
-## The Economics
+## What Happened When We Tried It
 
-The fundamental unit is **output tokens** — the model's actual generation work. LintGate's tools are symbolic, deterministic, and run locally — they don't call the model API.
+### Self-Audit
 
-### The Bottom Line
+I pointed LintGate at its own codebase and said: *"Professionalize this codebase."* Three words. What followed: 33,700 lines, 92 Python files, 3 context windows, 6 monolithic modules decomposed into clean components. Every refactoring step passed the linter and test suite on the first run.
 
-From a fully instrumented session — LintGate professionalized its own codebase (33,700 lines, 92 Python files, 3 context windows, human input: three words):
-
-| | With LintGate | Without LintGate (counterfactual) |
+| Metric | Supervised | Unsupervised (counterfactual) |
 | --- | --- | --- |
-| **Output tokens to ship** | **~207,000** | **~450,000–550,000** |
-| **Debug spirals** | 0 | 6+ estimated (one per decomposition) |
+| **Output tokens** | ~207,000 | ~450,000–550,000 |
+| **Debug spirals** | 0 | 6+ estimated |
 | **Regressions** | 0 | 3–6 estimated |
-| **Test suite (1,611 tests)** | Green at every step | Batch-verified at end |
 | **Creation : Debugging : Verification** | 55 : 0 : 15 | ~30 : 40 : 30 (typical) |
 
-The supervised agent produced ~207K output tokens and touched 49% of the codebase — 36 files modified, 9 created, 6 monolithic modules decomposed into clean, independently testable components. Every refactoring step passed the linter. Every step passed the test suite. The entire debugging phase of software development simply didn't occur.
+The debugging phase of software development simply didn't occur. Not because the problems were easy — six modules between 900 and 1,500 lines were each split along behavioral seams — but because the supervision caught structural issues before they could compound.
 
-The zero in the debugging column is not a typo. Six modules between 900 and 1,500 lines were each split along behavioral seams, producing 2–3 clean extraction modules with backward-compatible re-exports. All 1,611 tests passed on the first run after every split. The unsupervised agent would need 2–3× the output tokens because each failed decomposition pollutes the context window, degrading all subsequent reasoning.
+### At Scale
 
-### Why the Gap Compounds
+The self-audit was the first test. Subsequent sessions on LintGate's own codebase — now 636 files, ~70,000 lines — have been more telling. In the largest single session, the agent touched 188 files, added 301 specification tests, and shipped with zero regressions across a 6,994-test suite. The Creation : Debugging : Verification ratio was 85 : 2 : 13. LintGate's own token overhead was 2.1% of the session — and the estimated savings from avoided debug spirals and context pollution was 73–113× that cost.
 
-Discipline failures don't add — they multiply. Each wasted output token degrades the context for everything that follows:
+Two findings surprised me. First, the test suite ran *faster* after adding hundreds of tests, because the module splitting that LintGate's structure channel recommended enabled more granular test collection. Second, every cognitive-complexity reduction the agent performed fell into one of four mechanical patterns (dispatch tables, class extraction, function hoisting, composition decomposition). The intelligence required to *identify* the fix was real. The intelligence required to *apply* it was not. That's exactly the division of labor LintGate is designed around.
 
-| Metric | Unsupervised | Supervised |
+### ShortcutForge (External Codebase)
+
+The more interesting test: what happens on a codebase built entirely *without* LintGate?
+
+ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline. 100 Python files, ~37,500 LOC. Built through vibe-coding over a week of intensive development. Working code, passing tests, zero architectural planning.
+
+LintGate's ControlPlane diagnosed it as "systemic." What happened next took 46 minutes.
+
+| Metric | Before | After |
 | --- | --- | --- |
-| Effective duty cycle (output tokens on novel reasoning) | ~36% | ~78% |
-| Output tokens wasted on discipline failures | ~64% | ~22% |
+| **Blockers** | 132 | 7 (-95%) |
+| **Pylint score** | 8.49/10 | 9.44/10 |
+| **Ruff violations** | 266 | 0 |
+| **High-complexity blocks** | 27 | 10 (-63%) |
+| **Test suite** | 477 pass | 477 pass (0 regressions) |
 
-LintGate consumed ~$2.60 of the $21.28 session — 12% of total cost — and returned the entire debugging phase as savings.
+The 7 remaining blockers are irreducible architectural characteristics — cohesive files that happen to be long. Not debt. Shape.
 
-### External Validation: ShortcutForge
+The highest-ROI fix wasn't even a code change: 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Two lines in `pyproject.toml` eliminated them all. Configuration before code.
 
-Auditing your own code is table stakes. The question is: what happens when you point LintGate at a codebase built *without* it?
+### The Small Model Experiment
 
-ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog with validation, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline, and a distillation loop. 100 Python files, ~37,500 LOC. Built through vibe-coding over a week of intensive development. Working code, passing tests, zero architectural planning.
+This one surprised me. Gemini 2.5 Flash Lite — 0.77 billion parameters, half the size of GPT-2 — received 2,639 structured performance findings from LintGate's ControlPlane. It correctly identified signal-to-noise problems, the manifest-to-lint bridge gap, six functions that should be decomposed, and a `set` vs `tuple` optimization. Every diagnosis was architecturally sound.
 
-LintGate's ControlPlane diagnosed it as "systemic" — 132 blockers, 253 warnings, 151 informational findings across all 6 channels. What happened next took 46 minutes.
+It couldn't write the code — the exact-string-matching requirement for Edit tool calls exceeded its working memory. But Claude Opus 4.6 reviewed its architectural proposals and kept them. A 0.77B model did the performance engineering. A larger model executed it.
 
-| Metric | Before | After | Delta |
-| --- | --- | --- | --- |
-| **Blockers** | 132 | 7 | **-95%** |
-| **Pylint score** | 8.49/10 | 9.44/10 | **+0.95** (crossed "excellent") |
-| **Ruff violations** | 266 | 0 | **-100%** |
-| **High-complexity blocks (D+)** | 27 | 10 | **-63%** |
-| **Very high complexity (F grade)** | 5 | 1 | **-80%** |
-| **Test suite** | 477 pass | 477 pass | 0 regressions |
+What made this possible: Flash Lite scores 34% on LiveCodeBench (code generation) but 0.84 on tool selection quality — in the same range as models 100x its size. The structured findings shifted the task from generation to interpretation. That's a task it could do.
 
-The 7 remaining blockers are irreducible architectural characteristics — 5 cohesive files that happen to be long, 2 data classes that genuinely need many fields. Not debt. Just shape.
-
-Three things stand out:
-
-**The highest-ROI fix was not a code change.** 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Adding two lines to `pyproject.toml` eliminated them all. Configuration before code.
-
-**The maintainability index broke.** Not "decreased" — the metric stopped being comparable. The file count changed from 91 to 57 because the codebase was *restructured*. The denominator of the measurement changed because the shape of the codebase changed.
-
-**The largest god-function was decomposed into 15 methods with zero regressions.** `Orchestrator.generate()` — 620 lines, CC=95, 231 statements — was split along phase boundaries into a clean pipeline tree. All 25 orchestrator tests passed on the first run.
-
-Full session data: [ModelAtlas build](docs/retrospectives/hf-model-search-2026-02-22-tier2-build.md) · [LintGate self-audit](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge audit](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md)
-
-### The Capability Inversion: 0.77B Parameters Did Performance Engineering
-
-We pointed LintGate's performance tools at its own codebase and told the smallest model we could find to optimize it. Gemini 2.5 Flash Lite — **0.77 billion parameters**, half the size of GPT-2 — running against a professional Python codebase with the full ControlPlane stack.
-
-It received 2,639 structured PERFCH005 findings and correctly identified signal-to-noise problems, the manifest-to-lint bridge gap, six monolithic functions that should be decomposed, and a `set` vs `tuple` optimization for O(1) membership checks. Every diagnosis was correct. Every proposed decomposition was architecturally sound. Claude Opus 4.6 — a model with 1,000x+ the parameters — reviewed the architectural proposals and kept them: *"The manifest decomposition is genuinely good — I want to keep the helper extraction."*
-
-Flash Lite produced **zero bytes of working code**. It couldn't construct valid Edit tool calls — the exact-string-matching requirement exceeded its 0.77B working memory. It entered a behavioral loop, restating its plan 9 times, each restatement coherent and slightly rephrased. It eventually pivoted to providing code snippets for "manual application" — the correct degradation strategy for a model that knows its hands don't work.
-
-Gemini 2.5 Flash (7B parameters) then executed Flash Lite's designs. The composite system — 0.77B for diagnosis, 7B for execution, deterministic infrastructure for validation — produced performance engineering that would challenge senior developers.
-
-**Why this happened**: Flash Lite scores 34% on LiveCodeBench (code generation) but **0.84 on tool selection quality** — in the same range as models 100x its size. LintGate's structured findings shifted the task from code generation (Flash Lite's weakness) to structured interpretation and action proposal (its strength). The conceptual burden of performance engineering was lower than the burden of typing.
-
-This is not a parlor trick. It's the design thesis in action: when you offload discipline to deterministic infrastructure, the intelligence required for hard problems drops dramatically. The bottleneck was never reasoning. It was discipline. And discipline is infrastructure, not cognition.
-
-Full session data: [Small model experiment](docs/retrospectives/lintgate-2026-02-23-tier2-refactoring-debugging.md)
+Full session data: [Self-audit](docs/retrospectives/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge](docs/retrospectives/shortcutforge-2026-02-20-tier2-audit.md) · [Small model experiment](docs/retrospectives/lintgate-2026-02-23-tier2-refactoring-debugging.md) · [Agent retrospectives](docs/retrospectives/)
 
 ---
 
-## The Bootstrap Progression
+## A Note on Economics
+
+A reasonable question: doesn't all this supervision cost more tokens?
+
+It doesn't, because LintGate's tools are symbolic — they're math running on a CPU, not LLM inference calls. The early self-audit session (33,700 lines, 49% of the codebase touched) cost ~$2.60 in supervision overhead against a $21.28 total — roughly 12%. At scale, that overhead has dropped to around 2% of the session token budget while still eliminating the debugging phase and cutting total output tokens by more than half.
+
+The savings come from what doesn't happen. Every discipline failure an unsupervised agent makes degrades the context window, which degrades all subsequent reasoning. The compounding is the expensive part: a wasted 500 tokens at edit 10 can cost you 5,000 by edit 50. Symbolic checks run in milliseconds and prevent the failures before they enter the context. Across sessions, the pattern has been consistent: low single-digit percentage overhead to recover 50%+ of the token budget.
+
+---
+
+## Bootstrap Progression
 
 LintGate works from zero state and gets better as it accumulates signal:
 
-**Stage 0 — Zero state.** No config, no history, no theory. Works immediately with just ruff installed.
+**Stage 0 — Zero state.** No config, no history. Works immediately with just ruff installed.
 
-**Stage 1 — Theory extraction.** Scans project documentation and produces a CLAUDE.md and AGENTS.md with project-specific dispositions, guardrails, and enforceable rules.
+**Stage 1 — Theory extraction.** Scans project docs and produces a CLAUDE.md with project-specific dispositions, guardrails, and enforceable rules.
 
-**Stage 2 — Model calibration.** A 5-task behavioral micro-probe profiles the model's coding tendencies by observing what it *does*, not what it *says*. Model-specific guardrails.
+**Stage 2 — Model calibration.** A 5-task behavioral micro-probe profiles the model's coding tendencies by observing what it *does*, not what it *says*.
 
-**Stage 3 — Living context.** Recurring behavioral patterns flow back as patches to CLAUDE.md managed sections. The project's self-model evolves across sessions.
+**Stage 3 — Living context.** Recurring behavioral patterns flow back as patches. The project's self-model evolves across sessions.
 
-Each stage stands alone. Stop at any stage and the system works — each layer is additive.
+Each stage stands alone. Each layer is additive.
 
 ---
 
 ## Quick Start
 
 ```bash
-# One-command setup
 bash setup.sh            # full suite (ruff, mypy, radon, bandit, vulture, pip-audit)
 bash setup.sh --minimal  # just ruff + MCP
 ```
 
-This creates the venv, installs dependencies, configures the PostToolUse hook, registers the MCP server, and auto-detects LLM coding agents on your system (Claude Code, Cursor, Copilot, Windsurf, Gemini CLI, Cline, Roo Code, Aider, Amazon Q).
+Auto-detects LLM coding agents on your system (Claude Code, Cursor, Copilot, Windsurf, Gemini CLI, Cline, Roo Code, Aider, Amazon Q).
 
 ### First 5 Minutes
 
-1. `getting_started(path)` — project-specific onboarding with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics/remediation).
+1. `getting_started(path)` — project onboarding with startup automation.
 2. `controlplane_run(path)` — full health check across 6 channels. Works without config.
 3. `controlplane_get_details(run_id)` — drill into what matters.
 4. `lint_fix(path)` — auto-fix safe issues.
 5. `bootstrap_context_files(path, write=True)` — generate persistent project context.
 
-For manual setup, hook/MCP configuration, and agent integration details, see [docs/reference.md](docs/reference.md).
-
 ### Ship Pipeline
 
-The agent's job ends at `git push`. Everything after is deterministic infrastructure.
+The agent's job ends at `git push`. Everything after is deterministic.
 
 ```bash
 python scripts/ship_main.py    # runs local gates → pushes → done
 ```
 
-The local gate stack (`.githooks/pre-push`) enforces quality before code leaves the machine. After push, the **LintGate GitHub App** (`lintgate[bot]`) takes over:
-
-1. Receives the push webhook
-2. Creates or updates a PR to `main`
-3. Adds itself as a required reviewer
-4. Monitors CI checks against `gate_contract.yaml`
-5. All green → approves, squash-merges, GPG-signs the commit
-6. Deletes the head branch automatically
-
-No polling. No LLM inference spent waiting for CI. The merge commit is cryptographically signed by the App, proving the quality gate was not bypassed.
-
-For standalone local use: `python scripts/ship_main.py --preflight` runs the full gate stack without any git mutations.
+After push, the **LintGate GitHub App** (`lintgate[bot]`) creates the PR, monitors CI, approves, squash-merges, and GPG-signs the commit. No polling. No LLM inference spent waiting. The signed merge commit is proof the quality gate was not bypassed.
 
 ---
 
-## One More Thing
+## Habit Mode
 
-Everything above supervises the agent's *code*. Habit Mode supervises the resource that everything else depends on: the **context window**.
+Everything above supervises the agent's code. Habit Mode supervises the resource everything else depends on: the context window.
 
-During sustained execution — bulk editing, test marathons, refactoring sweeps — the context fills with stale data that crowds out working state. Habit Mode detects these phases from tool-use signals, tracks token pressure via a calibrated estimator, and when compaction approaches, produces a structured snapshot that turns context loss into context refinement. The deterministic system remembers so the stochastic system doesn't have to.
-
-This is a complete theory of alignment in its own right. [Full architecture and design philosophy →](docs/design.md)
-
----
-
-## Why the Badges Matter
-
-The badges at the top of this README are not decorations. They are a self-referential proof system.
-
-LintGate enforces quality gates on code that passes through it. LintGate's own code passes through those same gates. The badges are generated by those gates running on this codebase — every test suite run, every SonarCloud scan, every algebraic property extraction. The merge commits are GPG-signed by `lintgate[bot]`, proving no human bypassed the gates. The issues are auto-generated by the App's own finding triage, demonstrating that the classification pipeline works.
-
-This means anyone evaluating LintGate can verify its claims without trusting its documentation. The Tests badge proves the test suite passes. The Coverage badge proves the tests exercise the code. The Side-Effect-Free and Algebraic Properties badges prove the formal analysis pipeline works — on itself. The Security badge proves the security scanners found nothing. Each badge is independently auditable, backed by CI logs that anyone can inspect.
-
-This is the strongest possible form of credibility for a quality tool: it holds itself to the standards it enforces, and the evidence is cryptographic, empirical, and publicly auditable.
+During sustained execution — bulk editing, test marathons, refactoring sweeps — the context fills with stale data that crowds out working state. Habit Mode detects these phases from tool-use signals, tracks token pressure, and when compaction approaches, produces a structured snapshot that turns context loss into context refinement. The deterministic system remembers so the stochastic system doesn't have to.
 
 ---
 
 ## Research Context
 
-LintGate is alignment research in product form: design the interaction structure so the human-agent system stays coherent under pressure.
-
-It's an applied instance of *relational engineering* — the working hypothesis that alignment quality is a property of the human-model interaction, not of the model alone. Behavioral drift, session-level degradation, the gap between formally correct outputs and genuinely productive process — these are interaction failures, addressable by deliberately constructing interaction architectures that maintain the conditions for co-construction.
-
-The theory is exploratory and instrumented. We evaluate by operational usefulness: fewer retries per resolved issue, less time in dead-end loops, faster convergence on root causes. The theoretical foundations — three papers on constrained hallucination, phenomenological alignment, and relational ontology — are mapped in [docs/research.md](docs/research.md).
+LintGate grew out of a broader research program on relational alignment — the idea that alignment quality is a property of the human-model interaction, not of the model alone. The theoretical foundations are in [docs/research.md](docs/research.md). The design architecture is in [docs/design.md](docs/design.md).
 
 ---
 
-*99 MCP tools, configuration reference, project structure, and setup details: [docs/reference.md](docs/reference.md)*
-
-*Research foundations and theoretical lineage: [docs/research.md](docs/research.md)*
+*99 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
 
 ---
 
