@@ -214,9 +214,7 @@ def _suggestions_for_kind(kind: str) -> list[str]:
             "May indicate incomplete refactoring",
         ],
     }
-    return suggestions_map.get(
-        kind, ["Consider removing dead code to reduce maintenance burden"]
-    )
+    return suggestions_map.get(kind, ["Consider removing dead code to reduce maintenance burden"])
 
 
 # ─── AST-based fallback ─────────────────────────────────────────────────
@@ -342,11 +340,7 @@ def _count_name_references(tree: ast.Module, name: str) -> int:
     """Count how many times a name is referenced (not defined) in a module."""
     count = 0
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Name)
-            and node.id == name
-            and isinstance(node.ctx, ast.Load)
-        ):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Load):
             # Skip if this is a function/class definition (not a reference)
             # We detect this by checking if the parent is a FunctionDef/ClassDef
             # Since ast.walk doesn't give parents, we use a simpler heuristic:
@@ -358,9 +352,6 @@ def _count_name_references(tree: ast.Module, name: str) -> int:
 def _is_function(tree: ast.Module, name: str) -> bool:
     """Check if a name is defined as a function (vs class) at module level."""
     for node in tree.body:
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == name
-        ):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
             return True
     return False

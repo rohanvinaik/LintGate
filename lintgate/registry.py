@@ -217,10 +217,7 @@ def _register(
     If config doesn't mention the linter, it's enabled by default.
     """
     # Check if explicitly disabled in config
-    if (
-        linter.name in config.enabled_linters
-        and not config.enabled_linters[linter.name]
-    ):
+    if linter.name in config.enabled_linters and not config.enabled_linters[linter.name]:
         return  # Explicitly disabled
 
     registry[linter.name] = linter

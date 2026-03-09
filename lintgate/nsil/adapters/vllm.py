@@ -12,6 +12,42 @@ from typing import Any
 from lintgate.nsil.grammar_compiler import PolicyGrammar
 from lintgate.nsil.runtime_adapter import RuntimeCapabilities
 
+# ---------------------------------------------------------------------------
+# Module-level streaming helper (mirrors ollama._iter_jsonl_stream pattern)
+# ---------------------------------------------------------------------------
+
+
+def _iter_sse_stream(response: Any) -> Generator[str, None, None]:
+    """Yield text chunks from an OpenAI-compatible SSE streaming response."""
+    import json
+
+    buffer = b""
+    while True:
+        chunk = response.read(4096)
+        if not chunk:
+            break
+        buffer += chunk
+
+        text = buffer.decode("utf-8")
+        lines = text.split("\n")
+        buffer = lines[-1].encode("utf-8") if lines[-1] else b""
+
+        for line in lines[:-1]:
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:]  # Remove "data: " prefix
+            if data_str == "[DONE]":
+                return
+            try:
+                data = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            if "choices" in data and len(data["choices"]) > 0:
+                delta = data["choices"][0].get("delta", {})
+                if "content" in delta:
+                    yield delta["content"]
+
+
 # Check for optional dependencies at module level, but don't fail import
 _VLLM_AVAILABLE = False
 _OUTLINES_AVAILABLE = False
@@ -102,11 +138,7 @@ class VLLMAdapter:
             if risk_level := self._injected_state.get("risk_level"):
                 parts.append(f"Risk Level: {risk_level}")
             if blocking := self._injected_state.get("blocking_findings"):
-                findings = (
-                    ", ".join(blocking[:3])
-                    if isinstance(blocking, list)
-                    else str(blocking)
-                )
+                findings = ", ".join(blocking[:3]) if isinstance(blocking, list) else str(blocking)
                 parts.append(f"Blocking: {findings}")
             if constraints := self._injected_state.get("active_constraints"):
                 constr = (
@@ -128,9 +160,49 @@ class VLLMAdapter:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    def get_generation_stream(
-        self, prompt: str, **kwargs: Any
-    ) -> Generator[str, None, None]:
+    def _build_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+        """Build the vLLM API request payload (OpenAI chat completion format)."""
+        messages = self._make_messages_with_state(prompt)
+        payload: dict[str, Any] = {
+            "model": kwargs.get("model", self.model),
+            "messages": messages,
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 512),
+            "stream": True,
+        }
+        self._apply_grammar_to_payload(payload)
+        return payload
+
+    def _apply_grammar_to_payload(self, payload: dict[str, Any]) -> None:
+        """Add grammar constraint to payload if one is set."""
+        if not self._grammar_constraint:
+            return
+        if "gbnf" in self._grammar_constraint:
+            payload["extra_body"] = {
+                "guided_grammar": self._grammar_constraint["gbnf"],
+            }
+        elif "regex" in self._grammar_constraint:
+            payload["extra_body"] = {
+                "guided_regex": self._grammar_constraint["regex"],
+            }
+
+    @staticmethod
+    def _make_request(url: str, payload: dict[str, Any]) -> Any:
+        """Create an HTTP request for the vLLM API."""
+        import json
+        import urllib.request
+
+        return urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+
+    def get_generation_stream(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
         """Get streaming generation from vLLM.
 
         Args:
@@ -140,82 +212,16 @@ class VLLMAdapter:
         Yields:
             Generation chunks
         """
-        import json
         import urllib.error
         import urllib.request
 
-        # Build messages with state injection
-        messages = self._make_messages_with_state(prompt)
-
-        model = kwargs.get("model", self.model)
-        temperature = kwargs.get("temperature", 0.7)
-        max_tokens = kwargs.get("max_tokens", 512)
-
-        # Build request payload (OpenAI chat completion format)
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-
-        # Add grammar constraint if set
-        if self._grammar_constraint:
-            # vLLM supports grammar through guided decoding parameters
-            if "gbnf" in self._grammar_constraint:
-                payload["extra_body"] = {
-                    "guided_grammar": self._grammar_constraint["gbnf"],
-                }
-            elif "regex" in self._grammar_constraint:
-                payload["extra_body"] = {
-                    "guided_regex": self._grammar_constraint["regex"],
-                }
-
+        payload = self._build_payload(prompt, **kwargs)
         url = f"{self.endpoint}/v1/chat/completions"
 
         try:
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "text/event-stream",
-                },
-                method="POST",
-            )
-
+            req = self._make_request(url, payload)
             with urllib.request.urlopen(req, timeout=60) as response:
-                buffer = b""
-                while True:
-                    chunk = response.read(4096)
-                    if not chunk:
-                        break
-                    buffer += chunk
-
-                    # Parse SSE (Server-Sent Events)
-                    text = buffer.decode("utf-8")
-                    lines = text.split("\n")
-                    buffer = bytes(lines[-1], "utf-8") if lines[-1] else b""
-
-                    for line in lines[:-1]:
-                        if not line.startswith("data: "):
-                            continue
-                        data_str = line[6:]  # Remove "data: " prefix
-                        if data_str == "[DONE]":
-                            return
-                        try:
-                            data = json.loads(data_str)
-                            if "choices" in data and len(data["choices"]) > 0:
-                                delta = data["choices"][0].get("delta", {})
-                                if "content" in delta:
-                                    raw_content = delta["content"]
-                                    yield raw_content
-                        except json.JSONDecodeError:
-                            # Malformed chunk - ignore and continue
-                            continue
-
+                yield from _iter_sse_stream(response)
         except urllib.error.URLError as e:
             yield f"[Error: vLLM unavailable - {e.reason}]"
         except TimeoutError:
@@ -223,9 +229,7 @@ class VLLMAdapter:
         except Exception as e:
             yield f"[Error: {str(e)}]"
 
-    def get_generation_guarded(
-        self, prompt: str, **kwargs: Any
-    ) -> Generator[str, None, None]:
+    def get_generation_guarded(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
         """Get guarded streaming generation from vLLM.
 
         This wraps get_generation_stream with StreamingGuard.
@@ -335,9 +339,7 @@ class VLLMAdapter:
 
             regex = constraint["regex"]
             if regex and re.search(regex, text, re.IGNORECASE):
-                return True, constraint.get(
-                    "explanation", "text matches prohibited pattern"
-                )
+                return True, constraint.get("explanation", "text matches prohibited pattern")
 
         return False, ""
 

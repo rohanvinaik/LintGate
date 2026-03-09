@@ -115,9 +115,7 @@ def test_save_and_load_state(tmp_path):
     wiki_dir.mkdir(parents=True)
 
     state = WikiFreshnessState()
-    state.pages["TestPage"] = build_page_freshness(
-        "TestPage", {"f::h": "content"}, "mh", "page"
-    )
+    state.pages["TestPage"] = build_page_freshness("TestPage", {"f::h": "content"}, "mh", "page")
 
     save_freshness_state(str(tmp_path), state)
 

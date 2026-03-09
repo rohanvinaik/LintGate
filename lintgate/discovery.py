@@ -104,16 +104,13 @@ def discover_project_files(
     elif extra_exclude_dirs:
         # git ls-files doesn't know about extra_exclude_dirs — post-filter
         files = [
-            f
-            for f in files
-            if not _path_contains_excluded_dir(f, project_root, extra_exclude_dirs)
+            f for f in files if not _path_contains_excluded_dir(f, project_root, extra_exclude_dirs)
         ]
 
     # Apply source_paths constraint
     if source_paths:
         allowed_prefixes = tuple(
-            os.path.join(project_root, sp.rstrip(os.sep)) + os.sep
-            for sp in source_paths
+            os.path.join(project_root, sp.rstrip(os.sep)) + os.sep for sp in source_paths
         )
         files = [f for f in files if any(f.startswith(p) for p in allowed_prefixes)]
 
@@ -134,9 +131,7 @@ def discover_project_files(
             if "_mutmut_trampoline" not in head:
                 clean_files.append(f)
             else:
-                _log.warning(
-                    "Excluded mutmut-instrumented file from discovery: %s", f
-                )
+                _log.warning("Excluded mutmut-instrumented file from discovery: %s", f)
         except OSError:
             clean_files.append(f)  # Can't read -> keep it, let downstream handle
     files = clean_files
@@ -218,9 +213,7 @@ def _walk_discover(
         dirnames[:] = [
             d
             for d in dirnames
-            if d not in exclude
-            and not d.startswith(".")
-            and not is_backup_like_directory(d)
+            if d not in exclude and not d.startswith(".") and not is_backup_like_directory(d)
         ]
         for fname in filenames:
             if fname.endswith(suffix):

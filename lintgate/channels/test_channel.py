@@ -47,9 +47,7 @@ class TestRunResult:
     timed_out: bool = False
     coverage_pct: float | None = None  # Set when measure_coverage=True
     coverage_json_path: str | None = None  # Path to coverage.json when measured
-    coverage_json_ephemeral: bool = (
-        False  # True when path should be cleaned up by caller
-    )
+    coverage_json_ephemeral: bool = False  # True when path should be cleaned up by caller
 
 
 @dataclass
@@ -84,9 +82,7 @@ class TestChannel:
             return False
         return classification.change_kind in ("logic", "structural", "test")
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute test supervision checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -130,14 +126,10 @@ class TestChannel:
         try:
             # Step 4: Run selected tests (impacted or fallback)
             if tests_to_run:
-                base_timeout_ms = config.channels.get(
-                    "tests", ChannelConfig()
-                ).timeout_ms
+                base_timeout_ms = config.channels.get("tests", ChannelConfig()).timeout_ms
                 if not base_timeout_ms:
                     base_timeout_ms = self.timeout_ms
-                remaining_ms = base_timeout_ms - int(
-                    (time.perf_counter() - start) * 1000
-                )
+                remaining_ms = base_timeout_ms - int((time.perf_counter() - start) * 1000)
                 timeout_floor_ms = 2000
                 if cov_cfg["symbol_enabled"] and event.surface in ("mcp", "ci"):
                     # Symbol gate needs a meaningful coverage sample; avoid 10s truncation.
@@ -149,9 +141,7 @@ class TestChannel:
                     measure_coverage=cov_cfg["measure"],
                     source_packages=cov_cfg["source_packages"],
                 )
-                _collect_test_findings(
-                    test_result, remaining_ms, findings, project_root
-                )
+                _collect_test_findings(test_result, remaining_ms, findings, project_root)
 
             # Step 5: Check coverage threshold
             _check_coverage_threshold(
@@ -240,10 +230,7 @@ def _check_missing_tests(
 ) -> None:
     """Check for source files without corresponding tests and propose skeletons."""
     for src_file in changed_files:
-        if not (
-            _is_source_file(src_file, project_root)
-            and not _has_test(src_file, project_root)
-        ):
+        if not (_is_source_file(src_file, project_root) and not _has_test(src_file, project_root)):
             continue
         findings.append(
             LintIssue(
@@ -278,9 +265,7 @@ def _check_missing_tests(
             pass  # Archetype selection failure is non-fatal
 
 
-def _parse_coverage_settings(
-    channel_settings: dict[str, Any], surface: str
-) -> dict[str, Any]:
+def _parse_coverage_settings(channel_settings: dict[str, Any], surface: str) -> dict[str, Any]:
     """Parse coverage-related settings into a flat dict."""
     raw_threshold = channel_settings.get("coverage_threshold")
     threshold: float | None = None
@@ -363,9 +348,7 @@ def _collect_test_findings(
                 file=failure.file,
                 line=failure.line,
                 severity="warning",
-                evidence={"failure_class": classification}
-                if classification != "unknown"
-                else {},
+                evidence={"failure_class": classification} if classification != "unknown" else {},
             )
         )
 
@@ -469,9 +452,7 @@ def _check_stale_test_symbols(
             continue
         seen_files.add(failure.file)
 
-        stale_refs = build_stale_test_findings(
-            failure.file, project_root, failure.test_name
-        )
+        stale_refs = build_stale_test_findings(failure.file, project_root, failure.test_name)
         for ref in stale_refs:
             stale_count += 1
             findings.append(
@@ -568,9 +549,7 @@ def _check_contract_drift(
 
     for source_file in source_files:
         abs_path = (
-            source_file
-            if os.path.isabs(source_file)
-            else os.path.join(project_root, source_file)
+            source_file if os.path.isabs(source_file) else os.path.join(project_root, source_file)
         )
         if not os.path.isfile(abs_path):
             continue
@@ -619,8 +598,7 @@ def _check_contract_drift(
                         "new_value": drift.change.new_value,
                         "affected_count": len(drift.affected_sites),
                         "affected_sites": [
-                            {"file": s.test_file, "line": s.line}
-                            for s in drift.affected_sites[:10]
+                            {"file": s.test_file, "line": s.line} for s in drift.affected_sites[:10]
                         ],
                     },
                     suggestions=[
@@ -766,9 +744,7 @@ def _build_channel_result(ctx: TestChannelContext) -> ChannelResult:
     if ctx.gate_result is not None:
         sym_uncovered = sum(1 for r in ctx.gate_result.symbol_results if not r.covered)
         metrics["symbol_coverage_targets"] = len(ctx.gate_result.symbol_results)
-        metrics["symbol_coverage_passed"] = (
-            len(ctx.gate_result.symbol_results) - sym_uncovered
-        )
+        metrics["symbol_coverage_passed"] = len(ctx.gate_result.symbol_results) - sym_uncovered
         metrics["symbol_coverage_failed"] = sym_uncovered
         metrics["symbol_coverage_waivers"] = len(ctx.gate_result.waivers_applied)
         metrics["symbol_gate_context"] = {
@@ -915,9 +891,7 @@ def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str
             joined_name = (
                 "test_"
                 + "_".join(
-                    p
-                    for p in rel.with_suffix("").parts
-                    if p not in ("src", "lib", "__init__")
+                    p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__")
                 )
                 + ".py"
             )
@@ -1015,11 +989,7 @@ def run_tests(
                 coverage_xml_path,
                 f"{result.stdout}\n{result.stderr}",
             )
-        if (
-            measure_coverage
-            and coverage_json_path
-            and os.path.isfile(coverage_json_path)
-        ):
+        if measure_coverage and coverage_json_path and os.path.isfile(coverage_json_path):
             # Persist JSON beyond TemporaryDirectory lifetime so symbol gate can read it.
             import shutil
             import tempfile
@@ -1175,9 +1145,7 @@ def _build_symbol_suggestions(sr: Any) -> list[str]:
             f"Add tests that execute lines {missing_line_str} and branches {missing_branch_str} in {sr.symbol.name}"
         )
     elif sr.missing_lines:
-        suggestions.append(
-            f"Add tests that execute lines {missing_line_str} in {sr.symbol.name}"
-        )
+        suggestions.append(f"Add tests that execute lines {missing_line_str} in {sr.symbol.name}")
     elif sr.missing_branches:
         suggestions.append(
             f"Add tests that execute branches {missing_branch_str} in {sr.symbol.name}"
@@ -1218,9 +1186,7 @@ def _emit_symbol_findings(
             if coverage_ok:
                 confidence = 0.6
                 severity = "warning"
-                downgrade_reason = (
-                    " (downgraded: partial test run with healthy line coverage)"
-                )
+                downgrade_reason = " (downgraded: partial test run with healthy line coverage)"
             else:
                 confidence = 0.7
                 severity = "blocking"

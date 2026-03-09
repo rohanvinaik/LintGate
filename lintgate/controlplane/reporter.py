@@ -53,6 +53,7 @@ from .reporter_delta import (  # noqa: F401 — re-exports for backward compat
     compute_finding_fingerprint,
 )
 from .reporter_hook import (  # noqa: F401 — re-exports for backward compat
+    PostToolUseInputs,
     _build_posttooluse_context,
     _build_telemetry_counters,
 )
@@ -176,15 +177,11 @@ def format_mesh_report(
         for item in delta.get("new", []):
             fp = item.get("fingerprint", "")
             if fp:
-                quota_by_fp[fp] = quota_by_fp.get(fp, 0) + max(
-                    1, int(item.get("count", 1))
-                )
+                quota_by_fp[fp] = quota_by_fp.get(fp, 0) + max(1, int(item.get("count", 1)))
         for item in delta.get("escalated", []):
             fp = item.get("fingerprint", "")
             if fp:
-                quota_by_fp[fp] = quota_by_fp.get(fp, 0) + max(
-                    1, int(item.get("count", 1))
-                )
+                quota_by_fp[fp] = quota_by_fp.get(fp, 0) + max(1, int(item.get("count", 1)))
 
         # Resurfacing cadence: persistent blocking findings resurface every 10 runs
         if snapshot_count > 0 and snapshot_count % 10 == 0 and previous_finding_index:
@@ -219,9 +216,7 @@ def format_mesh_report(
     # Quick exit: nothing to report
     if not all_findings and not mesh_result.partial:
         # Check if there are error/timeout channels
-        has_problems = any(
-            cr.status in ("error", "timeout") for cr in mesh_result.channel_results
-        )
+        has_problems = any(cr.status in ("error", "timeout") for cr in mesh_result.channel_results)
         if not has_problems:
             return {}
 
@@ -351,15 +346,11 @@ def format_mesh_report(
 
     # Informational count — show display_findings count when delta is active,
     # but note the total for context
-    display_informational = [
-        f for f in display_findings if f.severity == "informational"
-    ]
+    display_informational = [f for f in display_findings if f.severity == "informational"]
     total_informational = [f for f in all_findings if f.severity == "informational"]
     if display_informational or (total_informational and delta is None):
         shown = display_informational if delta is not None else total_informational
-        section = (
-            f"INFO: {len(shown)} informational finding{'s' if len(shown) != 1 else ''}"
-        )
+        section = f"INFO: {len(shown)} informational finding{'s' if len(shown) != 1 else ''}"
         section_tokens = _estimate_tokens(section)
         if token_estimate + section_tokens <= max_tokens:
             parts.append(section)
@@ -367,9 +358,7 @@ def format_mesh_report(
 
     # Section 9: Proposed constraints (from session memory feedback loop)
     if proposed_constraints:
-        active_proposals = [
-            c for c in proposed_constraints if c.get("status") == "proposed"
-        ]
+        active_proposals = [c for c in proposed_constraints if c.get("status") == "proposed"]
         if active_proposals:
             section = _format_proposed_constraints(active_proposals)
             section_tokens = _estimate_tokens(section)
@@ -379,9 +368,7 @@ def format_mesh_report(
 
     # Section 10: Cycle alerts
     if cycle_alerts:
-        section = "CYCLE ALERTS (Repetitive behavior detected):\n  " + "\n  ".join(
-            cycle_alerts
-        )
+        section = "CYCLE ALERTS (Repetitive behavior detected):\n  " + "\n  ".join(cycle_alerts)
         section_tokens = _estimate_tokens(section)
         if token_estimate + section_tokens <= max_tokens:
             parts.append(section)
@@ -472,9 +459,7 @@ def _format_header(mesh_result: MeshResult) -> str:
 
 def _format_blocking(findings: list) -> str:
     """Format blocking findings section."""
-    parts = [
-        f"BLOCKING ({len(findings)} issue{'s' if len(findings) != 1 else ''} - must fix):"
-    ]
+    parts = [f"BLOCKING ({len(findings)} issue{'s' if len(findings) != 1 else ''} - must fix):"]
     for f in findings[:5]:
         location = _short_path(f.file) if f.file else ""
         if f.line:
@@ -550,14 +535,10 @@ def _format_pattern_alerts(alerts: list[dict]) -> str:
         reason = alert.get("alert_reason", "")
         if reason == "recurring_across_runs":
             recent = alert.get("recent_run_count", 0)
-            parts.append(
-                f"PATTERN ALERT: [{linter}/{kind}] recurring across {recent} recent runs"
-            )
+            parts.append(f"PATTERN ALERT: [{linter}/{kind}] recurring across {recent} recent runs")
         elif reason == "single_run_volume":
             count = alert.get("count_this_run", 0)
-            parts.append(
-                f"PATTERN NOTE: [{linter}/{kind}] appeared {count} times this run"
-            )
+            parts.append(f"PATTERN NOTE: [{linter}/{kind}] appeared {count} times this run")
     return "\n".join(parts)
 
 
@@ -593,9 +574,7 @@ def _format_proposed_constraints(proposals: list[dict]) -> str:
                     f"    DRIFT WARNING: contradicts theory claim: '{contradicting[0][:80]}'"
                 )
             else:
-                parts.append(
-                    "    DRIFT WARNING: potential conflict with project theory"
-                )
+                parts.append("    DRIFT WARNING: potential conflict with project theory")
     if len(proposals) > 3:
         parts.append(f"  ... and {len(proposals) - 3} more proposals")
     parts.append("  Use controlplane_agent_feedback to accept or reject.")

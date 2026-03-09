@@ -95,9 +95,7 @@ class TestBuildChannelSummary:
 
     def test_fail_channel(self) -> None:
         finding = LintIssue(linter="test", kind="x", message="m", severity="blocking")
-        cr = ChannelResult(
-            channel="lint", status="fail", severity="blocking", findings=[finding]
-        )
+        cr = ChannelResult(channel="lint", status="fail", severity="blocking", findings=[finding])
         mesh = _make_mesh([cr])
         summary = _build_channel_summary(mesh)
         assert "fail" in summary["lint"]
@@ -105,9 +103,7 @@ class TestBuildChannelSummary:
 
     def test_unknown_status_passthrough(self) -> None:
         """Channel with status not 'fail'/'pass'/'skip' uses raw status string."""
-        cr = ChannelResult(
-            channel="custom", status="degraded", severity="none", findings=[]
-        )
+        cr = ChannelResult(channel="custom", status="degraded", severity="none", findings=[])
         mesh = _make_mesh([cr])
         summary = _build_channel_summary(mesh)
         assert summary["custom"] == "degraded"
@@ -132,9 +128,7 @@ class TestBuildCpNextActions:
         """repairs_available > 0 produces apply_repairs action."""
         counts = {"blocking": 0, "warning": 0, "repairs_available": 3}
         actions = _build_cp_next_actions("run1", counts)
-        repair_actions = [
-            a for a in actions if a.tool == "controlplane_apply_repairs"
-        ]
+        repair_actions = [a for a in actions if a.tool == "controlplane_apply_repairs"]
         assert len(repair_actions) == 1
         assert "3" in repair_actions[0].reason
 
@@ -159,9 +153,7 @@ class TestBuildCpNextActions:
             ship_gate_parity={"status": "fail"},
         )
         assert actions[0].tool == "terminal"
-        assert (
-            actions[0].args["command"] == "python scripts/ship_main.py --preflight"
-        )
+        assert actions[0].args["command"] == "python scripts/ship_main.py --preflight"
 
 
 # ── _collect_symbol_coverage_blockers ──────────────────────────────────
@@ -169,9 +161,7 @@ class TestBuildCpNextActions:
 
 class TestCollectSymbolCoverageBlockers:
     def test_no_tests_channel(self) -> None:
-        cr = ChannelResult(
-            channel="lint", status="fail", severity="blocking", findings=[]
-        )
+        cr = ChannelResult(channel="lint", status="fail", severity="blocking", findings=[])
         mesh = _make_mesh([cr])
         assert _collect_symbol_coverage_blockers(mesh) == []
 
@@ -182,9 +172,7 @@ class TestCollectSymbolCoverageBlockers:
             message="msg",
             severity="warning",
         )
-        cr = ChannelResult(
-            channel="tests", status="fail", severity="warning", findings=[finding]
-        )
+        cr = ChannelResult(channel="tests", status="fail", severity="warning", findings=[finding])
         mesh = _make_mesh([cr])
         assert _collect_symbol_coverage_blockers(mesh) == []
 
@@ -195,9 +183,7 @@ class TestCollectSymbolCoverageBlockers:
             message="msg",
             severity="blocking",
         )
-        cr = ChannelResult(
-            channel="tests", status="fail", severity="blocking", findings=[finding]
-        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
         mesh = _make_mesh([cr])
         assert _collect_symbol_coverage_blockers(mesh) == []
 
@@ -209,9 +195,7 @@ class TestCollectSymbolCoverageBlockers:
             severity="blocking",
             evidence={"symbol_key": "pkg/mod.py::foo", "missing_lines": [10, 11]},
         )
-        cr = ChannelResult(
-            channel="tests", status="fail", severity="blocking", findings=[finding]
-        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
         mesh = _make_mesh([cr])
         blockers = _collect_symbol_coverage_blockers(mesh)
         assert len(blockers) == 1
@@ -226,9 +210,7 @@ class TestCollectSymbolCoverageBlockers:
             severity="blocking",
             evidence={},
         )
-        cr = ChannelResult(
-            channel="tests", status="fail", severity="blocking", findings=[finding]
-        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
         mesh = _make_mesh([cr])
         blockers = _collect_symbol_coverage_blockers(mesh)
         assert len(blockers) == 1
@@ -242,9 +224,7 @@ class TestCollectSymbolCoverageBlockers:
             severity="blocking",
             evidence={"symbol_key": "pkg/mod.py::required_fn"},
         )
-        cr = ChannelResult(
-            channel="tests", status="fail", severity="blocking", findings=[finding]
-        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
         mesh = _make_mesh([cr])
         blockers = _collect_symbol_coverage_blockers(mesh)
         assert len(blockers) == 1
@@ -267,12 +247,8 @@ class TestCompactReport:
             severity="blocking",
             evidence={"symbol_key": "pkg/mod.py::foo", "missing_lines": [10]},
         )
-        cr = ChannelResult(
-            channel="tests", status="fail", severity="blocking", findings=[finding]
-        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
         mesh = _make_mesh([cr])
         report = format_mesh_report_compact(mesh)
         assert report["remediation_loop"]["required"] is True
-        assert report["remediation_loop"]["policy"].startswith(
-            "Add tests for uncovered symbols"
-        )
+        assert report["remediation_loop"]["policy"].startswith("Add tests for uncovered symbols")

@@ -120,9 +120,7 @@ class TokenTrackerState:
         return cls(
             estimated_tokens_used=int(data.get("estimated_tokens_used", 0)),
             char_count_total=int(data.get("char_count_total", 0)),
-            calibration_factor=float(
-                data.get("calibration_factor", DEFAULT_CALIBRATION_FACTOR)
-            ),
+            calibration_factor=float(data.get("calibration_factor", DEFAULT_CALIBRATION_FACTOR)),
             calibration_count=int(data.get("calibration_count", 0)),
             last_api_check_event=int(data.get("last_api_check_event", 0)),
             last_api_actual=int(data.get("last_api_actual", 0)),
@@ -134,9 +132,7 @@ class TokenTrackerState:
             lintgate_tool_calls=int(data.get("lintgate_tool_calls", 0)),
             last_compact_tokens=int(data.get("last_compact_tokens", 0)),
             consecutive_api_failures=int(data.get("consecutive_api_failures", 0)),
-            context_window_size=int(
-                data.get("context_window_size", DEFAULT_CONTEXT_WINDOW)
-            ),
+            context_window_size=int(data.get("context_window_size", DEFAULT_CONTEXT_WINDOW)),
         )
 
 
@@ -392,9 +388,7 @@ def do_api_calibration(
 def get_usage_summary(tracker: TokenTrackerState) -> dict[str, Any]:
     """Get token economics summary for reporting."""
     window_pct = (
-        round(
-            tracker.estimated_tokens_used / max(tracker.context_window_size, 1) * 100, 1
-        )
+        round(tracker.estimated_tokens_used / max(tracker.context_window_size, 1) * 100, 1)
         if tracker.context_window_size > 0
         else 0.0
     )
@@ -436,8 +430,6 @@ def load_tracker_state(behavior_compass_dict: dict[str, Any]) -> TokenTrackerSta
     return TokenTrackerState.from_dict(data)
 
 
-def save_tracker_state(
-    behavior_compass_dict: dict[str, Any], tracker: TokenTrackerState
-) -> None:
+def save_tracker_state(behavior_compass_dict: dict[str, Any], tracker: TokenTrackerState) -> None:
     """Save tracker state into session.behavior_compass dict."""
     behavior_compass_dict["token_tracker"] = tracker.to_dict()

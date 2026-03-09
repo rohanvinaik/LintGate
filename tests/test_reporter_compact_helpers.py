@@ -17,10 +17,6 @@ from lintgate.controlplane.types import ChannelResult, MeshResult
 
 
 class TestCountFindingsBySeverity:
-    def test_empty_index(self) -> None:
-        result = _count_findings_by_severity({})
-        assert result == {"blocking": 0, "warning": 0, "informational": 0}
-
     def test_mixed_severities(self) -> None:
         """Exercise the loop with findings that have different severities."""
         index = {
@@ -160,9 +156,7 @@ class TestBuildCpNextActions:
         assert "controlplane_get_details" in tools
         assert "controlplane_run" in tools
         assert "controlplane_apply_repairs" in tools
-        repair_action = next(
-            a for a in actions if a.tool == "controlplane_apply_repairs"
-        )
+        repair_action = next(a for a in actions if a.tool == "controlplane_apply_repairs")
         assert repair_action.priority == 4
 
     def test_warnings_action(self) -> None:

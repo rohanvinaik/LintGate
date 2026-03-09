@@ -12,8 +12,7 @@ def _make_manifest_and_sources(tmp_path):
     docs.mkdir()
 
     (docs / "design.md").write_text(
-        "# Design\n\n## Overview\n\nOverview content.\n\n"
-        "## Pipeline\n\nPipeline content.\n"
+        "# Design\n\n## Overview\n\nOverview content.\n\n## Pipeline\n\nPipeline content.\n"
     )
     (docs / "research.md").write_text("Research file content.\n")
 
@@ -242,9 +241,7 @@ def test_partial_regen_preserves_freshness(tmp_path):
 
     # Now load and merge (simulating what wiki_materialize does after fix)
     loaded = load_freshness_state(str(tmp_path))
-    loaded.pages["New-Page"] = build_page_freshness(
-        "New-Page", {"g::h": "other"}, "mh2", "page2"
-    )
+    loaded.pages["New-Page"] = build_page_freshness("New-Page", {"g::h": "other"}, "mh2", "page2")
     save_freshness_state(str(tmp_path), loaded)
 
     # Both pages should be present

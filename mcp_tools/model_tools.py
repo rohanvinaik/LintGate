@@ -393,9 +393,7 @@ def register(mcp, helpers):
         with contextlib.suppress(Exception):
             from lintgate.state import log_feature_usage
 
-            log_feature_usage(
-                "model_calibration", helpers["_validate_project_root"](path)
-            )
+            log_feature_usage("model_calibration", helpers["_validate_project_root"](path))
 
         status = "usable" if profile.is_usable() else "low_confidence"
 
@@ -406,9 +404,7 @@ def register(mcp, helpers):
                 "generate model-aware bootstrap content"
             )
         else:
-            next_actions.append(
-                "Complete more tasks to increase confidence above 0.55 threshold."
-            )
+            next_actions.append("Complete more tasks to increase confidence above 0.55 threshold.")
         next_actions.append(
             f"model_profile_status(model_id='{model_id}') — view full profile details"
         )

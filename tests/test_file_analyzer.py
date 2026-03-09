@@ -34,10 +34,7 @@ class TestAnalyzeFile:
 
     def test_with_prescriptions(self, tmp_path):
         src = tmp_path / "calc.py"
-        src.write_text(
-            "def multiply(a: int, b: int) -> int:\n"
-            "    return a * b\n"
-        )
+        src.write_text("def multiply(a: int, b: int) -> int:\n    return a * b\n")
         result = analyze_file(str(src), str(tmp_path), include_prescriptions=True)
 
         assert result.error is None

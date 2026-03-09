@@ -159,23 +159,17 @@ _THEORY_PARAGRAPH_SIGNALS = {
             r"this (?:system|project|architecture|approach) (?:is|uses|implements|demonstrates)",
             re.I,
         ),
-        re.compile(
-            r"(?:we|the system) (?:define|articulate|propose|claim|argue)", re.I
-        ),
+        re.compile(r"(?:we|the system) (?:define|articulate|propose|claim|argue)", re.I),
         re.compile(r"the theory (?:of|behind|underlying)", re.I),
         re.compile(r"we (?:hypothesize|propose|conjecture) that", re.I),
         re.compile(r"this work (?:addresses|tests|investigates|explores)", re.I),
         re.compile(r"the (?:hypothesis|conjecture|thesis) is", re.I),
     ],
     "problem_solving": [
-        re.compile(
-            r"(?:it is|we find that) .*(?:easier|better|faster|more efficient) to", re.I
-        ),
+        re.compile(r"(?:it is|we find that) .*(?:easier|better|faster|more efficient) to", re.I),
         re.compile(r"rather than .*, (?:we|the system|this)", re.I),
         re.compile(r"(?:by|through) (?:encoding|exploiting|leveraging|using)", re.I),
-        re.compile(
-            r"transform.* (?:intractable|exponential|brute.?force).* into", re.I
-        ),
+        re.compile(r"transform.* (?:intractable|exponential|brute.?force).* into", re.I),
         re.compile(r"(?:instead of|rather than|not by|not through)", re.I),
         re.compile(r"\*\*lesson[:\*]", re.I),
         re.compile(r"\*\*recommendation", re.I),
@@ -183,15 +177,9 @@ _THEORY_PARAGRAPH_SIGNALS = {
         re.compile(r"the (?:fix|solution|workaround|approach) was", re.I),
     ],
     "alignment": [
-        re.compile(
-            r"if you .*, you will (?:ruin|break|destroy|undermine|bypass)", re.I
-        ),
-        re.compile(
-            r"(?:wrong|incorrect|improper|bad|misaligned).*(?:because|since|as)", re.I
-        ),
-        re.compile(
-            r"(?:correct|proper|right|good|aligned).*(?:because|since|as)", re.I
-        ),
+        re.compile(r"if you .*, you will (?:ruin|break|destroy|undermine|bypass)", re.I),
+        re.compile(r"(?:wrong|incorrect|improper|bad|misaligned).*(?:because|since|as)", re.I),
+        re.compile(r"(?:correct|proper|right|good|aligned).*(?:because|since|as)", re.I),
         re.compile(r"the (?:goal|purpose|point) is (?:not )?(?:just )?to", re.I),
         re.compile(
             r"this (?:approach|method|way|solution) (?:supports?|enables?|allows?)",
@@ -201,9 +189,7 @@ _THEORY_PARAGRAPH_SIGNALS = {
         re.compile(r"(?:primary|secondary) objective", re.I),
     ],
     "anti_patterns": [
-        re.compile(
-            r"(?:task|problem)[- ]specific (?:function|solution|hack|workaround)", re.I
-        ),
+        re.compile(r"(?:task|problem)[- ]specific (?:function|solution|hack|workaround)", re.I),
         re.compile(r"(?:black[- ]?box|monolith|hard[- ]?cod|ad[- ]?hoc)", re.I),
         re.compile(r"bypass.* (?:learning|composition|architecture|system)", re.I),
         re.compile(r"(?:will|would|can) (?:ruin|break|destroy|undermine)", re.I),
@@ -211,9 +197,7 @@ _THEORY_PARAGRAPH_SIGNALS = {
     ],
     "architecture": [
         re.compile(r"\b(?:O\(n[²2]\)|quadratic|exponential|linear time)\b", re.I),
-        re.compile(
-            r"\b(?:vectori[sz]|batch|parallel)\b.*\b(?:instead|rather|prefer)\b", re.I
-        ),
+        re.compile(r"\b(?:vectori[sz]|batch|parallel)\b.*\b(?:instead|rather|prefer)\b", re.I),
         re.compile(
             r"\b(?:performance|latency|throughput|bottleneck)\b.*\b(?:because|since|critical)\b",
             re.I,
@@ -257,9 +241,7 @@ _RULE_TEMPLATES: list[tuple[str, str, Any, str]] = [
     (
         r"DO NOT import (\w+(?:\.\w+)*)",
         "forbid_regex",
-        lambda m: (
-            rf"(?:from\s+{re.escape(m.group(1))}|import\s+{re.escape(m.group(1))})"
-        ),
+        lambda m: rf"(?:from\s+{re.escape(m.group(1))}|import\s+{re.escape(m.group(1))})",
         "high",
     ),
     (
@@ -277,9 +259,7 @@ _RULE_TEMPLATES: list[tuple[str, str, Any, str]] = [
     (
         r"MUST (?:import|include) (\w+(?:\.\w+)*)",
         "require_regex",
-        lambda m: (
-            rf"(?:from\s+\S*{re.escape(m.group(1))}|import\s+\S*{re.escape(m.group(1))})"
-        ),
+        lambda m: rf"(?:from\s+\S*{re.escape(m.group(1))}|import\s+\S*{re.escape(m.group(1))})",
         "medium",
     ),
 ]
@@ -341,12 +321,8 @@ def extract_theory(
     # Extract enforceable rules (the old extractor's scope, as a subset)
     guidance = build_context_guidance(project_root)
     existing_rules = guidance.get("rules", [])
-    existing_patterns = {
-        r.get("pattern", "") for r in existing_rules if r.get("pattern")
-    }
-    enforceable = _extract_enforceable_rules(
-        guidance, existing_patterns, existing_rules
-    )
+    existing_patterns = {r.get("pattern", "") for r in existing_rules if r.get("pattern")}
+    enforceable = _extract_enforceable_rules(guidance, existing_patterns, existing_rules)
 
     # Build summary
     summary = _build_summary(profile)
@@ -677,9 +653,7 @@ def _discover_md_files(project_root: str) -> list[str]:
     # Main walk — skips hidden dirs and known noise dirs
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune skip dirs in-place
-        dirnames[:] = sorted(
-            [d for d in dirnames if d not in skip_all and not should_skip_dir(d)]
-        )
+        dirnames[:] = sorted([d for d in dirnames if d not in skip_all and not should_skip_dir(d)])
 
         for fname in sorted(filenames):
             if fname.lower().endswith(".md"):
@@ -942,9 +916,7 @@ def _score_claim(sentence: str, facet: str) -> int:
         score += 1  # Contrastive reasoning
     if re.search(r"\b(?:key|core|fundamental|central|critical|essential)\b", s, re.I):
         score += 1  # Importance markers
-    if re.search(
-        r"\b(?:emerges?|enables?|ensures?|provides?|demonstrates?)\b", s, re.I
-    ):
+    if re.search(r"\b(?:emerges?|enables?|ensures?|provides?|demonstrates?)\b", s, re.I):
         score += 1  # Mechanistic language
 
     # Facet-specific scoring
@@ -953,9 +925,7 @@ def _score_claim(sentence: str, facet: str) -> int:
             score += 2
         if re.search(r"\b(?:theory|principle|axiom|invariant|postulate)\b", s, re.I):
             score += 1
-        if re.search(
-            r"\b(?:we hypothesize|hypothesis|conjecture|research question)\b", s, re.I
-        ):
+        if re.search(r"\b(?:we hypothesize|hypothesis|conjecture|research question)\b", s, re.I):
             score += 2
         if re.search(
             r"this (?:work|project|research) (?:address|test|investigat|explor)",
@@ -1004,9 +974,7 @@ def _score_claim(sentence: str, facet: str) -> int:
             score += 1
         if re.search(r"\*\*Rationale\*\*", s):
             score += 2  # "**Rationale:**" pattern from research docs
-        if re.search(
-            r"\b(?:decompos|modular|separation of concerns|drop[- ]?in)\b", s, re.I
-        ):
+        if re.search(r"\b(?:decompos|modular|separation of concerns|drop[- ]?in)\b", s, re.I):
             score += 1
         if re.search(
             r"\b(?:O\(n|quadratic|exponential|vectori[sz]|batch|performance|latency|throughput)\b",
@@ -1015,17 +983,11 @@ def _score_claim(sentence: str, facet: str) -> int:
         ):
             score += 1  # Performance-related architectural claim
     elif facet == "anti_patterns":
-        if re.search(
-            r"\b(?:will|would|can|could)\s+(?:ruin|break|destroy|fail)\b", s, re.I
-        ):
+        if re.search(r"\b(?:will|would|can|could)\s+(?:ruin|break|destroy|fail)\b", s, re.I):
             score += 2
-        if re.search(
-            r"\b(?:black.?box|monolith|hard.?cod|ad.?hoc|hack|workaround)\b", s, re.I
-        ):
+        if re.search(r"\b(?:black.?box|monolith|hard.?cod|ad.?hoc|hack|workaround)\b", s, re.I):
             score += 1
-        if re.search(
-            r"\b(?:trying harder|premature|overfitting|scope creep)\b", s, re.I
-        ):
+        if re.search(r"\b(?:trying harder|premature|overfitting|scope creep)\b", s, re.I):
             score += 1
         # Penalize tool-description sentences that aren't conceptual anti-patterns
         sentence_lower = s.lower()
@@ -1033,14 +995,10 @@ def _score_claim(sentence: str, facet: str) -> int:
         if sum(1 for p in tool_desc_patterns if p in sentence_lower) >= 1:
             score -= 2
         # Penalize descriptive-verb sentences (documentation, not theory)
-        if re.search(
-            r"\b(?:provides|returns|supports|contains|includes)\b", sentence_lower
-        ):
+        if re.search(r"\b(?:provides|returns|supports|contains|includes)\b", sentence_lower):
             score -= 1
     elif facet == "abstractions":
-        if re.search(
-            r"\b(?:we (?:call|define|term)|is called|known as|refers to)\b", s, re.I
-        ):
+        if re.search(r"\b(?:we (?:call|define|term)|is called|known as|refers to)\b", s, re.I):
             score += 2
         if re.search(r"\*\*\w+(?:\s+\w+){0,3}\*\*", s):
             score += 1  # Bold-defined terms
@@ -1123,11 +1081,7 @@ def _extract_enforceable_rules(
                 already_covered_count += 1
                 continue
 
-            prefix = (
-                "LINTGATE_FORBID_REGEX"
-                if kind == "forbid_regex"
-                else "LINTGATE_REQUIRE_REGEX"
-            )
+            prefix = "LINTGATE_FORBID_REGEX" if kind == "forbid_regex" else "LINTGATE_REQUIRE_REGEX"
             proposed_rules.append(
                 {
                     "source_directive": directive,
@@ -1194,13 +1148,10 @@ def _build_validity_report(
 ) -> dict[str, Any]:
     """Build deterministic quality diagnostics for theory extraction validity."""
     claims_by_facet = {
-        facet: sum(len(entry["claims"]) for entry in entries)
-        for facet, entries in profile.items()
+        facet: sum(len(entry["claims"]) for entry in entries) for facet, entries in profile.items()
     }
     total_claims = sum(claims_by_facet.values())
-    facets_with_claims = [
-        facet for facet, count in claims_by_facet.items() if count > 0
-    ]
+    facets_with_claims = [facet for facet, count in claims_by_facet.items() if count > 0]
     missing_required = [
         facet for facet in _REQUIRED_THEORY_FACETS if claims_by_facet.get(facet, 0) == 0
     ]
@@ -1321,9 +1272,7 @@ def _pick_best_summary_claim(
             s += 1.0
         if re.search(r"\b(?:key|core|fundamental|central|critical)\b", claim, re.I):
             s += 1.0
-        if re.search(
-            r"\b(?:hypothesis|hypothesize|conjecture|propose|we argue)\b", claim, re.I
-        ):
+        if re.search(r"\b(?:hypothesis|hypothesize|conjecture|propose|we argue)\b", claim, re.I):
             s += 1.5
 
         return s

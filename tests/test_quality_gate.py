@@ -152,9 +152,7 @@ class TestQualityGatePush:
         ):
             result = _check_quality_gate("git push", str(tmp_path))
         assert result.should_block is True
-        assert any(
-            "Symbol coverage remediation loop required" in m for m in result.messages
-        )
+        assert any("Symbol coverage remediation loop required" in m for m in result.messages)
 
     def test_blocks_when_tests_failing(self, tmp_path) -> None:
         state = _fresh_state(last_test_status="fail")
@@ -269,9 +267,7 @@ class TestQualityGateCommit:
 
 class TestQualityGateFailOpen:
     def test_no_config(self, tmp_path) -> None:
-        with patch(
-            "lintgate.hooks.pre_tool.load_controlplane_config", return_value=None
-        ):
+        with patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=None):
             result = _check_quality_gate("git push", str(tmp_path))
         assert result.should_block is False
 
@@ -515,9 +511,7 @@ class TestQualityGateBranchCoverage:
         # At least 4 messages: stale, blocking issues, resolve blockers, tests, secrets
         assert len(result.messages) >= 4
 
-    def test_blocking_issues_zero_symbol_blockers_resolve_message(
-        self, tmp_path
-    ) -> None:
+    def test_blocking_issues_zero_symbol_blockers_resolve_message(self, tmp_path) -> None:
         """blocking_issues > 0, symbol_blockers=0 => 'Resolve blockers' message (line 190)."""
         state = _fresh_state(blocking_issues=3)
         # Ensure symbol_coverage_blockers is explicitly 0

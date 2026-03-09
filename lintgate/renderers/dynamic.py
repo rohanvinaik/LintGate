@@ -90,9 +90,7 @@ def render_session_content(runtime: RuntimeState) -> str:
     if runtime.approach_failures > 0:
         behavioral_parts.append(f"Failed approaches: {runtime.approach_failures}")
     if runtime.prediction_accuracy >= 0:
-        behavioral_parts.append(
-            f"Prediction accuracy: {runtime.prediction_accuracy:.0%}"
-        )
+        behavioral_parts.append(f"Prediction accuracy: {runtime.prediction_accuracy:.0%}")
     if runtime.top_constraint:
         behavioral_parts.append(f"Top constraint: {runtime.top_constraint}")
     if behavioral_parts:

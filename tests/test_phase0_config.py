@@ -106,9 +106,7 @@ class TestTheoryProfileCache:
     def test_cache_set_and_clear_lifecycle(self) -> None:
         session = SessionMemory()
         fake_profile = {
-            "core_theory": [
-                {"claims": ["test"], "source": "test.md", "heading": "Test"}
-            ]
+            "core_theory": [{"claims": ["test"], "source": "test.md", "heading": "Test"}]
         }
         session.theory_profile_cache = fake_profile
         assert session.theory_profile_cache is not None
@@ -158,9 +156,7 @@ class TestPendingPatches:
         session.pending_patches = [{"patch_id": "p1", "section_id": "machine_rules"}]
         d = session.to_dict()
         restored = SessionMemory.from_dict(d)
-        assert restored.pending_patches == [
-            {"patch_id": "p1", "section_id": "machine_rules"}
-        ]
+        assert restored.pending_patches == [{"patch_id": "p1", "section_id": "machine_rules"}]
 
     def test_from_dict_without_pending_patches(self) -> None:
         """Old session data without pending_patches loads cleanly."""

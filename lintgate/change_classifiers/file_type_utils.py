@@ -10,9 +10,7 @@ from pathlib import Path
 # ─── Constants ───────────────────────────────────────────────────────────
 
 _DOCS_EXTENSIONS = frozenset({".md", ".rst", ".txt", ".adoc", ".html", ".css"})
-_CONFIG_EXTENSIONS = frozenset(
-    {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"}
-)
+_CONFIG_EXTENSIONS = frozenset({".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"})
 _CONFIG_NAMES = frozenset(
     {
         "pyproject.toml",

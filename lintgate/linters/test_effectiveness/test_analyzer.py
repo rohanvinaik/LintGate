@@ -40,7 +40,7 @@ def _discover_test_files(project_root: str, max_files: int | None = None) -> lis
         rel = os.path.relpath(f, root)
         parts = rel.split(os.sep)[:-1]  # directory parts
         if any(
-            os.path.exists(os.path.join(root, *parts[:i + 1], marker))
+            os.path.exists(os.path.join(root, *parts[: i + 1], marker))
             for i in range(1, len(parts))
             for marker in ("pyproject.toml", "setup.py")
         ):
@@ -52,9 +52,7 @@ def _discover_test_files(project_root: str, max_files: int | None = None) -> lis
     return test_files
 
 
-def _discover_source_files(
-    project_root: str, max_files: int | None = None
-) -> list[str]:
+def _discover_source_files(project_root: str, max_files: int | None = None) -> list[str]:
     """Discover non-test Python source files."""
     from lintgate.discovery import discover_project_files
 
@@ -72,7 +70,7 @@ def _discover_source_files(
         rel = os.path.relpath(f, root)
         parts = rel.split(os.sep)[:-1]
         if any(
-            os.path.exists(os.path.join(root, *parts[:i + 1], marker))
+            os.path.exists(os.path.join(root, *parts[: i + 1], marker))
             for i in range(1, len(parts))
             for marker in ("pyproject.toml", "setup.py")
         ):
@@ -166,11 +164,7 @@ def detect_isolated_sentinels(
     """Detect isolated sentinels and generate warnings."""
     warnings: list[dict[str, Any]] = []
     for root in sentinel_targets:
-        if (
-            root
-            and root not in semantic_roots
-            and root not in ("True", "False", "None")
-        ):
+        if root and root not in semantic_roots and root not in ("True", "False", "None"):
             guard_line = next(
                 (
                     a.line
@@ -241,9 +235,7 @@ def analyze_function_effectiveness(
         assertions, func_name
     )
 
-    warnings = detect_isolated_sentinels(
-        updated_assertions, sentinel_targets, semantic_roots
-    )
+    warnings = detect_isolated_sentinels(updated_assertions, sentinel_targets, semantic_roots)
     warnings.extend(detect_hasattr_chains(updated_assertions))
 
     has_isolated_sentinel = any(w["kind"] == "isolated_sentinel" for w in warnings)
@@ -270,9 +262,7 @@ def analyze_function_effectiveness(
             }
         )
 
-    fe = FunctionEffectiveness(
-        function_name=func_name, test_count=1, assertions=updated_assertions
-    )
+    fe = FunctionEffectiveness(function_name=func_name, test_count=1, assertions=updated_assertions)
     fe.compute_scores(
         derivation_methods=derivation_methods,
         has_isolated_sentinel=has_isolated_sentinel,
@@ -321,9 +311,7 @@ def analyze_effectiveness(
     # Map tests to source functions
     source_to_tests: dict[str, list[str]] = {}
     for tf in test_files:
-        file_mapping = map_tests_to_source(
-            tf, source_index, project_root, diagnostics=diagnostics
-        )
+        file_mapping = map_tests_to_source(tf, source_index, project_root, diagnostics=diagnostics)
         for src_key, mapped_tests in file_mapping.items():
             source_to_tests.setdefault(src_key, []).extend(mapped_tests)
 

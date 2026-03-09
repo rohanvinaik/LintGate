@@ -130,12 +130,14 @@ def publish_pages(
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(page_html)
 
-        result.pages.append(PublishedPage(
-            name=page.name,
-            path=out_path,
-            slug=slug,
-            html_size=len(page_html),
-        ))
+        result.pages.append(
+            PublishedPage(
+                name=page.name,
+                path=out_path,
+                slug=slug,
+                html_size=len(page_html),
+            )
+        )
 
     # Write static assets
     _write_css(out_dir)
@@ -254,7 +256,7 @@ def _build_sidebar(
                 continue
             label = manifest.rail_display_name(rail)
             lines.append('<div class="sidebar-group">')
-            lines.append(f'  <h3>{html.escape(label)}</h3>')
+            lines.append(f"  <h3>{html.escape(label)}</h3>")
             lines.append("  <ul>")
             for wp in rail_pages:
                 if wp.name in composed_names:
@@ -277,7 +279,7 @@ def _build_sidebar(
             pillar_pages = [p for p in no_rail if p.pillar == pillar]
             pillar_pages.sort(key=lambda p: p.order)
             lines.append('<div class="sidebar-group">')
-            lines.append(f'  <h3>{html.escape(pillar.title())}</h3>')
+            lines.append(f"  <h3>{html.escape(pillar.title())}</h3>")
             lines.append("  <ul>")
             for wp in pillar_pages:
                 if wp.name in composed_names:
@@ -306,16 +308,14 @@ def _build_prev_next(
     if prev_p:
         slug = _page_slug(prev_p.name)
         parts.append(
-            f'  <a class="prev" href="{prefix}{slug}/">'
-            f'&larr; {html.escape(prev_p.title)}</a>'
+            f'  <a class="prev" href="{prefix}{slug}/">&larr; {html.escape(prev_p.title)}</a>'
         )
     else:
         parts.append('  <span class="prev"></span>')
     if next_p:
         slug = _page_slug(next_p.name)
         parts.append(
-            f'  <a class="next" href="{prefix}{slug}/">'
-            f'{html.escape(next_p.title)} &rarr;</a>'
+            f'  <a class="next" href="{prefix}{slug}/">{html.escape(next_p.title)} &rarr;</a>'
         )
     else:
         parts.append('  <span class="next"></span>')
@@ -332,8 +332,7 @@ def _md_to_html(text: str, link_fn: Any = None) -> str:
     """
     # Strip managed-section markers before rendering
     lines = [
-        line for line in text.split("\n")
-        if not line.strip().startswith("<!-- LINTGATE_WIKI:")
+        line for line in text.split("\n") if not line.strip().startswith("<!-- LINTGATE_WIKI:")
     ]
     html_parts: list[str] = []
     in_code_block = False

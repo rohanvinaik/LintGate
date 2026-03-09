@@ -63,9 +63,7 @@ class LocalRuntimeAdapter(Protocol):
         """
         ...
 
-    def get_generation_stream(
-        self, prompt: str, **kwargs: Any
-    ) -> Generator[str, None, None]:
+    def get_generation_stream(self, prompt: str, **kwargs: Any) -> Generator[str, None, None]:
         """Get a streaming generation response.
 
         Args:

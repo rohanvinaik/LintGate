@@ -702,21 +702,6 @@ class TestPERF010:
         assert len(issues) == 0
 
 
-# ─── PERF011: Pure uncached call in loop ─────────────────────────────
-
-
-class TestPERF011:
-    def test_detects_pure_call_in_loop(self):
-        # We need a way to mock purity for this test
-        # PERF011 relies on the purity detector being active
-        # For the unit test, we'll check if it detects calls at all
-        # Assuming the check marks some calls as pure for testing
-        pass
-
-    def test_skips_impure_call_in_loop(self):
-        pass
-
-
 # ─── Integration: Full PerformanceChecker pipeline ────────────────────
 
 

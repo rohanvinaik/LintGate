@@ -136,9 +136,7 @@ def test_dep_channel_reads_name_and_status_keys() -> None:
         channel = DependencyChannel()
 
     # Test _full_check directly with mock
-    with patch(
-        "lintgate.dependency_health.full_dependency_health", return_value=mock_result
-    ):
+    with patch("lintgate.dependency_health.full_dependency_health", return_value=mock_result):
         findings, repairs = channel._full_check("/tmp")
 
     assert len(findings) == 1

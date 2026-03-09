@@ -24,10 +24,12 @@ class PredictorInput:
     semantic_ratio: float = 0.0
     weakness_taxonomy: str = ""
     assertion_count: int = 0
+    mutation_spec_level: float | None = None
+    mutation_data_source: str | None = None
 
 
 def predict(
-    func_node: ast.FunctionDef,
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     signals: PredictorInput,
 ) -> PredictionResult:
     """Run the 6-path decision tree to estimate specification complexity."""
@@ -73,8 +75,13 @@ def predict(
     # Sigma confidence: base confidence modulated by DFT
     sigma_confidence = signals.purity_confidence * testability.testability_score
 
-    # Specification level: how much of sigma is covered by existing assertions
-    spec_level = _compute_spec_level(sigma, signals.assertion_count)
+    # Specification level: mutation-derived ground truth overrides static estimate
+    if signals.mutation_spec_level is not None:
+        spec_level = signals.mutation_spec_level
+        data_source = signals.mutation_data_source or "mutation"
+    else:
+        spec_level = _compute_spec_level(sigma, signals.assertion_count)
+        data_source = "static"
 
     # Phase detection — uses design signal density for trajectory awareness
     phase = _detect_phase(spec_level, design_signals, sigma)
@@ -89,6 +96,7 @@ def predict(
         sigma=sigma,
         phase=phase,
         sigma_confidence=sigma_confidence,
+        data_source=data_source,
         testability=testability,
         design_signals=design_signals,
         tpa=tpa,

@@ -22,9 +22,7 @@ from typing import Any
 
 # ── Constants ────────────────────────────────────────────────────────
 
-GLOBAL_PROFILE_PATH = (
-    Path.home() / ".claude" / "lintgate" / "global_behavior_profile.json"
-)
+GLOBAL_PROFILE_PATH = Path.home() / ".claude" / "lintgate" / "global_behavior_profile.json"
 DEFAULT_ALPHA = 0.6  # Initial global influence weight
 DEFAULT_DECAY_HORIZON = 50  # event_counter at which alpha reaches ~0
 MIN_SAMPLE_SIZE = 3  # Minimum session count before global priors activate

@@ -29,9 +29,7 @@ def apply_edit_scope(
 
     # Get the actual failing channel results
     failing_results = [
-        cr
-        for cr in channel_results
-        if cr.channel in result.loud_channels and cr.status == "fail"
+        cr for cr in channel_results if cr.channel in result.loud_channels and cr.status == "fail"
     ]
     if not failing_results:
         return result
@@ -85,9 +83,7 @@ def apply_edit_scope(
                 loud_channels=[],
                 confidence=round(min(result.confidence, 0.85), 2),
                 classification_notes=result.classification_notes
-                + [
-                    f"all {len(ambient)} failing channel(s) are ambient — downgraded to stable"
-                ],
+                + [f"all {len(ambient)} failing channel(s) are ambient — downgraded to stable"],
                 edit_scoped=True,
                 edit_related_channels=edit_related,
                 ambient_channels=ambient,
@@ -96,7 +92,9 @@ def apply_edit_scope(
 
     # Mixed: some edit-related, some ambient — keep original state but annotate
     if ambient:
-        ambient_note = f"Note: {', '.join(ambient)} findings are pre-existing and unrelated to your edit."
+        ambient_note = (
+            f"Note: {', '.join(ambient)} findings are pre-existing and unrelated to your edit."
+        )
         return CoherenceResult(
             state=result.state,
             summary=result.summary,

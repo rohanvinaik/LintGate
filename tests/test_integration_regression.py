@@ -61,9 +61,7 @@ def test_ledger_teff_lookup_uses_qualified_key():
 
         from lintgate.specification.ledger import build_specification_ledger
 
-        ledger = build_specification_ledger(
-            prop_manifest, teff_manifest, os.path.dirname(src_path)
-        )
+        ledger = build_specification_ledger(prop_manifest, teff_manifest, os.path.dirname(src_path))
 
         # The ledger should have an entry - if teff lookup failed, assertion_count would be 0
         assert qualified_key in ledger.functions

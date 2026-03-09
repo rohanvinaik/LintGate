@@ -166,9 +166,7 @@ def find_affected_test_sites(
 
         if change.change_type == "return_arity":
             sites.extend(
-                _find_unpack_mismatches(
-                    tree, test_file, change.function, change.old_value
-                )
+                _find_unpack_mismatches(tree, test_file, change.function, change.old_value)
             )
         elif change.change_type in ("param_added", "param_removed"):
             sites.extend(_find_call_sites(tree, test_file, change.function))
@@ -290,10 +288,7 @@ def _extract_function_params(tree: ast.AST) -> dict[str, set[str]]:
 def _find_function_line(tree: ast.AST, func_name: str) -> int:
     """Find the line number of a function definition."""
     for node in ast.walk(tree):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == func_name
-        ):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
             return node.lineno
     return 0
 
@@ -405,9 +400,7 @@ def _build_advisory(
         return ""
 
     if change.change_type == "return_arity":
-        sites_str = ", ".join(
-            f"{os.path.basename(s.test_file)}:{s.line}" for s in affected[:5]
-        )
+        sites_str = ", ".join(f"{os.path.basename(s.test_file)}:{s.line}" for s in affected[:5])
         suffix = f" and {len(affected) - 5} more" if len(affected) > 5 else ""
         return (
             f"{change.function}() return arity: {change.old_value} → {change.new_value}. "

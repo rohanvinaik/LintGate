@@ -285,9 +285,7 @@ def render_claude_md(
     has_lintgate_yaml = False
     if project_root:
         if os.path.exists(os.path.join(project_root, "lintgate.yaml")):
-            context_map_lines.append(
-                "- `lintgate.yaml` - lint and ControlPlane configuration."
-            )
+            context_map_lines.append("- `lintgate.yaml` - lint and ControlPlane configuration.")
             has_lintgate_yaml = True
         elif os.path.exists(os.path.join(project_root, ".claude", "lintgate.yaml")):
             context_map_lines.append(

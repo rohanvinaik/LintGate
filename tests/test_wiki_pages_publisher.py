@@ -25,7 +25,9 @@ def _make_manifest_and_sources(tmp_path):
             order=1,
             rail="getting_value",
             chapter=1,
-            sources=[SourceRef(file="docs/intro.md", kind="section", heading="Getting Started", level=2)],
+            sources=[
+                SourceRef(file="docs/intro.md", kind="section", heading="Getting Started", level=2)
+            ],
             tags=["intro"],
         ),
         WikiPage(
@@ -88,7 +90,9 @@ def test_publish_html_contains_title(tmp_path):
     composed = compose_all_pages(manifest, str(tmp_path))
     out_dir = str(tmp_path / "_site")
 
-    publish_pages(manifest, composed, str(tmp_path), out_dir, check_links=False, site_title="TestSite")
+    publish_pages(
+        manifest, composed, str(tmp_path), out_dir, check_links=False, site_title="TestSite"
+    )
 
     with open(os.path.join(out_dir, "getting-started", "index.html")) as f:
         html = f.read()
@@ -118,13 +122,19 @@ def test_publish_prev_next_navigation(tmp_path):
 
     pages = [
         WikiPage(
-            name="Part-1", title="Part One", pillar="guide",
-            rail="how_it_works", chapter=1,
+            name="Part-1",
+            title="Part One",
+            pillar="guide",
+            rail="how_it_works",
+            chapter=1,
             sources=[SourceRef(file="docs/a.md", kind="section", heading="Part1", level=2)],
         ),
         WikiPage(
-            name="Part-2", title="Part Two", pillar="guide",
-            rail="how_it_works", chapter=2,
+            name="Part-2",
+            title="Part Two",
+            pillar="guide",
+            rail="how_it_works",
+            chapter=2,
             sources=[SourceRef(file="docs/b.md", kind="section", heading="Part2", level=2)],
         ),
     ]
@@ -156,8 +166,12 @@ def test_publish_sitemap_content(tmp_path):
     out_dir = str(tmp_path / "_site")
 
     publish_pages(
-        manifest, composed, str(tmp_path), out_dir,
-        check_links=False, base_url="https://example.com",
+        manifest,
+        composed,
+        str(tmp_path),
+        out_dir,
+        check_links=False,
+        base_url="https://example.com",
     )
 
     with open(os.path.join(out_dir, "sitemap.xml")) as f:
@@ -202,7 +216,9 @@ def test_publish_has_header_element(tmp_path):
     composed = compose_all_pages(manifest, str(tmp_path))
     out_dir = str(tmp_path / "_site")
 
-    publish_pages(manifest, composed, str(tmp_path), out_dir, check_links=False, site_title="TestWiki")
+    publish_pages(
+        manifest, composed, str(tmp_path), out_dir, check_links=False, site_title="TestWiki"
+    )
 
     with open(os.path.join(out_dir, "getting-started", "index.html")) as f:
         page_html = f.read()

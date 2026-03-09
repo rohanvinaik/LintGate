@@ -182,10 +182,7 @@ def select_tier(
         )
 
     # Test files only: tier 2 but relaxed
-    if (
-        classification.touches_test_files
-        and not classification.touches_pipeline_critical
-    ):
+    if classification.touches_test_files and not classification.touches_pipeline_critical:
         return LintTier(
             name="tier_2_test",
             linters=TIER_2_LINTERS,

@@ -181,9 +181,7 @@ class TestFilterManifest:
 
 class TestSelectPropertyCandidates:
     def _manifest_with_properties(self) -> PropertyManifest:
-        bounded = AlgebraicProperty(
-            kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp"
-        )
+        bounded = AlgebraicProperty(kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp")
         commutative = AlgebraicProperty(
             kind=PropertyKind.COMMUTATIVE, confidence=0.7, evidence="arg swap"
         )
@@ -291,9 +289,7 @@ class TestBuildManifestForProject:
 
 class TestBuildTestEntry:
     def test_basic_entry(self):
-        bounded = AlgebraicProperty(
-            kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp"
-        )
+        bounded = AlgebraicProperty(kind=PropertyKind.BOUNDED, confidence=0.8, evidence="clamp")
         func = _make_func("score", props=(bounded,), source="/a.py")
         entry = _build_test_entry("score", func)
         assert entry["function"] == "score"
@@ -329,9 +325,7 @@ class TestInspectAlgebra:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(
-            tools["inspect_algebra"](path=str(tmp_path), filter_by="pure")
-        )
+        result = json.loads(tools["inspect_algebra"](path=str(tmp_path), filter_by="pure"))
         assert "filter_applied" in result
         assert result["filter_applied"]["type"] == "pure"
 
@@ -342,9 +336,7 @@ class TestInspectAlgebra:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(
-            tools["inspect_algebra"](path=str(tmp_path), function="add")
-        )
+        result = json.loads(tools["inspect_algebra"](path=str(tmp_path), function="add"))
         assert "filter_applied" in result
 
     def test_empty_project(self, tmp_path):

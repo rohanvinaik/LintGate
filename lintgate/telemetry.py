@@ -86,9 +86,7 @@ def compute_telemetry_summary(
 
     # Token estimate: compact ~200, standard ~500, full ~1500
     token_map = {"compact": 200, "standard": 500, "full": 1500}
-    total_tokens = sum(
-        token_map.get(e.get("output_mode", "full"), 1500) for e in entries
-    )
+    total_tokens = sum(token_map.get(e.get("output_mode", "full"), 1500) for e in entries)
 
     # Fix rate: ratio of runs with 0 blocking to total runs
     clean_runs = sum(1 for e in entries if e.get("blocking_count", 0) == 0)
@@ -221,9 +219,7 @@ def _compute_trend_evidence(entries: list[dict[str, Any]]) -> dict[str, Any]:
 
     mid = len(entries) // 2
     avg_first = sum(e.get("blocking_count", 0) for e in entries[:mid]) / mid
-    avg_second = sum(e.get("blocking_count", 0) for e in entries[mid:]) / (
-        len(entries) - mid
-    )
+    avg_second = sum(e.get("blocking_count", 0) for e in entries[mid:]) / (len(entries) - mid)
     n_runs = len(entries)
 
     # Build human-readable explanation
@@ -385,9 +381,7 @@ def compute_quality_economics_summary(
 
     # Coverage stats
     coverages = [
-        float(e["coverage_pct"])
-        for e in entries
-        if isinstance(e.get("coverage_pct"), (int, float))
+        float(e["coverage_pct"]) for e in entries if isinstance(e.get("coverage_pct"), (int, float))
     ]
     avg_coverage = round(sum(coverages) / len(coverages), 1) if coverages else 0.0
     coverage_trend = _compute_coverage_trend(coverages)
@@ -472,12 +466,7 @@ def compute_token_economics_summary(
     token_estimates = _load_jsonl_entries(days, project_root, "token_estimate")
     runtime_writes = _load_jsonl_entries(days, project_root, "runtime_state_write")
 
-    if (
-        not transitions
-        and not compactions
-        and not token_estimates
-        and not runtime_writes
-    ):
+    if not transitions and not compactions and not token_estimates and not runtime_writes:
         return {
             "period": period,
             "has_data": False,
@@ -504,16 +493,10 @@ def compute_token_economics_summary(
     exits = [t for t in transitions if t.get("transition") == "exit"]
 
     entry_scores = [t.get("habit_score", 0.0) for t in entries if "habit_score" in t]
-    avg_entry_score = (
-        sum(entry_scores) / max(len(entry_scores), 1) if entry_scores else 0.0
-    )
+    avg_entry_score = sum(entry_scores) / max(len(entry_scores), 1) if entry_scores else 0.0
 
-    total_tokens_compacted = sum(
-        c.get("estimated_tokens_before", 0) for c in compactions
-    )
-    avg_tokens_before = (
-        total_tokens_compacted / len(compactions) if compactions else 0.0
-    )
+    total_tokens_compacted = sum(c.get("estimated_tokens_before", 0) for c in compactions)
+    avg_tokens_before = total_tokens_compacted / len(compactions) if compactions else 0.0
     compaction_calls = [
         int(c.get("tool_calls_compacted", 0))
         for c in compactions
@@ -536,9 +519,7 @@ def compute_token_economics_summary(
     api_calibration_events = sum(1 for e in token_estimates if e.get("source") == "api")
 
     runtime_successes = sum(int(bool(e.get("success", 0))) for e in runtime_writes)
-    runtime_write_success_rate = (
-        runtime_successes / len(runtime_writes) if runtime_writes else 0.0
-    )
+    runtime_write_success_rate = runtime_successes / len(runtime_writes) if runtime_writes else 0.0
     runtime_write_cadence_skips = sum(
         int(bool(e.get("skipped_by_cadence", 0))) for e in runtime_writes
     )
@@ -552,9 +533,7 @@ def compute_token_economics_summary(
         status = str(entry.get("dynamic_status", "") or "")
         if not status:
             continue
-        runtime_write_dynamic_status[status] = (
-            runtime_write_dynamic_status.get(status, 0) + 1
-        )
+        runtime_write_dynamic_status[status] = runtime_write_dynamic_status.get(status, 0) + 1
 
     return {
         "period": period,

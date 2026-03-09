@@ -35,7 +35,7 @@ from lintgate.controlplane.types import (
     ControlPlaneConfig,
     SupervisionEvent,
 )
-from lintgate.types import ChangeClassification
+from lintgate.types import ChangeClassification, LintIssue
 
 # ── Protocol conformance ─────────────────────────────────────────────────
 
@@ -275,16 +275,12 @@ def test_execute_in_git_repo(tmp_path: Path) -> None:
         capture_output=True,
         cwd=str(tmp_path),
     )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path)
-    )
+    subprocess.run(["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path))
 
     # Create a file and commit it
     (tmp_path / "app.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "app.py"], capture_output=True, cwd=str(tmp_path))
-    subprocess.run(
-        ["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path)
-    )
+    subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
 
     classification = ChangeClassification(
         files_changed=[str(tmp_path / "app.py")],
@@ -334,9 +330,7 @@ def test_check5_missing_artifacts(mock_remote: object, tmp_path: Path) -> None:
 
 @patch("lintgate.quality_infra._has_github_remote", return_value=True)
 @patch("lintgate.quality_infra.audit_quality_infrastructure")
-def test_check5_complete(
-    mock_audit: MagicMock, mock_remote: object, tmp_path: Path
-) -> None:
+def test_check5_complete(mock_audit: MagicMock, mock_remote: object, tmp_path: Path) -> None:
     """Complete quality infrastructure → no findings."""
     from lintgate.quality_infra import QualityAuditResult
 
@@ -361,14 +355,10 @@ def test_check5_skipped_on_hooks(tmp_path: Path) -> None:
         capture_output=True,
         cwd=str(tmp_path),
     )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path)
-    )
+    subprocess.run(["git", "config", "user.name", "Test"], capture_output=True, cwd=str(tmp_path))
     (tmp_path / "app.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "app.py"], capture_output=True, cwd=str(tmp_path))
-    subprocess.run(
-        ["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path)
-    )
+    subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
 
     classification = ChangeClassification(
         files_changed=[str(tmp_path / "app.py")],
@@ -440,9 +430,285 @@ class TestWorkingTreeScope:
             surface="hook",
         )
 
-        with patch(
-            "lintgate.channels.git_channel._check_working_tree_scope"
-        ) as mock_scope:
+        with patch("lintgate.channels.git_channel._check_working_tree_scope") as mock_scope:
             channel = GitChannel()
             channel.execute(event, ControlPlaneConfig())
             mock_scope.assert_not_called()
+
+
+# ── SPEC010: GitChannel.execute specification ─────────────────────────
+
+
+class TestGitChannelExecuteSpec:
+    """Specify exact output contract for GitChannel.execute."""
+
+    def test_non_git_returns_skip_with_metrics(self, tmp_path: Path) -> None:
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            tool_name="Edit",
+            change_classification=ChangeClassification(change_kind="logic", risk_level="moderate"),
+        )
+        result = GitChannel().execute(event, ControlPlaneConfig())
+        assert result.channel == "git"
+        assert result.status == "skip"
+        assert result.severity == "none"
+        assert result.metrics["reason"] == "not_a_git_repo"
+        assert result.findings == []
+        assert result.repairs == []
+
+    def test_clean_repo_returns_pass_with_metrics(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            capture_output=True,
+            cwd=str(tmp_path),
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            capture_output=True,
+            cwd=str(tmp_path),
+        )
+        (tmp_path / "f.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "f.py"], capture_output=True, cwd=str(tmp_path))
+        subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
+
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            tool_name="Edit",
+            change_classification=ChangeClassification(change_kind="logic", risk_level="moderate"),
+        )
+        result = GitChannel().execute(event, ControlPlaneConfig())
+        assert result.channel == "git"
+        assert result.status in ("pass", "fail")
+        assert result.duration_ms >= 0
+        assert "checks_run" in result.metrics
+        assert "issue_count" in result.metrics
+        assert "secrets_found" in result.metrics
+        assert "quality_infra_findings" in result.metrics
+        assert isinstance(result.metrics["checks_run"], int)
+        assert result.metrics["checks_run"] >= 2  # base checks always run
+
+    def test_hook_event_skips_expensive_checks(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            capture_output=True,
+            cwd=str(tmp_path),
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            capture_output=True,
+            cwd=str(tmp_path),
+        )
+        (tmp_path / "f.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "f.py"], capture_output=True, cwd=str(tmp_path))
+        subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=str(tmp_path))
+
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            tool_name="Edit",
+            surface="hook",
+            change_classification=ChangeClassification(change_kind="logic", risk_level="moderate"),
+        )
+        result = GitChannel().execute(event, ControlPlaneConfig())
+        # Hook events skip checks 0, 1, 5 — fewer checks_run
+        assert result.metrics["checks_run"] < 6
+        assert result.metrics["quality_infra_findings"] == 0
+
+    def test_severity_escalation_on_warning_finding(self, tmp_path: Path) -> None:
+        """When a sub-check produces a warning finding, execute escalates severity."""
+        (tmp_path / ".git").mkdir()
+        with (
+            patch("lintgate.channels.git_channel._is_git_repo", return_value=True),
+            patch("lintgate.channels.git_channel._check_working_tree_scope", return_value=[]),
+            patch("lintgate.channels.git_channel._check_large_changes", return_value=[]),
+            patch("lintgate.channels.git_channel._check_lockfile_freshness", return_value=([], [])),
+            patch(
+                "lintgate.channels.git_channel._check_sensitive_files",
+                return_value=[
+                    LintIssue(
+                        linter="git_channel",
+                        kind="sensitive_file",
+                        message="Sensitive file detected: .env",
+                        severity="warning",
+                    )
+                ],
+            ),
+            patch("lintgate.channels.git_channel._check_diff_secrets", return_value=[]),
+            patch(
+                "lintgate.channels.git_channel._check_quality_infrastructure", return_value=([], [])
+            ),
+        ):
+            event = SupervisionEvent(
+                project_root=str(tmp_path),
+                tool_name="Edit",
+                change_classification=ChangeClassification(
+                    change_kind="logic", risk_level="moderate"
+                ),
+            )
+            result = GitChannel().execute(event, ControlPlaneConfig())
+            assert result.status == "fail"
+            assert result.severity == "warning"
+            assert result.metrics["issue_count"] == 1
+
+
+# ── Mutant-killing: _check_large_changes ──────────────────────────────
+
+
+class TestCheckLargeChangesMutantKilling:
+    """Pin exact behavior of _check_large_changes."""
+
+    def test_under_threshold_returns_empty(self, tmp_path: Path) -> None:
+        """500 total lines → no finding (boundary: <=500)."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = " 3 files changed, 300 insertions(+), 200 deletions(-)\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_large_changes(str(tmp_path))
+        assert findings == []
+
+    def test_over_threshold_returns_exact_finding(self, tmp_path: Path) -> None:
+        """501 total lines → exactly one finding with exact message."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = " 5 files changed, 400 insertions(+), 101 deletions(-)\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_large_changes(str(tmp_path))
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.linter == "git_channel"
+        assert f.kind == "large_staged_changes"
+        assert f.severity == "informational"
+        assert "400 insertions" in f.message
+        assert "101 deletions" in f.message
+        assert "501 total" in f.message
+        assert "smaller chunks" in f.message
+
+    def test_git_failure_returns_empty(self, tmp_path: Path) -> None:
+        """Non-zero returncode → graceful empty return."""
+        mock_result = MagicMock()
+        mock_result.returncode = 128
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_large_changes(str(tmp_path))
+        assert findings == []
+
+    def test_timeout_returns_empty(self, tmp_path: Path) -> None:
+        """Subprocess timeout → graceful empty return."""
+        with patch(
+            "lintgate.channels.git_channel.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="git", timeout=3),
+        ):
+            findings = _check_large_changes(str(tmp_path))
+        assert findings == []
+
+    def test_exact_threshold_boundary(self, tmp_path: Path) -> None:
+        """Exactly 500 → no finding; 501 → finding."""
+        mock_500 = MagicMock()
+        mock_500.returncode = 0
+        mock_500.stdout = " 1 file changed, 500 insertions(+)\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_500):
+            assert _check_large_changes(str(tmp_path)) == []
+
+        mock_501 = MagicMock()
+        mock_501.returncode = 0
+        mock_501.stdout = " 1 file changed, 501 insertions(+)\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_501):
+            findings = _check_large_changes(str(tmp_path))
+            assert len(findings) == 1
+
+
+# ── Mutant-killing: _check_sensitive_files ────────────────────────────
+
+
+class TestCheckSensitiveFilesMutantKilling:
+    """Pin exact behavior of _check_sensitive_files."""
+
+    def test_env_file_staged_produces_warning(self, tmp_path: Path) -> None:
+        """Staged .env file → warning with exact attributes."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "A  .env\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.linter == "git_channel"
+        assert f.kind == "sensitive_file"
+        assert f.severity == "warning"
+        assert ".env" in f.message
+        assert ".gitignore" in f.message
+
+    def test_untracked_credentials_json_detected(self, tmp_path: Path) -> None:
+        """Untracked credentials.json → warning."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "?? credentials.json\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert len(findings) == 1
+        assert findings[0].kind == "sensitive_file"
+
+    def test_modified_sensitive_file_detected(self, tmp_path: Path) -> None:
+        """Modified .env.local → warning."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "M  .env.local\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert len(findings) == 1
+
+    def test_committed_sensitive_file_not_flagged(self, tmp_path: Path) -> None:
+        """Status 'D' (deleted) is not in A/?/M → no finding."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "D  .env\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert findings == []
+
+    def test_non_sensitive_file_ignored(self, tmp_path: Path) -> None:
+        """Normal file doesn't trigger."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "A  main.py\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert findings == []
+
+    def test_multiple_sensitive_files(self, tmp_path: Path) -> None:
+        """Multiple sensitive files → multiple findings."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "A  .env\n?? secrets.yaml\nA  main.py\n"
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert len(findings) == 2
+        kinds = {f.kind for f in findings}
+        assert kinds == {"sensitive_file"}
+
+    def test_git_failure_returns_empty(self, tmp_path: Path) -> None:
+        mock_result = MagicMock()
+        mock_result.returncode = 128
+
+        with patch("lintgate.channels.git_channel.subprocess.run", return_value=mock_result):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert findings == []
+
+    def test_timeout_returns_empty(self, tmp_path: Path) -> None:
+        with patch(
+            "lintgate.channels.git_channel.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="git", timeout=3),
+        ):
+            findings = _check_sensitive_files(str(tmp_path))
+        assert findings == []

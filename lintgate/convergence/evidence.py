@@ -49,9 +49,7 @@ class LensEvidence:
 
     def __post_init__(self) -> None:
         if self.signal not in _VALID_SIGNALS:
-            raise ValueError(
-                f"signal must be 'support' or 'oppose', got {self.signal!r}"
-            )
+            raise ValueError(f"signal must be 'support' or 'oppose', got {self.signal!r}")
         if not (0.0 <= self.confidence <= 1.0):
             raise ValueError(f"confidence must be in [0, 1], got {self.confidence}")
 

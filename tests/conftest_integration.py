@@ -65,9 +65,7 @@ def run_channel(project_root: str, channel_name: str):
             build_test_effectiveness_manifest,
         )
 
-        teff_manifest = build_test_effectiveness_manifest(
-            project_root, source_files, test_files
-        )
+        teff_manifest = build_test_effectiveness_manifest(project_root, source_files, test_files)
         context["test_effectiveness_manifest"] = teff_manifest
 
     event = SupervisionEvent(

@@ -89,9 +89,7 @@ class TestImplAgentFeedbackNoDisagreement:
             ),
         ):
             result = json.loads(
-                _impl_controlplane_agent_feedback(
-                    "/tmp", None, None, None, None, _stub_helpers()
-                )
+                _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
             )
 
         assert result["total_disagreements"] == 0
@@ -297,9 +295,7 @@ class TestRegisterControlplaneToolClosures:
             ),
             mock.patch("os.path.exists", return_value=True),
         ):
-            result = json.loads(
-                skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py")
-            )
+            result = json.loads(skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py"))
             assert result["source_file"] == "/tmp/proj/foo.py"
 
 
@@ -439,7 +435,5 @@ class TestRegisterOnboardingClaudeMdExists:
             result = json.loads(getting_started(path=str(tmp_path)))
 
         actions = result.get("next_actions", [])
-        bootstrap_actions = [
-            a for a in actions if a.get("tool") == "bootstrap_context_files"
-        ]
+        bootstrap_actions = [a for a in actions if a.get("tool") == "bootstrap_context_files"]
         assert bootstrap_actions == []

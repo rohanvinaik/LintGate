@@ -110,9 +110,7 @@ class TestFindingFingerprint:
         assert fp_a != fp_b
 
     def test_different_channels_different_fingerprints(self) -> None:
-        issue = _make_issue(
-            "warning", linter="test", kind="test_fail", message="test_x failed"
-        )
+        issue = _make_issue("warning", linter="test", kind="test_fail", message="test_x failed")
         fp_lint = compute_finding_fingerprint(issue, "lint")
         fp_tests = compute_finding_fingerprint(issue, "tests")
         assert fp_lint != fp_tests
@@ -170,9 +168,7 @@ class TestBuildFindingIndex:
                     channel="tests",
                     status="fail",
                     severity="warning",
-                    findings=[
-                        _make_issue("warning", linter="test_ch", message="test failed")
-                    ],
+                    findings=[_make_issue("warning", linter="test_ch", message="test failed")],
                 ),
             ]
         )
@@ -315,9 +311,7 @@ class TestFormatMeshReportCompact:
                     channel="lint",
                     status="fail",
                     severity="blocking",
-                    findings=[
-                        _make_issue("blocking", message="Undefined 'x'", file="foo.py")
-                    ],
+                    findings=[_make_issue("blocking", message="Undefined 'x'", file="foo.py")],
                 ),
             ]
         )
@@ -351,17 +345,13 @@ class TestFormatMeshReportCompact:
                         channel="lint",
                         status="fail",
                         severity="warning",
-                        findings=[
-                            _make_issue("warning", message="Warn B", file="b.py")
-                        ],
+                        findings=[_make_issue("warning", message="Warn B", file="b.py")],
                     ),
                 ]
             )
         )
 
-        compact = format_mesh_report_compact(
-            mesh, previous_finding_index=previous_index
-        )
+        compact = format_mesh_report_compact(mesh, previous_finding_index=previous_index)
 
         assert "delta" in compact
         assert "blocking_issues" not in compact

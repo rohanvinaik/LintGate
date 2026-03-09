@@ -21,9 +21,7 @@ def check_habit_api_calibration(
     from lintgate.state import log_metric
     from lintgate.token_tracker import do_api_calibration, should_api_check
 
-    api_interval = overrides.get(
-        "token_api_interval", cp_config.habit_mode_token_api_interval
-    )
+    api_interval = overrides.get("token_api_interval", cp_config.habit_mode_token_api_interval)
     if should_api_check(tracker, event_counter, interval=api_interval):
         with contextlib.suppress(Exception):
             result = do_api_calibration(tracker, event_counter, cwd)
@@ -153,6 +151,58 @@ def record_behavior_event(
         save_session(session)
 
 
+def _log_feature_telemetry(behavior_compass: dict, cwd: str, log_fn: Any) -> None:
+    """Emit one-shot feature-usage telemetry per session."""
+    for key, feature in [
+        ("_feature_habit_mode_logged", "habit_mode"),
+        ("_feature_token_tracking_logged", "token_tracking"),
+    ]:
+        if not behavior_compass.get(key, False):
+            with contextlib.suppress(Exception):
+                log_fn(feature, cwd, {"source": "hook_posttooluse"})
+            behavior_compass[key] = True
+
+
+def _detect_test_results(
+    tool_name: str, tool_output: Any, compass: Any, habit_state: Any, detect_fn: Any
+) -> None:
+    """Detect test results from Bash tool output."""
+    if tool_name != "Bash":
+        return
+    cmd_sig = ""
+    if compass.action_history:
+        cmd_sig = compass.action_history[-1].get("sig", "")
+    out_str = tool_output if isinstance(tool_output, str) else ""
+    detect_fn(habit_state, out_str, cmd_sig)
+
+
+def _apply_context_window_override(tracker: Any, overrides: dict) -> None:
+    """Apply context_window_size override from config."""
+    context_window_size = overrides.get("context_window_size")
+    if context_window_size is not None:
+        with contextlib.suppress(Exception):
+            tracker.context_window_size = int(context_window_size)
+
+
+def _run_auto_detect(
+    habit_state: Any, compass: Any, overrides: dict, cp_config: Any, *, auto_detect_enabled: bool
+) -> Any:
+    """Run habit mode auto-detection or track events if declaration-driven."""
+    if auto_detect_enabled:
+        from lintgate.habit_mode import update_mode
+
+        return update_mode(
+            habit_state,
+            compass.event_counter,
+            enter_score=overrides.get("enter_score", cp_config.habit_mode_enter_score),
+            exit_score=overrides.get("exit_score", cp_config.habit_mode_exit_score),
+            sustain_calls=overrides.get("sustain_calls", cp_config.habit_mode_sustain_calls),
+        )
+    if habit_state.active:
+        habit_state.total_events_in_habit += 1
+    return None
+
+
 def _update_habit_mode_path_a(
     cp_config: Any,
     session: Any,
@@ -173,7 +223,6 @@ def _update_habit_mode_path_a(
             load_habit_state,
             save_habit_state,
             track_active_files,
-            update_mode,
             update_signals,
         )
         from lintgate.hook_runtime_state import refresh_runtime_state_with_session
@@ -187,62 +236,31 @@ def _update_habit_mode_path_a(
         habit_state = load_habit_state(session.behavior_compass)
         tracker = load_tracker_state(session.behavior_compass)
 
-        # Feature-usage telemetry: one emission per session.
-        if not session.behavior_compass.get("_feature_habit_mode_logged", False):
-            with contextlib.suppress(Exception):
-                log_feature_usage("habit_mode", cwd, {"source": "hook_posttooluse"})
-            session.behavior_compass["_feature_habit_mode_logged"] = True
-        if not session.behavior_compass.get("_feature_token_tracking_logged", False):
-            with contextlib.suppress(Exception):
-                log_feature_usage("token_tracking", cwd, {"source": "hook_posttooluse"})
-            session.behavior_compass["_feature_token_tracking_logged"] = True
+        _log_feature_telemetry(session.behavior_compass, cwd, log_feature_usage)
 
-        # Update signals from compass action_history (rich data)
         update_signals(habit_state, compass.action_history)
         track_active_files(habit_state, tool_name, tool_input)
         estimate_tool_tokens(tracker, tool_name, tool_input, tool_output)
 
-        # Test result detection
-        if tool_name == "Bash":
-            cmd_sig = ""
-            if compass.action_history:
-                cmd_sig = compass.action_history[-1].get("sig", "")
-            out_str = tool_output if isinstance(tool_output, str) else ""
-            detect_test_result(habit_state, out_str, cmd_sig)
+        _detect_test_results(tool_name, tool_output, compass, habit_state, detect_test_result)
 
-        # Runtime overrides + auto-detect gating
         overrides = session.behavior_compass.get("habit_config_overrides", {})
         if not isinstance(overrides, dict):
             overrides = {}
 
-        context_window_size = overrides.get("context_window_size")
-        if context_window_size is not None:
-            with contextlib.suppress(Exception):
-                tracker.context_window_size = int(context_window_size)
+        _apply_context_window_override(tracker, overrides)
 
-        auto_detect_enabled = bool(
-            overrides.get("auto_detect", cp_config.habit_mode_auto_detect)
+        transition = _run_auto_detect(
+            habit_state,
+            compass,
+            overrides,
+            cp_config,
+            auto_detect_enabled=bool(
+                overrides.get("auto_detect", cp_config.habit_mode_auto_detect)
+            ),
         )
-        transition = None
-        if auto_detect_enabled:
-            transition = update_mode(
-                habit_state,
-                compass.event_counter,
-                enter_score=overrides.get(
-                    "enter_score", cp_config.habit_mode_enter_score
-                ),
-                exit_score=overrides.get("exit_score", cp_config.habit_mode_exit_score),
-                sustain_calls=overrides.get(
-                    "sustain_calls", cp_config.habit_mode_sustain_calls
-                ),
-            )
-        elif habit_state.active:
-            # Declaration-driven mode still tracks event volume while active.
-            habit_state.total_events_in_habit += 1
 
-        check_habit_api_calibration(
-            tracker, compass.event_counter, cwd, overrides, cp_config
-        )
+        check_habit_api_calibration(tracker, compass.event_counter, cwd, overrides, cp_config)
 
         if transition:
             with contextlib.suppress(Exception):
@@ -345,14 +363,6 @@ def _load_standalone_state(cwd: str):
     )
 
 
-def _apply_context_window_override(tracker: Any, overrides: dict) -> None:
-    """Apply context window size override to tracker if present."""
-    context_window_size = overrides.get("context_window_size")
-    if context_window_size is not None:
-        with contextlib.suppress(Exception):
-            tracker.context_window_size = int(context_window_size)
-
-
 def _build_action_entry(tool_name: str, tool_input: Any) -> tuple[str, str]:
     """Extract sig and command_text from tool input for the action ring."""
     sig = ""
@@ -448,9 +458,7 @@ def _run_mode_transition(
     from lintgate.habit_mode import update_mode
     from lintgate.state import log_metric
 
-    auto_detect_enabled = bool(
-        overrides.get("auto_detect", cp_config.habit_mode_auto_detect)
-    )
+    auto_detect_enabled = bool(overrides.get("auto_detect", cp_config.habit_mode_auto_detect))
     transition = None
     if auto_detect_enabled:
         transition = update_mode(
@@ -458,9 +466,7 @@ def _run_mode_transition(
             event_counter,
             enter_score=overrides.get("enter_score", cp_config.habit_mode_enter_score),
             exit_score=overrides.get("exit_score", cp_config.habit_mode_exit_score),
-            sustain_calls=overrides.get(
-                "sustain_calls", cp_config.habit_mode_sustain_calls
-            ),
+            sustain_calls=overrides.get("sustain_calls", cp_config.habit_mode_sustain_calls),
         )
     elif habit_state.active:
         habit_state.total_events_in_habit += 1
@@ -521,18 +527,14 @@ def record_habit_event_lightweight(
         _apply_context_window_override(tracker, standalone_overrides)
 
         # Maintain minimal action ring buffer
-        action_ring, command_text = _update_action_ring(
-            action_ring, tool_name, tool_input
-        )
+        action_ring, command_text = _update_action_ring(action_ring, tool_name, tool_input)
 
         update_signals(habit_state, action_ring)
         track_active_files(habit_state, tool_name, tool_input)
         estimate_tool_tokens(tracker, tool_name, tool_input, tool_output)
 
         # Bash-specific signal detection
-        _detect_bash_signals(
-            tool_name, tool_output, command_text, habit_state, signal_fires
-        )
+        _detect_bash_signals(tool_name, tool_output, command_text, habit_state, signal_fires)
 
         event_counter = tracker.tool_call_count
 
@@ -543,9 +545,7 @@ def record_habit_event_lightweight(
             habit_state, event_counter, standalone_overrides, cp_config, cwd
         )
 
-        check_habit_api_calibration(
-            tracker, event_counter, cwd, standalone_overrides, cp_config
-        )
+        check_habit_api_calibration(tracker, event_counter, cwd, standalone_overrides, cp_config)
 
         did_compact, compact_snapshot = try_habit_compaction(
             tracker,

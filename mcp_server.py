@@ -84,7 +84,7 @@ _MCP_INSTRUCTIONS = (
     "Compass workflow: compass_update(path, write=true) → compass_interview(path) → "
     "compass_update(path, targets=['all'], write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "81 tools total — use getting_started or lint_status to explore."
+    "87 tools total — use getting_started or lint_status to explore."
 )
 
 
@@ -170,9 +170,7 @@ def _validate_tier(tier: int) -> int:
 def _validate_strictness(strictness: str) -> str:
     if strictness not in _VALID_STRICTNESS:
         allowed = ", ".join(sorted(_VALID_STRICTNESS))
-        raise ValueError(
-            f"Invalid strictness '{strictness}'; expected one of: {allowed}"
-        )
+        raise ValueError(f"Invalid strictness '{strictness}'; expected one of: {allowed}")
     return strictness
 
 
@@ -261,9 +259,7 @@ def _collect_python_files(project_root: str) -> list[str]:
 
 def _resolve_files(files: list[str], project_root: str) -> tuple[list[str], list[str]]:
     resolved = [
-        path
-        if os.path.isabs(path)
-        else os.path.normpath(os.path.join(project_root, path))
+        path if os.path.isabs(path) else os.path.normpath(os.path.join(project_root, path))
         for path in files
     ]
     existing = [path for path in resolved if os.path.exists(path)]
@@ -284,9 +280,7 @@ def _normalize_linter_names(base: tuple[str, ...], extra: tuple[str, ...]) -> li
     return deduped
 
 
-def _build_cp_full_details(
-    mesh_result: Any, finding_index: dict[str, Any]
-) -> dict[str, Any]:
+def _build_cp_full_details(mesh_result: Any, finding_index: dict[str, Any]) -> dict[str, Any]:
     """Build full details payload for controlplane_get_details drill-down."""
     details: dict[str, Any] = {
         "coherence": {
@@ -593,9 +587,7 @@ def _run_lint(
                 "remaining": lint_delta["still_active_count"],
                 "summary": lint_delta.get("summary", ""),
             }
-        output["next_actions"] = _build_next_actions(
-            {**output, "project": project_root}
-        )
+        output["next_actions"] = _build_next_actions({**output, "project": project_root})
         return output
 
     elif output_mode == "standard":
@@ -628,9 +620,7 @@ def _run_lint(
                     output["warnings_truncated"] = len(aggregated.warnings) - remaining
         if lint_delta is not None:
             output["delta"] = lint_delta
-        output["next_actions"] = _build_next_actions(
-            {**output, "project": project_root}
-        )
+        output["next_actions"] = _build_next_actions({**output, "project": project_root})
         return output
 
     else:
@@ -641,9 +631,7 @@ def _run_lint(
         }
         if lint_delta is not None:
             output["delta"] = lint_delta
-        output["next_actions"] = _build_next_actions(
-            {**output, "project": project_root}
-        )
+        output["next_actions"] = _build_next_actions({**output, "project": project_root})
         return output
 
 
@@ -730,6 +718,12 @@ theory_mode_freeze = _tool_funcs["theory_mode_freeze"]
 convergence_analyze = _tool_funcs["convergence_analyze"]
 extraction_plan = _tool_funcs["extraction_plan"]
 optimization_landscape = _tool_funcs["optimization_landscape"]
+test_hygiene_scan = _tool_funcs["test_hygiene_scan"]
+test_triage = _tool_funcs["test_triage"]
+test_infer_inputs = _tool_funcs["test_infer_inputs"]
+test_characterize = _tool_funcs["test_characterize"]
+test_characterize_mark = _tool_funcs["test_characterize_mark"]
+test_redundancy_project = _tool_funcs["test_redundancy_project"]
 
 __all__ = [
     "mcp",
@@ -790,6 +784,12 @@ __all__ = [
     "convergence_analyze",
     "extraction_plan",
     "optimization_landscape",
+    "test_hygiene_scan",
+    "test_triage",
+    "test_infer_inputs",
+    "test_characterize",
+    "test_characterize_mark",
+    "test_redundancy_project",
 ]
 
 # ─── Version constant (referenced by test_mcp_schema_contracts) ─────────

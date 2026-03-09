@@ -124,7 +124,7 @@ class ProfilingResult:
     elapsed_ms: float = 0.0
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "function_key": self.function_key,
             "categories_tested": self.categories_tested,
             "total_mutants": self.total_mutants,
@@ -147,6 +147,9 @@ class ProfilingResult:
                 for cr in self.per_category
             ],
         }
+        if self.kill_matrix:
+            d["kill_matrix"] = self.kill_matrix
+        return d
 
 
 # ── §6.4 Dispatch Table: Category → AST Transform ────────────────
@@ -304,9 +307,7 @@ def _count_value_target(node: ast.AST) -> int:
     # Only count constants whose types _ValueMutator can actually mutate.
     # None, bytes, complex, and Ellipsis are left unchanged by _mutate_constant,
     # so counting them produces phantom mutants that always survive.
-    if isinstance(node, ast.Constant) and isinstance(
-        node.value, _ValueMutator._MUTABLE_TYPES
-    ):
+    if isinstance(node, ast.Constant) and isinstance(node.value, _ValueMutator._MUTABLE_TYPES):
         return 1
     return 0
 
@@ -389,11 +390,7 @@ def _generate_state_mutants(
 
     for mode, desc, counter in sub_modes:
         target_count = sum(counter(node) for node in ast.walk(func_node))
-        limit = (
-            min(target_count, max_per_category)
-            if max_per_category > 0
-            else target_count
-        )
+        limit = min(target_count, max_per_category) if max_per_category > 0 else target_count
 
         for i in range(limit):
             mutated_tree = copy.deepcopy(func_node)
@@ -478,6 +475,63 @@ def _make_transformer(category: MutationCategory, index: int) -> tuple[_BaseMuta
 # ── Mutant Evaluation ─────────────────────────────────────────────
 
 
+def _patch_mutant_into_test(
+    test_fn: Callable[..., None],
+    func_name: str | None,
+    mutated_func: Any,
+) -> tuple[bool, Any, Any]:
+    """Patch mutated function into the test's namespace.
+
+    Tries __globals__ first (works for dynamically imported modules),
+    then falls back to inspect.getmodule.
+
+    Returns (patched, saved_original, patch_target) where patch_target
+    is either a dict (__globals__) or a module object.
+    """
+    if not func_name:
+        return False, None, None
+
+    # Primary: use __globals__ — the test function's defining module globals.
+    # Works for bound methods, regular functions, and dynamically imported modules.
+    test_globals = getattr(test_fn, "__globals__", None)
+    # For bound methods, __globals__ is on the underlying function
+    if test_globals is None:
+        underlying = getattr(test_fn, "__func__", None)
+        if underlying is not None:
+            test_globals = getattr(underlying, "__globals__", None)
+
+    if test_globals is not None and func_name in test_globals:
+        saved = test_globals[func_name]
+        test_globals[func_name] = mutated_func
+        return True, saved, test_globals
+
+    # Fallback: inspect.getmodule (works for regular module-level functions)
+    import inspect
+
+    test_module = inspect.getmodule(test_fn)
+    if test_module is not None and hasattr(test_module, func_name):
+        saved = getattr(test_module, func_name)
+        setattr(test_module, func_name, mutated_func)
+        return True, saved, test_module
+
+    return False, None, None
+
+
+def _unpatch_mutant(
+    patched: bool,
+    saved: Any,
+    patch_target: Any,
+    func_name: str | None,
+) -> None:
+    """Restore the original function after mutation evaluation."""
+    if not patched or saved is None or func_name is None:
+        return
+    if isinstance(patch_target, dict):
+        patch_target[func_name] = saved
+    else:
+        setattr(patch_target, func_name, saved)
+
+
 def evaluate_mutant(
     mutant: Mutant,
     test_functions: list[Callable[..., None]],
@@ -491,7 +545,6 @@ def evaluate_mutant(
     contract). The original function is restored after each test.
     """
     start = time.monotonic()
-    import inspect
 
     # Compile mutated function
     try:
@@ -523,17 +576,12 @@ def evaluate_mutant(
             return MutantResult(
                 mutant=mutant, killed=True, killed_by="timeout", elapsed_ms=_elapsed(start)
             )
-        # Strategy: if the test's module has the function under test, monkey-patch
-        # the mutant in and call the test zero-arg (standard pytest contract).
-        # Otherwise, fall back to passing the mutant as an argument (for inline
-        # test callables in unit tests).
-        test_module = inspect.getmodule(test_fn)
-        patched = False
-        saved = None
-        if test_module is not None and func_name and hasattr(test_module, func_name):
-            saved = getattr(test_module, func_name)
-            setattr(test_module, func_name, mutated_func)
-            patched = True
+        # Strategy: monkey-patch the mutated function into the test's namespace
+        # so the test calls the mutant instead of the original. Uses __globals__
+        # (the test function's defining module globals) which works reliably for
+        # both regular imports and dynamically loaded test modules. Falls back to
+        # inspect.getmodule for inline test callables without __globals__.
+        patched, saved, patch_target = _patch_mutant_into_test(test_fn, func_name, mutated_func)
         try:
             if patched:
                 test_fn()
@@ -561,8 +609,7 @@ def evaluate_mutant(
                 elapsed_ms=_elapsed(start),
             )
         finally:
-            if patched and test_module is not None and saved is not None:
-                setattr(test_module, func_name, saved)
+            _unpatch_mutant(patched, saved, patch_target, func_name)
 
     return MutantResult(mutant=mutant, killed=False, elapsed_ms=_elapsed(start))
 

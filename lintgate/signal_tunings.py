@@ -164,9 +164,7 @@ def build_finding_signature(issue: LintIssue) -> str:
 # ── Tuning Application ──────────────────────────────────────────────────
 
 
-def match_tuning(
-    issue: LintIssue, tunings: list[dict[str, Any]]
-) -> dict[str, Any] | None:
+def match_tuning(issue: LintIssue, tunings: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Find a matching active tuning for a finding."""
     sig = build_finding_signature(issue)
     for tuning in tunings:
@@ -184,9 +182,7 @@ def apply_tuning(
 ) -> dict[str, Any]:
     """Apply a tuning decision. Returns the applied tuning record."""
     if action not in VALID_ACTIONS:
-        return {
-            "error": f"Invalid action: {action}. Must be one of {sorted(VALID_ACTIONS)}"
-        }
+        return {"error": f"Invalid action: {action}. Must be one of {sorted(VALID_ACTIONS)}"}
 
     tunings = load_tunings(project_root)
     now = datetime.now(timezone.utc).isoformat()
@@ -229,9 +225,7 @@ def apply_tuning(
     return {"signature": signature, "action": action, "applied": True}
 
 
-def filter_tuned_issues(
-    issues: list[LintIssue], project_root: str
-) -> tuple[list[LintIssue], int]:
+def filter_tuned_issues(issues: list[LintIssue], project_root: str) -> tuple[list[LintIssue], int]:
     """Apply tunings to a list of issues. Returns (filtered_issues, tuned_count).
 
     - ``suppress``: issue is removed from the list

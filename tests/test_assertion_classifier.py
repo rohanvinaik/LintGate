@@ -455,9 +455,7 @@ def test_classify_test_file_from_path_success():
 def test_hello():
     assert 1 == 1
 """
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
         f.write(source)
         f.flush()
         path = f.name

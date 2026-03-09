@@ -20,9 +20,7 @@ def _build_channels() -> list:
     return [LintChannel(), TestChannel(), StructureChannel(), PerformanceChannel()]
 
 
-def _discover_python_files(
-    project_root: str, file_filter: str | None = None
-) -> list[str]:
+def _discover_python_files(project_root: str, file_filter: str | None = None) -> list[str]:
     """Discover Python files in a project, optionally filtered."""
     from lintgate.discovery import discover_project_files
 
@@ -34,9 +32,7 @@ def _discover_python_files(
         )
         return [full] if os.path.isfile(full) else []
 
-    return discover_project_files(
-        project_root, extra_exclude_dirs=frozenset({"archive"})
-    )
+    return discover_project_files(project_root, extra_exclude_dirs=frozenset({"archive"}))
 
 
 def _impl_convergence_analyze(
@@ -85,9 +81,7 @@ def _impl_convergence_analyze(
 
     # Apply filters
     if function:
-        func_convergence = [
-            r for r in func_convergence if function.lower() in r.target.lower()
-        ]
+        func_convergence = [r for r in func_convergence if function.lower() in r.target.lower()]
     if file:
         file_convergence = [r for r in file_convergence if file in r.target]
 
@@ -101,22 +95,24 @@ def _impl_convergence_analyze(
             "total": len(file_convergence),
             "results": [r.to_dict() for r in file_convergence[:10]],
         },
-        "next_actions": serialize_next_actions([
-            NextAction(
-                tool="extraction_plan",
-                args={"path": path},
-                reason="Convergence shows EXTRACT actionability for one or more functions.",
-                priority=2,
-                condition="convergence shows EXTRACT actionability",
-            ),
-            NextAction(
-                tool="optimization_landscape",
-                args={"path": path},
-                reason="View project-wide optimization potential.",
-                priority=4,
-                condition="want project-wide optimization view",
-            ),
-        ]),
+        "next_actions": serialize_next_actions(
+            [
+                NextAction(
+                    tool="extraction_plan",
+                    args={"path": path},
+                    reason="Convergence shows EXTRACT actionability for one or more functions.",
+                    priority=2,
+                    condition="convergence shows EXTRACT actionability",
+                ),
+                NextAction(
+                    tool="optimization_landscape",
+                    args={"path": path},
+                    reason="View project-wide optimization potential.",
+                    priority=4,
+                    condition="want project-wide optimization view",
+                ),
+            ]
+        ),
     }
 
 
@@ -145,9 +141,7 @@ def _impl_extraction_plan(
         # Determine source file from function target
         source_file = function.split("::")[0] if "::" in function else ""
         files = (
-            [os.path.join(path, source_file)]
-            if source_file
-            else _discover_python_files(path)[:10]
+            [os.path.join(path, source_file)] if source_file else _discover_python_files(path)[:10]
         )
 
         event = SupervisionEvent(project_root=path, files_changed=files)
@@ -179,9 +173,7 @@ def _impl_extraction_plan(
     source_file = function.split("::")[0] if "::" in function else ""
     if source_file:
         full_path = (
-            os.path.join(path, source_file)
-            if not os.path.isabs(source_file)
-            else source_file
+            os.path.join(path, source_file) if not os.path.isabs(source_file) else source_file
         )
         try:
             with open(full_path, encoding="utf-8") as f:
@@ -196,22 +188,24 @@ def _impl_extraction_plan(
     plan.post_extraction_opportunities = opportunities
 
     result = plan.to_dict()
-    result["next_actions"] = serialize_next_actions([
-        NextAction(
-            tool="optimization_landscape",
-            args={"path": path},
-            reason="View project-wide optimization potential after extraction.",
-            priority=3,
-            condition="want to see project-wide optimization view",
-        ),
-        NextAction(
-            tool="convergence_analyze",
-            args={"path": path},
-            reason="See convergence evidence for other functions.",
-            priority=4,
-            condition="want to see evidence for other functions",
-        ),
-    ])
+    result["next_actions"] = serialize_next_actions(
+        [
+            NextAction(
+                tool="optimization_landscape",
+                args={"path": path},
+                reason="View project-wide optimization potential after extraction.",
+                priority=3,
+                condition="want to see project-wide optimization view",
+            ),
+            NextAction(
+                tool="convergence_analyze",
+                args={"path": path},
+                reason="See convergence evidence for other functions.",
+                priority=4,
+                condition="want to see evidence for other functions",
+            ),
+        ]
+    )
     return result
 
 
@@ -249,9 +243,7 @@ def _impl_optimization_landscape(
     if not convergence:
         return {
             "project": path,
-            "landscape": {
-                "message": "No convergence data available. Run controlplane_run first."
-            },
+            "landscape": {"message": "No convergence data available. Run controlplane_run first."},
         }
 
     # Build plans for top convergence targets
@@ -261,9 +253,7 @@ def _impl_optimization_landscape(
         source_ast = None
         if source_file:
             full_path = (
-                os.path.join(path, source_file)
-                if not os.path.isabs(source_file)
-                else source_file
+                os.path.join(path, source_file) if not os.path.isabs(source_file) else source_file
             )
             try:
                 with open(full_path, encoding="utf-8") as f:
@@ -282,22 +272,24 @@ def _impl_optimization_landscape(
     result["project"] = path
     result["convergence_targets"] = len(convergence)
     result["plans_built"] = len(plans)
-    result["next_actions"] = serialize_next_actions([
-        NextAction(
-            tool="extraction_plan",
-            args={"path": path},
-            reason="Drill into extraction plan for a specific high-convergence function.",
-            priority=2,
-            condition="drill into specific function",
-        ),
-        NextAction(
-            tool="convergence_analyze",
-            args={"path": path},
-            reason="See detailed convergence evidence.",
-            priority=4,
-            condition="see detailed evidence",
-        ),
-    ])
+    result["next_actions"] = serialize_next_actions(
+        [
+            NextAction(
+                tool="extraction_plan",
+                args={"path": path},
+                reason="Drill into extraction plan for a specific high-convergence function.",
+                priority=2,
+                condition="drill into specific function",
+            ),
+            NextAction(
+                tool="convergence_analyze",
+                args={"path": path},
+                reason="See detailed convergence evidence.",
+                priority=4,
+                condition="see detailed evidence",
+            ),
+        ]
+    )
     return result
 
 

@@ -239,8 +239,7 @@ def _detect_cli_mixing(tree: ast.Module, defs: dict[str, ast.AST]) -> bool:
     non_cli_funcs = sum(
         1
         for name, node in defs.items()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and name not in cli_names
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and name not in cli_names
     )
     return non_cli_funcs > 5
 

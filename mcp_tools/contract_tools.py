@@ -51,26 +51,32 @@ def register(mcp, helpers):
         all_issues = []
         for issue in wiring_issues:
             code = "WIRE001" if issue.issue_type == "missing_publisher" else "WIRE002"
-            all_issues.append({
-                "code": code,
-                "consumer": issue.consumer,
-                "key": issue.key,
-                "detail": issue.missing_publisher,
-            })
+            all_issues.append(
+                {
+                    "code": code,
+                    "consumer": issue.consumer,
+                    "key": issue.key,
+                    "detail": issue.missing_publisher,
+                }
+            )
         for issue in sheaf_issues:
-            all_issues.append({
-                "code": "WIRE003",
-                "consumer": issue.consumer,
-                "key": issue.key,
-                "detail": issue.missing_publisher,
-            })
+            all_issues.append(
+                {
+                    "code": "WIRE003",
+                    "consumer": issue.consumer,
+                    "key": issue.key,
+                    "detail": issue.missing_publisher,
+                }
+            )
         for issue in size_issues:
-            all_issues.append({
-                "code": "WIRE004",
-                "consumer": issue.consumer,
-                "key": issue.key,
-                "detail": issue.missing_publisher,
-            })
+            all_issues.append(
+                {
+                    "code": "WIRE004",
+                    "consumer": issue.consumer,
+                    "key": issue.key,
+                    "detail": issue.missing_publisher,
+                }
+            )
 
         # Schema summary
         schemas = get_all_schemas()
@@ -92,11 +98,13 @@ def register(mcp, helpers):
         }
 
         if all_issues:
-            result["next_actions"].append({
-                "tool": "controlplane_run",
-                "args": {"path": path},
-                "reason": f"{len(all_issues)} contract issue(s) found — run full analysis",
-            })
+            result["next_actions"].append(
+                {
+                    "tool": "controlplane_run",
+                    "args": {"path": path},
+                    "reason": f"{len(all_issues)} contract issue(s) found — run full analysis",
+                }
+            )
 
         clear_schemas()
         return helpers["_json_dumps"](result, output_mode="compact")

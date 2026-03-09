@@ -25,10 +25,7 @@ from lintgate.runtime_state import load_runtime_state
 
 
 def test_resolve_event_model_key_from_top_level() -> None:
-    assert (
-        _resolve_event_model_key({"model": "claude-opus-4"})
-        == "anthropic:claude-opus-4"
-    )
+    assert _resolve_event_model_key({"model": "claude-opus-4"}) == "anthropic:claude-opus-4"
 
 
 def test_resolve_event_model_key_from_metadata() -> None:
@@ -97,9 +94,7 @@ def test_mark_session_telemetry_applied_increments_counter() -> None:
     assert session.behavior_compass["_model_profile_telem_updates"] == 2
 
 
-def _run_main_payload(
-    payload: dict | list, monkeypatch: pytest.MonkeyPatch
-) -> tuple[int, str]:
+def _run_main_payload(payload: dict | list, monkeypatch: pytest.MonkeyPatch) -> tuple[int, str]:
     stdin = io.StringIO(json.dumps(payload))
     stdout = io.StringIO()
     monkeypatch.setattr(sys, "stdin", stdin)
@@ -214,9 +209,7 @@ class TestRunControlplane:
         mock_cp_config.channel_enabled.return_value = False
 
         with (
-            patch(
-                "lintgate.hook_posttooluse.classify_change", return_value=classification
-            ),
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
             patch("lintgate.hook_habit.record_behavior_event"),
             patch("lintgate.hook_habit.record_habit_event_lightweight"),
             patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
@@ -269,16 +262,12 @@ class TestRunControlplane:
         monkeypatch.setattr(sys, "stdout", stdout_capture)
 
         with (
-            patch(
-                "lintgate.hook_posttooluse.classify_change", return_value=classification
-            ),
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
             patch("lintgate.hook_habit.record_behavior_event"),
             patch("lintgate.hook_habit.record_habit_event_lightweight"),
             patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
             patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
-            patch(
-                "lintgate.controlplane.reporter.build_finding_index", return_value={}
-            ),
+            patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),
@@ -348,16 +337,12 @@ class TestRunControlplane:
         monkeypatch.setattr(sys, "stdout", stdout_capture)
 
         with (
-            patch(
-                "lintgate.hook_posttooluse.classify_change", return_value=classification
-            ),
+            patch("lintgate.hook_posttooluse.classify_change", return_value=classification),
             patch("lintgate.hook_habit.record_behavior_event"),
             patch("lintgate.hook_habit.record_habit_event_lightweight"),
             patch("lintgate.hook_controlplane.load_global_priors", return_value={}),
             patch("lintgate.controlplane.runtime.run_mesh", return_value=mesh_result),
-            patch(
-                "lintgate.controlplane.reporter.build_finding_index", return_value={}
-            ),
+            patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             patch(
                 "lintgate.hook_controlplane.extract_finding_indexes",
                 return_value=({}, {}, 0, None, None),

@@ -114,9 +114,7 @@ def test_inspect_test_assertions_schema_contract(tmp_path):
     }
 
     # Use actual classifer which will find 0 assertions in our dummy file, but still output schema
-    result_json = _inspect_test_assertions_impl(
-        str(tmp_path), "tests/test_app.py", helpers
-    )
+    result_json = _inspect_test_assertions_impl(str(tmp_path), "tests/test_app.py", helpers)
     result = json.loads(result_json)
 
     assert result["schema_version"] == "2.0.0"

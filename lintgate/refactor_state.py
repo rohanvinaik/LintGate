@@ -70,9 +70,7 @@ class RefactorState:
             "updated_at": self.updated_at,
             "thesis": self.thesis,
             "files": {k: v.to_dict() for k, v in self.files.items()},
-            "applied_patterns": {
-                k: v.to_dict() for k, v in self.applied_patterns.items()
-            },
+            "applied_patterns": {k: v.to_dict() for k, v in self.applied_patterns.items()},
             "last_controlplane_run": self.last_controlplane_run,
             "last_finding_counts": self.last_finding_counts,
         }

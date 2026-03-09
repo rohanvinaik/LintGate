@@ -174,9 +174,7 @@ def _infer_from_readme(project_root: str) -> list[CompassClaim]:
 
     para = _extract_first_paragraph(lines)
     if para:
-        claims.append(
-            _claim(f"README: {para}", name, confidence=0.5, origin_facet="core_theory")
-        )
+        claims.append(_claim(f"README: {para}", name, confidence=0.5, origin_facet="core_theory"))
 
     for pattern, badge_claim in _BADGE_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
@@ -214,9 +212,7 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
 
     if (root / "src").is_dir():
         claims.append(
-            _claim(
-                "Uses src/ layout", "directory_structure", origin_facet="abstractions"
-            )
+            _claim("Uses src/ layout", "directory_structure", origin_facet="abstractions")
         )
 
     for test_dir in ("tests", "test"):
@@ -231,9 +227,7 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
             break
 
     if (root / "docs").is_dir():
-        claims.append(
-            _claim("Has docs/ directory", "directory_structure", confidence=0.4)
-        )
+        claims.append(_claim("Has docs/ directory", "directory_structure", confidence=0.4))
 
     for entry in root.iterdir():
         if entry.is_dir() and entry.name in _LAYER_MAP:
@@ -247,6 +241,22 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
             )
 
     return claims
+
+
+def _update_flags_from_file(
+    flags: dict[str, bool | int], fname: str, source: str,
+) -> None:
+    """Update framework detection flags from a single test file."""
+    if fname == "conftest.py":
+        flags["conftest"] = True
+    if fname.startswith("test_") or fname.endswith("_test.py"):
+        flags["count"] = int(flags["count"]) + 1
+    if "import pytest" in source or "from pytest" in source:
+        flags["pytest"] = True
+    if "import unittest" in source:
+        flags["unittest"] = True
+    if "@pytest.fixture" in source:
+        flags["fixtures"] = True
 
 
 def _scan_test_dir(test_dir: Path) -> dict[str, bool | int]:
@@ -263,17 +273,8 @@ def _scan_test_dir(test_dir: Path) -> dict[str, bool | int]:
         for fname in filenames:
             if not fname.endswith(".py"):
                 continue
-            if fname == "conftest.py":
-                flags["conftest"] = True
-            if fname.startswith("test_") or fname.endswith("_test.py"):
-                flags["count"] = int(flags["count"]) + 1
             source = _read_text_safe(Path(dirpath) / fname)
-            if "import pytest" in source or "from pytest" in source:
-                flags["pytest"] = True
-            if "import unittest" in source:
-                flags["unittest"] = True
-            if "@pytest.fixture" in source:
-                flags["fixtures"] = True
+            _update_flags_from_file(flags, fname, source)
     return flags
 
 
@@ -297,15 +298,9 @@ def _infer_from_test_patterns(project_root: str) -> list[CompassClaim]:
     claims: list[CompassClaim] = []
     facet = "enforceable_rules"
     if merged["pytest"]:
-        claims.append(
-            _claim("Uses pytest", "test_patterns", confidence=0.55, origin_facet=facet)
-        )
+        claims.append(_claim("Uses pytest", "test_patterns", confidence=0.55, origin_facet=facet))
     elif merged["unittest"]:
-        claims.append(
-            _claim(
-                "Uses unittest", "test_patterns", confidence=0.55, origin_facet=facet
-            )
-        )
+        claims.append(_claim("Uses unittest", "test_patterns", confidence=0.55, origin_facet=facet))
     if merged["conftest"]:
         claims.append(
             _claim(
@@ -315,9 +310,7 @@ def _infer_from_test_patterns(project_root: str) -> list[CompassClaim]:
             )
         )
     if merged["fixtures"]:
-        claims.append(
-            _claim("Uses pytest fixtures", "test_patterns", origin_facet=facet)
-        )
+        claims.append(_claim("Uses pytest fixtures", "test_patterns", origin_facet=facet))
     count = int(merged["count"])
     if count > 0:
         claims.append(_claim(f"Test suite: {count} test file(s)", "test_patterns"))
@@ -363,49 +356,59 @@ def _infer_from_commit_messages(project_root: str) -> list[CompassClaim]:
     return []
 
 
+def _extract_file_docstring_claims(
+    py_file: Path,
+    seen: set[str],
+) -> list[CompassClaim]:
+    """Extract first-line docstrings from a single module and its classes."""
+    try:
+        tree = ast.parse(_read_text_safe(py_file), filename=str(py_file))
+    except (SyntaxError, ValueError):
+        return []
+
+    claims: list[CompassClaim] = []
+
+    module_doc = ast.get_docstring(tree)
+    if module_doc:
+        first = module_doc.split("\n")[0].strip()[:150]
+        if len(first) > 15 and first not in seen:
+            seen.add(first)
+            claims.append(
+                _claim(
+                    f"{py_file.name}: {first}",
+                    f"docstring:{py_file.name}",
+                    confidence=0.4,
+                    origin_facet="core_theory",
+                )
+            )
+
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        class_doc = ast.get_docstring(node)
+        if not class_doc:
+            continue
+        first = class_doc.split("\n")[0].strip()[:150]
+        if len(first) > 15 and first not in seen:
+            seen.add(first)
+            claims.append(
+                _claim(
+                    f"{py_file.name}:{node.name}: {first}",
+                    f"docstring:{py_file.name}",
+                    confidence=0.35,
+                    origin_facet="abstractions",
+                )
+            )
+
+    return claims
+
+
 def _extract_docstring_claims(py_files: list[Path]) -> list[CompassClaim]:
     """Extract first-line docstrings from modules and classes."""
     claims: list[CompassClaim] = []
     seen: set[str] = set()
-
     for py_file in py_files:
-        try:
-            tree = ast.parse(_read_text_safe(py_file), filename=str(py_file))
-        except (SyntaxError, ValueError):
-            continue
-
-        module_doc = ast.get_docstring(tree)
-        if module_doc:
-            first = module_doc.split("\n")[0].strip()[:150]
-            if len(first) > 15 and first not in seen:
-                seen.add(first)
-                claims.append(
-                    _claim(
-                        f"{py_file.name}: {first}",
-                        f"docstring:{py_file.name}",
-                        confidence=0.4,
-                        origin_facet="core_theory",
-                    )
-                )
-
-        for node in ast.iter_child_nodes(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            class_doc = ast.get_docstring(node)
-            if not class_doc:
-                continue
-            first = class_doc.split("\n")[0].strip()[:150]
-            if len(first) > 15 and first not in seen:
-                seen.add(first)
-                claims.append(
-                    _claim(
-                        f"{py_file.name}:{node.name}: {first}",
-                        f"docstring:{py_file.name}",
-                        confidence=0.35,
-                        origin_facet="abstractions",
-                    )
-                )
-
+        claims.extend(_extract_file_docstring_claims(py_file, seen))
     return claims
 
 

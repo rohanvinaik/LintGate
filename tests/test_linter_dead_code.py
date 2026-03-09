@@ -101,7 +101,9 @@ def test_parse_vulture_output_basic():
 
 
 def test_parse_vulture_output_multiple():
-    output = "a.py:1: unused import 'os' (90% confidence)\nb.py:5: unused class 'Foo' (60% confidence)\n"
+    output = (
+        "a.py:1: unused import 'os' (90% confidence)\nb.py:5: unused class 'Foo' (60% confidence)\n"
+    )
     issues = list(_parse_vulture_output(output, "warning"))
     assert len(issues) == 2
 

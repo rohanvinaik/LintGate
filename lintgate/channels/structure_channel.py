@@ -75,9 +75,7 @@ def _select_cohesion_candidates(
         return []
     sorted_locs = sorted(file_loc.values())
     p90 = _percentile(sorted_locs, 0.90)
-    above_p90 = [
-        (fp, loc) for fp, loc in file_loc.items() if loc > p90
-    ]
+    above_p90 = [(fp, loc) for fp, loc in file_loc.items() if loc > p90]
     above_p90.sort(key=lambda x: x[1], reverse=True)
     return [fp for fp, _ in above_p90[:max_candidates]]
 
@@ -116,9 +114,7 @@ class StructureChannel:
         # Import-only or class structure changes
         return classification.import_only or classification.class_structure_changed
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute structural analysis checks."""
         start = time.perf_counter()
         findings: list[LintIssue] = []
@@ -147,9 +143,7 @@ class StructureChannel:
         reverse_graph = build_reverse_import_graph(import_graph)
         module_fan_in = compute_module_fan_in(reverse_graph, file_map)
 
-        cycle_findings = _check_import_cycles(
-            import_graph, file_map, project_root, deferred_edges
-        )
+        cycle_findings = _check_import_cycles(import_graph, file_map, project_root, deferred_edges)
         findings.extend(cycle_findings)
 
         size_findings = _check_module_size_distribution(file_loc, project_root)
@@ -158,18 +152,14 @@ class StructureChannel:
         _ch_config = config.channels.get("structure")
         _structure_settings = _ch_config.settings if _ch_config else {}
         _extra_orphan_dirs = _structure_settings.get("orphan_exclude_dirs", [])
-        _extra_orphan_frozen = (
-            frozenset(_extra_orphan_dirs) if _extra_orphan_dirs else None
-        )
+        _extra_orphan_frozen = frozenset(_extra_orphan_dirs) if _extra_orphan_dirs else None
 
         orphan_findings = _check_orphans(
             py_files, import_graph, file_map, project_root, _extra_orphan_frozen
         )
         findings.extend(orphan_findings)
 
-        cohesion_findings = _check_package_cohesion(
-            import_graph, file_map, project_root
-        )
+        cohesion_findings = _check_package_cohesion(import_graph, file_map, project_root)
         findings.extend(cohesion_findings)
 
         # STRUCT005/006: Pattern-based structure checks (Gap 3, 4)
@@ -197,9 +187,7 @@ class StructureChannel:
 
         # File-level cohesion analysis for convergence (#215 A3)
         file_cohesion: dict[str, dict] = {}
-        cohesion_candidates = _select_cohesion_candidates(
-            file_loc, project_root, py_files
-        )
+        cohesion_candidates = _select_cohesion_candidates(file_loc, project_root, py_files)
         if cohesion_candidates:
             import ast as _ast
 
@@ -248,15 +236,11 @@ class StructureChannel:
         severity: Literal["blocking", "warning", "informational", "none"] = "none"
         if findings:
             severity = (
-                "warning"
-                if any(f.severity == "warning" for f in findings)
-                else "informational"
+                "warning" if any(f.severity == "warning" for f in findings) else "informational"
             )
 
         # Expose import graph for work queue builder (#192)
-        snapshot["_import_graph"] = {
-            mod: sorted(deps) for mod, deps in import_graph.items()
-        }
+        snapshot["_import_graph"] = {mod: sorted(deps) for mod, deps in import_graph.items()}
         snapshot["_file_map"] = dict(file_map)
         snapshot["_module_fan_in"] = dict(module_fan_in) if module_fan_in else {}
         if file_cohesion:

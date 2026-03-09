@@ -211,9 +211,7 @@ class _SignalVisitor(ast.NodeVisitor):
                 class_info.methods.append(item.name)
                 if item.name == "__init__":
                     class_info.has_init = True
-                    class_info.init_defaults = len(item.args.defaults) + len(
-                        item.args.kw_defaults
-                    )
+                    class_info.init_defaults = len(item.args.defaults) + len(item.args.kw_defaults)
 
         # Detect mutable fields (assignments in methods)
         for item in ast.walk(node):
@@ -267,9 +265,7 @@ class _SignalVisitor(ast.NodeVisitor):
         # Raises
         for child in ast.walk(node):
             if isinstance(child, ast.Raise) and child.exc:
-                if isinstance(child.exc, ast.Call) and isinstance(
-                    child.exc.func, ast.Name
-                ):
+                if isinstance(child.exc, ast.Call) and isinstance(child.exc.func, ast.Name):
                     func_info.raises.append(child.exc.func.id)
                 elif isinstance(child.exc, ast.Name):
                     func_info.raises.append(child.exc.id)
@@ -430,9 +426,7 @@ def _match_archetypes(signals: SourceSignals) -> list[ArchetypeMatch]:
                 confidence=iv_confidence,
                 reason="; ".join(iv_reasons),
                 relevant_functions=[
-                    f.name
-                    for f in signals.functions
-                    if f.has_type_annotations or f.raises
+                    f.name for f in signals.functions if f.has_type_annotations or f.raises
                 ],
             )
         )
@@ -457,9 +451,7 @@ def _match_archetypes(signals: SourceSignals) -> list[ArchetypeMatch]:
                 name="configuration",
                 confidence=cfg_confidence,
                 reason="; ".join(cfg_reasons),
-                relevant_classes=[
-                    c.name for c in signals.classes if c.is_dataclass or c.has_init
-                ],
+                relevant_classes=[c.name for c in signals.classes if c.is_dataclass or c.has_init],
             )
         )
 
@@ -572,9 +564,7 @@ def _score_configuration(signals: SourceSignals) -> tuple[float, list[str]]:
     for c in signals.classes:
         if c.has_init and c.init_defaults > 0:
             confidence = max(confidence, 0.7)
-            reasons.append(
-                f"Class {c.name} has __init__ with {c.init_defaults} defaults"
-            )
+            reasons.append(f"Class {c.name} has __init__ with {c.init_defaults} defaults")
             break
 
     return confidence, reasons

@@ -114,7 +114,9 @@ def test_check_links_to_dict(tmp_path):
 
 def test_config_completeness_all_registered(tmp_path):
     """No issues when all docs/wiki/ files are in the manifest."""
-    root = _setup_manifest(tmp_path, """\
+    root = _setup_manifest(
+        tmp_path,
+        """\
 version: 1
 pages:
   - name: Guide
@@ -123,7 +125,8 @@ pages:
     sources:
       - file: docs/wiki/guide.md
         kind: file
-""")
+""",
+    )
     wiki_src = tmp_path / "docs" / "wiki"
     wiki_src.mkdir(parents=True)
     (wiki_src / "guide.md").write_text("# Guide\n\nContent.\n")

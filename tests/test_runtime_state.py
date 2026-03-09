@@ -388,9 +388,7 @@ class TestBuildRuntimeState:
         session.snapshots = []
         session.coherence_trajectory = ["stable", "isolated"]
 
-        state = build_runtime_state(
-            str(tmp_path), session=session, last_coherence_state="systemic"
-        )
+        state = build_runtime_state(str(tmp_path), session=session, last_coherence_state="systemic")
         assert state.coherence_state == "systemic"
 
     def test_coherence_from_trajectory_when_no_override(self, tmp_path):

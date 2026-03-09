@@ -20,9 +20,7 @@ def test_version_checker_passes_project_root(tmp_path):
         mock.patch(
             "lintgate.linters.version_checker.collect_required_version_specs"
         ) as mock_collect,
-        mock.patch(
-            "lintgate.linters.version_checker.inspect_tool_versions"
-        ) as mock_inspect,
+        mock.patch("lintgate.linters.version_checker.inspect_tool_versions") as mock_inspect,
     ):
         mock_collect.return_value = {
             "ruff": {"specifiers": [">=0.4"], "sources": ["pyproject.toml"]}
@@ -30,9 +28,7 @@ def test_version_checker_passes_project_root(tmp_path):
         mock_inspect.return_value = []
 
         linter = VersionChecker()
-        ctx = LinterContext(
-            project_root=str(tmp_path), files=[], config=mock.MagicMock()
-        )
+        ctx = LinterContext(project_root=str(tmp_path), files=[], config=mock.MagicMock())
 
         # Run linter
         list(linter.run(ctx))
@@ -45,17 +41,13 @@ def test_version_checker_passes_project_root(tmp_path):
 
 def test_version_checker_detects_mismatch(tmp_path):
     """Verify that VersionChecker yields issues for mismatches."""
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\ndependencies = ["ruff>=0.4"]\n'
-    )
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["ruff>=0.4"]\n')
 
     with (
         mock.patch(
             "lintgate.linters.version_checker.collect_required_version_specs"
         ) as mock_collect,
-        mock.patch(
-            "lintgate.linters.version_checker.inspect_tool_versions"
-        ) as mock_inspect,
+        mock.patch("lintgate.linters.version_checker.inspect_tool_versions") as mock_inspect,
     ):
         mock_collect.return_value = {
             "ruff": {"specifiers": [">=0.4"], "sources": ["pyproject.toml"]}
@@ -73,9 +65,7 @@ def test_version_checker_detects_mismatch(tmp_path):
         ]
 
         linter = VersionChecker()
-        ctx = LinterContext(
-            project_root=str(tmp_path), files=[], config=mock.MagicMock()
-        )
+        ctx = LinterContext(project_root=str(tmp_path), files=[], config=mock.MagicMock())
 
         issues = list(linter.run(ctx))
         assert len(issues) == 1
@@ -90,9 +80,7 @@ def test_version_checker_handles_optional(tmp_path):
         mock.patch(
             "lintgate.linters.version_checker.collect_required_version_specs"
         ) as mock_collect,
-        mock.patch(
-            "lintgate.linters.version_checker.inspect_tool_versions"
-        ) as mock_inspect,
+        mock.patch("lintgate.linters.version_checker.inspect_tool_versions") as mock_inspect,
     ):
         mock_collect.return_value = {}
         mock_inspect.return_value = [
@@ -102,17 +90,13 @@ def test_version_checker_handles_optional(tmp_path):
                 "message": "pip-audit is not installed but required",
                 "installed_version": None,
                 "required_specifier": ">=2.0",
-                "requirement_sources": [
-                    "pyproject.toml:project.optional-dependencies.dev"
-                ],
+                "requirement_sources": ["pyproject.toml:project.optional-dependencies.dev"],
                 "is_optional": True,
             }
         ]
 
         linter = VersionChecker()
-        ctx = LinterContext(
-            project_root=str(tmp_path), files=[], config=mock.MagicMock()
-        )
+        ctx = LinterContext(project_root=str(tmp_path), files=[], config=mock.MagicMock())
 
         issues = list(linter.run(ctx))
         assert len(issues) == 1

@@ -78,9 +78,7 @@ class SymbolCoverageGateResult:
 
     passed: bool
     symbol_results: list[SymbolCoverageResult] = field(default_factory=list)
-    waivers_applied: list[tuple[str, SymbolCoverageWaiver]] = field(
-        default_factory=list
-    )
+    waivers_applied: list[tuple[str, SymbolCoverageWaiver]] = field(default_factory=list)
     waivers_expired: list[SymbolCoverageWaiver] = field(default_factory=list)
     skipped_reasons: list[str] = field(default_factory=list)
     unresolved_required: list[str] = field(default_factory=list)
@@ -226,9 +224,7 @@ def parse_coverage_json(path: str) -> dict[str, FileCoverage]:
 # ── Symbol Coverage Check ────────────────────────────────────────────────
 
 
-def check_symbol_coverage(
-    symbol: SymbolSpan, file_cov: FileCoverage
-) -> SymbolCoverageResult:
+def check_symbol_coverage(symbol: SymbolSpan, file_cov: FileCoverage) -> SymbolCoverageResult:
     """Check if a symbol span is fully covered (lines + branches).
 
     Binary: covered = (missing_lines ∩ span == ∅) AND
@@ -325,9 +321,7 @@ def build_target_set(
     diff_base = settings.get("diff_base", "HEAD")
 
     if mode in ("changed", "all"):
-        _collect_changed_symbols(
-            changed_files, project_root, diff_base, targets, seen_keys
-        )
+        _collect_changed_symbols(changed_files, project_root, diff_base, targets, seen_keys)
 
     unresolved = _resolve_required_symbols(
         settings.get("required_symbols", []),
@@ -364,9 +358,7 @@ def _collect_changed_symbols(
         if not spans:
             continue
 
-        changed_ranges = get_changed_line_ranges(
-            filepath, project_root, diff_base=diff_base
-        )
+        changed_ranges = get_changed_line_ranges(filepath, project_root, diff_base=diff_base)
 
         if not changed_ranges:
             # Git failure or new/untracked file: target ALL symbols
@@ -443,9 +435,7 @@ def _resolve_required_symbols(
     return unresolved
 
 
-def _find_span_by_key(
-    filepath: str, project_root: str, canonical_key: str
-) -> SymbolSpan | None:
+def _find_span_by_key(filepath: str, project_root: str, canonical_key: str) -> SymbolSpan | None:
     """Find a specific symbol span by its canonical key."""
     for span in extract_symbol_spans(filepath, project_root):
         if span.symbol_key == canonical_key:
@@ -461,19 +451,18 @@ def _ranges_overlap(a: range, b: range) -> bool:
 # ── Waiver Application ──────────────────────────────────────────────────
 
 
-def apply_waivers(
-    targets: list[SymbolSpan],
+def _partition_waivers(
     waivers: list[SymbolCoverageWaiver],
     today: date,
-) -> tuple[
-    list[SymbolSpan], list[tuple[str, SymbolCoverageWaiver]], list[SymbolCoverageWaiver]
-]:
-    """Apply waivers to the target set.
+) -> tuple[dict[str, SymbolCoverageWaiver], list[SymbolCoverageWaiver], list[SymbolCoverageWaiver]]:
+    """Partition waivers into active (by symbol) and expired lists.
 
-    Returns (filtered_targets, applied_waivers, expired_waivers).
+    Returns (active_waivers, glob_waivers, expired_waivers).
+    Active waivers are split into exact-match dict and glob-pattern list.
     """
     expired: list[SymbolCoverageWaiver] = []
-    active_waivers: dict[str, SymbolCoverageWaiver] = {}
+    exact_waivers: dict[str, SymbolCoverageWaiver] = {}
+    glob_waivers: list[SymbolCoverageWaiver] = []
 
     for waiver in waivers:
         if waiver.expires:
@@ -484,34 +473,52 @@ def apply_waivers(
                     continue
             except ValueError:
                 continue  # Invalid date format — skip waiver
-        active_waivers[waiver.symbol] = waiver
 
-    # Separate exact-match and glob-pattern waivers
-    exact_waivers: dict[str, SymbolCoverageWaiver] = {}
-    glob_waivers: list[SymbolCoverageWaiver] = []
-    for sym, waiver in active_waivers.items():
-        if "*" in sym:
+        if "*" in waiver.symbol:
             glob_waivers.append(waiver)
         else:
-            exact_waivers[sym] = waiver
+            exact_waivers[waiver.symbol] = waiver
+
+    return exact_waivers, glob_waivers, expired
+
+
+def _match_target_waiver(
+    target: SymbolSpan,
+    exact_waivers: dict[str, SymbolCoverageWaiver],
+    glob_waivers: list[SymbolCoverageWaiver],
+) -> SymbolCoverageWaiver | None:
+    """Match a target against exact and glob waivers. Returns matched waiver or None."""
+    if target.symbol_key in exact_waivers:
+        return exact_waivers[target.symbol_key]
+
+    from fnmatch import fnmatch
+
+    for gw in glob_waivers:
+        if fnmatch(target.symbol_key, gw.symbol):
+            return gw
+    return None
+
+
+def apply_waivers(
+    targets: list[SymbolSpan],
+    waivers: list[SymbolCoverageWaiver],
+    today: date,
+) -> tuple[list[SymbolSpan], list[tuple[str, SymbolCoverageWaiver]], list[SymbolCoverageWaiver]]:
+    """Apply waivers to the target set.
+
+    Returns (filtered_targets, applied_waivers, expired_waivers).
+    """
+    exact_waivers, glob_waivers, expired = _partition_waivers(waivers, today)
 
     filtered: list[SymbolSpan] = []
     applied: list[tuple[str, SymbolCoverageWaiver]] = []
 
     for target in targets:
-        if target.symbol_key in exact_waivers:
-            applied.append((target.symbol_key, exact_waivers[target.symbol_key]))
+        matched = _match_target_waiver(target, exact_waivers, glob_waivers)
+        if matched is not None:
+            applied.append((target.symbol_key, matched))
         else:
-            matched = False
-            for gw in glob_waivers:
-                from fnmatch import fnmatch
-
-                if fnmatch(target.symbol_key, gw.symbol):
-                    applied.append((target.symbol_key, gw))
-                    matched = True
-                    break
-            if not matched:
-                filtered.append(target)
+            filtered.append(target)
 
     return filtered, applied, expired
 
@@ -549,9 +556,7 @@ def run_symbol_coverage_gate(
     # Apply waivers
     raw_waivers = _parse_waivers(settings.get("waivers", []))
     today = date.today()
-    filtered_targets, applied_waivers, expired_waivers = apply_waivers(
-        targets, raw_waivers, today
-    )
+    filtered_targets, applied_waivers, expired_waivers = apply_waivers(targets, raw_waivers, today)
 
     # Parse coverage JSON
     coverage_data = parse_coverage_json(coverage_json_path)
@@ -559,17 +564,13 @@ def run_symbol_coverage_gate(
         if surface == "ci":
             return SymbolCoverageGateResult(
                 passed=False,
-                skipped_reasons=[
-                    f"Failed to parse coverage data from {coverage_json_path}"
-                ],
+                skipped_reasons=[f"Failed to parse coverage data from {coverage_json_path}"],
                 unresolved_required=unresolved_required,
             )
         else:
             return SymbolCoverageGateResult(
                 passed=len(unresolved_required) == 0,
-                skipped_reasons=[
-                    f"Failed to parse coverage data from {coverage_json_path}"
-                ],
+                skipped_reasons=[f"Failed to parse coverage data from {coverage_json_path}"],
                 waivers_applied=applied_waivers,
                 waivers_expired=expired_waivers,
                 unresolved_required=unresolved_required,

@@ -222,9 +222,7 @@ class Config:
         self._name = value
 """
         issues = self._check_source(source)
-        self.assertEqual(
-            len(issues), 0, f"@property/@setter should not be flagged, got: {issues}"
-        )
+        self.assertEqual(len(issues), 0, f"@property/@setter should not be flagged, got: {issues}")
 
     def test_property_deleter_not_flagged(self):
         """@property + @name.deleter is valid Python."""
@@ -296,9 +294,7 @@ class TestTheoryExtractorRegex(unittest.TestCase):
         pattern = builder(match)
         self.assertIsNotNone(pattern)
         # The critical fix: must have \s* not bare s*
-        self.assertIn(
-            r"\s*\(", pattern, f"Pattern should contain '\\s*\\(' but got: {pattern}"
-        )
+        self.assertIn(r"\s*\(", pattern, f"Pattern should contain '\\s*\\(' but got: {pattern}")
         # The bug was producing "...apis*\(" — check the pattern doesn't
         # have a word char immediately before "s*\("
         self.assertIsNone(
@@ -325,9 +321,7 @@ class TestContextAuditorRuleCoverage(unittest.TestCase):
         # Guidance with a DO NOT directive
         guidance = {
             "directives": {
-                "do_not": [
-                    "DO NOT create task-specific functions like solve_task_abc()"
-                ],
+                "do_not": ["DO NOT create task-specific functions like solve_task_abc()"],
             },
         }
 
@@ -354,9 +348,7 @@ class TestContextAuditorRuleCoverage(unittest.TestCase):
         self.assertEqual(len(checks), 1)
         check = checks[0]
         # The words "task" and "specific" and "functions" overlap
-        self.assertIn(
-            "1/1", check["detail"], f"Should show 1/1 coverage, got: {check['detail']}"
-        )
+        self.assertIn("1/1", check["detail"], f"Should show 1/1 coverage, got: {check['detail']}")
 
 
 class TestTheoryExtractorClaudeRules(unittest.TestCase):
@@ -513,9 +505,7 @@ class TestTheoryPackAPI(unittest.TestCase):
             summaries = pack["facet_summaries"]
 
             # Filter out "(no theory content found)" — those are allowed to repeat
-            real_summaries = [
-                v for v in summaries.values() if v != "(no theory content found)"
-            ]
+            real_summaries = [v for v in summaries.values() if v != "(no theory content found)"]
 
             # Each real summary should be unique
             self.assertEqual(
@@ -586,12 +576,8 @@ class TestTheoryPackAPI(unittest.TestCase):
             # Each claim should contain at least one keyword
             for claim in result["claims"]:
                 claim_lower = claim["claim"].lower()
-                has_kw = any(
-                    kw in claim_lower for kw in ["compositional", "elimination"]
-                )
-                self.assertTrue(
-                    has_kw, f"Claim doesn't match keywords: {claim['claim'][:80]}"
-                )
+                has_kw = any(kw in claim_lower for kw in ["compositional", "elimination"])
+                self.assertTrue(has_kw, f"Claim doesn't match keywords: {claim['claim'][:80]}")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -602,9 +588,7 @@ class TestTheoryPackAPI(unittest.TestCase):
         tmpdir = self._make_project_with_theory()
         try:
             full = get_theory_context(tmpdir, facet="problem_solving", max_claims=50)
-            truncated = get_theory_context(
-                tmpdir, facet="problem_solving", max_claims=1
-            )
+            truncated = get_theory_context(tmpdir, facet="problem_solving", max_claims=1)
 
             self.assertGreater(full["total_matched"], 0)
             self.assertEqual(len(truncated["claims"]), 1)
@@ -648,9 +632,7 @@ class TestTheoryPackAPI(unittest.TestCase):
             # Should find content from JOURNAL.md's "Lessons Learned" section
             all_text = " ".join(ps_claims).lower()
             has_lesson_content = (
-                "validate" in all_text
-                or "iterative" in all_text
-                or "decomposition" in all_text
+                "validate" in all_text or "iterative" in all_text or "decomposition" in all_text
             )
             self.assertTrue(
                 has_lesson_content,
@@ -709,9 +691,7 @@ class TestTheoryExtractionScoping(unittest.TestCase):
             )
 
             sections = _parse_document(str(opted_out), tmpdir)
-            self.assertEqual(
-                len(sections), 0, "Opted-out file should produce no sections"
-            )
+            self.assertEqual(len(sections), 0, "Opted-out file should produce no sections")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

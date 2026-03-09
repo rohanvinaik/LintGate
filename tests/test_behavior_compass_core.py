@@ -103,9 +103,7 @@ class TestExtractErrorSig:
         assert extract_error_sig("   ") == ""
 
     def test_last_meaningful_line(self):
-        stderr = (
-            "Starting process...\nLoading config...\nFatal: unable to connect\n---\n"
-        )
+        stderr = "Starting process...\nLoading config...\nFatal: unable to connect\n---\n"
         result = extract_error_sig(stderr)
         assert "unable to connect" in result
 
@@ -414,9 +412,7 @@ class TestEviction:
         cfg = {**DEFAULT_HYPOTHESIS_CONFIG, "max_active": 2}
 
         compass.hypotheses = [
-            BehaviorHypothesis(
-                id="expired1", claim="old", confidence=0.0, status="expired"
-            ),
+            BehaviorHypothesis(id="expired1", claim="old", confidence=0.0, status="expired"),
             BehaviorHypothesis(id="active1", claim="a1", confidence=0.3),
             BehaviorHypothesis(id="active2", claim="a2", confidence=0.5),
         ]

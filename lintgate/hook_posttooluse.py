@@ -113,18 +113,14 @@ def _run_legacy_pipeline(
         with contextlib.suppress(Exception):
             from lintgate.dependency_health import quick_dependency_check
 
-            dep_warnings = quick_dependency_check(
-                cwd, classification.change_kind, tool_input
-            )
+            dep_warnings = quick_dependency_check(cwd, classification.change_kind, tool_input)
 
     tier = select_tier(classification, config)
     if tier.skip:
         _exit_clean()
 
     registry = build_registry(config)
-    remaining_ms = max(
-        config.total_timeout_ms - int((time.perf_counter() - start) * 1000), 2000
-    )
+    remaining_ms = max(config.total_timeout_ms - int((time.perf_counter() - start) * 1000), 2000)
     linter_results = run_linters(tier, config, registry, timeout_ms=remaining_ms)
 
     aggregated = aggregate_results(
@@ -180,14 +176,8 @@ def _run_legacy_pipeline(
         report = report or {}
         dep_msg = "\n".join(dep_warnings)
         existing = report.get("systemMessage", "")
-        sep = (
-            "\n\n--- Dependency Health ---\n"
-            if existing
-            else "--- Dependency Health ---\n"
-        )
-        report["systemMessage"] = (
-            (existing + sep + dep_msg) if existing else sep + dep_msg
-        )
+        sep = "\n\n--- Dependency Health ---\n" if existing else "--- Dependency Health ---\n"
+        report["systemMessage"] = (existing + sep + dep_msg) if existing else sep + dep_msg
 
     print(json.dumps(report if report else {}))
     sys.exit(0)
@@ -212,9 +202,7 @@ def main() -> None:
 
                 cp_config = load_controlplane_config(cwd)
                 if cp_config and cp_config.enabled:
-                    record_behavior_event(
-                        cp_config, cwd, tool_name, tool_input, tool_output
-                    )
+                    record_behavior_event(cp_config, cwd, tool_name, tool_input, tool_output)
             except Exception:
                 pass
             _exit_clean()
@@ -288,9 +276,7 @@ def _log_controlplane_metric(
         "change_kind": classification.change_kind,
         "risk_level": classification.risk_level,
         "coherence_state": mesh_result.coherence.state,
-        "channels_run": sum(
-            1 for r in mesh_result.channel_results if r.status != "skip"
-        ),
+        "channels_run": sum(1 for r in mesh_result.channel_results if r.status != "skip"),
         "partial": mesh_result.partial,
         "duration_ms": round(elapsed_ms, 1),
         "session_active": session is not None,
@@ -312,9 +298,7 @@ def _finalize_report(
 
     if advisory and report:
         existing_msg = report.get("systemMessage", "")
-        report["systemMessage"] = (
-            (advisory + "\n\n" + existing_msg) if existing_msg else advisory
-        )
+        report["systemMessage"] = (advisory + "\n\n" + existing_msg) if existing_msg else advisory
 
     session_data = session.behavior_compass if session else {}
     if not isinstance(session_data, dict):
@@ -506,9 +490,7 @@ def _run_controlplane(
             }
 
     accumulate_session_telemetry(report, session)
-    refresh_runtime_after_run(
-        cwd, session, cp_config, mesh_result, tool_name, tool_input
-    )
+    refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
 
     report, telemetry = _finalize_report(report, advisory, session, cp_config)
 

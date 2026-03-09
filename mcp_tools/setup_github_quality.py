@@ -122,9 +122,7 @@ def setup_github_quality(
     results: dict[str, Any] = {}
     for rel_path, content, key in artifact_definitions:
         full_path = os.path.join(project_root, rel_path)
-        results[key] = _apply_managed_artifact(
-            full_path, content, os.path.exists(full_path), write
-        )
+        results[key] = _apply_managed_artifact(full_path, content, os.path.exists(full_path), write)
 
     # 3. Handle special artifacts (git hooks, gitignore, badges)
     results["pre_push_hook"] = _write_pre_push_hook(project_root, write)

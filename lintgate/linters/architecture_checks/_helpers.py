@@ -7,9 +7,7 @@ import os
 from typing import Any
 
 
-def extract_imports(
-    filepath: str, file_module: str | None = None
-) -> list[tuple[str, int]]:
+def extract_imports(filepath: str, file_module: str | None = None) -> list[tuple[str, int]]:
     """Extract all import module names and line numbers from a file.
 
     Args:
@@ -42,18 +40,14 @@ def extract_imports(
             if node.level == 0 and node.module:
                 imports.append((node.module, node.lineno))
             elif node.level > 0 and file_module:
-                resolved = _resolve_relative_import(
-                    file_module, node.level, node.module
-                )
+                resolved = _resolve_relative_import(file_module, node.level, node.module)
                 if resolved:
                     imports.append((resolved, node.lineno))
 
     return imports
 
 
-def _resolve_relative_import(
-    file_module: str, level: int, module: str | None
-) -> str | None:
+def _resolve_relative_import(file_module: str, level: int, module: str | None) -> str | None:
     """Resolve a relative import to an absolute module name.
 
     ``from .sibling import X`` in ``pkg.sub.mod`` → ``pkg.sub.sibling``

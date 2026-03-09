@@ -96,9 +96,7 @@ class TestResolveEventModelKey:
         assert result == "anthropic:claude-3"
 
     def test_no_candidates(self):
-        with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key", return_value=None
-        ):
+        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value=None):
             result = resolve_event_model_key({})
         assert result is None
 
@@ -119,9 +117,7 @@ class TestResolveEventModelKey:
         assert result == "found"
 
     def test_session_not_dict_skipped(self):
-        with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key", return_value=None
-        ):
+        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value=None):
             result = resolve_event_model_key({"session": "not-dict"})
         assert result is None
 
@@ -134,26 +130,20 @@ class TestResolveEventModelKey:
         assert result == "found"
 
     def test_blank_candidates_skipped(self):
-        with patch(
-            "lintgate.controlplane.model_profiles.resolve_model_key", return_value=None
-        ):
+        with patch("lintgate.controlplane.model_profiles.resolve_model_key", return_value=None):
             result = resolve_event_model_key({"model": "", "model_id": "  "})
         assert result is None
 
 
 class TestSelectTelemetryProfile:
     def test_no_model_key(self):
-        with patch(
-            "lintgate.hook_controlplane.resolve_event_model_key", return_value=None
-        ):
+        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value=None):
             assert select_telemetry_profile(MagicMock(), {}) is None
 
     def test_profile_missing(self):
         store = MagicMock()
         store.profiles = {}
-        with patch(
-            "lintgate.hook_controlplane.resolve_event_model_key", return_value="key"
-        ):
+        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
             assert select_telemetry_profile(store, {}) is None
 
     def test_profile_not_usable(self):
@@ -161,9 +151,7 @@ class TestSelectTelemetryProfile:
         profile.is_usable.return_value = False
         store = MagicMock()
         store.profiles = {"key": profile}
-        with patch(
-            "lintgate.hook_controlplane.resolve_event_model_key", return_value="key"
-        ):
+        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
             assert select_telemetry_profile(store, {}) is None
 
     def test_profile_usable(self):
@@ -171,9 +159,7 @@ class TestSelectTelemetryProfile:
         profile.is_usable.return_value = True
         store = MagicMock()
         store.profiles = {"key": profile}
-        with patch(
-            "lintgate.hook_controlplane.resolve_event_model_key", return_value="key"
-        ):
+        with patch("lintgate.hook_controlplane.resolve_event_model_key", return_value="key"):
             assert select_telemetry_profile(store, {}) == profile
 
 
@@ -181,9 +167,7 @@ class TestLoadGlobalPriors:
     def test_disabled(self):
         cfg = MagicMock()
         cfg.global_memory_enabled = False
-        with patch(
-            "lintgate.controlplane.global_behavior_profile.load_global_profile"
-        ) as load_fn:
+        with patch("lintgate.controlplane.global_behavior_profile.load_global_profile") as load_fn:
             assert load_global_priors(cfg) is None
         load_fn.assert_not_called()
 
@@ -227,7 +211,16 @@ class TestLoadGlobalPriors:
             patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
         ):
             result = load_global_priors(cfg)
-        assert result["enabled"]
+        assert result["enabled"] is True
+        assert result["alpha"] == 0.6
+        assert result["decay_horizon"] == 50
+        assert result["computed_bias_adjustments"] == {"sig": 0.1}
+        assert set(result.keys()) == {
+            "enabled",
+            "alpha",
+            "decay_horizon",
+            "computed_bias_adjustments",
+        }
 
     def test_import_error(self):
         cfg = MagicMock()
@@ -250,6 +243,7 @@ class TestSetupSessionAndGate:
         event.raw_input = {}
         session, advisory = setup_session_and_gate(cfg, "/tmp", "Edit", event, [], None)
         assert session is None
+        assert advisory is None
 
     def test_session_memory_enabled(self):
         cfg = MagicMock()
@@ -265,8 +259,10 @@ class TestSetupSessionAndGate:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=fake_session,
         ):
-            session, _ = setup_session_and_gate(cfg, "/tmp", "Edit", event, [], None)
+            session, advisory = setup_session_and_gate(cfg, "/tmp", "Edit", event, [], None)
         assert session is fake_session
+        # Advisory may fire depending on session gate state; verify type
+        assert advisory is None or isinstance(advisory, str)
 
     def test_global_priors_injected(self):
         cfg = MagicMock()
@@ -325,9 +321,7 @@ class TestApplyBehaviorDelta:
                 "lintgate.controlplane.global_behavior_profile.load_global_profile",
                 return_value=MagicMock(),
             ),
-            patch(
-                "lintgate.controlplane.global_behavior_profile.apply_session_delta"
-            ) as apply_fn,
+            patch("lintgate.controlplane.global_behavior_profile.apply_session_delta") as apply_fn,
             patch("lintgate.controlplane.global_behavior_profile.save_global_profile"),
         ):
             apply_behavior_delta(session, cr, cfg, {})
@@ -388,9 +382,7 @@ class TestRunConstraintProposer:
                 "lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns",
                 return_value=[{"id": "p1"}],
             ),
-            patch(
-                "lintgate.controlplane.constraint_proposer.store_proposals_in_session"
-            ),
+            patch("lintgate.controlplane.constraint_proposer.store_proposals_in_session"),
         ):
             result = run_constraint_proposer(session, mesh, cfg)
         assert result == [{"id": "c1"}]
@@ -405,12 +397,8 @@ class TestRunConstraintProposer:
         mesh.channel_results = [other_cr]
         cfg = MagicMock()
         with (
-            patch(
-                "lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns"
-            ),
-            patch(
-                "lintgate.controlplane.constraint_proposer.store_proposals_in_session"
-            ),
+            patch("lintgate.controlplane.constraint_proposer.propose_constraints_from_patterns"),
+            patch("lintgate.controlplane.constraint_proposer.store_proposals_in_session"),
         ):
             result = run_constraint_proposer(session, mesh, cfg)
         assert result == []
@@ -455,6 +443,14 @@ class TestSaveRunDetails:
         with patch("lintgate.state.save_controlplane_run") as save_fn:
             save_run_details(mesh, {"lint": [{"msg": "test"}]})
         save_fn.assert_called_once()
+        # save_controlplane_run(run_id, details) — two positional args
+        run_id, details = save_fn.call_args[0]
+        assert run_id == "run1"
+        assert details["finding_index"] == {"lint": [{"msg": "test"}]}
+        assert details["partial"] is False
+        assert details["incomplete_channels"] == []
+        assert details["channels"]["lint"]["status"] == "pass"
+        assert details["channels"]["lint"]["duration_ms"] == 10.0
 
     def test_no_event_id(self):
         mesh = MagicMock()
@@ -499,9 +495,7 @@ class TestExtractFindingIndexes:
 
 class TestPostProcessSession:
     def test_session_none(self):
-        result = post_process_session(
-            None, MagicMock(), {}, MagicMock(), {}, "E", {}, ""
-        )
+        result = post_process_session(None, MagicMock(), {}, MagicMock(), {}, "E", {}, "")
         assert result == []
 
     def test_session_no_behavior(self):
@@ -516,13 +510,9 @@ class TestPostProcessSession:
                 return_value=MagicMock(),
             ),
             patch("lintgate.controlplane.session_memory.save_session"),
-            patch(
-                "lintgate.hook_controlplane.run_constraint_proposer", return_value=[]
-            ),
+            patch("lintgate.hook_controlplane.run_constraint_proposer", return_value=[]),
         ):
-            result = post_process_session(
-                session, mesh, {}, MagicMock(), {}, "E", {}, ""
-            )
+            result = post_process_session(session, mesh, {}, MagicMock(), {}, "E", {}, "")
         assert result == []
 
 
@@ -565,23 +555,22 @@ class TestAccumulateSessionTelemetry:
 class TestRefreshRuntimeAfterRun:
     def test_session_present(self):
         with (
-            patch(
-                "lintgate.hook_runtime_state.refresh_runtime_state_with_session"
-            ) as fn,
+            patch("lintgate.hook_runtime_state.refresh_runtime_state_with_session") as fn,
             patch("lintgate.controlplane.session_memory.save_session"),
         ):
-            refresh_runtime_after_run(
-                "/tmp", MagicMock(), MagicMock(), MagicMock(), "Edit", {}
-            )
+            refresh_runtime_after_run("/tmp", MagicMock(), MagicMock(), MagicMock(), "Edit", {})
         fn.assert_called_once()
+        call_args, call_kwargs = fn.call_args
+        assert call_args[0] == "/tmp"  # cwd is first positional arg
+        assert call_kwargs["trigger"] == "lint_complete"
+        assert call_kwargs["tool_name"] == "Edit"
+        assert call_kwargs["tool_input"] == {}
 
     def test_session_none_no_habit(self):
         cfg = MagicMock()
         cfg.habit_mode_enabled = False
         cfg.session_memory = True
-        with patch(
-            "lintgate.hook_runtime_state.refresh_runtime_state_lightweight"
-        ) as fn:
+        with patch("lintgate.hook_runtime_state.refresh_runtime_state_lightweight") as fn:
             refresh_runtime_after_run("/tmp", None, cfg, MagicMock(), "Edit", {})
         fn.assert_called_once()
 

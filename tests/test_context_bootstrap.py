@@ -109,9 +109,7 @@ def test_select_actionable_anti_patterns_filters_non_negative_claims() -> None:
 
     assert "retrieval stack" not in " ".join(selected).lower()
     assert any("break auditability" in item.lower() for item in selected)
-    assert any(
-        "avoid one-off task-specific helpers" in item.lower() for item in selected
-    )
+    assert any("avoid one-off task-specific helpers" in item.lower() for item in selected)
 
 
 def test_mcp_bootstrap_context_files_returns_payload(tmp_path) -> None:
@@ -194,8 +192,7 @@ def test_extracted_theory_overrides_defaults(tmp_path) -> None:
 
     # Should contain extracted claims in do_dont section
     assert (
-        "black-box" in do_dont_section.lower()
-        or "validation pipeline" in do_dont_section.lower()
+        "black-box" in do_dont_section.lower() or "validation pipeline" in do_dont_section.lower()
     )
     # The curated default about "enumerating all known constraints" should NOT
     # appear in do_dont section when real claims are extracted
@@ -266,9 +263,7 @@ class TestBootstrapModelProfileIntegration:
             model_key="anthropic:claude-opus-4",
             confidence=0.8,
             signal_risk={"approach_cycling": 0.6, "verification_debt": 0.5},
-            custom_anti_patterns=[
-                "Do not try a 4th approach without enumerating constraints."
-            ],
+            custom_anti_patterns=["Do not try a 4th approach without enumerating constraints."],
             custom_dispositions=["MUST run constraint_check before 3rd approach."],
         )
 
@@ -415,9 +410,7 @@ class TestRuleToLine:
 class TestCollectMachineRuleLines:
     def test_from_guidance_rules(self) -> None:
         guidance = {"rules": [{"kind": "forbid_regex", "pattern": "eval\\("}]}
-        result = _collect_machine_rule_lines(
-            guidance=guidance, theory={}, max_machine_rules=10
-        )
+        result = _collect_machine_rule_lines(guidance=guidance, theory={}, max_machine_rules=10)
         assert len(result) == 1
         assert "LINTGATE_FORBID_REGEX: eval\\(" in result[0]
 

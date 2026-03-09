@@ -88,16 +88,10 @@ class SessionSnapshot:
         default_factory=dict
     )  # action_id → compact meta
     behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
-    finding_index: dict[str, dict[str, Any]] = field(
-        default_factory=dict
-    )  # fingerprint → summary
-    delivery_metrics: dict[str, Any] = field(
-        default_factory=dict
-    )  # channel health for this run
+    finding_index: dict[str, dict[str, Any]] = field(default_factory=dict)  # fingerprint → summary
+    delivery_metrics: dict[str, Any] = field(default_factory=dict)  # channel health for this run
     disposition: str | None = None  # Behavioral nudge string from last run
-    last_nudge: dict[str, Any] | None = (
-        None  # Full nudge object for compliance analysis
-    )
+    last_nudge: dict[str, Any] | None = None  # Full nudge object for compliance analysis
     compliance_outcome: str | None = None  # followed | ignored | overridden | uncertain
 
     # Backward-compatible property accessors for behavior fields
@@ -176,14 +170,10 @@ class SessionMemory:
     snapshots: list[SessionSnapshot] = field(default_factory=list)
     coherence_trajectory: list[str] = field(default_factory=list)
     repair_outcomes: dict[str, str] = field(default_factory=dict)  # action_id → status
-    pattern_trend: dict[str, list[int]] = field(
-        default_factory=dict
-    )  # "linter|kind" → [counts]
+    pattern_trend: dict[str, list[int]] = field(default_factory=dict)  # "linter|kind" → [counts]
     proposed_constraints: list[dict[str, Any]] = field(default_factory=list)
     agent_disagreements: list[dict[str, Any]] = field(default_factory=list)
-    behavior_compass: dict[str, Any] = field(
-        default_factory=dict
-    )  # Serialized BehaviorCompass
+    behavior_compass: dict[str, Any] = field(default_factory=dict)  # Serialized BehaviorCompass
     # Architecture of Inquiry: cached theory profile for current mesh run (transient, not persisted)
     theory_profile_cache: dict[str, Any] | None = None
     # Architecture of Inquiry: pending context patches awaiting explicit apply
@@ -194,9 +184,7 @@ class SessionMemory:
     edit_cycle_state: dict[str, Any] = field(default_factory=dict)
     latest_transfer_packet: dict[str, Any] | None = None
     delivery_health_summary: dict[str, Any] = field(default_factory=dict)
-    knowledge_meta: dict[str, Any] = field(
-        default_factory=dict
-    )  # Staleness, survival, etc.
+    knowledge_meta: dict[str, Any] = field(default_factory=dict)  # Staleness, survival, etc.
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -263,9 +251,7 @@ class SessionMemory:
         """Hydrate session from a transfer packet (handoff)."""
         from dataclasses import asdict
 
-        self.latest_transfer_packet = (
-            asdict(packet) if hasattr(packet, "to_dict") else packet
-        )
+        self.latest_transfer_packet = asdict(packet) if hasattr(packet, "to_dict") else packet
 
         # Hydrate active finding history to maintain coherence across handoff
         active_findings = (
@@ -338,9 +324,7 @@ def save_session(session: SessionMemory) -> None:
         pass  # Non-fatal — session memory is observability, not correctness
 
 
-def get_or_create_session(
-    project_root: str, max_age_hours: float = 4.0
-) -> SessionMemory:
+def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> SessionMemory:
     """Load existing session or create a new one.
 
     If the existing session has expired, a fresh one is created.
@@ -361,8 +345,7 @@ def get_or_create_session(
 
         # Check for pending transfer packet (#169)
         transfer_path = (
-            SESSION_DIR
-            / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
+            SESSION_DIR / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
         )
         if transfer_path.exists():
             try:
@@ -560,10 +543,7 @@ def detect_applied_repairs(
     # For now, we track repairs by their action_id status
     # A more sophisticated version would store finding-repair associations
     for _action_id, status in session.repair_outcomes.items():
-        if (
-            status == "pending"
-            and last_snapshot.blocking_count < prev_snapshot.blocking_count
-        ):
+        if status == "pending" and last_snapshot.blocking_count < prev_snapshot.blocking_count:
             # Mark as potentially applied (conservative: only if blocking decreased)
             pass  # Future: correlate specific findings with specific repairs
 

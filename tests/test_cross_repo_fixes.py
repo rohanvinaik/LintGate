@@ -165,9 +165,7 @@ class TestFindDeadPathsImprovements:
         # Reference with explicit dir path that doesn't exist
         refs = ["lib/foo.py"]
         dead = _find_dead_paths(refs, str(tmp_path))
-        assert "lib/foo.py" in dead, (
-            "Explicit paths should not fall back to broad search"
-        )
+        assert "lib/foo.py" in dead, "Explicit paths should not fall back to broad search"
 
     def test_search_depth_limit(self, tmp_path: Path) -> None:
         """Broad search should not descend more than 3 levels."""
@@ -240,10 +238,7 @@ class TestDirectiveClassification:
         from lintgate.context_auditor import _is_regex_enforceable
 
         assert (
-            _is_regex_enforceable(
-                "Do not iterate without understanding constraints first"
-            )
-            is False
+            _is_regex_enforceable("Do not iterate without understanding constraints first") is False
         )
 
     def test_behavioral_directive_not_enforceable(self) -> None:
@@ -278,9 +273,7 @@ class TestRuleCoverageWithClassification:
                 ],
             },
         }
-        _check_rule_coverage(
-            checks, suggestions, guidance, [], {"min_rule_coverage_pct": 50}
-        )
+        _check_rule_coverage(checks, suggestions, guidance, [], {"min_rule_coverage_pct": 50})
         assert len(checks) == 1
         assert checks[0]["status"] == "pass"
         assert "architectural" in checks[0]["detail"]
@@ -299,9 +292,7 @@ class TestRuleCoverageWithClassification:
                 ],
             },
         }
-        _check_rule_coverage(
-            checks, suggestions, guidance, [], {"min_rule_coverage_pct": 50}
-        )
+        _check_rule_coverage(checks, suggestions, guidance, [], {"min_rule_coverage_pct": 50})
         assert len(checks) == 1
         assert checks[0]["status"] == "warn"
         assert "0/2" in checks[0]["detail"]
@@ -381,16 +372,12 @@ class TestBootstrapQuickWins:
         wins = _build_quick_wins(tmp_path, {"rules": [], "directives": {}}, {})
         assert any("controlplane" in w.lower() for w in wins)
 
-    def test_quick_wins_no_controlplane_when_config_exists(
-        self, tmp_path: Path
-    ) -> None:
+    def test_quick_wins_no_controlplane_when_config_exists(self, tmp_path: Path) -> None:
         """Projects WITH lintgate.yaml should not get ControlPlane suggestion."""
         from lintgate.context_bootstrap import _build_quick_wins
 
         (tmp_path / ".claude").mkdir()
-        (tmp_path / ".claude" / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (tmp_path / ".claude" / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         wins = _build_quick_wins(tmp_path, {"rules": [], "directives": {}}, {})
         assert not any("controlplane" in w.lower() for w in wins)
 
@@ -422,9 +409,7 @@ class TestBootstrapQuickWins:
         wins = _build_quick_wins(tmp_path, {"rules": [], "directives": {}}, {})
         assert not any("lockfile" in w.lower() for w in wins)
 
-    def test_context_map_shows_activation_hint_when_no_yaml(
-        self, tmp_path: Path
-    ) -> None:
+    def test_context_map_shows_activation_hint_when_no_yaml(self, tmp_path: Path) -> None:
         """Context map should suggest creating lintgate.yaml when missing."""
         import re
 

@@ -73,10 +73,7 @@ def _catches_import_error(try_node: ast.Try) -> bool:
         if handler.type is None:
             # Bare except — catches everything
             return True
-        if (
-            isinstance(handler.type, ast.Name)
-            and handler.type.id in _IMPORT_ERROR_NAMES
-        ):
+        if isinstance(handler.type, ast.Name) and handler.type.id in _IMPORT_ERROR_NAMES:
             return True
         if isinstance(handler.type, ast.Tuple):
             for elt in handler.type.elts:
@@ -130,9 +127,7 @@ def _extract_imports(
         report.guarded_lines.add(node.lineno)
 
 
-def _find_fallback_assignment(
-    name: str, handlers: list[ast.ExceptHandler]
-) -> str | None:
+def _find_fallback_assignment(name: str, handlers: list[ast.ExceptHandler]) -> str | None:
     """Check if except body assigns a fallback value to *name*.
 
     Recognizes patterns like:

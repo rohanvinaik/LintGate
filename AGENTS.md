@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 93 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 99 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -60,7 +60,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 93 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 99 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
@@ -90,6 +90,12 @@ LintGate provides 93 MCP tools backed by 18 linters. Source of truth: `grep -Rho
 | `analyze_test_strength` | Test assertion quality: vulnerability scores, semantic ratios, upgrade suggestions. |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind and strength. |
 | `run_property_tests` | Execute generated property tests for a function and capture counterexamples. |
+| `test_hygiene_scan` | Scan test suite for hygiene issues: stubs, weak assertions, duplicates. |
+| `test_triage` | Rank untested functions by specification priority for cold-start coverage. |
+| `test_infer_inputs` | Infer candidate inputs from call sites and type hints. |
+| `test_characterize` | Generate characterization tests with golden-value capture. |
+| `test_characterize_mark` | Mark characterization test maturity: unchecked → approved → specified. |
+| `test_redundancy_project` | Project-wide mutation redundancy: zero-unique-kill tests, minimal covering set. |
 | `mutation_run_sampling` | Fast sampled mutation run — inline AST mutation sampling per semantic category. |
 | `mutation_run_full` | Deep exhaustive mutation profiling — full kill matrix for gateable results. |
 | `mutation_get_state` | View cached mutation state, survival rates, and coverage depth. |
@@ -246,4 +252,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 93). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 99). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

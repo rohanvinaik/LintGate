@@ -14,9 +14,7 @@ from typing import Any, Literal
 
 # ── Channel selection helpers ───────────────────────────────────────────
 
-_ALL_CHANNEL_NAMES = (
-    "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,specification"
-)
+_ALL_CHANNEL_NAMES = "lint,tests,deps,git,behavior,structure,performance,test_effectiveness,specification,test_hygiene"
 
 _AVAILABLE_CHANNEL_DESCRIPTIONS = {
     "lint": "Code quality (ruff, mypy, complexity, structure)",
@@ -39,6 +37,10 @@ _AVAILABLE_CHANNEL_DESCRIPTIONS = {
         "Specification complexity analysis "
         "(sigma estimation, regime classification, risk model, optimization gate)"
     ),
+    "test_hygiene": (
+        "Test suite hygiene "
+        "(stub detection, weak-only assertions, duplicate tests, file subsumption)"
+    ),
 }
 
 
@@ -53,6 +55,7 @@ def _build_channel_registry():
     from lintgate.channels.structure_channel import StructureChannel
     from lintgate.channels.test_channel import TestChannel
     from lintgate.channels.test_effectiveness_channel import TestEffectivenessChannel
+    from lintgate.channels.test_hygiene_channel import TestHygieneChannel
 
     return {
         "lint": LintChannel(),
@@ -64,6 +67,7 @@ def _build_channel_registry():
         "performance": PerformanceChannel(),
         "test_effectiveness": TestEffectivenessChannel(),
         "specification": SpecificationChannel(),
+        "test_hygiene": TestHygieneChannel(),
     }
 
 
@@ -138,8 +142,7 @@ def _append_schema_findings(mesh_result, wiring_findings: list) -> None:
                         linter="metric_schema",
                         kind="WIRE002",
                         message=(
-                            f"Channel '{cr.channel}' declared key '{key}' "
-                            f"but did not publish it"
+                            f"Channel '{cr.channel}' declared key '{key}' but did not publish it"
                         ),
                         severity="informational",
                     )
@@ -210,9 +213,7 @@ def _resolve_scope_files(project_root, scope, files, helpers):
         else:
             cmd = ["git", "diff", "--name-only", "HEAD", "--diff-filter=ACMR"]
 
-        proc = subprocess.run(
-            cmd, cwd=project_root, capture_output=True, text=True, check=True
-        )
+        proc = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, check=True)
         git_files = [f for f in proc.stdout.splitlines() if f.endswith(".py")]
 
         if scope != "staged":
@@ -222,9 +223,7 @@ def _resolve_scope_files(project_root, scope, files, helpers):
                 capture_output=True,
                 text=True,
             )
-            git_files.extend(
-                [f for f in proc2.stdout.splitlines() if f.endswith(".py")]
-            )
+            git_files.extend([f for f in proc2.stdout.splitlines() if f.endswith(".py")])
 
         full_paths = [str(Path(project_root) / f) for f in set(git_files)]
         existing_py = {str(Path(f).resolve()) for f in py_files}
@@ -344,12 +343,8 @@ def _persist_behavior_compass_delta(cr, session, cp_config):
 
     compass = load_behavior_compass(session)
     compass.last_fired = delta.get("last_fired", compass.last_fired)
-    compass.signal_fire_counts = delta.get(
-        "signal_fire_counts", compass.signal_fire_counts
-    )
-    compass.early_nudge_emitted = delta.get(
-        "early_nudge_emitted", compass.early_nudge_emitted
-    )
+    compass.signal_fire_counts = delta.get("signal_fire_counts", compass.signal_fire_counts)
+    compass.early_nudge_emitted = delta.get("early_nudge_emitted", compass.early_nudge_emitted)
     compass.pending_nudge_signals = delta.get(
         "pending_nudge_signals", compass.pending_nudge_signals
     )
@@ -410,16 +405,10 @@ def _persist_runtime_state(mesh_result, project_root, session):
         from lintgate.runtime_state import build_runtime_state, save_runtime_state
 
         blocking = sum(
-            1
-            for cr in mesh_result.channel_results
-            for f in cr.findings
-            if f.severity == "blocking"
+            1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "blocking"
         )
         warnings = sum(
-            1
-            for cr in mesh_result.channel_results
-            for f in cr.findings
-            if f.severity == "warning"
+            1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "warning"
         )
         symbol_blockers = sum(
             1
@@ -440,16 +429,12 @@ def _persist_runtime_state(mesh_result, project_root, session):
         save_runtime_state(project_root, runtime)
 
 
-def _save_run_details_for_drilldown(
-    mesh_result, current_finding_index, compact, helpers
-):
+def _save_run_details_for_drilldown(mesh_result, current_finding_index, compact, helpers):
     """Save full details so controlplane_get_details can drill down."""
     with contextlib.suppress(Exception):
         from lintgate.state import save_controlplane_run
 
-        full_details = helpers["_build_cp_full_details"](
-            mesh_result, current_finding_index
-        )
+        full_details = helpers["_build_cp_full_details"](mesh_result, current_finding_index)
         save_controlplane_run(compact["run_id"], full_details)
 
 
@@ -520,9 +505,7 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
     active_channels, requested, unknown = _select_channels(channels, channel_registry)
 
     # Schema wiring validation (runtime advisory)
-    wiring_findings = _validate_channel_wiring(
-        [ch.name for ch in active_channels]
-    )
+    wiring_findings = _validate_channel_wiring([ch.name for ch in active_channels])
 
     # Event
     files_for_event = _collect_files_for_event(project_root, scope, files, helpers)
@@ -531,9 +514,7 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
     cp_config.latency_budget_ms = _compute_dynamic_budget_ms(
         cp_config.latency_budget_ms, len(files_for_event), scope
     )
-    event = _build_supervision_event(
-        project_root, files_for_event, strictness, requested
-    )
+    event = _build_supervision_event(project_root, files_for_event, strictness, requested)
 
     # Session + behavior injection
     session = _setup_session(project_root, cp_config)
@@ -676,9 +657,7 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
 
     # Persist runtime state and drill-down details
     _persist_runtime_state(mesh_result, project_root, session)
-    _save_run_details_for_drilldown(
-        mesh_result, current_finding_index, compact, helpers
-    )
+    _save_run_details_for_drilldown(mesh_result, current_finding_index, compact, helpers)
 
     # Final assembly
     if unknown:
@@ -776,9 +755,7 @@ def _extract_findings(details, channel, severity, max_issues):
     return result
 
 
-def _build_details_next_actions(
-    run_id: str, output: dict[str, Any]
-) -> list[dict[str, Any]]:
+def _build_details_next_actions(run_id: str, output: dict[str, Any]) -> list[dict[str, Any]]:
     """Build recommended next actions based on drill-down details."""
     actions = []
     repairs = output.get("repairs", [])
@@ -853,9 +830,7 @@ def _extract_evidence(details, channel):
     return evidence
 
 
-def _impl_controlplane_get_details(
-    run_id, channel, severity, max_issues, sections, helpers
-):
+def _impl_controlplane_get_details(run_id, channel, severity, max_issues, sections, helpers):
     """Core implementation of controlplane_get_details."""
     from lintgate.state import load_controlplane_run
 
@@ -980,15 +955,11 @@ def _get_session_status(project_root):
                 ),
                 "proposed_constraints": len(session.proposed_constraints),
                 "active_proposals": sum(
-                    1
-                    for c in session.proposed_constraints
-                    if c.get("status") == "proposed"
+                    1 for c in session.proposed_constraints if c.get("status") == "proposed"
                 ),
                 "transfer_telemetry": {
                     "latest_packet": session.latest_transfer_packet,
-                    "packet_age_hours": round(
-                        (time.time() - session.last_active) / 3600, 2
-                    )
+                    "packet_age_hours": round((time.time() - session.last_active) / 3600, 2)
                     if session.latest_transfer_packet
                     else None,
                 }
@@ -1013,9 +984,7 @@ def _impl_controlplane_status(path, helpers):
         status.update(_build_config_status(cp_config, project_root, helpers))
     else:
         status["controlplane_enabled"] = False
-        status["note"] = (
-            "Add 'controlplane: enabled: true' to .claude/lintgate.yaml to enable"
-        )
+        status["note"] = "Add 'controlplane: enabled: true' to .claude/lintgate.yaml to enable"
         status["onboarding"] = helpers["_build_onboarding_status"](project_root)
 
     status["available_channels"] = _AVAILABLE_CHANNEL_DESCRIPTIONS
@@ -1067,9 +1036,7 @@ def _process_rejected_constraints(session, rejected_constraints, actions_taken):
             actions_taken.append(f"Constraint not found: {key}")
 
 
-def _generate_living_context_patches(
-    session, project_root, accepted_rules, actions_taken
-):
+def _generate_living_context_patches(session, project_root, accepted_rules, actions_taken):
     """Generate context patches for accepted constraints if living context is enabled."""
     from lintgate.config import load_controlplane_config
 
@@ -1111,13 +1078,9 @@ def _impl_controlplane_agent_feedback(
     if disagreement:
         _record_disagreement(session, run_id, disagreement, actions_taken)
 
-    accepted_rules = _process_accepted_constraints(
-        session, accepted_constraints, actions_taken
-    )
+    accepted_rules = _process_accepted_constraints(session, accepted_constraints, actions_taken)
     _process_rejected_constraints(session, rejected_constraints, actions_taken)
-    _generate_living_context_patches(
-        session, project_root, accepted_rules, actions_taken
-    )
+    _generate_living_context_patches(session, project_root, accepted_rules, actions_taken)
 
     # Process signal tunings
     tuned_results: list[str] = []
@@ -1129,9 +1092,7 @@ def _impl_controlplane_agent_feedback(
 
     # Process test failure classifications (#205)
     if test_failure_classifications:
-        _process_test_failure_classifications(
-            test_failure_classifications, session, actions_taken
-        )
+        _process_test_failure_classifications(test_failure_classifications, session, actions_taken)
 
     save_session(session)
 
@@ -1175,14 +1136,10 @@ def _process_tuned_findings(
             rejected.append({"signature": sig, "reason": f"invalid action: {action}"})
             continue
         if action != "reset" and not rationale:
-            rejected.append(
-                {"signature": sig, "reason": "rationale required for tuning"}
-            )
+            rejected.append({"signature": sig, "reason": "rationale required for tuning"})
             continue
 
-        result = apply_tuning(
-            project_root, sig, action, rationale, tf.get("recurrence_count", 0)
-        )
+        result = apply_tuning(project_root, sig, action, rationale, tf.get("recurrence_count", 0))
         if result.get("error"):
             rejected.append({"signature": sig, "reason": result["error"]})
         else:
@@ -1279,6 +1236,9 @@ def _execute_single_repair(repair, project_root, session):
 
     action_id = repair.get("action_id")
 
+    if repair.get("kind") == "safe_delete":
+        return _execute_safe_delete(repair, project_root, session)
+
     if repair.get("kind") != "command":
         return {"action_id": action_id, "status": "skipped", "reason": "not a command"}
 
@@ -1300,9 +1260,7 @@ def _execute_single_repair(repair, project_root, session):
             cwd=cwd,
         )
         status = "ok" if proc.returncode == 0 else "error"
-        report_repair_outcome(
-            session, action_id or "", "applied" if status == "ok" else "ignored"
-        )
+        report_repair_outcome(session, action_id or "", "applied" if status == "ok" else "ignored")
         return {
             "action_id": action_id,
             "command": command,
@@ -1321,6 +1279,46 @@ def _execute_single_repair(repair, project_root, session):
         }
 
 
+def _execute_safe_delete(repair, project_root, session):
+    """Execute a safe_delete repair — removes a file after validation."""
+    from lintgate.controlplane.session_memory import report_repair_outcome
+
+    action_id = repair.get("action_id")
+    payload = repair.get("payload", {})
+    target_path = payload.get("target_path", "")
+
+    if not target_path:
+        return {"action_id": action_id, "status": "skipped", "reason": "no target_path"}
+
+    # Safety: must be under project root and in a test directory
+    abs_target = os.path.abspath(target_path)
+    abs_root = os.path.abspath(project_root)
+    if not abs_target.startswith(abs_root + os.sep):
+        return {
+            "action_id": action_id,
+            "status": "blocked",
+            "reason": "target outside project root",
+        }
+
+    rel_path = os.path.relpath(abs_target, abs_root)
+    if not any(part.startswith("test") for part in Path(rel_path).parts):
+        return {
+            "action_id": action_id,
+            "status": "blocked",
+            "reason": "target not in test directory",
+        }
+
+    if not os.path.exists(abs_target):
+        return {"action_id": action_id, "status": "skipped", "reason": "file already deleted"}
+
+    try:
+        os.remove(abs_target)
+        report_repair_outcome(session, action_id or "", "applied")
+        return {"action_id": action_id, "status": "ok", "deleted": rel_path}
+    except OSError as e:
+        return {"action_id": action_id, "status": "error", "error": str(e)}
+
+
 def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
     """Core implementation of controlplane_apply_repairs."""
     from lintgate.controlplane.session_memory import get_or_create_session, save_session
@@ -1330,10 +1328,7 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
 
     pending_repairs = _collect_pending_repairs(session, action_ids, safe_only)
 
-    results = [
-        _execute_single_repair(repair, project_root, session)
-        for repair in pending_repairs
-    ]
+    results = [_execute_single_repair(repair, project_root, session) for repair in pending_repairs]
 
     save_session(session)
 
@@ -1341,9 +1336,7 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
         {
             "repairs_executed": len(results),
             "results": results,
-            "pending_remaining": sum(
-                1 for v in session.repair_outcomes.values() if v == "pending"
-            ),
+            "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
         },
         indent=2,
     )
@@ -1360,8 +1353,7 @@ def register(mcp, helpers):
         path: str,
         channels: str | None = None,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
-        scope: Literal["project", "changed", "staged", "files", "full_sweep"]
-        | None = None,
+        scope: Literal["project", "changed", "staged", "files", "full_sweep"] | None = None,
         files: list[str] | None = None,
     ) -> str:
         """Run a comprehensive project health check across multiple dimensions.

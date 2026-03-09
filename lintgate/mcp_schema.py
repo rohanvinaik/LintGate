@@ -46,9 +46,7 @@ def validate_schema_node(tool_name: str, path: str, node: Any) -> None:
         validate_schema_node(tool_name, f"{path}.{key}", value)
 
 
-def compile_and_validate_schemas(
-    tools: list[Any], agent_profile: str = "strict"
-) -> None:
+def compile_and_validate_schemas(tools: list[Any], agent_profile: str = "strict") -> None:
     """Validate schemas natively derived from fastmcp tool objects before proceeding.
 
     Args:

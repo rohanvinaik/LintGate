@@ -30,9 +30,7 @@ def _validate_file_in_project(project_root: str, file: str) -> str:
     root_resolved = os.path.realpath(project_root)
     # Append os.sep so that "/project-evil" doesn't match "/project".
     if not resolved.startswith(root_resolved + os.sep) and resolved != root_resolved:
-        raise ValueError(
-            f"File path escapes project root: {file!r} resolves to {resolved}"
-        )
+        raise ValueError(f"File path escapes project root: {file!r} resolves to {resolved}")
     return resolved
 
 
@@ -78,14 +76,43 @@ def _resolve_py_files(project_root: str, file: str | None) -> list[str] | dict[s
     return py_files
 
 
-def _build_manifests(project_root: str, py_files: list[str]) -> tuple[Any, Any]:
+def _load_mutation_cache(project_root: str) -> dict[str, dict] | None:
+    """Load all mutation cache entries for spec_level override."""
+    import json
+    from pathlib import Path
+
+    cache_dir = Path(project_root) / ".lintgate" / "mutation"
+    if not cache_dir.exists():
+        return None
+
+    cache: dict[str, dict] = {}
+    for cache_file in cache_dir.glob("*.json"):
+        if cache_file.name == "scheduler_state.json":
+            continue
+        try:
+            with open(cache_file, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        func_key = data.get("function_key", "")
+        if func_key:
+            cache[func_key] = data
+
+    return cache if cache else None
+
+
+def _build_manifests(
+    project_root: str,
+    py_files: list[str],
+    mutation_cache: dict[str, dict] | None = None,
+) -> tuple[Any, Any]:
     """Build property and test effectiveness manifests from source files."""
     from lintgate.linters.performance_checks.manifest import build_manifest
     from lintgate.linters.test_effectiveness.manifest import (
         build_test_effectiveness_manifest,
     )
 
-    prop_manifest = build_manifest(project_root, py_files)
+    prop_manifest = build_manifest(project_root, py_files, mutation_cache=mutation_cache)
     teff_manifest = build_test_effectiveness_manifest(project_root, py_files)
     return prop_manifest, teff_manifest
 
@@ -103,12 +130,18 @@ def _build_ledger(
     prop_manifest: Any,
     teff_manifest: Any,
     call_graph: Any = None,
+    mutation_cache: dict[str, dict] | None = None,
 ) -> Any:
     """Build a specification ledger from manifests."""
     from lintgate.specification.ledger import build_specification_ledger
 
     return build_specification_ledger(
-        prop_manifest, teff_manifest, project_root, py_files=py_files, call_graph=call_graph
+        prop_manifest,
+        teff_manifest,
+        project_root,
+        py_files=py_files,
+        call_graph=call_graph,
+        mutation_cache=mutation_cache,
     )
 
 
@@ -134,9 +167,12 @@ def _impl_spec_analyze(
     if not py_files:
         return {"error": "No Python files found"}
 
-    prop_manifest, teff_manifest = _build_manifests(project_root, py_files)
+    mutation_cache = _load_mutation_cache(project_root)
+    prop_manifest, teff_manifest = _build_manifests(project_root, py_files, mutation_cache)
     call_graph = _build_call_graph(project_root, py_files)
-    ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest, call_graph)
+    ledger = _build_ledger(
+        project_root, py_files, prop_manifest, teff_manifest, call_graph, mutation_cache
+    )
 
     matching = _filter_by_function(ledger, function)
     if not matching:
@@ -210,9 +246,12 @@ def _impl_spec_prescribe(
     if not py_files:
         return {"error": "No Python files found"}
 
-    prop_manifest, teff_manifest = _build_manifests(project_root, py_files)
+    mutation_cache = _load_mutation_cache(project_root)
+    prop_manifest, teff_manifest = _build_manifests(project_root, py_files, mutation_cache)
     call_graph = _build_call_graph(project_root, py_files)
-    ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest, call_graph)
+    ledger = _build_ledger(
+        project_root, py_files, prop_manifest, teff_manifest, call_graph, mutation_cache
+    )
 
     matching = _filter_by_function(ledger, function)
     if not matching:
@@ -286,9 +325,12 @@ def _impl_spec_composition(
     if not py_files:
         return {"error": "No Python files found"}
 
-    prop_manifest, teff_manifest = _build_manifests(project_root, py_files)
+    mutation_cache = _load_mutation_cache(project_root)
+    prop_manifest, teff_manifest = _build_manifests(project_root, py_files, mutation_cache)
     call_graph = _build_call_graph(project_root, py_files)
-    ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest, call_graph)
+    ledger = _build_ledger(
+        project_root, py_files, prop_manifest, teff_manifest, call_graph, mutation_cache
+    )
 
     composition = analyze_composition(call_graph, ledger)
     output = composition.to_dict()
@@ -312,6 +354,7 @@ def _impl_spec_composition(
 
 def _impl_spec_gate_check(
     path: str,
+    file: str | None,
     function: str | None,
     hint: str | None,
     helpers: Any,
@@ -320,16 +363,19 @@ def _impl_spec_gate_check(
     from lintgate.specification.optimization_gate import check_gate
 
     project_root = helpers["_validate_project_root"](path)
-    result = _resolve_py_files(project_root, None)
+    result = _resolve_py_files(project_root, file)
     if isinstance(result, dict):
         return result
     py_files = result
     if not py_files:
         return {"error": "No Python files found"}
 
-    prop_manifest, teff_manifest = _build_manifests(project_root, py_files)
+    mutation_cache = _load_mutation_cache(project_root)
+    prop_manifest, teff_manifest = _build_manifests(project_root, py_files, mutation_cache)
     call_graph = _build_call_graph(project_root, py_files)
-    ledger = _build_ledger(project_root, py_files, prop_manifest, teff_manifest, call_graph)
+    ledger = _build_ledger(
+        project_root, py_files, prop_manifest, teff_manifest, call_graph, mutation_cache
+    )
 
     matching = _filter_by_function(ledger, function)
     # Filter to functions with optimization hints
@@ -468,6 +514,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     @mcp.tool()
     def spec_gate_check(
         path: str,
+        file: str | None = None,
         function: str | None = None,
         hint: str | None = None,
     ) -> str:
@@ -479,14 +526,16 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         to reach them, and estimated tests remaining.
 
         Example: spec_gate_check(path="/my/project")
+        Example: spec_gate_check(path="/my/project", file="utils.py")
         Example: spec_gate_check(path="/my/project", hint="cacheable")
 
         Args:
             path: Project root path.
+            file: Optional file to scope analysis to a single file.
             function: Optional function name to check.
             hint: Optional specific hint to filter by (e.g., "cacheable").
         """
-        result = _impl_spec_gate_check(path, function, hint, helpers)
+        result = _impl_spec_gate_check(path, file, function, hint, helpers)
         return helpers["_json_dumps"](result, output_mode="compact")
 
     @mcp.tool()

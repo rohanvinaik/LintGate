@@ -26,9 +26,7 @@ class TestDirectiveClassification3Way:
     def test_clear_syntactic_returns_enforceable(self) -> None:
         from lintgate.context_auditor import classify_directive_enforceability
 
-        result = classify_directive_enforceability(
-            "DO NOT use `threading.Thread` directly"
-        )
+        result = classify_directive_enforceability("DO NOT use `threading.Thread` directly")
         assert result.classification == "enforceable"
         assert result.confidence >= 0.9
 
@@ -60,9 +58,7 @@ class TestDirectiveClassification3Way:
         from lintgate.context_auditor import classify_directive_enforceability
 
         # Has both dotted name (syntactic) and "approach" (architectural)
-        result = classify_directive_enforceability(
-            "DO NOT use this approach for os.path calls"
-        )
+        result = classify_directive_enforceability("DO NOT use this approach for os.path calls")
         assert result.classification in ("uncertain", "enforceable", "architectural")
         # Key: should have lower confidence than clear-cut cases
         if result.classification == "uncertain":

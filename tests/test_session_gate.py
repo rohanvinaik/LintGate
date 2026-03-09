@@ -131,9 +131,7 @@ class TestCheckSessionReadiness:
         assert "alignment" in result.recommendation
 
     def test_require_regex_also_counts_as_rules(self, tmp_path: Path) -> None:
-        (tmp_path / "CLAUDE.md").write_text(
-            "# Rules\n# LINTGATE_REQUIRE_REGEX: test_\n"
-        )
+        (tmp_path / "CLAUDE.md").write_text("# Rules\n# LINTGATE_REQUIRE_REGEX: test_\n")
         root = str(tmp_path)
         result = check_session_readiness(root, theory_profile=FULL_PROFILE)
         assert "no_enforceable_rules" not in result.missing

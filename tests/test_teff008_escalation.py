@@ -183,9 +183,7 @@ class TestCheckSessionExitGate:
 class TestRecordTestFailureClassification:
     def test_valid_classification_recorded(self):
         session = SessionMemory(project_root="/tmp/test")
-        record_test_failure_classification(
-            session, "fp_001", "stale_test", "function deleted"
-        )
+        record_test_failure_classification(session, "fp_001", "stale_test", "function deleted")
         assert len(session.agent_disagreements) == 1
         entry = session.agent_disagreements[0]
         assert entry["type"] == "test_failure_classification"

@@ -112,17 +112,12 @@ def build_extraction_plan(
     if handler_prescriptions:
         _build_handler_extraction_steps(plan, handler_prescriptions, evidence_by_lens)
     elif block_prescriptions:
-        _build_block_extraction_steps(
-            plan, block_prescriptions, evidence_by_lens, ast_context
-        )
+        _build_block_extraction_steps(plan, block_prescriptions, evidence_by_lens, ast_context)
     else:
         _build_generic_extraction_steps(plan, candidate, evidence_by_lens, ast_context)
 
     # File-level split step if actionability is SPLIT
-    if (
-        candidate.actionability == Actionability.SPLIT
-        and candidate.target_type == "file"
-    ):
+    if candidate.actionability == Actionability.SPLIT and candidate.target_type == "file":
         _add_file_split_steps(plan, candidate, evidence_by_lens)
 
     # Generate warnings from opposing evidence
@@ -276,9 +271,7 @@ def _build_block_extraction_steps(
             target=plan.source_function,
             detail={
                 "description": "Update call sites to use extracted function(s)",
-                "extracted_functions": [
-                    p.get("proposed_name", "") for p in prescriptions
-                ],
+                "extracted_functions": [p.get("proposed_name", "") for p in prescriptions],
             },
             rationale="Replace inline code with calls to the extracted function(s).",
         )
@@ -461,8 +454,7 @@ def _generate_warnings(candidate: ConvergenceResult) -> list[str]:
 
         elif ev.lens == LensKind.IMPORT_TRACING and "io" in ev.detail.lower():
             warnings.append(
-                "Warning: module-level IO detected — "
-                "extraction may change initialization order"
+                "Warning: module-level IO detected — extraction may change initialization order"
             )
 
     return warnings
@@ -502,8 +494,7 @@ def _compute_estimated_impact(
         line_delta = len(handler_steps) * avg_lines_per_handler
         impact["line_count_delta"] = line_delta
         impact["line_count_explanation"] = (
-            f"Explicit parameter passing adds ~{avg_lines_per_handler} lines "
-            f"per extracted handler"
+            f"Explicit parameter passing adds ~{avg_lines_per_handler} lines per extracted handler"
         )
     elif prescriptions:
         # Block extraction: net neutral or slight reduction

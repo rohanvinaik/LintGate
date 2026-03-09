@@ -108,9 +108,7 @@ def test_check_file_relative_import_skipped(tmp_path):
 
 def test_check_file_guarded_import_skipped(tmp_path):
     f = tmp_path / "mod.py"
-    f.write_text(
-        "try:\n    import tomllib\nexcept ImportError:\n    import tomli as tomllib\n"
-    )
+    f.write_text("try:\n    import tomllib\nexcept ImportError:\n    import tomli as tomllib\n")
     ctx = _make_ctx(tmp_path, files=[str(f)])
     checker = ImportChecker()
     issues = list(checker.run(ctx))

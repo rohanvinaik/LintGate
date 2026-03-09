@@ -213,9 +213,7 @@ def _check_module_size_distribution(
     findings: list[LintIssue] = []
 
     # Filter to files with meaningful content
-    meaningful_locs = {
-        fp: loc for fp, loc in file_loc.items() if loc >= _ABSOLUTE_LOC_FLOOR
-    }
+    meaningful_locs = {fp: loc for fp, loc in file_loc.items() if loc >= _ABSOLUTE_LOC_FLOOR}
 
     if len(meaningful_locs) < _MIN_FILES_FOR_SIZE_ANALYSIS:
         return findings
@@ -335,11 +333,7 @@ def _check_package_cohesion(
         for module in pkg_modules:
             imports = import_graph.get(module, set())
             for imp in imports:
-                if (
-                    imp in pkg_module_set
-                    or imp.startswith(pkg_prefix)
-                    or imp == pkg_name
-                ):
+                if imp in pkg_module_set or imp.startswith(pkg_prefix) or imp == pkg_name:
                     intra_count += 1
                 else:
                     inter_count += 1

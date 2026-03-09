@@ -77,28 +77,19 @@ def test_pipeline_match_directory(tmp_path):
     f = tmp_path / "lintgate" / "hook.py"
     f.parent.mkdir()
     f.touch()
-    assert (
-        file_type_utils._matches_pipeline_path(str(f), ["lintgate/"], str(tmp_path))
-        is True
-    )
+    assert file_type_utils._matches_pipeline_path(str(f), ["lintgate/"], str(tmp_path)) is True
 
 
 def test_pipeline_match_exact_file(tmp_path):
     f = tmp_path / "hook.py"
     f.touch()
-    assert (
-        file_type_utils._matches_pipeline_path(str(f), ["hook.py"], str(tmp_path))
-        is True
-    )
+    assert file_type_utils._matches_pipeline_path(str(f), ["hook.py"], str(tmp_path)) is True
 
 
 def test_pipeline_no_match(tmp_path):
     f = tmp_path / "other.py"
     f.touch()
-    assert (
-        file_type_utils._matches_pipeline_path(str(f), ["lintgate/"], str(tmp_path))
-        is False
-    )
+    assert file_type_utils._matches_pipeline_path(str(f), ["lintgate/"], str(tmp_path)) is False
 
 
 def test_pipeline_empty_filepath():
@@ -203,7 +194,5 @@ def test_pipeline_path_relpath_value_error():
     import unittest.mock
 
     with unittest.mock.patch("os.path.relpath", side_effect=ValueError("cross-drive")):
-        result = file_type_utils._matches_pipeline_path(
-            "/d/some/file.py", ["some/"], "/c/project"
-        )
+        result = file_type_utils._matches_pipeline_path("/d/some/file.py", ["some/"], "/c/project")
         assert result is False

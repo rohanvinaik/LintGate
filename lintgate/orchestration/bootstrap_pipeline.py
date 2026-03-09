@@ -262,9 +262,7 @@ class BootstrapPipeline:
             for name, func in manifest.functions.items():
                 if not func.purity.is_pure:
                     continue
-                interesting = sum(
-                    1 for p in func.properties if p.kind != PropertyKind.PURE
-                )
+                interesting = sum(1 for p in func.properties if p.kind != PropertyKind.PURE)
                 if interesting == 0:
                     continue
 

@@ -104,9 +104,7 @@ class TestAnalyzeConvergence:
         assert result.steps[0].test_name == "test_b"
 
     def test_to_dict(self):
-        profile = _make_profiling(
-            total=1, killed=1, kill_matrix={"VALUE_0: m0": ["test_a"]}
-        )
+        profile = _make_profiling(total=1, killed=1, kill_matrix={"VALUE_0: m0": ["test_a"]})
         result = analyze_convergence(profile, sigma=1)
         d = result.to_dict()
         assert "steps" in d

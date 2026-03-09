@@ -10,6 +10,7 @@ Finding codes:
 - SPEC009: Optimization hint gated by spec_level
 - SPEC010: Risk-critical under-specification: P0 + spec_level < 0.5
 - SPEC012: Low DFT causing low sigma confidence: testability < 0.4
+- SPEC005: High coupling surface + high mutation survival (decomposition candidate)
 - SPEC013: Stop criteria satisfied
 """
 
@@ -30,6 +31,34 @@ if TYPE_CHECKING:
     from lintgate.specification.types import FunctionSpecification, SpecificationLedger
 
 _TOP_N_FINDINGS = 5
+
+
+def _load_project_mutation_cache(project_root: str) -> dict[str, dict] | None:
+    """Load all mutation cache entries for the project.
+
+    Returns function_key → mutation result dict, or None if no data.
+    """
+    import json
+    from pathlib import Path
+
+    cache_dir = Path(project_root) / ".lintgate" / "mutation"
+    if not cache_dir.exists():
+        return None
+
+    cache: dict[str, dict] = {}
+    for cache_file in cache_dir.glob("*.json"):
+        if cache_file.name == "scheduler_state.json":
+            continue
+        try:
+            with open(cache_file, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        func_key = data.get("function_key", "")
+        if func_key:
+            cache[func_key] = data
+
+    return cache if cache else None
 
 
 class SpecificationChannel:
@@ -82,6 +111,10 @@ class SpecificationChannel:
 
         project_hash = hashlib.sha256(event.project_root.encode()).hexdigest()[:16]
         prior_ledger = load_cached_ledger(SPEC_CACHE_DIR, project_hash)
+
+        # Load mutation cache for ground-truth spec_level override
+        mutation_cache = _load_project_mutation_cache(event.project_root)
+
         ledger = build_specification_ledger(
             prop_manifest,
             teff_manifest,
@@ -90,6 +123,7 @@ class SpecificationChannel:
             test_files=test_files,
             call_graph=call_graph,
             prior_ledger=prior_ledger,
+            mutation_cache=mutation_cache,
         )
         save_cached_ledger(SPEC_CACHE_DIR, project_hash, ledger)
 
@@ -98,7 +132,7 @@ class SpecificationChannel:
         if call_graph is not None:
             comp_result = analyze_composition(call_graph, ledger)
 
-        findings = _emit_findings(ledger, event.project_root)
+        findings = _emit_findings(ledger, event.project_root, mutation_cache)
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         metrics = _build_metrics(ledger, comp_result)
@@ -121,12 +155,17 @@ class SpecificationChannel:
         )
 
 
-def _emit_findings(ledger: SpecificationLedger, project_root: str) -> list[LintIssue]:
+def _emit_findings(
+    ledger: SpecificationLedger,
+    project_root: str,
+    mutation_cache: dict[str, dict] | None = None,
+) -> list[LintIssue]:
     findings: list[LintIssue] = []
-    count = {"spec001": 0, "spec006": 0, "spec009": 0, "spec010": 0}
+    count = {"spec001": 0, "spec005": 0, "spec006": 0, "spec009": 0, "spec010": 0}
 
     for _func_key, fs in ledger.functions.items():
         _check_spec001(fs, findings, count)
+        _check_spec005(fs, findings, count, mutation_cache)
         _check_spec006(fs, findings, count)
         _check_spec009(fs, findings, count)
         _check_spec010(fs, findings, count)
@@ -160,6 +199,57 @@ def _check_spec001(
             severity="warning",
             confidence=0.75,
             evidence={"sigma": sigma, "assertions": assertions, "phase": fs.core.phase},
+        )
+    )
+
+
+def _check_spec005(
+    fs: FunctionSpecification,
+    findings: list[LintIssue],
+    count: dict[str, int],
+    mutation_cache: dict[str, dict] | None = None,
+) -> None:
+    """SPEC005: High coupling surface + high mutation survival → decomposition candidate."""
+    coupling = fs.traceability.coupling_surface
+    if coupling < 3:
+        return
+
+    # Check mutation survival — need multiple surviving categories
+    surviving_categories: list[str] = []
+    if mutation_cache:
+        mut_state = mutation_cache.get(fs.function_key)
+        if mut_state:
+            for cat in mut_state.get("per_category", []):
+                if cat.get("survived", 0) > 0:
+                    surviving_categories.append(cat.get("category", ""))
+
+    if len(surviving_categories) < 2:
+        return
+
+    count["spec005"] += 1
+    if count["spec005"] > _TOP_N_FINDINGS:
+        return
+
+    findings.append(
+        LintIssue(
+            linter="specification",
+            kind="SPEC005",
+            message=(
+                f"Decomposition candidate: '{fs.function_key}' has "
+                f"coupling_surface={coupling} (test files) and "
+                f"{len(surviving_categories)} surviving mutation categories "
+                f"({', '.join(surviving_categories)}). "
+                f"Specification effort is likely multiplicative."
+            ),
+            file=fs.source_file or fs.function_key,
+            severity="warning",
+            confidence=0.80,
+            evidence={
+                "coupling_surface": coupling,
+                "surviving_categories": surviving_categories,
+                "spec_level": fs.core.specification_level,
+                "sigma": fs.core.estimated_sigma,
+            },
         )
     )
 
@@ -332,6 +422,7 @@ def _build_metrics(
             "testability_score": round(fs.testability.testability_score, 3),
             "optimization_hints": fs.optimization_hints,
             "stop_criteria_met": fs.stop_criteria_met,
+            "coupling_surface": fs.traceability.coupling_surface,
         }
 
     return {

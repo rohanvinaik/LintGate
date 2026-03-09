@@ -306,9 +306,7 @@ def test_coherence_coupled_two_failures_shared_files() -> None:
             channel="lint",
             status="fail",
             findings=[
-                LintIssue(
-                    linter="ruff", kind="E501", message="line too long", file="/app.py"
-                ),
+                LintIssue(linter="ruff", kind="E501", message="line too long", file="/app.py"),
             ],
         ),
         ChannelResult(
@@ -330,9 +328,7 @@ def test_coherence_coupled_two_failures_shared_files() -> None:
     assert "app.py" in coherence.summary
 
 
-def test_coherence_weighted_coupled_shared_files_three_channels_plural_wording() -> (
-    None
-):
+def test_coherence_weighted_coupled_shared_files_three_channels_plural_wording() -> None:
     results = [
         ChannelResult(
             channel="lint",
@@ -381,9 +377,7 @@ def test_coherence_weighted_coupled_shared_files_three_channels_plural_wording()
     assert any("demoted" in n for n in coherence.classification_notes)
 
 
-def test_coherence_weighted_coupled_independent_three_channels_lists_all_actions() -> (
-    None
-):
+def test_coherence_weighted_coupled_independent_three_channels_lists_all_actions() -> None:
     results = [
         ChannelResult(
             channel="lint",

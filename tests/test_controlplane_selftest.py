@@ -75,18 +75,14 @@ class TestControlPlaneMCPWrapper:
     def test_controlplane_run_includes_run_id(self) -> None:
         from mcp_server import controlplane_run
 
-        result = json.loads(
-            controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed")
-        )
+        result = json.loads(controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed"))
         assert "run_id" in result
         assert result["run_id"]  # non-empty
 
     def test_controlplane_run_channel_results_present(self) -> None:
         from mcp_server import controlplane_run
 
-        result = json.loads(
-            controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed")
-        )
+        result = json.loads(controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed"))
         # Compact mode returns channel summaries
         assert "channels" in result or "channel_results" in result
 

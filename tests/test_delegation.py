@@ -45,9 +45,7 @@ class TestComputeDelegationSuitability:
         assert "naming conventions" in " ".join(result.requires_context)
 
     def test_cognitive_complexity_low(self):
-        result = compute_delegation_suitability(
-            _finding(kind="C901", severity="blocking")
-        )
+        result = compute_delegation_suitability(_finding(kind="C901", severity="blocking"))
         # CC + blocking → score drops significantly
         assert result.score < 0.5
         assert "structural decomposition" in result.reason
@@ -78,9 +76,7 @@ class TestComputeDelegationSuitability:
         graph = {"app": ["utils"], "main": ["utils"], "utils": []}
         file_map = {"app": "app.py", "main": "main.py", "utils": "utils.py"}
         # utils.py has 2 downstream dependents
-        result = compute_delegation_suitability(
-            _finding(file="utils.py"), graph, file_map
-        )
+        result = compute_delegation_suitability(_finding(file="utils.py"), graph, file_map)
         assert "downstream" in result.reason
         assert result.score < 0.5
 
@@ -88,9 +84,7 @@ class TestComputeDelegationSuitability:
         graph = {"app": ["utils"], "utils": []}
         file_map = {"app": "app.py", "utils": "utils.py"}
         # app.py has 0 downstream dependents
-        result = compute_delegation_suitability(
-            _finding(file="app.py"), graph, file_map
-        )
+        result = compute_delegation_suitability(_finding(file="app.py"), graph, file_map)
         assert "downstream" not in result.reason
 
     def test_c4_prefix_match(self):

@@ -201,17 +201,13 @@ def _scoped_discover(event: SupervisionEvent) -> list[str]:
 
     from lintgate.discovery import discover_project_files
 
-    changed_py = [
-        f for f in (event.files_changed or []) if f.endswith(".py")
-    ]
+    changed_py = [f for f in (event.files_changed or []) if f.endswith(".py")]
 
     if changed_py and len(changed_py) <= 5:
         project_root = os.path.abspath(event.project_root)
         scoped: list[str] = []
         for f in changed_py:
-            full = os.path.abspath(
-                os.path.join(project_root, f) if not os.path.isabs(f) else f
-            )
+            full = os.path.abspath(os.path.join(project_root, f) if not os.path.isabs(f) else f)
             # Sanitize: must be within project root and must exist
             if full.startswith(project_root + os.sep) and os.path.isfile(full):
                 scoped.append(full)
@@ -223,9 +219,7 @@ def _scoped_discover(event: SupervisionEvent) -> list[str]:
     return _filter_nested_subprojects(all_files, event.project_root)
 
 
-def _filter_nested_subprojects(
-    files: list[str], project_root: str
-) -> list[str]:
+def _filter_nested_subprojects(files: list[str], project_root: str) -> list[str]:
     """Remove files that belong to nested subprojects.
 
     A nested subproject is a subdirectory (not the root itself) that
@@ -277,9 +271,7 @@ def _collect_git_context(
         untracked = git_context.get("untracked_files", [])
         for cr in channel_results:
             for finding in cr.findings:
-                scope = classify_finding_scope(
-                    finding.file, mod, untracked, event.project_root
-                )
+                scope = classify_finding_scope(finding.file, mod, untracked, event.project_root)
                 finding.evidence = dict(finding.evidence) if finding.evidence else {}
                 finding.evidence["scope"] = scope
     return git_context
@@ -308,9 +300,7 @@ def _append_coherence_channel(channel_results: list[ChannelResult]) -> None:
         return
 
     sev_order = {"blocking": 3, "warning": 2, "informational": 1, "none": 0}
-    has_actionable = any(
-        f.severity in ("blocking", "warning") for f in coh_findings
-    )
+    has_actionable = any(f.severity in ("blocking", "warning") for f in coh_findings)
     worst_sev: str = max(
         (f.severity for f in coh_findings),
         key=lambda s: sev_order.get(s, 0),
@@ -409,9 +399,7 @@ def _execute_parallel(
 
         done_futures: set[Future] = set()
         try:
-            for future in as_completed(
-                futures, timeout=remaining if remaining > 0 else 0.1
-            ):
+            for future in as_completed(futures, timeout=remaining if remaining > 0 else 0.1):
                 done_futures.add(future)
                 ch = futures[future]
                 try:

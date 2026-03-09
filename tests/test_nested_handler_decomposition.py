@@ -164,9 +164,7 @@ class TestNestedHandlerExtraction:
 
         # Decorated handlers should have higher confidence
         for c in handler_candidates:
-            assert (
-                c.confidence >= 0.75
-            )  # base 0.65 + 0.15 decorator bonus - writes check
+            assert c.confidence >= 0.75  # base 0.65 + 0.15 decorator bonus - writes check
             assert "decorator_independence" in c.basis
 
 

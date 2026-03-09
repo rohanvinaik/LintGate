@@ -49,9 +49,7 @@ with open(OUT, "a") as out_fh:
                 sem_count = info.get("semantic_count", 0)
                 if s_count > 0:
                     kinds = [
-                        a["kind"]
-                        for a in info.get("assertions", [])
-                        if a.get("strength", 1) < 0.7
+                        a["kind"] for a in info.get("assertions", []) if a.get("strength", 1) < 0.7
                     ]
                     weak_funcs.append(
                         {

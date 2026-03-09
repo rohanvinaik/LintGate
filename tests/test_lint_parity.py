@@ -254,11 +254,7 @@ def _parity_check_tier(golden_name: str) -> None:
     channel_tier = channel_result.metrics.get("tier_used", "")
     if direct_tier == "skip":
         # Both should skip
-        assert (
-            channel_result.status == "skip"
-            or channel_tier == ""
-            or channel_tier == "skip"
-        )
+        assert channel_result.status == "skip" or channel_tier == "" or channel_tier == "skip"
     else:
         assert channel_tier == direct_tier, (
             f"Tier mismatch: direct={direct_tier}, channel={channel_tier}"
@@ -493,9 +489,7 @@ def test_mesh_with_lint_channel_matches_direct_pipeline() -> None:
     else:
         # Issue counts must match
         direct_total = (
-            len(direct_agg.blocking)
-            + len(direct_agg.warnings)
-            + len(direct_agg.informational)
+            len(direct_agg.blocking) + len(direct_agg.warnings) + len(direct_agg.informational)
         )
         channel_total = len(lint_result.findings)
         assert channel_total == direct_total, (

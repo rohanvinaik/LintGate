@@ -26,9 +26,7 @@ from lintgate.controlplane.command_normalization import resolve_intent
 
 
 def _make_coord(compass: BehaviorCompass) -> SignalCoordinator:
-    return SignalCoordinator(
-        compass, {"signal_cooldown": 0, "escalation_threshold": 100}
-    )
+    return SignalCoordinator(compass, {"signal_cooldown": 0, "escalation_threshold": 100})
 
 
 def _make_scorer(compass: BehaviorCompass) -> IntentBiasScorer:

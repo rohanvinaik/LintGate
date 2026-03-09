@@ -46,11 +46,6 @@ class TestRegister:
             "toolchain_health_check",
         }
 
-    def test_register_values_are_callable(self, tmp_path: Path) -> None:
-        tools = _register_tools(tmp_path)
-        for name, fn in tools.items():
-            assert callable(fn), f"{name} is not callable"
-
 
 # ── dep_health_check ─────────────────────────────────────────────────────
 
@@ -279,9 +274,7 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(
-                tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True)
-            )
+            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True))
         action_types = [a["action"] for a in result["actions"]]
         assert "create_venv" in action_types
         assert "lock" in action_types

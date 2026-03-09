@@ -35,9 +35,7 @@ class SignalExtractor:
     def __init__(self):
         self._regex_cache = {}
 
-    def extract(
-        self, raw_input: Any, channel_type: str = "generic"
-    ) -> list[ExtractedSignal]:
+    def extract(self, raw_input: Any, channel_type: str = "generic") -> list[ExtractedSignal]:
         """Extract signals from raw input."""
         if isinstance(raw_input, dict):
             return self._extract_from_json(raw_input, channel_type)
@@ -49,9 +47,7 @@ class SignalExtractor:
 
         return self._extract_from_text(str(raw_input), channel_type)
 
-    def _extract_from_json(
-        self, data: dict[str, Any], channel_type: str
-    ) -> list[ExtractedSignal]:
+    def _extract_from_json(self, data: dict[str, Any], channel_type: str) -> list[ExtractedSignal]:
         """Extract structured signal from an AST/JSON-like object."""
         # Typically upstream linters (like ruff) output something with 'code', 'message' etc.
         kind = data.get("kind") or data.get("code") or "unknown_json_kind"
@@ -93,9 +89,7 @@ class SignalExtractor:
                 signals.append(
                     ExtractedSignal(
                         kind=f"{channel_type}_issue",
-                        severity="blocking"
-                        if severity in ("error", "fatal")
-                        else "warning",
+                        severity="blocking" if severity in ("error", "fatal") else "warning",
                         message=msg,
                         evidence_map={"raw_line": line},
                     )

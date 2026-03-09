@@ -151,9 +151,7 @@ def _extract_trace_prompt_completion(
 ) -> tuple[str, str]:
     """Extract prompt and completion fields from a controlplane trace dict."""
     prompt = parsed.get("prompt", "") or parsed.get("event", {}).get("prompt", "")
-    completion = parsed.get("completion", "") or parsed.get("response", {}).get(
-        "content", ""
-    )
+    completion = parsed.get("completion", "") or parsed.get("response", {}).get("content", "")
     return str(prompt), str(completion)
 
 
@@ -482,9 +480,7 @@ def extract_from_ship_reports(
     return examples, diagnostics
 
 
-def _merge_diagnostics(
-    target: ExtractionDiagnostics, source: ExtractionDiagnostics
-) -> None:
+def _merge_diagnostics(target: ExtractionDiagnostics, source: ExtractionDiagnostics) -> None:
     """Accumulate counts from source diagnostics into target."""
     target.total_records += source.total_records
     target.extracted_count += source.extracted_count
@@ -701,15 +697,9 @@ def compute_combined_reward(
             "prediction": 0.2,
         }
 
-    contract_reward = compute_contract_adherence_reward(
-        contract_passed, contract_required
-    )
-    cost_reward = compute_cost_to_green_proxy(
-        initial_violations, final_violations, effort_steps
-    )
-    pred_reward = compute_prediction_accuracy_reward(
-        predictions_made, predictions_correct
-    )
+    contract_reward = compute_contract_adherence_reward(contract_passed, contract_required)
+    cost_reward = compute_cost_to_green_proxy(initial_violations, final_violations, effort_steps)
+    pred_reward = compute_prediction_accuracy_reward(predictions_made, predictions_correct)
 
     combined = (
         weights.get("contract", 0.4) * contract_reward

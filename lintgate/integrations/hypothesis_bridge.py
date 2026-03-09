@@ -33,11 +33,7 @@ def generate_hypothesis_template(
 
     tests = []
 
-    args_list = (
-        ["x", "y", "z"][: purity.parameter_count]
-        if purity.parameter_count > 0
-        else ["x"]
-    )
+    args_list = ["x", "y", "z"][: purity.parameter_count] if purity.parameter_count > 0 else ["x"]
     args_str = ", ".join(f"{arg}=st.integers()" for arg in args_list)
     args_call = ", ".join(args_list)
 

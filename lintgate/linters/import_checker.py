@@ -30,6 +30,31 @@ if TYPE_CHECKING:
 _COMPAT_EXCEPTIONS = frozenset({"ModuleNotFoundError", "ImportError"})
 
 
+def _handler_catches_import_error(handler: ast.ExceptHandler) -> bool:
+    """Return True if an except handler catches ModuleNotFoundError or ImportError."""
+    if handler.type is None:
+        # Bare except — catches everything
+        return True
+    if isinstance(handler.type, ast.Name) and handler.type.id in _COMPAT_EXCEPTIONS:
+        return True
+    # Handle `except (ImportError, ModuleNotFoundError):`
+    if isinstance(handler.type, ast.Tuple):
+        return any(
+            isinstance(elt, ast.Name) and elt.id in _COMPAT_EXCEPTIONS for elt in handler.type.elts
+        )
+    return False
+
+
+def _collect_import_lines_from_stmts(stmts: list[ast.stmt]) -> set[int]:
+    """Return line numbers of all import statements within the given statement list."""
+    lines: set[int] = set()
+    for stmt in stmts:
+        for child in ast.walk(stmt):
+            if isinstance(child, (ast.Import, ast.ImportFrom)):
+                lines.add(child.lineno)
+    return lines
+
+
 def _collect_guarded_import_lines(tree: ast.AST) -> set[int]:
     """Return line numbers of imports inside try/except blocks that catch import errors.
 
@@ -43,36 +68,12 @@ def _collect_guarded_import_lines(tree: ast.AST) -> set[int]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Try):
             continue
-        # Check if any handler catches ModuleNotFoundError or ImportError
-        catches_import_error = False
+        if not any(_handler_catches_import_error(h) for h in node.handlers):
+            continue
+        # Mark all import lines in both the try body and handler bodies
+        guarded.update(_collect_import_lines_from_stmts(node.body))
         for handler in node.handlers:
-            if handler.type is None:
-                # Bare except — catches everything
-                catches_import_error = True
-                break
-            if (
-                isinstance(handler.type, ast.Name)
-                and handler.type.id in _COMPAT_EXCEPTIONS
-            ):
-                catches_import_error = True
-                break
-            # Handle `except (ImportError, ModuleNotFoundError):`
-            if isinstance(handler.type, ast.Tuple):
-                for elt in handler.type.elts:
-                    if isinstance(elt, ast.Name) and elt.id in _COMPAT_EXCEPTIONS:
-                        catches_import_error = True
-                        break
-        if catches_import_error:
-            # Mark all import lines in both the try body and handler bodies
-            for stmt in node.body:
-                for child in ast.walk(stmt):
-                    if isinstance(child, (ast.Import, ast.ImportFrom)):
-                        guarded.add(child.lineno)
-            for handler in node.handlers:
-                for stmt in handler.body:
-                    for child in ast.walk(stmt):
-                        if isinstance(child, (ast.Import, ast.ImportFrom)):
-                            guarded.add(child.lineno)
+            guarded.update(_collect_import_lines_from_stmts(handler.body))
     return guarded
 
 
@@ -103,9 +104,7 @@ class ImportChecker(BaseLinter):
         for filepath in ctx.files:
             yield from self._check_file_imports(filepath, ctx)
 
-    def _check_file_imports(
-        self, filepath: str, ctx: LinterContext
-    ) -> Iterable[LintIssue]:
+    def _check_file_imports(self, filepath: str, ctx: LinterContext) -> Iterable[LintIssue]:
         """Parse a file's imports and verify they resolve."""
         try:
             with open(filepath) as f:

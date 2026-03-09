@@ -57,7 +57,7 @@ class RepairAction:
 
     action_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     channel: str = ""
-    kind: Literal["command", "create_test_skeleton", "config_patch"] = "command"
+    kind: Literal["command", "create_test_skeleton", "config_patch", "safe_delete"] = "command"
     summary: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
     safe: bool = True  # Whether this action is considered safe to auto-approve

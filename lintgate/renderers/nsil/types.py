@@ -51,9 +51,7 @@ class InferenceSnapshot:
     """A point-in-time snapshot of the agent's inference context."""
 
     snapshot_id: str = field(default_factory=lambda: "snap_" + str(int(time.time())))
-    context: SystemContext = field(
-        default_factory=lambda: SystemContext(project_root="")
-    )
+    context: SystemContext = field(default_factory=lambda: SystemContext(project_root=""))
     intent: UserIntent = field(default_factory=lambda: UserIntent(primary_goal=""))
     agent_state: AgentState = field(default_factory=AgentState)
     safety_bounds: SafetyBounds = field(default_factory=SafetyBounds)

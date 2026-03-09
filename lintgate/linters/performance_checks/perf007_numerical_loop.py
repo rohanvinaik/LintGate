@@ -23,11 +23,7 @@ if TYPE_CHECKING:
 
 def check_numerical_loop(tree: ast.AST, file_path: str) -> Iterable[LintIssue]:
     """Flag arithmetic-heavy loops over large ranges without numpy/numba."""
-    if (
-        has_import(tree, "numpy")
-        or has_import(tree, "pandas")
-        or has_import(tree, "numba")
-    ):
+    if has_import(tree, "numpy") or has_import(tree, "pandas") or has_import(tree, "numba"):
         return
 
     for node in ast.walk(tree):
@@ -94,10 +90,7 @@ def _has_arithmetic_on_var(body: list[ast.stmt], var_name: str) -> bool:
                 node.op,
                 (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, ast.FloorDiv, ast.Mod),
             )
-            and (
-                _references_var(node.left, var_name)
-                or _references_var(node.right, var_name)
-            )
+            and (_references_var(node.left, var_name) or _references_var(node.right, var_name))
         ):
             return True
     return False

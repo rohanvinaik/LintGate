@@ -101,9 +101,7 @@ PROFILES = {
         id="claude",
         display_name="Claude Desktop",
         config_path=Path(
-            os.path.expanduser(
-                "~/Library/Application Support/Claude/claude_desktop_config.json"
-            )
+            os.path.expanduser("~/Library/Application Support/Claude/claude_desktop_config.json")
         ),
         schema_strict=False,
         config_writer=write_claude_config,

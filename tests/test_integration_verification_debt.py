@@ -237,16 +237,20 @@ def test_record_tool_event_increments_on_edit():
     assert compass.integration_edits_since_verify == 0
 
     record_tool_event(
-        compass, "Edit",
+        compass,
+        "Edit",
         {"file_path": "/project/lintgate/channels/foo.py"},
-        "ok", now=100.0,
+        "ok",
+        now=100.0,
     )
     assert compass.integration_edits_since_verify == 1
 
     record_tool_event(
-        compass, "Edit",
+        compass,
+        "Edit",
         {"file_path": "/project/mcp_tools/bar.py"},
-        "ok", now=101.0,
+        "ok",
+        now=101.0,
     )
     assert compass.integration_edits_since_verify == 2
 
@@ -257,9 +261,11 @@ def test_record_tool_event_ignores_non_integration_edit():
 
     compass = new_compass()
     record_tool_event(
-        compass, "Edit",
+        compass,
+        "Edit",
         {"file_path": "/project/lintgate/types.py"},
-        "ok", now=100.0,
+        "ok",
+        now=100.0,
     )
     assert compass.integration_edits_since_verify == 0
 
@@ -284,9 +290,11 @@ def test_record_tool_event_resets_on_integration_pytest():
     compass.integration_edits_since_verify = 3
 
     record_tool_event(
-        compass, "Bash",
+        compass,
+        "Bash",
         {"command": "pytest tests/test_integration_pipeline.py"},
-        "ok", now=200.0,
+        "ok",
+        now=200.0,
     )
     assert compass.integration_edits_since_verify == 0
     assert compass.last_integration_verify_ts == 200.0

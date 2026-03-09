@@ -177,6 +177,64 @@ class SessionReadiness:
     recommendation: str = ""
 
 
+def _check_theory_facets(theory_profile: dict[str, Any] | None, missing: list[str]) -> None:
+    """Check theory profile has required facets with claims."""
+    if theory_profile is None:
+        missing.append("no_theory_profile")
+        return
+    for facet in _REQUIRED_FACETS:
+        has_claims = any(
+            isinstance(e, dict) and e.get("claims") for e in theory_profile.get(facet, [])
+        )
+        if not has_claims:
+            missing.append(f"missing_facet:{facet}")
+
+
+def _check_enforceable_rules(project_root: str, missing: list[str]) -> None:
+    """Check for enforceable rules in CLAUDE.md."""
+    claude_path = Path(project_root) / "CLAUDE.md"
+    if claude_path.exists():
+        text = claude_path.read_text()
+        if "LINTGATE_FORBID_REGEX" in text or "LINTGATE_REQUIRE_REGEX" in text:
+            return
+    missing.append("no_enforceable_rules")
+
+
+def _check_theory_staleness(
+    project_root: str,
+    theory_profile: dict[str, Any],
+    git_context: dict[str, Any],
+    missing: list[str],
+) -> None:
+    """Check theory coverage of uncommitted files."""
+    try:
+        from .theory_extractor import check_theory_staleness
+
+        staleness = check_theory_staleness(project_root, theory_profile, git_context)
+        if staleness.get("stale"):
+            uncovered = staleness.get("uncovered_files", [])
+            missing.append(f"theory_stale:{len(uncovered)}_uncommitted_files")
+    except Exception:
+        pass
+
+
+def _build_recommendation(missing: list[str]) -> str:
+    """Build a human-readable recommendation from missing items."""
+    if not missing:
+        return ""
+    parts = []
+    if "no_theory_profile" in missing:
+        parts.append("extract project theory")
+    facet_missing = [m.split(":")[1] for m in missing if m.startswith("missing_facet:")]
+    if facet_missing:
+        parts.append(f"add claims for facets: {', '.join(facet_missing)}")
+    if "no_enforceable_rules" in missing:
+        parts.append("add enforceable rules to CLAUDE.md")
+    if any(m.startswith("theory_stale:") for m in missing):
+        parts.append("run build_theory_pack to cover uncommitted files with design docstrings")
+    return f"Run bootstrap_context_files to {'; '.join(parts)}."
+
+
 def check_session_readiness(
     project_root: str,
     theory_profile: dict[str, Any] | None = None,
@@ -189,78 +247,17 @@ def check_session_readiness(
       with at least one claim each.
     - At least one enforceable rule exists.
     - Theory profile covers uncommitted files (#182).
-
-    Args:
-        project_root: Repository root.
-        theory_profile: Pre-extracted theory profile (avoids re-extraction).
-        git_context: Optional git working tree context for staleness checking.
-
-    Returns:
-        SessionReadiness with ready flag, missing items, and recommendation.
     """
     missing: list[str] = []
 
-    # Check theory profile facets
-    if theory_profile is None:
-        missing.append("no_theory_profile")
-    else:
-        for facet in _REQUIRED_FACETS:
-            entries = theory_profile.get(facet, [])
-            has_claims = False
-            for entry in entries:
-                if isinstance(entry, dict) and entry.get("claims"):
-                    has_claims = True
-                    break
-            if not has_claims:
-                missing.append(f"missing_facet:{facet}")
+    _check_theory_facets(theory_profile, missing)
+    _check_enforceable_rules(project_root, missing)
 
-    # Check for enforceable rules (look for CLAUDE.md or context guidance)
-    has_rules = False
-    claude_path = Path(project_root) / "CLAUDE.md"
-    if claude_path.exists():
-        text = claude_path.read_text()
-        if "LINTGATE_FORBID_REGEX" in text or "LINTGATE_REQUIRE_REGEX" in text:
-            has_rules = True
-
-    if not has_rules:
-        missing.append("no_enforceable_rules")
-
-    # Check theory coverage of uncommitted files (#182)
     if git_context and theory_profile is not None:
-        try:
-            from .theory_extractor import check_theory_staleness
-
-            staleness = check_theory_staleness(
-                project_root, theory_profile, git_context
-            )
-            if staleness.get("stale"):
-                uncovered = staleness.get("uncovered_files", [])
-                missing.append(f"theory_stale:{len(uncovered)}_uncommitted_files")
-        except Exception:
-            pass  # Graceful degradation
-
-    if missing:
-        parts = []
-        if "no_theory_profile" in missing:
-            parts.append("extract project theory")
-        facet_missing = [
-            m.split(":")[1] for m in missing if m.startswith("missing_facet:")
-        ]
-        if facet_missing:
-            parts.append(f"add claims for facets: {', '.join(facet_missing)}")
-        if "no_enforceable_rules" in missing:
-            parts.append("add enforceable rules to CLAUDE.md")
-        stale_items = [m for m in missing if m.startswith("theory_stale:")]
-        if stale_items:
-            parts.append(
-                "run build_theory_pack to cover uncommitted files with design docstrings"
-            )
-        recommendation = f"Run bootstrap_context_files to {'; '.join(parts)}."
-    else:
-        recommendation = ""
+        _check_theory_staleness(project_root, theory_profile, git_context, missing)
 
     return SessionReadiness(
         ready=not missing,
         missing=missing,
-        recommendation=recommendation,
+        recommendation=_build_recommendation(missing),
     )

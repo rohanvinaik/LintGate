@@ -106,9 +106,7 @@ class TestTEFF002:
         fe = FunctionEffectiveness(
             function_name="tested_func",
             test_count=1,
-            assertions=[
-                AssertionInfo(kind=AssertionKind.EQUALITY, line=1, strength=0.9)
-            ],
+            assertions=[AssertionInfo(kind=AssertionKind.EQUALITY, line=1, strength=0.9)],
         )
         fe.compute_scores()
         manifest = _make_manifest({"tested_func": fe})
@@ -234,7 +232,4 @@ class TestChannelExecution:
             assert result.channel == "test_effectiveness"
             assert result.status in ("pass", "fail", "skip")
             assert result.duration_ms >= 0
-            assert (
-                "project_effectiveness_score" in result.metrics
-                or "reason" in result.metrics
-            )
+            assert "project_effectiveness_score" in result.metrics or "reason" in result.metrics

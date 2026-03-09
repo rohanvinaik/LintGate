@@ -324,8 +324,7 @@ def log_version_event(data: dict[str, Any]) -> None:
     """Append a version-audit event to a daily JSONL file."""
     VERSION_EVENTS_DIR.mkdir(parents=True, exist_ok=True)
     events_path = (
-        VERSION_EVENTS_DIR
-        / f"lintgate_versions_{datetime.now().strftime('%Y%m%d')}.jsonl"
+        VERSION_EVENTS_DIR / f"lintgate_versions_{datetime.now().strftime('%Y%m%d')}.jsonl"
     )
     entry = {
         "timestamp": datetime.now().isoformat(),

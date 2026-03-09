@@ -120,16 +120,12 @@ def aggregate_results(
         "fixable_count": sum(1 for i in unique if i.fixable),
         "linters_run": sum(1 for s in linter_statuses.values() if s == "ok"),
         "linters_skipped": sum(1 for s in linter_statuses.values() if s == "skipped"),
-        "linters_errored": sum(
-            1 for s in linter_statuses.values() if s in ("error", "timeout")
-        ),
+        "linters_errored": sum(1 for s in linter_statuses.values() if s in ("error", "timeout")),
     }
 
     # Collect all files that were linted (normalize absolute paths to relative)
     project_root = config.project_root
-    files_linted = sorted(
-        {_normalize_file_path(f, project_root) for i in unique if (f := i.file)}
-    )
+    files_linted = sorted({_normalize_file_path(f, project_root) for i in unique if (f := i.file)})
 
     return AggregatedResult(
         blocking=blocking,
@@ -144,9 +140,7 @@ def aggregate_results(
     )
 
 
-def _downgrade_optional_import_findings(
-    issues: list[LintIssue], project_root: str
-) -> None:
+def _downgrade_optional_import_findings(issues: list[LintIssue], project_root: str) -> None:
     """Downgrade findings that reference guarded optional imports.
 
     Scans each unique source file for ``try/except ImportError`` patterns.
@@ -165,9 +159,7 @@ def _downgrade_optional_import_findings(
         _apply_optional_import_downgrades(file_issues, report)
 
 
-def _parse_optional_imports(
-    filepath: str, project_root: str
-) -> OptionalImportReport | None:
+def _parse_optional_imports(filepath: str, project_root: str) -> OptionalImportReport | None:
     """Read and parse a file for optional-import patterns."""
     full_path = filepath
     if not os.path.isabs(filepath) and project_root:
@@ -273,9 +265,7 @@ def _is_exempted(issue: LintIssue, exemptions: dict) -> bool:
         # Check by filename
         if issue.file:
             basename = os.path.basename(issue.file)
-            file_exemption = linter_exemptions.get(basename) or linter_exemptions.get(
-                issue.file
-            )
+            file_exemption = linter_exemptions.get(basename) or linter_exemptions.get(issue.file)
             if file_exemption:
                 # If codes are specified, check if this specific code is exempted
                 exempt_codes = file_exemption.get("codes", [])

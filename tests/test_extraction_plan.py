@@ -29,12 +29,8 @@ def _make_convergence(
     split_proposals: list[dict] | None = None,
 ) -> ConvergenceResult:
     ev = evidence or []
-    supporting = sorted(
-        {e.lens for e in ev if e.signal == "support"}, key=lambda lk: lk.value
-    )
-    opposing = sorted(
-        {e.lens for e in ev if e.signal == "oppose"}, key=lambda lk: lk.value
-    )
+    supporting = sorted({e.lens for e in ev if e.signal == "support"}, key=lambda lk: lk.value)
+    opposing = sorted({e.lens for e in ev if e.signal == "oppose"}, key=lambda lk: lk.value)
     return ConvergenceResult(
         target=target,
         support_prob=net,
@@ -261,9 +257,7 @@ class TestBlockExtractionPlan:
         """Create_function steps include parameter and output info."""
         target = "module.py::my_func"
         evidence = [
-            _dep_clustering_evidence(
-                target, "_helper", ["a", "b"], ["result"], (5, 15)
-            ),
+            _dep_clustering_evidence(target, "_helper", ["a", "b"], ["result"], (5, 15)),
         ]
         conv = _make_convergence(target=target, evidence=evidence)
         plan = build_extraction_plan(conv, source_file="module.py")
@@ -299,9 +293,7 @@ class TestHandlerExtractionPlan:
         target = "mcp_tools.py::register"
         evidence = [
             _handler_evidence(target, "run_sampling", "_impl_run_sampling", ["engine"]),
-            _handler_evidence(
-                target, "run_full", "_impl_run_full", ["engine", "state"]
-            ),
+            _handler_evidence(target, "run_full", "_impl_run_full", ["engine", "state"]),
         ]
         conv = _make_convergence(target=target, evidence=evidence)
         plan = build_extraction_plan(conv, source_file="mcp_tools.py")
@@ -408,9 +400,7 @@ class TestEstimatedImpact:
         target = "module.py::my_func"
         evidence = [
             _dep_clustering_evidence(target, "_a", cc_reduction=5),
-            _dep_clustering_evidence(
-                target, "_b", cc_reduction=8, inputs=["z"], lines=(30, 40)
-            ),
+            _dep_clustering_evidence(target, "_b", cc_reduction=8, inputs=["z"], lines=(30, 40)),
         ]
         conv = _make_convergence(target=target, evidence=evidence)
         plan = build_extraction_plan(conv, source_file="module.py")
@@ -527,9 +517,7 @@ def _assert_not_reversed(earlier: str, later: str) -> None:
     }
     e_pri = priority.get(earlier, 99)
     l_pri = priority.get(later, 99)
-    assert l_pri >= e_pri, (
-        f"'{later}' should not precede '{earlier}' in canonical order"
-    )
+    assert l_pri >= e_pri, f"'{later}' should not precede '{earlier}' in canonical order"
 
 
 # ── File-level split tests ────────────────────────────────────────────
@@ -554,9 +542,7 @@ class TestFileLevelSplit:
             evidence=evidence,
             actionability=Actionability.SPLIT,
             target_type="file",
-            split_proposals=[
-                {"module_name": "big_module_helpers.py", "functions": ["a", "b"]}
-            ],
+            split_proposals=[{"module_name": "big_module_helpers.py", "functions": ["a", "b"]}],
         )
         plan = build_extraction_plan(conv, source_file="big_module.py")
 
@@ -682,18 +668,14 @@ class TestASTTypeInference:
         assert cf[0].detail.get("return_type") == "None"
 
         # One output → Any
-        ev_one = [
-            _dep_clustering_evidence(target, "_h2", outputs=["r"], lines=(30, 40))
-        ]
+        ev_one = [_dep_clustering_evidence(target, "_h2", outputs=["r"], lines=(30, 40))]
         conv2 = _make_convergence(target=target, evidence=ev_one)
         plan2 = build_extraction_plan(conv2, source_file="m.py")
         cf2 = [s for s in plan2.steps if s.action == "create_function"]
         assert cf2[0].detail.get("return_type") == "Any"
 
         # Two outputs → tuple
-        ev_two = [
-            _dep_clustering_evidence(target, "_h3", outputs=["a", "b"], lines=(50, 60))
-        ]
+        ev_two = [_dep_clustering_evidence(target, "_h3", outputs=["a", "b"], lines=(50, 60))]
         conv3 = _make_convergence(target=target, evidence=ev_two)
         plan3 = build_extraction_plan(conv3, source_file="m.py")
         cf3 = [s for s in plan3.steps if s.action == "create_function"]

@@ -8,9 +8,7 @@ from lintgate.linters.performance_checker import PerformanceChecker
 from lintgate.types import LinterContext, LintIssue
 
 
-def _lint(
-    source: str, tmp_path, *, disabled: list[str] | None = None
-) -> list[LintIssue]:
+def _lint(source: str, tmp_path, *, disabled: list[str] | None = None) -> list[LintIssue]:
     """Write source to a temp file, lint it, return issues."""
     f = tmp_path / "test_code.py"
     f.write_text(textwrap.dedent(source))
@@ -375,10 +373,7 @@ class TestPERF007:
         )
         perf007 = [i for i in issues if i.kind == "PERF007"]
         assert len(perf007) >= 1
-        assert (
-            "vectori" in perf007[0].message.lower()
-            or "numpy" in perf007[0].message.lower()
-        )
+        assert "vectori" in perf007[0].message.lower() or "numpy" in perf007[0].message.lower()
 
     def test_numpy_imported_no_flag(self, tmp_path):
         issues = _lint(
@@ -530,9 +525,7 @@ class TestGracefulDegradation:
     def test_nonexistent_file_graceful(self, tmp_path):
         """Nonexistent file → no crash, no issues."""
         checker = PerformanceChecker()
-        ctx = LinterContext(
-            files=[str(tmp_path / "nope.py")], project_root=str(tmp_path)
-        )
+        ctx = LinterContext(files=[str(tmp_path / "nope.py")], project_root=str(tmp_path))
         issues = list(checker.run(ctx))
         assert issues == []
 
@@ -619,12 +612,8 @@ class TestIntegration:
             tmp_path,
         )
         for issue in issues:
-            assert issue.kind.startswith("PERF"), (
-                f"Kind should be PERFxxx, got {issue.kind!r}"
-            )
-            assert issue.kind[4:].isdigit(), (
-                f"Kind suffix should be digits: {issue.kind!r}"
-            )
+            assert issue.kind.startswith("PERF"), f"Kind should be PERFxxx, got {issue.kind!r}"
+            assert issue.kind[4:].isdigit(), f"Kind suffix should be digits: {issue.kind!r}"
 
     def test_all_issues_have_fix_hints(self, tmp_path):
         """Every finding should have a concrete fix hint in suggestions."""
@@ -654,9 +643,7 @@ class TestIntegration:
             tmp_path,
         )
         for issue in issues:
-            assert issue.suggestions, (
-                f"{issue.kind} at line {issue.line} has no suggestions"
-            )
+            assert issue.suggestions, f"{issue.kind} at line {issue.line} has no suggestions"
 
     def test_checker_metadata(self):
         """Verify checker class metadata."""

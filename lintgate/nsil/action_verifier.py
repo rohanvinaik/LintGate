@@ -117,9 +117,7 @@ def _check_dangerous_command(proposal: ActionProposal) -> list[tuple[str, str]]:
     return violations
 
 
-def _check_file_scope(
-    proposal: ActionProposal, project_root: str
-) -> list[tuple[str, str]]:
+def _check_file_scope(proposal: ActionProposal, project_root: str) -> list[tuple[str, str]]:
     """Check for file scope violations."""
     import re
 
@@ -251,27 +249,94 @@ def _check_hygiene_preconditions(
         if cmd.startswith("git commit"):
             # Verify there's a message
             if "-m" not in cmd and "--message" not in cmd:
-                violations.append(
-                    ("NSIL_HYGIENE_FAILURE", "Git commit without message")
-                )
+                violations.append(("NSIL_HYGIENE_FAILURE", "Git commit without message"))
 
             # Check if hook bypass flags are used
             if "--no-verify" in cmd:
-                violations.append(
-                    ("NSIL_HYGIENE_FAILURE", "Git commit with --no-verify")
-                )
+                violations.append(("NSIL_HYGIENE_FAILURE", "Git commit with --no-verify"))
 
         # Check for git push
         if cmd.startswith("git push"):
             if hygiene_state.get("uncommitted_changes", False):
-                violations.append(
-                    ("NSIL_HYGIENE_FAILURE", "Git push with uncommitted changes")
-                )
+                violations.append(("NSIL_HYGIENE_FAILURE", "Git push with uncommitted changes"))
 
             if hygiene_state.get("lint_dirty", False):
                 violations.append(("NSIL_HYGIENE_FAILURE", "Git push with lint issues"))
 
     return violations
+
+
+def _repair_dangerous_cmd(cmd: str) -> str:
+    """Return a repair suggestion for a dangerous command pattern."""
+    import re
+
+    if re.search(r"rm\s+-rf?", cmd):
+        return "Use 'rm -i' for interactive deletion or 'rm -rf' with explicit paths"
+    if re.search(r"curl.*\|", cmd):
+        return "Download script to file first, review, then execute"
+    if re.search(r"sudo\s+rm", cmd):
+        return "Use 'sudo -k' to invalidate cache, or run with explicit confirmation"
+    if re.search(r"chmod\s+-R\s+777", cmd):
+        return "Use more restrictive permissions like '755' for dirs, '644' for files"
+    if re.search(r":\(\)\{", cmd):
+        return "Use a safe test pattern instead of fork bomb"
+    return "Review and modify the dangerous command pattern"
+
+
+def _repair_scope_violation(target: str) -> str:
+    """Return a repair suggestion for a scope violation."""
+    if "prod" in target.lower():
+        return "Restrict changes to non-production environment paths"
+    if ".." in target:
+        return "Use absolute paths or paths relative to project root"
+    return "Restrict action to allowed scope"
+
+
+def _repair_hygiene_failure(cmd: str) -> str:
+    """Return a repair suggestion for a hygiene failure."""
+    if "git commit" in cmd:
+        if "--no-verify" in cmd:
+            return "Remove --no-verify flag and allow hooks to run"
+        return "Add commit message with -m flag"
+    if "git push" in cmd:
+        return "Commit changes first, or address lint issues before push"
+    return "Fix hygiene precondition issues"
+
+
+# Maps violation codes to their repair logic. Each value is either a static
+# string (returned as-is) or a callable (code, proposal) -> str.
+_REPAIR_DISPATCH: dict[str, str | None] = {
+    "NSIL_CONSTRAINT_VIOLATION": "Satisfy the active constraint before proceeding",
+    "NSIL_GATE_CONTRACT_VIOLATION": "Complete required gate checks before proceeding",
+    "NSIL_FILE_SCOPE_VIOLATION": "Do not modify protected file types (.env, credentials, keys)",
+    "NSIL_UNKNOWN_ACTION": "Use a known action type (bash, write, edit, read, grep, glob)",
+    # Dynamic handlers use None as sentinel — resolved below.
+    "NSIL_DANGEROUS_CMD": None,
+    "NSIL_SCOPE_VIOLATION": None,
+    "NSIL_HYGIENE_FAILURE": None,
+}
+
+
+def _repair_for_code(code: str, proposal: ActionProposal) -> str | None:
+    """Return a single repair string for a violation code, or None if unknown."""
+    static = _REPAIR_DISPATCH.get(code)
+    if static is not None:
+        return static
+
+    cmd = proposal.content or proposal.target
+
+    if code == "NSIL_DANGEROUS_CMD":
+        return _repair_dangerous_cmd(cmd)
+    if code == "NSIL_SCOPE_VIOLATION":
+        return _repair_scope_violation(proposal.target or "")
+    if code == "NSIL_HYGIENE_FAILURE":
+        return _repair_hygiene_failure(cmd)
+
+    # Code not in dispatch table at all — unknown code, no repair.
+    if code not in _REPAIR_DISPATCH:
+        return None
+
+    return None
 
 
 def generate_repairs(
@@ -289,73 +354,12 @@ def generate_repairs(
     Returns:
         List of repair suggestions
     """
-    import re
-
     repairs: list[str] = []
-    cmd = proposal.content or proposal.target
 
     for code in set(violation_codes):  # Deduplicate
-        if code == "NSIL_DANGEROUS_CMD":
-            # Analyze the dangerous pattern and suggest safer alternative
-            if re.search(r"rm\s+-rf?", cmd):
-                # Suggest safer rm with confirmation
-                repairs.append(
-                    "Use 'rm -i' for interactive deletion or 'rm -rf' with explicit paths"
-                )
-            elif re.search(r"curl.*\|", cmd):
-                # Suggest downloading first
-                repairs.append("Download script to file first, review, then execute")
-            elif re.search(r"sudo\s+rm", cmd):
-                repairs.append(
-                    "Use 'sudo -k' to invalidate cache, or run with explicit confirmation"
-                )
-            elif re.search(r"chmod\s+-R\s+777", cmd):
-                repairs.append(
-                    "Use more restrictive permissions like '755' for dirs, '644' for files"
-                )
-            elif re.search(r":\(\)\{", cmd):
-                repairs.append("Use a safe test pattern instead of fork bomb")
-            else:
-                repairs.append("Review and modify the dangerous command pattern")
-
-        elif code == "NSIL_SCOPE_VIOLATION":
-            target = proposal.target or ""
-            # Suggest restricting to allowed scope
-            if "prod" in target.lower():
-                repairs.append("Restrict changes to non-production environment paths")
-            elif ".." in target:
-                repairs.append("Use absolute paths or paths relative to project root")
-            else:
-                repairs.append("Restrict action to allowed scope")
-
-        elif code == "NSIL_CONSTRAINT_VIOLATION":
-            repairs.append("Satisfy the active constraint before proceeding")
-
-        elif code == "NSIL_HYGIENE_FAILURE":
-            if "git commit" in cmd:
-                if "--no-verify" in cmd:
-                    repairs.append("Remove --no-verify flag and allow hooks to run")
-                else:
-                    repairs.append("Add commit message with -m flag")
-            elif "git push" in cmd:
-                repairs.append(
-                    "Commit changes first, or address lint issues before push"
-                )
-            else:
-                repairs.append("Fix hygiene precondition issues")
-
-        elif code == "NSIL_GATE_CONTRACT_VIOLATION":
-            repairs.append("Complete required gate checks before proceeding")
-
-        elif code == "NSIL_FILE_SCOPE_VIOLATION":
-            repairs.append(
-                "Do not modify protected file types (.env, credentials, keys)"
-            )
-
-        elif code == "NSIL_UNKNOWN_ACTION":
-            repairs.append(
-                "Use a known action type (bash, write, edit, read, grep, glob)"
-            )
+        repair = _repair_for_code(code, proposal)
+        if repair is not None:
+            repairs.append(repair)
 
     return repairs
 

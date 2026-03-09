@@ -100,9 +100,7 @@ def check_file_structure(
 ) -> Iterable[LintIssue]:
     """Check file-level structural limits (classes, functions count)."""
     classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
-    functions = [
-        n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    functions = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
     max_classes = thresholds["max_file_classes"]
     if len(classes) > max_classes:

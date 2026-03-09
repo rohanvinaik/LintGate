@@ -59,9 +59,7 @@ class LintChannel:
             return False
         return classification.risk_level != "none"
 
-    def execute(
-        self, event: SupervisionEvent, config: ControlPlaneConfig
-    ) -> ChannelResult:
+    def execute(self, event: SupervisionEvent, config: ControlPlaneConfig) -> ChannelResult:
         """Execute the full lint pipeline and convert to ChannelResult.
 
         Calls the same functions as hook_posttooluse.main() phases 2-4:
@@ -111,9 +109,7 @@ class LintChannel:
 
         from lintgate.lint_runner import run_linters
 
-        linter_results = run_linters(
-            tier, project_config, registry, timeout_ms=remaining_ms
-        )
+        linter_results = run_linters(tier, project_config, registry, timeout_ms=remaining_ms)
 
         # Phase 4: Aggregate results
         from lintgate.results_aggregator import aggregate_results
@@ -209,9 +205,7 @@ class LintChannel:
 
         from lintgate.lint_runner import run_linters
 
-        linter_results = run_linters(
-            tier, project_config, registry, timeout_ms=remaining_ms
-        )
+        linter_results = run_linters(tier, project_config, registry, timeout_ms=remaining_ms)
 
         from lintgate.results_aggregator import aggregate_results
 

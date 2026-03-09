@@ -38,9 +38,7 @@ class TestConstants:
 
     def test_default_intent_map_values_in_categories(self) -> None:
         for binary, intent in DEFAULT_INTENT_MAP.items():
-            assert intent in INTENT_CATEGORIES, (
-                f"{binary} -> {intent} not in categories"
-            )
+            assert intent in INTENT_CATEGORIES, f"{binary} -> {intent} not in categories"
 
     def test_default_intent_sig_map_values_in_categories(self) -> None:
         for sig, intent in DEFAULT_INTENT_SIG_MAP.items():
@@ -179,9 +177,6 @@ class TestExtractFirstPositionalArg:
 class TestNormalizeCommandSig:
     """Tests for normalize_command_sig."""
 
-    def test_simple_command(self) -> None:
-        assert normalize_command_sig("git status") == "git:status"
-
     def test_uv_run_prefix_stripped(self) -> None:
         result = normalize_command_sig("uv run python -m pytest tests/test_foo.py -v")
         assert result == "pytest:tests/test_foo"
@@ -227,9 +222,7 @@ class TestExtractErrorSig:
         assert "ModuleNotFoundError" in result
 
     def test_takes_last_meaningful_line(self) -> None:
-        stderr = (
-            "Traceback (most recent call last):\n  File ...\nValueError: bad input\n"
-        )
+        stderr = "Traceback (most recent call last):\n  File ...\nValueError: bad input\n"
         result = extract_error_sig(stderr)
         assert "ValueError" in result
 

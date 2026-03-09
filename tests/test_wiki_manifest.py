@@ -87,7 +87,7 @@ def test_load_manifest_no_yaml(tmp_path, monkeypatch):
     (lintgate_dir / "wiki_manifest.yaml").write_text(_make_manifest_yaml())
 
     # Simulate missing yaml module
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
     def mock_import(name, *args, **kwargs):
         if name == "yaml":

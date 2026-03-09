@@ -23,25 +23,19 @@ def test_load_contract_missing_and_present(tmp_path, monkeypatch) -> None:
 
     # Present contract path.
     contract_path = module_file.parent.parent / "mcp_contract.yaml"
-    contract_path.write_text(
-        "safety_critical_tools:\n  - lint_files\n", encoding="utf-8"
-    )
+    contract_path.write_text("safety_critical_tools:\n  - lint_files\n", encoding="utf-8")
     loaded = admin._load_contract()
     assert loaded["safety_critical_tools"] == ["lint_files"]
 
 
 def test_resolve_server_command_prefers_path(monkeypatch) -> None:
-    monkeypatch.setattr(
-        admin.shutil, "which", lambda _name: "/usr/local/bin/lintgate-mcp"
-    )
+    monkeypatch.setattr(admin.shutil, "which", lambda _name: "/usr/local/bin/lintgate-mcp")
     command, source = admin._resolve_server_command()
     assert command == "/usr/local/bin/lintgate-mcp"
     assert source == "PATH"
 
 
-def test_resolve_server_command_falls_back_to_python_sibling(
-    tmp_path, monkeypatch
-) -> None:
+def test_resolve_server_command_falls_back_to_python_sibling(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(admin.shutil, "which", lambda _name: None)
     fake_python = tmp_path / "bin" / "python"
     fake_mcp = tmp_path / "bin" / "lintgate-mcp"
@@ -94,9 +88,7 @@ def test_resolve_server_command_falls_back_to_repo_venv(tmp_path, monkeypatch) -
 def test_load_configured_server_command_and_runnable(tmp_path, monkeypatch) -> None:
     config_path = tmp_path / "claude.json"
     config_path.write_text(
-        json.dumps(
-            {"mcpServers": {"lintgate": {"command": "lintgate-mcp", "args": []}}}
-        ),
+        json.dumps({"mcpServers": {"lintgate": {"command": "lintgate-mcp", "args": []}}}),
         encoding="utf-8",
     )
     command = admin._load_configured_server_command(config_path)
@@ -117,15 +109,11 @@ def test_load_configured_server_command_handles_bad_shapes(tmp_path) -> None:
     assert admin._load_configured_server_command(no_mcp) is None
 
     no_lintgate = tmp_path / "no_lintgate.json"
-    no_lintgate.write_text(
-        json.dumps({"mcpServers": {"lintgate": []}}), encoding="utf-8"
-    )
+    no_lintgate.write_text(json.dumps({"mcpServers": {"lintgate": []}}), encoding="utf-8")
     assert admin._load_configured_server_command(no_lintgate) is None
 
     no_command = tmp_path / "no_command.json"
-    no_command.write_text(
-        json.dumps({"mcpServers": {"lintgate": {"args": []}}}), encoding="utf-8"
-    )
+    no_command.write_text(json.dumps({"mcpServers": {"lintgate": {"args": []}}}), encoding="utf-8")
     assert admin._load_configured_server_command(no_command) is None
 
 
@@ -136,9 +124,7 @@ def test_cmd_install_unknown_agent() -> None:
 
 def test_cmd_install_dry_run_and_write_report(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        admin, "_resolve_server_command", lambda: ("/tmp/lintgate-mcp", "test")
-    )
+    monkeypatch.setattr(admin, "_resolve_server_command", lambda: ("/tmp/lintgate-mcp", "test"))
 
     fake_profile = SimpleNamespace(
         config_path=tmp_path / "cfg.json",
@@ -159,9 +145,7 @@ def test_cmd_install_dry_run_and_write_report(tmp_path, monkeypatch) -> None:
 
 def test_cmd_install_reports_already_configured(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        admin, "_resolve_server_command", lambda: ("/tmp/lintgate-mcp", "test")
-    )
+    monkeypatch.setattr(admin, "_resolve_server_command", lambda: ("/tmp/lintgate-mcp", "test"))
     fake_profile = SimpleNamespace(
         config_path=tmp_path / "cfg.json",
         config_writer=lambda _path, _cmd: False,
@@ -231,9 +215,7 @@ def test_cmd_doctor_enforces_missing_safety_tools(monkeypatch) -> None:
     )
 
     fake_tool_manager = SimpleNamespace(list_tools=lambda: [])
-    fake_mcp_server = types.SimpleNamespace(
-        mcp=SimpleNamespace(_tool_manager=fake_tool_manager)
-    )
+    fake_mcp_server = types.SimpleNamespace(mcp=SimpleNamespace(_tool_manager=fake_tool_manager))
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
@@ -255,9 +237,7 @@ def test_cmd_doctor_flags_missing_expected_tools(monkeypatch) -> None:
 
     fake_tools = [SimpleNamespace(name="lint_files")]
     fake_tool_manager = SimpleNamespace(list_tools=lambda: fake_tools)
-    fake_mcp_server = types.SimpleNamespace(
-        mcp=SimpleNamespace(_tool_manager=fake_tool_manager)
-    )
+    fake_mcp_server = types.SimpleNamespace(mcp=SimpleNamespace(_tool_manager=fake_tool_manager))
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
@@ -279,9 +259,7 @@ def test_cmd_doctor_missing_expected_with_fix_prints_hint(monkeypatch) -> None:
 
     fake_tools = [SimpleNamespace(name="lint_files")]
     fake_tool_manager = SimpleNamespace(list_tools=lambda: fake_tools)
-    fake_mcp_server = types.SimpleNamespace(
-        mcp=SimpleNamespace(_tool_manager=fake_tool_manager)
-    )
+    fake_mcp_server = types.SimpleNamespace(mcp=SimpleNamespace(_tool_manager=fake_tool_manager))
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
@@ -300,9 +278,7 @@ def test_cmd_doctor_schema_error_path(monkeypatch) -> None:
 
     fake_tools = [SimpleNamespace(name="lint_files")]
     fake_tool_manager = SimpleNamespace(list_tools=lambda: fake_tools)
-    fake_mcp_server = types.SimpleNamespace(
-        mcp=SimpleNamespace(_tool_manager=fake_tool_manager)
-    )
+    fake_mcp_server = types.SimpleNamespace(mcp=SimpleNamespace(_tool_manager=fake_tool_manager))
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     from lintgate.mcp_schema import ProviderSchemaError
@@ -333,9 +309,7 @@ def test_cmd_doctor_fix_path_runs_install(monkeypatch) -> None:
 
     fake_tools = [SimpleNamespace(name="lint_files")]
     fake_tool_manager = SimpleNamespace(list_tools=lambda: fake_tools)
-    fake_mcp_server = types.SimpleNamespace(
-        mcp=SimpleNamespace(_tool_manager=fake_tool_manager)
-    )
+    fake_mcp_server = types.SimpleNamespace(mcp=SimpleNamespace(_tool_manager=fake_tool_manager))
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     called = {"install": False}
@@ -351,13 +325,7 @@ def test_cmd_doctor_fix_path_runs_install(monkeypatch) -> None:
 def test_cmd_doctor_fails_unrunnable_configured_command(tmp_path, monkeypatch) -> None:
     config_path = tmp_path / "claude.json"
     config_path.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "lintgate": {"command": "/missing/lintgate-mcp", "args": []}
-                }
-            }
-        ),
+        json.dumps({"mcpServers": {"lintgate": {"command": "/missing/lintgate-mcp", "args": []}}}),
         encoding="utf-8",
     )
     fake_profile = SimpleNamespace(
@@ -377,18 +345,10 @@ def test_cmd_doctor_fails_unrunnable_configured_command(tmp_path, monkeypatch) -
         admin.cmd_doctor(args)
 
 
-def test_cmd_doctor_fix_path_exits_when_install_repair_fails(
-    tmp_path, monkeypatch
-) -> None:
+def test_cmd_doctor_fix_path_exits_when_install_repair_fails(tmp_path, monkeypatch) -> None:
     config_path = tmp_path / "claude.json"
     config_path.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "lintgate": {"command": "/missing/lintgate-mcp", "args": []}
-                }
-            }
-        ),
+        json.dumps({"mcpServers": {"lintgate": {"command": "/missing/lintgate-mcp", "args": []}}}),
         encoding="utf-8",
     )
     fake_profile = SimpleNamespace(

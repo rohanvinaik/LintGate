@@ -97,15 +97,29 @@ def _do_analyze(
     result: FileSpecResult,
 ) -> FileSpecResult:
     """Core analysis logic, separated for clean error handling."""
+    import hashlib
+
     from lintgate.linters.performance_checks.manifest import build_manifest
     from lintgate.linters.test_effectiveness.manifest import build_test_effectiveness_manifest
     from lintgate.specification.call_graph import build_cross_module_call_graph
-    from lintgate.specification.ledger import build_specification_ledger
+    from lintgate.specification.ledger import (
+        build_specification_ledger,
+        load_cached_ledger,
+        save_cached_ledger,
+    )
+    from lintgate.state import SPEC_CACHE_DIR
 
     py_files = [file_path]
 
+    # Load mutation cache for ground-truth spec_level override (Fix #2)
+    mutation_cache = _load_mutation_cache(project_root, file_path)
+
     # Build manifests scoped to this single file
-    prop_manifest = build_manifest(project_root, py_files)
+    prop_manifest = build_manifest(
+        project_root,
+        py_files,
+        mutation_cache=mutation_cache,
+    )
     # Scope test discovery to files relevant to this source file
     # instead of triggering full-project test discovery.
     scoped_test_files = _discover_relevant_test_files(file_path, project_root)
@@ -114,13 +128,30 @@ def _do_analyze(
     )
     call_graph = build_cross_module_call_graph(py_files, project_root)
 
+    # Load prior ledger for trajectory accumulation (Fix #5)
+    project_hash = hashlib.sha256(project_root.encode()).hexdigest()[:16]
+    prior_ledger = load_cached_ledger(SPEC_CACHE_DIR, project_hash)
+
     ledger = build_specification_ledger(
         prop_manifest,
         teff_manifest,
         project_root,
         py_files=py_files,
         call_graph=call_graph,
+        prior_ledger=prior_ledger,
+        mutation_cache=mutation_cache,
     )
+
+    # Merge single-file ledger into the full project cache so we don't
+    # discard trajectory state for functions in other files.
+    if prior_ledger is not None:
+        merged = prior_ledger
+        for key, fs in ledger.functions.items():
+            merged.functions[key] = fs
+        merged.update_metrics()
+        save_cached_ledger(SPEC_CACHE_DIR, project_hash, merged)
+    else:
+        save_cached_ledger(SPEC_CACHE_DIR, project_hash, ledger)
 
     if not ledger.functions:
         return result
@@ -134,6 +165,7 @@ def _do_analyze(
             "regime": fs.core.regime,
             "regime_rationale": fs.core.regime_rationale,
             "specification_level": round(fs.core.specification_level, 3),
+            "data_source": fs.core.data_source,
             "phase": fs.core.phase,
             "is_pure": fs.core.is_pure,
             "risk_score": round(fs.risk.risk_score, 3),
@@ -252,9 +284,40 @@ def _do_analyze_symbolic(
     return result
 
 
-def _discover_relevant_test_files(
-    file_path: str, project_root: str
-) -> list[str]:
+def _load_mutation_cache(project_root: str, file_path: str) -> dict[str, dict] | None:
+    """Load mutation cache entries relevant to a source file.
+
+    Returns a dict mapping function_key → mutation result dict,
+    or None if no mutation data exists. Lightweight: reads only
+    JSON files from the per-project mutation cache directory.
+    """
+    from pathlib import Path
+
+    cache_dir = Path(project_root) / ".lintgate" / "mutation"
+    if not cache_dir.exists():
+        return None
+
+    rel_path = os.path.relpath(file_path, project_root)
+    cache: dict[str, dict] = {}
+    for cache_file in cache_dir.glob("*.json"):
+        if cache_file.name == "scheduler_state.json":
+            continue
+        try:
+            with open(cache_file, encoding="utf-8") as f:
+                import json
+
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        func_key = data.get("function_key", "")
+        # Only load entries for the file being analyzed
+        if rel_path in func_key:
+            cache[func_key] = data
+
+    return cache if cache else None
+
+
+def _discover_relevant_test_files(file_path: str, project_root: str) -> list[str]:
     """Discover test files relevant to a single source file.
 
     Strategy:
@@ -287,10 +350,7 @@ def _discover_relevant_test_files(
             continue
         for dirpath, dirnames, filenames in os.walk(search_root):
             # Skip hidden and cache dirs
-            dirnames[:] = [
-                d for d in dirnames
-                if not d.startswith(".") and d != "__pycache__"
-            ]
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"]
             for fname in filenames:
                 if fname in candidates:
                     found.append(os.path.join(dirpath, fname))

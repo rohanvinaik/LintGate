@@ -66,9 +66,7 @@ _PLUGIN_DIR_PATTERNS = frozenset(
 # ── Re-export Detection (for STRUCT003 orphan analysis) ─────────────────
 
 
-def _parse_import_from_reexport(
-    node: ast.ImportFrom, reexports: dict[str, str]
-) -> None:
+def _parse_import_from_reexport(node: ast.ImportFrom, reexports: dict[str, str]) -> None:
     """Handle `from .sub import ...` re-export patterns."""
     if not node.module or node.level <= 0:
         return
@@ -133,9 +131,7 @@ def _detect_reexports(init_file: str, project_root: str) -> dict[str, str]:
     return reexports
 
 
-def _build_reexport_map(
-    py_files: list[str], project_root: str
-) -> dict[str, dict[str, str]]:
+def _build_reexport_map(py_files: list[str], project_root: str) -> dict[str, dict[str, str]]:
     """Build a map of parent_package -> {module_stem: certainty} from all __init__.py.
 
     Returns:
@@ -315,9 +311,7 @@ def _classify_orphan(
     return LintIssue(
         linter="structure_channel",
         kind="STRUCT003",
-        message=(
-            f"Orphaned module: {relpath} is not imported by any other module in the project."
-        ),
+        message=(f"Orphaned module: {relpath} is not imported by any other module in the project."),
         file=filepath,
         severity="informational",
         confidence=0.6,

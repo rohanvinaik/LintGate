@@ -40,9 +40,7 @@ class TestParsePyprojectMetadata:
 
     def test_valid_pyproject_extracts_version(self, tmp_path: Path) -> None:
         """Extracts requires-python version from valid pyproject.toml."""
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.11"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
         version, _lic, _dirs, has = _parse_pyproject_metadata(tmp_path)
         assert version == "3.11"
         assert has is True
@@ -105,9 +103,7 @@ class TestParsePyprojectMetadata:
 
     def test_license_dict_file_key(self, tmp_path: Path) -> None:
         """Extracts license from dict form using 'file' key when 'text' absent."""
-        (tmp_path / "pyproject.toml").write_bytes(
-            b'[project.license]\nfile = "LICENSE.txt"\n'
-        )
+        (tmp_path / "pyproject.toml").write_bytes(b'[project.license]\nfile = "LICENSE.txt"\n')
         _ver, lic, _dirs, _has = _parse_pyproject_metadata(tmp_path)
         assert lic == "LICENSE.txt"
 
@@ -115,15 +111,11 @@ class TestParsePyprojectMetadata:
         """Lines 529-530: when tomllib import fails, falls back to tomli."""
         import sys
 
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.10"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.10"\n')
         # Temporarily make 'tomllib' unavailable by removing it from sys.modules
         # and patching builtins.__import__ to raise for 'tomllib'
         original_import = (
-            __builtins__.__import__
-            if hasattr(__builtins__, "__import__")
-            else __import__
+            __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
         )
 
         def _mock_import(name, *args, **kwargs):
@@ -306,9 +298,7 @@ class TestDetectProjectLayoutIntegration:
 
     def test_full_project(self, tmp_path: Path) -> None:
         """Detect layout from a project with pyproject, package, tests, docs."""
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nrequires-python = ">=3.11"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
         pkg = tmp_path / "mylib"
         pkg.mkdir()
         (pkg / "__init__.py").touch()
@@ -366,9 +356,7 @@ class TestApplyManagedArtifact:
     def test_preview_new_file(self, tmp_path: Path) -> None:
         """Previews content when file does not exist and write=False."""
         path = str(tmp_path / "artifact.yml")
-        result = _apply_managed_artifact(
-            path, "content here", exists=False, write=False
-        )
+        result = _apply_managed_artifact(path, "content here", exists=False, write=False)
         assert result["status"] == "preview"
         assert result["content"] == "content here"
         assert not (tmp_path / "artifact.yml").exists()
@@ -377,18 +365,14 @@ class TestApplyManagedArtifact:
         """Reports already_exists when content hash matches."""
         fpath = tmp_path / "artifact.yml"
         fpath.write_text("content here")
-        result = _apply_managed_artifact(
-            str(fpath), "content here", exists=True, write=True
-        )
+        result = _apply_managed_artifact(str(fpath), "content here", exists=True, write=True)
         assert result["status"] == "already_exists"
 
     def test_drift_repaired(self, tmp_path: Path) -> None:
         """Detects drift but does NOT overwrite content when write=True to preserve user config."""
         fpath = tmp_path / "artifact.yml"
         fpath.write_text("old content")
-        result = _apply_managed_artifact(
-            str(fpath), "new content", exists=True, write=True
-        )
+        result = _apply_managed_artifact(str(fpath), "new content", exists=True, write=True)
         assert result["status"] == "drift_repaired"
         assert "previous_hash" in result
         assert "new_hash" in result
@@ -398,9 +382,7 @@ class TestApplyManagedArtifact:
         """Reports outdated status when content differs and write=False."""
         fpath = tmp_path / "artifact.yml"
         fpath.write_text("old content")
-        result = _apply_managed_artifact(
-            str(fpath), "new content", exists=True, write=False
-        )
+        result = _apply_managed_artifact(str(fpath), "new content", exists=True, write=False)
         assert result["status"] == "outdated"
         assert "current_hash" in result
         assert "expected_hash" in result
@@ -411,9 +393,7 @@ class TestApplyManagedArtifact:
         # Point at a directory instead of a file to trigger OSError
         dir_path = tmp_path / "dir_as_file"
         dir_path.mkdir()
-        result = _apply_managed_artifact(
-            str(dir_path), "content", exists=True, write=False
-        )
+        result = _apply_managed_artifact(str(dir_path), "content", exists=True, write=False)
         # empty string hashed vs "content" hashed -> outdated
         expected_hash = hashlib.sha256(b"content").hexdigest()[:16]
         empty_hash = hashlib.sha256(b"").hexdigest()[:16]

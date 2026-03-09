@@ -36,9 +36,7 @@ def _make_integrate_harness(tmp_path: Path) -> Path:
     return repo
 
 
-def _run_integrate(
-    repo: Path, tmp_path: Path, *args: str
-) -> subprocess.CompletedProcess[str]:
+def _run_integrate(repo: Path, tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
     env = os.environ.copy()

@@ -43,9 +43,7 @@ class SymbolResolutionResult:
     test_function: str | None = None
     unresolved: list[UnresolvedSymbol] = field(default_factory=list)
     resolved_count: int = 0
-    verdict: str = (
-        "valid_failure"  # "stale_test" | "potential_regression" | "valid_failure"
-    )
+    verdict: str = "valid_failure"  # "stale_test" | "potential_regression" | "valid_failure"
     confidence: float = 0.85
 
 
@@ -224,9 +222,7 @@ def _detect_project_packages(project_root: str) -> set[str]:
     try:
         for entry in os.listdir(project_root):
             full = os.path.join(project_root, entry)
-            if os.path.isdir(full) and os.path.isfile(
-                os.path.join(full, "__init__.py")
-            ):
+            if os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
                 packages.add(entry)
     except OSError:
         pass
@@ -278,45 +274,29 @@ def _symbol_exists(module_path: str, symbol_name: str, project_root: str) -> boo
     return _try_importlib_resolve(module_path, symbol_name)
 
 
+def _node_defines_symbol(node: ast.AST, symbol_name: str) -> bool:
+    """Check if a single AST node defines the given symbol name."""
+    if (
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and node.name == symbol_name
+    ):
+        return True
+    if isinstance(node, ast.Assign):
+        return any(isinstance(t, ast.Name) and t.id == symbol_name for t in node.targets)
+    if (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == symbol_name
+    ):
+        return True
+    if isinstance(node, (ast.Import, ast.ImportFrom)) and node.names:
+        return any((a.asname or a.name) == symbol_name for a in node.names)
+    return False
+
+
 def _find_symbol_in_ast(tree: ast.AST, symbol_name: str) -> bool:
     """Check if a symbol is defined at the top level of an AST."""
-    for node in ast.iter_child_nodes(tree):
-        # Function or class definition
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-            and node.name == symbol_name
-        ):
-            return True
-
-        # Variable assignment: x = ...
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == symbol_name:
-                    return True
-
-        # Annotated assignment: x: Type = ...
-        if (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == symbol_name
-        ):
-            return True
-
-        # Import re-export: from .submod import symbol
-        if isinstance(node, ast.ImportFrom) and node.names:
-            for alias in node.names:
-                effective_name = alias.asname if alias.asname else alias.name
-                if effective_name == symbol_name:
-                    return True
-
-        # import X as symbol
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                effective_name = alias.asname if alias.asname else alias.name
-                if effective_name == symbol_name:
-                    return True
-
-    return False
+    return any(_node_defines_symbol(node, symbol_name) for node in ast.iter_child_nodes(tree))
 
 
 def _find_reexport(
@@ -337,9 +317,7 @@ def _find_reexport(
                 continue
             # Found a re-export candidate — resolve the source module
             if node.module:
-                source_module = (
-                    f"{parent_module}.{node.module}" if node.level > 0 else node.module
-                )
+                source_module = f"{parent_module}.{node.module}" if node.level > 0 else node.module
                 return _symbol_exists(source_module, alias.name, project_root)
     return False
 

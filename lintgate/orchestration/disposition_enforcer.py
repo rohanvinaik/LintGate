@@ -102,9 +102,7 @@ class DispositionEnforcer:
             return None
 
         # If we need a lint but didn't do one, and this isn't an edit tool itself
-        is_edit = any(
-            kw in tool for kw in ["write", "edit", "replace", "patch", "apply"]
-        )
+        is_edit = any(kw in tool for kw in ["write", "edit", "replace", "patch", "apply"])
 
         if (
             self.state["flags"].get("needs_lint")
@@ -128,9 +126,7 @@ class DispositionEnforcer:
         if event.tool_name.lower() != "bash":
             return None
 
-        if not self.config.inquiry.prediction_tracking and self._can_fire(
-            "bash_no_prediction"
-        ):
+        if not self.config.inquiry.prediction_tracking and self._can_fire("bash_no_prediction"):
             prefix = self._get_nudge_prefix("bash_no_prediction")
             self._mark_fired("bash_no_prediction")
             return (
@@ -176,9 +172,7 @@ class DispositionEnforcer:
     def _update_post_event_flags(self, event: SupervisionEvent) -> None:
         """Update flags and track compliance/ignores after evaluation."""
         tool = event.tool_name.lower()
-        is_edit = any(
-            kw in tool for kw in ["write", "edit", "replace", "patch", "apply"]
-        )
+        is_edit = any(kw in tool for kw in ["write", "edit", "replace", "patch", "apply"])
         is_lint = tool in {"lint_files", "lint_project", "controlplane_run"}
 
         # Track compliance for edit_without_lint BEFORE clearing the flag

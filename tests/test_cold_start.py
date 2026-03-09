@@ -45,9 +45,7 @@ class TestMCPInstructions:
             "facet summaries",
             "Architecture of Inquiry",
         ]:
-            assert jargon.lower() not in _MCP_INSTRUCTIONS.lower(), (
-                f"Jargon found: {jargon}"
-            )
+            assert jargon.lower() not in _MCP_INSTRUCTIONS.lower(), f"Jargon found: {jargon}"
 
     def test_includes_workflow_guidance(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
@@ -62,7 +60,7 @@ class TestMCPInstructions:
     def test_mentions_tool_count(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
 
-        assert "81" in _MCP_INSTRUCTIONS
+        assert "87" in _MCP_INSTRUCTIONS
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────
@@ -272,9 +270,7 @@ class TestGettingStarted:
             for action in result["startup_setup"]["actions_applied"]
         )
 
-    def test_next_actions_include_venv_create_when_missing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_next_actions_include_venv_create_when_missing(self, tmp_path: Path) -> None:
         import json
 
         from mcp_server import getting_started
@@ -304,14 +300,9 @@ class TestGettingStarted:
         ):
             result = json.loads(getting_started(str(tmp_path)))
 
-        assert any(
-            action.get("example") == "uv venv .venv"
-            for action in result["next_actions"]
-        )
+        assert any(action.get("example") == "uv venv .venv" for action in result["next_actions"])
 
-    def test_missing_tool_reasons_are_reported_without_manual_probe(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_tool_reasons_are_reported_without_manual_probe(self, tmp_path: Path) -> None:
         import json
 
         from mcp_server import getting_started
@@ -344,10 +335,7 @@ class TestGettingStarted:
 
         assert result["startup_setup"]["missing_tools_after"]
         assert result["startup_setup"]["missing_tools_after"][0]["tool"] == "ty"
-        assert any(
-            action.get("example") == "pip install ty"
-            for action in result["next_actions"]
-        )
+        assert any(action.get("example") == "pip install ty" for action in result["next_actions"])
 
     def test_auto_setup_bootstraps_github_quality_when_remote_detected(
         self, tmp_path: Path
@@ -394,9 +382,7 @@ class TestGettingStarted:
         readme_content = (tmp_path / "README.md").read_text()
         assert "metric=security_rating" in readme_content
 
-    def test_getting_started_reports_active_system_mutation_guard(
-        self, tmp_path: Path
-    ) -> None:
+    def test_getting_started_reports_active_system_mutation_guard(self, tmp_path: Path) -> None:
         import json
         import os
 
@@ -435,9 +421,7 @@ class TestGettingStarted:
             mock.patch(
                 "mcp_tools.onboarding_tools.os.path.expanduser",
                 side_effect=lambda p: (
-                    str(settings_path)
-                    if p == "~/.claude/settings.json"
-                    else real_expanduser(p)
+                    str(settings_path) if p == "~/.claude/settings.json" else real_expanduser(p)
                 ),
             ),
         ):
@@ -524,9 +508,7 @@ class TestOnboardingStatusHelper:
     def test_config_without_controlplane_section_state(self, tmp_path: Path) -> None:
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "linters:\n  ruff_check:\n    enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("linters:\n  ruff_check:\n    enabled: true\n")
         from mcp_server import _build_onboarding_status
 
         status = _build_onboarding_status(str(tmp_path))

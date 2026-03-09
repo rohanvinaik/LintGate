@@ -243,9 +243,7 @@ class TestPipAuditSeverityClassification:
         assert _classify_severity("CVE-2023-32681", []) == "warning"
 
     def test_ghsa_is_warning(self):
-        assert (
-            _classify_severity("PYSEC-2023-001", ["GHSA-j8r2-6x86-q33e"]) == "warning"
-        )
+        assert _classify_severity("PYSEC-2023-001", ["GHSA-j8r2-6x86-q33e"]) == "warning"
 
     def test_unknown_id_is_informational(self):
         assert _classify_severity("PYSEC-2023-001", []) == "informational"

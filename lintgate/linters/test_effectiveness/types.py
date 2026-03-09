@@ -150,9 +150,7 @@ class AssertionInfo:
     strength: float
     target_expression: str = ""  # Full unparsed expression (e.g., "result.count")
     target_root: str = ""  # Canonicalized root (e.g., "result")
-    confidence: str = (
-        "structural"  # "structural" (AST-based) or "heuristic" (name-based)
-    )
+    confidence: str = "structural"  # "structural" (AST-based) or "heuristic" (name-based)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -282,9 +280,7 @@ class FunctionEffectiveness:
 
         # Multi-axis profile
         denom = total - paired_guards
-        actionable_ratio = (
-            (semantic_count + boundary_count) / denom if denom > 0 else 1.0
-        )
+        actionable_ratio = (semantic_count + boundary_count) / denom if denom > 0 else 1.0
 
         self.quality_profile = QualityProfile(
             semantic_ratio=round(self.semantic_ratio, 3),
@@ -331,9 +327,7 @@ class FunctionEffectiveness:
             "effectiveness_score": round(self.effectiveness_score, 3),
             "mutation_vulnerability": round(self.mutation_vulnerability, 3),
             "quality_profile": self.quality_profile.to_dict(),
-            "weakness_taxonomy": self.weakness_taxonomy.value
-            if self.weakness_taxonomy
-            else None,
+            "weakness_taxonomy": self.weakness_taxonomy.value if self.weakness_taxonomy else None,
             "confidence": self.confidence.to_dict() if self.confidence else None,
         }
 
@@ -442,9 +436,7 @@ class MappingDiagnostics:
     _attempted_symbols: set[str] = field(default_factory=set, repr=False, init=False)
     _mapped_symbols: set[str] = field(default_factory=set, repr=False, init=False)
     _test_funcs: set[str] = field(default_factory=set, repr=False, init=False)
-    _drop_examples: list[dict[str, str]] = field(
-        default_factory=list, repr=False, init=False
-    )
+    _drop_examples: list[dict[str, str]] = field(default_factory=list, repr=False, init=False)
 
     @property
     def attempted(self) -> int:
@@ -495,9 +487,7 @@ class MappingDiagnostics:
             "counts": self.counts.to_dict(),
             "symbol_stats": self.symbol_stats.to_dict(),
             "drop_analysis": self.drop_analysis.to_dict(),
-            "strategy_breakdown": {
-                k: v.to_dict() for k, v in self.strategy_breakdown.items()
-            },
+            "strategy_breakdown": {k: v.to_dict() for k, v in self.strategy_breakdown.items()},
             # Keep flat top-level fields for backward compatibility
             "attempted": self.attempted,
             "mapped": self.mapped,
@@ -525,16 +515,12 @@ class MappingDiagnostics:
             dropped_no_candidate=counts_data.get(
                 "dropped_no_candidate", data.get("dropped_no_candidate", 0)
             ),
-            dropped_shadowed=counts_data.get(
-                "dropped_shadowed", data.get("dropped_shadowed", 0)
-            ),
+            dropped_shadowed=counts_data.get("dropped_shadowed", data.get("dropped_shadowed", 0)),
         )
 
         stats_data = data.get("symbol_stats", {})
         symbol_stats = SymbolStats(
-            attempted=stats_data.get(
-                "attempted", data.get("unique_symbols_attempted", 0)
-            ),
+            attempted=stats_data.get("attempted", data.get("unique_symbols_attempted", 0)),
             mapped=stats_data.get("mapped", data.get("unique_symbols_mapped", 0)),
             test_functions_examined=stats_data.get(
                 "test_functions_examined", data.get("test_functions_examined", 0)
@@ -543,13 +529,9 @@ class MappingDiagnostics:
 
         drop_data = data.get("drop_analysis", {})
         drop_analysis = DropAnalysis(
-            dominant_reason=drop_data.get(
-                "dominant_reason", data.get("dominant_drop_reason")
-            ),
+            dominant_reason=drop_data.get("dominant_reason", data.get("dominant_drop_reason")),
             dominant_pct=drop_data.get("dominant_pct", data.get("dominant_drop_pct")),
-            top_examples=drop_data.get(
-                "top_examples", data.get("top_drop_examples", [])
-            ),
+            top_examples=drop_data.get("top_examples", data.get("top_drop_examples", [])),
         )
 
         obj = cls(

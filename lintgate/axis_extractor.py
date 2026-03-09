@@ -95,9 +95,7 @@ def _heading_matches_axis(heading: str, axis_name: str) -> bool:
     """Check if a claim heading matches axis-specific signals."""
     if not heading:
         return False
-    return any(
-        pat.search(heading) for pat in _COMPILED_HEADING_SIGNALS.get(axis_name, [])
-    )
+    return any(pat.search(heading) for pat in _COMPILED_HEADING_SIGNALS.get(axis_name, []))
 
 
 def _apply_heading_depth_boost(state: CompassState) -> None:
@@ -112,9 +110,7 @@ def _apply_heading_depth_boost(state: CompassState) -> None:
         if not axis or not axis.claims:
             continue
 
-        matched = sum(
-            1 for c in axis.claims if _heading_matches_axis(c.heading, axis_name)
-        )
+        matched = sum(1 for c in axis.claims if _heading_matches_axis(c.heading, axis_name))
 
         # Boost threshold: at least 2 heading-matched claims, or 30% of
         # total claims (whichever is larger), triggers a +1 depth bump.

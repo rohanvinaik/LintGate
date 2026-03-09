@@ -63,19 +63,22 @@ def compose_all_pages(
 def _has_related_section(content: str) -> bool:
     """Check if content already has a Related/See Also section."""
     lower = content.lower()
-    return any(marker in lower for marker in [
-        "## related", "## see also", "## related concepts",
-        "## further reading", "## references",
-    ])
+    return any(
+        marker in lower
+        for marker in [
+            "## related",
+            "## see also",
+            "## related concepts",
+            "## further reading",
+            "## references",
+        ]
+    )
 
 
 def _strip_managed_markers(text: str) -> str:
     """Remove LINTGATE_WIKI:BEGIN/END markers from output."""
     lines = text.split("\n")
-    return "\n".join(
-        line for line in lines
-        if not line.strip().startswith("<!-- LINTGATE_WIKI:")
-    )
+    return "\n".join(line for line in lines if not line.strip().startswith("<!-- LINTGATE_WIKI:"))
 
 
 def _compose_page(
@@ -96,11 +99,7 @@ def _compose_page(
     """
     parts: list[str] = []
     source_files: list[str] = []
-    is_whole_file = (
-        len(page.sources) == 1
-        and page.sources[0].kind == "file"
-        and not page.generator
-    )
+    is_whole_file = len(page.sources) == 1 and page.sources[0].kind == "file" and not page.generator
 
     if page.generator:
         # Generated pages get frontmatter + title

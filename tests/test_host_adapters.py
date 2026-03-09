@@ -158,12 +158,8 @@ class TestRenderDynamicForTargets:
     def test_renderer_with_dynamic_methods_called(self):
         renderer = MagicMock()
         renderer.name = "dynamic"
-        renderer.render_session.return_value = {
-            ".claude/rules/lg_session.md": "session content"
-        }
-        renderer.render_focus.return_value = {
-            ".claude/rules/lg_focus.md": "focus content"
-        }
+        renderer.render_session.return_value = {".claude/rules/lg_session.md": "session content"}
+        renderer.render_focus.return_value = {".claude/rules/lg_focus.md": "focus content"}
         registry = RendererRegistry()
         registry.register(renderer)
 

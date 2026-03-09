@@ -38,6 +38,4 @@ class CopilotRenderer:
             lines += [f"- {a}" for a in away]
             lines.append("")
 
-        return {
-            ".github/copilot-instructions.md": "\n".join(truncate_lines(lines, 1200))
-        }
+        return {".github/copilot-instructions.md": "\n".join(truncate_lines(lines, 1200))}

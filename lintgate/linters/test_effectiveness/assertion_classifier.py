@@ -66,9 +66,35 @@ def _is_none_compare(node: ast.Compare) -> AssertionKind | None:
     return None
 
 
+def _classify_membership(node: ast.Compare) -> AssertionKind:
+    """Classify an In/NotIn comparison into a specific assertion kind."""
+    right = node.comparators[0]
+    if isinstance(right, (ast.Dict, ast.DictComp)):
+        return AssertionKind.DICT_KEY_CHECK
+    if isinstance(right, ast.Call):
+        func_name = _get_name(right.func)
+        if func_name == "dict" or func_name.endswith(("json", "as_dict", "to_dict")):
+            return AssertionKind.DICT_KEY_CHECK
+    if isinstance(right, ast.Constant) and isinstance(right.value, str):
+        return AssertionKind.STRING_CONTAINS
+    if hasattr(ast, "Str") and isinstance(right, ast.Str):
+        return AssertionKind.STRING_CONTAINS
+    return AssertionKind.COLLECTION_MEMBERSHIP
+
+
+def _classify_identity(node: ast.Compare) -> AssertionKind:
+    """Classify an Is/IsNot comparison into a specific assertion kind."""
+    comp = node.comparators[0]
+    if isinstance(comp, ast.Constant) and isinstance(comp.value, bool):
+        if isinstance(node.left, ast.Call):
+            return AssertionKind.BOOLEAN_CONTRACT_CALL
+        if isinstance(node.left, (ast.Name, ast.Attribute)):
+            return AssertionKind.BOOLEAN_CONTRACT_FIELD
+    return AssertionKind.IS_TRUE
+
+
 def _classify_compare(node: ast.Compare) -> tuple[AssertionKind, str]:
     """Classify a Compare node into an assertion kind and confidence."""
-    # Check for `x is None` / `x is not None` first
     none_kind = _is_none_compare(node)
     if none_kind is not None:
         return none_kind, "structural"
@@ -78,47 +104,20 @@ def _classify_compare(node: ast.Compare) -> tuple[AssertionKind, str]:
 
     op = node.ops[0]
     if isinstance(op, (ast.Eq, ast.NotEq)):
-        # Check for len(x) == n pattern
-        if isinstance(node.left, ast.Call):
-            func_name = _get_name(node.left.func)
-            if func_name == "len":
-                return AssertionKind.LENGTH_CHECK, "structural"
-        if isinstance(op, ast.Eq):
-            return AssertionKind.EQUALITY, "structural"
-        return AssertionKind.INEQUALITY, "structural"
+        if isinstance(node.left, ast.Call) and _get_name(node.left.func) == "len":
+            return AssertionKind.LENGTH_CHECK, "structural"
+        kind = AssertionKind.EQUALITY if isinstance(op, ast.Eq) else AssertionKind.INEQUALITY
+        return kind, "structural"
 
     if isinstance(op, (ast.Lt, ast.LtE, ast.Gt, ast.GtE)):
-        # Check for range check: a <= x <= b (chained comparison)
-        if len(node.ops) >= 2:
-            return AssertionKind.RANGE_CHECK, "structural"
-        return AssertionKind.COMPARISON, "structural"
+        kind = AssertionKind.RANGE_CHECK if len(node.ops) >= 2 else AssertionKind.COMPARISON
+        return kind, "structural"
 
     if isinstance(op, (ast.In, ast.NotIn)):
-        # Distinguish dict key check vs collection membership
-        right = node.comparators[0]
-        if isinstance(right, (ast.Dict, ast.DictComp)):
-            return AssertionKind.DICT_KEY_CHECK, "structural"
-        if isinstance(right, ast.Call):
-            func_name = _get_name(right.func)
-            if func_name == "dict" or func_name.endswith(
-                ("json", "as_dict", "to_dict")
-            ):
-                return AssertionKind.DICT_KEY_CHECK, "structural"
-        if isinstance(right, ast.Constant) and isinstance(right.value, str):
-            return AssertionKind.STRING_CONTAINS, "structural"
-        if hasattr(ast, "Str") and isinstance(right, ast.Str):
-            return AssertionKind.STRING_CONTAINS, "structural"
-        return AssertionKind.COLLECTION_MEMBERSHIP, "structural"
+        return _classify_membership(node), "structural"
 
-    # (#80) Detect boolean contract identity: assert x is True / assert fn() is True
     if isinstance(op, (ast.Is, ast.IsNot)):
-        comp = node.comparators[0]
-        if isinstance(comp, ast.Constant) and isinstance(comp.value, bool):
-            if isinstance(node.left, ast.Call):
-                return AssertionKind.BOOLEAN_CONTRACT_CALL, "structural"
-            if isinstance(node.left, (ast.Name, ast.Attribute)):
-                return AssertionKind.BOOLEAN_CONTRACT_FIELD, "structural"
-        return AssertionKind.IS_TRUE, "structural"
+        return _classify_identity(node), "structural"
 
     return AssertionKind.IS_TRUE, "structural"
 
@@ -408,9 +407,7 @@ class TestFileAnalyzer(ast.NodeVisitor):
         self.test_assertions[qualname] = assertions
 
 
-def classify_test_file(
-    source: str, filename: str = "<test>"
-) -> dict[str, list[AssertionInfo]]:
+def classify_test_file(source: str, filename: str = "<test>") -> dict[str, list[AssertionInfo]]:
     """Classify all assertions in a test file.
 
     Args:

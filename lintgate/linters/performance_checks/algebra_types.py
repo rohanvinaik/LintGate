@@ -117,9 +117,7 @@ class FunctionProperties:
 
     purity: PurityResult
     properties: tuple[AlgebraicProperty, ...]
-    optimization_hints: tuple[
-        str, ...
-    ]  # e.g., "cacheable", "parallelizable", "foldable"
+    optimization_hints: tuple[str, ...]  # e.g., "cacheable", "parallelizable", "foldable"
     source_file: str | None = None  # File path where this function was found
     extraction_safety: str = "safe"  # "safe" | "needs_module_state" | "unsafe"
 
@@ -137,9 +135,7 @@ class FunctionProperties:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FunctionProperties:
         purity = PurityResult.from_dict(data["purity"])
-        properties = tuple(
-            AlgebraicProperty.from_dict(p) for p in data.get("properties", [])
-        )
+        properties = tuple(AlgebraicProperty.from_dict(p) for p in data.get("properties", []))
         return cls(
             purity=purity,
             properties=properties,

@@ -84,9 +84,7 @@ def synthesize_landscape(
 
     # Aggregate metrics
     landscape.total_decomposition_steps = sum(len(p.steps) for p in plans)
-    landscape.estimated_cc_reduction = sum(
-        p.estimated_impact.get("CC_reduction", 0) for p in plans
-    )
+    landscape.estimated_cc_reduction = sum(p.estimated_impact.get("CC_reduction", 0) for p in plans)
 
     # Compute dependency ordering
     landscape.dependency_order = _compute_dependency_order(plans, results)

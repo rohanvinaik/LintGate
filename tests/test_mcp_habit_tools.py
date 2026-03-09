@@ -57,9 +57,7 @@ def _register(tmp_path):
     return register(mcp, helpers)
 
 
-def _make_session(
-    tmp_path, habit_state_dict=None, event_counter=0, token_tracker_dict=None
-):
+def _make_session(tmp_path, habit_state_dict=None, event_counter=0, token_tracker_dict=None):
     """Build a SessionMemory with configurable behavior_compass contents."""
     from lintgate.controlplane.session_memory import SessionMemory
 
@@ -373,9 +371,7 @@ class TestHabitCompact:
         from lintgate.habit_mode import HabitModeState
         from lintgate.token_tracker import TokenTrackerState
 
-        state_dict = HabitModeState(
-            active=True, habit_score=0.8, compaction_count=1
-        ).to_dict()
+        state_dict = HabitModeState(active=True, habit_score=0.8, compaction_count=1).to_dict()
         tracker_dict = TokenTrackerState(
             estimated_tokens_used=80000,
             tool_calls_since_compact=25,
@@ -513,18 +509,14 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), compact_threshold=0.01)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), compact_threshold=0.01))
         assert result["overrides_applied"]["compact_threshold"] == 0.1
 
     def test_compact_threshold_clamped_high(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), compact_threshold=1.5)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), compact_threshold=1.5))
         assert result["overrides_applied"]["compact_threshold"] == 0.9
 
     def test_enter_exit_score_clamped(self, tmp_path, monkeypatch):
@@ -532,9 +524,7 @@ class TestHabitConfigure:
 
         tools = _register(tmp_path)
         result = json.loads(
-            tools["habit_configure"](
-                path=str(tmp_path), enter_score=0.1, exit_score=5.0
-            )
+            tools["habit_configure"](path=str(tmp_path), enter_score=0.1, exit_score=5.0)
         )
         assert result["overrides_applied"]["enter_score"] == 0.3
         assert result["overrides_applied"]["exit_score"] == 0.8
@@ -543,32 +533,24 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), sustain_calls=0)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), sustain_calls=0))
         assert result["overrides_applied"]["sustain_calls"] == 1
 
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), sustain_calls=100)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), sustain_calls=100))
         assert result["overrides_applied"]["sustain_calls"] == 20
 
     def test_token_api_interval_clamped(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), token_api_interval=1)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), token_api_interval=1))
         assert result["overrides_applied"]["token_api_interval"] == 5
 
     def test_context_window_size_clamped_low(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), context_window_size=100)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), context_window_size=100))
         assert result["overrides_applied"]["context_window_size"] == 10000
 
     def test_context_window_size_clamped_high(self, tmp_path, monkeypatch):
@@ -598,16 +580,11 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), compact_threshold=0.5)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), compact_threshold=0.5))
         assert result["status"] == "ok"
         assert result["overrides_applied"]["compact_threshold"] == 0.5
         assert len(saved_sessions) == 1
-        assert (
-            session.behavior_compass["habit_config_overrides"]["compact_threshold"]
-            == 0.5
-        )
+        assert session.behavior_compass["habit_config_overrides"]["compact_threshold"] == 0.5
 
     def test_falls_back_to_standalone_when_session_fails(self, tmp_path, monkeypatch):
         """When session memory raises, falls back to standalone storage."""
@@ -634,9 +611,7 @@ class TestHabitConfigure:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), enter_score=0.7)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), enter_score=0.7))
         assert result["status"] == "ok"
         assert len(standalone_saved) == 1
 
@@ -665,9 +640,7 @@ class TestHabitConfigure:
         assert overrides["context_window_size"] == 150000
         assert "6 configuration override" in result["message"]
 
-    def test_configure_standalone_merges_existing_overrides(
-        self, tmp_path, monkeypatch
-    ):
+    def test_configure_standalone_merges_existing_overrides(self, tmp_path, monkeypatch):
         """Standalone path merges new overrides with existing ones."""
         from lintgate.habit_mode import HabitModeState
 
@@ -692,9 +665,7 @@ class TestHabitConfigure:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), exit_score=0.3)
-        )
+        result = json.loads(tools["habit_configure"](path=str(tmp_path), exit_score=0.3))
         assert result["status"] == "ok"
         # Should have merged: enter_score from existing + exit_score from new
         assert len(captured_overrides) == 1

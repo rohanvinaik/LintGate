@@ -208,10 +208,7 @@ def _parse_pyproject_metadata(
         license_id = None
 
     test_dirs = list(
-        data.get("tool", {})
-        .get("pytest", {})
-        .get("ini_options", {})
-        .get("testpaths", [])
+        data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
     )
     return python_version, license_id, test_dirs, True
 
@@ -220,9 +217,7 @@ def _detect_project_layout(project_root: str, max_depth: int = 5) -> dict[str, A
     """Detect source dirs, test dirs, Python version, and license."""
     root = Path(project_root)
 
-    python_version, license_id, test_dirs, has_pyproject = _parse_pyproject_metadata(
-        root
-    )
+    python_version, license_id, test_dirs, has_pyproject = _parse_pyproject_metadata(root)
 
     if python_version == "3":
         python_version = _detect_python_version_fallback(root) or "3"

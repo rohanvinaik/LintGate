@@ -9,14 +9,14 @@ def _get_func_node(code):
     return tree.body[0]
 
 
-def _mock_purity(name, params=1):
+def _mock_purity(name, params=1, confidence=1.0):
     return PurityResult(
         is_pure=True,
         parameter_count=params,
         function_name=name,
         qualified_name=name,
         line=1,
-        confidence=1.0,
+        confidence=confidence,
         side_effects=(),
         return_annotation=None,
     )
@@ -166,3 +166,77 @@ def test_type_context_populated():
     props = classify_properties(node, purity)
     comm_prop = [p for p in props.properties if p.kind == PropertyKind.COMMUTATIVE][0]
     assert comm_prop.type_context == {"x": "float", "y": "float"}
+
+
+# ── Mutation gate integration ────────────────────────────────────────
+
+
+def _pure_prop(props):
+    return next(p for p in props.properties if p.kind == PropertyKind.PURE)
+
+
+def test_mutation_gate_high_survival_gates():
+    """Profiled + survival > 50% → confidence crushed, hints stripped."""
+    node = _get_func_node("def f(x): return x + 1")
+    purity = _mock_purity("f", confidence=0.9)
+    state = {"survival_rate": 0.7, "total_mutants": 10, "coverage_depth": "profiled"}
+    props = classify_properties(node, purity, mutation_state=state)
+    assert _pure_prop(props).confidence == 0.1
+    assert "[MUTATION GATED" in _pure_prop(props).evidence
+    assert len(props.optimization_hints) == 0
+
+
+def test_mutation_gate_moderate_survival_penalizes():
+    """Profiled + 20% < survival ≤ 50% → confidence halved, only cacheable kept."""
+    node = _get_func_node("def f(a, b): return a + b")
+    purity = _mock_purity("f", params=2, confidence=0.8)
+    state = {"survival_rate": 0.3, "total_mutants": 10, "coverage_depth": "profiled"}
+    props = classify_properties(node, purity, mutation_state=state)
+    assert _pure_prop(props).confidence == 0.4
+    assert "[MUTATION PENALIZED" in _pure_prop(props).evidence
+    assert "cacheable" in props.optimization_hints
+    assert "parallelizable" not in props.optimization_hints
+
+
+def test_mutation_gate_low_survival_verifies():
+    """Profiled + survival ≤ 20% → confidence boosted, all hints kept."""
+    node = _get_func_node("def f(a, b): return a + b")
+    purity = _mock_purity("f", params=2, confidence=0.7)
+    state = {"survival_rate": 0.1, "total_mutants": 10, "coverage_depth": "profiled"}
+    props = classify_properties(node, purity, mutation_state=state)
+    assert _pure_prop(props).confidence >= 0.9
+    assert "[MUTATION VERIFIED" in _pure_prop(props).evidence
+    assert "cacheable" in props.optimization_hints
+    assert "parallelizable" in props.optimization_hints
+
+
+def test_mutation_gate_sampled_advisory_only():
+    """Sampled (non-gateable) + high survival → advisory label, no conf/hint change."""
+    node = _get_func_node("def f(x): return x + 1")
+    purity = _mock_purity("f", confidence=0.9)
+    state = {"survival_rate": 0.8, "total_mutants": 5, "coverage_depth": "sampled"}
+    props = classify_properties(node, purity, mutation_state=state)
+    assert _pure_prop(props).confidence == 0.9  # unchanged
+    assert "ADVISORY" in _pure_prop(props).evidence
+    assert "cacheable" in props.optimization_hints  # not suppressed
+
+
+def test_mutation_gate_sampled_low_survival_advisory():
+    """Sampled + low survival → advisory only, no confidence boost."""
+    node = _get_func_node("def f(x): return x + 1")
+    purity = _mock_purity("f", confidence=0.7)
+    state = {"survival_rate": 0.1, "total_mutants": 5, "coverage_depth": "sampled"}
+    props = classify_properties(node, purity, mutation_state=state)
+    assert _pure_prop(props).confidence == 0.7  # NOT boosted to 0.9
+    assert "ADVISORY" in _pure_prop(props).evidence
+    assert "VERIFIED" not in _pure_prop(props).evidence
+
+
+def test_mutation_gate_none_state_no_effect():
+    """No mutation state → default behavior, no gate labels."""
+    node = _get_func_node("def f(x): return x + 1")
+    purity = _mock_purity("f", confidence=0.7)
+    props = classify_properties(node, purity, mutation_state=None)
+    assert _pure_prop(props).confidence == 0.7
+    assert "[MUTATION" not in _pure_prop(props).evidence
+    assert "cacheable" in props.optimization_hints
