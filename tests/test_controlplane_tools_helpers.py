@@ -259,7 +259,7 @@ class TestPersistSessionAfterMesh:
                 "lintgate.controlplane.session_memory.save_session",
             ),
             mock.patch(
-                "mcp_tools.controlplane_tools._persist_behavior_compass_delta",
+                "mcp_tools._controlplane_impl_run._persist_behavior_compass_delta",
             ) as persist_bc,
         ):
             _persist_session_after_mesh(session, mesh_result, {}, cp_config)
@@ -419,7 +419,7 @@ class TestConfigAndSessionStatus:
         cfg = ControlPlaneConfig(enabled=True, session_memory=True)
         helpers = _stub_helpers()
         with mock.patch(
-            "mcp_tools.controlplane_tools._get_session_status",
+            "mcp_tools._controlplane_impl_details._get_session_status",
             return_value={"session_id": "abc"},
         ):
             status = _build_config_status(cfg, "/tmp/test", helpers)
@@ -475,32 +475,32 @@ class TestImplControlplaneRun:
         with (
             mock.patch("lintgate.config.load_controlplane_config", return_value=None),
             mock.patch(
-                "mcp_tools.controlplane_tools._build_channel_registry",
+                "mcp_tools._controlplane_impl_run._build_channel_registry",
                 return_value={"lint": mock.MagicMock()},
             ),
             mock.patch(
-                "mcp_tools.controlplane_tools._select_channels",
+                "mcp_tools._controlplane_impl_run._select_channels",
                 return_value=([mock.MagicMock()], ["lint", "bogus"], ["bogus"]),
             ),
             mock.patch(
-                "mcp_tools.controlplane_tools._collect_files_for_event",
+                "mcp_tools._controlplane_impl_run._collect_files_for_event",
                 return_value=["a.py"],
             ),
             mock.patch(
-                "mcp_tools.controlplane_tools._build_supervision_event",
+                "mcp_tools._controlplane_impl_run._build_supervision_event",
                 return_value=mock.MagicMock(),
             ),
-            mock.patch("mcp_tools.controlplane_tools._setup_session", return_value=None),
-            mock.patch("mcp_tools.controlplane_tools._inject_behavior_priors"),
+            mock.patch("mcp_tools._controlplane_impl_run._setup_session", return_value=None),
+            mock.patch("mcp_tools._controlplane_impl_run._inject_behavior_priors"),
             mock.patch("lintgate.controlplane.runtime.run_mesh", return_value=fake_mesh),
             mock.patch("lintgate.controlplane.reporter.build_finding_index", return_value={}),
             mock.patch(
                 "lintgate.controlplane.reporter.format_mesh_report_compact",
                 return_value=dict(fake_compact),
             ),
-            mock.patch("mcp_tools.controlplane_tools._persist_session_after_mesh"),
-            mock.patch("mcp_tools.controlplane_tools._persist_runtime_state"),
-            mock.patch("mcp_tools.controlplane_tools._save_run_details_for_drilldown"),
+            mock.patch("mcp_tools._controlplane_impl_run._persist_session_after_mesh"),
+            mock.patch("mcp_tools._controlplane_impl_run._persist_runtime_state"),
+            mock.patch("mcp_tools._controlplane_impl_run._save_run_details_for_drilldown"),
         ):
             raw = _impl_controlplane_run(
                 "/tmp", "lint,bogus", "normal", None, None, _stub_helpers()

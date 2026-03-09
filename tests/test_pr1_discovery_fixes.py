@@ -48,10 +48,10 @@ class TestResolvePyFiles:
         assert not any(".hidden" in f for f in result)
 
     def test_file_budget_exceeded(self, tmp_path, monkeypatch):
-        from mcp_tools import specification_tools
+        from mcp_tools import _specification_helpers
         from mcp_tools.specification_tools import _resolve_py_files
 
-        monkeypatch.setattr(specification_tools, "_MAX_FILES_PER_RUN", 2)
+        monkeypatch.setattr(_specification_helpers, "_MAX_FILES_PER_RUN", 2)
 
         for i in range(5):
             (tmp_path / f"mod{i}.py").write_text(f"x = {i}\n")
@@ -63,10 +63,10 @@ class TestResolvePyFiles:
         assert "file_budget" in result
 
     def test_line_budget_exceeded(self, tmp_path, monkeypatch):
-        from mcp_tools import specification_tools
+        from mcp_tools import _specification_helpers
         from mcp_tools.specification_tools import _resolve_py_files
 
-        monkeypatch.setattr(specification_tools, "_MAX_TOTAL_LINES", 5)
+        monkeypatch.setattr(_specification_helpers, "_MAX_TOTAL_LINES", 5)
 
         (tmp_path / "big.py").write_text("\n".join(f"x{i} = {i}" for i in range(20)) + "\n")
 

@@ -349,3 +349,100 @@ class TestPlanIntegration:
         plan = _make_plan([])
         d = plan.to_dict()
         assert "post_extraction_opportunities" not in d
+
+
+# ── Exact-value assertions for VALUE mutation survivors ──────────────
+
+
+class TestProjectedOpportunityToDictExactValues:
+    """Exact dict assertions for ProjectedOpportunity.to_dict — kills VALUE mutants."""
+
+    def test_to_dict_exact_structure(self):
+        opp = ProjectedOpportunity(
+            function_id="extract_data",
+            opportunity="parallelizable",
+            confidence=0.765,
+            precondition="requires extraction from process",
+            evidence=["no_shared_mutable_state", "independent_pure_functions"],
+        )
+        d = opp.to_dict()
+        assert d == {
+            "function_id": "extract_data",
+            "opportunity": "parallelizable",
+            "confidence": 0.765,
+            "precondition": "requires extraction from process",
+            "evidence": ["no_shared_mutable_state", "independent_pure_functions"],
+        }
+
+    def test_to_dict_confidence_rounds_to_3_decimals(self):
+        opp = ProjectedOpportunity(
+            function_id="f", opportunity="cacheable",
+            confidence=0.9999, precondition="p",
+        )
+        assert opp.to_dict()["confidence"] == 1.0
+
+    def test_to_dict_confidence_rounds_down(self):
+        opp = ProjectedOpportunity(
+            function_id="f", opportunity="cacheable",
+            confidence=0.1234, precondition="p",
+        )
+        assert opp.to_dict()["confidence"] == 0.123
+
+    def test_to_dict_empty_evidence(self):
+        opp = ProjectedOpportunity(
+            function_id="f", opportunity="jit_candidate",
+            confidence=0.5, precondition="pre",
+        )
+        d = opp.to_dict()
+        assert d["evidence"] == []
+        assert d["function_id"] == "f"
+        assert d["opportunity"] == "jit_candidate"
+        assert d["precondition"] == "pre"
+
+    def test_to_dict_keys_exactly_five(self):
+        opp = ProjectedOpportunity(
+            function_id="a", opportunity="b",
+            confidence=0.1, precondition="c",
+            evidence=["d"],
+        )
+        d = opp.to_dict()
+        assert set(d.keys()) == {
+            "function_id", "opportunity", "confidence", "precondition", "evidence",
+        }
+
+
+class TestIsDirectlyTestableExactValues:
+    """Exact bool assertions for _is_directly_testable — kills VALUE mutants."""
+
+    def test_extract_handler_no_writes_returns_true(self):
+        step = _handler_step("h", "_impl", ["x"], captured_writes=[])
+        assert _is_directly_testable(step) is True
+
+    def test_extract_handler_with_writes_returns_false(self):
+        step = _handler_step("h", "_impl", ["x"], captured_writes=["y"])
+        assert _is_directly_testable(step) is False
+
+    def test_create_function_with_params_returns_true(self):
+        step = _create_function_step("_f", ["a", "b"])
+        assert _is_directly_testable(step) is True
+
+    def test_create_function_no_params_returns_false(self):
+        step = ExtractionStep(
+            order=1,
+            action="create_function",
+            target="_f",
+            detail={"proposed_name": "_f", "parameters": [], "outputs": [], "source_lines": []},
+        )
+        assert _is_directly_testable(step) is False
+
+    def test_unknown_action_returns_false(self):
+        step = ExtractionStep(order=1, action="update_imports", target="f")
+        assert _is_directly_testable(step) is False
+
+    def test_extract_handler_multiple_writes_returns_false(self):
+        step = _handler_step("h", "_impl", ["a", "b"], captured_writes=["x", "y"])
+        assert _is_directly_testable(step) is False
+
+    def test_create_function_single_param_returns_true(self):
+        step = _create_function_step("_f", ["only_param"])
+        assert _is_directly_testable(step) is True

@@ -38,6 +38,49 @@ def _analyze_test_strength_impl(
         project_root, effective_weights=effective_weights
     )
 
+    early = _check_early_exit(py_files, test_files, source_files, manifest, path)
+    if early is not None:
+        return early
+
+    assert manifest is not None  # guaranteed by _check_early_exit
+
+    # (#70) Check runtime budget — warn with confidence downgrade if analysis took too long
+    elapsed_ms = (time.perf_counter() - _start) * 1000
+    analysis_truncated = max_runtime_ms is not None and elapsed_ms > max_runtime_ms
+
+    result = build_summary(manifest, project_root)
+    _apply_truncation_state(result, analysis_truncated, max_runtime_ms, elapsed_ms, source_files, test_files)
+
+    result["calibration_stale"] = None
+
+    apply_filters(result, file_filter, function_filter)
+
+    result["assertion_upgrades"] = build_assertion_upgrades(manifest)
+    result["reconciliation_report"] = _build_reconciliation_report(project_root, manifest)
+
+    result["mutation_ci_context"] = {
+        "status": "archived",
+        "note": "Mutation CI integration has been archived.",
+    }
+    result["mutation_hotspots"] = []
+
+    result["next_actions"] = [
+        "inspect_test_assertions(path, test_file) — drill into specific test file",
+        "controlplane_test_skeleton(source_file) — generate test stubs",
+        "generate_property_tests(path) — Hypothesis templates for pure functions",
+    ]
+
+    return str(helpers["_json_dumps"](result, output_mode="compact"))
+
+
+def _check_early_exit(
+    py_files: list[str],
+    test_files: list[str],
+    source_files: list[str],
+    manifest: Any,
+    path: str,
+) -> str | None:
+    """Return a JSON error string for early-exit conditions, or None to continue."""
     if not py_files:
         return json.dumps(
             {
@@ -73,7 +116,6 @@ def _analyze_test_strength_impl(
         )
 
     if not manifest.functions:
-        # (#56) Distinguish: were there any mappings at all but no public functions?
         diag = manifest.diagnostics
         if diag.mapped > 0:
             return json.dumps(
@@ -84,21 +126,27 @@ def _analyze_test_strength_impl(
                     "diagnostics": diag.to_dict(),
                 }
             )
-        return handle_no_mapped_functions(manifest, source_files, test_files)
+        return str(handle_no_mapped_functions(manifest, source_files, test_files))
 
-    # (#70) Check runtime budget — warn with confidence downgrade if analysis took too long
-    elapsed_ms = (time.perf_counter() - _start) * 1000
-    analysis_truncated = max_runtime_ms is not None and elapsed_ms > max_runtime_ms
+    return None
 
-    result = build_summary(manifest, project_root)
 
+def _apply_truncation_state(
+    result: dict[str, Any],
+    analysis_truncated: bool,
+    max_runtime_ms: int | None,
+    elapsed_ms: float,
+    source_files: list[str],
+    test_files: list[str],
+) -> None:
+    """Apply truncation state or success state to the result dict."""
     if analysis_truncated:
         result["state"] = AnalysisState.ANALYSIS_TRUNCATED.value
         result["analysis_truncated"] = True
         result["scanned_source_files"] = len(source_files)
         result["scanned_test_files"] = len(test_files)
         result["elapsed_ms"] = round(elapsed_ms, 1)
-        result["confidence"] = "low"  # downgrade confidence on truncated analysis
+        result["confidence"] = "low"
         result["truncation_note"] = (
             f"Analysis exceeded {max_runtime_ms}ms budget. Results may be incomplete. "
             "Consider scoping with file_filter or increasing max_runtime_ms."
@@ -107,39 +155,21 @@ def _analyze_test_strength_impl(
         result["state"] = AnalysisState.SUCCESS.value
         result["analysis_truncated"] = False
 
-    result["calibration_stale"] = None
 
-    apply_filters(result, file_filter, function_filter)
-
-    result["assertion_upgrades"] = build_assertion_upgrades(manifest)
-
-    # (#88) Reconciliation Report
+def _build_reconciliation_report(project_root: str, manifest: Any) -> dict[str, Any]:
+    """Build the reconciliation report from coverage.json if available."""
     coverage_path = os.path.join(project_root, "coverage.json")
     if os.path.exists(coverage_path):
         try:
             with open(coverage_path) as f:
                 coverage_data = json.load(f)
-            result["reconciliation_report"] = reconcile_with_coverage(manifest, coverage_data)
+            report: dict[str, Any] = reconcile_with_coverage(manifest, coverage_data)
+            return report
         except (json.JSONDecodeError, OSError):
-            result["reconciliation_report"] = {"error": "Failed to parse coverage.json"}
-    else:
-        result["reconciliation_report"] = {
-            "note": "coverage.json not found. Run pytest --cov --cov-report=json to enable reconciliation."
-        }
-
-    result["mutation_ci_context"] = {
-        "status": "archived",
-        "note": "Mutation CI integration has been archived.",
+            return {"error": "Failed to parse coverage.json"}
+    return {
+        "note": "coverage.json not found. Run pytest --cov --cov-report=json to enable reconciliation."
     }
-    result["mutation_hotspots"] = []
-
-    result["next_actions"] = [
-        "inspect_test_assertions(path, test_file) — drill into specific test file",
-        "controlplane_test_skeleton(source_file) — generate test stubs",
-        "generate_property_tests(path) — Hypothesis templates for pure functions",
-    ]
-
-    return helpers["_json_dumps"](result, output_mode="compact")
 
 
 def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> str:
@@ -149,11 +179,12 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
     )
 
     project_root = helpers["_validate_project_root"](path)
-    target_files = _resolve_target_files(project_root, test_file)
+    resolved = _resolve_target_files(project_root, test_file)
 
-    if isinstance(target_files, dict) and "error" in target_files:
-        return json.dumps(target_files)
+    if isinstance(resolved, dict):
+        return json.dumps(resolved)
 
+    target_files: list[str] = resolved
     if not target_files:
         return json.dumps({"note": "No test files found to inspect."})
 
@@ -181,7 +212,7 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
 
     result["mutation_hotspots"] = []
 
-    return helpers["_json_dumps"](result)
+    return str(helpers["_json_dumps"](result))
 
 
 def _resolve_target_files(project_root: str, test_file: str) -> list[str] | dict[str, str]:
@@ -301,9 +332,9 @@ def _compute_quality_profile(result: dict[str, Any]) -> None:
     ]
 
     if func_list:
-        avg_score = sum(f.compute_scores() or f.effectiveness_score for f in func_list) / len(
-            func_list
-        )
+        for f in func_list:
+            f.compute_scores()
+        avg_score = sum(f.effectiveness_score for f in func_list) / len(func_list)
         result["summary"]["effectiveness_score"] = round(avg_score, 3)
 
         total_sem = result["summary"]["semantic_assertions"]

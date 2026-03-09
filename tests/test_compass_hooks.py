@@ -80,6 +80,8 @@ def test_user_prompt_no_theory_keyword() -> None:
 
 
 def test_user_prompt_reports_non_normal_mode_without_keyword(monkeypatch) -> None:
+    # Force legacy path by disabling the enhanced primer
+    monkeypatch.setattr("lintgate.hooks.user_prompt._build_primer", lambda _root: None)
     monkeypatch.setattr(
         "lintgate.controlplane.session_memory.get_or_create_session",
         lambda _root: SimpleNamespace(behavior_compass={"mode_state": {"current": "habit"}}),
