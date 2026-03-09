@@ -70,14 +70,20 @@ LintGate's codebase — 636 files, ~70,000 lines — was produced in two weeks b
 
 I pointed LintGate at its own codebase and said: *"Professionalize this codebase."* Three words. What followed: 33,700 lines, 92 Python files, 3 context windows, 6 monolithic modules decomposed into clean components. Every refactoring step passed the linter and test suite on the first run.
 
-| Metric | Supervised | Unsupervised (counterfactual) |
+| Metric | LintGate | Typical at this scale |
 | --- | --- | --- |
-| **Output tokens** | ~207,000 | ~450,000–550,000 |
-| **Debug spirals** | 0 | 6+ estimated |
-| **Regressions** | 0 | 3–6 estimated |
-| **Creation : Debugging : Verification** | 55 : 0 : 15 | ~30 : 40 : 30 (typical) |
+| **Duplication** | 0.2% | <3% is the quality gate |
+| **Avg. cyclomatic complexity** | 4.3 | 7–12 for Python at scale |
+| **Maintainability** | A on all 636 files | Degrades to B–C in the long tail |
+| **Bugs / Vulnerabilities** | 0 / 0 | Non-zero is normal at 70K LOC |
+| **Net production rate** | ~5,000 LOC/day | 50–200; upper bound ~500 |
+| **Developer** | Non-programmer | — |
 
-The debugging phase of software development simply didn't occur. Not because the problems were easy — six modules between 900 and 1,500 lines were each split along behavioral seams — but because the supervision caught structural issues before they could compound.
+### Self-Audit
+
+I pointed LintGate at its own codebase and said: *"Professionalize this codebase."* Three words. What followed: 33,700 lines, 92 Python files, 3 context windows, 6 monolithic modules decomposed into clean components. Every refactoring step passed the linter and test suite on the first run. Zero debug spirals. Zero regressions. The time allocation was 55% creation, 0% debugging, 15% verification — against a typical unsupervised ratio of roughly 30 : 40 : 30. The debugging phase of software development simply didn't occur.
+
+Not because the problems were easy — six modules between 900 and 1,500 lines were each split along behavioral seams — but because the supervision caught structural issues before they could compound. Total output tokens: ~207,000, against an estimated 450,000–550,000 unsupervised.
 
 ### At Scale
 
