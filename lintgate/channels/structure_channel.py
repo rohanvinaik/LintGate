@@ -22,9 +22,9 @@ from .structure_logic import (
     _MIN_FILES_FOR_SIZE_ANALYSIS,
     _NESTED_SUBPROJECT_MARKERS,  # re-export shim — canonical: structure_logic
     _STRUCTURAL_CONFIG_FILES,
+    StructureSnapshotInputs,
     _build_import_graph,
     _build_reexport_map,  # re-export shim — canonical: structure_logic
-    StructureSnapshotInputs,
     _build_structure_snapshot,
     _check_import_cycles,
     _check_module_size_distribution,
