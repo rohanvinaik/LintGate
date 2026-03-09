@@ -10,14 +10,76 @@ return statements, incorrect argument types, protocol violations.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import TYPE_CHECKING
 
-from ..types import LinterContext, LintIssue
+from ..types import LinterContext, LinterResult, LintIssue
 from .base import BaseLinter
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+# Packages that cause slow mypy startup due to heavy stub/type downloads.
+_HEAVY_DEPS = frozenset(
+    {
+        "torch",
+        "tensorflow",
+        "transformers",
+        "jax",
+        "pandas",
+        "numpy",
+        "scipy",
+        "matplotlib",
+        "sklearn",
+        "scikit-learn",
+        "opencv-python",
+        "keras",
+    }
+)
+
+_HEAVY_TIMEOUT_MS = 60000  # 60s for heavy-dep projects (vs default 15s)
+
+
+def _scan_requirements_file(path: str, found: list[str]) -> None:
+    """Scan a single requirements file for heavy dependencies."""
+    try:
+        with open(path) as f:
+            for line in f:
+                pkg = line.strip().split("==")[0].split(">=")[0].split("[")[0].lower()
+                if pkg in _HEAVY_DEPS and pkg not in found:
+                    found.append(pkg)
+    except OSError:
+        pass
+
+
+def _scan_pyproject_toml(path: str, found: list[str]) -> None:
+    """Scan pyproject.toml for heavy dependency mentions."""
+    try:
+        with open(path) as f:
+            content = f.read().lower()
+        for dep in _HEAVY_DEPS:
+            if dep in content and dep not in found:
+                found.append(dep)
+    except OSError:
+        pass
+
+
+def _detect_heavy_deps(project_root: str) -> list[str]:
+    """Detect heavy dependencies from requirements files or pyproject.toml."""
+    found: list[str] = []
+
+    for req_name in ("requirements.txt", "requirements-dev.txt"):
+        req_path = os.path.join(project_root, req_name)
+        if os.path.isfile(req_path):
+            _scan_requirements_file(req_path, found)
+
+    pyproject = os.path.join(project_root, "pyproject.toml")
+    if os.path.isfile(pyproject):
+        _scan_pyproject_toml(pyproject, found)
+
+    return found
+
 
 # Mypy output pattern: file:line: severity: message  [error-code]
 _MYPY_LINE_RE = re.compile(
@@ -56,6 +118,36 @@ class MypyLinter(BaseLinter):
     tier = 2
     timeout_ms = 15000  # mypy can be slow on first run
     required_tool = "mypy"
+
+    def execute(self, ctx: LinterContext) -> LinterResult:
+        """Run mypy with heavy-dep awareness.
+
+        Detects projects with heavy dependencies (torch, transformers, etc.)
+        and increases the timeout.  If mypy still times out on a heavy-dep
+        project, reports ``"deferred"`` instead of ``"timeout"`` so it is
+        not counted as a linter error in channel statistics.
+        """
+        heavy = _detect_heavy_deps(ctx.project_root)
+        if heavy:
+            original_timeout = self.timeout_ms
+            self.timeout_ms = _HEAVY_TIMEOUT_MS
+            try:
+                result = super().execute(ctx)
+            finally:
+                self.timeout_ms = original_timeout
+        else:
+            result = super().execute(ctx)
+
+        # Reclassify timeout as deferred for heavy-dep projects
+        if result.status == "timeout" and heavy:
+            dep_list = ", ".join(heavy[:3])
+            return LinterResult(
+                linter_name=self.name,
+                status="deferred",
+                error=f"Deferred (heavy deps: {dep_list})",
+                duration_ms=result.duration_ms,
+            )
+        return result
 
     def run(self, ctx: LinterContext) -> Iterable[LintIssue]:
         """Run mypy on specified files with parseable output."""

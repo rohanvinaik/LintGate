@@ -180,7 +180,7 @@ LintGate grew out of a broader research program on relational alignment — the 
 
 ---
 
-*99 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
+*100 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
 
 ---
 

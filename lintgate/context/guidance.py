@@ -15,6 +15,8 @@ _BACKTICK_RE = re.compile(r"`([^`]+)`")
 _RULE_PREFIX = "LINTGATE_RULE:"
 _FORBID_PREFIX = "LINTGATE_FORBID_REGEX:"
 _REQUIRE_PREFIX = "LINTGATE_REQUIRE_REGEX:"
+# Template placeholders like <regex> or <pattern> are documentation, not real rules
+_TEMPLATE_PLACEHOLDER_RE = re.compile(r"^<[^>]+>$")
 
 
 def build_context_guidance(
@@ -244,7 +246,7 @@ def _parse_rule_line(
 
     if cleaned.startswith(_FORBID_PREFIX):
         pattern = cleaned[len(_FORBID_PREFIX) :].strip()
-        if pattern:
+        if pattern and not _TEMPLATE_PLACEHOLDER_RE.match(pattern):
             return {
                 "kind": "forbid_regex",
                 "pattern": pattern,
@@ -255,7 +257,7 @@ def _parse_rule_line(
 
     if cleaned.startswith(_REQUIRE_PREFIX):
         pattern = cleaned[len(_REQUIRE_PREFIX) :].strip()
-        if pattern:
+        if pattern and not _TEMPLATE_PLACEHOLDER_RE.match(pattern):
             return {
                 "kind": "require_regex",
                 "pattern": pattern,
@@ -361,3 +363,26 @@ def _dedupe_text(values: list[str]) -> list[str]:
         seen.add(key)
         out.append(key)
     return out
+
+
+def count_placeholder_rules(project_root: str) -> int:
+    """Count context rules that use template placeholders like <regex>.
+
+    Returns the number of LINTGATE_REQUIRE_REGEX / LINTGATE_FORBID_REGEX
+    lines whose pattern is an angle-bracket placeholder (e.g. ``<regex>``).
+    """
+    context_files = discover_context_files(project_root)
+    count = 0
+    for path in context_files:
+        try:
+            text = Path(path).read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            cleaned = _clean_line(line.strip())
+            for prefix in (_FORBID_PREFIX, _REQUIRE_PREFIX):
+                if cleaned.startswith(prefix):
+                    pattern = cleaned[len(prefix) :].strip()
+                    if pattern and _TEMPLATE_PLACEHOLDER_RE.match(pattern):
+                        count += 1
+    return count
