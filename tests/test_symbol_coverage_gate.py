@@ -44,7 +44,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 cov_path, [src], str(tmp_path), {"enabled": True, "mode": "changed"}
@@ -74,7 +74,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 6)]
             result = run_symbol_coverage_gate(
                 cov_path, [src], str(tmp_path), {"enabled": True, "mode": "changed"}
@@ -103,7 +103,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 cov_path,
@@ -129,7 +129,7 @@ class TestRunSymbolCoverageGate:
 
     def test_missing_coverage_json_mcp(self, tmp_path):
         src = self._write_source(tmp_path, "def func():\n    pass\n")
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 str(tmp_path / "nonexistent.json"),
@@ -143,7 +143,7 @@ class TestRunSymbolCoverageGate:
 
     def test_missing_coverage_json_ci(self, tmp_path):
         src = self._write_source(tmp_path, "def func():\n    pass\n")
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 str(tmp_path / "nonexistent.json"),
@@ -188,7 +188,7 @@ class TestRunSymbolCoverageGate:
                 }
             },
         )
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             result = run_symbol_coverage_gate(
                 cov_path,
