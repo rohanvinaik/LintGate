@@ -1,20 +1,20 @@
-<svg width="210.4" height="20" viewBox="0 0 2104 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Algebraic Properties: 1079 detected">
-  <title>Algebraic Properties: 1079 detected</title>
+<svg width="214.1" height="20" viewBox="0 0 2141 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Algebraic Properties: 1254 instances">
+  <title>Algebraic Properties: 1254 instances</title>
   <linearGradient id="a" x2="0" y2="100%">
     <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
     <stop offset="1" stop-opacity=".1"/>
   </linearGradient>
-  <mask id="m"><rect width="2104" height="200" rx="30" fill="#FFF"/></mask>
+  <mask id="m"><rect width="2141" height="200" rx="30" fill="#FFF"/></mask>
   <g mask="url(#m)">
     <rect width="1206" height="200" fill="#555"/>
-    <rect width="898" height="200" fill="#08C" x="1206"/>
-    <rect width="2104" height="200" fill="url(#a)"/>
+    <rect width="935" height="200" fill="#08C" x="1206"/>
+    <rect width="2141" height="200" fill="url(#a)"/>
   </g>
   <g aria-hidden="true" fill="#fff" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
     <text x="60" y="148" textLength="1106" fill="#000" opacity="0.25">Algebraic Properties</text>
     <text x="50" y="138" textLength="1106">Algebraic Properties</text>
-    <text x="1261" y="148" textLength="798" fill="#000" opacity="0.25">1079 detected</text>
-    <text x="1251" y="138" textLength="798">1079 detected</text>
+    <text x="1261" y="148" textLength="835" fill="#000" opacity="0.25">1254 instances</text>
+    <text x="1251" y="138" textLength="835">1254 instances</text>
   </g>
   
 </svg>
