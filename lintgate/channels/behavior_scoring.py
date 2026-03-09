@@ -22,7 +22,6 @@ from lintgate.orchestration.authority import AuthorityEscalationEngine, Authorit
 
 # ── Re-exports from sub-modules ──────────────────────────────────────────
 # All public names remain importable from behavior_scoring for backward compat.
-
 from ._behavior_error_utils import (  # noqa: F401
     _ERROR_EVIDENCE_PREFIXES,
     _ERROR_STOPWORDS,

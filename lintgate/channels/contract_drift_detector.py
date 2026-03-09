@@ -19,6 +19,15 @@ from __future__ import annotations
 
 import os
 
+from ._contract_drift_detection import (  # noqa: F401 — re-exports
+    _find_call_sites,
+    _find_unpack_mismatches,
+    _get_call_name,
+    detect_param_changes,
+    detect_return_arity_change,
+    find_affected_test_sites,
+)
+
 # ── Sub-module imports ────────────────────────────────────────────────────
 # Imported here and re-exported for backward compatibility. All external
 # code that does ``from lintgate.channels.contract_drift_detector import X``
@@ -33,15 +42,6 @@ from ._contract_drift_types import (  # noqa: F401 — re-exports
     _filepath_to_module,
     _find_function_line,
 )
-from ._contract_drift_detection import (  # noqa: F401 — re-exports
-    _find_call_sites,
-    _find_unpack_mismatches,
-    _get_call_name,
-    detect_param_changes,
-    detect_return_arity_change,
-    find_affected_test_sites,
-)
-
 
 # ── Orchestration ─────────────────────────────────────────────────────
 

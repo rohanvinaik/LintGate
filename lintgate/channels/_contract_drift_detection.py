@@ -13,8 +13,8 @@ from ._contract_drift_types import (
     SignatureChange,
     _extract_function_params,
     _extract_function_return_arities,
-    _find_function_line,
     _filepath_to_module,
+    _find_function_line,
 )
 
 

@@ -15,11 +15,9 @@ from typing import Any
 
 from .change_classifiers._change_diff_analysis import (
     _analyze_diff,
+    _as_text,
     _extract_changed_files,
     _group_by_language,
-)
-from .change_classifiers._change_diff_analysis import (
-    _as_text,
 )
 from .change_classifiers.file_type_utils import (
     _is_build_command,
