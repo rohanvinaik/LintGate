@@ -177,6 +177,35 @@ def _serialize_pairs(pairs: list[tuple[str, str]], *, max_len: int = 300) -> str
     return result
 
 
+def compute_hook_fingerprint(mesh_result: MeshResult) -> str:
+    """Compute a compact fingerprint of hook-relevant state.
+
+    Used for state-transition suppression: when the fingerprint hasn't changed
+    between consecutive hook invocations and there are no blocking findings,
+    the full report can be suppressed to reduce context noise.
+
+    The fingerprint captures: coherence state, blocking count, warning count,
+    and the set of loud (failing/errored/timed-out) channels.
+    """
+    import hashlib
+
+    coherence_state = mesh_result.coherence.state
+    blocking = sum(
+        1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "blocking"
+    )
+    warning = sum(
+        1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "warning"
+    )
+    loud = sorted(
+        f"{cr.channel}:{cr.status}"
+        for cr in mesh_result.channel_results
+        if cr.status in ("fail", "error", "timeout")
+    )
+
+    parts = f"{coherence_state}|b={blocking}|w={warning}|{','.join(loud)}"
+    return hashlib.md5(parts.encode(), usedforsecurity=False).hexdigest()[:12]  # nosec B324 — not crypto, just fingerprinting
+
+
 def _build_telemetry_counters(
     *,
     mesh_result: MeshResult,

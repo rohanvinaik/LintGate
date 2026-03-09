@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 99 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 100 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -50,6 +50,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `controlplane_apply_repairs` | Execute proposed repair actions | After reviewing repairs |
 | `controlplane_report_repair` | Report repair outcome (applied/ignored/rejected) | After applying or skipping repair |
 | `controlplane_agent_feedback` | Record disagreements or accept/reject constraints | When findings seem wrong |
+| `controlplane_get_work_queue` | Get dependency-ordered work queue from a cached run | When resuming work without re-running |
 
 ### Behavior & Predictions
 

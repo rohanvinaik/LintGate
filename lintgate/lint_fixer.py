@@ -16,6 +16,58 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# ── Shim detection ────────────────────────────────────────────────────
+_SHIM_MARKER = "# lintgate: shim"
+
+
+def _is_shim_file(filepath: str) -> bool:
+    """Detect if a file is a re-export shim that should skip F401 removal.
+
+    A shim file is identified by:
+    1. Explicit marker: ``# lintgate: shim`` in the first 10 lines
+    2. Heuristic: >80% of code lines are ``from ... import`` re-exports
+    """
+    try:
+        with open(filepath, encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+    except OSError:
+        return False
+
+    # Check for explicit marker in first 10 lines
+    for line in lines[:10]:
+        if _SHIM_MARKER in line:
+            return True
+
+    # Heuristic: count from-import lines vs total code lines
+    code_lines: list[str] = []
+    in_docstring = False
+    for line in lines:
+        stripped = line.strip()
+        # Rough docstring tracking (handles most cases)
+        if '"""' in stripped or "'''" in stripped:
+            count = stripped.count('"""') + stripped.count("'''")
+            if count % 2 == 1:
+                in_docstring = not in_docstring
+            continue
+        if in_docstring or not stripped or stripped.startswith("#"):
+            continue
+        code_lines.append(stripped)
+
+    if len(code_lines) < 2:
+        return False
+
+    reexport_count = sum(1 for line in code_lines if line.startswith("from ") and "import" in line)
+    return reexport_count / len(code_lines) > 0.8
+
+
+def _build_shim_ignores(files: list[str]) -> list[str]:
+    """Build ruff --extend-per-file-ignores args for detected shim files."""
+    args: list[str] = []
+    for f in files:
+        if _is_shim_file(f):
+            args.extend(["--extend-per-file-ignores", f"{f}:F401"])
+    return args
+
 
 @dataclass
 class FixResult:
@@ -160,6 +212,7 @@ def _preview_fixes(
     cmd = [ruff, "check", "--diff"]
     if not safe_only:
         cmd.append("--unsafe-fixes")
+    cmd.extend(_build_shim_ignores(files))
     cmd.extend(files)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=30, env=env)
@@ -206,6 +259,7 @@ def _apply_ruff_fix(
     cmd = [ruff, "check", "--fix"]
     if not safe_only:
         cmd.append("--unsafe-fixes")
+    cmd.extend(_build_shim_ignores(files))
     cmd.extend(files)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=30, env=env)

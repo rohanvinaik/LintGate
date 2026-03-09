@@ -93,17 +93,36 @@ def _get_loop_targets(loop_node: ast.AST) -> set[str]:
     return targets
 
 
+def _extract_assign_target_name(target: ast.expr) -> str | None:
+    """Extract the variable name from an assignment target, if simple."""
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
+        return target.value.id
+    return None
+
+
 def _get_assignments_in_statement(stmt: ast.stmt) -> set[str]:
-    """Extract variable names assigned within a single statement."""
-    statement_assignments: set[str] = set()
+    """Extract variable names assigned or mutated within a single statement.
+
+    Tracks:
+    - Regular assignments: ``x = ...``
+    - Annotated assignments: ``x: int = ...``
+    - Augmented assignments: ``x += 1``
+    - Subscript assignments: ``x[i] = v`` (marks ``x`` as mutated)
+    """
+    names: set[str] = set()
     for child in ast.walk(stmt):
         if isinstance(child, ast.Assign):
             for t in child.targets:
-                if isinstance(t, ast.Name):
-                    statement_assignments.add(t.id)
-        elif isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
-            statement_assignments.add(child.target.id)
-    return statement_assignments
+                name = _extract_assign_target_name(t)
+                if name:
+                    names.add(name)
+        elif isinstance(child, (ast.AnnAssign, ast.AugAssign)):
+            name = _extract_assign_target_name(child.target)
+            if name:
+                names.add(name)
+    return names
 
 
 def _collect_loop_assignments(body: list[ast.stmt]) -> set[str]:
@@ -112,6 +131,45 @@ def _collect_loop_assignments(body: list[ast.stmt]) -> set[str]:
     for stmt in body:
         assigned.update(_get_assignments_in_statement(stmt))
     return assigned
+
+
+# Methods that mutate the receiver object in-place.
+_MUTATING_METHODS = frozenset(
+    {
+        "append",
+        "extend",
+        "insert",
+        "remove",
+        "pop",
+        "clear",
+        "sort",
+        "reverse",  # list
+        "add",
+        "discard",
+        "update",  # set
+        "setdefault",  # dict
+    }
+)
+
+
+def _collect_loop_mutations(body: list[ast.stmt]) -> set[str]:
+    """Collect names mutated via method calls in a loop body.
+
+    Tracks patterns like ``x.append(v)``, ``data.update(d)`` where the
+    receiver is a simple ``ast.Name``.  These mutations make the receiver
+    loop-variant even though it is never reassigned.
+    """
+    mutated: set[str] = set()
+    for stmt in body:
+        for node in ast.walk(stmt):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in _MUTATING_METHODS
+                and isinstance(node.func.value, ast.Name)
+            ):
+                mutated.add(node.func.value.id)
+    return mutated
 
 
 def _check_positional_args_invariant(args: list[ast.expr], loop_targets: set[str]) -> bool:
@@ -211,8 +269,11 @@ def check_pure_uncached_in_loop(tree: ast.AST, file_path: str) -> Iterable[LintI
         local_pure_names = _analyze_file_purity(tree)
 
     for loop_node, body in find_loop_bodies(tree):
-        loop_targets_list = _get_loop_targets(loop_node) | _collect_loop_assignments(body)
-        loop_targets = set(loop_targets_list)  # Convert to set for O(1) average lookup
+        loop_targets = (
+            _get_loop_targets(loop_node)
+            | _collect_loop_assignments(body)
+            | _collect_loop_mutations(body)
+        )
         yield from _analyze_loop_body_for_uncached_calls(
             body, loop_targets, file_path, local_pure_names
         )

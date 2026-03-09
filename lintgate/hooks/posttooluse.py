@@ -361,6 +361,20 @@ def _run_controlplane(
 
     mesh_result = run_mesh(event, cp_config, channels, session=session)
 
+    # State-fingerprint suppression (#P0.1): compute early so it persists
+    # with the session save.  Compared after save to decide whether to
+    # suppress the full report (emit silent when state unchanged and no
+    # blocking findings).
+    _hook_fingerprint: str | None = None
+    _prev_hook_fingerprint: str | None = None
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.reporter.hook import compute_hook_fingerprint
+
+        _hook_fingerprint = compute_hook_fingerprint(mesh_result)
+        if session and isinstance(getattr(session, "behavior_compass", None), dict):
+            _prev_hook_fingerprint = session.behavior_compass.get("_hook_fingerprint")
+            session.behavior_compass["_hook_fingerprint"] = _hook_fingerprint
+
     finding_index: dict = {}
     with contextlib.suppress(Exception):
         from lintgate.controlplane.reporter import build_finding_index
@@ -459,6 +473,24 @@ def _run_controlplane(
     )
 
     save_run_details(mesh_result, finding_index, compliance_outcome=compliance_outcome)
+
+    # State-fingerprint suppression (#P0.1): if the hook-relevant state
+    # hasn't changed since the last emission and there are no blocking
+    # findings, suppress the full report to reduce context noise.
+    # Session processing (telemetry, behavior, constraints) has already
+    # completed above — only the report output is suppressed.
+    _has_blocking = any(
+        f.severity == "blocking" for cr in mesh_result.channel_results for f in cr.findings
+    )
+    if (
+        _hook_fingerprint is not None
+        and _prev_hook_fingerprint is not None
+        and _hook_fingerprint == _prev_hook_fingerprint
+        and not _has_blocking
+    ):
+        with contextlib.suppress(Exception):
+            refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
+        _exit_clean()
 
     report = format_mesh_report(
         mesh_result,

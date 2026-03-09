@@ -67,12 +67,38 @@ def _build_package_candidate_finding(
     group_files: list[str],
     import_edges: int,
     project_root: str,
+    mock_targets: dict[str, list[dict]] | None = None,
 ) -> LintIssue:
     """Build a STRUCT005 LintIssue for a package candidate."""
     rel_files = [os.path.relpath(f, project_root) for f in group_files]
     names = [os.path.splitext(os.path.basename(f))[0] for f in group_files]
     name_list = ", ".join(names[:4])
     suffix = f" (+{len(names) - 4} more)" if len(names) > 4 else ""
+
+    evidence: dict = {
+        "code": "STRUCT005",
+        "prefix": prefix,
+        "files": rel_files,
+        "import_edges": import_edges,
+    }
+
+    # Attach affected mock.patch targets and rewrite hints
+    if mock_targets:
+        affected = _filter_mock_targets_for_modules(mock_targets, names, project_root)
+        if affected:
+            evidence["mock_targets_affected"] = affected[:20]  # Cap for output size
+
+    suggestions = [
+        f"Create {prefix}/ directory with __init__.py",
+        f"Move {prefix}_*.py files into the package",
+        "Update import paths in dependent modules",
+    ]
+    if mock_targets and evidence.get("mock_targets_affected"):
+        suggestions.append(
+            f"Update {len(evidence['mock_targets_affected'])} mock.patch target(s) "
+            "in test files (string-based patch paths bypass shims)"
+        )
+
     return LintIssue(
         linter="structure_channel",
         kind="STRUCT005",
@@ -84,17 +110,8 @@ def _build_package_candidate_finding(
         file=group_files[0],
         severity="informational",
         confidence=0.6,
-        evidence={
-            "code": "STRUCT005",
-            "prefix": prefix,
-            "files": rel_files,
-            "import_edges": import_edges,
-        },
-        suggestions=[
-            f"Create {prefix}/ directory with __init__.py",
-            f"Move {prefix}_*.py files into the package",
-            "Update import paths in dependent modules",
-        ],
+        evidence=evidence,
+        suggestions=suggestions,
     )
 
 
@@ -114,10 +131,15 @@ def check_package_candidates(
     3. Groups with ≥min_files files sharing prefix → candidate
     4. Verify ≥1 intra-group import edge exists
     5. Verify no __init__.py / subdirectory already exists for that prefix
+    6. Extract mock.patch targets from test files for rewrite hints
 
     Emits STRUCT005 (informational, confidence 0.6).
     """
     findings: list[LintIssue] = []
+
+    # Pre-extract mock.patch targets from test files (once for all groups)
+    test_files = [f for f in py_files if _is_test_file(f)]
+    mock_targets = extract_mock_patch_targets(test_files) if test_files else {}
 
     # Group files by directory
     dir_files: dict[str, list[str]] = defaultdict(list)
@@ -144,10 +166,88 @@ def check_package_candidates(
                 continue
 
             findings.append(
-                _build_package_candidate_finding(prefix, group_files, import_edges, project_root)
+                _build_package_candidate_finding(
+                    prefix,
+                    group_files,
+                    import_edges,
+                    project_root,
+                    mock_targets=mock_targets or None,
+                )
             )
 
     return findings
+
+
+# ── Mock.patch Target Extraction ──────────────────────────────────────
+
+
+def _is_test_file(filepath: str) -> bool:
+    """Check if a file is a test file based on naming convention."""
+    basename = os.path.basename(filepath)
+    return basename.startswith("test_") or basename.endswith("_test.py")
+
+
+# AST patterns for mock.patch calls/decorators:
+#   @mock.patch("target")
+#   @unittest.mock.patch("target")
+#   @patch("target")
+#   with mock.patch("target"):
+_PATCH_CALL_NAMES = frozenset({"patch", "mock.patch", "unittest.mock.patch"})
+
+
+def extract_mock_patch_targets(test_files: list[str]) -> dict[str, list[dict]]:
+    """Extract mock.patch string targets from test files.
+
+    Returns:
+        Mapping of patch target string → list of ``{file, line}`` locations.
+    """
+    targets: dict[str, list[dict]] = defaultdict(list)
+
+    for filepath in test_files:
+        try:
+            with open(filepath, encoding="utf-8", errors="ignore") as f:
+                source = f.read()
+            tree = ast.parse(source, filename=filepath)
+        except (OSError, SyntaxError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            call_name = _get_call_name_simple(node)
+            if call_name not in _PATCH_CALL_NAMES:
+                continue
+            # First positional arg is the target string
+            if (
+                node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                target = node.args[0].value
+                targets[target].append({"file": filepath, "line": node.lineno})
+
+    return dict(targets)
+
+
+def _filter_mock_targets_for_modules(
+    mock_targets: dict[str, list[dict]],
+    module_names: list[str],
+    project_root: str,
+) -> list[str]:
+    """Filter mock.patch targets to those referencing the given module names.
+
+    Returns a list of strings like ``"tests/test_foo.py:42 patches 'pkg.mod.func'"``.
+    """
+    affected: list[str] = []
+    for target_str, locations in mock_targets.items():
+        # Check if any module name appears in the dotted target path
+        target_parts = target_str.split(".")
+        if not any(mod in target_parts for mod in module_names):
+            continue
+        for loc in locations:
+            rel_file = os.path.relpath(loc["file"], project_root)
+            affected.append(f"{rel_file}:{loc['line']} patches '{target_str}'")
+    return affected
 
 
 # ── STRUCT006: Cross-File Pattern Detection ──────────────────────────────

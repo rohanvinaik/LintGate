@@ -35,7 +35,7 @@ def _build_capsule_from_runtime(project_root: str) -> dict[str, Any] | None:
         runtime.compaction_count += 1
         save_runtime_state(project_root, runtime)
 
-        return {
+        capsule: dict[str, Any] = {
             "compass_capsule": {
                 "true_north": runtime.true_north[:120],
                 "toward": runtime.toward[:6],
@@ -60,6 +60,55 @@ def _build_capsule_from_runtime(project_root: str) -> dict[str, Any] | None:
                 "tool_calls": runtime.tool_calls_total,
             },
         }
+
+        # Auto-checkpoint: capture refactor progress before compaction
+        refactor_progress = _capture_refactor_checkpoint(project_root)
+        if refactor_progress:
+            capsule["refactor_progress"] = refactor_progress
+
+        return capsule
+    except Exception:
+        return None
+
+
+def _capture_refactor_checkpoint(project_root: str) -> dict[str, Any] | None:
+    """Auto-save refactor checkpoint before compaction.
+
+    When a refactor session is active, captures a compact progress summary
+    so the post-compaction context can resume where the agent left off.
+    Returns None if no active refactor session exists.
+    """
+    try:
+        from lintgate.refactor_state import load_state
+
+        state = load_state(project_root)
+        if state is None or not state.session_id:
+            return None
+
+        files = state.files
+        completed = sum(1 for f in files.values() if f.status == "completed")
+        pending = sum(1 for f in files.values() if f.status == "pending")
+        in_progress = sum(1 for f in files.values() if f.status == "in_progress")
+
+        # Find the current in-progress file
+        current_files = [name for name, f in files.items() if f.status == "in_progress"]
+
+        progress: dict[str, Any] = {
+            "session_id": state.session_id,
+            "thesis": state.thesis[:120] if state.thesis else "",
+            "completed": completed,
+            "pending": pending,
+            "in_progress": in_progress,
+            "total": len(files),
+        }
+        if current_files:
+            progress["current_files"] = current_files[:3]
+        # Identify next suggested file (first pending)
+        next_pending = [name for name, f in files.items() if f.status == "pending"]
+        if next_pending:
+            progress["next_suggested"] = next_pending[0]
+
+        return progress
     except Exception:
         return None
 

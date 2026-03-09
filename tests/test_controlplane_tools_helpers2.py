@@ -335,7 +335,10 @@ class TestCollectPendingRepairs:
     def test_empty_when_no_snapshots(self):
         session = mock.MagicMock()
         session.snapshots = []
-        assert _collect_pending_repairs(session, None, False) == []
+        pending, skipped = _collect_pending_repairs(session, None, False)
+        assert pending == []
+        assert len(skipped) == 1
+        assert skipped[0]["reason"] == "no_snapshots"
 
     def test_filters_by_action_ids(self):
         session = self._make_session(["a1", "a2"])
@@ -347,9 +350,10 @@ class TestCollectPendingRepairs:
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
-            result = _collect_pending_repairs(session, ["a1"], False)
-        assert len(result) == 1
-        assert result[0]["action_id"] == "a1"
+            pending, skipped = _collect_pending_repairs(session, ["a1"], False)
+        assert len(pending) == 1
+        assert pending[0]["action_id"] == "a1"
+        assert any(s["reason"] == "not_in_action_ids" for s in skipped)
 
     def test_filters_safe_only(self):
         session = self._make_session(["a1", "a2"])
@@ -361,9 +365,10 @@ class TestCollectPendingRepairs:
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
-            result = _collect_pending_repairs(session, None, True)
-        assert len(result) == 1
-        assert result[0]["action_id"] == "a1"
+            pending, skipped = _collect_pending_repairs(session, None, True)
+        assert len(pending) == 1
+        assert pending[0]["action_id"] == "a1"
+        assert any(s["reason"] == "safe_only_filter" for s in skipped)
 
     def test_skips_non_pending(self):
         session = self._make_session(["a1"], repair_outcomes={"a1": "applied"})
@@ -372,8 +377,9 @@ class TestCollectPendingRepairs:
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
-            result = _collect_pending_repairs(session, None, False)
-        assert result == []
+            pending, skipped = _collect_pending_repairs(session, None, False)
+        assert pending == []
+        assert any(s["reason"] == "already_executed" for s in skipped)
 
     def test_skips_repair_not_in_proposed_ids(self):
         """Branch line 612: repair_id not in proposed_ids → continue."""
@@ -386,9 +392,9 @@ class TestCollectPendingRepairs:
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
         ):
-            result = _collect_pending_repairs(session, None, False)
-        assert len(result) == 1
-        assert result[0]["action_id"] == "a1"
+            pending, skipped = _collect_pending_repairs(session, None, False)
+        assert len(pending) == 1
+        assert pending[0]["action_id"] == "a1"
 
 
 # ── _load_all_repairs ────────────────────────────────────────────────
@@ -501,13 +507,16 @@ class TestImplApplyRepairs:
             mock.patch("lintgate.controlplane.session_memory.save_session"),
             mock.patch(
                 "mcp_tools._controlplane_impl_feedback._collect_pending_repairs",
-                return_value=[
-                    {
-                        "action_id": "r1",
-                        "kind": "command",
-                        "payload": {"command": "echo hi"},
-                    },
-                ],
+                return_value=(
+                    [
+                        {
+                            "action_id": "r1",
+                            "kind": "command",
+                            "payload": {"command": "echo hi"},
+                        },
+                    ],
+                    [],
+                ),
             ),
             mock.patch(
                 "mcp_tools._controlplane_impl_feedback._execute_single_repair",
@@ -537,9 +546,10 @@ class TestRegister:
             "controlplane_report_repair",
             "controlplane_agent_feedback",
             "controlplane_apply_repairs",
+            "controlplane_get_work_queue",
         }
         assert set(result.keys()) == expected_names
-        assert mcp.tool.call_count == 7
+        assert mcp.tool.call_count == 8
 
     def test_test_skeleton_validates_file(self):
         mcp = mock.MagicMock()

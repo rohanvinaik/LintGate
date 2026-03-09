@@ -119,7 +119,7 @@ def aggregate_results(
         "tuned_count": tuned_count,
         "fixable_count": sum(1 for i in unique if i.fixable),
         "linters_run": sum(1 for s in linter_statuses.values() if s == "ok"),
-        "linters_skipped": sum(1 for s in linter_statuses.values() if s == "skipped"),
+        "linters_skipped": sum(1 for s in linter_statuses.values() if s in ("skipped", "deferred")),
         "linters_errored": sum(1 for s in linter_statuses.values() if s in ("error", "timeout")),
     }
 
