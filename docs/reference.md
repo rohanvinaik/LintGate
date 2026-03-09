@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 99 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 100 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -40,6 +40,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `controlplane_report_repair`  | Report repair outcome                                                    |
 | `controlplane_agent_feedback` | Accept/reject findings and constraint proposals                          |
 | `controlplane_test_skeleton`  | Generate pytest skeleton from AST analysis                               |
+| `controlplane_get_work_queue` | Get dependency-ordered work queue from a cached run                      |
 
 ### Performance Analysis
 

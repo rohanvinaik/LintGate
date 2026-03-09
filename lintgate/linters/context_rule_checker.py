@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-from ..context_guidance import collect_context_rules, rule_applies_to_path
+from ..context_guidance import collect_context_rules, count_placeholder_rules, rule_applies_to_path
 from ..types import LinterContext, LintIssue
 from .base import BaseLinter
 
@@ -26,6 +26,28 @@ class ContextRuleChecker(BaseLinter):
     required_tool = None
 
     def run(self, ctx: LinterContext) -> Iterator[LintIssue]:
+        # Emit a single config-level warning for placeholder rules
+        # instead of per-file false positives (#P0.2)
+        placeholder_count = count_placeholder_rules(ctx.project_root)
+        if placeholder_count > 0:
+            yield LintIssue(
+                linter="context_rule_checker",
+                kind="context-unconfigured",
+                message=(
+                    f"{placeholder_count} context rule(s) use template placeholders "
+                    f"(<regex>, <pattern>) — configure real patterns or remove the lines"
+                ),
+                file=ctx.project_root,
+                line=None,
+                severity="informational",
+                confidence=1.0,
+                evidence={"placeholder_count": placeholder_count},
+                suggestions=[
+                    "Replace <regex> placeholders in CLAUDE.md with actual regex patterns, "
+                    "or remove the LINTGATE_REQUIRE_REGEX/FORBID_REGEX lines."
+                ],
+            )
+
         rules = collect_context_rules(ctx.project_root)
         if not rules:
             return

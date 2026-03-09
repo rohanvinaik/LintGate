@@ -127,6 +127,10 @@ def run_mesh(
     # Phase 2c: Cross-channel coherence pass (#209)
     _run_cross_channel_coherence(channel_results)
 
+    # Phase 2d: Convergence escalation — promote informational findings
+    # when ≥3 channels converge on the same structural seam.
+    _apply_convergence_escalation(channel_results)
+
     # Phase 3: Run coherence engine
     coherence = _compute_final_coherence(channel_results, config, event, session)
 
@@ -347,6 +351,64 @@ def _attach_file_convergence_metrics(channel_results: list[ChannelResult]) -> No
         if cr.channel == "structure":
             cr.metrics["file_convergence"] = file_convergence_to_metrics(file_conv)
             break
+
+
+def _apply_convergence_escalation(
+    channel_results: list[ChannelResult],
+    *,
+    min_channels: int = 3,
+) -> None:
+    """Escalate finding severity when multiple channels converge on the same file.
+
+    When ≥ ``min_channels`` distinct channels produce findings for the same
+    file, informational findings in that file are promoted to warning with
+    convergence metadata attached.  This makes cross-channel structural
+    signals harder to ignore without changing the coherence state classification
+    rules.
+
+    Mutates findings in-place.  Never escalates beyond warning (blocking
+    escalation requires explicit policy opt-in, deferred for now).
+    """
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        _escalate_convergent_findings(channel_results, min_channels)
+
+
+def _escalate_convergent_findings(
+    channel_results: list[ChannelResult],
+    min_channels: int,
+) -> None:
+    """Inner implementation — separated so the suppress wrapper stays thin."""
+    from collections import defaultdict
+
+    # Build file → set of channels with findings
+    file_channels: dict[str, set[str]] = defaultdict(set)
+    for cr in channel_results:
+        if cr.status == "skip":
+            continue
+        for finding in cr.findings:
+            if finding.file:
+                file_channels[finding.file].add(cr.channel)
+
+    # Files where ≥ min_channels converge
+    convergent_files = {f for f, chs in file_channels.items() if len(chs) >= min_channels}
+    if not convergent_files:
+        return
+
+    # Escalate informational → warning for findings on convergent files
+    for cr in channel_results:
+        for finding in cr.findings:
+            if finding.file in convergent_files and finding.severity == "informational":
+                converging = file_channels[finding.file]
+                finding.severity = "warning"
+                evidence = dict(finding.evidence) if finding.evidence else {}
+                evidence["convergence"] = {
+                    "channels": sorted(converging),
+                    "channel_count": len(converging),
+                    "escalated_from": "informational",
+                }
+                finding.evidence = evidence
 
 
 def _compute_final_coherence(

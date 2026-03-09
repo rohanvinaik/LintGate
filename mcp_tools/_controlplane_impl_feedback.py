@@ -210,27 +210,74 @@ def _impl_controlplane_agent_feedback(
 
 
 def _collect_pending_repairs(session, action_ids, safe_only):
-    """Collect pending repairs from the latest session snapshot."""
+    """Collect pending repairs from the latest session snapshot.
+
+    Returns (pending_repairs, skipped_diagnostics) where skipped_diagnostics
+    is a list of per-repair status dicts explaining why each repair was not
+    included in the pending set.
+    """
     if not session.snapshots:
-        return []
+        return [], [
+            {
+                "reason": "no_snapshots",
+                "detail": "No ControlPlane snapshots in session. Run controlplane_run first.",
+            }
+        ]
 
     latest = session.snapshots[-1]
     all_repairs = _load_all_repairs(latest)
     proposed_ids = set(latest.repairs_proposed)
 
+    if not all_repairs:
+        return [], [
+            {
+                "reason": "no_repairs_in_run",
+                "detail": f"Run {latest.run_id} contains no repair actions.",
+            }
+        ]
+
+    if not proposed_ids:
+        return [], [
+            {
+                "reason": "no_proposed_repairs",
+                "detail": f"Run {latest.run_id} has no proposed repairs.",
+            }
+        ]
+
     pending: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     for repair in all_repairs:
         repair_id = repair.get("action_id", "")
         if repair_id not in proposed_ids:
             continue
-        if session.repair_outcomes.get(repair_id, "pending") != "pending":
+        outcome = session.repair_outcomes.get(repair_id, "pending")
+        if outcome != "pending":
+            skipped.append(
+                {
+                    "action_id": repair_id,
+                    "status": "skipped",
+                    "reason": "already_executed",
+                    "detail": f"Previous outcome: {outcome}",
+                }
+            )
             continue
         if action_ids and repair_id not in action_ids:
+            skipped.append(
+                {"action_id": repair_id, "status": "skipped", "reason": "not_in_action_ids"}
+            )
             continue
         if safe_only and not repair.get("safe", True):
+            skipped.append(
+                {
+                    "action_id": repair_id,
+                    "status": "skipped",
+                    "reason": "safe_only_filter",
+                    "detail": f"Repair kind '{repair.get('kind')}' excluded by safe_only=True",
+                }
+            )
             continue
         pending.append(repair)
-    return pending
+    return pending, skipped
 
 
 def _load_all_repairs(snapshot):
@@ -356,17 +403,18 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
     project_root = helpers["_validate_project_root"](path)
     session = get_or_create_session(project_root)
 
-    pending_repairs = _collect_pending_repairs(session, action_ids, safe_only)
+    pending_repairs, skip_diagnostics = _collect_pending_repairs(session, action_ids, safe_only)
 
     results = [_execute_single_repair(repair, project_root, session) for repair in pending_repairs]
 
     save_session(session)
 
-    return json.dumps(
-        {
-            "repairs_executed": len(results),
-            "results": results,
-            "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
-        },
-        indent=2,
-    )
+    response: dict[str, Any] = {
+        "repairs_executed": len(results),
+        "results": results,
+        "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
+    }
+    if skip_diagnostics:
+        response["skipped"] = skip_diagnostics
+
+    return json.dumps(response, indent=2)

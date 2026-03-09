@@ -327,6 +327,63 @@ def register(mcp, helpers):
         """
         return _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers)
 
+    @mcp.tool()
+    def controlplane_get_work_queue(
+        run_id: str,
+        max_items: int = 25,
+    ) -> str:
+        """Get the dependency-ordered work queue from a cached ControlPlane run.
+
+        WHEN TO USE: When you need the prioritized fix order without re-running
+        the full health check. Returns the same work queue format as
+        controlplane_run but from a cached result.
+
+        Args:
+            run_id: The run_id from a previous controlplane_run response.
+            max_items: Maximum work queue items to return (default 25).
+        """
+        from lintgate.state import load_controlplane_run
+
+        run_data = load_controlplane_run(run_id)
+        if run_data is None:
+            return json.dumps({"error": f"Run {run_id} not found"})
+
+        # Reconstruct finding index from persisted data
+        finding_index = run_data.get("finding_index", {})
+        if not finding_index:
+            return json.dumps(
+                {
+                    "run_id": run_id,
+                    "work_queue": {"items": [], "total_files": 0},
+                    "note": "No findings in this run.",
+                }
+            )
+
+        # Extract import graph from structure channel if available
+        import_graph: dict = {}
+        file_map: dict = {}
+        for ch_data in run_data.get("channels", {}).values():
+            metrics = ch_data.get("metrics", {})
+            if "_import_graph" in metrics:
+                import_graph = metrics["_import_graph"]
+                file_map = metrics.get("_file_map", {})
+                break
+
+        try:
+            from lintgate.controlplane.work_queue import build_work_queue
+
+            finding_list = list(finding_index.values())
+            wq = build_work_queue(finding_list, import_graph, file_map)
+            wq_dict = wq.to_dict()
+            total_items = len(wq_dict.get("items", []))
+            if total_items > max_items:
+                wq_dict["items"] = wq_dict["items"][:max_items]
+                wq_dict["truncated"] = True
+                wq_dict["total_items"] = total_items
+            return json.dumps({"run_id": run_id, "work_queue": wq_dict}, indent=2)
+        except Exception as e:
+            return json.dumps({"run_id": run_id, "error": f"Failed to build work queue: {e}"})
+
     return {
         "controlplane_run": controlplane_run,
         "controlplane_get_details": controlplane_get_details,
@@ -335,4 +392,5 @@ def register(mcp, helpers):
         "controlplane_report_repair": controlplane_report_repair,
         "controlplane_agent_feedback": controlplane_agent_feedback,
         "controlplane_apply_repairs": controlplane_apply_repairs,
+        "controlplane_get_work_queue": controlplane_get_work_queue,
     }

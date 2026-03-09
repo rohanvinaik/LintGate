@@ -525,6 +525,23 @@ _CYCLE_REASON_TEMPLATES: dict[str, str] = {
 }
 
 
+def _compute_finding_recurrence(session) -> dict[str, int]:
+    """Build fingerprint → run-count map from session snapshot history.
+
+    Counts how many previous snapshots contained each finding fingerprint,
+    enabling the compact reporter to surface recurrence data like
+    "seen in 5 of 8 runs".
+    """
+    recurrence: dict[str, int] = {}
+    for snapshot in session.snapshots:
+        idx = getattr(snapshot, "finding_index", None)
+        if not isinstance(idx, dict):
+            continue
+        for fp in idx:
+            recurrence[fp] = recurrence.get(fp, 0) + 1
+    return recurrence
+
+
 def _detect_edit_cycles(session, current_finding_index: dict) -> list[str] | None:
     """Detect edit cycles (#147) and return alert strings, or None."""
     if session is None:
@@ -775,8 +792,11 @@ def _build_run_result(ctx: _RunContext) -> str:
     _persist_session_after_mesh(session, mesh_result, finding_index, ctx.cp_config)
 
     previous_finding_index = None
+    finding_recurrence: dict[str, int] | None = None
     if session is not None and session.snapshots:
         previous_finding_index = session.snapshots[-1].finding_index
+        # Build recurrence map: fingerprint → number of snapshots it appeared in
+        finding_recurrence = _compute_finding_recurrence(session)
 
     compact = format_mesh_report_compact(
         mesh_result,
@@ -785,6 +805,7 @@ def _build_run_result(ctx: _RunContext) -> str:
         ship_gate_parity=_check_ship_gate_parity(ctx.project_root, ctx.strictness),
         cycle_alerts=_detect_edit_cycles(session, finding_index),
         proven_resolutions=_extract_proven_resolutions(mesh_result),
+        finding_recurrence=finding_recurrence,
     )
 
     _persist_runtime_state(mesh_result, ctx.project_root, session)

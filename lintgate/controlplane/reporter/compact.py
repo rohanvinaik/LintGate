@@ -23,6 +23,7 @@ def format_mesh_report_compact(
     ship_gate_parity: dict[str, Any] | None = None,
     cycle_alerts: list[str] | None = None,
     proven_resolutions: list[dict[str, Any]] | None = None,
+    finding_recurrence: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Format MeshResult as compact JSON for MCP tool responses.
 
@@ -53,6 +54,17 @@ def format_mesh_report_compact(
     }
 
     _attach_delta_or_blocking(compact, current_index, previous_finding_index, config)
+
+    # 3.4: Concise delta summary at top level for quick scanning
+    if "delta" in compact:
+        delta = compact["delta"]
+        compact["delta_summary"] = {
+            "new": sum(f.get("count", 1) for f in delta.get("new", [])),
+            "resolved": delta.get("resolved_count", 0),
+            "remaining": delta.get("still_active_count", 0),
+            "escalated": len(delta.get("escalated", [])),
+        }
+
     compact["channels"] = _build_channel_summary(mesh_result)
 
     # Git-aware scope signaling (#179): surface working tree context
@@ -98,9 +110,29 @@ def format_mesh_report_compact(
     if symbol_blockers:
         compact["remediation_loop"] = _build_remediation_loop(symbol_blockers)
 
-    compact["finding_index"] = current_index
+    # Cap finding_index: omit informational findings in compact output (#P0.3)
+    compact_index = {
+        fp: info
+        for fp, info in current_index.items()
+        if info.get("severity") in ("blocking", "warning")
+    }
+
+    # 3.5: Annotate findings with recurrence data from session history
+    if finding_recurrence:
+        total_runs = max(finding_recurrence.values()) if finding_recurrence else 1
+        for fp, info in compact_index.items():
+            runs_seen = finding_recurrence.get(fp, 0)
+            if runs_seen >= 2:
+                info["recurrence"] = f"{runs_seen} times across {total_runs} runs"
+
+    compact["finding_index"] = compact_index
+    omitted_count = len(current_index) - len(compact_index)
+    if omitted_count > 0:
+        compact["details_available"] = True
+        compact["informational_omitted"] = omitted_count
 
     # Work queue: dependency-ordered finding execution (#192)
+    _WORK_QUEUE_CAP = 25
     try:
         from lintgate.controlplane.work_queue import build_work_queue
 
@@ -109,7 +141,13 @@ def format_mesh_report_compact(
         if finding_list:
             wq = build_work_queue(finding_list, import_graph, file_map)
             if wq.items:
-                compact["work_queue"] = wq.to_dict()
+                wq_dict = wq.to_dict()
+                total_items = len(wq_dict.get("items", []))
+                if total_items > _WORK_QUEUE_CAP:
+                    wq_dict["items"] = wq_dict["items"][:_WORK_QUEUE_CAP]
+                    wq_dict["truncated"] = True
+                    wq_dict["total_items"] = total_items
+                compact["work_queue"] = wq_dict
     except Exception:
         pass  # Non-fatal: work queue is advisory
 
