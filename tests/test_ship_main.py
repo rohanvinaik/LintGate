@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -226,13 +226,13 @@ def test_main_auth_failure(ship_main, monkeypatch):
     )
     monkeypatch.setattr(ship_main, "_require_tool", lambda *_: None)
 
-    old_argv = os.sys.argv
-    os.sys.argv = ["ship_main.py"]
+    old_argv = sys.argv
+    sys.argv = ["ship_main.py"]
     try:
         with pytest.raises(RuntimeError, match="gh auth is not configured"):
             ship_main.main()
     finally:
-        os.sys.argv = old_argv
+        sys.argv = old_argv
 
 
 def test_main_push_and_prune_flow(ship_main, monkeypatch):
@@ -269,12 +269,12 @@ def test_main_push_and_prune_flow(ship_main, monkeypatch):
         lambda *_: seen.__setitem__("pruned", True),
     )
 
-    old_argv = os.sys.argv
-    os.sys.argv = ["ship_main.py", "--prune-merged"]
+    old_argv = sys.argv
+    sys.argv = ["ship_main.py", "--prune-merged"]
     try:
         assert ship_main.main() == 0
     finally:
-        os.sys.argv = old_argv
+        sys.argv = old_argv
 
     assert seen["pruned"] is True
 
@@ -316,12 +316,12 @@ def test_main_preflight_flow(ship_main, monkeypatch):
     monkeypatch.setattr(ship_main, "_run_preflight", fake_run_preflight)
     monkeypatch.setattr(ship_main, "_push_branch", fake_push_branch)
 
-    old_argv = os.sys.argv
-    os.sys.argv = ["ship_main.py", "--preflight"]
+    old_argv = sys.argv
+    sys.argv = ["ship_main.py", "--preflight"]
     try:
         assert ship_main.main() == 0
     finally:
-        os.sys.argv = old_argv
+        sys.argv = old_argv
 
     assert seen["preflight_called"] is True
     assert seen["push_called"] is False
@@ -394,13 +394,13 @@ def test_run_preflight_json_uses_fallback_gate_id(ship_main, monkeypatch, tmp_pa
 
 
 def test_main_preflight_json_requires_preflight(ship_main, monkeypatch):
-    old_argv = os.sys.argv
-    os.sys.argv = ["ship_main.py", "--json"]
+    old_argv = sys.argv
+    sys.argv = ["ship_main.py", "--json"]
     try:
         with pytest.raises(RuntimeError, match="--json can only be used with --preflight"):
             ship_main.main()
     finally:
-        os.sys.argv = old_argv
+        sys.argv = old_argv
 
 
 def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
@@ -692,12 +692,12 @@ def test_main_auto_sync_flag(ship_main, monkeypatch):
     monkeypatch.setattr(ship_main, "_push_branch", lambda *_: None)
     monkeypatch.setattr(ship_main, "_resolve_pr", lambda *_: (7, "https://example/pr/7"))
 
-    old_argv = os.sys.argv
-    os.sys.argv = ["ship_main.py", "--auto-sync"]
+    old_argv = sys.argv
+    sys.argv = ["ship_main.py", "--auto-sync"]
     try:
         assert ship_main.main() == 0
     finally:
-        os.sys.argv = old_argv
+        sys.argv = old_argv
 
     assert seen["sync"] is True
 
@@ -733,13 +733,13 @@ def test_main_mergeability_failure_raises(ship_main, monkeypatch):
         lambda *_: seen.__setitem__("gate_ran", True),
     )
 
-    old_argv = os.sys.argv
-    os.sys.argv = ["ship_main.py"]
+    old_argv = sys.argv
+    sys.argv = ["ship_main.py"]
     try:
         with pytest.raises(RuntimeError, match="cannot merge cleanly"):
             ship_main.main()
     finally:
-        os.sys.argv = old_argv
+        sys.argv = old_argv
 
     # Gates should NOT have run since mergeability check failed first
     assert seen["gate_ran"] is False

@@ -449,19 +449,22 @@ class TestGetCallNameSimple:
 
     def test_simple_name(self) -> None:
         import ast
+        from typing import cast
 
-        node = ast.parse("foo()").body[0].value
+        node = cast("ast.Expr", ast.parse("foo()").body[0]).value
         assert _get_call_name_simple(node) == "foo"
 
     def test_attribute_name(self) -> None:
         import ast
+        from typing import cast
 
-        node = ast.parse("os.path.expanduser('~')").body[0].value
+        node = cast("ast.Expr", ast.parse("os.path.expanduser('~')").body[0]).value
         # os.path is not a simple Name, so returns just the attr
         assert _get_call_name_simple(node) == "expanduser"
 
     def test_dotted_name(self) -> None:
         import ast
+        from typing import cast
 
-        node = ast.parse("subprocess.run(cmd)").body[0].value
+        node = cast("ast.Expr", ast.parse("subprocess.run(cmd)").body[0]).value
         assert _get_call_name_simple(node) == "subprocess.run"

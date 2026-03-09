@@ -276,10 +276,11 @@ class TestExtractMonkeypatchTarget:
 
     def test_string_target_pattern(self):
         import ast
+        from typing import cast
 
         code = 'monkeypatch.setattr("mypackage.core.my_func", lambda: 1)'
         tree = ast.parse(code)
-        call = tree.body[0].value  # The Call node
+        call = cast("ast.Expr", tree.body[0]).value  # The Call node
         result = _extract_monkeypatch_target(call, {"mypackage"})
         assert result is not None
         assert result["module"] == "mypackage.core"
@@ -288,18 +289,20 @@ class TestExtractMonkeypatchTarget:
 
     def test_non_project_module_ignored(self):
         import ast
+        from typing import cast
 
         code = 'monkeypatch.setattr("os.path.exists", lambda: True)'
         tree = ast.parse(code)
-        call = tree.body[0].value
+        call = cast("ast.Expr", tree.body[0]).value
         result = _extract_monkeypatch_target(call, {"mypackage"})
         assert result is None
 
     def test_non_setattr_ignored(self):
         import ast
+        from typing import cast
 
         code = 'monkeypatch.delattr("mypackage.core.func")'
         tree = ast.parse(code)
-        call = tree.body[0].value
+        call = cast("ast.Expr", tree.body[0]).value
         result = _extract_monkeypatch_target(call, {"mypackage"})
         assert result is None

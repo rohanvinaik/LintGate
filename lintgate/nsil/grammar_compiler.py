@@ -1,6 +1,7 @@
 """Policy grammar compiler for NSIL."""
 
 import re
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
@@ -24,7 +25,7 @@ class PolicyGrammar:
 
 
 # Known constraint families with their compile functions
-_CONSTRAINT_COMPILERS: dict[str, callable] = {}
+_CONSTRAINT_COMPILERS: dict[str, Callable[..., dict[str, str] | None]] = {}
 
 
 def _compile_dangerous_command_constraint(constraint: str) -> dict[str, str] | None:

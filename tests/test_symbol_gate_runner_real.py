@@ -19,6 +19,8 @@ from lintgate.symbol_gate_runner import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 
 # ── collect_changed_python_files: _normalize filtering ───────────────
 
@@ -142,7 +144,9 @@ class TestCollectWorkingTreePath:
 
 
 class TestRunSymbolGateSkippedReasons:
-    def test_no_symbols_prints_skipped_reasons(self, tmp_path: Path, capsys: object) -> None:
+    def test_no_symbols_prints_skipped_reasons(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """File with no functions → skipped_reasons printed (lines 193-195)."""
         src = tmp_path / "constants.py"
         src.write_text("X = 42\nY = 'hello'\n")
@@ -170,7 +174,9 @@ class TestRunSymbolGateSkippedReasons:
 
 
 class TestRunSymbolGateUncovered:
-    def test_uncovered_symbols_printed(self, tmp_path: Path, capsys: object) -> None:
+    def test_uncovered_symbols_printed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """File with function but no coverage → uncovered printed (lines 198-201)."""
         src = tmp_path / "mod.py"
         src.write_text("def greet():\n    return 'hi'\n")
@@ -203,7 +209,9 @@ class TestRunSymbolGateUncovered:
         assert "uncovered symbols:" in captured.out
         assert "greet" in captured.out
 
-    def test_overflow_printed_when_over_25(self, tmp_path: Path, capsys: object) -> None:
+    def test_overflow_printed_when_over_25(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """More than 25 uncovered symbols → overflow message (lines 202-203)."""
         funcs = "\n".join(f"def func_{i}():\n    return {i}\n" for i in range(30))
         src = tmp_path / "many.py"
@@ -240,7 +248,9 @@ class TestRunSymbolGateUncovered:
 
 
 class TestRunSymbolGateUnresolved:
-    def test_unresolved_required_printed(self, tmp_path: Path, capsys: object) -> None:
+    def test_unresolved_required_printed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Unresolvable required_symbols → unresolved printed (line 206)."""
         src = tmp_path / "mod.py"
         src.write_text("def greet():\n    return 'hi'\n")
