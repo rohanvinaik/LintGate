@@ -11,7 +11,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .types import ChannelResult, MeshResult
+    from ..types import ChannelResult, MeshResult
 
 
 # ── Section formatters ───────────────────────────────────────────────────

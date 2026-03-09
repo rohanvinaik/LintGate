@@ -147,7 +147,15 @@ def _populate_findings_section(output: dict, details: dict, channel, severity, m
 
 
 _DEFAULT_SECTIONS = frozenset(
-    ["findings", "channel_details", "evidence", "repairs", "coherence", "next_actions", "proven_resolutions"]
+    [
+        "findings",
+        "channel_details",
+        "evidence",
+        "repairs",
+        "coherence",
+        "next_actions",
+        "proven_resolutions",
+    ]
 )
 
 

@@ -20,7 +20,9 @@ class AuthorityLevel(str, Enum):
     WARNING = "warning"  # Must fix, high confidence or critical
     INTERVENTION = "intervention"  # Immediate stop, extremely critical
 
-    def __lt__(self, other: AuthorityLevel) -> bool:
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, AuthorityLevel):
+            return NotImplemented  # type: ignore[return-value]
         hierarchy = [self.ADVISORY, self.NUDGE, self.WARNING, self.INTERVENTION]
         return hierarchy.index(self) < hierarchy.index(other)
 

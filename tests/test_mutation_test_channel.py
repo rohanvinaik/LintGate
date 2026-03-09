@@ -293,10 +293,12 @@ def test_build_channel_result_with_coverage() -> None:
 
 
 def test_build_channel_result_with_gate_result() -> None:
-    gate = _MockGateResult([
-        _MockSymbolResult(name="foo", covered=True),
-        _MockSymbolResult(name="bar", covered=False),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="foo", covered=True),
+            _MockSymbolResult(name="bar", covered=False),
+        ]
+    )
     gate.waivers_applied = ["some_waiver"]
     ctx = TestChannelContext(
         channel_name="tests",
@@ -427,9 +429,11 @@ def test_suggestions_truncates_branches_at_5() -> None:
 
 def test_emit_findings_uncovered_full_run_blocking() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="calc", missing_lines=[5, 6]),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="calc", missing_lines=[5, 6]),
+        ]
+    )
     ctx = SymbolGateContext(
         surface="hook",
         findings=findings,
@@ -456,9 +460,11 @@ def test_emit_findings_uncovered_full_run_blocking() -> None:
 
 def test_emit_findings_partial_run_coverage_ok_downgrades() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="parse", missing_lines=[1]),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="parse", missing_lines=[1]),
+        ]
+    )
     ctx = SymbolGateContext(
         surface="hook",
         findings=findings,
@@ -477,9 +483,11 @@ def test_emit_findings_partial_run_coverage_ok_downgrades() -> None:
 
 def test_emit_findings_partial_run_coverage_not_ok_keeps_blocking() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="transform", missing_lines=[1]),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="transform", missing_lines=[1]),
+        ]
+    )
     ctx = SymbolGateContext(
         surface="hook",
         findings=findings,
@@ -495,9 +503,11 @@ def test_emit_findings_partial_run_coverage_not_ok_keeps_blocking() -> None:
 
 def test_emit_findings_covered_symbols_skipped() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="covered_fn", covered=True),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="covered_fn", covered=True),
+        ]
+    )
     ctx = SymbolGateContext(surface="hook", findings=findings)
     _emit_symbol_findings(gate, ctx)
     assert findings == []
@@ -505,9 +515,11 @@ def test_emit_findings_covered_symbols_skipped() -> None:
 
 def test_emit_findings_branch_only_message() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="branch_fn", missing_branches=[(10, 20), (30, 40)]),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="branch_fn", missing_branches=[(10, 20), (30, 40)]),
+        ]
+    )
     ctx = SymbolGateContext(surface="hook", findings=findings)
     _emit_symbol_findings(gate, ctx)
     assert len(findings) == 1
@@ -517,13 +529,15 @@ def test_emit_findings_branch_only_message() -> None:
 
 def test_emit_findings_lines_and_branches_message() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(
-            name="mixed_fn",
-            missing_lines=[1, 2, 3],
-            missing_branches=[(4, 5)],
-        ),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(
+                name="mixed_fn",
+                missing_lines=[1, 2, 3],
+                missing_branches=[(4, 5)],
+            ),
+        ]
+    )
     ctx = SymbolGateContext(surface="hook", findings=findings)
     _emit_symbol_findings(gate, ctx)
     assert "(missing lines: 1, 2, 3, and 1 branches)" in findings[0].message
@@ -569,11 +583,13 @@ def test_emit_findings_waiver_expired() -> None:
 
 def test_emit_findings_multiple_uncovered_produces_multiple_issues() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="fn_a", missing_lines=[1]),
-        _MockSymbolResult(name="fn_b", missing_lines=[2]),
-        _MockSymbolResult(name="fn_c", covered=True),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="fn_a", missing_lines=[1]),
+            _MockSymbolResult(name="fn_b", missing_lines=[2]),
+            _MockSymbolResult(name="fn_c", covered=True),
+        ]
+    )
     ctx = SymbolGateContext(surface="hook", findings=findings)
     _emit_symbol_findings(gate, ctx)
     assert len(findings) == 2
@@ -583,9 +599,11 @@ def test_emit_findings_multiple_uncovered_produces_multiple_issues() -> None:
 
 def test_emit_findings_evidence_targets_mode() -> None:
     findings: list[LintIssue] = []
-    gate = _MockGateResult([
-        _MockSymbolResult(name="fn", missing_lines=[1]),
-    ])
+    gate = _MockGateResult(
+        [
+            _MockSymbolResult(name="fn", missing_lines=[1]),
+        ]
+    )
     ctx = SymbolGateContext(
         surface="hook",
         findings=findings,

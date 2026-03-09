@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lintgate.controlplane.reporter_compact import (
+from lintgate.controlplane.reporter.compact import (
     _build_channel_summary,
     _build_cp_next_actions,
     _collect_symbol_coverage_blockers,
@@ -37,7 +37,7 @@ def _make_event() -> SupervisionEvent:
 
 def _make_mesh(
     channel_results: list[ChannelResult] | None = None,
-    coherence_state: str = "stable",
+    coherence_state: str = "stable",  # type: ignore[assignment]  # test helper accepts any str
 ) -> MeshResult:
     return MeshResult(
         channel_results=channel_results or [],

@@ -134,10 +134,7 @@ def _build_symbol_uncovered_message(sr: Any) -> str:
     parts = [f"Symbol {sr.symbol.name} is not fully covered"]
     if sr.missing_lines and sr.missing_branches:
         lines_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
-        parts.append(
-            f" (missing lines: {lines_str},"
-            f" and {len(sr.missing_branches)} branches)"
-        )
+        parts.append(f" (missing lines: {lines_str}, and {len(sr.missing_branches)} branches)")
     elif sr.missing_lines:
         lines_str = ", ".join(str(ln) for ln in sr.missing_lines[:10])
         parts.append(f" (missing lines: {lines_str})")

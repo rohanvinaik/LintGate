@@ -13,6 +13,7 @@ from .host_adapter import CURSOR_CAPABILITIES, HostCapabilities
 
 if TYPE_CHECKING:
     from ..compass import CompassState
+    from ..runtime_state import RuntimeState
 
 _SESSION_PATH = ".cursor/rules/lg_session.mdc"
 _FOCUS_PATH = ".cursor/rules/lg_focus.mdc"
@@ -65,12 +66,12 @@ class CursorRenderer:
 
     # ── Dynamic rule files ───────────────────────────────────────────
 
-    def render_session(self, runtime: object) -> dict[str, str]:
+    def render_session(self, runtime: RuntimeState) -> dict[str, str]:
         """Render dynamic session state to .cursor/rules/lg_session.mdc."""
         content = _FRONTMATTER + render_session_content(runtime)
         return {_SESSION_PATH: content}
 
-    def render_focus(self, runtime: object) -> dict[str, str]:
+    def render_focus(self, runtime: RuntimeState) -> dict[str, str]:
         """Render dynamic focus state to .cursor/rules/lg_focus.mdc."""
         content = _FRONTMATTER + render_focus_content(runtime)
         return {_FOCUS_PATH: content}

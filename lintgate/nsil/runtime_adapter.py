@@ -264,11 +264,19 @@ def detect_local_runtimes(timeout_ms: int = 1000) -> list[RuntimeProbeResult]:
     results: list[RuntimeProbeResult] = []
 
     for runtime in KNOWN_RUNTIMES:
+        name = runtime["name"]
+        port = runtime["default_port"]
+        health_endpoint = runtime["health_endpoint"]
+        capabilities = runtime["capabilities"]
+        assert isinstance(name, str)
+        assert isinstance(port, int)
+        assert isinstance(health_endpoint, str)
+        assert isinstance(capabilities, RuntimeCapabilities)
         result = _probe_runtime(
-            name=runtime["name"],
-            port=runtime["default_port"],
-            health_endpoint=runtime["health_endpoint"],
-            capabilities=runtime["capabilities"],
+            name=name,
+            port=port,
+            health_endpoint=health_endpoint,
+            capabilities=capabilities,
             timeout_ms=timeout_ms,
         )
         results.append(result)

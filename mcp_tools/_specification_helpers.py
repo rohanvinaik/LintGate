@@ -283,7 +283,9 @@ def impl_spec_prescribe(
             msg += f" matching '{function}'"
         return {"note": msg}
 
-    all_prescriptions = _collect_prescriptions(matching, max_prescriptions, regression_mode, prescribe)
+    all_prescriptions = _collect_prescriptions(
+        matching, max_prescriptions, regression_mode, prescribe
+    )
 
     next_actions = [
         NextAction(

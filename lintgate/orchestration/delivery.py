@@ -376,7 +376,7 @@ class McpOnlyChannel(BaseChannel):
 
 
 # Default mapping for quick resolution
-CHANNEL_MAP = {
+CHANNEL_MAP: dict[str, DeliveryChannel] = {
     "hook_text": ClaudeCodeChannel(),
     "rule_file": CursorChannel(),
     "mcp_status": McpOnlyChannel(),

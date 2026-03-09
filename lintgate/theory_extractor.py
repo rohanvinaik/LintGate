@@ -44,11 +44,11 @@ from typing import Any
 
 from .context_guidance import build_context_guidance
 
-# ─── Re-exports from sub-modules ─────────────────────────────────────────
+# ─── Re-exports from theory subpackage ───────────────────────────────────
 # All symbols that were previously defined here are re-exported so that
 # existing `from lintgate.theory_extractor import X` statements continue
 # to work without changes.
-from .theory_discovery import (  # noqa: F401
+from .theory.discovery import (  # noqa: F401
     _EXTRA_MD_SKIP_DIRS,
     _MAX_MD_FILES,
     _discover_md_files,
@@ -57,7 +57,7 @@ from .theory_discovery import (  # noqa: F401
     _Section,
     extract_docstring_claims,
 )
-from .theory_scoring import (  # noqa: F401
+from .theory.scoring import (  # noqa: F401
     _CONTRASTIVE_MARKERS,
     _THEORY_HEADING_SIGNALS,
     _THEORY_PARAGRAPH_SIGNALS,

@@ -31,7 +31,7 @@ def _parse_expr(code: str) -> ast.expr:
     return ast.parse(code, mode="eval").body
 
 
-def _parse_func(code: str) -> ast.FunctionDef:
+def _parse_func(code: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     """Parse a function definition and return the FunctionDef node."""
     tree = ast.parse(textwrap.dedent(code))
     for node in ast.walk(tree):
@@ -470,7 +470,10 @@ class TestGenerateShapeContractExact:
         assert result is not None
         lines = result.split("\n")
         assert lines[0] == "def test_double_all_preserves_length() -> None:"
-        assert lines[1] == '    """Contract: double_all output length matches input length (map pattern)."""'
+        assert (
+            lines[1]
+            == '    """Contract: double_all output length matches input length (map pattern)."""'
+        )
         assert "items" in result  # references the input_param
 
     def test_no_map_pattern(self) -> None:

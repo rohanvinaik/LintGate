@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from unittest import mock
 
-from lintgate.controlplane.model_profiles import (
+from lintgate.controlplane.model.profiles import (
     DEFAULT_MIN_CONFIDENCE,
     ModelProfile,
     ModelProfileStore,
@@ -136,7 +136,7 @@ class TestModelProfileStore:
 class TestPersistence:
     def test_load_empty(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             store = load_profiles()
@@ -144,7 +144,7 @@ class TestPersistence:
 
     def test_save_and_load(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             p = ModelProfile(model_key="anthropic:claude-opus-4", confidence=0.7)
@@ -155,21 +155,21 @@ class TestPersistence:
 
     def test_get_profile_returns_none_for_missing(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             assert get_profile("claude-opus-4") is None
 
     def test_get_profile_returns_none_for_unresolvable(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             assert get_profile("some-unknown") is None
 
     def test_reset_profile(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             upsert_profile(ModelProfile(model_key="anthropic:claude-opus-4", confidence=0.8))
@@ -179,7 +179,7 @@ class TestPersistence:
 
     def test_reset_nonexistent_returns_false(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             assert reset_profile("claude-opus-4") is False
@@ -187,7 +187,7 @@ class TestPersistence:
     def test_exact_match_model_isolation(self, tmp_path):
         """Different model keys get different profiles."""
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             upsert_profile(
@@ -217,7 +217,7 @@ class TestPersistence:
 
     def test_corrupt_file_returns_empty(self, tmp_path):
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=tmp_path,
         ):
             (tmp_path / "model_profiles.json").write_text("not valid json{{{")
@@ -313,7 +313,7 @@ class TestPersistenceExtended:
     def test_save_profiles_creates_parent_dirs(self, tmp_path) -> None:
         nested = tmp_path / "a" / "b" / "c"
         with mock.patch(
-            "lintgate.controlplane.model_profiles._lintgate_home",
+            "lintgate.controlplane.model.profiles._lintgate_home",
             return_value=nested,
         ):
             store = ModelProfileStore()

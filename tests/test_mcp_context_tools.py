@@ -569,7 +569,7 @@ class TestGetTheoryContext:
 
     def test_facet_and_keywords_pass_through(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
-        mock_ctx = {"claims": []}
+        mock_ctx: dict[str, list[str]] = {"claims": []}
         with patch(
             "lintgate.theory_extractor.get_theory_context",
             return_value=mock_ctx,

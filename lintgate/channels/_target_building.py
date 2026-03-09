@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from typing import TYPE_CHECKING, Any
 
 from lintgate.channels._symbol_extraction import (
     _canonicalize_symbol_key,
     extract_symbol_spans,
 )
+from lintgate.subprocess_utils import run_cmd
 
 if TYPE_CHECKING:
     from lintgate.channels._symbol_types import SymbolSpan
@@ -33,19 +33,12 @@ def get_changed_line_ranges(
     except ValueError:
         return None
 
-    try:
-        result = subprocess.run(
-            ["git", "diff", diff_base, "--unified=0", "--", rel_path],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=project_root,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-
-    if result.returncode != 0:
-        # Check if it's an untracked file (no diff available)
+    result = run_cmd(
+        ["git", "diff", diff_base, "--unified=0", "--", rel_path],
+        cwd=project_root,
+        timeout=10,
+    )
+    if result is None:
         return None
 
     ranges: list[range] = []

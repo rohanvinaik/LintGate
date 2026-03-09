@@ -11,8 +11,8 @@ from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
 
-from .reporter_delta import build_finding_index, compute_finding_delta
-from .types import ChannelResult, CoherenceResult, ControlPlaneConfig, MeshResult
+from ..types import ChannelResult, CoherenceResult, ControlPlaneConfig, MeshResult
+from .delta import build_finding_index, compute_finding_delta
 
 
 def format_mesh_report_compact(

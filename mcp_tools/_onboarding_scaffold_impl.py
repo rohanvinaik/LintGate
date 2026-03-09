@@ -47,6 +47,7 @@ controlplane:
 # Lazy accessor — avoids circular import at load time.
 # ---------------------------------------------------------------------------
 
+
 def _ot():  # noqa: ANN202
     """Return the onboarding_tools module."""
     import mcp_tools.onboarding_tools as _mod
@@ -56,14 +57,8 @@ def _ot():  # noqa: ANN202
 
 def _collect_python_files(project_root: str) -> list[str]:
     """Return sorted, filtered list of Python source files under *project_root*."""
-    py_files = sorted(
-        glob_mod.glob(os.path.join(project_root, "**", "*.py"), recursive=True)
-    )
-    return [
-        f
-        for f in py_files
-        if not any(seg in f for seg in _SCAFFOLD_EXCLUDED_SEGMENTS)
-    ]
+    py_files = sorted(glob_mod.glob(os.path.join(project_root, "**", "*.py"), recursive=True))
+    return [f for f in py_files if not any(seg in f for seg in _SCAFFOLD_EXCLUDED_SEGMENTS)]
 
 
 def _find_critical_paths(py_files: list[str], project_root: str) -> list[str]:

@@ -284,9 +284,7 @@ def test_seed_theory_constraints_empty_anti_patterns():
 
 def test_seed_theory_constraints_extraction_error():
     output: dict[str, Any] = {}
-    with patch(
-        "lintgate.theory_extractor.extract_theory", side_effect=RuntimeError("fail")
-    ):
+    with patch("lintgate.theory_extractor.extract_theory", side_effect=RuntimeError("fail")):
         _seed_theory_constraints("/test/project", output)
     assert "theory_constraints" not in output
 
@@ -324,10 +322,12 @@ def test_seed_theory_constraints_truncates_long_claims():
 def test_behavior_precheck_deprecation_message():
     from mcp_tools._behavior_impl import impl_behavior_precheck
 
-    constraint_output = json.dumps({
-        "recommendation": "Good constraint coverage.",
-        "coverage": {"constraints_verified": 0, "agent_reported": 0},
-    })
+    constraint_output = json.dumps(
+        {
+            "recommendation": "Good constraint coverage.",
+            "coverage": {"constraints_verified": 0, "agent_reported": 0},
+        }
+    )
     hygiene_output = json.dumps({"status": "pass"})
 
     tools = {
@@ -336,9 +336,7 @@ def test_behavior_precheck_deprecation_message():
     }
     helpers = _make_helpers()
 
-    result_raw = impl_behavior_precheck(
-        helpers, tools, path="/test", planned_action="pytest"
-    )
+    result_raw = impl_behavior_precheck(helpers, tools, path="/test", planned_action="pytest")
     result = json.loads(result_raw)
     assert "deprecation" in result
     assert "behavior_precheck is deprecated" in result["deprecation"]["message"]
@@ -348,12 +346,14 @@ def test_behavior_precheck_with_hygiene_warnings():
     from mcp_tools._behavior_impl import impl_behavior_precheck
 
     constraint_output = json.dumps({"recommendation": "ok", "coverage": {}})
-    hygiene_output = json.dumps({
-        "status": "warnings",
-        "command_class": "pip_install",
-        "warnings": [{"check": "venv", "message": "no venv"}],
-        "recommendation": "create venv",
-    })
+    hygiene_output = json.dumps(
+        {
+            "status": "warnings",
+            "command_class": "pip_install",
+            "warnings": [{"check": "venv", "message": "no venv"}],
+            "recommendation": "create venv",
+        }
+    )
 
     tools = {
         "constraint_check": MagicMock(return_value=constraint_output),
@@ -452,10 +452,12 @@ def test_behavior_precheck_prediction_registered():
 
     constraint_output = json.dumps({"recommendation": "ok", "coverage": {}})
     hygiene_output = json.dumps({"status": "pass"})
-    pred_output = json.dumps({
-        "status": "registered",
-        "prediction_tracking": {"pending_count": 1},
-    })
+    pred_output = json.dumps(
+        {
+            "status": "registered",
+            "prediction_tracking": {"pending_count": 1},
+        }
+    )
 
     tools = {
         "constraint_check": MagicMock(return_value=constraint_output),
@@ -475,3 +477,14 @@ def test_behavior_precheck_prediction_registered():
     )
     result = json.loads(result_raw)
     assert result["prediction_tracking"]["prediction_registered"] is True
+    assert result["prediction_tracking"]["pending_count"] == 1
+    # prediction_register was called with the exact prediction parameters
+    tools["prediction_register"].assert_called_once_with(
+        path="/test",
+        planned_action="pytest",
+        prediction="exit 0",
+        prediction_type="exit_code",
+        prediction_value=0,
+    )
+    # No prediction_error key when prediction is valid
+    assert "prediction_error" not in result

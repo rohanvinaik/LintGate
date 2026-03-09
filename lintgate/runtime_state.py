@@ -51,7 +51,7 @@ _LOCK_JITTER_MAX_S = 0.006
 try:
     import fcntl as _fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback
-    _fcntl = None
+    _fcntl = None  # type: ignore[assignment]
 
 
 # ── Data Model ───────────────────────────────────────────────────────

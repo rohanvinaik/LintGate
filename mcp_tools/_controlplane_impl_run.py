@@ -196,7 +196,9 @@ def _resolve_explicit_files(project_root: str, files: list[str]) -> list[str]:
 
 
 def _resolve_git_changed_files(
-    project_root: str, scope: str | None, py_files: list[str],
+    project_root: str,
+    scope: str | None,
+    py_files: list[str],
 ) -> list[str] | None:
     """Return git-changed Python files, or *None* on failure."""
     try:
@@ -206,14 +208,20 @@ def _resolve_git_changed_files(
             cmd = ["git", "diff", "--name-only", "HEAD", "--diff-filter=ACMR"]
 
         proc = subprocess.run(
-            cmd, cwd=project_root, capture_output=True, text=True, check=True,
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         git_files = [f for f in proc.stdout.splitlines() if f.endswith(".py")]
 
         if scope != "staged":
             proc2 = subprocess.run(
                 ["git", "ls-files", "--others", "--exclude-standard"],
-                cwd=project_root, capture_output=True, text=True,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
             )
             git_files.extend(f for f in proc2.stdout.splitlines() if f.endswith(".py"))
 
@@ -630,7 +638,10 @@ def _update_refactor_state(compact: dict, project_root: str) -> None:
 
 
 def _check_theory_staleness_for_compact(
-    compact: dict, mesh_result, session, project_root: str,
+    compact: dict,
+    mesh_result,
+    session,
+    project_root: str,
 ) -> None:
     """Theory staleness detection (#182): enrich compact if uncommitted files lack grounding."""
     git_ctx = getattr(mesh_result, "git_context", None)
@@ -706,15 +717,23 @@ def _setup_run(path, channels, strictness, scope, files, helpers):
     files_for_event = _collect_files_for_event(project_root, scope, files, helpers)
 
     cp_config.latency_budget_ms = _compute_dynamic_budget_ms(
-        cp_config.latency_budget_ms, len(files_for_event), scope,
+        cp_config.latency_budget_ms,
+        len(files_for_event),
+        scope,
     )
     event = _build_supervision_event(project_root, files_for_event, strictness, requested)
 
     session = _setup_session(project_root, cp_config)
 
     return (
-        project_root, cp_config, active_channels, requested, unknown,
-        event, session, wiring_findings,
+        project_root,
+        cp_config,
+        active_channels,
+        requested,
+        unknown,
+        event,
+        session,
+        wiring_findings,
     )
 
 
@@ -795,8 +814,14 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
 
     # Phase 1 — setup
     (
-        project_root, cp_config, active_channels, requested, unknown,
-        event, session, wiring_findings,
+        project_root,
+        cp_config,
+        active_channels,
+        requested,
+        unknown,
+        event,
+        session,
+        wiring_findings,
     ) = _setup_run(path, channels, strictness, scope, files, helpers)
 
     # Behavior tracking
@@ -805,7 +830,11 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
 
     # Phase 2 — execute channels
     mesh_result = _execute_channels(
-        event, cp_config, active_channels, session, wiring_findings,
+        event,
+        cp_config,
+        active_channels,
+        session,
+        wiring_findings,
     )
 
     # Phase 3 — build result

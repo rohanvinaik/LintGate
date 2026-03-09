@@ -287,10 +287,7 @@ def test_build_manifest_cache_hit_returns_same_data():
 
         test_path = os.path.join(tmpdir, "test_mod.py")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod import add\n\n"
-                "def test_add():\n    assert add(1, 2) == 3\n"
-            )
+            f.write("from mod import add\n\ndef test_add():\n    assert add(1, 2) == 3\n")
 
         result1 = build_test_effectiveness_manifest(
             tmpdir, python_files=[src_path], test_files=[test_path]
@@ -315,10 +312,7 @@ def test_build_manifest_stale_cache_triggers_rebuild():
 
         test_path = os.path.join(tmpdir, "test_mod.py")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod import add\n\n"
-                "def test_add():\n    assert add(1, 2) == 3\n"
-            )
+            f.write("from mod import add\n\ndef test_add():\n    assert add(1, 2) == 3\n")
 
         # Build and cache
         result1 = build_test_effectiveness_manifest(
@@ -328,10 +322,7 @@ def test_build_manifest_stale_cache_triggers_rebuild():
 
         # Modify source file to invalidate cache hash
         with open(src_path, "w") as f:
-            f.write(
-                "def add(a, b):\n    return a + b\n\n"
-                "def subtract(a, b):\n    return a - b\n"
-            )
+            f.write("def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n")
 
         # Should rebuild (hash mismatch), not return stale cache
         result2 = build_test_effectiveness_manifest(
@@ -352,15 +343,10 @@ def test_build_manifest_effective_weights_bypass_cache():
 
         test_path = os.path.join(tmpdir, "test_mod.py")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod import func\n\n"
-                "def test_func():\n    assert func() == 1\n"
-            )
+            f.write("from mod import func\n\ndef test_func():\n    assert func() == 1\n")
 
         # First call populates cache
-        build_test_effectiveness_manifest(
-            tmpdir, python_files=[src_path], test_files=[test_path]
-        )
+        build_test_effectiveness_manifest(tmpdir, python_files=[src_path], test_files=[test_path])
 
         # Second call with effective_weights should bypass cache and rebuild
         custom_weights = {AssertionKind.EQUALITY: 1.0, AssertionKind.IS_TRUE: 0.05}
@@ -384,10 +370,7 @@ def test_build_manifest_scope_provenance_keys():
 
         test_path = os.path.join(tmpdir, "test_mod.py")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod import func\n\n"
-                "def test_func():\n    assert func() == 1\n"
-            )
+            f.write("from mod import func\n\ndef test_func():\n    assert func() == 1\n")
 
         result = build_test_effectiveness_manifest(
             tmpdir, python_files=[src_path], test_files=[test_path]
@@ -419,10 +402,7 @@ def test_build_manifest_file_scores_initialized_empty():
 
         test_path = os.path.join(tmpdir, "test_mod.py")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod import func\n\n"
-                "def test_func():\n    assert func() == 1\n"
-            )
+            f.write("from mod import func\n\ndef test_func():\n    assert func() == 1\n")
 
         result = build_test_effectiveness_manifest(
             tmpdir, python_files=[src_path], test_files=[test_path]
@@ -444,10 +424,7 @@ def test_build_manifest_scope_fingerprint_mismatch_invalidates_cache():
         with open(src2, "w") as f:
             f.write("def func2():\n    return 2\n")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod1 import func1\n\n"
-                "def test_func1():\n    assert func1() == 1\n"
-            )
+            f.write("from mod1 import func1\n\ndef test_func1():\n    assert func1() == 1\n")
 
         # Build with src1 only
         result1 = build_test_effectiveness_manifest(
@@ -540,10 +517,7 @@ def test_build_manifest_returns_manifest_with_update_metrics_called():
 
         test_path = os.path.join(tmpdir, "test_mod.py")
         with open(test_path, "w") as f:
-            f.write(
-                "from mod import func\n\n"
-                "def test_func():\n    assert func() == 1\n"
-            )
+            f.write("from mod import func\n\ndef test_func():\n    assert func() == 1\n")
 
         result = build_test_effectiveness_manifest(
             tmpdir, python_files=[src_path], test_files=[test_path]

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 
+from lintgate.subprocess_utils import run_cmd
 from lintgate.types import LintIssue
 
 # Each pattern: (name, compiled regex, confidence)
@@ -137,17 +137,8 @@ def _check_diff_secrets(project_root: str) -> list[LintIssue]:
     Only scans addition lines (+) to avoid flagging removals or context.
     Never includes actual secret values in issue messages.
     """
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--unified=0"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=project_root,
-        )
-        if result.returncode != 0 or not result.stdout:
-            return []
-    except (subprocess.TimeoutExpired, OSError):
+    result = run_cmd(["git", "diff", "--cached", "--unified=0"], cwd=project_root, timeout=5)
+    if result is None or not result.stdout:
         return []
 
     findings: list[LintIssue] = []

@@ -88,7 +88,7 @@ def _compose_generated(
 ) -> tuple[list[str], list[str]]:
     """Build parts and source_files for a generator-based page."""
     parts = [_frontmatter(page), f"# {page.title}", ""]
-    gen_content = _generate_content(page.generator, theory, compass)
+    gen_content = _generate_content(page.generator or "", theory, compass)
     if gen_content:
         parts.append(gen_content)
         parts.append("")

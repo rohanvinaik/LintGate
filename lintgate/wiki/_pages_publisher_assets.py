@@ -12,7 +12,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .pages_publisher import PublishedPage
+    from ._types import PublishedPage
 
 
 def _write_css(out_dir: str) -> None:

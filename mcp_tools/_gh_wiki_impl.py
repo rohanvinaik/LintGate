@@ -313,7 +313,9 @@ def impl_project_wiki_read(
 
 
 def _read_remote_wiki_page(
-    path: str, repo_full: str, page: str,
+    path: str,
+    repo_full: str,
+    page: str,
 ) -> dict[str, Any]:
     """Clone wiki to temp dir, read a single page, return result."""
     tmpdir = tempfile.mkdtemp(prefix="lintgate-wiki-read-")
@@ -331,9 +333,7 @@ def _read_remote_wiki_page(
         page_path = os.path.join(tmpdir, f"{page}.md")
         if not os.path.exists(page_path):
             available = [
-                f[:-3]
-                for f in os.listdir(tmpdir)
-                if f.endswith(".md") and not f.startswith(".")
+                f[:-3] for f in os.listdir(tmpdir) if f.endswith(".md") and not f.startswith(".")
             ]
             return {
                 "project": path,

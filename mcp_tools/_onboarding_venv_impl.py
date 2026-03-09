@@ -22,6 +22,7 @@ _OPTIONAL_STARTUP_PACKAGES = {
 # Lazy accessor — avoids circular import at load time.
 # ---------------------------------------------------------------------------
 
+
 def _ot():  # noqa: ANN202
     """Return the onboarding_tools module."""
     import mcp_tools.onboarding_tools as _mod

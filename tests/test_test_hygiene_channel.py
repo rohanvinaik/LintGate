@@ -283,7 +283,7 @@ class TestTestHygieneChannel:
         )
         result = ch.execute(event, config)
         # Only test_a should be scanned
-        assert all("test_a" in f.file for f in result.findings)
+        assert all("test_a" in (f.file or "") for f in result.findings)
 
 
 # ── MCP tool contract ────────────────────────────────────────────────

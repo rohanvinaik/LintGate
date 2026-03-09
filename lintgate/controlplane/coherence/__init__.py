@@ -25,23 +25,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .coherence_classification import (
+from ..types import ChannelResult, CoherenceResult
+from .classification import (
     classify_coupled_failure,
     classify_isolated_failure,
     classify_systemic_failure,
 )
-from .coherence_history import (
+from .history import (
     detect_persistent_loud,
     detect_refactoring_tradeoffs,
     detect_resolutions,
     state_severity,
 )
-from .coherence_scope import (
+from .scope import (
     apply_edit_scope,
     classify_edit_scope,
     has_ambient_critical_findings,
 )
-from .coherence_scoring import (
+from .scoring import (
     channel_failure_weight,
     channel_finding_summary,
     effective_failure_count,
@@ -51,10 +52,9 @@ from .coherence_scoring import (
     ordered_failed_channels,
     top_finding_kind,
 )
-from .types import ChannelResult, CoherenceResult
 
 if TYPE_CHECKING:
-    from .session_memory import SessionMemory
+    from ..session_memory import SessionMemory
 
 # Backward-compat aliases for tests and internal callers that still import
 # private helper names from this module.
@@ -286,8 +286,8 @@ def compute_coherence_with_history(
 
     Calls compute_coherence() first, then enriches with history-based context:
     1. REGRESSION: coherence state worsened from previous run
-    2. PERSISTENT: same channel loud 3+ consecutive runs → escalate wording
-    3. RESOLUTION: previously-loud channel now silent → note resolution
+    2. PERSISTENT: same channel loud 3+ consecutive runs -> escalate wording
+    3. RESOLUTION: previously-loud channel now silent -> note resolution
     4. NO_DATA: test channel passes but has no test files (bootstrap needed)
 
     Only modifies summary and recommended_action text. Never changes the
@@ -341,9 +341,13 @@ def compute_coherence_with_history(
     if session.coherence_trajectory:
         prev_state = session.coherence_trajectory[-1]
         if state_severity(base.state) > state_severity(prev_state):
-            annotations.append(f"REGRESSION: coherence degraded from {prev_state} → {base.state}")
+            annotations.append(
+                f"REGRESSION: coherence degraded from {prev_state} \u2192 {base.state}"
+            )
         elif state_severity(base.state) < state_severity(prev_state):
-            annotations.append(f"IMPROVEMENT: coherence improved from {prev_state} → {base.state}")
+            annotations.append(
+                f"IMPROVEMENT: coherence improved from {prev_state} \u2192 {base.state}"
+            )
 
     # 2. PERSISTENT detection: same channel loud 3+ consecutive runs
     persistent_channels = detect_persistent_loud(session, base.loud_channels)
@@ -373,10 +377,10 @@ def compute_coherence_with_history(
     if persistent_channels:
         ch_names = [ch for ch, _ in persistent_channels]
         enriched_action += (
-            f" Persistent issues in {', '.join(ch_names)} — consider a different approach."
+            f" Persistent issues in {', '.join(ch_names)} \u2014 consider a different approach."
         )
     if any("IMPROVEMENT" in a for a in annotations):
-        enriched_action += " Progress detected — continue current approach."
+        enriched_action += " Progress detected \u2014 continue current approach."
 
     return CoherenceResult(
         state=base.state,
@@ -437,7 +441,7 @@ def _detect_bootstrap_needed(channel_results: list[ChannelResult]) -> list[str]:
                 pass
 
             notes.append(
-                f"NO_DATA: tests channel passes with caveat — no test files exist. "
+                f"NO_DATA: tests channel passes with caveat \u2014 no test files exist. "
                 f"Bootstrap pipeline {bootstrap_status}."
             )
             break
@@ -450,9 +454,9 @@ def _build_classification_reason(result: CoherenceResult) -> str:
     silent_count = len(result.silent_channels)
 
     if result.state == "stable":
-        return f"All {silent_count} channel(s) passed — no failures detected."
+        return f"All {silent_count} channel(s) passed \u2014 no failures detected."
     if result.state == "degraded":
-        return "One or more channels errored or timed out — results incomplete."
+        return "One or more channels errored or timed out \u2014 results incomplete."
     if result.state == "isolated":
         return (
             f"Single failure in {', '.join(result.loud_channels)}; "

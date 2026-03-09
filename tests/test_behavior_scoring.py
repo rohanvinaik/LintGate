@@ -594,7 +594,7 @@ class TestSignalCoordinator:
         )
         finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
         # Mock _ground_finding_in_theory to return the same coda (now a 2-tuple)
-        with patch("lintgate.channels.behavior_scoring._ground_finding_in_theory") as mock_ground:
+        with patch("lintgate.channels.behavior.scoring._ground_finding_in_theory") as mock_ground:
             mock_ground.return_value = (" Theory: 'some claim'.", 1.0)
             finding.message = "cycling detected Theory: 'some claim'."
             finding.evidence = {"theory_context": ["some claim"]}
@@ -611,11 +611,20 @@ class TestSignalCoordinator:
 class TestGroundFindingInTheory:
     def test_no_theory_profile(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")
-        assert _ground_finding_in_theory(finding, "approach_cycling", None) is None
+        result = _ground_finding_in_theory(finding, "approach_cycling", None)
+        assert result is None
+        # Finding message must be unchanged when no grounding occurs
+        assert finding.message == "msg"
+        assert finding.evidence is None or "theory_context" not in finding.evidence
 
     def test_unknown_signal(self) -> None:
         finding = LintIssue(linter="behavior", kind="unknown", message="msg")
-        assert _ground_finding_in_theory(finding, "nonexistent_signal", {"facets": {}}) is None
+        result = _ground_finding_in_theory(finding, "nonexistent_signal", {"facets": {}})
+        assert result is None
+        # Finding message must be unchanged for unknown signals
+        assert finding.message == "msg"
+        # The signal name is not in SIGNAL_THEORY_MAP, confirming the dispatch path
+        assert "nonexistent_signal" not in SIGNAL_THEORY_MAP
 
     def test_grounding_applied(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="cycling detected")
@@ -645,6 +654,11 @@ class TestGroundFindingInTheory:
             mock_ctx.return_value = {"claims": []}
             result = _ground_finding_in_theory(finding, "approach_cycling", {"x": "y"})
         assert result is None
+        # Finding message must be unchanged when no claims are found
+        assert finding.message == "msg"
+        # The theory extractor was called (signal IS in SIGNAL_THEORY_MAP)
+        assert mock_ctx.call_count >= 1
+        assert finding.evidence is None or "theory_context" not in finding.evidence
 
     def test_claim_truncation(self) -> None:
         finding = LintIssue(linter="behavior", kind="cycling", message="msg")

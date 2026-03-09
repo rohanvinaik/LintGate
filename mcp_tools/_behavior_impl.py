@@ -24,15 +24,11 @@ def _build_constraint_recommendation(
     """Build the human-readable recommendation string."""
     parts: list[str] = []
     if coverage_gap > 0:
-        parts.append(
-            f"{coverage_gap} unverified constraint area{'s' if coverage_gap != 1 else ''}"
-        )
+        parts.append(f"{coverage_gap} unverified constraint area{'s' if coverage_gap != 1 else ''}")
     if recall < 1.0:
         parts.append(f"{recall:.0%} prediction recall")
     if uncertainty:
-        parts.append(
-            f"{len(uncertainty)} uncertainty zone{'s' if len(uncertainty) != 1 else ''}"
-        )
+        parts.append(f"{len(uncertainty)} uncertainty zone{'s' if len(uncertainty) != 1 else ''}")
     if similar_failures:
         parts.append(
             f"{len(similar_failures)} similar past failure{'s' if len(similar_failures) != 1 else ''}"
@@ -106,9 +102,7 @@ def _seed_theory_constraints(
                         theory_constraints.append(claim[:120])
             if theory_constraints:
                 output["theory_constraints"] = theory_constraints
-                output["hint"] = (
-                    "Seeded from project theory. Accuracy improves with session data."
-                )
+                output["hint"] = "Seeded from project theory. Accuracy improves with session data."
     except Exception:
         pass
 
@@ -222,7 +216,10 @@ def impl_constraint_check(
     uncertainty = compute_uncertainty_zones(compass)
     similar_failures = _find_similar_failures(compass.approaches, command_sig)
     recommendation = _build_constraint_recommendation(
-        coverage_gap, recall, uncertainty, similar_failures,
+        coverage_gap,
+        recall,
+        uncertainty,
+        similar_failures,
     )
 
     save_behavior_compass(session, compass)
@@ -331,8 +328,18 @@ def impl_prediction_register(
     _is_bash_action = any(
         kw in planned_action.lower()
         for kw in (
-            "bash", "execute", "run", "command", "shell",
-            "npm", "pip", "git", "make", "pytest", "python", "uv",
+            "bash",
+            "execute",
+            "run",
+            "command",
+            "shell",
+            "npm",
+            "pip",
+            "git",
+            "make",
+            "pytest",
+            "python",
+            "uv",
         )
     )
 

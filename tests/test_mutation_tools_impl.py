@@ -176,7 +176,10 @@ def test_collect_prescriptions_empty_states():
     assert result == []
 
 
-@patch("mcp_tools._mutation_tools_impl.prescription_for_category", return_value="Add exact-value assertions")
+@patch(
+    "mcp_tools._mutation_tools_impl.prescription_for_category",
+    return_value="Add exact-value assertions",
+)
 def test_collect_prescriptions_with_survivors(mock_presc):
     states = [
         {

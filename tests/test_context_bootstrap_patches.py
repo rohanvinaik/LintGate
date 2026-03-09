@@ -419,7 +419,7 @@ class TestApplyContextPatch:
 
     def test_actual_apply(self, tmp_path: object) -> None:
         root, patch_obj = self._setup(tmp_path)
-        with patch("lintgate.context_auditor.audit_context_health") as mock_audit:
+        with patch("lintgate.context.auditor.audit_context_health") as mock_audit:
             mock_audit.return_value = {"audit": [{"file": "CLAUDE.md", "status": "pass"}]}
             result = apply_context_patch(root, patch_obj, dry_run=False)
         assert result["applied"] is True
@@ -455,7 +455,7 @@ class TestApplyContextPatch:
             section_id="machine_rules",
             new_content="\n- rule1\n- rule2\n",
         )
-        with patch("lintgate.context_auditor.audit_context_health") as mock_audit:
+        with patch("lintgate.context.auditor.audit_context_health") as mock_audit:
             mock_audit.return_value = {"audit": []}
             result = apply_context_patch(str(p), patch_obj, dry_run=False)
         assert result["applied"] is True
@@ -463,7 +463,7 @@ class TestApplyContextPatch:
 
     def test_audit_exception_handled(self, tmp_path: object) -> None:
         root, patch_obj = self._setup(tmp_path)
-        with patch("lintgate.context_auditor.audit_context_health") as mock_audit:
+        with patch("lintgate.context.auditor.audit_context_health") as mock_audit:
             mock_audit.side_effect = RuntimeError("audit crash")
             result = apply_context_patch(root, patch_obj, dry_run=False)
         assert result["applied"] is True

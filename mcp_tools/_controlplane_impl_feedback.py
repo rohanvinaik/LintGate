@@ -79,8 +79,10 @@ def _generate_living_context_patches(session, project_root, accepted_rules, acti
 
 
 def _build_feedback_result(
-    session, actions_taken: list[str],
-    tuned_results: list[str], rejected_tunings: list[dict],
+    session,
+    actions_taken: list[str],
+    tuned_results: list[str],
+    rejected_tunings: list[dict],
 ) -> dict[str, Any]:
     """Assemble the agent feedback response dict."""
     result: dict[str, Any] = {
@@ -191,7 +193,9 @@ def _impl_controlplane_agent_feedback(
     rejected_tunings: list[dict] = []
     if tuned_findings:
         tuned_results, rejected_tunings = _process_tuned_findings(
-            tuned_findings, project_root, actions_taken,
+            tuned_findings,
+            project_root,
+            actions_taken,
         )
 
     if test_failure_classifications:

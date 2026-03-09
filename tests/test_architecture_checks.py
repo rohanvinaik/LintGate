@@ -74,11 +74,12 @@ class TestFilepathToModule:
     def test_non_python_returns_none(self, tmp_path):
         result = filepath_to_module(str(tmp_path / "data.json"), str(tmp_path))
         assert result is None
-        # Verify exact None (not falsy) and boundary: .json extension triggers None
-        assert type(result) is type(None)
         # Other non-.py extensions also return None
         assert filepath_to_module(str(tmp_path / "readme.md"), str(tmp_path)) is None
         assert filepath_to_module(str(tmp_path / "config.yaml"), str(tmp_path)) is None
+        # Contrast: .py file returns a valid module name, confirming dispatch on extension
+        assert filepath_to_module(str(tmp_path / "data.py"), str(tmp_path)) == "data"
+        assert filepath_to_module(str(tmp_path / "sub" / "mod.py"), str(tmp_path)) == "sub.mod"
 
 
 class TestIsProjectLocal:
@@ -137,10 +138,13 @@ class TestBuildLayerMapAndFindLayer:
         layer_map = build_layer_map([{"name": "core", "modules": ["app.core"]}])
         result = find_layer("other.module", layer_map)
         assert result is None
-        # Verify exact None (not falsy) and boundary: partial prefix doesn't match
-        assert type(result) is type(None)
-        assert find_layer("app.cor", layer_map) is None  # partial, not a real prefix
-        assert find_layer("otherapp.core", layer_map) is None  # different root
+        # Partial prefix doesn't match (must be exact or dotted child)
+        assert find_layer("app.cor", layer_map) is None
+        # Different root doesn't match
+        assert find_layer("otherapp.core", layer_map) is None
+        # Contrast: exact prefix and child prefix DO match, confirming dispatch logic
+        assert find_layer("app.core", layer_map) == {"name": "core", "modules": ["app.core"]}
+        assert find_layer("app.core.utils", layer_map)["name"] == "core"
 
 
 # ─── Layer Contracts ──────────────────────────────────────────────────

@@ -158,14 +158,8 @@ class TestPendingPatches:
         restored = SessionMemory.from_dict(d)
         assert restored.pending_patches == [{"patch_id": "p1", "section_id": "machine_rules"}]
 
-    def test_from_dict_without_pending_patches(self) -> None:
-        """Old session data without pending_patches loads cleanly."""
-        old_data = {
-            "session_id": "abc",
-            "behavior_compass": {},
-        }
-        session = SessionMemory.from_dict(old_data)
-        assert session.pending_patches == []
+    # test_from_dict_without_pending_patches removed — duplicate of
+    # tests/test_living_context.py::TestPendingPatches::test_from_dict_without_pending_patches
 
 
 # ── SessionSnapshot Prediction Fields ────────────────────────────────

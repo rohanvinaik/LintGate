@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .types import ControlPlaneConfig, MeshResult
+    from ..types import ControlPlaneConfig, MeshResult
 
 # ── Dynamic token budget ────────────────────────────────────────────────
 

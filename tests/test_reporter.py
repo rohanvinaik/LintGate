@@ -805,7 +805,7 @@ def test_format_mesh_report_informational_count() -> None:
 
 def test_format_mesh_report_delta_escalated_and_resolved() -> None:
     # Set up fingerprints using actual logic
-    from lintgate.controlplane.reporter_delta import compute_finding_fingerprint
+    from lintgate.controlplane.reporter.delta import compute_finding_fingerprint
 
     # ESCALATED finding: warning -> blocking
     issue_escalated = _issue("blocking", message="Escalated")

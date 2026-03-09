@@ -91,7 +91,12 @@ def register(mcp, helpers):
             prediction_value: The expected value for the prediction.
         """
         return impl_prediction_register(
-            helpers, path, planned_action, prediction, prediction_type, prediction_value,
+            helpers,
+            path,
+            planned_action,
+            prediction,
+            prediction_type,
+            prediction_value,
         )
 
     @mcp.tool()
@@ -124,8 +129,14 @@ def register(mcp, helpers):
             "hygiene_check": hygiene_check,
         }
         return impl_behavior_precheck(
-            helpers, _tools, path, planned_action,
-            known_constraints, prediction, prediction_type, prediction_value,
+            helpers,
+            _tools,
+            path,
+            planned_action,
+            known_constraints,
+            prediction,
+            prediction_type,
+            prediction_value,
         )
 
     @mcp.tool()

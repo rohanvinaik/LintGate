@@ -36,7 +36,7 @@ class TestGetChangedLineRanges:
             -    old line
             +    replaced
         """)
-        with patch("lintgate.channels._target_building.subprocess.run") as mock_run:
+        with patch("lintgate.subprocess_utils.subprocess.run") as mock_run:
             mock_run.return_value = type(
                 "R",
                 (),
@@ -52,7 +52,7 @@ class TestGetChangedLineRanges:
         assert range(24, 25) in ranges
 
     def test_git_failure_returns_none(self, tmp_path):
-        with patch("lintgate.channels._target_building.subprocess.run") as mock_run:
+        with patch("lintgate.subprocess_utils.subprocess.run") as mock_run:
             mock_run.return_value = type(
                 "R",
                 (),
@@ -68,7 +68,7 @@ class TestGetChangedLineRanges:
     def test_timeout_returns_none(self, tmp_path):
         import subprocess as sp
 
-        with patch("lintgate.channels._target_building.subprocess.run") as mock_run:
+        with patch("lintgate.subprocess_utils.subprocess.run") as mock_run:
             mock_run.side_effect = sp.TimeoutExpired("git", 10)
             result = get_changed_line_ranges(str(tmp_path / "mod.py"), str(tmp_path))
         assert result is None

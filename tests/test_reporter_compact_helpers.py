@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-from lintgate.controlplane.reporter_compact import (
+from lintgate.controlplane.reporter.compact import (
     _build_channel_summary,
     _build_cp_next_actions,
     _collect_symbol_coverage_blockers,

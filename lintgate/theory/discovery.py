@@ -88,7 +88,7 @@ def _discover_md_files(project_root: str) -> list[str]:
     if _scan_priority_dir(root / ".lintgate" / "wiki", found):
         return found
 
-    from .discovery import CANONICAL_EXCLUDE_DIRS, should_skip_dir
+    from ..discovery import CANONICAL_EXCLUDE_DIRS, should_skip_dir
 
     skip_all = CANONICAL_EXCLUDE_DIRS | _EXTRA_MD_SKIP_DIRS
     found_set = set(found)

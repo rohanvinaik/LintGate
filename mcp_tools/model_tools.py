@@ -21,7 +21,7 @@ def register(mcp, helpers):
             model_id: Optional model identifier (e.g., "claude-opus-4", "gpt-4o").
                 If None, returns summary of all stored profiles.
         """
-        from lintgate.controlplane.model_profiles import (
+        from lintgate.controlplane.model.profiles import (
             load_profiles,
             resolve_model_key,
         )
@@ -102,7 +102,7 @@ def register(mcp, helpers):
 
         import time as _time
 
-        from lintgate.controlplane.model_profiles import apply_confidence_decay
+        from lintgate.controlplane.model.profiles import apply_confidence_decay
 
         # Apply decay and capture original for display
         confidence_raw = apply_confidence_decay(profile)
@@ -167,12 +167,12 @@ def register(mcp, helpers):
             model_id: Model identifier (e.g., "claude-opus-4", "gpt-4o").
             probe_set: Probe task set. Currently only "quick" (5 tasks).
         """
-        from lintgate.controlplane.model_probe import (
+        from lintgate.controlplane.model.probe import (
             PROBE_VERSION,
             SUPPORTED_PROBE_SETS,
             get_probe_tasks,
         )
-        from lintgate.controlplane.model_profiles import (
+        from lintgate.controlplane.model.profiles import (
             resolve_model_key,
         )
 
@@ -199,7 +199,7 @@ def register(mcp, helpers):
         probe_set = probe_set.strip().lower()
 
         # Check for existing profile
-        from lintgate.controlplane.model_profiles import get_profile
+        from lintgate.controlplane.model.profiles import get_profile
 
         existing = get_profile(model_id)
         existing_info = None
@@ -286,12 +286,12 @@ def register(mcp, helpers):
                 {"t1_error_reading": {"text": "I would first read...", "tool_calls": ["Read", "Edit"]}}
             probe_version: Probe version string (default "v2").
         """
-        from lintgate.controlplane.model_probe import (
+        from lintgate.controlplane.model.probe import (
             PROBE_TASKS,
             PROBE_VERSION,
             build_profile_from_probe,
         )
-        from lintgate.controlplane.model_profiles import (
+        from lintgate.controlplane.model.profiles import (
             get_profile,
             resolve_model_key,
             upsert_profile,
