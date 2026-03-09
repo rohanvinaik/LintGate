@@ -62,7 +62,7 @@ def test_parse_diff_stat_both() -> None:
 
 
 def test_large_changes_git_fail(tmp_path: Path) -> None:
-    with patch("lintgate.channels.git_channel.subprocess.run") as mock_run:
+    with patch("lintgate.channels._git_checks.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1, stdout="")
         findings = _check_large_changes(str(tmp_path))
     assert findings == []
@@ -70,7 +70,7 @@ def test_large_changes_git_fail(tmp_path: Path) -> None:
 
 def test_large_changes_timeout(tmp_path: Path) -> None:
     with patch(
-        "lintgate.channels.git_channel.subprocess.run",
+        "lintgate.channels._git_checks.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="git", timeout=3),
     ):
         findings = _check_large_changes(str(tmp_path))
@@ -178,7 +178,7 @@ def test_iter_diff_additions_only_context_and_removals() -> None:
 
 
 def test_check_diff_secrets_git_fail(tmp_path: Path) -> None:
-    with patch("lintgate.channels.git_channel.subprocess.run") as mock_run:
+    with patch("lintgate.channels._git_secrets.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1, stdout="")
         findings = _check_diff_secrets(str(tmp_path))
     assert findings == []
@@ -186,7 +186,7 @@ def test_check_diff_secrets_git_fail(tmp_path: Path) -> None:
 
 def test_check_diff_secrets_timeout(tmp_path: Path) -> None:
     with patch(
-        "lintgate.channels.git_channel.subprocess.run",
+        "lintgate.channels._git_secrets.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="git", timeout=5),
     ):
         findings = _check_diff_secrets(str(tmp_path))
@@ -194,7 +194,7 @@ def test_check_diff_secrets_timeout(tmp_path: Path) -> None:
 
 
 def test_check_diff_secrets_empty_diff(tmp_path: Path) -> None:
-    with patch("lintgate.channels.git_channel.subprocess.run") as mock_run:
+    with patch("lintgate.channels._git_secrets.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="")
         findings = _check_diff_secrets(str(tmp_path))
     assert findings == []
@@ -202,7 +202,7 @@ def test_check_diff_secrets_empty_diff(tmp_path: Path) -> None:
 
 def test_check_diff_secrets_with_secret(tmp_path: Path) -> None:
     fake_diff = "+++ b/config.py\n@@ -0,0 +1,1 @@\n+AWS_KEY=AKIAIOSFODNN7EXAMPLE\n"
-    with patch("lintgate.channels.git_channel.subprocess.run") as mock_run:
+    with patch("lintgate.channels._git_secrets.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout=fake_diff)
         findings = _check_diff_secrets(str(tmp_path))
     assert len(findings) == 1
