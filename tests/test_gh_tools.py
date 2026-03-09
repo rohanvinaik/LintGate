@@ -136,6 +136,7 @@ class TestDetectRepo:
     def test_git_not_found_returns_empty(self, mock_run):
         result = _detect_repo("/project")
         assert result == {"owner": "", "repo": ""}
+        mock_run.assert_called_once()  # verify subprocess was attempted
 
     @patch("mcp_tools._gh_helpers.subprocess.run")
     def test_no_github_remote(self, mock_run):
