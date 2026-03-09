@@ -420,43 +420,52 @@ def _add_file_split_steps(
 # ── Warning Generation ─────────────────────────────────────────────────
 
 
+def _warn_fan_in(ev: LensEvidence) -> str | None:
+    fan_in = ev.raw.get("fan_in", 0)
+    if fan_in >= 5:
+        return f"Warning: {fan_in} modules import this — extraction will require updating all importers"
+    return None
+
+
+def _warn_cochange(ev: LensEvidence) -> str | None:
+    strength = ev.raw.get("coupling_strength", 0.0)
+    if strength > 0.6:
+        coupled_file = _extract_coupled_file(ev)
+        return f"Warning: high co-change coupling ({strength:.2f}) with {coupled_file} — consider extracting together"
+    return None
+
+
+def _warn_algebraic(ev: LensEvidence) -> str | None:
+    if "unsafe" in ev.detail.lower():
+        return f"Warning: algebraic analysis flags unsafe extraction — {ev.detail}"
+    return None
+
+
+def _warn_import_tracing(ev: LensEvidence) -> str | None:
+    if "io" in ev.detail.lower():
+        return "Warning: module-level IO detected — extraction may change initialization order"
+    return None
+
+
+_WARNING_HANDLERS: dict[LensKind, Any] = {
+    LensKind.FAN_IN: _warn_fan_in,
+    LensKind.COCHANGE: _warn_cochange,
+    LensKind.ALGEBRAIC: _warn_algebraic,
+    LensKind.IMPORT_TRACING: _warn_import_tracing,
+}
+
+
 def _generate_warnings(candidate: ConvergenceResult) -> list[str]:
     """Generate warnings from opposing evidence."""
     warnings: list[str] = []
-
     for ev in candidate.evidence:
         if ev.signal != "oppose":
             continue
-
-        if ev.lens == LensKind.FAN_IN:
-            fan_in = ev.raw.get("fan_in", 0)
-            if fan_in >= 5:
-                warnings.append(
-                    f"Warning: {fan_in} modules import this — "
-                    f"extraction will require updating all importers"
-                )
-
-        elif ev.lens == LensKind.COCHANGE:
-            strength = ev.raw.get("coupling_strength", 0.0)
-            if strength > 0.6:
-                # Extract coupled file from detail or raw
-                coupled_file = _extract_coupled_file(ev)
-                warnings.append(
-                    f"Warning: high co-change coupling ({strength:.2f}) "
-                    f"with {coupled_file} — consider extracting together"
-                )
-
-        elif ev.lens == LensKind.ALGEBRAIC:
-            if "unsafe" in ev.detail.lower():
-                warnings.append(
-                    f"Warning: algebraic analysis flags unsafe extraction — {ev.detail}"
-                )
-
-        elif ev.lens == LensKind.IMPORT_TRACING and "io" in ev.detail.lower():
-            warnings.append(
-                "Warning: module-level IO detected — extraction may change initialization order"
-            )
-
+        handler = _WARNING_HANDLERS.get(ev.lens)
+        if handler:
+            msg = handler(ev)
+            if msg:
+                warnings.append(msg)
     return warnings
 
 

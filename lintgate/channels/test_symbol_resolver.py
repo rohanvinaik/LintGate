@@ -147,60 +147,62 @@ def _extract_symbol_references(
     return refs
 
 
+def _try_string_dotpath_pattern(
+    node: ast.Call,
+    first_arg: ast.expr,
+    project_packages: set[str],
+) -> dict[str, Any] | None:
+    """Pattern 1: monkeypatch.setattr("module.symbol", value)."""
+    if not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
+        return None
+    dotpath = first_arg.value
+    if "." not in dotpath:
+        return None
+    module_path, symbol = dotpath.rsplit(".", 1)
+    if not _is_project_module(module_path, project_packages):
+        return None
+    return {"module": module_path, "symbol": symbol, "line": node.lineno, "source": "monkeypatch"}
+
+
+def _try_object_ref_pattern(
+    node: ast.Call,
+    first_arg: ast.expr,
+    project_packages: set[str],
+) -> dict[str, Any] | None:
+    """Pattern 2: monkeypatch.setattr(module_ref, "symbol", value)."""
+    if len(node.args) < 2 or not isinstance(node.args[1], ast.Constant):
+        return None
+    raw_symbol = node.args[1].value
+    if not isinstance(raw_symbol, str):
+        return None
+    if not isinstance(first_arg, ast.Attribute):
+        return None
+    resolved = _reconstruct_dotpath(first_arg)
+    if resolved and _is_project_module(resolved, project_packages):
+        return {
+            "module": resolved,
+            "symbol": raw_symbol,
+            "line": node.lineno,
+            "source": "monkeypatch",
+        }
+    return None
+
+
 def _extract_monkeypatch_target(
     node: ast.Call,
     project_packages: set[str],
 ) -> dict[str, Any] | None:
     """Extract module.symbol from monkeypatch.setattr() calls."""
-    # Check for monkeypatch.setattr or mp.setattr pattern
     func = node.func
     if not isinstance(func, ast.Attribute) or func.attr != "setattr":
         return None
-
     if not node.args:
         return None
 
     first_arg = node.args[0]
-
-    # Pattern 1: monkeypatch.setattr("module.symbol", value)
-    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-        dotpath = first_arg.value
-        if "." not in dotpath:
-            return None
-        parts = dotpath.rsplit(".", 1)
-        module_path, symbol = parts[0], parts[1]
-        if not _is_project_module(module_path, project_packages):
-            return None
-        return {
-            "module": module_path,
-            "symbol": symbol,
-            "line": node.lineno,
-            "source": "monkeypatch",
-        }
-
-    # Pattern 2: monkeypatch.setattr(module_ref, "symbol", value)
-    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
-        raw_symbol = node.args[1].value
-        if not isinstance(raw_symbol, str):
-            return None
-        symbol: str = raw_symbol
-        # Try to get the module name from the first arg
-        if isinstance(first_arg, ast.Attribute):
-            # e.g., lintgate.lint_runner
-            resolved = _reconstruct_dotpath(first_arg)
-            if resolved and _is_project_module(resolved, project_packages):
-                return {
-                    "module": resolved,
-                    "symbol": symbol,
-                    "line": node.lineno,
-                    "source": "monkeypatch",
-                }
-        elif isinstance(first_arg, ast.Name):
-            # e.g., monkeypatch.setattr(my_module, "func", ...)
-            # Can't resolve the module name from a variable reference
-            pass
-
-    return None
+    return _try_string_dotpath_pattern(
+        node, first_arg, project_packages
+    ) or _try_object_ref_pattern(node, first_arg, project_packages)
 
 
 def _reconstruct_dotpath(node: ast.Attribute) -> str | None:

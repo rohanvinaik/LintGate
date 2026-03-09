@@ -422,16 +422,26 @@ def _thygiene003_duplicates(
 
     # Pass 1: byte-identical duplicates (high confidence)
     byte_findings = _find_cross_file_duplicates(
-        fingerprints, "body_hash", project_root, seen_dupes,
-        duplicate_type="byte_identical", severity="warning",
-        confidence=0.95, message_verb="byte-identical",
+        fingerprints,
+        "body_hash",
+        project_root,
+        seen_dupes,
+        duplicate_type="byte_identical",
+        severity="warning",
+        confidence=0.95,
+        message_verb="byte-identical",
     )
 
     # Pass 2: AST-equivalent duplicates (lower confidence, skips already-seen)
     ast_findings = _find_cross_file_duplicates(
-        fingerprints, "ast_hash", project_root, seen_dupes,
-        duplicate_type="ast_equivalent", severity="informational",
-        confidence=0.75, message_verb="AST-equivalent",
+        fingerprints,
+        "ast_hash",
+        project_root,
+        seen_dupes,
+        duplicate_type="ast_equivalent",
+        severity="informational",
+        confidence=0.75,
+        message_verb="AST-equivalent",
     )
 
     findings = byte_findings + ast_findings

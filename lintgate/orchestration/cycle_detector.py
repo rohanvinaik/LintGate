@@ -47,6 +47,52 @@ class EditCycleState:
     total_detections: int = 0
 
 
+_EDIT_TOOLS = frozenset(
+    {
+        "replace_file_content",
+        "multi_replace_file_content",
+        "Write",
+        "Edit",
+        "MultiEdit",
+    }
+)
+
+
+def _track_edit_event(new_state: EditCycleState, event: dict[str, Any]) -> None:
+    """Update state for an edit tool event."""
+    target_file = event.get("target_file")
+    if target_file and isinstance(target_file, str):
+        new_state.file_edit_counts[target_file] = new_state.file_edit_counts.get(target_file, 0) + 1
+    status = event.get("status")
+    if status == "error":
+        new_state.consecutive_replace_failures += 1
+    elif status == "success":
+        new_state.consecutive_replace_failures = 0
+
+
+def _track_controlplane_event(new_state: EditCycleState, event: dict[str, Any]) -> None:
+    """Update state for a successful controlplane_run event."""
+    if event.get("status") != "success":
+        return
+
+    new_state.file_edit_counts.clear()
+    new_state.consecutive_replace_failures = 0
+
+    findings = event.get("findings", [])
+    seen_fingerprints = {
+        finding["fingerprint"]
+        for finding in findings
+        if isinstance(finding, dict) and isinstance(finding.get("fingerprint"), str)
+    }
+
+    for fp in seen_fingerprints:
+        new_state.finding_persistence[fp] = new_state.finding_persistence.get(fp, 0) + 1
+
+    for old_fp in list(new_state.finding_persistence.keys()):
+        if old_fp not in seen_fingerprints:
+            del new_state.finding_persistence[old_fp]
+
+
 def track_event(state: EditCycleState, event: dict[str, Any]) -> EditCycleState:
     """Track an event, immutably returning an updated state.
 
@@ -67,51 +113,10 @@ def track_event(state: EditCycleState, event: dict[str, Any]) -> EditCycleState:
         total_detections=state.total_detections,
     )
 
-    if tool_name in {
-        "replace_file_content",
-        "multi_replace_file_content",
-        "Write",
-        "Edit",
-        "MultiEdit",
-    }:
-        target_file = event.get("target_file")
-        if target_file and isinstance(target_file, str):
-            new_state.file_edit_counts[target_file] = (
-                new_state.file_edit_counts.get(target_file, 0) + 1
-            )
-        status = event.get("status")
-        if status == "error":
-            new_state.consecutive_replace_failures += 1
-        elif status == "success":
-            # Just a successful edit. It resets the replacement failure counter,
-            # but NOT the file edit counter (which needs a successful CP run).
-            new_state.consecutive_replace_failures = 0
-
+    if tool_name in _EDIT_TOOLS:
+        _track_edit_event(new_state, event)
     elif tool_name == "controlplane_run":
-        status = event.get("status")
-        if status == "success":
-            # Successful CP run clears isolated file edit counts
-            new_state.file_edit_counts.clear()
-            # It also clears replacement failures
-            new_state.consecutive_replace_failures = 0
-
-            # Track persistent findings if provided in the event args
-            findings = event.get("findings", [])
-            seen_fingerprints = set()
-            for finding in findings:
-                if not isinstance(finding, dict):
-                    continue
-                fp = finding.get("fingerprint")
-                if fp and isinstance(fp, str):
-                    seen_fingerprints.add(fp)
-
-            for fp in seen_fingerprints:
-                new_state.finding_persistence[fp] = new_state.finding_persistence.get(fp, 0) + 1
-
-            # Prune findings that were resolved (not in this run)
-            for old_fp in list(new_state.finding_persistence.keys()):
-                if old_fp not in seen_fingerprints:
-                    del new_state.finding_persistence[old_fp]
+        _track_controlplane_event(new_state, event)
 
     return new_state
 

@@ -129,7 +129,12 @@ def extract_path_refs(text: str) -> list[str]:
             continue
         if candidate.startswith(_URL_PREFIXES) or _URL_SCHEME_RE.match(candidate):
             continue
-        if "\n" in candidate or "\u251c" in candidate or "\u2514" in candidate or "\u2502" in candidate:
+        if (
+            "\n" in candidate
+            or "\u251c" in candidate
+            or "\u2514" in candidate
+            or "\u2502" in candidate
+        ):
             continue
         if " " in candidate and os.sep not in candidate:
             continue
@@ -250,7 +255,7 @@ def _find_bare_name_in_project(name: str, project_root: str) -> bool:
 
     for root in search_roots:
         for dirpath, _dirnames, filenames in os.walk(root):
-            depth = dirpath[len(root):].count(os.sep)
+            depth = dirpath[len(root) :].count(os.sep)
             if depth > 3:
                 continue
             if name in filenames:

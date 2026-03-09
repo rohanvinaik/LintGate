@@ -92,32 +92,45 @@ def run_linters(
 
     # Execute in parallel
     deadline = time.time() + timeout_ms / 1000.0
+    parallel = _execute_parallel(selected, ctx, deadline, timeout_ms)
+    results.extend(parallel)
+
+    return results
+
+
+def _collect_future_result(fut, linter: BaseLinter) -> LinterResult:
+    """Safely collect a completed future's result."""
+    try:
+        return fut.result(timeout=0.1)
+    except Exception as e:
+        return LinterResult(
+            linter_name=linter.name,
+            status="error",
+            error=f"Executor error: {type(e).__name__}: {e}",
+        )
+
+
+def _execute_parallel(
+    selected: list[BaseLinter],
+    ctx: LinterContext,
+    deadline: float,
+    timeout_ms: int,
+) -> list[LinterResult]:
+    """Execute linters in parallel with timeout management."""
+    results: list[LinterResult] = []
 
     with ThreadPoolExecutor(max_workers=min(4, len(selected))) as executor:
         futures = {}
-        completed_futures = set()
-        timed_out_futures = set()
+        completed_futures: set = set()
+        timed_out_futures: set = set()
         for linter in selected:
-            fut = executor.submit(linter.execute, ctx)
-            futures[fut] = linter
+            futures[executor.submit(linter.execute, ctx)] = linter
 
         try:
             for fut in as_completed(futures, timeout=max(0.5, deadline - time.time())):
                 completed_futures.add(fut)
-                try:
-                    result = fut.result(timeout=0.1)
-                    results.append(result)
-                except Exception as e:
-                    linter = futures[fut]
-                    results.append(
-                        LinterResult(
-                            linter_name=linter.name,
-                            status="error",
-                            error=f"Executor error: {type(e).__name__}: {e}",
-                        )
-                    )
+                results.append(_collect_future_result(fut, futures[fut]))
         except FuturesTimeoutError:
-            # Expected when one or more linters exceed the remaining global budget.
             for fut, linter in futures.items():
                 if fut in completed_futures or fut.done():
                     continue
@@ -131,27 +144,13 @@ def run_linters(
                     )
                 )
 
-    # Check for futures that didn't complete in time
+    # Collect stragglers that finished during shutdown
     for fut, linter in futures.items():
         if fut in completed_futures or fut in timed_out_futures:
             continue
-
-        # A future may complete right as as_completed() times out. Collect it.
         if fut.done():
-            try:
-                result = fut.result(timeout=0.0)
-                results.append(result)
-            except Exception as e:
-                results.append(
-                    LinterResult(
-                        linter_name=linter.name,
-                        status="error",
-                        error=f"Executor error: {type(e).__name__}: {e}",
-                    )
-                )
-            continue
-
-        if not fut.done():
+            results.append(_collect_future_result(fut, linter))
+        else:
             fut.cancel()
             results.append(
                 LinterResult(

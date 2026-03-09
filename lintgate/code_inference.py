@@ -244,7 +244,9 @@ def _infer_from_directory_structure(project_root: str) -> list[CompassClaim]:
 
 
 def _update_flags_from_file(
-    flags: dict[str, bool | int], fname: str, source: str,
+    flags: dict[str, bool | int],
+    fname: str,
+    source: str,
 ) -> None:
     """Update framework detection flags from a single test file."""
     if fname == "conftest.py":

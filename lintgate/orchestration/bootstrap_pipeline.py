@@ -72,6 +72,44 @@ class BootstrapPipeline:
         self.project_root = os.path.abspath(project_root)
         self.state = BootstrapState.load(self.project_root)
 
+    def _emit_artifact(
+        self,
+        test_path: str,
+        content: str,
+        skeletons: dict[str, str],
+        dry_run: bool,
+        force: bool,
+        *,
+        append: bool = False,
+        count: bool = True,
+    ) -> None:
+        """Write or collect a generated test artifact."""
+        if dry_run:
+            skeletons[test_path] = content
+        elif append:
+            self._append_to_file(test_path, content)
+        else:
+            self._write_if_new(test_path, content, force)
+            self.state.artifacts.test_files.append(test_path)
+        if count:
+            self.state.tests_generated += 1
+        self.state.heartbeat()
+
+    def _run_skeletons_phase(
+        self, skeletons: dict[str, str], dry_run: bool, force: bool
+    ) -> None:
+        """Phase 2: Generate test skeletons per source file."""
+        source_files = self._discover_source_files()
+        for source_file in source_files:
+            rel_path = os.path.relpath(source_file, self.project_root)
+            if self.state.files_processed.get(rel_path) == "skeletons":
+                continue
+            skeleton_content = self._generate_skeleton(source_file)
+            if skeleton_content:
+                test_path = self._compute_test_path(source_file)
+                self._emit_artifact(test_path, skeleton_content, skeletons, dry_run, force)
+                self.state.files_processed[rel_path] = "skeletons"
+
     def run(self, dry_run: bool = False, force: bool = False) -> BootstrapResult:
         """Execute pipeline. Idempotent — skips completed phases on resume.
 
@@ -83,7 +121,6 @@ class BootstrapPipeline:
             return BootstrapResult(status="already_running")
 
         try:
-            # Initialize run
             if self.state.status != "running":
                 self.state.run_id = uuid.uuid4().hex[:12]
                 self.state.status = "running"
@@ -91,76 +128,39 @@ class BootstrapPipeline:
                 self.state.error = None
                 self.state.save()
 
-            # Collected skeletons for dry_run output
             skeletons: dict[str, str] = {}
 
-            # Phase 1: Algebra survey (build property manifest)
-            manifest = None
+            # Phase 1: Algebra survey
+            manifest = self._run_algebra_survey()
             if not self.state.phase_completed("algebra"):
-                manifest = self._run_algebra_survey()
                 self.state.advance_phase("algebra")
-            else:
-                # Reload manifest for later phases
-                manifest = self._run_algebra_survey()
 
-            # Phase 2: Skeleton generation (per-file, incremental)
+            # Phase 2: Skeleton generation
             if not self.state.phase_completed("skeletons"):
-                source_files = self._discover_source_files()
-                for source_file in source_files:
-                    rel_path = os.path.relpath(source_file, self.project_root)
-                    if self.state.files_processed.get(rel_path) == "skeletons":
-                        continue  # Already done
-
-                    skeleton_content = self._generate_skeleton(source_file)
-                    if skeleton_content:
-                        test_path = self._compute_test_path(source_file)
-                        if dry_run:
-                            skeletons[test_path] = skeleton_content
-                        else:
-                            self._write_if_new(test_path, skeleton_content, force)
-                            self.state.artifacts.test_files.append(test_path)
-
-                        self.state.tests_generated += 1
-                        self.state.files_processed[rel_path] = "skeletons"
-                        self.state.heartbeat()
-
+                self._run_skeletons_phase(skeletons, dry_run, force)
                 self.state.advance_phase("skeletons")
 
             # Phase 3: Property tests for pure functions
             if not self.state.phase_completed("properties"):
                 if manifest is not None:
-                    pure_tests = self._generate_property_tests(manifest)
-                    for test_path, content in pure_tests.items():
-                        if dry_run:
-                            skeletons[test_path] = content
-                        else:
-                            self._write_if_new(test_path, content, force)
-                            self.state.artifacts.test_files.append(test_path)
-                        self.state.tests_generated += 1
-                        self.state.heartbeat()
-
+                    for path, content in self._generate_property_tests(manifest).items():
+                        self._emit_artifact(path, content, skeletons, dry_run, force)
                 self.state.advance_phase("properties")
 
-            # Phase 4: Behavioral contracts (added by C3)
+            # Phase 4: Behavioral contracts
             if not self.state.phase_completed("contracts"):
-                contracts = self._generate_behavioral_contracts(manifest)
-                for test_path, content in contracts.items():
-                    if dry_run:
-                        skeletons[test_path] = content
-                    else:
-                        self._append_to_file(test_path, content)
-                    self.state.heartbeat()
-
+                for path, content in self._generate_behavioral_contracts(manifest).items():
+                    self._emit_artifact(
+                        path, content, skeletons, dry_run, force, append=True, count=False
+                    )
                 self.state.advance_phase("contracts")
 
-            # Complete
             self.state.status = "complete"
             self.state.phase = "complete"
             self.state.save()
 
-            result_status = "dry_run" if dry_run else "complete"
             return BootstrapResult(
-                status=result_status,
+                status="dry_run" if dry_run else "complete",
                 phase="complete",
                 tests_generated=self.state.tests_generated,
                 test_files=self.state.artifacts.test_files,

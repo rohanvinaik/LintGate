@@ -224,9 +224,7 @@ def _emit_pattern_finding(
         return None
 
     catalog_entry = _PATTERN_CATALOG.get(pattern_name, {})
-    description = (
-        catalog_entry.get("description", pattern_name) if catalog_entry else pattern_name
-    )
+    description = catalog_entry.get("description", pattern_name) if catalog_entry else pattern_name
     return LintIssue(
         linter="structure_channel",
         kind="STRUCT006",

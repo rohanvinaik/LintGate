@@ -280,6 +280,23 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
     return errors
 
 
+def _collect_ci_check_names(parity_map: dict[str, Any]) -> set[str]:
+    """Extract all CI check names from parity_map values."""
+    ci_check_names: set[str] = set()
+    for value in parity_map.values():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            ci_check_names.add(value)
+        elif isinstance(value, list):
+            ci_check_names.update(item for item in value if isinstance(item, str))
+        elif isinstance(value, dict):
+            ci_check = value.get("ci_check")
+            if isinstance(ci_check, str):
+                ci_check_names.add(ci_check)
+    return ci_check_names
+
+
 def _check_parity_map(contract: dict[str, Any], errors: list[str]) -> None:
     """Validate parity_map ties local gates to CI checks bidirectionally.
 
@@ -288,7 +305,6 @@ def _check_parity_map(contract: dict[str, Any], errors: list[str]) -> None:
     """
     parity_map = contract.get("parity_map")
     if not isinstance(parity_map, dict):
-        # parity_map is optional — skip validation if absent
         return
 
     required_checks = _contract_string_list(contract.get("required_checks"))
@@ -298,28 +314,12 @@ def _check_parity_map(contract: dict[str, Any], errors: list[str]) -> None:
     ]
     local_ids = [lid for lid in local_ids if isinstance(lid, str) and lid.strip()]
 
-    # Collect all CI check names from parity_map values
-    ci_check_names: set[str] = set()
-    for value in parity_map.values():
-        if value is None:
-            continue
-        if isinstance(value, str):
-            ci_check_names.add(value)
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    ci_check_names.add(item)
-        elif isinstance(value, dict):
-            ci_check = value.get("ci_check")
-            if isinstance(ci_check, str):
-                ci_check_names.add(ci_check)
+    ci_check_names = _collect_ci_check_names(parity_map)
 
-    # Check 1: every required_checks entry appears in parity_map CI names
     for check in required_checks:
         if check not in ci_check_names:
             errors.append(f"parity_map missing CI mapping for required_check: {check}")
 
-    # Check 2: every local_pre_push ID appears as a parity_map key
     parity_keys = set(parity_map.keys())
     for lid in local_ids:
         if lid not in parity_keys:

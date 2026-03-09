@@ -15,6 +15,7 @@ from typing import Any
 
 # ── Coverage Token Helpers ────────────────────────────────────────────
 
+
 def _coverage_tokens(text: str) -> set[str]:
     """Tokenize text for fuzzy directive-to-rule coverage matching."""
     tokens: set[str] = set()
@@ -149,6 +150,7 @@ def _is_regex_enforceable(directive: str) -> bool:
 
 
 # ── Rule Coverage Check ───────────────────────────────────────────────
+
 
 def _directive_has_matching_rule(
     directive_lower: str,

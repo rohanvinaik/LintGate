@@ -131,6 +131,35 @@ def relevant_guidance_for_file(
     return _dedupe_text(relevant)
 
 
+def _classify_directive(
+    cleaned: str,
+    directives: dict[str, list[str]],
+) -> None:
+    """Classify a cleaned line into directive categories."""
+    upper = cleaned.upper()
+    if "CRITICAL" in upper:
+        directives["critical"].append(cleaned)
+    if "DO NOT" in upper:
+        directives["do_not"].append(cleaned)
+    elif upper.startswith("DO ") or upper.startswith("DO:"):
+        directives["do"].append(cleaned)
+    if "MUST" in upper:
+        directives["must"].append(cleaned)
+
+
+def _is_skippable_line(stripped: str, raw: str, in_code_block: bool) -> bool | str:
+    """Check if a line should be skipped. Returns 'toggle' for fence boundaries."""
+    if not stripped:
+        return True
+    if stripped.startswith("```"):
+        return "toggle"
+    if in_code_block:
+        return True
+    if re.match(r"^\s*\|.*\|", raw):
+        return True
+    return False
+
+
 def _parse_context_file(path: str) -> dict[str, Any]:
     """Parse a single context file."""
     try:
@@ -151,34 +180,19 @@ def _parse_context_file(path: str) -> dict[str, Any]:
     in_code_block = False
     for line_no, raw in enumerate(lines, 1):
         stripped = raw.strip()
-        if not stripped:
-            continue
-        # Toggle code-block state on fenced boundaries (``` or ```python, etc.)
-        if stripped.startswith("```"):
+        skip = _is_skippable_line(stripped, raw, in_code_block)
+        if skip == "toggle":
             in_code_block = not in_code_block
             continue
-        if in_code_block:
+        if skip:
             continue
-        # Skip markdown table rows — they contain keywords like "DO NOT"
-        # in descriptive cells, not as actionable directives.
-        if re.match(r"^\s*\|.*\|", raw):
-            continue
-        cleaned = _clean_line(stripped)
-        upper = cleaned.upper()
 
+        cleaned = _clean_line(stripped)
         path_hints.update(_extract_path_hints(cleaned))
         rule = _parse_rule_line(cleaned, source_path=path, line_no=line_no)
         if rule:
             rules.append(rule)
-
-        if "CRITICAL" in upper:
-            directives["critical"].append(cleaned)
-        if "DO NOT" in upper:
-            directives["do_not"].append(cleaned)
-        elif upper.startswith("DO ") or upper.startswith("DO:"):
-            directives["do"].append(cleaned)
-        if "MUST" in upper:
-            directives["must"].append(cleaned)
+        _classify_directive(cleaned, directives)
 
     modified_ts = Path(path).stat().st_mtime if os.path.exists(path) else None
     return {

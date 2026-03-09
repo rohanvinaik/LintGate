@@ -29,6 +29,10 @@ Design decisions:
 - No LLM token cost — deterministic, fast
 - Deduplicates enforceable rules against existing LINTGATE_* rules
 - Theory profile is hierarchical: facets → claims → evidence
+
+This module is a facade — the implementation is split across:
+- theory_scoring.py: claim scoring, sentence splitting, section classification
+- theory_discovery.py: file enumeration, document parsing, docstring extraction
 """
 
 from __future__ import annotations
@@ -40,182 +44,28 @@ from typing import Any
 
 from .context_guidance import build_context_guidance
 
-# ─── Constants ───────────────────────────────────────────────────────────
-
-# Max files to scan (prevent runaway on huge repos)
-_MAX_MD_FILES = 100
-
-# Extra directories to skip when scanning for .md files (on top of canonical).
-# .claude is skipped EXCEPT for .claude/rules/ which is scanned explicitly
-# in _discover_md_files(). "downloaded" and "retrospectives" are theory-specific.
-_EXTRA_MD_SKIP_DIRS = frozenset({"downloaded", ".claude", "retrospectives"})
-
-# Heading patterns that signal theory-relevant sections
-_THEORY_HEADING_SIGNALS: dict[str, list[str]] = {
-    "core_theory": [
-        r"theor",
-        r"abstract",
-        r"introduction",
-        r"foundation",
-        r"what (?:this|it) is",
-        r"overview",
-        r"definition",
-        r"core (?:insight|concept|idea|principle)",
-        r"key insight",
-        r"fundamental",
-        r"hypothesis",
-        r"research question",
-        r"motivation",
-        r"framing",
-        r"scope and stance",
-    ],
-    "problem_solving": [
-        r"approach",
-        r"method",
-        r"strateg",
-        r"heuristic",
-        r"how (?:it|we|this) (?:work|solv|think|approach)",
-        r"algorithm",
-        r"pipeline",
-        r"workflow",
-        r"process",
-        r"walkthrough",
-        r"technique",
-        r"lesson",
-        r"recommendation",
-        r"what worked",
-        r"practical guidance",
-    ],
-    "alignment": [
-        r"alignment",
-        r"proper.*(?:vs|versus).*improper",
-        r"(?:wrong|correct|right|good|bad)\s+(?:vs|versus|and|example)",
-        r"example.*(?:wrong|correct|proper|improper)",
-        r"(?:what|how).*(?:good|right|correct).*look",
-        r"(?:why|how).*matters?",
-        r"non[- ]?goal",
-        r"scope",
-        r"what could be better",
-        r"what .* gets right",
-    ],
-    "architecture": [
-        r"architect",
-        r"design",
-        r"system",
-        r"structure",
-        r"why (?:this|we|not)",
-        r"rationale",
-        r"trade-?off",
-        r"comparison",
-        r"alternative",
-        r"integration",
-        r"specification",
-        r"decomposition",
-        r"module",
-        r"performance",
-        r"optimi[sz]",
-        r"profil",
-        r"benchmark",
-        r"scaling",
-    ],
-    "anti_patterns": [
-        r"anti[- ]?pattern",
-        r"pitfall",
-        r"(?:do )?not",
-        r"avoid",
-        r"warning",
-        r"danger",
-        r"mistake",
-        r"(?:what|how).*(?:wrong|fail|break|ruin)",
-        r"common (?:error|mistake|problem)",
-        r"what didn.t work",
-        r"caused problem",
-        r"risk",
-        r"mitigation",
-    ],
-    "abstractions": [
-        r"concept",
-        r"vocabular",
-        r"terminolog",
-        r"glossar",
-        r"key (?:term|concept|abstraction|definition)",
-        r"primitive",
-        r"building block",
-        r"data (?:model|structure|type)",
-        r"component",
-        r"metric",
-        r"evaluation",
-    ],
-}
-
-# Paragraph-level signals for theory content
-_THEORY_PARAGRAPH_SIGNALS = {
-    "core_theory": [
-        re.compile(
-            r"the (?:key|core|fundamental|central) (?:insight|idea|principle|claim)",
-            re.I,
-        ),
-        re.compile(
-            r"this (?:system|project|architecture|approach) (?:is|uses|implements|demonstrates)",
-            re.I,
-        ),
-        re.compile(r"(?:we|the system) (?:define|articulate|propose|claim|argue)", re.I),
-        re.compile(r"the theory (?:of|behind|underlying)", re.I),
-        re.compile(r"we (?:hypothesize|propose|conjecture) that", re.I),
-        re.compile(r"this work (?:addresses|tests|investigates|explores)", re.I),
-        re.compile(r"the (?:hypothesis|conjecture|thesis) is", re.I),
-    ],
-    "problem_solving": [
-        re.compile(r"(?:it is|we find that) .*(?:easier|better|faster|more efficient) to", re.I),
-        re.compile(r"rather than .*, (?:we|the system|this)", re.I),
-        re.compile(r"(?:by|through) (?:encoding|exploiting|leveraging|using)", re.I),
-        re.compile(r"transform.* (?:intractable|exponential|brute.?force).* into", re.I),
-        re.compile(r"(?:instead of|rather than|not by|not through)", re.I),
-        re.compile(r"\*\*lesson[:\*]", re.I),
-        re.compile(r"\*\*recommendation", re.I),
-        re.compile(r"(?:what worked|what didn.t work)", re.I),
-        re.compile(r"the (?:fix|solution|workaround|approach) was", re.I),
-    ],
-    "alignment": [
-        re.compile(r"if you .*, you will (?:ruin|break|destroy|undermine|bypass)", re.I),
-        re.compile(r"(?:wrong|incorrect|improper|bad|misaligned).*(?:because|since|as)", re.I),
-        re.compile(r"(?:correct|proper|right|good|aligned).*(?:because|since|as)", re.I),
-        re.compile(r"the (?:goal|purpose|point) is (?:not )?(?:just )?to", re.I),
-        re.compile(
-            r"this (?:approach|method|way|solution) (?:supports?|enables?|allows?)",
-            re.I,
-        ),
-        re.compile(r"\*\*non[- ]?goal\*\*", re.I),
-        re.compile(r"(?:primary|secondary) objective", re.I),
-    ],
-    "anti_patterns": [
-        re.compile(r"(?:task|problem)[- ]specific (?:function|solution|hack|workaround)", re.I),
-        re.compile(r"(?:black[- ]?box|monolith|hard[- ]?cod|ad[- ]?hoc)", re.I),
-        re.compile(r"bypass.* (?:learning|composition|architecture|system)", re.I),
-        re.compile(r"(?:will|would|can) (?:ruin|break|destroy|undermine)", re.I),
-        re.compile(r"(?:trying harder|brute force|premature|overfitting)", re.I),
-    ],
-    "architecture": [
-        re.compile(r"\b(?:O\(n[²2]\)|quadratic|exponential|linear time)\b", re.I),
-        re.compile(r"\b(?:vectori[sz]|batch|parallel)\b.*\b(?:instead|rather|prefer)\b", re.I),
-        re.compile(
-            r"\b(?:performance|latency|throughput|bottleneck)\b.*\b(?:because|since|critical)\b",
-            re.I,
-        ),
-        re.compile(
-            r"\b(?:JIT|numba|numpy|vectori[sz]ed)\b.*\b(?:hot|loop|path|critical)\b",
-            re.I,
-        ),
-    ],
-}
-
-# Contrastive markers that signal alignment criteria
-_CONTRASTIVE_MARKERS = [
-    re.compile(r"^#+\s*(?:WRONG|INCORRECT|BAD|IMPROPER|ANTI-PATTERN)", re.I | re.M),
-    re.compile(r"^#+\s*(?:CORRECT|RIGHT|GOOD|PROPER|ALIGNED)", re.I | re.M),
-    re.compile(r"(?:wrong|incorrect).*(?:vs|versus|→).*(?:correct|right)", re.I),
-    re.compile(r"(?:instead of|rather than|not like|don't do)", re.I),
-]
+# ─── Re-exports from sub-modules ─────────────────────────────────────────
+# All symbols that were previously defined here are re-exported so that
+# existing `from lintgate.theory_extractor import X` statements continue
+# to work without changes.
+from .theory_discovery import (  # noqa: F401
+    _EXTRA_MD_SKIP_DIRS,
+    _MAX_MD_FILES,
+    _discover_md_files,
+    _has_frontmatter_opt_out,
+    _parse_document,
+    _Section,
+    extract_docstring_claims,
+)
+from .theory_scoring import (  # noqa: F401
+    _CONTRASTIVE_MARKERS,
+    _THEORY_HEADING_SIGNALS,
+    _THEORY_PARAGRAPH_SIGNALS,
+    _classify_section,
+    _pick_best_summary_claim,
+    _score_claim,
+    _split_sentences,
+)
 
 # ─── Enforceable rule templates (kept from v1) ──────────────────────────
 
@@ -611,190 +461,6 @@ def get_theory_context_from_profile(
     }
 
 
-# ─── Document discovery ──────────────────────────────────────────────────
-
-
-def _discover_md_files(project_root: str) -> list[str]:
-    """Find all markdown files in the project, respecting skip dirs.
-
-    Also explicitly scans .claude/rules/ which is a first-class location
-    for project theory and constraint documentation.
-    """
-    root = Path(project_root)
-    found: list[str] = []
-
-    # Scan .claude/rules first — this is high-value theory content and
-    # should survive the global file cap.
-    rules_dir = root / ".claude" / "rules"
-    if rules_dir.is_dir():
-        for fname in sorted(os.listdir(rules_dir)):
-            if fname.lower().endswith(".md"):
-                found.append(str(rules_dir / fname))
-                if len(found) >= _MAX_MD_FILES:
-                    return found
-
-    # Scan .lintgate/wiki/ — wiki content feeds back into theory extraction.
-    # .lintgate/ is a hidden dir that should_skip_dir() would skip, so it
-    # needs explicit inclusion (same pattern as .claude/rules/ above).
-    wiki_dir = root / ".lintgate" / "wiki"
-    if wiki_dir.is_dir():
-        for fname in sorted(os.listdir(wiki_dir)):
-            if fname.lower().endswith(".md"):
-                fpath = str(wiki_dir / fname)
-                if fpath not in found:
-                    found.append(fpath)
-                    if len(found) >= _MAX_MD_FILES:
-                        return found
-
-    from .discovery import CANONICAL_EXCLUDE_DIRS, should_skip_dir
-
-    skip_all = CANONICAL_EXCLUDE_DIRS | _EXTRA_MD_SKIP_DIRS
-
-    # Main walk — skips hidden dirs and known noise dirs
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Prune skip dirs in-place
-        dirnames[:] = sorted([d for d in dirnames if d not in skip_all and not should_skip_dir(d)])
-
-        for fname in sorted(filenames):
-            if fname.lower().endswith(".md"):
-                full_path = os.path.join(dirpath, fname)
-                if full_path in found:
-                    continue
-                found.append(full_path)
-                if len(found) >= _MAX_MD_FILES:
-                    return found
-
-    return found
-
-
-# ─── Document parsing ────────────────────────────────────────────────────
-
-
-class _Section:
-    """A headed section from a markdown document."""
-
-    __slots__ = (
-        "heading",
-        "heading_level",
-        "body",
-        "source_file",
-        "rel_path",
-        "line_no",
-    )
-
-    def __init__(
-        self,
-        heading: str,
-        heading_level: int,
-        body: str,
-        source_file: str,
-        rel_path: str,
-        line_no: int,
-    ):
-        self.heading = heading
-        self.heading_level = heading_level
-        self.body = body
-        self.source_file = source_file
-        self.rel_path = rel_path
-        self.line_no = line_no
-
-
-def _has_frontmatter_opt_out(md_path: str) -> bool:
-    """Return True when markdown frontmatter declares `theory_scope: false`."""
-    try:
-        with open(md_path, errors="replace") as f:
-            head_lines: list[str] = []
-            for _ in range(10):
-                line = f.readline()
-                if line == "":
-                    break
-                head_lines.append(line.rstrip("\n"))
-    except OSError:
-        return False
-
-    if not head_lines:
-        return False
-    if head_lines[0].lstrip("\ufeff").strip() != "---":
-        return False
-
-    fm_end = None
-    for i, line in enumerate(head_lines[1:], 1):
-        if line.strip() == "---":
-            fm_end = i
-            break
-    if fm_end is None:
-        return False
-
-    frontmatter = "\n".join(head_lines[1:fm_end])
-    return bool(
-        re.search(
-            r"^\s*theory_scope\s*:\s*false\s*(?:#.*)?$",
-            frontmatter,
-            re.IGNORECASE | re.MULTILINE,
-        )
-    )
-
-
-def _parse_document(md_path: str, project_root: str) -> list[_Section]:
-    """Parse a markdown file into headed sections."""
-    if _has_frontmatter_opt_out(md_path):
-        return []
-
-    try:
-        text = Path(md_path).read_text(errors="replace")
-    except OSError:
-        return []
-
-    rel_path = os.path.relpath(md_path, project_root)
-    lines = text.splitlines()
-    sections: list[_Section] = []
-    current_heading = os.path.basename(md_path).replace(".md", "")
-    current_level = 0
-    current_body_lines: list[str] = []
-    current_line_no = 1
-
-    for i, line in enumerate(lines, 1):
-        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
-        if heading_match:
-            # Flush previous section
-            if current_body_lines:
-                body = "\n".join(current_body_lines).strip()
-                if body:
-                    sections.append(
-                        _Section(
-                            heading=current_heading,
-                            heading_level=current_level,
-                            body=body,
-                            source_file=md_path,
-                            rel_path=rel_path,
-                            line_no=current_line_no,
-                        )
-                    )
-            current_heading = heading_match.group(2).strip()
-            current_level = len(heading_match.group(1))
-            current_body_lines = []
-            current_line_no = i
-        else:
-            current_body_lines.append(line)
-
-    # Flush last section
-    if current_body_lines:
-        body = "\n".join(current_body_lines).strip()
-        if body:
-            sections.append(
-                _Section(
-                    heading=current_heading,
-                    heading_level=current_level,
-                    body=body,
-                    source_file=md_path,
-                    rel_path=rel_path,
-                    line_no=current_line_no,
-                )
-            )
-
-    return sections
-
-
 # ─── Theory profile construction ─────────────────────────────────────────
 
 
@@ -827,37 +493,6 @@ def _build_theory_profile(sections: list[_Section]) -> dict[str, Any]:
         profile[facet] = _dedupe_facet_entries(profile[facet])
 
     return profile
-
-
-def _classify_section(section: _Section) -> list[str]:
-    """Determine which theory facets a section belongs to."""
-    facets: list[str] = []
-    heading_lower = section.heading.lower()
-
-    # Check heading signals
-    for facet, patterns in _THEORY_HEADING_SIGNALS.items():
-        for pattern in patterns:
-            if re.search(pattern, heading_lower):
-                facets.append(facet)
-                break
-
-    # Check paragraph-level signals in body
-    for facet, compiled_patterns in _THEORY_PARAGRAPH_SIGNALS.items():
-        if facet in facets:
-            continue  # Already classified by heading
-        for pat in compiled_patterns:
-            if pat.search(section.body):
-                facets.append(facet)
-                break
-
-    # Check contrastive markers for alignment
-    if "alignment" not in facets:
-        for marker in _CONTRASTIVE_MARKERS:
-            if marker.search(section.body):
-                facets.append("alignment")
-                break
-
-    return facets
 
 
 def _extract_claims(section: _Section, facet: str) -> list[str]:
@@ -899,130 +534,6 @@ def _extract_claims(section: _Section, facet: str) -> list[str]:
 
     # Cap claims per section to avoid noise
     return claims[:8]
-
-
-def _score_claim(sentence: str, facet: str) -> int:
-    """Score how likely a sentence is to be a meaningful theory claim.
-
-    Returns 0 for non-claims, 1+ for likely claims. Higher = stronger signal.
-    """
-    score = 0
-    s = sentence
-
-    # Universal theory claim signals
-    if re.search(r"\b(?:because|since|therefore|thus|hence|so that)\b", s, re.I):
-        score += 1  # Causal reasoning
-    if re.search(r"\b(?:rather than|instead of|not by|unlike)\b", s, re.I):
-        score += 1  # Contrastive reasoning
-    if re.search(r"\b(?:key|core|fundamental|central|critical|essential)\b", s, re.I):
-        score += 1  # Importance markers
-    if re.search(r"\b(?:emerges?|enables?|ensures?|provides?|demonstrates?)\b", s, re.I):
-        score += 1  # Mechanistic language
-
-    # Facet-specific scoring
-    if facet == "core_theory":
-        if re.search(r"\b(?:is defined as|we define|the definition)\b", s, re.I):
-            score += 2
-        if re.search(r"\b(?:theory|principle|axiom|invariant|postulate)\b", s, re.I):
-            score += 1
-        if re.search(r"\b(?:we hypothesize|hypothesis|conjecture|research question)\b", s, re.I):
-            score += 2
-        if re.search(
-            r"this (?:work|project|research) (?:address|test|investigat|explor)",
-            s,
-            re.I,
-        ):
-            score += 1
-    elif facet == "problem_solving":
-        if re.search(
-            r"\b(?:easier|better|tractable|efficient|guided)\b.*\b(?:than|over|compared)\b",
-            s,
-            re.I,
-        ):
-            score += 2
-        if re.search(r"\btransform.*(?:into|to)\b", s, re.I):
-            score += 1
-        if re.search(
-            r"\b(?:scan|parse|split|classif|extract|deduplicat|score|report)\w*\b",
-            s,
-            re.I,
-        ):
-            score += 1
-        if re.search(r"\b(?:step|phase|pipeline|workflow|process)\b", s, re.I):
-            score += 1
-        if re.search(r"\b(?:first|then|next|finally)\b", s, re.I):
-            score += 1
-        if re.search(r"\*\*Lesson", s):
-            score += 2  # "**Lesson:**" pattern from journals
-        if re.search(r"the (?:fix|solution|workaround) was", s, re.I):
-            score += 1
-    elif facet == "alignment":
-        if re.search(r"\b(?:ruin|break|destroy|undermine|bypass)\b", s, re.I):
-            score += 2
-        if re.search(r"\b(?:proper|correct|aligned|right way)\b", s, re.I):
-            score += 1
-        if re.search(r"\b(?:goal|purpose|point) is\b", s, re.I):
-            score += 1
-        if re.search(r"\b(?:non[- ]?goal|not a goal|out of scope)\b", s, re.I):
-            score += 2
-        if re.search(r"\b(?:primary|secondary) objective\b", s, re.I):
-            score += 1
-    elif facet == "architecture":
-        if re.search(r"\bwhy\b.*\b(?:not|over|instead|rather)\b", s, re.I):
-            score += 2
-        if re.search(r"\b(?:design|chose|decided|tradeoff|trade-off)\b", s, re.I):
-            score += 1
-        if re.search(r"\*\*Rationale\*\*", s):
-            score += 2  # "**Rationale:**" pattern from research docs
-        if re.search(r"\b(?:decompos|modular|separation of concerns|drop[- ]?in)\b", s, re.I):
-            score += 1
-        if re.search(
-            r"\b(?:O\(n|quadratic|exponential|vectori[sz]|batch|performance|latency|throughput)\b",
-            s,
-            re.I,
-        ):
-            score += 1  # Performance-related architectural claim
-    elif facet == "anti_patterns":
-        if re.search(r"\b(?:will|would|can|could)\s+(?:ruin|break|destroy|fail)\b", s, re.I):
-            score += 2
-        if re.search(r"\b(?:black.?box|monolith|hard.?cod|ad.?hoc|hack|workaround)\b", s, re.I):
-            score += 1
-        if re.search(r"\b(?:trying harder|premature|overfitting|scope creep)\b", s, re.I):
-            score += 1
-        # Penalize tool-description sentences that aren't conceptual anti-patterns
-        sentence_lower = s.lower()
-        tool_desc_patterns = ["provides", "channel", "linter", "tier", "analysis"]
-        if sum(1 for p in tool_desc_patterns if p in sentence_lower) >= 1:
-            score -= 2
-        # Penalize descriptive-verb sentences (documentation, not theory)
-        if re.search(r"\b(?:provides|returns|supports|contains|includes)\b", sentence_lower):
-            score -= 1
-    elif facet == "abstractions":
-        if re.search(r"\b(?:we (?:call|define|term)|is called|known as|refers to)\b", s, re.I):
-            score += 2
-        if re.search(r"\*\*\w+(?:\s+\w+){0,3}\*\*", s):
-            score += 1  # Bold-defined terms
-
-    return score
-
-
-def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences, handling common markdown artifacts."""
-    # Replace newlines that aren't paragraph breaks with spaces
-    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
-    # Split on paragraph breaks
-    paragraphs = re.split(r"\n\s*\n", text)
-
-    sentences: list[str] = []
-    for para in paragraphs:
-        para = para.strip()
-        if not para or para.startswith("|") or para.startswith("- ["):
-            continue
-        # Split paragraph into sentences
-        parts = re.split(r"(?<=[.!?])\s+(?=[A-Z])", para)
-        sentences.extend(parts)
-
-    return sentences
 
 
 def _dedupe_facet_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1219,74 +730,6 @@ def _build_validity_report(
 # ─── Utility functions ───────────────────────────────────────────────────
 
 
-def _pick_best_summary_claim(
-    claims: list[str],
-    exclude: set[str] | None = None,
-) -> str:
-    """Pick the most informative claim to use as a facet summary.
-
-    Prefers claims that:
-    - Have causal/contrastive language (because, rather than, enables)
-    - Are a reasonable length (40-200 chars) — not too terse, not too verbose
-    - Don't contain CODE placeholders or path fragments
-    - Haven't already been used as a summary for another facet
-    """
-    exclude = exclude or set()
-
-    def quality_score(claim: str) -> float:
-        s = 0.0
-        # Penalize very short or very long claims
-        length = len(claim)
-        if length < 40:
-            s -= 2.0  # Too terse to be informative
-        elif length < 80:
-            s += 0.5
-        elif length <= 200:
-            s += 1.0  # Sweet spot
-        else:
-            s -= 0.5  # Getting verbose
-
-        # Penalize noise markers
-        if "CODE" in claim:
-            s -= 3.0
-        if claim.count("/") > 2:
-            s -= 2.0
-        # Penalize purely descriptive content (no theory markers)
-        if not re.search(
-            r"\b(?:because|since|therefore|rather|instead|enables?|designed|approach|key|core|fundamental|must|should|critical|hypothesis)\b",
-            claim,
-            re.I,
-        ):
-            s -= 1.0
-
-        # Reward theory-quality language
-        if re.search(r"\b(?:because|since|therefore|thus)\b", claim, re.I):
-            s += 2.0
-        if re.search(r"\b(?:rather than|instead of|not by|unlike)\b", claim, re.I):
-            s += 2.0
-        if re.search(
-            r"\b(?:enables?|ensures?|provides?|designed|architecture|approach)\b",
-            claim,
-            re.I,
-        ):
-            s += 1.0
-        if re.search(r"\b(?:key|core|fundamental|central|critical)\b", claim, re.I):
-            s += 1.0
-        if re.search(r"\b(?:hypothesis|hypothesize|conjecture|propose|we argue)\b", claim, re.I):
-            s += 1.5
-
-        return s
-
-    # Filter out already-used summaries
-    available = [c for c in claims if c not in exclude]
-    if not available:
-        available = claims  # Fall back to all if all were excluded
-
-    scored = [(quality_score(c), c) for c in available]
-    scored.sort(key=lambda x: -x[0])
-    return scored[0][1] if scored else "(no theory content found)"
-
-
 def _is_covered_by_existing(
     pattern: str,
     existing_patterns: set[str],
@@ -1323,69 +766,7 @@ def _words_to_pattern(words: str) -> str:
     return r"[_\s-]*".join(re.escape(p) for p in parts) if parts else re.escape(words)
 
 
-# ─── Working-tree theory extraction (#182) ────────────────────────────────
-
-
-def extract_docstring_claims(
-    project_root: str,
-    python_files: list[str],
-) -> list[_Section]:
-    """Extract theory-relevant sections from Python module-level docstrings.
-
-    Scans module-level docstrings (the first expression statement in each file)
-    for design intent, architectural rationale, and theory claims. Returns
-    _Section objects that can flow through the standard classification pipeline.
-
-    Args:
-        project_root: Absolute path to the project root.
-        python_files: List of Python file paths (absolute or relative to project_root).
-
-    Returns:
-        List of _Section objects extracted from module-level docstrings.
-    """
-    import ast
-
-    sections: list[_Section] = []
-    root = Path(project_root)
-
-    for fpath in python_files:
-        abs_path = fpath if os.path.isabs(fpath) else str(root / fpath)
-        if not os.path.isfile(abs_path):
-            continue
-        if not abs_path.endswith(".py"):
-            continue
-
-        try:
-            source = Path(abs_path).read_text(errors="replace")
-        except OSError:
-            continue
-
-        # Extract module-level docstring via AST
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
-            continue
-
-        docstring = ast.get_docstring(tree)
-        if not docstring or len(docstring.strip()) < 30:
-            continue
-
-        rel_path = os.path.relpath(abs_path, project_root)
-        module_name = Path(rel_path).stem
-
-        # Create a section from the docstring
-        sections.append(
-            _Section(
-                heading=f"Module: {module_name}",
-                heading_level=1,
-                body=docstring,
-                source_file=abs_path,
-                rel_path=rel_path,
-                line_no=1,
-            )
-        )
-
-    return sections
+# ─── Theory staleness checking ───────────────────────────────────────────
 
 
 def check_theory_staleness(

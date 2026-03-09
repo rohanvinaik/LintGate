@@ -196,14 +196,8 @@ def load_config(cwd: str) -> ProjectConfig:
     return _auto_detect(cwd)
 
 
-def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
-    """Load config from a YAML file."""
-    with open(config_path) as f:
-        raw = yaml.safe_load(f) or {}
-
-    config = ProjectConfig(project_root=cwd)
-
-    # Linters
+def _parse_linters(raw: dict, config: ProjectConfig) -> None:
+    """Parse linters section and related tool version settings."""
     linters_raw = raw.get("linters", {})
     for name, linter_conf in linters_raw.items():
         if isinstance(linter_conf, dict):
@@ -212,19 +206,6 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
         elif isinstance(linter_conf, bool):
             config.enabled_linters[name] = linter_conf
 
-    # Pipeline-critical paths
-    config.pipeline_critical_paths = raw.get("pipeline_critical_paths", [])
-
-    # Severity overrides
-    config.severity_overrides = raw.get("severity_overrides", {})
-
-    # Exemptions
-    config.exemptions = raw.get("exemptions", {})
-
-    # Extra tier 3 linters
-    config.extra_tier3_linters = raw.get("extra_tier3_linters", [])
-
-    # Tool version constraints (for version auditing/checking)
     tool_versions_raw = raw.get("tool_versions", {})
     if isinstance(tool_versions_raw, dict):
         config.tool_version_requirements = {
@@ -233,12 +214,13 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
             if isinstance(k, str) and isinstance(v, (str, int, float))
         }
 
-    # Version checker specific settings
     vcheck_raw = linters_raw.get("version_checker", {})
     if isinstance(vcheck_raw, dict):
         config.enforced_optional_groups = vcheck_raw.get("enforced_optional_groups", [])
 
-    # Path policies (per-path tier/strictness overrides)
+
+def _parse_path_policies(raw: dict, config: ProjectConfig) -> None:
+    """Parse path_policies and debounce sections."""
     path_policies_raw = raw.get("path_policies", [])
     if isinstance(path_policies_raw, list):
         for policy in path_policies_raw:
@@ -252,7 +234,6 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
                     }
                 )
 
-    # Debounce
     debounce_raw = raw.get("debounce", {})
     if debounce_raw:
         for key in ("tier_0", "tier_1", "tier_2", "tier_3"):
@@ -260,10 +241,9 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
             if interval_key in debounce_raw:
                 config.debounce[key] = float(debounce_raw[interval_key])
 
-    # Timeout
-    config.total_timeout_ms = raw.get("total_timeout_ms", 8000)
 
-    # Discovery scope
+def _parse_discovery(raw: dict, config: ProjectConfig, cwd: str) -> None:
+    """Parse discovery scope and language settings."""
     discovery_raw = raw.get("discovery", {})
     if isinstance(discovery_raw, dict):
         sp = discovery_raw.get("source_paths", [])
@@ -273,15 +253,32 @@ def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
         if isinstance(ep, list):
             config.discovery_exclude_paths = [str(p) for p in ep if p]
 
-    # Quality policy
-    qp_raw = raw.get("quality_policy", {})
-    if isinstance(qp_raw, dict):
-        config.quality_policy = _parse_quality_policy(qp_raw)
-
-    # Languages
     config.languages = raw.get("languages", [])
     if not config.languages:
         config.languages = _detect_languages(cwd)
+
+
+def _load_yaml_config(config_path: str, cwd: str) -> ProjectConfig:
+    """Load config from a YAML file."""
+    with open(config_path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    config = ProjectConfig(project_root=cwd)
+
+    _parse_linters(raw, config)
+
+    config.pipeline_critical_paths = raw.get("pipeline_critical_paths", [])
+    config.severity_overrides = raw.get("severity_overrides", {})
+    config.exemptions = raw.get("exemptions", {})
+    config.extra_tier3_linters = raw.get("extra_tier3_linters", [])
+    config.total_timeout_ms = raw.get("total_timeout_ms", 8000)
+
+    _parse_path_policies(raw, config)
+    _parse_discovery(raw, config, cwd)
+
+    qp_raw = raw.get("quality_policy", {})
+    if isinstance(qp_raw, dict):
+        config.quality_policy = _parse_quality_policy(qp_raw)
 
     return config
 

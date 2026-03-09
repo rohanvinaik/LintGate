@@ -85,32 +85,18 @@ def _extract_channel_evidence(cr: ChannelResult, out: list[LensEvidence]) -> Non
             out.extend(adapt_cross_channel(coh_findings))
 
 
-def _extract_contract_coverage(
-    channel_results: list[ChannelResult],
-) -> list[LensEvidence]:
-    """Extract contract coverage evidence from cross-channel metric gaps.
+_FUNC_METRIC_KEYS = {
+    "specification_function_list": "specification",
+    "pure_function_list": "performance",
+}
 
-    Identifies functions that appear in one channel's published metrics but
-    NOT in another channel's published metrics, indicating a contract boundary
-    where one channel sees the function but another doesn't.
 
-    Uses schema-aware publish/consume: a function is "consumed" if it appears
-    in ANY other channel's function-level metrics. This avoids false positives
-    when coherence emits no findings.
-    """
-    # Collect per-channel function-level targets
-    # channel_name -> set of func_keys
+def _collect_channel_funcs(channel_results: list[ChannelResult]) -> dict[str, set[str]]:
+    """Collect per-channel function-level targets from metrics."""
     channel_funcs: dict[str, set[str]] = {}
-
-    # Keys that contain per-function dicts
-    func_metric_keys = {
-        "specification_function_list": "specification",
-        "pure_function_list": "performance",
-    }
-
     for cr in channel_results:
         metrics = cr.metrics or {}
-        for metric_key, channel_name in func_metric_keys.items():
+        for metric_key, channel_name in _FUNC_METRIC_KEYS.items():
             data = metrics.get(metric_key)
             if not data:
                 continue
@@ -122,14 +108,19 @@ def _extract_contract_coverage(
                         funcs.add(func_key)
             elif isinstance(data, dict):
                 funcs.update(data.keys())
+    return channel_funcs
 
-    # Need at least 2 channels with function data to detect gaps
+
+def _extract_contract_coverage(
+    channel_results: list[ChannelResult],
+) -> list[LensEvidence]:
+    """Extract contract coverage evidence from cross-channel metric gaps."""
+    channel_funcs = _collect_channel_funcs(channel_results)
     if len(channel_funcs) < 2:
         return []
 
-    # Build published/consumed maps: a function is "published" if it appears
-    # in only one channel, "consumed" if it appears in 2+ channels
-    all_funcs: dict[str, set[str]] = {}  # func_key -> set of channels
+    # Build func_key -> set of channels
+    all_funcs: dict[str, set[str]] = {}
     for channel_name, funcs in channel_funcs.items():
         for func_key in funcs:
             all_funcs.setdefault(func_key, set()).add(channel_name)
@@ -145,7 +136,6 @@ def _extract_contract_coverage(
 
     if not published:
         return []
-
     return adapt_contract_coverage(published, consumed)
 
 

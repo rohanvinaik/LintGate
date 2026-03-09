@@ -826,6 +826,45 @@ def _compute_severity(
 # ── Impact Detection ─────────────────────────────────────────────────────
 
 
+def _build_search_dirs(root: Path, src_path: Path) -> list[Path]:
+    """Build the list of directories to search for test files."""
+    search_dirs = [
+        root / "tests",
+        root / "test",
+        src_path.parent,
+        src_path.parent / "tests",
+    ]
+    try:
+        rel = src_path.relative_to(root)
+        if len(rel.parts) > 1:
+            package_parts = rel.parts[:-1]
+            if package_parts[0] in ("src", "lib", "lintgate"):
+                package_parts = package_parts[1:]
+            if package_parts:
+                search_dirs.append(root / "tests" / Path(*package_parts))
+    except ValueError:
+        pass
+    return search_dirs
+
+
+def _find_joined_test(root: Path, src_path: Path) -> str | None:
+    """Find underscore-joined test file (e.g. test_foo_bar.py)."""
+    try:
+        rel = src_path.relative_to(root)
+        joined_name = (
+            "test_"
+            + "_".join(p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__"))
+            + ".py"
+        )
+        for test_dir in [root / "tests", root / "test"]:
+            candidate = test_dir / joined_name
+            if candidate.exists():
+                return str(candidate)
+    except ValueError:
+        pass
+    return None
+
+
 def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str]:
     """Find test files impacted by the changed source files.
 
@@ -841,67 +880,27 @@ def find_impacted_tests(changed_files: list[str], project_root: str) -> list[str
 
     for src_file in changed_files:
         src_path = Path(src_file)
-        basename = src_path.stem  # e.g., "bar" from "bar.py"
-
-        # Skip test files themselves and non-Python files
         if src_path.suffix != ".py":
             continue
+
+        basename = src_path.stem
         if basename.startswith("test_") or src_path.name == "conftest.py":
-            # Changed file IS a test file — include it directly
             if src_path.exists() and str(src_path) not in seen:
                 impacted.append(str(src_path))
                 seen.add(str(src_path))
             continue
 
-        # Search patterns for corresponding test files
         test_name = f"test_{basename}.py"
-
-        # Search in common test directories
-        search_dirs = [
-            root / "tests",
-            root / "test",
-            src_path.parent,  # Same directory
-            src_path.parent / "tests",
-        ]
-
-        # Also try to mirror the package structure
-        # e.g., src/foo/bar.py → tests/foo/test_bar.py
-        try:
-            rel = src_path.relative_to(root)
-            if len(rel.parts) > 1:
-                # Build mirrored path: tests/<package>/test_<module>.py
-                package_parts = rel.parts[:-1]  # Everything except filename
-                # Skip common src directories
-                if package_parts[0] in ("src", "lib", "lintgate"):
-                    package_parts = package_parts[1:]
-                if package_parts:
-                    search_dirs.append(root / "tests" / Path(*package_parts))
-        except ValueError:
-            pass
-
-        for search_dir in search_dirs:
+        for search_dir in _build_search_dirs(root, src_path):
             candidate = search_dir / test_name
             if candidate.exists() and str(candidate) not in seen:
                 impacted.append(str(candidate))
                 seen.add(str(candidate))
 
-        # Also check for underscore-joined names: test_foo_bar.py
-        try:
-            rel = src_path.relative_to(root)
-            joined_name = (
-                "test_"
-                + "_".join(
-                    p for p in rel.with_suffix("").parts if p not in ("src", "lib", "__init__")
-                )
-                + ".py"
-            )
-            for test_dir in [root / "tests", root / "test"]:
-                candidate = test_dir / joined_name
-                if candidate.exists() and str(candidate) not in seen:
-                    impacted.append(str(candidate))
-                    seen.add(str(candidate))
-        except ValueError:
-            pass
+        joined = _find_joined_test(root, src_path)
+        if joined and joined not in seen:
+            impacted.append(joined)
+            seen.add(joined)
 
     return sorted(impacted)
 
