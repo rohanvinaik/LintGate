@@ -80,7 +80,7 @@ def register(mcp, helpers):
             )
 
         result["next_actions"] = _build_next_actions(state, archived)
-        return helpers["_json_dumps"](result, output_mode="compact")
+        return str(helpers["_json_dumps"](result, output_mode="compact"))
 
     @mcp.tool()
     def refactor_resume(path: str) -> str:
@@ -122,7 +122,7 @@ def register(mcp, helpers):
             if state:
                 summary["next_actions"] = _build_next_actions(state, archived=False)
 
-        return helpers["_json_dumps"](summary, output_mode="compact")
+        return str(helpers["_json_dumps"](summary, output_mode="compact"))
 
     @mcp.tool()
     def refactor_thesis(path: str, thesis: str) -> str:
@@ -169,7 +169,7 @@ def register(mcp, helpers):
                 },
             ],
         }
-        return helpers["_json_dumps"](result, output_mode="compact")
+        return str(helpers["_json_dumps"](result, output_mode="compact"))
 
     return {
         "refactor_checkpoint": refactor_checkpoint,

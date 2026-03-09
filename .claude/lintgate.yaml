@@ -206,6 +206,17 @@ exemptions:
       codes: ["cognitive-complexity"]
       reason: "Mesh manifest builder handles 10+ edge cases for cross-symbol resolution."
       ticket: "LINTGATE-DEBT-116"
+  secret_checker:
+    "test_secrets_scanning.py":
+      reason: "Synthetic secrets used as test fixtures for secret detection validation."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
+    "test_secret_checker_linter.py":
+      reason: "Synthetic secrets used as test fixtures for secret detection validation."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
+    "test_git_channel_helpers.py":
+      codes: ["github_token"]
+      reason: "Synthetic GitHub token in git channel test fixtures."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
   lint:
     "pyproject.toml":
       codes: ["version-missing"]

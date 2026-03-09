@@ -191,7 +191,7 @@ class DispositionEnforcer:
             rule_id, {"fire_count": 0, "compliance_count": 0, "ignore_count": 0}
         )
         max_nudges = self.config.disposition_enforcement.max_nudges_per_disposition
-        return rule_state["fire_count"] < max_nudges
+        return bool(rule_state["fire_count"] < max_nudges)
 
     def _mark_fired(self, rule_id: str) -> None:
         """Update fire count and timestamp for a rule."""

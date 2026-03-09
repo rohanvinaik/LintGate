@@ -204,7 +204,7 @@ def _is_stale_lock(lock_path: Path) -> bool:
                 pass  # Process exists but owned by another user — not stale
 
         # Check heartbeat age
-        age = time.time() - timestamp
+        age = time.time() - float(timestamp)
         return age > 120.0
 
     except (json.JSONDecodeError, OSError):

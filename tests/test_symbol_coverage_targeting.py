@@ -36,7 +36,7 @@ class TestGetChangedLineRanges:
             -    old line
             +    replaced
         """)
-        with patch("lintgate.channels.symbol_coverage.subprocess.run") as mock_run:
+        with patch("lintgate.channels._target_building.subprocess.run") as mock_run:
             mock_run.return_value = type(
                 "R",
                 (),
@@ -52,7 +52,7 @@ class TestGetChangedLineRanges:
         assert range(24, 25) in ranges
 
     def test_git_failure_returns_none(self, tmp_path):
-        with patch("lintgate.channels.symbol_coverage.subprocess.run") as mock_run:
+        with patch("lintgate.channels._target_building.subprocess.run") as mock_run:
             mock_run.return_value = type(
                 "R",
                 (),
@@ -68,7 +68,7 @@ class TestGetChangedLineRanges:
     def test_timeout_returns_none(self, tmp_path):
         import subprocess as sp
 
-        with patch("lintgate.channels.symbol_coverage.subprocess.run") as mock_run:
+        with patch("lintgate.channels._target_building.subprocess.run") as mock_run:
             mock_run.side_effect = sp.TimeoutExpired("git", 10)
             result = get_changed_line_ranges(str(tmp_path / "mod.py"), str(tmp_path))
         assert result is None
@@ -112,7 +112,7 @@ class TestBuildTargetSet:
         """,
         )
         # Mock git diff to show changes only in lines 4-5 (the changed function)
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(4, 6)]
             targets, unresolved = build_target_set([str(mod)], str(tmp_path), {"mode": "changed"})
         names = [t.name for t in targets]
@@ -133,7 +133,7 @@ class TestBuildTargetSet:
         """,
         )
         # git diff returns None for new/untracked files
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = None
             targets, _ = build_target_set([str(mod)], str(tmp_path), {"mode": "changed"})
         names = [t.name for t in targets]
@@ -195,7 +195,7 @@ class TestBuildTargetSet:
     def test_non_python_files_skipped(self, tmp_path):
         txt = tmp_path / "readme.txt"
         txt.write_text("hello")
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 2)]
             targets, _ = build_target_set([str(txt)], str(tmp_path), {"mode": "changed"})
         assert targets == []
@@ -209,7 +209,7 @@ class TestBuildTargetSet:
                 pass
         """,
         )
-        with patch("lintgate.channels.symbol_coverage.get_changed_line_ranges") as mock_diff:
+        with patch("lintgate.channels._target_building.get_changed_line_ranges") as mock_diff:
             mock_diff.return_value = [range(1, 3)]
             build_target_set(
                 [str(mod)],

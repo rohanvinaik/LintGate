@@ -98,7 +98,11 @@ def check_unnecessary_materialization(tree: ast.AST, file_path: str) -> Iterable
             pair = _is_list_genexp_assign(node)
             if pair:
                 assigned_lists[pair[0]] = pair[1]
-        elif isinstance(node, ast.For) and isinstance(node.iter, ast.Name) and node.iter.id in assigned_lists:
+        elif (
+            isinstance(node, ast.For)
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id in assigned_lists
+        ):
             yield LintIssue(
                 linter="performance_checker",
                 kind="PERF010",

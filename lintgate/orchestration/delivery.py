@@ -238,7 +238,7 @@ class DeliveryBus:
 
             # Extract knowledge metrics from session if available
             repertoire_hits = 0
-            knowledge_meta = {}
+            knowledge_meta: dict[str, object] = {}
             if self.session:
                 knowledge_meta = getattr(self.session, "knowledge_meta", {})
                 repertoire = getattr(self.session, "resolution_repertoire", [])
@@ -369,7 +369,7 @@ class McpOnlyChannel(BaseChannel):
         return f"Pending behavior nudge: {finding.get('message')}"
 
     def format_repertoire_hint(self, hint: dict[str, Any]) -> str:
-        return f"Resolution hint available: {hint.get('repertoire')[:30]}..."
+        return f"Resolution hint available: {str(hint.get('repertoire', ''))[:30]}..."
 
     def supports_proactive_push(self) -> bool:
         return True
@@ -393,12 +393,11 @@ def deliver_finding(
     Returns:
         tuple: (formatted_payload, channel_type) or (None, None) if no delivery possible.
     """
-    if available_channels is None:
-        available_channels = CHANNEL_MAP
+    channels = available_channels if available_channels is not None else CHANNEL_MAP
 
     for chan_type in preferred_channels:
-        if chan_type in available_channels:
-            channel = available_channels[chan_type]
+        if chan_type in channels:
+            channel = channels[chan_type]
 
             # Enrich finding with delivery metadata before formatting
             finding["delivery_channel"] = chan_type

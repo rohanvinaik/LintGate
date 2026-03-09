@@ -154,7 +154,11 @@ def _apply_resurface_cadence(
         return 0
     resurfaced = 0
     for fp, info in (current_index or {}).items():
-        if info.get("severity") == "blocking" and fp in previous_finding_index and quota.get(fp, 0) == 0:
+        if (
+            info.get("severity") == "blocking"
+            and fp in previous_finding_index
+            and quota.get(fp, 0) == 0
+        ):
             quota[fp] = 1
             resurfaced += 1
     return resurfaced

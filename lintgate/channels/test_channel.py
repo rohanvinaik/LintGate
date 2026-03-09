@@ -188,7 +188,11 @@ class TestChannel:
                 coverage_pct=coverage_pct,
             )
             gate_result = _run_symbol_gate_if_enabled(
-                cov_cfg, test_result, changed_files, project_root, sym_ctx,
+                cov_cfg,
+                test_result,
+                changed_files,
+                project_root,
+                sym_ctx,
             )
 
             return _build_channel_result(

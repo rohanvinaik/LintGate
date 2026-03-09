@@ -441,9 +441,7 @@ def _build_structure_snapshot(inputs: StructureSnapshotInputs) -> dict[str, Any]
 
     # Fan-in enrichment (Gap 1 — import fan-in surfaced)
     if inputs.module_fan_in:
-        snapshot["zero_fan_in_count"] = sum(
-            1 for v in inputs.module_fan_in.values() if v == 0
-        )
+        snapshot["zero_fan_in_count"] = sum(1 for v in inputs.module_fan_in.values() if v == 0)
         snapshot["high_fan_in_modules"] = [
             {"module": m, "fan_in": fi}
             for m, fi in sorted(inputs.module_fan_in.items(), key=lambda x: -x[1])[:3]

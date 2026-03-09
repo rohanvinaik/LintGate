@@ -45,13 +45,15 @@ from .performance_checks.perf011_pure_uncached_in_loop import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from ..types import LinterContext, LintIssue
 
+    _CheckFn = Callable[[ast.AST, str], Iterable[LintIssue]]
+
 
 # All checks with their IDs, for disable-filtering
-_CHECKS: list[tuple[str, object]] = [
+_CHECKS: list[tuple[str, _CheckFn]] = [
     ("PERF001", check_quadratic_membership),
     ("PERF002", check_recompile_in_function),
     ("PERF003", check_sorted_first_last),
