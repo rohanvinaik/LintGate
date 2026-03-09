@@ -232,7 +232,7 @@ def compile_policy_grammar(
         compiled = None
 
         # Try each compiler in priority order
-        for compiler in _CONSTRAINT_COMPILERS:
+        for compiler in _CONSTRAINT_COMPILERS.values():
             compiled = compiler(constraint)
             if compiled is not None:
                 break
