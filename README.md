@@ -62,7 +62,13 @@ The core idea comes from how good instruments work in science: multiple cheap, l
 
 ## What Happened When We Tried It
 
-LintGate's own codebase — 636 files, ~70,000 lines — was produced in two weeks by a non-programmer using LintGate to supervise Claude's output. Here is the SonarQube profile against industry baselines:
+Some context on baselines. A 60,000-line Python codebase typically carries a cyclomatic complexity average between 7 and 12, duplication above 3% (the industry quality gate), and a maintainability profile that degrades toward the bottom of the file list. The standard estimate for net quality code production — accounting for design, testing, debugging, and refactoring — is 50 to 200 lines per day. The upper bound for highly productive developers on well-understood problems is around 500.
+
+LintGate's codebase — 636 files, ~70,000 lines — was produced in two weeks by a non-programmer using LintGate to supervise Claude's output. The SonarQube profile: 0.2% duplication, ~4.3 average cyclomatic complexity, zero bugs, zero vulnerabilities, uniform A maintainability ratings across all files.
+
+### Self-Audit
+
+I pointed LintGate at its own codebase and said: *"Professionalize this codebase."* Three words. What followed: 33,700 lines, 92 Python files, 3 context windows, 6 monolithic modules decomposed into clean components. Every refactoring step passed the linter and test suite on the first run.
 
 | Metric | LintGate | Typical at this scale |
 | --- | --- | --- |
@@ -91,7 +97,17 @@ The more interesting test: what happens on a codebase built entirely *without* L
 
 ShortcutForge is a natural language compiler for Apple Shortcuts — a Lark LALR(1) parser, 615-action catalog, 7-pass static analysis, plist compilation, code signing, LoRA fine-tuning pipeline. 100 Python files, ~37,500 LOC. Built through vibe-coding over a week of intensive development. Working code, passing tests, zero architectural planning.
 
-LintGate's ControlPlane diagnosed it as "systemic." Remediation of a systemic quality profile at this scale — 132 blockers across 100 files — is typically scoped as a multi-sprint initiative. What happened next took 46 minutes. Blockers went from 132 to 7 (−95%), ruff violations from 266 to 0, high-complexity blocks from 27 to 10 (−63%), pylint score from 8.49 to 9.44 — with zero regressions across the 477-test suite. The 7 remaining blockers are irreducible architectural characteristics — cohesive files that happen to be long. Not debt. Shape.
+LintGate's ControlPlane diagnosed it as "systemic." Remediation of a systemic quality profile at this scale — 132 blockers across 100 files — is typically scoped as a multi-sprint initiative. What happened next took 46 minutes.
+
+| Metric | Before | After |
+| --- | --- | --- |
+| **Blockers** | 132 | 7 (-95%) |
+| **Pylint score** | 8.49/10 | 9.44/10 |
+| **Ruff violations** | 266 | 0 |
+| **High-complexity blocks** | 27 | 10 (-63%) |
+| **Test suite** | 477 pass | 477 pass (0 regressions) |
+
+The 7 remaining blockers are irreducible architectural characteristics — cohesive files that happen to be long. Not debt. Shape.
 
 The highest-ROI fix wasn't even a code change: 71 of 132 blockers were `ty` unresolved-import false positives caused by `sys.path` manipulation. Two lines in `pyproject.toml` eliminated them all. Configuration before code.
 
