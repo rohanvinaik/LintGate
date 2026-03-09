@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 from lintgate.linters.performance_checks._helpers import get_name
 from lintgate.linters.performance_checks.algebra_types import (

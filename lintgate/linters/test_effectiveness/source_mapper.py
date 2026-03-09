@@ -572,12 +572,15 @@ def _process_test_call(
     # Fallback: bare name matching
     bare_hint = _resolve_module_hint(bare_name, qualifier, import_collector)
     success = False
-    if (bare_name in source_function_index or bare_name in import_collector.imported_names or bare_hint):
-        if _try_add_match(
-            bare_name, bare_hint, source_function_index, project_root,
-            use_unique_keys, matched_keys, diagnostics, strategy="call_graph",
-        ):
-            success = True
+    if (
+        bare_name in source_function_index
+        or bare_name in import_collector.imported_names
+        or bare_hint
+    ) and _try_add_match(
+        bare_name, bare_hint, source_function_index, project_root,
+        use_unique_keys, matched_keys, diagnostics, strategy="call_graph",
+    ):
+        success = True
 
     # Alias import resolution
     if _try_alias_import(

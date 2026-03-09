@@ -101,6 +101,66 @@ class ReviewItem:
         }
 
 
+def _resolve_model_profile(
+    model_id: str | None, use_model_profile: bool
+) -> tuple[dict[str, Any] | None, str | None, float]:
+    """Resolve model profile for calibration. Returns (dict, key, confidence)."""
+    if not model_id or not use_model_profile:
+        return None, None, 0.0
+    try:
+        from .controlplane.model_profiles import get_profile, resolve_model_key
+
+        model_key_resolved = resolve_model_key(model_id)
+        if not model_key_resolved:
+            return None, None, 0.0
+        profile = get_profile(model_id)
+        if profile and profile.is_usable():
+            return profile.to_dict(), model_key_resolved, profile.confidence
+    except Exception:
+        pass
+    return None, None, 0.0
+
+
+_NEVER_OVERWRITE = frozenset({"AGENTS.md"})
+
+
+def _write_drafts(
+    root: Path,
+    drafts: dict[str, str],
+    write: bool,
+    overwrite: bool,
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """Write or plan draft files. Returns (file_reports, written, skipped)."""
+    file_reports: list[dict[str, Any]] = []
+    written: list[str] = []
+    skipped_existing: list[str] = []
+    for rel_path, content in drafts.items():
+        target = root / rel_path
+        exists = target.exists()
+        status = "planned"
+
+        if write:
+            if exists and (not overwrite or rel_path in _NEVER_OVERWRITE):
+                status = "skipped_exists"
+                skipped_existing.append(str(target))
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content.rstrip() + "\n")
+                status = "written"
+                written.append(str(target))
+
+        file_reports.append(
+            {
+                "relative_path": rel_path,
+                "absolute_path": str(target),
+                "status": status,
+                "line_count": len(content.splitlines()),
+                "content": content,
+            }
+        )
+    return file_reports, written, skipped_existing
+
+
 def bootstrap_context_files(
     project_root: str,
     *,
@@ -121,22 +181,9 @@ def bootstrap_context_files(
     theory_pack = build_theory_pack(str(root), include_full_profile=False)
     theory_full = extract_theory(str(root))
 
-    # Resolve model profile for calibration
-    model_profile_dict: dict[str, Any] | None = None
-    model_key_resolved: str | None = None
-    model_profile_confidence: float = 0.0
-    if model_id and use_model_profile:
-        try:
-            from .controlplane.model_profiles import get_profile, resolve_model_key
-
-            model_key_resolved = resolve_model_key(model_id)
-            if model_key_resolved:
-                profile = get_profile(model_id)
-                if profile and profile.is_usable():
-                    model_profile_dict = profile.to_dict()
-                    model_profile_confidence = profile.confidence
-        except Exception:
-            pass
+    model_profile_dict, model_key_resolved, model_profile_confidence = _resolve_model_profile(
+        model_id, use_model_profile
+    )
 
     metadata = _project_metadata(root)
     facet_summaries = theory_pack.get("facet_summaries", {})
@@ -180,35 +227,7 @@ def bootstrap_context_files(
             rule_lines=rule_lines,
         )
 
-    never_overwrite = {"AGENTS.md"}
-
-    file_reports: list[dict[str, Any]] = []
-    written: list[str] = []
-    skipped_existing: list[str] = []
-    for rel_path, content in drafts.items():
-        target = root / rel_path
-        exists = target.exists()
-        status = "planned"
-
-        if write:
-            if exists and (not overwrite or rel_path in never_overwrite):
-                status = "skipped_exists"
-                skipped_existing.append(str(target))
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content.rstrip() + "\n")
-                status = "written"
-                written.append(str(target))
-
-        file_reports.append(
-            {
-                "relative_path": rel_path,
-                "absolute_path": str(target),
-                "status": status,
-                "line_count": len(content.splitlines()),
-                "content": content,
-            }
-        )
+    file_reports, written, skipped_existing = _write_drafts(root, drafts, write, overwrite)
 
     quick_wins = _build_quick_wins(root, guidance, theory_full)
 
@@ -516,6 +535,20 @@ def _collect_directive_review_items(
             )
 
 
+def _extract_dead_paths(detail_text: str) -> list[str]:
+    """Parse dead paths from a path_references detail string."""
+    if "don't exist" not in detail_text:
+        return []
+    colon_idx = detail_text.find(": ")
+    if colon_idx < 0:
+        return []
+    paths_part = detail_text[colon_idx + 2 :]
+    paren_idx = paths_part.rfind(" (+")
+    if paren_idx >= 0:
+        paths_part = paths_part[:paren_idx]
+    return [p.strip() for p in paths_part.split(",") if p.strip()]
+
+
 def _collect_dead_path_review_items(
     items: list[ReviewItem],
     audit: dict[str, Any],
@@ -523,21 +556,11 @@ def _collect_dead_path_review_items(
     """Surface dead-path warnings so the agent can confirm/fix them."""
     for file_result in audit.get("audit", []):
         for check in file_result.get("health_checks", []):
-            if check.get("check") != "path_references":
+            if check.get("check") != "path_references" or check.get("status") != "warn":
                 continue
-            if check.get("status") != "warn":
-                continue
-            detail_text = check.get("detail", "")
-            if "don't exist" not in detail_text:
-                continue
-            colon_idx = detail_text.find(": ")
-            if colon_idx < 0:
-                continue
-            paths_part = detail_text[colon_idx + 2 :]
-            paren_idx = paths_part.rfind(" (+")
-            if paren_idx >= 0:
-                paths_part = paths_part[:paren_idx]
-            dead_paths = [p.strip() for p in paths_part.split(",") if p.strip()]
+            dead_paths = _extract_dead_paths(check.get("detail", ""))
+            source_name = file_result.get("name", "?")
+            source_file = file_result.get("file", "")
             for dp in dead_paths:
                 items.append(
                     ReviewItem(
@@ -545,12 +568,12 @@ def _collect_dead_path_review_items(
                         context=dp,
                         question=(
                             f"The path `{dp}` referenced in "
-                            f"`{file_result.get('name', '?')}` does not exist. "
+                            f"`{source_name}` does not exist. "
                             "Should it be updated, removed, or is it correct "
                             "(e.g., it's created at runtime)?"
                         ),
                         options=["update_path", "remove_reference", "keep_as_is"],
-                        detail={"source_file": file_result.get("file", "")},
+                        detail={"source_file": source_file},
                     )
                 )
 

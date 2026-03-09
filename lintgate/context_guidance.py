@@ -155,9 +155,7 @@ def _is_skippable_line(stripped: str, raw: str, in_code_block: bool) -> bool | s
         return "toggle"
     if in_code_block:
         return True
-    if re.match(r"^\s*\|.*\|", raw):
-        return True
-    return False
+    return bool(re.match(r"^\s*\|.*\|", raw))
 
 
 def _parse_context_file(path: str) -> dict[str, Any]:

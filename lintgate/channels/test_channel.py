@@ -179,17 +179,16 @@ class TestChannel:
             _check_contract_drift(changed_files, project_root, findings)
 
             # Step 6: Symbol coverage gate
-            gate_result = _run_symbol_gate_if_enabled(
-                cov_cfg,
-                test_result,
-                changed_files,
-                project_root,
-                event.surface,
-                findings,
+            sym_ctx = SymbolGateContext(
+                surface=event.surface,
+                findings=findings,
                 is_partial_run=is_partial_run,
                 coverage_ok=coverage_ok,
                 targets_mode=targets_mode,
                 coverage_pct=coverage_pct,
+            )
+            gate_result = _run_symbol_gate_if_enabled(
+                cov_cfg, test_result, changed_files, project_root, sym_ctx,
             )
 
             return _build_channel_result(
@@ -667,17 +666,24 @@ def _filter_to_source_packages(
     return result
 
 
+@dataclass
+class SymbolGateContext:
+    """Runtime context for symbol coverage gate execution."""
+
+    surface: str
+    findings: list[LintIssue]
+    is_partial_run: bool = False
+    coverage_ok: bool = True
+    targets_mode: str = "unknown"
+    coverage_pct: float | None = None
+
+
 def _run_symbol_gate_if_enabled(
     cov_cfg: dict[str, Any],
     test_result: TestRunResult | None,
     changed_files: list[str],
     project_root: str,
-    surface: str,
-    findings: list[LintIssue],
-    is_partial_run: bool = False,
-    coverage_ok: bool = True,
-    targets_mode: str = "unknown",
-    coverage_pct: float | None = None,
+    ctx: SymbolGateContext,
 ) -> Any:
     """Run symbol coverage gate if enabled. Returns gate result or None."""
     if not cov_cfg["symbol_enabled"]:
@@ -693,12 +699,7 @@ def _run_symbol_gate_if_enabled(
         source_files,
         project_root,
         cov_cfg["symbol_coverage"],
-        surface,
-        findings,
-        is_partial_run=is_partial_run,
-        coverage_ok=coverage_ok,
-        targets_mode=targets_mode,
-        coverage_pct=coverage_pct,
+        ctx,
     )
 
 
@@ -1097,17 +1098,12 @@ def _run_symbol_gate(
     changed_files: list[str],
     project_root: str,
     settings: dict[str, Any],
-    surface: str,
-    findings: list[LintIssue],
-    is_partial_run: bool = False,
-    coverage_ok: bool = True,
-    targets_mode: str = "unknown",
-    coverage_pct: float | None = None,
+    ctx: SymbolGateContext,
 ) -> Any:
     """Run symbol coverage gate and append findings. Returns gate result or None."""
     if not coverage_json_path:
-        if surface == "ci":
-            findings.append(
+        if ctx.surface == "ci":
+            ctx.findings.append(
                 LintIssue(
                     linter="test_channel",
                     kind="symbol_gate_skipped",
@@ -1124,11 +1120,9 @@ def _run_symbol_gate(
         changed_files=changed_files,
         project_root=project_root,
         settings=settings,
-        surface=surface,
+        surface=ctx.surface,
     )
-    _emit_symbol_findings(
-        gate_result, findings, is_partial_run, coverage_ok, targets_mode, coverage_pct
-    )
+    _emit_symbol_findings(gate_result, ctx)
     return gate_result
 
 
@@ -1158,11 +1152,7 @@ def _build_symbol_suggestions(sr: Any) -> list[str]:
 
 def _emit_symbol_findings(
     gate_result: Any,
-    findings: list[LintIssue],
-    is_partial_run: bool = False,
-    coverage_ok: bool = True,
-    targets_mode: str = "unknown",
-    coverage_pct: float | None = None,
+    ctx: SymbolGateContext,
 ) -> None:
     """Convert symbol coverage gate results into LintIssue findings."""
     for sr in gate_result.symbol_results:
@@ -1181,8 +1171,8 @@ def _emit_symbol_findings(
         downgrade_reason = ""
         severity = "blocking"
 
-        if is_partial_run:
-            if coverage_ok:
+        if ctx.is_partial_run:
+            if ctx.coverage_ok:
                 confidence = 0.6
                 severity = "warning"
                 downgrade_reason = " (downgraded: partial test run with healthy line coverage)"
@@ -1192,7 +1182,7 @@ def _emit_symbol_findings(
 
         msg += downgrade_reason
 
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="symbol_uncovered",
@@ -1208,17 +1198,17 @@ def _emit_symbol_findings(
                     "missing_branches": sr.missing_branches,
                     "total_lines": sr.total_lines_in_span,
                     "executed_lines": sr.executed_lines_in_span,
-                    "is_partial_run": is_partial_run,
-                    "coverage_ok": coverage_ok,
-                    "coverage_pct": coverage_pct,
-                    "targets_mode": targets_mode,
+                    "is_partial_run": ctx.is_partial_run,
+                    "coverage_ok": ctx.coverage_ok,
+                    "coverage_pct": ctx.coverage_pct,
+                    "targets_mode": ctx.targets_mode,
                 },
                 suggestions=_build_symbol_suggestions(sr),
             )
         )
 
     for unresolved in gate_result.unresolved_required:
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="unresolved_required_symbol",
@@ -1234,7 +1224,7 @@ def _emit_symbol_findings(
         )
 
     for waiver in gate_result.waivers_expired:
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="waiver_expired",
@@ -1247,7 +1237,7 @@ def _emit_symbol_findings(
         )
 
     for reason in gate_result.skipped_reasons:
-        findings.append(
+        ctx.findings.append(
             LintIssue(
                 linter="test_channel",
                 kind="symbol_gate_skipped",
