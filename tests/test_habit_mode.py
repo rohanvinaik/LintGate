@@ -458,7 +458,7 @@ class TestSessionPersistence:
 
 class TestStandalonePersistence:
     def test_roundtrip(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState(active=True, habit_score=0.82, compaction_count=1)
         ring = [{"tool": "Edit", "ts": 1.0, "intent": "modify"}]
         save_habit_state_standalone("/fake/project", state, ring)
@@ -468,13 +468,13 @@ class TestStandalonePersistence:
         assert len(loaded_ring) == 1
 
     def test_missing_file_returns_fresh(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state, ring = load_habit_state_standalone("/nonexistent/project")
         assert state.active is False
         assert ring == []
 
     def test_corrupted_file_returns_fresh(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("lintgate.habit_mode._HABIT_STATE_DIR", tmp_path)
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         # Write corrupt data
         from lintgate.habit_mode import _standalone_path
 
