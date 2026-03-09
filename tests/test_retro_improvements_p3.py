@@ -11,16 +11,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from lintgate.controlplane.reporter.compact import format_mesh_report_compact
 from lintgate.controlplane.types import (
     ChannelResult,
     CoherenceResult,
-    ControlPlaneConfig,
     MeshResult,
     SupervisionEvent,
 )

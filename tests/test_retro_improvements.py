@@ -7,10 +7,7 @@ to close the SonarQube coverage gap on new code.
 from __future__ import annotations
 
 import ast
-import os
 import textwrap
-from dataclasses import dataclass, field
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -102,7 +99,6 @@ class TestComputeHookFingerprint:
             MeshResult,
             SupervisionEvent,
         )
-        from lintgate.types import LintIssue
 
         cr_list = []
         if findings:
@@ -176,14 +172,14 @@ class TestBuildPosttoolusContext:
             channel_results=[],
             coherence=CoherenceResult(state="stable"),
         )
-        defaults = dict(
-            mesh_result=mesh,
-            blocking_count=0,
-            warning_count=0,
-            informational_count=0,
-            hidden_findings=0,
-            channels_run=3,
-        )
+        defaults = {
+            "mesh_result": mesh,
+            "blocking_count": 0,
+            "warning_count": 0,
+            "informational_count": 0,
+            "hidden_findings": 0,
+            "channels_run": 3,
+        }
         defaults.update(overrides)
         return PostToolUseInputs(**defaults)
 
