@@ -15,7 +15,7 @@ import pytest
 # ── Gap A: surface="mcp" wiring ─────────────────────────────────────
 
 
-class TestGapA_SurfaceWiring:
+class TestGapASurfaceWiring:
     """Convergence tools create SupervisionEvents with surface='mcp'."""
 
     def test_convergence_analyze_uses_mcp_surface(self):
@@ -119,7 +119,7 @@ class TestGapA_SurfaceWiring:
 # ── Gap B: Purity adapter key alignment ─────────────────────────────
 
 
-class TestGapB_PurityAdapterAlignment:
+class TestGapBPurityAdapterAlignment:
     """Convergence adapter consumes pure_function_list format."""
 
     def test_adapt_purity_handles_list_format(self):
@@ -224,7 +224,7 @@ class TestGapB_PurityAdapterAlignment:
 # ── Gap C: Static landscape fidelity ────────────────────────────────
 
 
-class TestGapC_StaticLandscapeFidelity:
+class TestGapCStaticLandscapeFidelity:
     """Static landscape preserves parallel metadata and collision-safe cache dedupe."""
 
     @pytest.fixture
@@ -345,7 +345,7 @@ class TestGapC_StaticLandscapeFidelity:
 # ── P2: time_budget_minutes effort consistency ──────────────────────
 
 
-class TestP2_BudgetEffortConsistency:
+class TestP2BudgetEffortConsistency:
     """Budget filtering uses same effort model (fixable discount) as ROI ranking."""
 
     def test_fixable_finding_fits_in_budget(self):
@@ -429,7 +429,7 @@ class TestP2_BudgetEffortConsistency:
 # ── P3: top_n negative validation ───────────────────────────────────
 
 
-class TestP3_TopNValidation:
+class TestP3TopNValidation:
     """Negative top_n produces valid output."""
 
     def test_negative_top_n_returns_empty(self):
@@ -469,7 +469,7 @@ class TestP3_TopNValidation:
 # ── P3: Landscape excludes test/fuzz files ──────────────────────────
 
 
-class TestP3_LandscapeProductionFilter:
+class TestP3LandscapeProductionFilter:
     """Optimization landscape filters out non-production targets."""
 
     def test_is_production_file_basics(self):
@@ -524,7 +524,7 @@ class TestP3_LandscapeProductionFilter:
 # ── P1: convergence_analyze file filter scope leak ───────────────────
 
 
-class TestP1_FileFilterScopeLeak:
+class TestP1FileFilterScopeLeak:
     """convergence_analyze with unresolved file filter returns error, not full-project data."""
 
     def test_nonexistent_file_returns_error(self, tmp_path):
@@ -570,7 +570,7 @@ class TestP1_FileFilterScopeLeak:
 # ── P2: Dynamic landscape production scoping bypass ─────────────────
 
 
-class TestP2_DynamicLandscapeScoping:
+class TestP2DynamicLandscapeScoping:
     """Dynamic landscape pre-populates context to enforce production-only scoping."""
 
     def test_dynamic_landscape_event_has_context_python_files(self, tmp_path):
@@ -609,7 +609,6 @@ class TestP2_DynamicLandscapeScoping:
 
     def test_dynamic_landscape_files_changed_capped_at_5(self, tmp_path):
         """Dynamic path caps files_changed to ≤5 so runtime uses scoped discovery."""
-        import ast
         import inspect
 
         from mcp_tools.convergence_tools import _impl_optimization_landscape

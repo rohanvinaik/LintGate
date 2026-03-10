@@ -1,11 +1,9 @@
 """Tests for mutation_decompose performance bridge (#312)."""
 
-import ast
-from unittest.mock import patch
 
 from mcp_tools._mutation_tools_impl import (
-    _build_performance_unlocks,
     _CATEGORY_PERFORMANCE_MAP,
+    _build_performance_unlocks,
 )
 
 
@@ -16,7 +14,7 @@ class TestCategoryPerformanceMap:
             assert cat in _CATEGORY_PERFORMANCE_MAP
 
     def test_entries_have_required_keys(self):
-        for cat, mapping in _CATEGORY_PERFORMANCE_MAP.items():
+        for _cat, mapping in _CATEGORY_PERFORMANCE_MAP.items():
             assert "unlock" in mapping
             assert "description" in mapping
             assert "performance_actions" in mapping

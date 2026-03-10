@@ -5,8 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from lintgate.hooks.controlplane import (
-    PostProcessContext,
     _SESSION_TELEMETRY_UPDATE_CAP,
+    PostProcessContext,
     accumulate_session_telemetry,
     apply_behavior_delta,
     can_apply_session_telemetry,

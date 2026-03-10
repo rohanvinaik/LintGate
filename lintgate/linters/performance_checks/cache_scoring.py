@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .algebra_types import PurityResult
 from ._helpers import get_name
+
+if TYPE_CHECKING:
+    from .algebra_types import PurityResult
 
 # AST node types that represent meaningful computation
 _COMPUTE_NODE_TYPES = (
@@ -101,10 +103,7 @@ def _repeatability(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> float:
         param_count += 1
 
     # Fewer params → higher base score. 0 params = 1.0, 5+ params = 0.0
-    if param_count == 0:
-        base = 1.0
-    else:
-        base = max(1.0 - param_count / 5.0, 0.0)
+    base = 1.0 if param_count == 0 else max(1.0 - param_count / 5.0, 0.0)
 
     # Boost for repeatable-type annotations
     repeatable_count = 0
@@ -114,10 +113,7 @@ def _repeatability(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> float:
             if ann_name is not None and ann_name in _REPEATABLE_ANNOTATIONS:
                 repeatable_count += 1
 
-    if param_count > 0:
-        annotation_boost = 0.3 * (repeatable_count / param_count)
-    else:
-        annotation_boost = 0.0
+    annotation_boost = 0.3 * (repeatable_count / param_count) if param_count > 0 else 0.0
 
     return min(base + annotation_boost, 1.0)
 

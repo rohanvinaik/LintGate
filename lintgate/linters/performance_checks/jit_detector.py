@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .algebra_types import PurityResult
 from ._helpers import get_name
+
+if TYPE_CHECKING:
+    from .algebra_types import PurityResult
 
 # Type-annotation substrings that indicate numeric data.
 _NUMERIC_TYPE_NAMES: set[str] = {
@@ -98,10 +100,7 @@ def _is_numeric_annotation(text: str) -> bool:
     low = text.lower().replace(" ", "")
     if low in {t.lower() for t in _NUMERIC_TYPE_NAMES}:
         return True
-    for prefix in _NUMERIC_CONTAINER_PREFIXES:
-        if low.startswith(prefix.lower()):
-            return True
-    return False
+    return any(low.startswith(prefix.lower()) for prefix in _NUMERIC_CONTAINER_PREFIXES)
 
 
 def _score_numeric_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> float:
@@ -170,9 +169,7 @@ def _count_arithmetic(body: list[ast.stmt]) -> tuple[int, int]:
             total_ops += 1
             if isinstance(node.op, arith_unaryop_types):
                 arith_count += 1
-        elif isinstance(node, ast.BoolOp):
-            total_ops += 1
-        elif isinstance(node, ast.Compare):
+        elif isinstance(node, (ast.BoolOp, ast.Compare)):
             total_ops += 1
 
     return arith_count, total_ops
@@ -189,10 +186,7 @@ def _count_allocations(body: list[ast.stmt]) -> int:
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):
         if isinstance(node, ast.Call):
             name = get_name(node.func)
-            if name and name in _ALLOC_CONSTRUCTORS:
-                count += 1
-            # Class instantiation heuristic: capitalized call target
-            elif name and name[0].isupper() and name not in _NUMERIC_TYPE_NAMES:
+            if name and name in _ALLOC_CONSTRUCTORS or name and name[0].isupper() and name not in _NUMERIC_TYPE_NAMES:
                 count += 1
         elif isinstance(node, ast.JoinedStr):
             # f-string allocates a string
@@ -259,7 +253,7 @@ def detect_jit_candidates(
         purity = purity_results.get(func_name)
         if purity is None:
             # Try matching by qualified_name keys in purity_results.
-            for qn, pr in purity_results.items():
+            for _qn, pr in purity_results.items():
                 if pr.function_name == func_name and pr.line == node.lineno:
                     purity = pr
                     break

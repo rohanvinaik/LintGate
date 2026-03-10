@@ -9,8 +9,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import patch
 
-import pytest
-
 from lintgate.hooks.posttooluse import (
     _collect_cycle_interventions,
     _collect_disposition_nudge,
@@ -631,8 +629,11 @@ class TestCollectDispositionNudge:
         mock_enforcer_instance = type("MockEnf", (), {
             "evaluate": lambda self, event: ("orient", "rule_001"),
         })()
-        mock_enforcer_cls = lambda *a, **kw: mock_enforcer_instance
-        mock_nudge_fn = lambda disp, rule_id: {"type": "nudge", "disposition": disp}
+        def mock_enforcer_cls(*a, **kw):
+            return mock_enforcer_instance
+
+        def mock_nudge_fn(disp, rule_id):
+            return {"type": "nudge", "disposition": disp}
 
         with (
             patch(
@@ -656,7 +657,8 @@ class TestCollectDispositionNudge:
         mock_enforcer_instance = type("MockEnf", (), {
             "evaluate": lambda self, event: (None, None),
         })()
-        mock_enforcer_cls = lambda *a, **kw: mock_enforcer_instance
+        def mock_enforcer_cls(*a, **kw):
+            return mock_enforcer_instance
 
         with (
             patch(

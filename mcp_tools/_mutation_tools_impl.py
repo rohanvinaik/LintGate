@@ -340,7 +340,7 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
                         "jit_eligible": has_jit,
                     },
                     "recommendation": (
-                        f"Decompose to unlock: "
+                        "Decompose to unlock: "
                         + ", ".join(u["unlock_type"] for u in unlocks)
                     ),
                 }

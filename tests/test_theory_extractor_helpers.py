@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 from lintgate.theory_extractor import (
     _build_digest_text,
     _build_facet_summaries,
@@ -245,7 +243,7 @@ class TestBuildTheoryProfile:
             ),
         )
         profile = _build_theory_profile([section])
-        for facet, entries in profile.items():
+        for _facet, entries in profile.items():
             for entry in entries:
                 assert "heading" in entry
                 assert "source" in entry

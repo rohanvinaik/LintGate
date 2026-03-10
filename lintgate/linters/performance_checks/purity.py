@@ -593,10 +593,7 @@ def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
         ret_ann = get_name(node.returns) if node.returns else None
 
         is_pure = len(visitor.side_effects) == 0
-        if is_pure:
-            confidence = _compute_pure_confidence(visitor, functions)
-        else:
-            confidence = 1.0  # Impurity is certain
+        confidence = _compute_pure_confidence(visitor, functions) if is_pure else 1.0
 
         results[qualname] = PurityResult(
             function_name=node.name,

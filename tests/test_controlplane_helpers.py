@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest import mock
 
-import pytest
-
 from lintgate.hooks.controlplane import (
     _SESSION_TELEMETRY_COUNTER_KEY,
     _SESSION_TELEMETRY_UPDATE_CAP,

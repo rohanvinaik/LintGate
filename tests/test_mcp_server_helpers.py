@@ -9,16 +9,13 @@ _build_onboarding_status.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any
 from unittest import mock
 
 import pytest
 
-from lintgate.types import AggregatedResult, LintIssue, LinterResult, LintTier
+from lintgate.types import AggregatedResult, LinterResult, LintIssue, LintTier
 from mcp_server import (
-    TIER_LINTERS,
     _build_compact_output,
     _build_cp_full_details,
     _build_linter_diagnostics,
@@ -32,7 +29,6 @@ from mcp_server import (
     _validate_strictness,
     _validate_tier,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 

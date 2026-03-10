@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ._helpers import get_name
-from .algebra_types import PurityResult
+
+if TYPE_CHECKING:
+    from .algebra_types import PurityResult
 
 
 @dataclass(frozen=True)
@@ -221,11 +223,12 @@ def _check_async_func(
         callee = _get_await_target_name(stmt)
         if callee is None:
             continue
-        assert isinstance(stmt, ast.Assign)  # guaranteed by _get_await_target_name
+        if not isinstance(stmt, ast.Assign):  # guaranteed by _get_await_target_name
+            continue
         assigned = _get_assign_target_names(stmt)
         # References in the call arguments (not including the callee itself)
-        assert isinstance(stmt.value, ast.Await)
-        assert isinstance(stmt.value.value, ast.Call)
+        if not isinstance(stmt.value, ast.Await) or not isinstance(stmt.value.value, ast.Call):
+            continue
         arg_refs = _get_referenced_names(stmt.value.value)
         # Remove the callee name itself from references
         callee_name = get_name(stmt.value.value.func)
