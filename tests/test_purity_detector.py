@@ -108,7 +108,7 @@ def pure_add(a, b) -> int:
     assert r.function_name == "pure_add"
     assert r.qualified_name == "pure_add"
     assert r.parameter_count == 2
-    assert r.confidence == 0.8  # pure functions get 0.8 heuristic confidence
+    assert r.confidence == 0.95  # pure leaf function (no calls) gets highest pure confidence
     assert r.side_effects == ()  # no side effects — empty tuple
     assert r.return_annotation == "int"
     assert r.line == 2
@@ -374,7 +374,7 @@ def variadic(a, b, *args, key=None, **kwargs) -> str:
 
 
 def test_pure_function_confidence_vs_impure():
-    """Pure functions get 0.8 confidence; impure functions get 1.0."""
+    """Pure leaf functions get 0.95 confidence; impure functions get 1.0."""
     code = """
 def pure_fn(x):
     return x * 2
@@ -385,7 +385,7 @@ def impure_fn():
     tree = ast.parse(code)
     results = analyze_purity(tree)
 
-    assert results["pure_fn"].confidence == 0.8
+    assert results["pure_fn"].confidence == 0.95  # leaf function, no calls
     assert results["impure_fn"].confidence == 1.0
 
 
@@ -458,10 +458,225 @@ async def async_impure(x):
     assert pure.is_pure is True
     assert pure.parameter_count == 2
     assert pure.side_effects == ()
-    assert pure.confidence == 0.8
+    assert pure.confidence == 0.95  # leaf function, no calls
 
     impure = results["async_impure"]
     assert impure.is_pure is False
     assert impure.parameter_count == 1
     assert len(impure.side_effects) == 1
     assert impure.side_effects[0].kind == "io_call"
+
+
+# ---------------------------------------------------------------------------
+# Expanded side-effect detectors (#307)
+# ---------------------------------------------------------------------------
+
+
+class TestFileWriteDetection:
+    """File write operations should be detected as impure."""
+
+    def test_path_write_text(self):
+        code = """
+def writer(p):
+    p.write_text("hello")
+"""
+        r = analyze_purity(ast.parse(code))["writer"]
+        assert r.is_pure is False
+        assert any(se.kind == "io_call" and "write_text" in se.detail for se in r.side_effects)
+
+    def test_path_mkdir(self):
+        code = """
+def mkdirs(p):
+    p.mkdir(parents=True)
+"""
+        r = analyze_purity(ast.parse(code))["mkdirs"]
+        assert r.is_pure is False
+        assert any("mkdir" in se.detail for se in r.side_effects)
+
+    def test_json_dump(self):
+        code = """
+import json
+def save(data, fh):
+    json.dump(data, fh)
+"""
+        r = analyze_purity(ast.parse(code))["save"]
+        assert r.is_pure is False
+        assert any("json.dump" in se.detail for se in r.side_effects)
+
+    def test_shutil_impure(self):
+        code = """
+import shutil
+def copy_files(src, dst):
+    shutil.copy(src, dst)
+"""
+        r = analyze_purity(ast.parse(code))["copy_files"]
+        assert r.is_pure is False
+
+
+class TestDatabaseOperationDetection:
+    """Database mutation methods should be detected as impure."""
+
+    def test_cursor_execute(self):
+        code = """
+def run_query(cursor, sql):
+    cursor.execute(sql)
+"""
+        r = analyze_purity(ast.parse(code))["run_query"]
+        assert r.is_pure is False
+        assert any(se.kind == "io_call" and "execute" in se.detail for se in r.side_effects)
+
+    def test_connection_commit(self):
+        code = """
+def save(conn):
+    conn.commit()
+"""
+        r = analyze_purity(ast.parse(code))["save"]
+        assert r.is_pure is False
+        assert any(se.kind == "io_call" and "commit" in se.detail for se in r.side_effects)
+
+
+class TestMLOperationDetection:
+    """ML training/loading operations should be detected as impure."""
+
+    def test_model_backward(self):
+        code = """
+def train_step(loss):
+    loss.backward()
+"""
+        r = analyze_purity(ast.parse(code))["train_step"]
+        assert r.is_pure is False
+        assert any("backward" in se.detail for se in r.side_effects)
+
+    def test_optimizer_step(self):
+        code = """
+def update(optimizer):
+    optimizer.step()
+"""
+        r = analyze_purity(ast.parse(code))["update"]
+        assert r.is_pure is False
+        assert any("step" in se.detail for se in r.side_effects)
+
+    def test_torch_load(self):
+        code = """
+import torch
+def load_model(path):
+    return torch.load(path)
+"""
+        r = analyze_purity(ast.parse(code))["load_model"]
+        assert r.is_pure is False
+
+
+class TestSubscriptAndAugAssignDetection:
+    """Subscript writes and augmented assigns on externals should be detected."""
+
+    def test_external_subscript_write(self):
+        code = """
+registry = {}
+def register(name, val):
+    registry[name] = val
+"""
+        r = analyze_purity(ast.parse(code))["register"]
+        assert r.is_pure is False
+        assert any(se.kind == "mutation" and "registry" in se.detail for se in r.side_effects)
+
+    def test_local_subscript_write_is_pure(self):
+        code = """
+def build_dict(items):
+    d = {}
+    for k, v in items:
+        d[k] = v
+    return d
+"""
+        r = analyze_purity(ast.parse(code))["build_dict"]
+        assert r.is_pure is True
+
+    def test_augassign_on_external_attribute(self):
+        code = """
+counter = type('', (), {'value': 0})()
+def increment():
+    counter.value += 1
+"""
+        r = analyze_purity(ast.parse(code))["increment"]
+        assert r.is_pure is False
+        assert any(se.kind == "attribute_mutation" for se in r.side_effects)
+
+    def test_delete_external_name(self):
+        code = """
+cache = {}
+def clear_entry(key):
+    del cache[key]
+"""
+        r = analyze_purity(ast.parse(code))["clear_entry"]
+        assert r.is_pure is False
+
+
+class TestExternalAttributeWrite:
+    """Attribute writes on non-local, non-self objects should be detected."""
+
+    def test_external_obj_attribute_write(self):
+        code = """
+config = type('', (), {})()
+def set_debug(val):
+    config.debug = val
+"""
+        r = analyze_purity(ast.parse(code))["set_debug"]
+        assert r.is_pure is False
+        assert any(se.kind == "attribute_mutation" and "config.debug" in se.detail for se in r.side_effects)
+
+
+class TestConfidenceBands:
+    """Evidence-weighted confidence replaces flat 0.8."""
+
+    def test_leaf_function_gets_0_95(self):
+        code = """
+def add(a, b):
+    return a + b
+"""
+        r = analyze_purity(ast.parse(code))["add"]
+        assert r.confidence == 0.95
+
+    def test_resolved_builtin_calls_get_0_90(self):
+        code = """
+def normalize(items):
+    return sorted(set(items))
+"""
+        r = analyze_purity(ast.parse(code))["normalize"]
+        assert r.confidence == 0.90
+
+    def test_few_unresolved_lowercase_get_0_80(self):
+        code = """
+def process(x):
+    return helper(x)
+"""
+        r = analyze_purity(ast.parse(code))["process"]
+        assert r.confidence == 0.80
+
+    def test_many_unresolved_lowercase_get_0_65(self):
+        code = """
+def pipeline(x):
+    a = step_one(x)
+    b = step_two(a)
+    c = step_three(b)
+    return step_four(c)
+"""
+        r = analyze_purity(ast.parse(code))["pipeline"]
+        assert r.confidence == 0.65
+
+    def test_impure_always_1_0(self):
+        code = """
+def log_it(x):
+    print(x)
+"""
+        r = analyze_purity(ast.parse(code))["log_it"]
+        assert r.confidence == 1.0
+
+    def test_calls_known_pure_same_module_get_0_90(self):
+        code = """
+def helper(x):
+    return x * 2
+
+def caller(x):
+    return helper(x) + 1
+"""
+        results = analyze_purity(ast.parse(code))
+        assert results["caller"].confidence == 0.90

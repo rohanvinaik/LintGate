@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 # ── Session telemetry counter helpers ────────────────────────────────
@@ -46,13 +47,8 @@ def mark_session_telemetry_applied(session: Any) -> None:
 # ── Model key resolution ─────────────────────────────────────────────
 
 
-def resolve_event_model_key(input_data: dict[str, Any]) -> str | None:
-    """Resolve model identity from hook payload fields/env vars.
-
-    Returns canonical provider:model key, or None when unavailable/unresolvable.
-    """
-    from lintgate.controlplane.model.profiles import resolve_model_key
-
+def _collect_model_candidates(input_data: dict[str, Any]) -> list[str | None]:
+    """Collect model identity candidates from hook payload fields and env vars."""
     candidates: list[str | None] = [
         input_data.get("model"),
         input_data.get("model_id"),
@@ -92,7 +88,17 @@ def resolve_event_model_key(input_data: dict[str, Any]) -> str | None:
     for env_key in ("LINTGATE_MODEL_ID", "CLAUDE_MODEL", "OPENAI_MODEL", "MODEL"):
         candidates.append(os.environ.get(env_key))
 
-    for raw in candidates:
+    return candidates
+
+
+def resolve_event_model_key(input_data: dict[str, Any]) -> str | None:
+    """Resolve model identity from hook payload fields/env vars.
+
+    Returns canonical provider:model key, or None when unavailable/unresolvable.
+    """
+    from lintgate.controlplane.model.profiles import resolve_model_key
+
+    for raw in _collect_model_candidates(input_data):
         if not isinstance(raw, str) or not raw.strip():
             continue
         canonical = resolve_model_key(raw)
@@ -146,31 +152,20 @@ def load_global_priors(cp_config: Any) -> dict | None:
 # ── Session setup and gate ───────────────────────────────────────────
 
 
-def setup_session_and_gate(
+def _inject_session_context(
+    session: Any,
+    event: Any,
     cp_config: Any,
     cwd: str,
-    tool_name: str,
-    event: Any,
-    channels: list,
     global_priors: dict | None,
-) -> tuple[Any, str | None]:
-    """Set up session memory, theory profile, and session gate. Returns (session, advisory)."""
-    session = None
-    advisory: str | None = None
-
-    if cp_config.session_memory:
-        with contextlib.suppress(Exception):
-            from lintgate.controlplane.session_memory import get_or_create_session
-
-            session = get_or_create_session(cwd, cp_config.session_max_age_hours)
-
+) -> None:
+    """Inject behavior compass, global priors, and theory profile into event."""
     if session is not None and cp_config.channel_enabled("behavior"):
         event.raw_input["behavior_compass"] = session.behavior_compass
 
     if global_priors is not None:
         event.raw_input["behavior_global_priors"] = global_priors
 
-    # Cache theory profile once per mesh run
     if session is not None and cp_config.inquiry.any_enabled():
         try:
             from lintgate.theory_extractor import extract_theory
@@ -182,26 +177,58 @@ def setup_session_and_gate(
         if session.theory_profile_cache is not None:
             event.raw_input["theory_profile"] = session.theory_profile_cache
 
-    # Advisory gate: warn when editing without sufficient theory context
-    if (
-        session is not None
-        and cp_config.inquiry.session_gate
-        and tool_name in ("Write", "Edit", "MultiEdit")
-        and not session.behavior_compass.get("_session_ready", False)
-    ):
-        with contextlib.suppress(Exception):
-            from lintgate.context_auditor import check_session_readiness
 
-            readiness = check_session_readiness(cwd, theory_profile=session.theory_profile_cache)
-            if not readiness.ready:
-                advisory = (
-                    f"[Session Advisory] Context not ready for deep supervision. "
-                    f"Missing: {', '.join(readiness.missing)}. "
-                    f"{readiness.recommendation}"
-                )
-                channels[:] = [ch for ch in channels if ch.name != "behavior"]
-            else:
-                session.behavior_compass["_session_ready"] = True
+def _check_session_gate(
+    session: Any,
+    cp_config: Any,
+    cwd: str,
+    tool_name: str,
+    channels: list,
+) -> str | None:
+    """Check session gate readiness and return advisory if not ready."""
+    if (
+        session is None
+        or not cp_config.inquiry.session_gate
+        or tool_name not in ("Write", "Edit", "MultiEdit")
+        or session.behavior_compass.get("_session_ready", False)
+    ):
+        return None
+
+    with contextlib.suppress(Exception):
+        from lintgate.context_auditor import check_session_readiness
+
+        readiness = check_session_readiness(cwd, theory_profile=session.theory_profile_cache)
+        if not readiness.ready:
+            channels[:] = [ch for ch in channels if ch.name != "behavior"]
+            return (
+                f"[Session Advisory] Context not ready for deep supervision. "
+                f"Missing: {', '.join(readiness.missing)}. "
+                f"{readiness.recommendation}"
+            )
+        session.behavior_compass["_session_ready"] = True
+
+    return None
+
+
+def setup_session_and_gate(
+    cp_config: Any,
+    cwd: str,
+    tool_name: str,
+    event: Any,
+    channels: list,
+    global_priors: dict | None,
+) -> tuple[Any, str | None]:
+    """Set up session memory, theory profile, and session gate. Returns (session, advisory)."""
+    session = None
+
+    if cp_config.session_memory:
+        with contextlib.suppress(Exception):
+            from lintgate.controlplane.session_memory import get_or_create_session
+
+            session = get_or_create_session(cwd, cp_config.session_max_age_hours)
+
+    _inject_session_context(session, event, cp_config, cwd, global_priors)
+    advisory = _check_session_gate(session, cp_config, cwd, tool_name, channels)
 
     return session, advisory
 
@@ -209,62 +236,65 @@ def setup_session_and_gate(
 # ── Behavior delta application ───────────────────────────────────────
 
 
-def apply_behavior_delta(
-    session: Any,
-    cr: Any,
-    cp_config: Any,
-    input_data: dict,
-) -> list[str]:
-    """Apply behavior compass delta, global profile delta, and model telemetry from a channel result."""
-    snapshot_alerts = [f.kind for f in cr.findings]
+def _apply_compass_delta(session: Any, cr: Any) -> None:
+    """Apply behavior compass delta fields (cooldown counters, nudge flags, theory codas)."""
+    if "behavior_compass_delta" not in cr.metrics:
+        return
 
-    # Apply compass delta (cooldown counters, nudge flags)
-    if "behavior_compass_delta" in cr.metrics:
-        from lintgate.controlplane.session_memory import (
-            load_behavior_compass,
-            save_behavior_compass,
+    from lintgate.controlplane.session_memory import (
+        load_behavior_compass,
+        save_behavior_compass,
+    )
+
+    delta = cr.metrics["behavior_compass_delta"]
+    existing_telem = session_telemetry_updates_used(session)
+    bc = load_behavior_compass(session)
+    for key in (
+        "last_fired",
+        "signal_fire_counts",
+        "early_nudge_emitted",
+        "pending_nudge_signals",
+        "pending_nudge_constraint_check_count",
+        "nudge_outcomes",
+    ):
+        if key in delta:
+            setattr(bc, key, delta[key])
+    save_behavior_compass(session, bc)
+    if existing_telem > 0:
+        session.behavior_compass[_SESSION_TELEMETRY_COUNTER_KEY] = existing_telem
+
+    if "_theory_recent_codas" in delta:
+        existing_codas = session.behavior_compass.get("_theory_recent_codas", {})
+        existing_codas.update(delta["_theory_recent_codas"])
+        session.behavior_compass["_theory_recent_codas"] = existing_codas
+
+
+def _apply_global_profile_delta(
+    session: Any, cr: Any, cp_config: Any
+) -> None:
+    """Apply global behavior profile delta if enabled."""
+    if not (cp_config.global_memory_enabled and "global_profile_delta" in cr.metrics):
+        return
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.global_behavior_profile import (
+            apply_session_delta,
+            load_global_profile,
+            save_global_profile,
         )
 
-        delta = cr.metrics["behavior_compass_delta"]
-        existing_telem = session_telemetry_updates_used(session)
-        bc = load_behavior_compass(session)
-        for key in (
-            "last_fired",
-            "signal_fire_counts",
-            "early_nudge_emitted",
-            "pending_nudge_signals",
-            "pending_nudge_constraint_check_count",
-            "nudge_outcomes",
-        ):
-            if key in delta:
-                setattr(bc, key, delta[key])
-        save_behavior_compass(session, bc)
-        if existing_telem > 0:
-            session.behavior_compass[_SESSION_TELEMETRY_COUNTER_KEY] = existing_telem
-        # Merge theory coda dedup state
-        if "_theory_recent_codas" in delta:
-            existing_codas = session.behavior_compass.get("_theory_recent_codas", {})
-            existing_codas.update(delta["_theory_recent_codas"])
-            session.behavior_compass["_theory_recent_codas"] = existing_codas
+        gp = load_global_profile(ttl_days=cp_config.global_memory_ttl_days)
+        apply_session_delta(
+            gp,
+            cr.metrics["global_profile_delta"],
+            session_id=session.session_id if session else "",
+        )
+        save_global_profile(gp)
 
-    # Apply global profile delta
-    if cp_config.global_memory_enabled and "global_profile_delta" in cr.metrics:
-        with contextlib.suppress(Exception):
-            from lintgate.controlplane.global_behavior_profile import (
-                apply_session_delta,
-                load_global_profile,
-                save_global_profile,
-            )
 
-            gp = load_global_profile(ttl_days=cp_config.global_memory_ttl_days)
-            apply_session_delta(
-                gp,
-                cr.metrics["global_profile_delta"],
-                session_id=session.session_id if session else "",
-            )
-            save_global_profile(gp)
-
-    # Model profile telemetry refinement
+def _apply_model_telemetry(
+    session: Any, input_data: dict
+) -> None:
+    """Refine model profile telemetry from session signal fires."""
     with contextlib.suppress(Exception):
         from lintgate.controlplane.model.profiles import (
             apply_telemetry_update,
@@ -291,6 +321,18 @@ def apply_behavior_delta(
             mark_session_telemetry_applied(session)
             save_profiles(store)
 
+
+def apply_behavior_delta(
+    session: Any,
+    cr: Any,
+    cp_config: Any,
+    input_data: dict,
+) -> list[str]:
+    """Apply behavior compass delta, global profile delta, and model telemetry from a channel result."""
+    snapshot_alerts = [f.kind for f in cr.findings]
+    _apply_compass_delta(session, cr)
+    _apply_global_profile_delta(session, cr, cp_config)
+    _apply_model_telemetry(session, input_data)
     return snapshot_alerts
 
 
@@ -475,55 +517,68 @@ def extract_finding_indexes(
 # ── Post-process session ─────────────────────────────────────────────
 
 
-def post_process_session(
-    session: Any,
-    mesh_result: Any,
-    finding_index: dict,
-    cp_config: Any,
-    input_data: dict,
-    tool_name: str,
-    tool_input: Any,
-    tool_output: str,
-    disposition: str | None = None,
-    last_nudge: dict | None = None,
-    compliance_outcome: str | None = None,
-) -> list[dict]:
+@dataclass
+class PostProcessContext:
+    """Bundled context for post-processing a ControlPlane mesh run.
+
+    Replaces 11 positional arguments shared by _record_and_apply_deltas
+    and post_process_session.
+    """
+
+    session: Any
+    mesh_result: Any
+    finding_index: dict
+    cp_config: Any
+    input_data: dict
+    tool_name: str
+    tool_input: Any
+    tool_output: str
+    disposition: str | None = None
+    last_nudge: dict | None = None
+    compliance_outcome: str | None = None
+
+
+def _record_and_apply_deltas(ctx: PostProcessContext) -> None:
+    """Record mesh run snapshot, apply behavior deltas, and record snapshot behavior."""
+    from lintgate.controlplane.session_memory import record_mesh_run
+
+    snapshot = record_mesh_run(
+        ctx.session,
+        ctx.mesh_result,
+        finding_index=ctx.finding_index,
+        disposition=ctx.disposition,
+        last_nudge=ctx.last_nudge,
+        compliance_outcome=ctx.compliance_outcome,
+    )
+
+    for cr in ctx.mesh_result.channel_results:
+        if cr.channel == "behavior":
+            snapshot.behavior.behavior_alerts = apply_behavior_delta(
+                ctx.session,
+                cr,
+                ctx.cp_config,
+                ctx.input_data,
+            )
+            break
+
+    record_snapshot_behavior(snapshot, ctx.tool_name, ctx.tool_input, ctx.tool_output)
+
+
+def post_process_session(ctx: PostProcessContext) -> list[dict]:
     """Post-process session after mesh run: record, apply deltas, propose constraints."""
-    proposed_constraints: list[dict] = []
-    if session is None:
-        return proposed_constraints
+    if ctx.session is None:
+        return []
 
     with contextlib.suppress(Exception):
-        from lintgate.controlplane.session_memory import record_mesh_run
+        _record_and_apply_deltas(ctx)
 
-        snapshot = record_mesh_run(
-            session,
-            mesh_result,
-            finding_index=finding_index,
-            disposition=disposition,
-            last_nudge=last_nudge,
-            compliance_outcome=compliance_outcome,
-        )
-
-        for cr in mesh_result.channel_results:
-            if cr.channel == "behavior":
-                snapshot.behavior.behavior_alerts = apply_behavior_delta(
-                    session,
-                    cr,
-                    cp_config,
-                    input_data,
-                )
-                break
-
-        record_snapshot_behavior(snapshot, tool_name, tool_input, tool_output)
-
-    proposed_constraints = run_constraint_proposer(session, mesh_result, cp_config)
+    proposed_constraints = run_constraint_proposer(ctx.session, ctx.mesh_result, ctx.cp_config)
 
     with contextlib.suppress(Exception):
         from lintgate.controlplane.session_memory import save_session
 
-        save_session(session)
-    session.theory_profile_cache = None
+        save_session(ctx.session)
+    ctx.session.theory_profile_cache = None
 
     return proposed_constraints
 

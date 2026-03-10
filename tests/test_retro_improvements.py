@@ -218,9 +218,10 @@ class TestBuildPosttoolusContext:
         ctx = _build_posttooluse_context(inputs)
         assert len(ctx) <= 300
 
-    def test_legacy_kwargs_still_work(self):
-        """Backward-compatible keyword arguments should still be accepted."""
+    def test_dataclass_input_works(self):
+        """PostToolUseInputs dataclass input should be accepted."""
         from lintgate.controlplane.reporter.hook import (
+            PostToolUseInputs,
             _build_posttooluse_context,
         )
         from lintgate.controlplane.types import (
@@ -234,23 +235,21 @@ class TestBuildPosttoolusContext:
             channel_results=[],
             coherence=CoherenceResult(state="coupled"),
         )
-        ctx = _build_posttooluse_context(
+        ctx = _build_posttooluse_context(PostToolUseInputs(
             mesh_result=mesh,
             blocking_count=1,
             warning_count=0,
             informational_count=0,
             hidden_findings=0,
             channels_run=5,
-        )
+        ))
         assert "coherence=coupled" in ctx
 
-    def test_missing_mesh_result_raises(self):
-        from lintgate.controlplane.reporter.hook import (
-            _build_posttooluse_context,
-        )
+    def test_none_input_raises(self):
+        from lintgate.controlplane.reporter.hook import _build_posttooluse_context
 
-        with pytest.raises(TypeError, match="mesh_result is required"):
-            _build_posttooluse_context()
+        with pytest.raises((TypeError, AttributeError)):
+            _build_posttooluse_context(None)
 
 
 # ── 3. _controlplane_impl_feedback.py — per-repair skip-reason codes ──

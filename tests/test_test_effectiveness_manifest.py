@@ -529,3 +529,44 @@ def test_build_manifest_returns_manifest_with_update_metrics_called():
         assert 0.0 <= result.project_score <= 1.0
         # mutation_vulnerable_count is non-negative
         assert result.mutation_vulnerable_count >= 0
+
+
+def test_build_manifest_maps_instance_method_tests_without_name_alignment():
+    """Instance-method tests should map even when test names don't mirror method names."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "proof_auditor.py")
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write(
+                "class ProofAuditor:\n"
+                "    def check(self, value):\n"
+                "        return value > 0\n\n"
+                "    def verify(self, value):\n"
+                "        return value + 1\n"
+            )
+
+        test_path = os.path.join(tmpdir, "test_proof_auditor.py")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "from proof_auditor import ProofAuditor\n\n"
+                "class ValidationSuite:\n"
+                "    def test_accepts_positive_inputs(self):\n"
+                "        auditor = ProofAuditor()\n"
+                "        assert auditor.check(1) is True\n\n"
+                "class VerificationSuite:\n"
+                "    def test_increments_counter(self):\n"
+                "        auditor = ProofAuditor()\n"
+                "        assert auditor.verify(1) == 2\n"
+            )
+
+        manifest = build_test_effectiveness_manifest(
+            tmpdir, python_files=[src_path], test_files=[test_path]
+        )
+
+        check_key = "proof_auditor.py::ProofAuditor.check"
+        verify_key = "proof_auditor.py::ProofAuditor.verify"
+        assert check_key in manifest.functions
+        assert verify_key in manifest.functions
+        assert manifest.functions[check_key].test_count == 1
+        assert manifest.functions[verify_key].test_count == 1
+        assert manifest.functions[check_key].effectiveness_score > 0.0
+        assert manifest.functions[verify_key].effectiveness_score > 0.0

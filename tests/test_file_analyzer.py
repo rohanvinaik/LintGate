@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lintgate.specification.file_analyzer import analyze_file
+from lintgate.specification.file_analyzer import _discover_relevant_test_files, analyze_file
 
 
 @pytest.fixture(autouse=True)
@@ -88,6 +88,30 @@ class TestAnalyzeFile:
         assert result.error is None
         assert len(result.functions) == 0
         assert result.total_sigma == 0
+
+    def test_discovers_prefixed_test_variants(self, tmp_path):
+        src = tmp_path / "proof_auditor.py"
+        src.write_text("def check(x):\n    return x > 0\n")
+
+        tests_dir = tmp_path / "tests" / "unit"
+        tests_dir.mkdir(parents=True)
+        test_file = tests_dir / "test_proof_auditor_extended.py"
+        test_file.write_text("from proof_auditor import check\n\ndef test_case():\n    assert check(1)\n")
+
+        discovered = _discover_relevant_test_files(str(src), str(tmp_path))
+        assert str(test_file) in discovered
+
+    def test_discovery_deduplicates_matches(self, tmp_path):
+        src = tmp_path / "calc.py"
+        src.write_text("def add(a, b):\n    return a + b\n")
+
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        test_file = tests_dir / "test_calc.py"
+        test_file.write_text("from calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n")
+
+        discovered = _discover_relevant_test_files(str(src), str(tmp_path))
+        assert discovered.count(str(test_file)) == 1
 
 
 class TestSymbolicBaseline:

@@ -177,7 +177,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `spec_prescribe`    | Risk-prioritized test prescriptions with expanded taxonomy               |
 | `spec_file_analyze` | Single-file spec analysis. `enrich=False` for AST-only symbolic baseline; default builds full manifests. Returns regime rationale + trajectory state. |
 | `spec_file_prescribe` | Single-file test prescriptions — risk-prioritized for one file         |
-| `spec_project_rollup` | Project-wide specification rollup with file-level caching. Default cache-read-only; `analyze_uncached=True` for live analysis. |
+| `spec_project_rollup` | Project-wide specification rollup with file-level caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code; set `include_tests=True` to include test files. Cache mode remains read-only by default; `analyze_uncached=True` for live analysis. |
 | `spec_composition`  | Composition gap (γ) and sheaf condition analysis with callee-uncertainty-weighted interface mutation points |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
 

@@ -23,9 +23,11 @@ _SHIM_MARKER = "# lintgate: shim"
 def _is_shim_file(filepath: str) -> bool:
     """Detect if a file is a re-export shim that should skip F401 removal.
 
-    A shim file is identified by:
+    A shim file is identified by (checked in order):
     1. Explicit marker: ``# lintgate: shim`` in the first 10 lines
-    2. Heuristic: >80% of code lines are ``from ... import`` re-exports
+    2. High ``# noqa: F401`` count (>=3 annotations = deliberate re-exports)
+    3. ``__all__`` definition + >=2 from-imports
+    4. Heuristic: >50% of code lines are ``from ... import`` re-exports
     """
     try:
         with open(filepath, encoding="utf-8", errors="ignore") as f:
@@ -37,6 +39,18 @@ def _is_shim_file(filepath: str) -> bool:
     for line in lines[:10]:
         if _SHIM_MARKER in line:
             return True
+
+    # Strong signal: multiple noqa:F401 annotations indicate deliberate re-exports
+    noqa_f401_count = sum(
+        1 for line in lines if "# noqa" in line and "F401" in line
+    )
+    if noqa_f401_count >= 3:
+        return True
+
+    # Check for __all__ definition (re-export shims typically define __all__)
+    has_all_definition = any(
+        line.strip().startswith("__all__") and "=" in line for line in lines
+    )
 
     # Heuristic: count from-import lines vs total code lines
     code_lines: list[str] = []
@@ -53,11 +67,18 @@ def _is_shim_file(filepath: str) -> bool:
             continue
         code_lines.append(stripped)
 
-    if len(code_lines) < 2:
-        return False
+    reexport_count = sum(
+        1 for line in code_lines if line.startswith("from ") and "import" in line
+    )
 
-    reexport_count = sum(1 for line in code_lines if line.startswith("from ") and "import" in line)
-    return reexport_count / len(code_lines) > 0.8
+    if len(code_lines) < 2:
+        return has_all_definition
+
+    # Moderate signal: __all__ + some from-imports
+    if has_all_definition and reexport_count >= 2:
+        return True
+
+    return reexport_count / len(code_lines) > 0.5
 
 
 def _build_shim_ignores(files: list[str]) -> list[str]:

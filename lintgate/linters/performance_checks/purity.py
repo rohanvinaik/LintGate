@@ -67,6 +67,7 @@ _KNOWN_PURE_BUILTINS = {
 
 # Methods/Attributes known to mutate state
 _MUTATING_METHODS = {
+    # Container mutations
     "append",
     "extend",
     "insert",
@@ -79,9 +80,74 @@ _MUTATING_METHODS = {
     "setdefault",
     "add",
     "discard",
+    # I/O mutations
     "write",
     "writelines",
     "seek",
+    "truncate",
+    "flush",
+    "close",
+}
+
+# Methods that are always side-effectful regardless of target locality.
+# Unlike _MUTATING_METHODS which are only flagged on non-local objects,
+# these produce external side effects even when called on parameters.
+_ALWAYS_IMPURE_METHODS = {
+    "execute",
+    "executemany",
+    "commit",
+    "rollback",
+}
+
+# Path methods that perform filesystem writes
+_PATH_WRITE_METHODS = {
+    "mkdir",
+    "touch",
+    "write_text",
+    "write_bytes",
+    "unlink",
+    "rmdir",
+    "rename",
+    "replace",
+    "symlink_to",
+    "hardlink_to",
+    "chmod",
+}
+
+# Serialization functions that write to file handles (module.func patterns)
+_SERIALIZER_WRITE_CALLS = {
+    "json.dump",
+    "yaml.dump",
+    "pickle.dump",
+    "csv.writer",
+    "toml.dump",
+    "marshal.dump",
+}
+
+# ML/training operations that mutate model state or perform I/O
+_ML_IMPURE_CALLS = {
+    "from_pretrained",
+    "load_state_dict",
+    "save_pretrained",
+    "save",
+    "backward",
+    "step",  # optimizer.step
+    "zero_grad",
+    "train",  # model.train() changes mode
+    "eval",  # model.eval() changes mode
+}
+
+# ML namespace prefixes (torch, tensorflow, etc.)
+_ML_IMPURE_NAMESPACES = {
+    "torch.load",
+    "torch.save",
+    "torch.cuda",
+    "tf.io",
+    "tf.data",
+    "tf.train",
+    "keras.models.load_model",
+    "joblib.dump",
+    "joblib.load",
 }
 
 # Known impure modules/namespaces generally involving I/O or global state
@@ -90,6 +156,7 @@ _IMPURE_NAMESPACES = {
     "open",
     "input",
     "logging",
+    "logger",
     "requests",
     "os",
     "sys",
@@ -101,6 +168,11 @@ _IMPURE_NAMESPACES = {
     "subprocess",
     "threading",
     "multiprocessing",
+    "shutil",
+    "tempfile",
+    "signal",
+    "atexit",
+    "gc",
 }
 
 
@@ -171,10 +243,9 @@ class _PureFunctionVisitor(ast.NodeVisitor):
         for target in node.targets:
             if isinstance(target, ast.Name):
                 self.local_names.add(target.id)
-            elif isinstance(target, ast.Attribute) and self.is_method:
-                # E.g. `self.x = 1` -> Mutation if outside __init__
+            elif isinstance(target, ast.Attribute):
                 target_name = get_name(target.value)
-                if target_name in ("self", "cls") and self.func_node.name != "__init__":
+                if self.is_method and target_name in ("self", "cls") and self.func_node.name != "__init__":
                     self.side_effects.append(
                         SideEffect(
                             "attribute_mutation",
@@ -183,11 +254,95 @@ class _PureFunctionVisitor(ast.NodeVisitor):
                             f"Mutates instance state: {target_name}.{target.attr}",
                         )
                     )
+                elif target_name and target_name not in self.local_names:
+                    # Attribute write on external object: obj.x = val
+                    self.side_effects.append(
+                        SideEffect(
+                            "attribute_mutation",
+                            "Assign",
+                            node.lineno,
+                            f"Mutates external object attribute: {target_name}.{target.attr}",
+                        )
+                    )
+            elif isinstance(target, ast.Subscript):
+                # obj[key] = val on non-local object
+                target_name = get_name(target.value)
+                if target_name and target_name not in self.local_names:
+                    self.side_effects.append(
+                        SideEffect(
+                            "mutation",
+                            "Assign",
+                            node.lineno,
+                            f"Subscript write on external object: {target_name}[...]",
+                        )
+                    )
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        # x += 1 style — check if target is external
+        if isinstance(node.target, ast.Attribute):
+            target_name = get_name(node.target.value)
+            if self.is_method and target_name in ("self", "cls") and self.func_node.name != "__init__":
+                self.side_effects.append(
+                    SideEffect(
+                        "attribute_mutation",
+                        "AugAssign",
+                        node.lineno,
+                        f"Mutates instance state: {target_name}.{node.target.attr}",
+                    )
+                )
+            elif target_name and target_name not in self.local_names:
+                self.side_effects.append(
+                    SideEffect(
+                        "attribute_mutation",
+                        "AugAssign",
+                        node.lineno,
+                        f"Augmented assign on external: {target_name}.{node.target.attr}",
+                    )
+                )
+        elif isinstance(node.target, ast.Subscript):
+            target_name = get_name(node.target.value)
+            if target_name and target_name not in self.local_names:
+                self.side_effects.append(
+                    SideEffect(
+                        "mutation",
+                        "AugAssign",
+                        node.lineno,
+                        f"Augmented subscript on external: {target_name}[...]",
+                    )
+                )
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if isinstance(node.target, ast.Name):
             self.local_names.add(node.target.id)
+        self.generic_visit(node)
+
+    def visit_Delete(self, node: ast.Delete) -> None:
+        for target in node.targets:
+            if isinstance(target, ast.Subscript):
+                # del obj[key] — check if obj is external
+                target_name = get_name(target.value)
+                if target_name and target_name not in self.local_names:
+                    self.side_effects.append(
+                        SideEffect(
+                            "mutation",
+                            "Delete",
+                            node.lineno,
+                            f"Deletes from external object: {target_name}[...]",
+                        )
+                    )
+            else:
+                target_name = get_name(target)
+                if target_name and target_name not in self.local_names:
+                    self.side_effects.append(
+                        SideEffect(
+                            "mutation",
+                            "Delete",
+                            node.lineno,
+                            f"Deletes external name: {target_name}",
+                        )
+                    )
         self.generic_visit(node)
 
     def visit_Yield(self, node: ast.Yield) -> None:
@@ -212,7 +367,7 @@ class _PureFunctionVisitor(ast.NodeVisitor):
         if func_name:
             self.called_functions.add(func_name)
 
-            # Direct I/O or known impure builtins
+            # Direct I/O or known impure namespaces
             if func_name in _IMPURE_NAMESPACES or func_name.split(".")[0] in _IMPURE_NAMESPACES:
                 self.side_effects.append(
                     SideEffect(
@@ -223,18 +378,76 @@ class _PureFunctionVisitor(ast.NodeVisitor):
                     )
                 )
 
+            # Serializer write calls (json.dump, yaml.dump, etc.)
+            if func_name in _SERIALIZER_WRITE_CALLS:
+                self.side_effects.append(
+                    SideEffect(
+                        "io_call",
+                        "Call",
+                        node.lineno,
+                        f"Serializer write: {func_name}",
+                    )
+                )
+
+            # ML impure namespace calls (torch.load, torch.save, etc.)
+            if func_name in _ML_IMPURE_NAMESPACES:
+                self.side_effects.append(
+                    SideEffect(
+                        "io_call",
+                        "Call",
+                        node.lineno,
+                        f"ML I/O operation: {func_name}",
+                    )
+                )
+
             # Method call mutations (e.g., list.append, dict.update)
-            if isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS:
-                # We only flag if we're mutating something that isn't cleanly local
-                # (A perfectly pure function can create a local list and append to it)
-                target = get_name(node.func.value)
-                if target and target not in self.local_names:
+            if isinstance(node.func, ast.Attribute):
+                method = node.func.attr
+
+                if method in _MUTATING_METHODS:
+                    target = get_name(node.func.value)
+                    if target and target not in self.local_names:
+                        self.side_effects.append(
+                            SideEffect(
+                                "mutation",
+                                "Call",
+                                node.lineno,
+                                f"Mutates external object via .{method}()",
+                            )
+                        )
+
+                # Always-impure methods (DB ops) — side-effectful regardless of target
+                if method in _ALWAYS_IMPURE_METHODS:
                     self.side_effects.append(
                         SideEffect(
-                            "mutation",
+                            "io_call",
                             "Call",
                             node.lineno,
-                            f"Mutates external object var via .{node.func.attr}()",
+                            f"Database operation via .{method}()",
+                        )
+                    )
+
+                # Path write methods (path.write_text, path.mkdir, etc.)
+                if method in _PATH_WRITE_METHODS:
+                    self.side_effects.append(
+                        SideEffect(
+                            "io_call",
+                            "Call",
+                            node.lineno,
+                            f"Filesystem write via .{method}()",
+                        )
+                    )
+
+                # ML impure method calls (model.backward, optimizer.step, etc.)
+                # Always flagged — these mutate model/optimizer state regardless of locality
+                if method in _ML_IMPURE_CALLS:
+                    target = get_name(node.func.value) or "<unknown>"
+                    self.side_effects.append(
+                        SideEffect(
+                            "io_call",
+                            "Call",
+                            node.lineno,
+                            f"ML state mutation via {target}.{method}()",
                         )
                     )
 
@@ -275,6 +488,41 @@ def _check_called_impurity(
             f"Calls unresolved external function '{called}'",
         )
     return None
+
+
+def _compute_pure_confidence(
+    visitor: _PureFunctionVisitor,
+    functions: dict[str, tuple[ast.FunctionDef | ast.AsyncFunctionDef, Any]],
+) -> float:
+    """Compute evidence-weighted confidence for a pure function.
+
+    Replaces flat 0.8 with bands based on call resolution:
+    - 0.95: No external calls at all (fully self-contained)
+    - 0.90: All calls resolved to known pure builtins or same-module pure functions
+    - 0.80: Some unresolved lowercase calls (convention-based purity assumption)
+    - 0.65: Many unresolved lowercase calls (3+), higher uncertainty
+    """
+    unresolved_count = 0
+    for called in visitor.called_functions:
+        if called in functions:
+            # Same-module call — resolved
+            continue
+        if called in _KNOWN_PURE_BUILTINS:
+            # Known pure builtin — resolved
+            continue
+        if called.islower():
+            # Convention-based assumption (lowercase = likely pure helper)
+            unresolved_count += 1
+        # Non-lowercase unresolved calls would have been flagged as impure
+        # by _check_called_impurity, so they don't reach here
+
+    if not visitor.called_functions:
+        return 0.95  # No calls at all — leaf function
+    if unresolved_count == 0:
+        return 0.90  # All calls fully resolved
+    if unresolved_count <= 2:
+        return 0.80  # Few unresolved convention-based assumptions
+    return 0.65  # Many unresolved calls — higher uncertainty
 
 
 def _propagate_impurity(
@@ -345,7 +593,10 @@ def analyze_purity(tree: ast.AST) -> dict[str, PurityResult]:
         ret_ann = get_name(node.returns) if node.returns else None
 
         is_pure = len(visitor.side_effects) == 0
-        confidence = 0.8 if is_pure else 1.0  # Impurity is certain, purity is heuristic
+        if is_pure:
+            confidence = _compute_pure_confidence(visitor, functions)
+        else:
+            confidence = 1.0  # Impurity is certain
 
         results[qualname] = PurityResult(
             function_name=node.name,

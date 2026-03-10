@@ -24,8 +24,38 @@ def _filter_channels(channels_dict, channel_filter):
         yield ch_name, ch_data
 
 
-def _extract_findings(details, channel, severity, max_issues):
-    """Extract and filter findings from run details."""
+_EFFORT_DEFAULTS: dict[str, float] = {
+    "ruff": 2.0, "mypy": 10.0, "radon": 15.0, "bandit": 20.0,
+    "vulture": 5.0, "structure": 15.0,
+}
+_SEV_WEIGHT: dict[str, float] = {"blocking": 3.0, "warning": 2.0, "informational": 1.0}
+
+
+def _finding_effort(f: dict) -> float:
+    """Compute effective effort for a finding, applying fixable discount."""
+    effort = f.get("estimated_effort_minutes") or _EFFORT_DEFAULTS.get(f.get("linter", ""), 10.0)
+    if f.get("fixable"):
+        effort = min(effort, 2.0)
+    return effort
+
+
+def _finding_roi(f: dict) -> float:
+    """Compute ROI for a finding dict."""
+    effort = _finding_effort(f)
+    weight = _SEV_WEIGHT.get(f.get("severity", "warning"), 1.0)
+    confidence = f.get("confidence", 1.0)
+    return round(weight * confidence / max(effort, 0.1), 3)
+
+
+def _extract_findings(
+    details, channel, severity, max_issues,
+    *, top_n=None, time_budget_minutes=None,
+):
+    """Extract and filter findings from run details.
+
+    When top_n or time_budget_minutes is set, findings are sorted by ROI
+    (highest value-per-effort first) and filtered accordingly.
+    """
     all_findings = []
     for ch_name, ch_data in _filter_channels(details.get("channels", {}), channel):
         for f in ch_data.get("findings", []):
@@ -33,12 +63,40 @@ def _extract_findings(details, channel, severity, max_issues):
                 continue
             all_findings.append({**f, "channel": ch_name})
 
-    result = {
+    # ROI-based sorting when prioritization is requested
+    roi_mode = top_n is not None or time_budget_minutes is not None
+    if roi_mode:
+        for f in all_findings:
+            f["roi"] = _finding_roi(f)
+        all_findings.sort(key=lambda f: f.get("roi", 0), reverse=True)
+
+    # Time-budget filtering: select findings that fit within the budget
+    # Uses _finding_effort() for consistency with ROI ranking (fixable discount)
+    if time_budget_minutes is not None:
+        budget_findings: list[dict] = []
+        remaining = time_budget_minutes
+        for f in all_findings:
+            effort = _finding_effort(f)
+            if remaining >= effort:
+                budget_findings.append(f)
+                remaining -= effort
+        all_findings = budget_findings
+
+    limit = max(top_n, 0) if top_n is not None else max_issues
+    result: dict[str, Any] = {
         "total_matching": len(all_findings),
-        "findings": all_findings[:max_issues],
+        "findings": all_findings[:limit],
     }
-    if len(all_findings) > max_issues:
-        result["truncated"] = len(all_findings) - max_issues
+    if len(all_findings) > limit:
+        result["truncated"] = len(all_findings) - limit
+    if roi_mode:
+        result["sorted_by"] = "roi"
+        if time_budget_minutes is not None:
+            result["time_budget_minutes"] = time_budget_minutes
+            result["budget_used_minutes"] = round(
+                sum(_finding_effort(f) for f in result["findings"]),
+                1,
+            )
     return result
 
 
@@ -136,9 +194,11 @@ def _extract_proven_resolutions_from_details(details: dict, channel) -> list[dic
     return resolutions
 
 
-def _populate_findings_section(output: dict, details: dict, channel, severity, max_issues) -> None:
+def _populate_findings_section(
+    output: dict, details: dict, channel, severity, max_issues, **kwargs,
+) -> None:
     """Populate findings + delegation annotations into output."""
-    output.update(_extract_findings(details, channel, severity, max_issues))
+    output.update(_extract_findings(details, channel, severity, max_issues, **kwargs))
     with contextlib.suppress(Exception):
         from lintgate.controlplane.delegation import annotate_findings_with_suitability
 
@@ -163,8 +223,8 @@ def _populate_coherence(output, details, _channel, _severity, _max_issues, _run_
     output["coherence"] = details.get("coherence", {})
 
 
-def _populate_findings(output, details, channel, severity, max_issues, _run_id):
-    _populate_findings_section(output, details, channel, severity, max_issues)
+def _populate_findings(output, details, channel, severity, max_issues, _run_id, **kwargs):
+    _populate_findings_section(output, details, channel, severity, max_issues, **kwargs)
 
 
 def _populate_channel_details(output, details, channel, _severity, _max_issues, _run_id):
@@ -203,7 +263,10 @@ _SECTION_POPULATORS: list[tuple[str, Any]] = [
 ]
 
 
-def _impl_controlplane_get_details(run_id, channel, severity, max_issues, sections, helpers):
+def _impl_controlplane_get_details(
+    run_id, channel, severity, max_issues, sections, helpers,
+    *, top_n=None, time_budget_minutes=None,
+):
     """Core implementation of controlplane_get_details."""
     from lintgate.state import load_controlplane_run
 
@@ -217,9 +280,16 @@ def _impl_controlplane_get_details(run_id, channel, severity, max_issues, sectio
         "duration_ms": details.get("duration_ms", 0),
     }
 
+    extra_kwargs = {}
+    if top_n is not None or time_budget_minutes is not None:
+        extra_kwargs = {"top_n": top_n, "time_budget_minutes": time_budget_minutes}
+
     for section_name, populator in _SECTION_POPULATORS:
         if section_name in sections_set:
-            populator(output, details, channel, severity, max_issues, run_id)
+            if section_name == "findings" and extra_kwargs:
+                populator(output, details, channel, severity, max_issues, run_id, **extra_kwargs)
+            else:
+                populator(output, details, channel, severity, max_issues, run_id)
 
     return helpers["_json_dumps"](output)
 

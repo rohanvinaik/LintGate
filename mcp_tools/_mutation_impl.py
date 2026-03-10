@@ -17,6 +17,41 @@ _MUTATION_CACHE_DIR = ".lintgate/mutation"
 
 
 @dataclass
+class DiscoveryDiagnostics:
+    """Tracks why test discovery produced the results it did."""
+
+    test_files_found: int = 0
+    impact_map_refs: int = 0
+    import_successes: int = 0
+    import_failures: list[str] = field(default_factory=list)
+    class_instantiation_failures: list[str] = field(default_factory=list)
+    callables_loaded: int = 0
+    fallback_used: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "test_files_found": self.test_files_found,
+            "callables_loaded": self.callables_loaded,
+        }
+        if self.import_failures:
+            d["import_failures"] = self.import_failures[:5]
+        if self.class_instantiation_failures:
+            d["class_instantiation_failures"] = self.class_instantiation_failures[:5]
+        if self.fallback_used:
+            d["fallback_used"] = True
+        if self.callables_loaded == 0:
+            reasons: list[str] = []
+            if self.test_files_found == 0:
+                reasons.append("no_test_files_discovered")
+            elif self.import_failures and self.import_successes == 0:
+                reasons.append("all_imports_failed")
+            else:
+                reasons.append("no_test_functions_found_in_modules")
+            d["failure_reasons"] = reasons
+        return d
+
+
+@dataclass
 class MutationContext:
     """Bundled context for mutation analysis runs."""
 
@@ -28,6 +63,46 @@ class MutationContext:
 
 
 # ── File/function resolution ──────────────────────────────────────
+
+
+def _find_qualified_method(
+    tree: ast.Module, qualified_name: str,
+) -> tuple[ast.FunctionDef | None, str | None]:
+    """Walk class hierarchy for a dotted name like 'Class.method'.
+
+    Returns (func_node, error_message). One of them is always None.
+    """
+    parts = qualified_name.split(".")
+    method_name = parts[-1]
+    scope: ast.AST = tree
+    for class_name in parts[:-1]:
+        match = next(
+            (c for c in getattr(scope, "body", [])
+             if isinstance(c, ast.ClassDef) and c.name == class_name),
+            None,
+        )
+        if match is None:
+            return None, f"Class '{class_name}' not found"
+        scope = match
+    match = next(
+        (c for c in getattr(scope, "body", [])
+         if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
+         and c.name == method_name),
+        None,
+    )
+    if match is not None:
+        return match, None
+    return None, f"Method '{method_name}' not found in class chain"
+
+
+def _find_toplevel_function(
+    tree: ast.Module, name: str,
+) -> ast.FunctionDef | None:
+    """Find a function/async function by name anywhere in the AST."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return node
+    return None
 
 
 def resolve_function(
@@ -49,39 +124,19 @@ def resolve_function(
     except (OSError, SyntaxError) as e:
         return full, None, f"Parse error: {e}"
 
-    if function:
-        if "." in function:
-            # Qualified name: Class.method — walk class hierarchy
-            parts = function.split(".")
-            method_name = parts[-1]
-            class_chain = parts[:-1]
-            scope: ast.AST = tree
-            for class_name in class_chain:
-                found = False
-                for child in getattr(scope, "body", []):
-                    if isinstance(child, ast.ClassDef) and child.name == class_name:
-                        scope = child
-                        found = True
-                        break
-                if not found:
-                    return full, None, f"Class '{class_name}' not found in {file}"
-            for child in getattr(scope, "body", []):
-                if (
-                    isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and child.name == method_name
-                ):
-                    return full, child, None
-            return full, None, f"Method '{method_name}' not found in class chain in {file}"
-        else:
-            for node in ast.walk(tree):
-                if (
-                    isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and node.name == function
-                ):
-                    return full, node, None
-        return full, None, f"Function '{function}' not found in {file}"
+    if not function:
+        return full, None, None
 
-    return full, None, None
+    if "." in function:
+        node, err = _find_qualified_method(tree, function)
+        if err:
+            return full, None, f"{err} in {file}"
+        return full, node, None
+
+    node = _find_toplevel_function(tree, function)
+    if node is not None:
+        return full, node, None
+    return full, None, f"Function '{function}' not found in {file}"
 
 
 def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef]]:
@@ -174,17 +229,16 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
 
     Uses multiple strategies:
     1. Exact match: test_{basename}.py
-    2. Prefix match: test_{basename_prefix}*.py (handles files like
-       perf001_quadratic_membership.py → test_perf*.py won't match,
-       but the parent package name often does)
+    2. Prefix variants: test_{basename}_*.py and {basename}_test*.py
     3. Package-aware: for files in subpackages like performance_checks/,
        also search for test_{package_name}*.py
+    4. Recursive directory walk under tests/ and test/ (nested layouts)
     """
     base = os.path.splitext(os.path.basename(source_file))[0]
     test_dirs = ["tests", "test"]
 
     # Build candidate patterns: exact match + parent package match
-    exact_candidates = [f"test_{base}.py", f"{base}_test.py"]
+    exact_candidates = {f"test_{base}.py", f"{base}_test.py", f"test_char_{base}.py"}
 
     # For files in subpackages, also try the parent package name
     # e.g., lintgate/linters/performance_checks/perf001.py → test_performance_checks*.py
@@ -199,65 +253,100 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
         test_dir = os.path.join(project_root, td)
         if not os.path.isdir(test_dir):
             continue
-        # Search top-level and subdirectories (e.g. tests/generated/)
-        search_dirs = [test_dir]
-        try:
-            for entry in os.listdir(test_dir):
-                sub = os.path.join(test_dir, entry)
-                if os.path.isdir(sub) and not entry.startswith("."):
-                    search_dirs.append(sub)
-        except OSError:
-            pass
-
-        for sdir in search_dirs:
-            # Exact matches
-            for cand in exact_candidates:
-                full = os.path.join(sdir, cand)
-                if os.path.isfile(full) and full not in seen:
-                    found.append(full)
-                    seen.add(full)
-            # Package-name prefix matches
-            for prefix in package_candidates:
-                try:
-                    for entry in os.listdir(sdir):
-                        if entry.startswith(prefix) and entry.endswith(".py"):
-                            full = os.path.join(sdir, entry)
-                            if full not in seen:
-                                found.append(full)
-                                seen.add(full)
-                except OSError:
+        for dirpath, dirnames, filenames in os.walk(test_dir):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"]
+            for entry in filenames:
+                if not entry.endswith(".py"):
                     continue
-            # Also match characterization tests: test_char_{base}.py
-            char_cand = f"test_char_{base}.py"
-            char_full = os.path.join(sdir, char_cand)
-            if os.path.isfile(char_full) and char_full not in seen:
-                found.append(char_full)
-                seen.add(char_full)
+                match = (
+                    entry in exact_candidates
+                    or entry.startswith(f"test_{base}_")
+                    or entry.startswith(f"{base}_test")
+                    or entry.startswith(f"test_char_{base}_")
+                    or any(
+                        entry.startswith(prefix) and entry.endswith(".py")
+                        for prefix in package_candidates
+                    )
+                )
+
+                if match:
+                    full = os.path.join(dirpath, entry)
+                    if full not in seen:
+                        found.append(full)
+                        seen.add(full)
     return found
 
 
-def load_test_callables(test_files: list[str], func_name: str) -> list[Any]:
+def load_test_callables(
+    test_files: list[str], func_name: str,
+) -> tuple[list[Any], DiscoveryDiagnostics]:
     """Discover and import test callables for a function via test-impact map.
 
     Falls back to loading all test functions from the discovered test files
     when the AST-based impact map finds no direct references to func_name.
     This handles indirect calls (fixtures, parametrize, helper wrappers)
     that static name matching misses.
+
+    Returns (callables, diagnostics) — diagnostics explain why discovery
+    produced the result it did, especially when callables is empty.
     """
     from lintgate.specification.test_impact import build_test_impact_map
 
+    diag = DiscoveryDiagnostics(test_files_found=len(test_files))
+
     impact = build_test_impact_map(test_files)
     refs = impact.tests_for(func_name)
+    diag.impact_map_refs = len(refs) if refs else 0
     if refs:
-        return _import_test_functions(refs)
+        imported = _import_test_functions(refs, diag)
+        if imported:
+            diag.callables_loaded = len(imported)
+            return imported, diag
 
     # Fallback: load all test functions from the relevant test files.
     # The test files were already scoped by filename convention in
     # discover_test_files, so this is bounded and relevant.
-    return _load_all_tests_from_files(test_files)
+    diag.fallback_used = True
+    callables = _load_all_tests_from_files(test_files, diag)
+    diag.callables_loaded = len(callables)
+    return callables, diag
 
 
-def _load_all_tests_from_files(test_files: list[str]) -> list[Any]:
+def _extract_test_callables_from_module(
+    mod: Any, tf: str, diag: DiscoveryDiagnostics | None,
+) -> list[Any]:
+    """Extract test functions and class-based test methods from a loaded module."""
+    callables: list[Any] = []
+    for name in dir(mod):
+        obj = getattr(mod, name, None)
+        if obj is None:
+            continue
+        if name.startswith("test_") and callable(obj):
+            callables.append(obj)
+        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(mod, "__name__", ""):
+            callables.extend(_extract_class_test_methods(obj, name, tf, diag))
+    return callables
+
+
+def _extract_class_test_methods(
+    cls: type, cls_name: str, tf: str, diag: DiscoveryDiagnostics | None,
+) -> list[Any]:
+    """Extract test_* bound methods from a test class via fresh instance."""
+    method_names = [m for m in dir(cls) if m.startswith("test_")]
+    if not method_names:
+        return []
+    try:
+        instance = cls()
+    except Exception:
+        if diag is not None:
+            diag.class_instantiation_failures.append(f"{cls_name} in {os.path.basename(tf)}")
+        return []
+    return [m for name in method_names if callable(m := getattr(instance, name, None))]
+
+
+def _load_all_tests_from_files(
+    test_files: list[str], diag: DiscoveryDiagnostics | None = None,
+) -> list[Any]:
     """Import all test_ functions from the given test files.
 
     Handles both module-level test functions and class-based test methods
@@ -268,29 +357,18 @@ def _load_all_tests_from_files(test_files: list[str]) -> list[Any]:
     for tf in test_files:
         mod = _try_import_module(tf)
         if mod is None:
+            if diag is not None:
+                diag.import_failures.append(os.path.basename(tf))
             continue
-        for name in dir(mod):
-            obj = getattr(mod, name, None)
-            if obj is None:
-                continue
-            # Module-level test functions
-            if name.startswith("test_") and callable(obj):
-                callables.append(obj)
-            # Test classes: extract test methods as bound methods on instances
-            elif isinstance(obj, type) and name.startswith("Test"):
-                try:
-                    instance = obj()
-                except Exception:
-                    continue
-                for method_name in dir(obj):
-                    if method_name.startswith("test_"):
-                        method = getattr(instance, method_name, None)
-                        if callable(method):
-                            callables.append(method)
+        if diag is not None:
+            diag.import_successes += 1
+        callables.extend(_extract_test_callables_from_module(mod, tf, diag))
     return callables
 
 
-def _import_test_functions(refs: list[Any]) -> list[Any]:
+def _import_test_functions(
+    refs: list[Any], diag: DiscoveryDiagnostics | None = None,
+) -> list[Any]:
     """Import test functions from TestReference objects.
 
     Handles both module-level test functions and class-based test methods.
@@ -301,7 +379,12 @@ def _import_test_functions(refs: list[Any]) -> list[Any]:
     loaded_modules: dict[str, Any] = {}
     for ref in refs:
         if ref.test_file not in loaded_modules:
-            loaded_modules[ref.test_file] = _try_import_module(ref.test_file)
+            mod = _try_import_module(ref.test_file)
+            loaded_modules[ref.test_file] = mod
+            if mod is None and diag is not None:
+                diag.import_failures.append(os.path.basename(ref.test_file))
+            elif mod is not None and diag is not None:
+                diag.import_successes += 1
         mod = loaded_modules[ref.test_file]
         if mod is None:
             continue
@@ -323,10 +406,10 @@ def _find_method_in_test_classes(mod: Any, method_name: str) -> Any:
     Returns a bound method on a fresh instance, or None.
     """
     for name in dir(mod):
-        if not name.startswith("Test"):
-            continue
         cls = getattr(mod, name, None)
         if not isinstance(cls, type):
+            continue
+        if getattr(cls, "__module__", None) != getattr(mod, "__name__", ""):
             continue
         if hasattr(cls, method_name):
             try:
@@ -470,12 +553,21 @@ def _run_single(
     cats = filter_fn(node, is_pure=is_pure)
     func_key = key_fn(ctx.rel_path, func_name)
     bare_name = func_name.split(".")[-1]
-    tests = load_test_callables(ctx.test_files, bare_name)
+    tests, discovery_diag = load_test_callables(ctx.test_files, bare_name)
     sr = runner(node, func_key, cats, tests, lambda *a: None)
     result_dict = sr.to_dict()
     result_dict["tests_loaded"] = len(tests)
     result_dict["is_pure"] = is_pure
     result_dict["parameter_count"] = len(getattr(node, "args", _EMPTY_ARGS).args)
+
+    # Flag discovery failures so consumers can distinguish "untested" from "discovery broken"
+    if len(tests) == 0 and len(ctx.test_files) > 0:
+        result_dict["discovery_failed"] = True
+        result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
+    elif len(tests) == 0:
+        result_dict["discovery_failed"] = False
+        result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
+
     save_cached_state(ctx.cache_dir, func_key, result_dict)
     return result_dict
 

@@ -129,6 +129,8 @@ def register(mcp, helpers):
         severity: str | None = None,
         max_issues: int = 10,
         sections: list[str] | None = None,
+        top_n: int | None = None,
+        time_budget_minutes: float | None = None,
     ) -> str:
         """Drill into a previous ControlPlane run by run_id.
 
@@ -137,6 +139,7 @@ def register(mcp, helpers):
         and suggested repairs.
 
         Example: controlplane_get_details(run_id="cp_abc123")
+        ROI example: controlplane_get_details(run_id="cp_abc123", time_budget_minutes=30)
 
         Args:
             run_id: The run_id from a controlplane_run response.
@@ -145,9 +148,13 @@ def register(mcp, helpers):
             max_issues: Maximum findings to return (default 10).
             sections: Which sections to include. Default: all.
                 Options: "findings", "channel_details", "evidence", "repairs", "coherence", "next_actions", "proven_resolutions"
+            top_n: Return the N highest-ROI findings (sorted by value-per-effort).
+            time_budget_minutes: Return findings that fit within this time budget,
+                sorted by ROI. E.g., 30 = "best fixes in 30 minutes."
         """
         return _impl_controlplane_get_details(
-            run_id, channel, severity, max_issues, sections, helpers
+            run_id, channel, severity, max_issues, sections, helpers,
+            top_n=top_n, time_budget_minutes=time_budget_minutes,
         )
 
     @mcp.tool()

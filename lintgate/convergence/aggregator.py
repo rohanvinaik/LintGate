@@ -86,25 +86,48 @@ def aggregate(evidence: list[LensEvidence]) -> list[ConvergenceResult]:
 # a list[LensEvidence].  Convention: return [] for empty/missing input.
 
 
-def adapt_purity(data: dict) -> list[LensEvidence]:
+def adapt_purity(data: dict | list) -> list[LensEvidence]:
     """Adapt purity analysis output.
 
-    Input: {func: {file, confidence, hints}}
+    Accepts two formats:
+    - list[dict]: [{name, file, hints}] — emitted by performance channel as pure_function_list
+    - dict: {func: {file, confidence, hints}} — legacy purity_profile format
+      (deprecated, will be removed in v1.1)
+
     Pure functions → support extraction safety.
     """
     results: list[LensEvidence] = []
-    for func, info in (data or {}).items():
-        conf = info.get("confidence", 0.5)
-        results.append(
-            LensEvidence(
-                lens=LensKind.PURITY,
-                target=func,
-                confidence=conf,
-                signal="support",
-                detail=f"Pure function, hints={info.get('hints', [])}",
-                raw=info,
+    if isinstance(data, list):
+        # pure_function_list format: [{name, file, hints}]
+        for item in data:
+            func = item.get("name", "")
+            if not func:
+                continue
+            conf = item.get("confidence", 0.8)
+            results.append(
+                LensEvidence(
+                    lens=LensKind.PURITY,
+                    target=func,
+                    confidence=conf,
+                    signal="support",
+                    detail=f"Pure function, hints={item.get('hints', [])}",
+                    raw=item,
+                )
             )
-        )
+    else:
+        # Legacy purity_profile format: {func: {file, confidence, hints}}
+        for func, info in (data or {}).items():
+            conf = info.get("confidence", 0.5)
+            results.append(
+                LensEvidence(
+                    lens=LensKind.PURITY,
+                    target=func,
+                    confidence=conf,
+                    signal="support",
+                    detail=f"Pure function, hints={info.get('hints', [])}",
+                    raw=info,
+                )
+            )
     return results
 
 

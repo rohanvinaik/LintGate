@@ -1446,7 +1446,7 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `spec_gate_check(path, function?)` | Optimization gate validation — checks specification level against hint thresholds |
 | `spec_file_analyze(path, file, enrich?)` | Single-file spec analysis. Default `enrich=True` builds manifests for full analysis; `enrich=False` runs AST-only symbolic baseline (no manifest dependencies, faster). |
 | `spec_file_prescribe(path, file, max_prescriptions?)` | Single-file test prescriptions sorted by risk priority |
-| `spec_project_rollup(path, use_cache?, analyze_uncached?)` | Project-wide rollup with file-level content-hash caching. Default is cache-read-only; `analyze_uncached=True` runs live analysis on cache misses. |
+| `spec_project_rollup(path, use_cache?, analyze_uncached?, include_tests?)` | Project-wide rollup with file-level content-hash caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code. Default mode is cache-read-only; `analyze_uncached=True` runs live analysis on cache misses. |
 
 The specification system estimates **σ(P,μ)** — the minimum tests to fully specify a function under mutation policy — using a 6-path AST decision tree, test design signals, DFT scoring, and TPA calibration. It classifies functions into **regimes** (A = tractable via standard testing, B = requires alternative strategies) with an explicit **rationale** string explaining the classification. **Phase detection** (bulk → transition → tail → complete) uses design signal density as a trajectory-aware proxy for convergence rate (Theorem 3.4). Each prediction produces a **TrajectoryState** with convergence rate and estimated remaining specification points.
 

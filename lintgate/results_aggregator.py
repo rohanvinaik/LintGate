@@ -42,88 +42,96 @@ _EXEMPTION_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _collect_raw_issues(
+    linter_results: list[LinterResult],
+) -> tuple[list[LintIssue], dict[str, str], float]:
+    """Collect issues, statuses, and total duration from linter results."""
+    all_issues: list[LintIssue] = []
+    linter_statuses: dict[str, str] = {}
+    total_duration = 0.0
+    for lr in linter_results:
+        linter_statuses[lr.linter_name] = lr.status
+        total_duration += lr.duration_ms
+        all_issues.extend(lr.issues)
+    return all_issues, linter_statuses, total_duration
+
+
+def _apply_config_overrides(
+    issues: list[LintIssue], config: ProjectConfig,
+) -> tuple[list[LintIssue], int]:
+    """Apply severity overrides, exemptions, and signal tunings. Returns (filtered, tuned_count)."""
+    if config.severity_overrides:
+        for issue in issues:
+            override = _resolve_severity_override(issue.kind, config.severity_overrides)
+            if override:
+                issue.severity = override
+
+    if config.exemptions:
+        issues = [i for i in issues if not _is_exempted(i, config.exemptions)]
+
+    tuned_count = 0
+    if config.project_root:
+        from .signal_tunings import filter_tuned_issues
+
+        issues, tuned_count = filter_tuned_issues(issues, config.project_root)
+
+    return issues, tuned_count
+
+
+def _split_by_severity(issues: list[LintIssue]) -> tuple[list[LintIssue], list[LintIssue], list[LintIssue]]:
+    """Split issues into blocking/warning/informational, each sorted by file+line."""
+    sort_key = lambda i: (i.file or "", i.line or 0)  # noqa: E731
+    blocking = sorted([i for i in issues if i.severity == "blocking"], key=sort_key)
+    warnings = sorted([i for i in issues if i.severity == "warning"], key=sort_key)
+    informational = sorted([i for i in issues if i.severity == "informational"], key=sort_key)
+    return blocking, warnings, informational
+
+
+def _compute_metrics(
+    issues: list[LintIssue],
+    blocking: list[LintIssue],
+    warnings: list[LintIssue],
+    informational: list[LintIssue],
+    tuned_count: int,
+    linter_statuses: dict[str, str],
+) -> dict[str, int]:
+    """Compute aggregate metrics dict."""
+    return {
+        "total_issues": len(issues),
+        "blocking_count": len(blocking),
+        "warning_count": len(warnings),
+        "info_count": len(informational),
+        "tuned_count": tuned_count,
+        "fixable_count": sum(1 for i in issues if i.fixable),
+        "linters_run": sum(1 for s in linter_statuses.values() if s == "ok"),
+        "linters_skipped": sum(1 for s in linter_statuses.values() if s in ("skipped", "deferred")),
+        "linters_errored": sum(1 for s in linter_statuses.values() if s in ("error", "timeout")),
+    }
+
+
 def aggregate_results(
     linter_results: list[LinterResult],
     config: ProjectConfig,
     tier_name: str = "",
     tier_reason: str = "",
 ) -> AggregatedResult:
-    """Aggregate all linter results into a single structured report.
+    """Aggregate all linter results into a single structured report."""
+    all_issues, linter_statuses, total_duration = _collect_raw_issues(linter_results)
 
-    Args:
-        linter_results: Results from lint_runner.py
-        config: Project config (for severity overrides and exemptions)
-        tier_name: Which tier was selected
-        tier_reason: Why this tier was selected
-
-    Returns:
-        AggregatedResult with blocking/warning/informational splits
-    """
-    all_issues: list[LintIssue] = []
-    linter_statuses: dict[str, str] = {}
-    total_duration = 0.0
-
-    for lr in linter_results:
-        linter_statuses[lr.linter_name] = lr.status
-        total_duration += lr.duration_ms
-        all_issues.extend(lr.issues)
-
-    # Deduplicate (same file + line + kind from different linters)
     unique = _deduplicate(all_issues)
-
-    # Assign deterministic issue IDs after dedup
     for issue in unique:
         issue.issue_id = issue.compute_issue_id()
 
-    # Downgrade findings on guarded optional imports (try/except ImportError)
     _downgrade_optional_import_findings(unique, config.project_root)
+    unique, tuned_count = _apply_config_overrides(unique, config)
 
-    # Apply severity overrides from config
-    if config.severity_overrides:
-        for issue in unique:
-            override = _resolve_severity_override(issue.kind, config.severity_overrides)
-            if override:
-                issue.severity = override
+    for issue in unique:
+        if issue.estimated_effort_minutes is None:
+            issue.estimated_effort_minutes = estimate_effort(issue)
 
-    # Apply exemptions
-    if config.exemptions:
-        unique = [i for i in unique if not _is_exempted(i, config.exemptions)]
+    blocking, warnings, informational = _split_by_severity(unique)
+    metrics = _compute_metrics(unique, blocking, warnings, informational, tuned_count, linter_statuses)
 
-    # Apply signal tunings (agent-initiated suppression/downgrade)
-    tuned_count = 0
-    if config.project_root:
-        from .signal_tunings import filter_tuned_issues
-
-        unique, tuned_count = filter_tuned_issues(unique, config.project_root)
-
-    # Split by severity
-    blocking = sorted(
-        [i for i in unique if i.severity == "blocking"],
-        key=lambda i: (i.file or "", i.line or 0),
-    )
-    warnings = sorted(
-        [i for i in unique if i.severity == "warning"],
-        key=lambda i: (i.file or "", i.line or 0),
-    )
-    informational = sorted(
-        [i for i in unique if i.severity == "informational"],
-        key=lambda i: (i.file or "", i.line or 0),
-    )
-
-    # Compute metrics
-    metrics = {
-        "total_issues": len(unique),
-        "blocking_count": len(blocking),
-        "warning_count": len(warnings),
-        "info_count": len(informational),
-        "tuned_count": tuned_count,
-        "fixable_count": sum(1 for i in unique if i.fixable),
-        "linters_run": sum(1 for s in linter_statuses.values() if s == "ok"),
-        "linters_skipped": sum(1 for s in linter_statuses.values() if s in ("skipped", "deferred")),
-        "linters_errored": sum(1 for s in linter_statuses.values() if s in ("error", "timeout")),
-    }
-
-    # Collect all files that were linted (normalize absolute paths to relative)
     project_root = config.project_root
     files_linted = sorted({_normalize_file_path(f, project_root) for i in unique if (f := i.file)})
 
@@ -212,6 +220,42 @@ def _resolve_severity_override(kind: str, overrides: dict[str, str]) -> str | No
         if prefix in overrides:
             return overrides[prefix]
     return None
+
+
+# ── Effort estimation + ROI scoring ────────────────────────────────────
+
+_EFFORT_HEURISTICS: dict[str, float] = {
+    "ruff": 2.0,       # auto-fixable style/import issues
+    "mypy": 10.0,      # type errors require understanding
+    "radon": 15.0,     # complexity reduction = refactoring
+    "bandit": 20.0,    # security issues need careful review
+    "vulture": 5.0,    # dead code removal
+    "structure": 15.0,  # architectural issues
+}
+
+_SEVERITY_WEIGHT: dict[str, float] = {
+    "blocking": 3.0,
+    "warning": 2.0,
+    "informational": 1.0,
+}
+
+
+def estimate_effort(issue: LintIssue) -> float:
+    """Estimate fix effort in minutes using linter-based heuristics."""
+    base = _EFFORT_HEURISTICS.get(issue.linter, 10.0)
+    if issue.fixable:
+        base = min(base, 2.0)  # auto-fixable = ~2 min regardless of linter
+    return base
+
+
+def compute_roi(issue: LintIssue) -> float:
+    """ROI = severity_weight * confidence / estimated_effort.
+
+    Higher ROI = higher value per minute of effort spent.
+    """
+    weight = _SEVERITY_WEIGHT.get(issue.severity, 1.0)
+    effort = issue.estimated_effort_minutes or estimate_effort(issue)
+    return round(weight * issue.confidence / max(effort, 0.1), 3)
 
 
 def _deduplicate(issues: list[LintIssue]) -> list[LintIssue]:

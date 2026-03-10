@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +24,11 @@ from .file_analyzer import FileSpecResult, analyze_file
 
 _CACHE_SUBDIR = "files"
 _MAX_HOTSPOT_FILES = 10
+_TEST_PATTERNS = (
+    re.compile(r"(?:^|/)tests?/"),
+    re.compile(r"(?:^|/)test_[^/]+\.py$"),
+    re.compile(r"(?:^|/)[^/]+_test\.py$"),
+)
 
 
 @dataclass
@@ -39,6 +46,8 @@ class ProjectRollup:
     hotspot_files: list[dict[str, Any]] = field(default_factory=list)
     cache_hits: int = 0
     cache_misses: int = 0
+    include_tests: bool = False
+    skipped_test_files: int = 0
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,6 +63,8 @@ class ProjectRollup:
             "hotspot_files": self.hotspot_files,
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
+            "include_tests": self.include_tests,
+            "skipped_test_files": self.skipped_test_files,
             "error_count": len(self.errors),
         }
 
@@ -62,6 +73,7 @@ def rollup_project(
     project_root: str,
     use_cache: bool = True,
     analyze_uncached: bool = False,
+    include_tests: bool = False,
 ) -> ProjectRollup:
     """Aggregate specification data across all Python files.
 
@@ -77,11 +89,15 @@ def rollup_project(
         use_cache: Whether to use file-level content-hash caching.
         analyze_uncached: If True, analyze files with no cache entry.
             If False (default), skip uncached files for fast rollup.
+        include_tests: If True, include test files (``tests/``, ``test_*.py``,
+            ``*_test.py``). Defaults to False so hotspots and rollup metrics
+            focus on production code.
 
     Returns:
         ProjectRollup with aggregated specification data.
     """
     rollup = ProjectRollup(project_root=project_root)
+    rollup.include_tests = include_tests
     py_files = discover_project_files(project_root, extra_exclude_dirs=frozenset({"archive"}))
 
     if not py_files:
@@ -94,6 +110,10 @@ def rollup_project(
     # Per-file analysis: cache-read-only by default
     file_results: list[FileSpecResult] = []
     for fpath in py_files:
+        rel_path = os.path.relpath(fpath, project_root)
+        if not include_tests and _is_test_file(rel_path):
+            rollup.skipped_test_files += 1
+            continue
         result = _analyze_with_cache(fpath, project_root, cache_dir, analyze_uncached)
         if result is None:
             # Cache miss in read-only mode — skip
@@ -109,6 +129,12 @@ def rollup_project(
     # Aggregate
     _aggregate(rollup, file_results)
     return rollup
+
+
+def _is_test_file(filepath: str) -> bool:
+    """Return True if *filepath* looks like a Python test file."""
+    normalized = filepath.replace("\\", "/")
+    return any(pat.search(normalized) for pat in _TEST_PATTERNS)
 
 
 def _analyze_with_cache(

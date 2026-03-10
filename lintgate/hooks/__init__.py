@@ -28,6 +28,7 @@ from lintgate.hooks.arbitration import (
     should_force_emit,
 )
 from lintgate.hooks.controlplane import (
+    PostProcessContext,
     accumulate_session_telemetry,
     apply_behavior_delta,
     can_apply_session_telemetry,
@@ -63,6 +64,7 @@ __all__ = [
     "should_emit",
     "should_force_emit",
     # controlplane
+    "PostProcessContext",
     "accumulate_session_telemetry",
     "apply_behavior_delta",
     "can_apply_session_telemetry",
