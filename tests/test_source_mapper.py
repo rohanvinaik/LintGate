@@ -471,6 +471,66 @@ def test_map_tests_to_source_async_paths_are_collected():
         assert mapping["a.py::ping"] == ["TestAsync.test_ping"]
 
 
+def test_map_tests_to_source_instance_method_maps_to_class_key():
+    """Instance calls (obj.method) map to class-qualified source keys when unique."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "proof_auditor.py")
+        test_path = os.path.join(tmpdir, "test_proof_auditor.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write(
+                "class ProofAuditor:\n"
+                "    def check(self, value):\n"
+                "        return value > 0\n\n"
+                "    def verify(self, value):\n"
+                "        return value + 1\n"
+            )
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write(
+                "from proof_auditor import ProofAuditor\n\n"
+                "class ValidationSuite:\n"
+                "    def test_accepts_positive_inputs(self):\n"
+                "        auditor = ProofAuditor()\n"
+                "        assert auditor.check(1) is True\n\n"
+                "class VerificationSuite:\n"
+                "    def test_increments_counter(self):\n"
+                "        auditor = ProofAuditor()\n"
+                "        assert auditor.verify(1) == 2\n"
+            )
+
+        index = build_source_function_index([src_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert "proof_auditor.py::ProofAuditor.check" in mapping
+        assert "proof_auditor.py::ProofAuditor.verify" in mapping
+        assert "proof_auditor.py::check" not in mapping
+        assert "proof_auditor.py::verify" not in mapping
+
+
+def test_map_tests_to_source_module_alias_call_stays_module_level():
+    """Module alias calls (mod.func) should not be forced into class-qualified keys."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "a.py")
+        test_path = os.path.join(tmpdir, "test_alias.py")
+
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write(
+                "def foo():\n"
+                "    return 1\n\n"
+                "class X:\n"
+                "    def foo(self):\n"
+                "        return 2\n"
+            )
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("import a as mod\n\ndef test_module_function():\n    assert mod.foo() == 1\n")
+
+        index = build_source_function_index([src_path])
+        mapping = map_tests_to_source(test_path, index, tmpdir)
+
+        assert "a.py::foo" in mapping
+        assert "a.py::X.foo" not in mapping
+
+
 def test_filter_candidates_module_hint_no_hint_returns_input():
     """Empty module hints should return input candidates unchanged."""
     candidates = ["/tmp/a.py", "/tmp/b.py"]

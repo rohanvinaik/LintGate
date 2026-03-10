@@ -9,6 +9,26 @@ from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
 
+# Patterns for filtering non-production files from optimization targets
+_NON_PRODUCTION_PATTERNS = (
+    "test_", "tests/", "test/", "_test.py", "conftest.py",
+    "fuzz_", "fuzz/", "benchmark_", "benchmarks/",
+    "fixture", "testutil", "test_helper",
+)
+
+
+def _is_production_file(filepath: str) -> bool:
+    """Return True if filepath looks like production code, not test/fuzz/fixture."""
+    basename = os.path.basename(filepath)
+    rel = filepath.replace("\\", "/")
+    for pat in _NON_PRODUCTION_PATTERNS:
+        if pat.endswith("/"):
+            if f"/{pat}" in f"/{rel}":
+                return False
+        elif basename.startswith(pat) or basename.endswith(pat):
+            return False
+    return True
+
 
 def _build_channels() -> list:
     """Instantiate analysis channels needed for convergence."""
@@ -51,6 +71,16 @@ def _impl_convergence_analyze(
 
     helpers["_validate_project_root"](path)
 
+    # If a file filter was specified but resolved to nothing, fail explicitly
+    # instead of silently falling back to full-project analysis.
+    if file is not None:
+        filtered = _discover_python_files(path, file)
+        if not filtered:
+            return {
+                "project": path,
+                "error": f"File not found: {file}",
+            }
+
     # Run controlplane to get channel results
     results: list = []
     with contextlib.suppress(Exception):
@@ -60,6 +90,7 @@ def _impl_convergence_analyze(
         py_files = _discover_python_files(path, file)
         event = SupervisionEvent(
             project_root=path,
+            surface="mcp",
             files_changed=py_files[:20],  # Cap for performance
         )
         config = ControlPlaneConfig()
@@ -144,7 +175,7 @@ def _impl_extraction_plan(
             [os.path.join(path, source_file)] if source_file else _discover_python_files(path)[:10]
         )
 
-        event = SupervisionEvent(project_root=path, files_changed=files)
+        event = SupervisionEvent(project_root=path, surface="mcp", files_changed=files)
         config = ControlPlaneConfig()
         channels = _build_channels()
         mesh = run_mesh(event, config, channels)
@@ -209,11 +240,176 @@ def _impl_extraction_plan(
     return result
 
 
+def _collect_manifest_hints(manifest: Any) -> tuple[
+    list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]
+]:
+    """Extract cache, parallel, and extraction hints from manifest pure functions."""
+    cache_hotspots: list[dict[str, Any]] = []
+    parallel_opportunities: list[dict[str, Any]] = []
+    extraction_safe: list[dict[str, Any]] = []
+
+    for name, func in manifest.functions.items():
+        if not func.purity.is_pure:
+            continue
+
+        entry: dict[str, Any] = {
+            "function": name,
+            "source_file": func.source_file or "",
+            "confidence": func.purity.confidence,
+        }
+
+        hints = set(func.optimization_hints)
+        if "cacheable" in hints:
+            cache_hotspots.append({**entry, "hints": list(hints)})
+        if "parallelizable" in hints or "map-reduce-compatible" in hints:
+            parallel_opportunities.append({
+                "pattern": "MANIFEST_HINT",
+                "file": func.source_file or "",
+                "line": 0,
+                "callee": name,
+                "confidence": func.purity.confidence,
+                "constraints": [],
+                "detail": f"Manifest hints: {sorted(hints)}",
+            })
+        if func.extraction_safety == "safe" and func.properties:
+            extraction_safe.append({
+                **entry,
+                "properties": [p.kind.value for p in func.properties],
+                "extraction_safety": func.extraction_safety,
+            })
+
+    return cache_hotspots, parallel_opportunities, extraction_safe
+
+
+def _run_detectors_on_file(
+    tree: ast.AST,
+    rel_path: str,
+    cache_hotspots: list[dict[str, Any]],
+    parallel_opportunities: list[dict[str, Any]],
+    jit_candidates: list[dict[str, Any]],
+) -> None:
+    """Run cache/parallel/JIT detectors on a single parsed file, appending results in-place."""
+    try:
+        from lintgate.linters.performance_checks.cache_scoring import score_all_cacheable
+        from lintgate.linters.performance_checks.purity import analyze_purity
+
+        purity = analyze_purity(tree)
+        for qname, cs in score_all_cacheable(tree, purity).items():
+            if cs.band in ("HIGH", "MEDIUM"):
+                cache_hotspots.append({
+                    "function": qname,
+                    "source_file": rel_path,
+                    "cache_score": cs.score,
+                    "cache_band": cs.band,
+                    "cache_factors": cs.factors,
+                })
+    except ImportError:
+        pass
+
+    try:
+        from lintgate.linters.performance_checks.parallel_detector import (
+            detect_parallel_opportunities,
+        )
+        from lintgate.linters.performance_checks.purity import analyze_purity
+
+        purity = analyze_purity(tree)
+        for opp in detect_parallel_opportunities(tree, purity, file_path=rel_path):
+            parallel_opportunities.append(opp.to_dict())
+    except ImportError:
+        pass
+
+    try:
+        from lintgate.linters.performance_checks.jit_detector import detect_jit_candidates
+        from lintgate.linters.performance_checks.purity import analyze_purity
+
+        purity = analyze_purity(tree)
+        for c in detect_jit_candidates(tree, purity, file_path=rel_path):
+            jit_candidates.append(c.to_dict())
+    except ImportError:
+        pass
+
+
+def _dedupe_cache_hotspots(cache_hotspots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate cache hotspots by (source_file, function), keeping highest-scored."""
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for ch in sorted(
+        cache_hotspots,
+        key=lambda x: x.get("cache_score", x.get("confidence", 0)),
+        reverse=True,
+    ):
+        key = (ch.get("source_file", ""), ch["function"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(ch)
+    return deduped
+
+
+def _build_static_landscape(
+    path: str,
+) -> dict[str, Any]:
+    """Build a static optimization landscape from manifest data alone.
+
+    No convergence or mutation state required — uses purity analysis,
+    cache scoring, parallel detection, and JIT detection directly.
+    """
+    from lintgate.channels.performance_channel import _discover_python_files
+    from lintgate.linters.performance_checks.manifest import build_manifest
+
+    all_files = _discover_python_files(path)
+    py_files = [f for f in all_files if _is_production_file(os.path.relpath(f, path))]
+    if not py_files:
+        return {"project": path, "error": "No Python files found."}
+
+    manifest = build_manifest(path, py_files)
+    if manifest is None:
+        return {"project": path, "error": "Failed to build manifest."}
+
+    cache_hotspots, parallel_opportunities, extraction_safe = _collect_manifest_hints(manifest)
+    jit_candidates: list[dict[str, Any]] = []
+
+    for fpath in py_files[:30]:
+        try:
+            with open(fpath, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=fpath)
+        except (OSError, SyntaxError):
+            continue
+        _run_detectors_on_file(
+            tree, os.path.relpath(fpath, path),
+            cache_hotspots, parallel_opportunities, jit_candidates,
+        )
+
+    deduped_cache = _dedupe_cache_hotspots(cache_hotspots)
+
+    return {
+        "project": path,
+        "mode": "static",
+        "cache_hotspots": deduped_cache[:20],
+        "parallel_opportunities": parallel_opportunities[:20],
+        "jit_candidates": jit_candidates[:10],
+        "extraction_safe_refactors": extraction_safe[:15],
+        "summary": {
+            "total_functions": manifest.pure_count + manifest.impure_count,
+            "pure_functions": manifest.pure_count,
+            "cache_candidates": len(deduped_cache),
+            "parallel_opportunities": len(parallel_opportunities),
+            "jit_candidates": len(jit_candidates),
+        },
+    }
+
+
 def _impl_optimization_landscape(
     path: str,
     helpers: Any,
+    *,
+    mode: str = "auto",
 ) -> dict[str, Any]:
-    """Return project-wide optimization opportunity map."""
+    """Return project-wide optimization opportunity map.
+
+    Args:
+        mode: "auto" (dynamic then static fallback), "static" (manifest-only),
+              "dynamic" (convergence-based, original behavior).
+    """
     import contextlib
 
     from lintgate.convergence.extraction_plan import build_extraction_plan
@@ -223,15 +419,37 @@ def _impl_optimization_landscape(
 
     helpers["_validate_project_root"](path)
 
-    # Run convergence analysis
+    # Static mode — skip convergence entirely
+    if mode == "static":
+        result = _build_static_landscape(path)
+        result["next_actions"] = serialize_next_actions(
+            [
+                NextAction(
+                    tool="convergence_analyze",
+                    args={"path": path},
+                    reason="Run convergence analysis for richer dynamic landscape.",
+                    priority=3,
+                    condition="want dynamic convergence data",
+                ),
+            ]
+        )
+        return result
+
+    # Dynamic mode — run convergence analysis
     results: list = []
     convergence = []
     with contextlib.suppress(Exception):
         from lintgate.controlplane.runtime import run_mesh
         from lintgate.controlplane.types import ControlPlaneConfig, SupervisionEvent
 
-        py_files = _discover_python_files(path)[:30]
-        event = SupervisionEvent(project_root=path, files_changed=py_files)
+        all_files = _discover_python_files(path)
+        # Filter out test/fuzz/fixture files — landscape targets production code only
+        py_files = [f for f in all_files if _is_production_file(os.path.relpath(f, path))][:30]
+        event = SupervisionEvent(project_root=path, surface="mcp", files_changed=py_files[:5])
+        # Pre-populate python_files so the prepass uses our production-filtered
+        # list instead of falling back to full-project discovery (which would
+        # re-introduce test files). The prepass honors pre-populated values.
+        event.context["python_files"] = py_files
         config = ControlPlaneConfig()
         channels = _build_channels()
         mesh = run_mesh(event, config, channels)
@@ -241,10 +459,33 @@ def _impl_optimization_landscape(
         convergence = extract_all_evidence(results)
 
     if not convergence:
-        return {
-            "project": path,
-            "landscape": {"message": "No convergence data available. Run controlplane_run first."},
+        if mode == "dynamic":
+            return {
+                "project": path,
+                "mode": "dynamic",
+                "diagnostics": {
+                    "reason": "No convergence data produced by dynamic analysis.",
+                    "suggestion": "Use mode='static' for manifest-based landscape, "
+                    "or run controlplane_run first for richer data.",
+                },
+            }
+        # Auto mode — fall back to static
+        result = _build_static_landscape(path)
+        result["mode"] = "auto (static fallback)"
+        result["diagnostics"] = {
+            "reason": "Dynamic convergence produced no data; fell back to static manifest analysis.",
         }
+        result["next_actions"] = serialize_next_actions(
+            [
+                NextAction(
+                    tool="controlplane_run",
+                    args={"path": path},
+                    reason="Run controlplane for richer convergence data.",
+                    priority=2,
+                ),
+            ]
+        )
+        return result
 
     # Build plans for top convergence targets
     plans = []
@@ -270,6 +511,7 @@ def _impl_optimization_landscape(
 
     result = landscape.to_dict()
     result["project"] = path
+    result["mode"] = "dynamic"
     result["convergence_targets"] = len(convergence)
     result["plans_built"] = len(plans)
     result["next_actions"] = serialize_next_actions(
@@ -347,6 +589,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     @mcp.tool()
     def optimization_landscape(
         path: str,
+        mode: str = "auto",
     ) -> str:
         """Return project-wide optimization opportunity map.
 
@@ -358,11 +601,15 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         extraction dependency order, and aggregate impact metrics.
 
         Example: optimization_landscape(path="/my/project")
+        Example: optimization_landscape(path="/my/project", mode="static")
 
         Args:
             path: Project root path.
+            mode: Analysis mode — "auto" (dynamic with static fallback),
+                "static" (manifest-only, no convergence needed),
+                "dynamic" (convergence-based, requires prior runs).
         """
-        return json.dumps(_impl_optimization_landscape(path, helpers))
+        return json.dumps(_impl_optimization_landscape(path, helpers, mode=mode))
 
     return {
         "convergence_analyze": convergence_analyze,

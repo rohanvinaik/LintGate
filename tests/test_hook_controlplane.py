@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from lintgate.hooks.controlplane import (
     _SESSION_TELEMETRY_UPDATE_CAP,
+    PostProcessContext,
     accumulate_session_telemetry,
     apply_behavior_delta,
     can_apply_session_telemetry,
@@ -1197,7 +1198,12 @@ class TestExtractFindingIndexes:
 
 class TestPostProcessSession:
     def test_session_none(self):
-        result = post_process_session(None, MagicMock(), {}, MagicMock(), {}, "E", {}, "")
+        ctx = PostProcessContext(
+            session=None, mesh_result=MagicMock(), finding_index={},
+            cp_config=MagicMock(), input_data={}, tool_name="E",
+            tool_input={}, tool_output="",
+        )
+        result = post_process_session(ctx)
         assert result == []
 
     def test_session_no_behavior(self):
@@ -1214,7 +1220,12 @@ class TestPostProcessSession:
             patch("lintgate.controlplane.session_memory.save_session"),
             patch("lintgate.hooks.controlplane.run_constraint_proposer", return_value=[]),
         ):
-            result = post_process_session(session, mesh, {}, MagicMock(), {}, "E", {}, "")
+            ctx = PostProcessContext(
+                session=session, mesh_result=mesh, finding_index={},
+                cp_config=MagicMock(), input_data={}, tool_name="E",
+                tool_input={}, tool_output="",
+            )
+            result = post_process_session(ctx)
         assert result == []
 
 

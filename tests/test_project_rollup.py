@@ -10,6 +10,7 @@ from lintgate.specification.project_rollup import (
     _aggregate,
     _cache_key,
     _deserialize_file_result,
+    _is_test_file,
     _load_file_cache,
     _save_file_cache,
     rollup_project,
@@ -197,6 +198,15 @@ class TestAggregate:
         assert rollup.hotspot_files[0]["sigma"] == 20
 
 
+class TestTestFileDetection:
+    def test_path_patterns(self):
+        assert _is_test_file("tests/test_app.py") is True
+        assert _is_test_file("test/test_app.py") is True
+        assert _is_test_file("pkg/test_utils.py") is True
+        assert _is_test_file("pkg/utils_test.py") is True
+        assert _is_test_file("src/app.py") is False
+
+
 class TestRollupProject:
     def test_analyze_uncached(self, tmp_path):
         """analyze_uncached=True runs live analysis on cache misses."""
@@ -251,6 +261,47 @@ class TestRollupProject:
         # With no cache, all files get analyzed (hits counted since no cache_dir)
         assert rollup.total_functions >= 0  # f() may or may not produce functions
 
+    def test_include_tests_flag(self, tmp_path):
+        """Default rollup excludes tests; include_tests=True restores them."""
+        src = tmp_path / "calc.py"
+        src.write_text("def add(a, b): return a + b\n")
+
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        tests_dir.joinpath("test_calc.py").write_text(
+            "\n".join(
+                [
+                    "def test_case_0():\n"
+                    "    x = 1\n"
+                    "    if x > 0:\n"
+                    "        assert x == 1\n"
+                    "    else:\n"
+                    "        assert False\n"
+                ]
+                + [
+                    (
+                        f"def test_case_{i}():\n"
+                        "    x = 1\n"
+                        "    if x > 0:\n"
+                        "        assert x == 1\n"
+                        "    else:\n"
+                        "        assert False\n"
+                    )
+                    for i in range(1, 25)
+                ]
+            )
+            + "\n"
+        )
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+
+        without_tests = rollup_project(str(tmp_path), use_cache=False, include_tests=False)
+        with_tests = rollup_project(str(tmp_path), use_cache=False, include_tests=True)
+
+        assert without_tests.skipped_test_files >= 1
+        assert all(not h["file"].startswith("tests/") for h in without_tests.hotspot_files)
+        assert with_tests.skipped_test_files == 0
+        assert any(h["file"].startswith("tests/") for h in with_tests.hotspot_files)
+
     def test_empty_project(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
         rollup = rollup_project(str(tmp_path), use_cache=False)
@@ -274,3 +325,5 @@ class TestRollupProject:
         assert "hotspot_files" in d
         assert "cache_hits" in d
         assert "cache_misses" in d
+        assert d["include_tests"] is False
+        assert d["skipped_test_files"] == 0

@@ -33,47 +33,12 @@ class PostToolUseInputs:
     cycle_alerts: list[str] = field(default_factory=list)
 
 
-def _build_posttooluse_context(
-    inputs: PostToolUseInputs | None = None,
-    *,
-    # Legacy keyword arguments for backward compatibility
-    mesh_result: MeshResult | None = None,
-    blocking_count: int = 0,
-    warning_count: int = 0,
-    informational_count: int = 0,
-    hidden_findings: int = 0,
-    channels_run: int = 0,
-    delta: dict[str, Any] | None = None,
-    baseline_delta: dict[str, Any] | None = None,
-    resurfaced_count: int = 0,
-    cycle_alerts: list[str] | None = None,
-) -> str:
+def _build_posttooluse_context(inputs: PostToolUseInputs) -> str:
     """Build compact additional context for Claude PostToolUse hooks.
 
     Fixed key order, compact format. Keys with zero/empty values are omitted.
     Max 300 chars — drops least-critical fields from bottom up if exceeded.
-
-    Accepts either a PostToolUseInputs dataclass or individual keyword args
-    (backward compatible).
     """
-    # Normalize: build inputs from kwargs if not provided as dataclass
-    if inputs is None:
-        if mesh_result is None:
-            msg = "mesh_result is required"
-            raise TypeError(msg)
-        inputs = PostToolUseInputs(
-            mesh_result=mesh_result,
-            blocking_count=blocking_count,
-            warning_count=warning_count,
-            informational_count=informational_count,
-            hidden_findings=hidden_findings,
-            channels_run=channels_run,
-            delta=delta,
-            baseline_delta=baseline_delta,
-            resurfaced_count=resurfaced_count,
-            cycle_alerts=cycle_alerts or [],
-        )
-
     coherence = inputs.mesh_result.coherence
 
     # Build ordered key-value pairs (fixed order per plan)
@@ -177,18 +142,12 @@ def _serialize_pairs(pairs: list[tuple[str, str]], *, max_len: int = 300) -> str
     return result
 
 
-def compute_hook_fingerprint(mesh_result: MeshResult) -> str:
-    """Compute a compact fingerprint of hook-relevant state.
+def _extract_hook_fields(mesh_result: MeshResult) -> dict[str, str]:
+    """Extract individual hook-state fields from a mesh result.
 
-    Used for state-transition suppression: when the fingerprint hasn't changed
-    between consecutive hook invocations and there are no blocking findings,
-    the full report can be suppressed to reduce context noise.
-
-    The fingerprint captures: coherence state, blocking count, warning count,
-    and the set of loud (failing/errored/timed-out) channels.
+    Each field is a string representation of a tracked dimension.
+    Used for both fingerprinting and field-level delta computation.
     """
-    import hashlib
-
     coherence_state = mesh_result.coherence.state
     blocking = sum(
         1 for cr in mesh_result.channel_results for f in cr.findings if f.severity == "blocking"
@@ -201,9 +160,57 @@ def compute_hook_fingerprint(mesh_result: MeshResult) -> str:
         for cr in mesh_result.channel_results
         if cr.status in ("fail", "error", "timeout")
     )
+    channels_run = sum(1 for cr in mesh_result.channel_results if cr.status != "skip")
+    return {
+        "coherence": coherence_state,
+        "blocking": str(blocking),
+        "warning": str(warning),
+        "loud": ",".join(loud),
+        "channels_run": str(channels_run),
+    }
 
-    parts = f"{coherence_state}|b={blocking}|w={warning}|{','.join(loud)}"
+
+def compute_hook_fingerprint(mesh_result: MeshResult) -> str:
+    """Compute a compact fingerprint of hook-relevant state.
+
+    Used for state-transition suppression: when the fingerprint hasn't changed
+    between consecutive hook invocations and there are no blocking findings,
+    the full report can be suppressed to reduce context noise.
+
+    The fingerprint captures: coherence state, blocking count, warning count,
+    and the set of loud (failing/errored/timed-out) channels.
+    """
+    import hashlib
+
+    fields = _extract_hook_fields(mesh_result)
+    parts = f"{fields['coherence']}|b={fields['blocking']}|w={fields['warning']}|{fields['loud']}"
     return hashlib.md5(parts.encode(), usedforsecurity=False).hexdigest()[:12]  # nosec B324 — not crypto, just fingerprinting
+
+
+def compute_hook_fingerprint_detailed(mesh_result: MeshResult) -> dict[str, Any]:
+    """Compute fingerprint with per-field breakdown for delta-first output.
+
+    Returns {"fingerprint": str, "fields": dict[str, str]}.
+    """
+    import hashlib
+
+    fields = _extract_hook_fields(mesh_result)
+    parts = f"{fields['coherence']}|b={fields['blocking']}|w={fields['warning']}|{fields['loud']}"
+    fp = hashlib.md5(parts.encode(), usedforsecurity=False).hexdigest()[:12]  # nosec B324
+    return {"fingerprint": fp, "fields": fields}
+
+
+def compute_field_deltas(
+    current_fields: dict[str, str], previous_fields: dict[str, str],
+) -> dict[str, dict[str, str]]:
+    """Return only fields that changed, with old and new values."""
+    deltas: dict[str, dict[str, str]] = {}
+    for key in current_fields:
+        curr = current_fields[key]
+        prev = previous_fields.get(key, "")
+        if curr != prev:
+            deltas[key] = {"old": prev, "new": curr}
+    return deltas
 
 
 def _build_telemetry_counters(

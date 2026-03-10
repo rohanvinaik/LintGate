@@ -430,26 +430,18 @@ def _json_dumps(data: Any, output_mode: str = "compact") -> str:
     return json.dumps(payload, separators=(",", ":"))
 
 
-def _run_lint(
+def _execute_lint_pipeline(
     files: list[str],
     project_root: str,
     tier: int,
-    strictness: str = "normal",
-    output_mode: str = "compact",
-    max_findings: int = 20,
-) -> dict[str, Any]:
-    """Core lint execution shared by lint_files and lint_project.
+    strictness: str,
+) -> tuple[Any, list[Any], Any]:
+    """Validate inputs, run linters, and aggregate results.
 
-    Output modes:
-    - compact: ~200 tokens — counts, run_id, duration, next_actions only
-    - standard: compact + blocking_issues + warning_issues (capped by max_findings)
-    - full: everything including informational, recurrence, diagnostics, report
+    Returns (aggregated, linter_results, lint_tier).
     """
-    start = time.perf_counter()
     _validate_tier(tier)
     _validate_strictness(strictness)
-    if output_mode not in _VALID_OUTPUT_MODES:
-        output_mode = "compact"
 
     config = load_config(project_root)
     registry = build_registry(config)
@@ -468,19 +460,31 @@ def _run_lint(
         strictness=strictness,
     )
 
-    # Run linters.
     linter_results = run_linters(lint_tier, config, registry, timeout_ms=30000)
 
-    # Aggregate.
     aggregated = aggregate_results(
-        linter_results,
-        config,
-        tier_name=lint_tier.name,
-        tier_reason=lint_tier.reason,
+        linter_results, config,
+        tier_name=lint_tier.name, tier_reason=lint_tier.reason,
     )
+    return aggregated, linter_results, lint_tier
+
+
+def _compute_lint_metadata(
+    aggregated: Any,
+    linter_results: list[Any],
+    lint_tier: Any,
+    project_root: str,
+    files: list[str],
+    elapsed_ms: float,
+    output_mode: str,
+) -> tuple[str, dict[str, Any], dict, Any, dict | None]:
+    """Compute recurrence, report, delta, persist state and details.
+
+    Returns (run_id, full_details, recurrence, report, lint_delta).
+    """
     all_issues = _collect_all_issues(aggregated)
 
-    recurrence = {
+    recurrence: dict[str, Any] = {
         "repeated_issue_count": 0,
         "unique_signatures_tracked": 0,
         "top_repeated": [],
@@ -488,11 +492,9 @@ def _run_lint(
     with contextlib.suppress(Exception):
         recurrence = update_issue_memory(project_root, all_issues)
 
-    # Format report.
     last_run = load_last_run(project_root)
     report = format_report(aggregated, last_run, recurrence_summary=recurrence)
 
-    # Compute delta against previous lint run
     lint_delta = None
     if last_run is not None:
         previous_index = last_run.get("finding_index")
@@ -502,13 +504,10 @@ def _run_lint(
 
                 lint_delta = compute_lint_delta(aggregated, previous_index)
 
-    # Save state (includes finding index for next run's delta).
     with contextlib.suppress(Exception):
         save_run(project_root, aggregated)
 
-    # Generate run_id and persist full details for drill-down.
     run_id = generate_run_id()
-    elapsed_ms = (time.perf_counter() - start) * 1000
 
     full_details: dict[str, Any] = {
         "tier": lint_tier.name,
@@ -535,7 +534,6 @@ def _run_lint(
     with contextlib.suppress(Exception):
         save_run_details(run_id, full_details)
 
-    # Log metric.
     with contextlib.suppress(Exception):
         log_metric(
             {
@@ -553,86 +551,155 @@ def _run_lint(
             }
         )
 
-    # ── Build response based on output_mode ──
+    return run_id, full_details, recurrence, report, lint_delta
 
-    if output_mode == "compact":
-        # ~200 tokens: counts + run_id + duration + next_actions
-        output: dict[str, Any] = {
-            "run_id": run_id,
-            "tier": lint_tier.name,
-            "files_linted": len(files),
-            "duration_ms": round(elapsed_ms, 1),
-            "blocking": len(aggregated.blocking),
-            "warnings": len(aggregated.warnings),
-            "informational": len(aggregated.informational),
-            "fixable": aggregated.metrics.get("fixable_count", 0),
-        }
-        # Include blocking issue summaries even in compact (they're critical)
-        if aggregated.blocking:
-            output["blocking_issues"] = [
-                {
-                    "id": i.issue_id,
-                    "kind": i.kind,
-                    "loc": i.short_location(),
-                    "msg": i.message[:80],
-                }
-                for i in aggregated.blocking[:max_findings]
-            ]
-            if len(aggregated.blocking) > max_findings:
-                output["blocking_truncated"] = len(aggregated.blocking) - max_findings
-        if lint_delta is not None:
-            output["delta"] = {
-                "resolved": lint_delta["resolved_count"],
-                "new": len(lint_delta["new"]),
-                "remaining": lint_delta["still_active_count"],
-                "summary": lint_delta.get("summary", ""),
+
+def _build_compact_output(
+    run_id: str,
+    lint_tier: Any,
+    files: list[str],
+    elapsed_ms: float,
+    aggregated: Any,
+    lint_delta: dict | None,
+    max_findings: int,
+) -> dict[str, Any]:
+    """Build compact output: counts + optional blocking issues + delta."""
+    output: dict[str, Any] = {
+        "run_id": run_id,
+        "tier": lint_tier.name,
+        "files_linted": len(files),
+        "duration_ms": round(elapsed_ms, 1),
+        "blocking": len(aggregated.blocking),
+        "warnings": len(aggregated.warnings),
+        "informational": len(aggregated.informational),
+        "fixable": aggregated.metrics.get("fixable_count", 0),
+    }
+    if aggregated.blocking:
+        output["blocking_issues"] = [
+            {
+                "id": i.issue_id,
+                "kind": i.kind,
+                "loc": i.short_location(),
+                "msg": i.message[:80],
             }
-        output["next_actions"] = _build_next_actions({**output, "project": project_root})
-        return output
-
-    elif output_mode == "standard":
-        # ~500 tokens: compact + full blocking + warnings (capped)
-        output = {
-            "run_id": run_id,
-            "tier": lint_tier.name,
-            "files_linted": len(files),
-            "duration_ms": round(elapsed_ms, 1),
-            "blocking": len(aggregated.blocking),
-            "warnings": len(aggregated.warnings),
-            "informational": len(aggregated.informational),
-            "fixable": aggregated.metrics.get("fixable_count", 0),
-            "linters_run": aggregated.metrics.get("linters_run", 0),
-            "linter_statuses": aggregated.linter_statuses,
+            for i in aggregated.blocking[:max_findings]
+        ]
+        if len(aggregated.blocking) > max_findings:
+            output["blocking_truncated"] = len(aggregated.blocking) - max_findings
+    if lint_delta is not None:
+        output["delta"] = {
+            "resolved": lint_delta["resolved_count"],
+            "new": len(lint_delta["new"]),
+            "remaining": lint_delta["still_active_count"],
+            "summary": lint_delta.get("summary", ""),
         }
-        if aggregated.blocking:
-            output["blocking_issues"] = [
-                issue.to_dict() for issue in aggregated.blocking[:max_findings]
+    return output
+
+
+def _build_standard_output(
+    run_id: str,
+    lint_tier: Any,
+    files: list[str],
+    elapsed_ms: float,
+    aggregated: Any,
+    lint_delta: dict | None,
+    max_findings: int,
+) -> dict[str, Any]:
+    """Build standard output: counts + issue details + delta."""
+    output: dict[str, Any] = {
+        "run_id": run_id,
+        "tier": lint_tier.name,
+        "files_linted": len(files),
+        "duration_ms": round(elapsed_ms, 1),
+        "blocking": len(aggregated.blocking),
+        "warnings": len(aggregated.warnings),
+        "informational": len(aggregated.informational),
+        "fixable": aggregated.metrics.get("fixable_count", 0),
+        "linters_run": aggregated.metrics.get("linters_run", 0),
+        "linter_statuses": aggregated.linter_statuses,
+    }
+    if aggregated.blocking:
+        output["blocking_issues"] = [
+            issue.to_dict() for issue in aggregated.blocking[:max_findings]
+        ]
+        if len(aggregated.blocking) > max_findings:
+            output["blocking_truncated"] = len(aggregated.blocking) - max_findings
+    if aggregated.warnings:
+        remaining = max(0, max_findings - len(aggregated.blocking))
+        if remaining > 0:
+            output["warning_issues"] = [
+                issue.to_dict() for issue in aggregated.warnings[:remaining]
             ]
-            if len(aggregated.blocking) > max_findings:
-                output["blocking_truncated"] = len(aggregated.blocking) - max_findings
-        if aggregated.warnings:
-            remaining = max(0, max_findings - len(aggregated.blocking))
-            if remaining > 0:
-                output["warning_issues"] = [
-                    issue.to_dict() for issue in aggregated.warnings[:remaining]
-                ]
-                if len(aggregated.warnings) > remaining:
-                    output["warnings_truncated"] = len(aggregated.warnings) - remaining
-        if lint_delta is not None:
-            output["delta"] = lint_delta
-        output["next_actions"] = _build_next_actions({**output, "project": project_root})
-        return output
+            if len(aggregated.warnings) > remaining:
+                output["warnings_truncated"] = len(aggregated.warnings) - remaining
+    if lint_delta is not None:
+        output["delta"] = lint_delta
+    return output
 
+
+def _build_lint_response(
+    output_mode: str,
+    run_id: str,
+    lint_tier: Any,
+    files: list[str],
+    elapsed_ms: float,
+    aggregated: Any,
+    full_details: dict[str, Any],
+    lint_delta: dict | None,
+    project_root: str,
+    max_findings: int,
+) -> dict[str, Any]:
+    """Build the response dict based on output_mode (compact/standard/full)."""
+    if output_mode == "compact":
+        output = _build_compact_output(
+            run_id, lint_tier, files, elapsed_ms, aggregated, lint_delta, max_findings,
+        )
+    elif output_mode == "standard":
+        output = _build_standard_output(
+            run_id, lint_tier, files, elapsed_ms, aggregated, lint_delta, max_findings,
+        )
     else:
-        # full: everything (backward-compatible)
-        output = {
-            "run_id": run_id,
-            **full_details,
-        }
+        output: dict[str, Any] = {"run_id": run_id, **full_details}
         if lint_delta is not None:
             output["delta"] = lint_delta
-        output["next_actions"] = _build_next_actions({**output, "project": project_root})
-        return output
+
+    output["next_actions"] = _build_next_actions({**output, "project": project_root})
+    return output
+
+
+def _run_lint(
+    files: list[str],
+    project_root: str,
+    tier: int,
+    strictness: str = "normal",
+    output_mode: str = "compact",
+    max_findings: int = 20,
+) -> dict[str, Any]:
+    """Core lint execution shared by lint_files and lint_project.
+
+    Output modes:
+    - compact: ~200 tokens — counts, run_id, duration, next_actions only
+    - standard: compact + blocking_issues + warning_issues (capped by max_findings)
+    - full: everything including informational, recurrence, diagnostics, report
+    """
+    start = time.perf_counter()
+    if output_mode not in _VALID_OUTPUT_MODES:
+        output_mode = "compact"
+
+    aggregated, linter_results, lint_tier = _execute_lint_pipeline(
+        files, project_root, tier, strictness,
+    )
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+        aggregated, linter_results, lint_tier, project_root, files, elapsed_ms, output_mode,
+    )
+
+    return _build_lint_response(
+        output_mode, run_id, lint_tier, files, elapsed_ms, aggregated,
+        full_details, lint_delta, project_root, max_findings,
+    )
 
 
 # ─── Build helpers dict and register domain tools ────────────────────────

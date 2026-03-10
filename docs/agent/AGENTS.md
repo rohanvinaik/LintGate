@@ -116,7 +116,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `spec_gate_check` | Optimization gate validation with stop criteria | Checking if optimization hints are backed by specification |
 | `spec_file_analyze` | Single-file spec analysis. `enrich=True` (default) builds manifests; `enrich=False` runs AST-only symbolic baseline. Returns regime rationale and trajectory state. | Interactive per-file spec analysis |
 | `spec_file_prescribe` | Single-file test prescriptions with risk prioritization | After spec_file_analyze shows under-specified functions |
-| `spec_project_rollup` | Project-wide specification rollup with file-level caching. Default cache-read-only; `analyze_uncached=True` for live analysis. | Getting project-wide spec health overview |
+| `spec_project_rollup` | Project-wide specification rollup with file-level caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code; set `include_tests=True` to include test files. Cache mode remains read-only by default; `analyze_uncached=True` for live analysis. | Getting project-wide spec health overview |
 
 ### Mutation Testing
 

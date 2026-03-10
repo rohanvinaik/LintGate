@@ -441,6 +441,7 @@ def _try_add_match(
     matched_keys: set[str],
     diagnostics: MappingDiagnostics | None,
     strategy: str = "unknown",
+    prefer_qualified: bool = False,
 ) -> bool:
     if diagnostics is not None:
         if strategy not in diagnostics.strategy_breakdown:
@@ -475,8 +476,14 @@ def _try_add_match(
 
     chosen = candidates[0]
     if use_unique_keys and project_root:
+        symbol_name = _resolve_symbol_name_for_match(
+            func_name,
+            chosen,
+            source_function_index,
+            prefer_qualified=prefer_qualified,
+        )
         relpath = canonical_relpath(chosen, project_root)
-        matched_keys.add(canonical_function_key(relpath, func_name))
+        matched_keys.add(canonical_function_key(relpath, symbol_name))
     else:
         matched_keys.add(func_name)
 
@@ -484,6 +491,37 @@ def _try_add_match(
         sd.mapped += 1
         diagnostics._mapped_symbols.add(func_name)
     return True
+
+
+def _resolve_symbol_name_for_match(
+    func_name: str,
+    chosen_path: str,
+    source_function_index: dict[str, str | list[str]],
+    prefer_qualified: bool,
+) -> str:
+    """Resolve the best symbol name to use for a matched source file path.
+
+    When call-graph matching sees an instance-style call (e.g. ``obj.method``),
+    ``func_name`` is usually bare (``method``). Downstream effectiveness
+    keys are class-qualified (``Class.method``), so this resolves to a unique
+    qualified symbol when possible.
+    """
+    if not prefer_qualified or "." in func_name:
+        return func_name
+
+    suffix = f".{func_name}"
+    qualified: list[str] = []
+    for key, raw_paths in source_function_index.items():
+        if not isinstance(key, str) or "." not in key:
+            continue
+        if not key.endswith(suffix):
+            continue
+        if chosen_path in _coerce_candidate_paths(raw_paths):
+            qualified.append(key)
+
+    if len(qualified) == 1:
+        return qualified[0]
+    return func_name
 
 
 def _record_shadowed_drop(
@@ -583,6 +621,9 @@ def _process_test_call(
 
     # Fallback: bare name matching
     bare_hint = _resolve_module_hint(bare_name, qualifier, import_collector)
+    # For instance-style calls like ``obj.method()``, prefer a class-qualified
+    # source symbol when we can resolve one uniquely.
+    prefer_qualified = bool(qualifier and qualifier not in import_collector.imported_names)
     success = False
     if (
         bare_name in source_function_index
@@ -597,6 +638,7 @@ def _process_test_call(
         matched_keys,
         diagnostics,
         strategy="call_graph",
+        prefer_qualified=prefer_qualified,
     ):
         success = True
 

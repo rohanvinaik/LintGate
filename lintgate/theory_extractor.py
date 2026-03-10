@@ -203,6 +203,85 @@ def extract_constraints(project_root: str) -> dict[str, Any]:
     return extract_theory(project_root)
 
 
+def _build_facet_summaries(
+    profile: dict[str, Any],
+) -> tuple[dict[str, str], list[str]]:
+    """Build deduplicated 1-sentence facet summaries and anti-pattern list.
+
+    Returns (facet_summaries, anti_patterns).
+    """
+    facet_summaries: dict[str, str] = {}
+    used_summaries: set[str] = set()
+    for facet, entries in profile.items():
+        if not entries:
+            facet_summaries[facet] = "(no theory content found)"
+            continue
+        all_claims = [c for e in entries for c in e["claims"]]
+        if all_claims:
+            best = _pick_best_summary_claim(all_claims, exclude=used_summaries)
+            facet_summaries[facet] = best
+            used_summaries.add(best)
+        else:
+            facet_summaries[facet] = "(no theory content found)"
+
+    anti_patterns: list[str] = []
+    for entry in profile.get("anti_patterns", []):
+        for claim in entry["claims"]:
+            if len(anti_patterns) < 10:
+                anti_patterns.append(claim)
+
+    return facet_summaries, anti_patterns
+
+
+def _build_digest_text(
+    enforceable: dict[str, Any],
+    facet_summaries: dict[str, str],
+    anti_patterns: list[str],
+) -> tuple[str, int]:
+    """Assemble the digest text block and estimate token count.
+
+    Returns (digest_text, token_estimate).
+    """
+    lines: list[str] = []
+    lines.append("## Project Theory (Enforceable Rules)")
+    rules = enforceable.get("proposed_rules", [])
+    existing_count = enforceable.get("existing_rule_count", 0)
+    if existing_count > 0:
+        lines.append(f"({existing_count} active rules enforced by linter)")
+    if rules:
+        for r in rules[:10]:
+            lines.append(f"- {r['add_line']}")
+    elif existing_count == 0:
+        lines.append("(no enforceable rules extracted)")
+    lines.append("")
+
+    lines.append("## Project Theory (Facet Summaries)")
+    facet_labels = {
+        "core_theory": "Core Theory",
+        "problem_solving": "Problem-Solving Approach",
+        "alignment": "Alignment Criteria",
+        "architecture": "Architecture Philosophy",
+        "anti_patterns": "Anti-Patterns",
+        "abstractions": "Key Abstractions",
+    }
+    for facet, label in facet_labels.items():
+        summary = facet_summaries.get(facet, "")
+        if summary and summary != "(no theory content found)":
+            lines.append(f"- **{label}**: {summary}")
+    lines.append("")
+
+    if anti_patterns:
+        lines.append("## Anti-Patterns (Conceptual Violations)")
+        for ap in anti_patterns[:7]:
+            display = ap[:150] + "..." if len(ap) > 150 else ap
+            lines.append(f"- {display}")
+
+    digest_text = "\n".join(lines)
+    word_count = len(digest_text.split())
+    token_estimate = int(word_count * 1.3)
+    return digest_text, token_estimate
+
+
 def build_theory_pack(
     project_root: str,
     include_full_profile: bool = False,
@@ -240,69 +319,8 @@ def build_theory_pack(
     profile = full["theory_profile"]
     enforceable = full["enforceable_rules"]
 
-    # Build facet summaries (1 sentence each, deduplicated across facets)
-    facet_summaries: dict[str, str] = {}
-    used_summaries: set[str] = set()
-    for facet, entries in profile.items():
-        if not entries:
-            facet_summaries[facet] = "(no theory content found)"
-            continue
-        # Pick the highest-quality claim as the summary, avoiding reuse
-        all_claims = [c for e in entries for c in e["claims"]]
-        if all_claims:
-            best = _pick_best_summary_claim(all_claims, exclude=used_summaries)
-            facet_summaries[facet] = best
-            used_summaries.add(best)
-        else:
-            facet_summaries[facet] = "(no theory content found)"
-
-    # Extract anti-pattern list (capped)
-    anti_patterns: list[str] = []
-    for entry in profile.get("anti_patterns", []):
-        for claim in entry["claims"]:
-            if len(anti_patterns) < 10:
-                anti_patterns.append(claim)
-
-    # Build the digest text block
-    lines: list[str] = []
-    lines.append("## Project Theory (Enforceable Rules)")
-    rules = enforceable.get("proposed_rules", [])
-    existing_count = enforceable.get("existing_rule_count", 0)
-    if existing_count > 0:
-        lines.append(f"({existing_count} active rules enforced by linter)")
-    if rules:
-        for r in rules[:10]:
-            lines.append(f"- {r['add_line']}")
-    elif existing_count == 0:
-        lines.append("(no enforceable rules extracted)")
-    lines.append("")
-
-    lines.append("## Project Theory (Facet Summaries)")
-    facet_labels = {
-        "core_theory": "Core Theory",
-        "problem_solving": "Problem-Solving Approach",
-        "alignment": "Alignment Criteria",
-        "architecture": "Architecture Philosophy",
-        "anti_patterns": "Anti-Patterns",
-        "abstractions": "Key Abstractions",
-    }
-    for facet, label in facet_labels.items():
-        summary = facet_summaries.get(facet, "")
-        if summary and summary != "(no theory content found)":
-            lines.append(f"- **{label}**: {summary}")
-    lines.append("")
-
-    if anti_patterns:
-        lines.append("## Anti-Patterns (Conceptual Violations)")
-        for ap in anti_patterns[:7]:
-            # Truncate long claims
-            display = ap[:150] + "..." if len(ap) > 150 else ap
-            lines.append(f"- {display}")
-
-    digest_text = "\n".join(lines)
-    # Rough token estimate: ~1.3 tokens per word for English prose/code mix
-    word_count = len(digest_text.split())
-    token_estimate = int(word_count * 1.3)
+    facet_summaries, anti_patterns = _build_facet_summaries(profile)
+    digest_text, token_estimate = _build_digest_text(enforceable, facet_summaries, anti_patterns)
 
     pack = {
         "digest_text": digest_text,
@@ -769,6 +787,68 @@ def _words_to_pattern(words: str) -> str:
 # ─── Theory staleness checking ───────────────────────────────────────────
 
 
+def _filter_uncommitted_py_files(git_context: dict[str, Any]) -> list[str]:
+    """Filter git context to uncommitted Python source files (excluding tests and __pycache__)."""
+    modified = git_context.get("modified_files", [])
+    untracked = git_context.get("untracked_files", [])
+    return [
+        f
+        for f in modified + untracked
+        if f.endswith(".py")
+        and not f.startswith("tests/")
+        and not f.startswith("test_")
+        and "__pycache__" not in f
+    ]
+
+
+def _collect_covered_sources(theory_profile: dict[str, Any]) -> set[str]:
+    """Extract the set of source file paths already covered by theory claims."""
+    covered: set[str] = set()
+    for facet_entries in theory_profile.values():
+        if not isinstance(facet_entries, list):
+            continue
+        for entry in facet_entries:
+            source = entry.get("source", "")
+            if ":" in source:
+                covered.add(source.split(":")[0])
+            else:
+                covered.add(source)
+    return covered
+
+
+def _has_substantial_docstring(abs_path: str) -> bool:
+    """Check if a Python file has a module-level docstring of >=30 chars."""
+    try:
+        import ast
+
+        source = Path(abs_path).read_text(errors="replace")
+        tree = ast.parse(source)
+        docstring = ast.get_docstring(tree)
+        return bool(docstring and len(docstring.strip()) >= 30)
+    except (SyntaxError, OSError):
+        return False
+
+
+def _find_uncovered_files(
+    py_files: list[str],
+    theory_profile: dict[str, Any],
+    project_root: str,
+) -> list[str]:
+    """Find uncommitted Python files with docstrings not covered by theory claims."""
+    covered_sources = _collect_covered_sources(theory_profile)
+
+    uncovered: list[str] = []
+    for fpath in py_files:
+        if fpath in covered_sources:
+            continue
+        abs_path = os.path.join(project_root, fpath)
+        if not os.path.isfile(abs_path):
+            continue
+        if _has_substantial_docstring(abs_path):
+            uncovered.append(fpath)
+    return uncovered
+
+
 def check_theory_staleness(
     project_root: str,
     theory_profile: dict[str, Any] | None,
@@ -789,19 +869,7 @@ def check_theory_staleness(
             None means no theory profile exists.
         git_context: Git working tree context from collect_working_tree_context().
     """
-    modified = git_context.get("modified_files", [])
-    untracked = git_context.get("untracked_files", [])
-    all_uncommitted = modified + untracked
-
-    # Filter to Python source files (not tests, not __pycache__)
-    py_files = [
-        f
-        for f in all_uncommitted
-        if f.endswith(".py")
-        and not f.startswith("tests/")
-        and not f.startswith("test_")
-        and "__pycache__" not in f
-    ]
+    py_files = _filter_uncommitted_py_files(git_context)
 
     result: dict[str, Any] = {
         "stale": False,
@@ -822,40 +890,7 @@ def check_theory_staleness(
         )
         return result
 
-    # Collect all source files mentioned in theory profile claims
-    covered_sources: set[str] = set()
-    for facet_entries in theory_profile.values():
-        if not isinstance(facet_entries, list):
-            continue
-        for entry in facet_entries:
-            source = entry.get("source", "")
-            if ":" in source:
-                covered_sources.add(source.split(":")[0])
-            else:
-                covered_sources.add(source)
-
-    # Check which uncommitted Python files have module-level docstrings
-    # but are not covered by existing theory claims
-    uncovered: list[str] = []
-    for fpath in py_files:
-        # Check if any theory source path covers this file's directory/module
-        if fpath in covered_sources:
-            continue
-
-        # Check if the file has a substantive module-level docstring
-        abs_path = os.path.join(project_root, fpath)
-        if not os.path.isfile(abs_path):
-            continue
-        try:
-            import ast
-
-            source = Path(abs_path).read_text(errors="replace")
-            tree = ast.parse(source)
-            docstring = ast.get_docstring(tree)
-            if docstring and len(docstring.strip()) >= 30:
-                uncovered.append(fpath)
-        except (SyntaxError, OSError):
-            continue
+    uncovered = _find_uncovered_files(py_files, theory_profile, project_root)
 
     if uncovered:
         result["stale"] = True

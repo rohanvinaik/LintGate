@@ -307,22 +307,15 @@ def _finalize_report(
     return report, telemetry
 
 
-def _run_controlplane(
-    input_data: dict, config: Any, cp_config: Any, cwd: str, start: float
-) -> None:
-    """Run the ControlPlane supervision mesh."""
-    from lintgate.controlplane.reporter import format_mesh_report
-    from lintgate.controlplane.runtime import run_mesh
+def _prepare_controlplane_event(
+    input_data: dict, config: Any, cp_config: Any, cwd: str
+) -> tuple[Any, Any, str, dict, str]:
+    """Extract inputs, classify change, record behavior, and build supervision event.
+
+    Returns (event, classification, tool_name, tool_input, tool_output).
+    Calls _exit_clean() if risk_level is "none".
+    """
     from lintgate.controlplane.types import SupervisionEvent
-    from lintgate.hooks.controlplane import (
-        accumulate_session_telemetry,
-        extract_finding_indexes,
-        load_global_priors,
-        post_process_session,
-        refresh_runtime_after_run,
-        save_run_details,
-        setup_session_and_gate,
-    )
     from lintgate.hooks.habit import (
         record_behavior_event,
         record_habit_event_lightweight,
@@ -348,109 +341,124 @@ def _run_controlplane(
         change_classification=classification,
         raw_input=input_data,
     )
+    return event, classification, tool_name, tool_input, tool_output
 
-    channels = _build_channels(cp_config)
-    session, advisory = setup_session_and_gate(
-        cp_config,
-        cwd,
-        tool_name,
-        event,
-        channels,
-        load_global_priors(cp_config),
-    )
 
-    mesh_result = run_mesh(event, cp_config, channels, session=session)
+def _compute_fingerprint_state(
+    mesh_result: Any, session: Any
+) -> tuple[str | None, str | None, dict[str, str], dict[str, str]]:
+    """Compute hook fingerprint and retrieve previous fingerprint from session.
 
-    # State-fingerprint suppression (#P0.1): compute early so it persists
-    # with the session save.  Compared after save to decide whether to
-    # suppress the full report (emit silent when state unchanged and no
-    # blocking findings).
-    _hook_fingerprint: str | None = None
-    _prev_hook_fingerprint: str | None = None
+    Returns (current_fingerprint, previous_fingerprint, current_fields, previous_fields).
+    The fields dicts enable delta-first output by tracking per-dimension changes.
+    """
+    hook_fp: str | None = None
+    prev_fp: str | None = None
+    current_fields: dict[str, str] = {}
+    prev_fields: dict[str, str] = {}
     with contextlib.suppress(Exception):
-        from lintgate.controlplane.reporter.hook import compute_hook_fingerprint
+        from lintgate.controlplane.reporter.hook import compute_hook_fingerprint_detailed
 
-        _hook_fingerprint = compute_hook_fingerprint(mesh_result)
+        detailed = compute_hook_fingerprint_detailed(mesh_result)
+        hook_fp = detailed["fingerprint"]
+        current_fields = detailed["fields"]
         if session and isinstance(getattr(session, "behavior_compass", None), dict):
-            _prev_hook_fingerprint = session.behavior_compass.get("_hook_fingerprint")
-            session.behavior_compass["_hook_fingerprint"] = _hook_fingerprint
+            prev_fp = session.behavior_compass.get("_hook_fingerprint")
+            prev_fields = session.behavior_compass.get("_hook_fields", {})
+            session.behavior_compass["_hook_fingerprint"] = hook_fp
+            session.behavior_compass["_hook_fields"] = current_fields
+    return hook_fp, prev_fp, current_fields, prev_fields
 
-    finding_index: dict = {}
-    with contextlib.suppress(Exception):
-        from lintgate.controlplane.reporter import build_finding_index
 
-        finding_index = build_finding_index(mesh_result)
-
-    idx = extract_finding_indexes(session)
-    (
-        previous_finding_index,
-        baseline_finding_index,
-        snapshot_count,
-        last_disposition,
-        last_nudge,
-    ) = idx
-
-    # Compliance Tracking (#164)
-    compliance_outcome = None
-    if session is not None:
-        try:
-            import dataclasses
-
-            from lintgate.orchestration.compliance import ComplianceManager
-
-            cm = ComplianceManager(session.behavior_compass)
-            compliance_outcome = cm.evaluate_and_record(
-                dataclasses.asdict(event),
-                last_disposition=last_disposition,
-                last_nudge=last_nudge,
-            )
-        except Exception:
-            pass
-
-    # Unified Behavioral Delivery Bus (#174)
-    from lintgate.orchestration.delivery import (
-        DeliveryBus,
-        cycle_result_to_item,
-        disposition_nudge_to_item,
-        lint_finding_to_item,
-    )
-
-    bus = DeliveryBus(config=cp_config, session=session)
-
-    # 1. Collect Disposition Nudges (#155)
-    disposition: str | None = None
+def _evaluate_compliance(
+    session: Any,
+    event: Any,
+    last_disposition: str | None,
+    last_nudge: dict | None,
+) -> str | None:
+    """Evaluate compliance tracking and return outcome."""
+    if session is None:
+        return None
     try:
+        import dataclasses
+
+        from lintgate.orchestration.compliance import ComplianceManager
+
+        cm = ComplianceManager(session.behavior_compass)
+        return cm.evaluate_and_record(
+            dataclasses.asdict(event),
+            last_disposition=last_disposition,
+            last_nudge=last_nudge,
+        )
+    except Exception:
+        return None
+
+
+def _collect_disposition_nudge(
+    cp_config: Any, session: Any, event: Any, bus: Any,
+) -> str | None:
+    """Evaluate disposition and collect nudge into bus. Returns disposition string."""
+    try:
+        from lintgate.orchestration.delivery import disposition_nudge_to_item
         from lintgate.orchestration.disposition_enforcer import DispositionEnforcer
 
         enforcer = DispositionEnforcer(cp_config, session=session)
         disposition, rule_id = enforcer.evaluate(event)
         if disposition and rule_id:
             bus.collect(disposition_nudge_to_item(disposition, rule_id))
+        return disposition
     except Exception:
-        pass
+        return None
 
-    # 2. Collect Cycle Interventions (#147)
-    if (
+
+def _collect_cycle_interventions(session: Any, bus: Any) -> None:
+    """Collect cycle detection results from session into bus."""
+    if not (
         session
         and hasattr(session, "behavior_compass")
         and isinstance(session.behavior_compass, dict)
     ):
-        cycle_results = session.behavior_compass.get("cycle_detections")
-        if isinstance(cycle_results, list):
-            for cr_data in cycle_results:
-                from lintgate.orchestration.cycle_detector import CycleDetectionResult
+        return
 
-                try:
-                    res = (
-                        cr_data
-                        if isinstance(cr_data, CycleDetectionResult)
-                        else CycleDetectionResult(**cr_data)
-                    )
-                    bus.collect(cycle_result_to_item(res))
-                except Exception:
-                    pass
+    cycle_results = session.behavior_compass.get("cycle_detections")
+    if not isinstance(cycle_results, list):
+        return
 
-    # 3. Collect Behavior Findings from Mesh (#159)
+    from lintgate.orchestration.cycle_detector import CycleDetectionResult
+    from lintgate.orchestration.delivery import cycle_result_to_item
+
+    for cr_data in cycle_results:
+        try:
+            res = (
+                cr_data
+                if isinstance(cr_data, CycleDetectionResult)
+                else CycleDetectionResult(**cr_data)
+            )
+            bus.collect(cycle_result_to_item(res))
+        except Exception:
+            pass
+
+
+def _collect_delivery_items(
+    cp_config: Any,
+    session: Any,
+    event: Any,
+    mesh_result: Any,
+    last_disposition: str | None,
+    last_nudge: dict | None,
+) -> tuple[Any, str | None, str | None]:
+    """Populate delivery bus with compliance, disposition, cycle, and behavior items.
+
+    Returns (bus, disposition, compliance_outcome).
+    """
+    from lintgate.orchestration.delivery import DeliveryBus, lint_finding_to_item
+
+    bus = DeliveryBus(config=cp_config, session=session)
+
+    compliance_outcome = _evaluate_compliance(session, event, last_disposition, last_nudge)
+    disposition = _collect_disposition_nudge(cp_config, session, event, bus)
+    _collect_cycle_interventions(session, bus)
+
     behavior_findings = next(
         (cr.findings for cr in mesh_result.channel_results if cr.channel == "behavior"),
         [],
@@ -458,43 +466,78 @@ def _run_controlplane(
     for f in behavior_findings:
         bus.collect(lint_finding_to_item(f))
 
-    proposed_constraints = post_process_session(
-        session,
-        mesh_result,
-        finding_index,
-        cp_config,
-        input_data,
-        tool_name,
-        tool_input,
-        tool_output,
-        disposition=disposition,
-        last_nudge=last_nudge,
-        compliance_outcome=compliance_outcome,
+    return bus, disposition, compliance_outcome
+
+
+def _should_suppress_report(
+    hook_fp: str | None, prev_fp: str | None, mesh_result: Any
+) -> bool:
+    """Check if report should be suppressed due to unchanged state and no blocking findings."""
+    if hook_fp is None or prev_fp is None or hook_fp != prev_fp:
+        return False
+    return not any(
+        f.severity == "blocking" for cr in mesh_result.channel_results for f in cr.findings
     )
+
+
+def _run_controlplane(
+    input_data: dict, config: Any, cp_config: Any, cwd: str, start: float
+) -> None:
+    """Run the ControlPlane supervision mesh."""
+    from lintgate.controlplane.reporter import build_finding_index, format_mesh_report
+    from lintgate.controlplane.runtime import run_mesh
+    from lintgate.hooks.controlplane import (
+        PostProcessContext,
+        accumulate_session_telemetry,
+        extract_finding_indexes,
+        load_global_priors,
+        post_process_session,
+        refresh_runtime_after_run,
+        save_run_details,
+        setup_session_and_gate,
+    )
+
+    event, classification, tool_name, tool_input, tool_output = _prepare_controlplane_event(
+        input_data, config, cp_config, cwd
+    )
+
+    channels = _build_channels(cp_config)
+    session, advisory = setup_session_and_gate(
+        cp_config, cwd, tool_name, event, channels, load_global_priors(cp_config),
+    )
+
+    mesh_result = run_mesh(event, cp_config, channels, session=session)
+
+    hook_fp, prev_fp, current_fields, prev_fields = _compute_fingerprint_state(mesh_result, session)
+
+    finding_index: dict = {}
+    with contextlib.suppress(Exception):
+        finding_index = build_finding_index(mesh_result)
+
+    idx = extract_finding_indexes(session)
+    previous_finding_index, baseline_finding_index, snapshot_count, last_disposition, last_nudge = idx
+
+    bus, disposition, compliance_outcome = _collect_delivery_items(
+        cp_config, session, event, mesh_result, last_disposition, last_nudge,
+    )
+
+    proposed_constraints = post_process_session(PostProcessContext(
+        session=session, mesh_result=mesh_result, finding_index=finding_index,
+        cp_config=cp_config, input_data=input_data,
+        tool_name=tool_name, tool_input=tool_input, tool_output=tool_output,
+        disposition=disposition, last_nudge=last_nudge, compliance_outcome=compliance_outcome,
+    ))
 
     save_run_details(mesh_result, finding_index, compliance_outcome=compliance_outcome)
 
-    # State-fingerprint suppression (#P0.1): if the hook-relevant state
-    # hasn't changed since the last emission and there are no blocking
-    # findings, suppress the full report to reduce context noise.
-    # Session processing (telemetry, behavior, constraints) has already
-    # completed above — only the report output is suppressed.
-    _has_blocking = any(
-        f.severity == "blocking" for cr in mesh_result.channel_results for f in cr.findings
-    )
-    if (
-        _hook_fingerprint is not None
-        and _prev_hook_fingerprint is not None
-        and _hook_fingerprint == _prev_hook_fingerprint
-        and not _has_blocking
-    ):
+    # State-fingerprint suppression (#P0.1)
+    if _should_suppress_report(hook_fp, prev_fp, mesh_result):
         with contextlib.suppress(Exception):
             refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
         _exit_clean()
 
     report = format_mesh_report(
-        mesh_result,
-        cp_config,
+        mesh_result, cp_config,
         proposed_constraints=proposed_constraints,
         previous_finding_index=previous_finding_index,
         baseline_finding_index=baseline_finding_index,
@@ -502,12 +545,19 @@ def _run_controlplane(
         disposition=disposition,
     )
 
+    # Delta-first output: inject field-level deltas so agents see only what changed
+    if prev_fields and current_fields and report:
+        with contextlib.suppress(Exception):
+            from lintgate.controlplane.reporter.hook import compute_field_deltas
+
+            field_deltas = compute_field_deltas(current_fields, prev_fields)
+            if field_deltas:
+                report["state_delta"] = field_deltas
+
     # Multi-channel Delivery Bus Emission (#174)
     try:
-        preferred = ["hook_text", "rule_file", "mcp_status"]
-        bus_report = bus.emit(preferred_channels=preferred)
+        bus_report = bus.emit(preferred_channels=["hook_text", "rule_file", "mcp_status"])
         if bus_report.get("systemMessage"):
-            # Unified advisory message overrides any previous specific advisory
             advisory = bus_report["systemMessage"]
     except Exception:
         pass
@@ -528,12 +578,8 @@ def _run_controlplane(
 
     with contextlib.suppress(Exception):
         _log_controlplane_metric(
-            (cwd, tool_name),
-            classification,
-            mesh_result,
-            session,
-            telemetry=telemetry,
-            start=start,
+            (cwd, tool_name), classification, mesh_result, session,
+            telemetry=telemetry, start=start,
         )
 
     print(json.dumps(report if report else {}))

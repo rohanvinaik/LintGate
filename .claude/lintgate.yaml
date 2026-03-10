@@ -206,6 +206,22 @@ exemptions:
       codes: ["cognitive-complexity"]
       reason: "Mesh manifest builder handles 10+ edge cases for cross-symbol resolution."
       ticket: "LINTGATE-DEBT-116"
+    "types.py":
+      codes: ["too-many-attributes"]
+      reason: "LintIssue (17 attrs) and ProjectConfig (16 attrs) are flat DTOs — 146+ dependents access fields directly. Grouping into nested dataclasses would break API ergonomics without improving cohesion."
+      ticket: "LINTGATE-DEBT-117"
+    "test_controlplane_helpers.py":
+      codes: ["file-too-long"]
+      reason: "ControlPlane helper test suite covers session, coherence, and channel helpers. Splitting would duplicate complex fixture setup."
+      ticket: "LINTGATE-DEBT-118"
+    "test_mcp_server_helpers.py":
+      codes: ["file-too-long"]
+      reason: "MCP server helper test suite validates 80+ tool registrations. Splitting by tool group is tracked."
+      ticket: "LINTGATE-DEBT-119"
+    "test_theory_extractor_helpers.py":
+      codes: ["file-too-long"]
+      reason: "Theory extractor test suite matches consolidated extractor module. Split tracked with LINTGATE-DEBT-106."
+      ticket: "LINTGATE-DEBT-106"
   secret_checker:
     "test_secrets_scanning.py":
       reason: "Synthetic secrets used as test fixtures for secret detection validation."
@@ -238,3 +254,15 @@ exemptions:
       codes: ["maintainability"]
       reason: "Maintainability index depressed by test file length. File split tracked as LINTGATE-DEBT-113."
       ticket: "LINTGATE-DEBT-113"
+    "test_controlplane_helpers.py":
+      codes: ["maintainability"]
+      reason: "Maintainability index depressed by test file length. File split tracked as LINTGATE-DEBT-118."
+      ticket: "LINTGATE-DEBT-118"
+    "test_mcp_server_helpers.py":
+      codes: ["maintainability"]
+      reason: "Maintainability index depressed by test file length. File split tracked as LINTGATE-DEBT-119."
+      ticket: "LINTGATE-DEBT-119"
+    "test_theory_extractor_helpers.py":
+      codes: ["maintainability"]
+      reason: "Maintainability index depressed by test file length. File split tracked as LINTGATE-DEBT-106."
+      ticket: "LINTGATE-DEBT-106"

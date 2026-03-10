@@ -59,7 +59,8 @@ def _init_metric_adapters() -> list[tuple[str, Any]]:
     return [
         ("_module_fan_in", adapt_fan_in),
         ("cohesion", adapt_cohesion),
-        ("purity_profile", adapt_purity),
+        ("pure_function_list", adapt_purity),
+        ("purity_profile", adapt_purity),  # deprecated, remove in v1.1
         ("mutation_survival", adapt_mutation),
         ("specification_function_list", adapt_specification),
         ("composition_gaps", adapt_composition_gap),

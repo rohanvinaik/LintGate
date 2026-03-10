@@ -409,11 +409,37 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
 
     save_session(session)
 
+    # Aggregate execution outcomes
+    succeeded = sum(1 for r in results if r.get("status") == "ok")
+    failed = sum(1 for r in results if r.get("status") in ("error", "timeout"))
+    skipped_in_exec = sum(1 for r in results if r.get("status") in ("skipped", "blocked"))
+
+    # Aggregate skip reasons across both collection-phase and execution-phase skips
+    skipped_by_reason: dict[str, int] = {}
+    for sd in skip_diagnostics:
+        reason = sd.get("reason", "unknown")
+        skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + 1
+    for r in results:
+        if r.get("status") in ("skipped", "blocked"):
+            reason = r.get("reason", "unknown")
+            skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + 1
+
+    pending_remaining = sum(1 for v in session.repair_outcomes.values() if v == "pending")
+
     response: dict[str, Any] = {
+        "summary": {
+            "total_proposed": len(pending_repairs) + len(skip_diagnostics),
+            "collected": len(pending_repairs),
+            "succeeded": succeeded,
+            "failed": failed,
+            "skipped": len(skip_diagnostics) + skipped_in_exec,
+        },
         "repairs_executed": len(results),
         "results": results,
-        "pending_remaining": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
+        "pending_remaining": pending_remaining,
     }
+    if skipped_by_reason:
+        response["summary"]["skipped_by_reason"] = skipped_by_reason
     if skip_diagnostics:
         response["skipped"] = skip_diagnostics
 

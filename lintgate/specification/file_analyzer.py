@@ -337,11 +337,13 @@ def _discover_relevant_test_files(file_path: str, project_root: str) -> list[str
     candidates = {
         f"test_{module_name}.py",
         f"{module_name}_test.py",
+        f"test_char_{module_name}.py",
     }
 
     # Search common test locations
     test_dirs = ["tests", "test", "."]
     found: list[str] = []
+    seen: set[str] = set()
     root = os.path.abspath(project_root)
 
     for test_dir in test_dirs:
@@ -352,8 +354,22 @@ def _discover_relevant_test_files(file_path: str, project_root: str) -> list[str
             # Skip hidden and cache dirs
             dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"]
             for fname in filenames:
-                if fname in candidates:
-                    found.append(os.path.join(dirpath, fname))
+                is_candidate = fname in candidates
+                if (
+                    not is_candidate
+                    and fname.endswith(".py")
+                    and (
+                        fname.startswith(f"test_{module_name}_")
+                        or fname.startswith(f"{module_name}_test")
+                        or fname.startswith(f"test_char_{module_name}_")
+                    )
+                ):
+                    is_candidate = True
+                if is_candidate:
+                    full = os.path.join(dirpath, fname)
+                    if full not in seen:
+                        found.append(full)
+                        seen.add(full)
 
     return found
 

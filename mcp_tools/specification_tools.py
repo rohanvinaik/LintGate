@@ -237,6 +237,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         path: str,
         use_cache: bool = True,
         analyze_uncached: bool = False,
+        include_tests: bool = False,
     ) -> str:
         """Project-wide specification rollup with file-level caching.
 
@@ -247,14 +248,18 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         Default mode is cache-read-only: reads existing cache entries and
         reports cache_misses for files not yet analyzed. Use
         analyze_uncached=True to analyze missing files live (slower).
+        By default, test files are excluded so hotspot ranking focuses on
+        production code. Set include_tests=True to include test files.
 
         Example: spec_project_rollup(path="/my/project")
         Example: spec_project_rollup(path="/my/project", analyze_uncached=True)
+        Example: spec_project_rollup(path="/my/project", include_tests=True)
 
         Args:
             path: Project root path.
             use_cache: Use file-level content-hash caching (default True).
             analyze_uncached: Analyze files with no cache entry (default False).
+            include_tests: Include test files in aggregation (default False).
         """
         from lintgate.specification.project_rollup import rollup_project
 
@@ -263,6 +268,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             project_root,
             use_cache=use_cache,
             analyze_uncached=analyze_uncached,
+            include_tests=include_tests,
         )
         output = rollup.to_dict()
         output["next_actions"] = serialize_next_actions(

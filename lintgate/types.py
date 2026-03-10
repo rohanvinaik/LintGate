@@ -40,6 +40,7 @@ class LintIssue:
     proven_resolution: dict[str, Any] | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
     suggestions: list[str] = field(default_factory=list)
+    estimated_effort_minutes: float | None = None  # Estimated fix time in minutes
     issue_id: str = ""  # Deterministic hash — set by results_aggregator after dedup
 
     def compute_issue_id(self) -> str:

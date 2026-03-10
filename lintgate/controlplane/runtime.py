@@ -169,7 +169,9 @@ def _run_prepass(event: SupervisionEvent) -> None:
     with contextlib.suppress(Exception):
         from lintgate.linters.performance_checks.manifest import build_manifest
 
-        py_files = _scoped_discover(event)
+        # Honor pre-populated python_files (e.g. from MCP tools that pre-filter
+        # to production-only files). Fall back to scoped discovery otherwise.
+        py_files = event.context.get("python_files") or _scoped_discover(event)
         if py_files:
             manifest = build_manifest(event.project_root, py_files)
             event.context["property_manifest"] = manifest

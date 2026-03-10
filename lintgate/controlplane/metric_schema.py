@@ -393,8 +393,8 @@ CONVERGENCE_SCHEMA = ChannelSchema(
     consumes=[
         MetricField("_module_fan_in", "dict[str, int]", "From structure channel"),
         MetricField(
-            "purity_profile",
-            "dict",
+            "pure_function_list",
+            "list[dict]",
             "From performance channel (via purity adapter)",
             optional=True,
         ),
