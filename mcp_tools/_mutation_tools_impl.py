@@ -380,8 +380,13 @@ def _build_performance_unlocks(
 
 
 def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mode: str) -> str:
+    from lintgate.specification.decomposition_evidence import evaluate_decomposition
+
     project_root = helpers["_validate_project_root"](path)
     states = iter_cached_states(get_cache_dir(project_root), file, function)
+
+    # Load spec data for cross-lens enrichment
+    spec_data_by_func = _load_spec_data_for_decompose(project_root, file)
 
     candidates: list[dict[str, Any]] = []
     for data in states:
@@ -389,44 +394,95 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
         surviving_cats = [
             c["category"] for c in per_category if c.get("survived", 0) > 0
         ]
-        if len(surviving_cats) >= 2:
-            unlocks = _build_performance_unlocks(surviving_cats, per_category)
-            has_cacheable = any(u["predicted_subunits"]["cacheable"] for u in unlocks)
-            has_parallel = any(u["predicted_subunits"]["parallelizable"] for u in unlocks)
-            has_jit = any(u["predicted_subunits"]["jit_eligible"] for u in unlocks)
+        if len(surviving_cats) < 2:
+            continue
 
-            candidates.append(
-                {
-                    "function": data.get("function_key", ""),
-                    "surviving_categories": surviving_cats,
-                    "performance_unlocks": unlocks,
-                    "predicted_unlock_classes": {
-                        "cacheable": has_cacheable,
-                        "parallelizable": has_parallel,
-                        "jit_eligible": has_jit,
-                    },
-                    "recommendation": (
-                        "Decompose to unlock: "
-                        + ", ".join(u["unlock_type"] for u in unlocks)
-                    ),
-                }
-            )
+        func_key = data.get("function_key", "")
+        unlocks = _build_performance_unlocks(surviving_cats, per_category)
+        has_cacheable = any(u["predicted_subunits"]["cacheable"] for u in unlocks)
+        has_parallel = any(u["predicted_subunits"]["parallelizable"] for u in unlocks)
+        has_jit = any(u["predicted_subunits"]["jit_eligible"] for u in unlocks)
+
+        # Cross-lens decomposition verdict
+        verdict = evaluate_decomposition(
+            function_key=func_key,
+            surviving_categories=surviving_cats,
+            mutation_cache_entry=data,
+            spec_data=spec_data_by_func.get(func_key),
+            topology_state=data.get("topology_state", ""),
+        )
+
+        candidates.append(
+            {
+                "function": func_key,
+                "surviving_categories": surviving_cats,
+                "performance_unlocks": unlocks,
+                "predicted_unlock_classes": {
+                    "cacheable": has_cacheable,
+                    "parallelizable": has_parallel,
+                    "jit_eligible": has_jit,
+                },
+                "decomposition_verdict": verdict.to_dict(),
+                "recommendation": verdict.rationale,
+            }
+        )
 
     output: dict[str, Any] = {"mode": mode, "candidates": candidates}
+
+    # Summary counts
     if candidates:
-        output["next_actions"] = serialize_next_actions([
-            NextAction(
+        rec_counts = {"EXTRACT_BOUNDARY": 0, "KEEP_TESTING": 0, "INSUFFICIENT_EVIDENCE": 0}
+        for c in candidates:
+            rec = c["decomposition_verdict"]["recommendation"]
+            rec_counts[rec] = rec_counts.get(rec, 0) + 1
+        output["summary"] = rec_counts
+
+        next_actions = []
+        if rec_counts.get("EXTRACT_BOUNDARY", 0) > 0:
+            next_actions.append(NextAction(
+                tool="convergence_analyze",
+                args={"path": path, "file": file},
+                reason="See detailed multi-lens evidence for extraction candidates",
+            ))
+        if rec_counts.get("KEEP_TESTING", 0) > 0:
+            next_actions.append(NextAction(
                 tool="mutation_prescribe_tests",
                 args={"path": path, "file": file},
-                reason="Generate test skeletons for surviving categories before decomposition",
-            ),
-            NextAction(
-                tool="spec_file_analyze",
-                args={"path": path, "file": file},
-                reason="Check specification gaps to guide decomposition priority",
-            ),
-        ])
+                reason="Generate test skeletons — testing is preferred over extraction",
+            ))
+        next_actions.append(NextAction(
+            tool="spec_file_analyze",
+            args={"path": path, "file": file},
+            reason="Check specification gaps to strengthen decomposition evidence",
+        ))
+        output["next_actions"] = serialize_next_actions(next_actions)
+
     return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+
+def _load_spec_data_for_decompose(
+    project_root: str,
+    file: str | None,
+) -> dict[str, dict]:
+    """Load spec analysis data for decomposition enrichment.
+
+    Returns a dict mapping function_key → spec data dict.
+    Falls back to empty dict if spec data is unavailable.
+    """
+    if not file:
+        return {}
+    try:
+        import os
+
+        from lintgate.specification.file_analyzer import analyze_file
+
+        full_path = os.path.join(project_root, file) if not os.path.isabs(file) else file
+        if not os.path.isfile(full_path):
+            return {}
+        result = analyze_file(full_path, project_root, enrich=False)
+        return dict(result.functions)
+    except Exception:
+        return {}
 
 
 
