@@ -263,16 +263,24 @@ The mutation subsystem provides 9 MCP tools for inline AST mutation analysis. It
 
 **Two-tier execution model**:
 - `mutation_run_sampling` — fast sampled run (<=3 mutants per category, time-budgeted). Use after editing files for quick feedback.
-- `mutation_run_full` — exhaustive profiling with full kill matrix. Use to verify test quality of a component. Produces gateable results.
+- `mutation_run_full` — exhaustive profiling with full kill matrix, budget semantics (`budget_ms`, `per_mutant_timeout_ms`), and per-function budget splitting. Returns survivor records, discovery/topology diagnostics, and trajectory analysis. Hard circuit breaker at 10 minutes.
 
-**Prescription pipeline**: `mutation_prescribe` analyzes survival profiles and recommends specific test improvements per surviving category. `mutation_prescribe_tests` generates pytest skeletons targeting those categories. `mutation_validate_tests` re-profiles and computes per-category survival deltas to close the loop.
+**Runtime safety (PR0)**: Outer wall-clock budget is separated from per-mutant timeout. Fallback test loading is capped at 50 tests. Multi-function runs split budget per function. All mutation tools have a hard circuit breaker and return partial results on timeout.
 
-**Decomposition detection**: `mutation_decompose` identifies functions where multiple mutation categories survive, suggesting the function has too many responsibilities. Supports three modes: `auto` (merged static + dynamic), `static` (AST-only, no test data needed), `dynamic` (mutation-data-driven).
+**Discovery truthfulness (PR1)**: Every mutation result includes `discovery_state` (NO_TEST_FILES, TEST_FILES_FOUND_NONE_LINKED, TESTS_LINKED_ZERO_KILLS, DISCOVERY_IMPORT_FAILED, DISCOVERY_OK), `topology_state` (NORMAL, MOCK_BOUNDARY_DOMINANT, PATCHED_INTERNAL_CALLS, TOPOLOGY_UNKNOWN), and `survival_interpretation` (MEANINGFUL, DISCOVERY_ARTIFACT, MOCK_BOUNDARY_ARTIFACT, LOW_CONFIDENCE).
+
+**Survivor records (PR2)**: Each mutant has a stable `mutant_id` and produces a survivor/killed record with `diff_summary` (via `ast.unparse`), enabling grounded prescriptions downstream.
+
+**Prescription pipeline (PR3)**: `mutation_prescribe` uses survivor records for witness-based prescriptions (`why_this_matters`, `suggested_input`, `assertion_shape`, `confidence`, `source_of_evidence`). Falls back to category templates when survivor data is unavailable. `mutation_prescribe_tests` generates pytest skeletons. `mutation_validate_tests` uses sampled re-profiling with budget splitting.
+
+**Trajectory analysis (PR4)**: Post-profiling analysis computes teaching-set upper bounds, tail onset detection, and phase classification (bulk/transition/tail/complete) via `trajectory_analysis.py`. All greedy quantities use explicit upper-bound language.
+
+**Cross-lens decomposition (PR6)**: `mutation_decompose` requires multi-lens agreement (mutation + specification + composition gap) before recommending EXTRACT_BOUNDARY. Single-lens mutation evidence returns KEEP_TESTING. Mock-dominant topology blocks extraction. Supports three modes: `auto` (merged static + dynamic), `static` (AST-only, no test data needed), `dynamic` (mutation-data-driven).
 
 | Tool | Purpose |
 |---|---|
 | `mutation_run_sampling(path, file, function?, budget_ms?)` | Fast sampled mutation run — inline AST mutation sampling |
-| `mutation_run_full(path, file, function?)` | Deep exhaustive mutation profiling (full kill matrix) |
+| `mutation_run_full(path, file, function?, budget_ms?, per_mutant_timeout_ms?)` | Deep exhaustive mutation profiling with survivor records, trajectory analysis, and discovery/topology diagnostics |
 | `mutation_get_state(path, file?, function?)` | View cached mutation state and metrics |
 | `mutation_prescribe(path, file?, function?)` | Deterministic prescriptions from survival profiles |
 | `mutation_decompose(path, file?, function?, mode?)` | Find entangled functions (auto/static/dynamic) |
@@ -1444,7 +1452,7 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `spec_prescribe(path, function?)` | Risk-prioritized test prescriptions with expanded taxonomy |
 | `spec_composition(path, module_a?, module_b?)` | Composition gap (γ) and sheaf condition analysis across modules |
 | `spec_gate_check(path, function?)` | Optimization gate validation — checks specification level against hint thresholds |
-| `spec_file_analyze(path, file, enrich?)` | Single-file spec analysis. Default `enrich=True` builds manifests for full analysis; `enrich=False` runs AST-only symbolic baseline (no manifest dependencies, faster). |
+| `spec_file_analyze(path, file, enrich?)` | Single-file spec analysis with empirical overlay (PR5). Default `enrich=True` builds manifests and computes static/empirical reconciliation from cached mutation data. Overlay status: NO_EMPIRICAL_DATA, AGREES, CONTRADICTS, DISCOVERY_FAILURE, TOPOLOGY_LIMITED. `enrich=False` runs AST-only symbolic baseline. |
 | `spec_file_prescribe(path, file, max_prescriptions?)` | Single-file test prescriptions sorted by risk priority |
 | `spec_project_rollup(path, use_cache?, analyze_uncached?, include_tests?)` | Project-wide rollup with file-level content-hash caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code. Default mode is cache-read-only; `analyze_uncached=True` runs live analysis on cache misses. |
 

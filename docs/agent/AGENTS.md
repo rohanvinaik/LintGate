@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 100 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 101 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -114,7 +114,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `spec_prescribe` | Risk-prioritized test prescriptions with expanded taxonomy | After spec_analyze reveals under-specified functions |
 | `spec_composition` | Composition gap and sheaf condition analysis across modules | Understanding cross-module specification dependencies |
 | `spec_gate_check` | Optimization gate validation with stop criteria | Checking if optimization hints are backed by specification |
-| `spec_file_analyze` | Single-file spec analysis. `enrich=True` (default) builds manifests; `enrich=False` runs AST-only symbolic baseline. Returns regime rationale and trajectory state. | Interactive per-file spec analysis |
+| `spec_file_analyze` | Single-file spec analysis. `enrich=True` (default) builds manifests; `enrich=False` runs AST-only symbolic baseline. Returns regime rationale, trajectory state, and empirical overlay (static/empirical reconciliation: AGREES, CONTRADICTS, DISCOVERY_FAILURE, TOPOLOGY_LIMITED, NO_EMPIRICAL_DATA). | Interactive per-file spec analysis |
 | `spec_file_prescribe` | Single-file test prescriptions with risk prioritization | After spec_file_analyze shows under-specified functions |
 | `spec_project_rollup` | Project-wide specification rollup with file-level caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code; set `include_tests=True` to include test files. Cache mode remains read-only by default; `analyze_uncached=True` for live analysis. | Getting project-wide spec health overview |
 
@@ -123,13 +123,13 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `mutation_run_sampling` | Fast sampled mutation run | After editing specific files |
-| `mutation_run_full` | Deep exhaustive mutation profiling (Tier 2) | Verify test quality of component; also auto-scheduled by ControlPlane when `tier2_auto_schedule: true` |
+| `mutation_run_full` | Deep exhaustive mutation profiling with budget semantics (`budget_ms`, `per_mutant_timeout_ms`). Returns survivor records, trajectory analysis, and discovery/topology diagnostics. | Verify test quality of component; also auto-scheduled by ControlPlane when `tier2_auto_schedule: true` |
 | `mutation_get_state` | Current mutation state and metrics | Review previous runs |
-| `mutation_prescribe` | Deterministic prescriptions from profiles | After mutation run |
-| `mutation_decompose` | Find entangled functions (mode: auto/static/dynamic) | Refactoring decisions, cold-start projects |
+| `mutation_prescribe` | Grounded prescriptions from survivor records with witness generation (per-mutant `why_this_matters`, `suggested_input`, `assertion_shape`, `confidence`). Falls back to category templates when survivor data unavailable. | After mutation run |
+| `mutation_decompose` | Cross-lens decomposition guidance (mode: auto/static/dynamic). Requires multi-lens agreement (mutation + specification + composition) for EXTRACT_BOUNDARY; single-lens mutation returns KEEP_TESTING. Mock-dominant topology blocks extraction. | Refactoring decisions, cold-start projects |
 | `mutation_refactor_loop` | Re-profile after test improvement | Close the test improvement loop |
 | `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles | After `mutation_prescribe` identifies surviving categories |
-| `mutation_validate_tests` | Re-profile and compute per-category survival deltas | After writing prescribed tests |
+| `mutation_validate_tests` | Sampled re-profiling with per-category survival deltas and budget splitting (`budget_ms`). Safe for routine feedback loop use. | After writing prescribed tests |
 | `mutation_clear_state` | Clear mutation state | Code has drifted significantly |
 
 ## Orchestration: Spec → Mutation → Convergence Pipeline
