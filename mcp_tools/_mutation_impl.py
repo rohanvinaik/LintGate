@@ -638,9 +638,11 @@ def run_post_profiling_analysis(
     """
     from lintgate.specification.greedy_convergence import analyze_convergence
     from lintgate.specification.symmetry_classifier import classify_regime_from_mutations
+    from lintgate.specification.trajectory_analysis import analyze_trajectory
 
     convergence_results: list[dict] = []
     symmetry_results: list[dict] = []
+    trajectory_results: list[dict] = []
 
     for result_dict in results:
         pr = reconstruct_profiling_result(result_dict)
@@ -658,7 +660,14 @@ def run_post_profiling_analysis(
         sym = classify_regime_from_mutations(pr, sigma, is_pure, param_count)
         symmetry_results.append(sym.to_dict())
 
-    return {"convergence": convergence_results, "symmetry": symmetry_results}
+        traj = analyze_trajectory(conv, sigma, pr.survival_rate)
+        trajectory_results.append(traj.to_dict())
+
+    return {
+        "convergence": convergence_results,
+        "symmetry": symmetry_results,
+        "trajectory": trajectory_results,
+    }
 
 
 def reconstruct_profiling_result(result_dict: dict) -> Any:
