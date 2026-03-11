@@ -28,6 +28,7 @@ class DiscoveryDiagnostics:
     callables_loaded: int = 0
     fallback_used: bool = False
     fallback_cap_applied: bool = False
+    linked_test_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -284,6 +285,7 @@ def load_test_callables(
     test_files: list[str],
     func_name: str,
     max_fallback_tests: int = 50,
+    source_file: str | None = None,
 ) -> tuple[list[Any], DiscoveryDiagnostics]:
     """Discover and import test callables for a function via test-impact map.
 
@@ -296,6 +298,9 @@ def load_test_callables(
         max_fallback_tests: Cap on number of tests loaded via fallback.
             Prevents combinatorial explosion when impact map misses and
             test files contain hundreds of tests.
+        source_file: Absolute path to the source file being tested.
+            Used to rank fallback tests by relevance (same directory,
+            module name match) before applying the cap.
 
     Returns (callables, diagnostics) — diagnostics explain why discovery
     produced the result it did, especially when callables is empty.
@@ -308,22 +313,56 @@ def load_test_callables(
     refs = impact.tests_for(func_name)
     diag.impact_map_refs = len(refs) if refs else 0
     if refs:
+        # Track which test files are actually linked to this function
+        diag.linked_test_files = sorted({r.test_file for r in refs})
         imported = _import_test_functions(refs, diag)
         if imported:
             diag.callables_loaded = len(imported)
             return imported, diag
 
-    # Fallback: load all test functions from the relevant test files.
+    # Fallback: load all test functions from relevance-ranked test files.
+    # Ranking: same directory > module-name match > everything else.
     # The test files were already scoped by filename convention in
     # discover_test_files, so this is partially bounded. We additionally
     # cap at max_fallback_tests to prevent combinatorial explosion.
     diag.fallback_used = True
-    callables = _load_all_tests_from_files(test_files, diag)
+    ranked_files = _rank_test_files(test_files, source_file)
+    diag.linked_test_files = ranked_files
+    callables = _load_all_tests_from_files(ranked_files, diag)
     if len(callables) > max_fallback_tests:
         callables = callables[:max_fallback_tests]
         diag.fallback_cap_applied = True
     diag.callables_loaded = len(callables)
     return callables, diag
+
+
+def _rank_test_files(test_files: list[str], source_file: str | None) -> list[str]:
+    """Rank test files by relevance to the source file.
+
+    Order: same directory first, then module-name matches, then everything else.
+    Within each tier, preserves original order.
+    """
+    if not source_file or not test_files:
+        return test_files
+
+    source_dir = os.path.dirname(os.path.abspath(source_file))
+    source_module = os.path.basename(source_file).removesuffix(".py")
+
+    tier_same_dir: list[str] = []
+    tier_name_match: list[str] = []
+    tier_rest: list[str] = []
+
+    for tf in test_files:
+        tf_dir = os.path.dirname(os.path.abspath(tf))
+        tf_base = os.path.basename(tf)
+        if tf_dir == source_dir:
+            tier_same_dir.append(tf)
+        elif source_module in tf_base:
+            tier_name_match.append(tf)
+        else:
+            tier_rest.append(tf)
+
+    return tier_same_dir + tier_name_match + tier_rest
 
 
 def _extract_test_callables_from_module(
@@ -567,7 +606,7 @@ def _run_single(
     cats = filter_fn(node, is_pure=is_pure)
     func_key = key_fn(ctx.rel_path, func_name)
     bare_name = func_name.split(".")[-1]
-    tests, discovery_diag = load_test_callables(ctx.test_files, bare_name)
+    tests, discovery_diag = load_test_callables(ctx.test_files, bare_name, source_file=ctx.full_path)
     sr = runner(node, func_key, cats, tests, lambda *a: None)
     result_dict = sr.to_dict()
     result_dict["tests_loaded"] = len(tests)
@@ -591,7 +630,10 @@ def _run_single(
     )
     result_dict["discovery_state"] = discovery_state.value
 
-    topology_result = analyze_topology(node, ctx.test_files)
+    # Use only the test files that were actually linked to this function,
+    # not all discovered test files. This prevents unrelated patches in
+    # other test files from creating false MOCK_BOUNDARY_DOMINANT diagnoses.
+    topology_result = analyze_topology(node, discovery_diag.linked_test_files or ctx.test_files)
     result_dict["topology_state"] = topology_result.topology_state.value
     result_dict["topology_confidence"] = topology_result.topology_confidence
 

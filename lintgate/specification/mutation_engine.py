@@ -585,7 +585,8 @@ def evaluate_mutant(
 
     # Run tests against mutated function
     for test_fn in test_functions:
-        if _elapsed(start) > timeout_ms:
+        remaining_ms = timeout_ms - _elapsed(start)
+        if remaining_ms <= 0:
             return MutantResult(
                 mutant=mutant, killed=True, killed_by="timeout", elapsed_ms=_elapsed(start)
             )
@@ -596,35 +597,60 @@ def evaluate_mutant(
         # inspect.getmodule for inline test callables without __globals__.
         patched, saved, patch_target = _patch_mutant_into_test(test_fn, func_name, mutated_func)
         try:
-            if patched:
-                test_fn()
-            else:
-                # Fallback: pass mutant as arg (inline test callables)
-                try:
-                    test_fn(mutated_func)
-                except TypeError:
-                    # Zero-arg test without module patching — call without args
-                    test_fn()
-        except AssertionError:
-            return MutantResult(
-                mutant=mutant,
-                killed=True,
-                killed_by="assertion",
-                test_name=getattr(test_fn, "__name__", "unknown"),
-                elapsed_ms=_elapsed(start),
-            )
-        except Exception:
-            return MutantResult(
-                mutant=mutant,
-                killed=True,
-                killed_by="crash",
-                test_name=getattr(test_fn, "__name__", "unknown"),
-                elapsed_ms=_elapsed(start),
-            )
+            result = _run_test_with_timeout(test_fn, mutated_func, patched, remaining_ms)
+            if result is not None:
+                return MutantResult(
+                    mutant=mutant,
+                    killed=True,
+                    killed_by=result,
+                    test_name=getattr(test_fn, "__name__", "unknown"),
+                    elapsed_ms=_elapsed(start),
+                )
         finally:
             _unpatch_mutant(patched, saved, patch_target, func_name)
 
     return MutantResult(mutant=mutant, killed=False, elapsed_ms=_elapsed(start))
+
+
+def _run_test_with_timeout(
+    test_fn: Callable[..., None],
+    mutated_func: Any,
+    patched: bool,
+    timeout_ms: float,
+) -> str | None:
+    """Run a single test function with a hard thread-based timeout.
+
+    Returns the kill reason ("assertion", "crash", "timeout") if killed,
+    or None if the test passed (mutant survived this test).
+    """
+    import threading
+
+    result_box: list[str | None] = [None]  # None = survived
+
+    def _target() -> None:
+        try:
+            if patched:
+                test_fn()
+            else:
+                try:
+                    test_fn(mutated_func)
+                except TypeError:
+                    test_fn()
+        except AssertionError:
+            result_box[0] = "assertion"
+        except Exception:
+            result_box[0] = "crash"
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_ms / 1000.0)
+
+    if thread.is_alive():
+        # Thread is stuck — treat as timeout kill.
+        # Daemon thread will be cleaned up on process exit.
+        return "timeout"
+
+    return result_box[0]
 
 
 def _elapsed(start: float) -> float:

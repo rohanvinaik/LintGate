@@ -54,6 +54,15 @@ def impl_run_sampling(
         return str(helpers["_json_dumps"]({"error": err}))
 
     ctx = _build_mutation_context(project_root, full)
+
+    # Split budget across functions to prevent one slow function from consuming all
+    if func_node and function:
+        per_func_budget = budget_ms
+    else:
+        tree = parse_file(full)
+        num_funcs = len(walk_functions(tree)) if tree else 1
+        per_func_budget = max(budget_ms / max(num_funcs, 1), 200)
+
     results = run_on_functions_with_tests(
         ctx,
         func_node,
@@ -64,7 +73,7 @@ def impl_run_sampling(
             cats,
             tests,
             orig,
-            budget_ms=budget_ms,
+            budget_ms=per_func_budget,
         ),
         filter_categories,
         canonical_function_key,
@@ -569,16 +578,19 @@ def impl_spec_improve(
 
     # Step 2: Mutation sampling on top targets
     elapsed = (time.monotonic() - start) * 1000
-    remaining_budget = max(budget_ms - elapsed, 5000)
+    remaining_budget = budget_ms - elapsed
 
-    try:
-        impl_run_sampling(
-            helpers, path, file, function,
-            budget_ms=remaining_budget,
-        )
-        output["steps_completed"].append("mutation_sampling")
-    except Exception as e:
-        output["mutation_sampling"] = {"error": str(e)}
+    if remaining_budget <= 0:
+        output["mutation_sampling"] = {"skipped": "budget_exhausted"}
+    else:
+        try:
+            impl_run_sampling(
+                helpers, path, file, function,
+                budget_ms=remaining_budget,
+            )
+            output["steps_completed"].append("mutation_sampling")
+        except Exception as e:
+            output["mutation_sampling"] = {"error": str(e)}
 
     # Step 3: Collect prescriptions from cached mutation state
     try:
@@ -797,15 +809,36 @@ def _validate_targets(
 
 
 def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | None) -> str:
+    from lintgate.specification.witness_generation import generate_witness_prescription
+
     project_root = helpers["_validate_project_root"](path)
     states = iter_cached_states(get_cache_dir(project_root), file, function)
 
     skeletons: list[dict[str, Any]] = []
     for data in states:
         func_key = data.get("function_key", "")
-        for cat_data in data.get("per_category", []):
-            if cat_data.get("survived", 0) > 0:
-                skeletons.append(generate_test_skeleton(func_key, cat_data["category"]))
+        survivor_records = data.get("survivor_records", [])
+
+        # Prefer witness-grounded skeletons from survivor records
+        if survivor_records:
+            for sr in survivor_records:
+                rx = generate_witness_prescription(sr, func_key)
+                skeleton = generate_test_skeleton(func_key, rx.get("category", "UNKNOWN"))
+                # Enrich skeleton with witness data
+                skeleton["witness"] = {
+                    "mutant_id": rx.get("mutant_id", ""),
+                    "why_this_matters": rx.get("why_this_matters", ""),
+                    "suggested_input": rx.get("suggested_input", ""),
+                    "assertion_shape": rx.get("assertion_shape", ""),
+                    "confidence": rx.get("confidence", 0.0),
+                    "source_of_evidence": rx.get("source_of_evidence", ""),
+                }
+                skeletons.append(skeleton)
+        else:
+            # Fallback to category-generic skeletons
+            for cat_data in data.get("per_category", []):
+                if cat_data.get("survived", 0) > 0:
+                    skeletons.append(generate_test_skeleton(func_key, cat_data["category"]))
     next_actions: list[NextAction] = []
     if skeletons:
         args: dict[str, str] = {"path": path}
