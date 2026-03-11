@@ -259,7 +259,7 @@ MCP tools:
 
 ### Mutation Testing Engine
 
-The mutation subsystem provides 9 MCP tools for inline AST mutation analysis. It generates mutants across 5 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE), evaluates them against existing tests, and produces survival profiles that reveal specification gaps.
+The mutation subsystem provides 10 MCP tools for inline AST mutation analysis. It generates mutants across 5 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE), evaluates them against existing tests, and produces survival profiles that reveal specification gaps.
 
 **Two-tier execution model**:
 - `mutation_run_sampling` — fast sampled run (<=3 mutants per category, time-budgeted). Use after editing files for quick feedback.
@@ -288,6 +288,7 @@ The mutation subsystem provides 9 MCP tools for inline AST mutation analysis. It
 | `mutation_prescribe_tests(path, file?, function?)` | Generate test skeletons from mutation profiles |
 | `mutation_validate_tests(path, file?, function?)` | Re-profile and compute survival deltas |
 | `mutation_clear_state(path, file?)` | Clear stale mutation state |
+| `spec_improve(path, file, function?, budget_ms?)` | One-shot spec improvement: diagnose → sample → prescribe in one call |
 
 **Integration with specification pipeline**: Mutation tools compose with specification tools (`spec_file_analyze`, `spec_prescribe`, `spec_gate_check`) in a closed-loop pipeline:
 

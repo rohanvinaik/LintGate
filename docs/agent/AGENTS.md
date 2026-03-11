@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 101 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 102 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -131,6 +131,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles | After `mutation_prescribe` identifies surviving categories |
 | `mutation_validate_tests` | Sampled re-profiling with per-category survival deltas and budget splitting (`budget_ms`). Safe for routine feedback loop use. | After writing prescribed tests |
 | `mutation_clear_state` | Clear mutation state | Code has drifted significantly |
+| `spec_improve` | One-shot spec improvement: diagnose → profile → prescribe in one call. Returns prioritized action plan with next test for each under-specified function. | Quick consolidated feedback on a file without running the full pipeline manually |
 
 ## Orchestration: Spec → Mutation → Convergence Pipeline
 

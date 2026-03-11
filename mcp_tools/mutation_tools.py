@@ -20,6 +20,7 @@ from ._mutation_tools_impl import (
     impl_refactor_loop,
     impl_run_full,
     impl_run_sampling,
+    impl_spec_improve,
 )
 
 # Backward-compatible aliases for test imports.
@@ -190,6 +191,30 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         """
         return impl_clear_state(helpers, path, file)
 
+    @mcp.tool()
+    def spec_improve(
+        path: str,
+        file: str,
+        function: str | None = None,
+        budget_ms: float = 30_000,
+    ) -> str:
+        """One-shot spec improvement — diagnose, profile, and prescribe in one call.
+
+        WHEN TO USE: When you want a consolidated action plan for improving
+        test quality on a file without running the full pipeline manually.
+
+        Chains: spec_file_analyze → mutation_run_sampling → prescriptions.
+        Returns a prioritized action plan with the next test to write for
+        each under-specified function.
+
+        Args:
+            path: Project root path.
+            file: Source file to improve (relative to project root).
+            function: Optional function name filter.
+            budget_ms: Total budget for mutation sampling (default 30s).
+        """
+        return impl_spec_improve(helpers, path, file, function, budget_ms)
+
     return {
         "mutation_run_sampling": mutation_run_sampling,
         "mutation_run_full": mutation_run_full,
@@ -200,4 +225,5 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         "mutation_prescribe_tests": mutation_prescribe_tests,
         "mutation_validate_tests": mutation_validate_tests,
         "mutation_clear_state": mutation_clear_state,
+        "spec_improve": spec_improve,
     }

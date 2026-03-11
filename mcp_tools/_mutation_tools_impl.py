@@ -486,6 +486,171 @@ def _load_spec_data_for_decompose(
 
 
 
+def impl_spec_improve(
+    helpers: Any,
+    path: str,
+    file: str,
+    function: str | None = None,
+    budget_ms: float = 30_000,
+) -> str:
+    """One-shot spec improvement: diagnose → profile → prescribe in a single call.
+
+    Chains the spec→mutation→prescribe pipeline internally so the operator
+    gets a consolidated report with everything needed to write the next test.
+
+    Steps:
+    1. Run spec_file_analyze (symbolic baseline) to identify under-specified functions
+    2. Run mutation_run_sampling on the top targets
+    3. Collect grounded prescriptions from survivors
+    4. Return a consolidated action plan
+    """
+    import os
+    import time
+
+    project_root = helpers["_validate_project_root"](path)
+    full_path = os.path.join(project_root, file) if not os.path.isabs(file) else file
+
+    if not os.path.isfile(full_path):
+        return str(helpers["_json_dumps"]({"error": f"File not found: {file}"}, output_mode="compact"))
+
+    output: dict[str, Any] = {"file": file, "steps_completed": []}
+    start = time.monotonic()
+
+    # Step 1: Spec diagnosis (symbolic baseline — fast)
+    try:
+        from lintgate.specification.file_analyzer import analyze_file
+
+        spec_result = analyze_file(full_path, project_root, enrich=True)
+        spec_functions = spec_result.functions
+
+        # Rank by specification gap (lowest spec_level first)
+        ranked = sorted(
+            spec_functions.items(),
+            key=lambda kv: kv[1].get("specification_level", 0.0),
+        )
+
+        # Filter to function if specified
+        if function:
+            ranked = [(k, v) for k, v in ranked if function.lower() in k.lower()]
+
+        # Take top targets (under-specified functions)
+        targets = [(k, v) for k, v in ranked if v.get("specification_level", 0.0) < 0.8][:5]
+
+        output["spec_diagnosis"] = {
+            "total_functions": len(spec_functions),
+            "under_specified": len(targets),
+            "targets": [
+                {
+                    "function": k,
+                    "sigma": v.get("sigma", 0),
+                    "spec_level": round(v.get("specification_level", 0.0), 3),
+                    "regime": v.get("regime", "unknown"),
+                    "phase": v.get("phase", "unknown"),
+                    "empirical_overlay": v.get("empirical_overlay", {}),
+                }
+                for k, v in targets
+            ],
+        }
+        output["steps_completed"].append("spec_diagnosis")
+    except Exception as e:
+        output["spec_diagnosis"] = {"error": str(e)}
+        targets = []
+
+    if not targets:
+        output["summary"] = "No under-specified functions found. Specification is in good shape."
+        output["next_actions"] = serialize_next_actions([
+            NextAction(
+                tool="spec_gate_check",
+                args={"path": path, "file": file},
+                reason="Verify optimization gates pass",
+            ),
+        ])
+        return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+    # Step 2: Mutation sampling on top targets
+    elapsed = (time.monotonic() - start) * 1000
+    remaining_budget = max(budget_ms - elapsed, 5000)
+
+    try:
+        impl_run_sampling(
+            helpers, path, file, function,
+            budget_ms=remaining_budget,
+        )
+        output["steps_completed"].append("mutation_sampling")
+    except Exception as e:
+        output["mutation_sampling"] = {"error": str(e)}
+
+    # Step 3: Collect prescriptions from cached mutation state
+    try:
+        prescriptions = _collect_prescriptions(
+            iter_cached_states(get_cache_dir(project_root), file, function)
+        )
+        output["prescriptions"] = prescriptions[:10]
+        output["total_prescriptions"] = len(prescriptions)
+        output["steps_completed"].append("prescriptions")
+    except Exception as e:
+        output["prescriptions_error"] = str(e)
+        prescriptions = []
+
+    # Step 4: Build action plan
+    output["action_plan"] = _build_action_plan(targets, prescriptions)
+
+    output["next_actions"] = serialize_next_actions([
+        NextAction(
+            tool="mutation_prescribe_tests",
+            args={"path": path, "file": file},
+            reason="Generate test skeletons for the prescribed improvements",
+        ),
+        NextAction(
+            tool="mutation_validate_tests",
+            args={"path": path, "file": file},
+            reason="After writing tests, validate they kill targeted mutants",
+        ),
+    ])
+
+    output["elapsed_ms"] = round((time.monotonic() - start) * 1000)
+    return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+
+def _build_action_plan(
+    targets: list[tuple[str, dict]],
+    prescriptions: list[dict],
+) -> list[dict[str, Any]]:
+    """Build a prioritized action plan from spec targets and prescriptions."""
+    plan: list[dict[str, Any]] = []
+
+    # Group prescriptions by function
+    rx_by_func: dict[str, list[dict]] = {}
+    for rx in prescriptions:
+        fk = rx.get("function", rx.get("function_key", ""))
+        rx_by_func.setdefault(fk, []).append(rx)
+
+    for func_key, spec in targets:
+        func_rxs = rx_by_func.get(func_key, [])
+        entry: dict[str, Any] = {
+            "function": func_key,
+            "spec_level": round(spec.get("specification_level", 0.0), 3),
+            "phase": spec.get("phase", "unknown"),
+        }
+
+        if func_rxs:
+            top_rx = func_rxs[0]
+            entry["next_test"] = {
+                "category": top_rx.get("category", top_rx.get("kind", "")),
+                "why": top_rx.get("why_this_matters", top_rx.get("description", "")),
+                "assertion_shape": top_rx.get("assertion_shape", ""),
+                "confidence": top_rx.get("confidence", 0.0),
+            }
+            entry["total_prescriptions"] = len(func_rxs)
+        else:
+            entry["next_test"] = None
+            entry["note"] = "No mutation data — run mutation_run_sampling first"
+
+        plan.append(entry)
+
+    return plan
+
+
 # Hard circuit breaker — no mutation tool call can exceed this.
 _HARD_TIMEOUT_MS = 600_000  # 10 minutes
 
