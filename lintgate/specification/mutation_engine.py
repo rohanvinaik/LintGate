@@ -38,6 +38,7 @@ class Mutant:
     mutated_node: ast.AST
     description: str
     location: int = 0
+    mutant_id: str = ""
 
 
 @dataclass
@@ -121,6 +122,8 @@ class ProfilingResult:
     is_gateable: bool = True
     per_category: list[CategoryResult] = field(default_factory=list)
     kill_matrix: dict[str, list[str]] = field(default_factory=dict)
+    survivor_records: list[dict] = field(default_factory=list)
+    killed_records: list[dict] = field(default_factory=list)
     budget_exhausted: bool = False
     elapsed_ms: float = 0.0
 
@@ -151,6 +154,10 @@ class ProfilingResult:
         }
         if self.kill_matrix:
             d["kill_matrix"] = self.kill_matrix
+        if self.survivor_records:
+            d["survivor_records"] = self.survivor_records
+        if self.killed_records:
+            d["killed_records"] = self.killed_records
         return d
 
 
@@ -401,13 +408,15 @@ def _generate_state_mutants(
             ast.fix_missing_locations(mutated_node)
 
             if transformer.applied:
+                mid = f"{cat.value}_{mode}_{i}"
                 mutants.append(
                     Mutant(
                         category=cat,
                         original_node=func_node,
                         mutated_node=mutated_node,
-                        description=f"{cat.value}_{mode}_{i}: {desc}",
+                        description=f"{mid}: {desc}",
                         location=getattr(func_node, "lineno", 0),
+                        mutant_id=mid,
                     )
                 )
 
@@ -445,13 +454,15 @@ def generate_mutants(
             ast.fix_missing_locations(mutated_node)
 
             if transformer.applied:
+                mid = f"{cat.value}_{i}"
                 mutants.append(
                     Mutant(
                         category=cat,
                         original_node=func_node,
                         mutated_node=mutated_node,
-                        description=f"{cat.value}_{i}: {desc}",
+                        description=f"{mid}: {desc}",
                         location=getattr(func_node, "lineno", 0),
+                        mutant_id=mid,
                     )
                 )
 
@@ -708,11 +719,15 @@ def run_function_profiling(
         budget_ms: Optional total wall-clock budget. None means unlimited.
             When exceeded, returns partial results with budget_exhausted=True.
     """
+    from lintgate.specification.mutant_reporting import build_killed_record, build_survivor_record
+
     start = time.monotonic()
     mutants = generate_mutants(func_node, categories)
 
     results_by_cat: dict[MutationCategory, CategoryResult] = {}
     kill_matrix: dict[str, list[str]] = {}
+    survivor_records: list[dict] = []
+    killed_records: list[dict] = []
     budget_exhausted = False
 
     for mutant in mutants:
@@ -736,8 +751,10 @@ def run_function_profiling(
                 cr.timed_out += 1
             if result.test_name:
                 kill_matrix.setdefault(mutant.description, []).append(result.test_name)
+            killed_records.append(build_killed_record(result))
         else:
             cr.survived += 1
+            survivor_records.append(build_survivor_record(result))
 
     per_cat = list(results_by_cat.values())
     total = sum(cr.total for cr in per_cat)
@@ -753,6 +770,8 @@ def run_function_profiling(
         survival_rate=survived / total if total > 0 else 0.0,
         per_category=per_cat,
         kill_matrix=kill_matrix,
+        survivor_records=survivor_records,
+        killed_records=killed_records,
         budget_exhausted=budget_exhausted,
         elapsed_ms=_elapsed(start),
     )
