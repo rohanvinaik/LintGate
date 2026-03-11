@@ -574,7 +574,37 @@ def _run_single(
     result_dict["is_pure"] = is_pure
     result_dict["parameter_count"] = len(getattr(node, "args", _EMPTY_ARGS).args)
 
-    # Flag discovery failures so consumers can distinguish "untested" from "discovery broken"
+    # Classify discovery state and topology
+    from lintgate.specification.test_topology import (
+        analyze_topology,
+        classify_discovery_state,
+        interpret_survival,
+    )
+
+    total_killed = result_dict.get("total_killed", 0)
+    discovery_state = classify_discovery_state(
+        test_files_found=discovery_diag.test_files_found,
+        callables_loaded=discovery_diag.callables_loaded,
+        import_failures=len(discovery_diag.import_failures),
+        fallback_used=discovery_diag.fallback_used,
+        total_killed=total_killed,
+    )
+    result_dict["discovery_state"] = discovery_state.value
+
+    topology_result = analyze_topology(node, ctx.test_files)
+    result_dict["topology_state"] = topology_result.topology_state.value
+    result_dict["topology_confidence"] = topology_result.topology_confidence
+
+    survival_rate = result_dict.get("survival_rate", 0.0)
+    interpretation = interpret_survival(discovery_state, topology_result.topology_state, survival_rate)
+    result_dict["survival_interpretation"] = interpretation.value
+
+    if topology_result.patched_symbols:
+        result_dict["patched_symbol_count"] = topology_result.patched_symbol_count
+    if topology_result.mocked_call_sites:
+        result_dict["mocked_call_sites"] = topology_result.mocked_call_sites[:10]
+
+    # Legacy fields for backward compat
     if len(tests) == 0 and len(ctx.test_files) > 0:
         result_dict["discovery_failed"] = True
         result_dict["discovery_diagnostics"] = discovery_diag.to_dict()

@@ -86,14 +86,40 @@ def impl_run_sampling(
         "results": results,
         "next_actions": serialize_next_actions(next_actions),
     }
-    discovery_failures = [r for r in results if r.get("discovery_failed")]
-    if discovery_failures:
-        output["discovery_warning"] = (
-            f"{len(discovery_failures)} function(s) had test discovery failures. "
-            "Survival rates reflect missing tests, not specification gaps. "
-            "Check discovery_diagnostics in per-function results for details."
-        )
+    _add_truthfulness_warnings(results, output)
     return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+
+def _add_truthfulness_warnings(results: list[dict], output: dict[str, Any]) -> None:
+    """Surface top-level warnings when survival is likely an artifact."""
+    discovery_artifacts = [
+        r for r in results
+        if r.get("survival_interpretation") in ("DISCOVERY_ARTIFACT", "MOCK_BOUNDARY_ARTIFACT")
+    ]
+    discovery_failures = [r for r in results if r.get("discovery_failed")]
+    mock_artifacts = [
+        r for r in results
+        if r.get("topology_state") == "MOCK_BOUNDARY_DOMINANT"
+    ]
+
+    warnings: list[str] = []
+    if discovery_failures:
+        warnings.append(
+            f"{len(discovery_failures)} function(s) had test discovery failures. "
+            "Survival rates reflect missing tests, not specification gaps."
+        )
+    if mock_artifacts:
+        warnings.append(
+            f"{len(mock_artifacts)} function(s) have mock-boundary-dominant topology. "
+            "Survival may reflect mocked call paths, not genuine specification gaps."
+        )
+    if discovery_artifacts:
+        output["artifact_count"] = len(discovery_artifacts)
+    if warnings:
+        output["truthfulness_warnings"] = warnings
+    # Legacy field
+    if discovery_failures:
+        output["discovery_warning"] = warnings[0]
 
 
 def impl_run_full(
@@ -177,13 +203,7 @@ def impl_run_full(
     if any_budget_exhausted:
         output["budget_exhausted"] = True
         output["partial_results"] = True
-    discovery_failures = [r for r in results if r.get("discovery_failed")]
-    if discovery_failures:
-        output["discovery_warning"] = (
-            f"{len(discovery_failures)} function(s) had test discovery failures. "
-            "Survival rates reflect missing tests, not specification gaps. "
-            "Check discovery_diagnostics in per-function results for details."
-        )
+    _add_truthfulness_warnings(results, output)
     return str(helpers["_json_dumps"](output, output_mode="compact"))
 
 
