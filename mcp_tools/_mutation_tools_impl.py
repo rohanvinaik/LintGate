@@ -267,21 +267,36 @@ def impl_prescribe(helpers: Any, path: str, file: str | None, function: str | No
 
 
 def _collect_prescriptions(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Extract prescriptions from cached mutation states."""
+    """Extract prescriptions from cached mutation states.
+
+    Uses survivor records for grounded prescriptions when available,
+    falling back to category-level templates otherwise.
+    """
+    from lintgate.specification.witness_generation import generate_witness_prescription
+
     prescriptions: list[dict[str, Any]] = []
     for data in states:
         func_key = data.get("function_key", "")
-        for cat_data in data.get("per_category", []):
-            if cat_data.get("survived", 0) > 0:
-                prescriptions.append(
-                    {
-                        "function": func_key,
-                        "category": cat_data["category"],
-                        "survived": cat_data["survived"],
-                        "survival_rate": cat_data.get("survival_rate", 0),
-                        "action": prescription_for_category(cat_data["category"]),
-                    }
-                )
+        survivor_records = data.get("survivor_records", [])
+
+        if survivor_records:
+            # Grounded prescriptions from actual survivor data
+            for survivor in survivor_records:
+                prescriptions.append(generate_witness_prescription(survivor, func_key))
+        else:
+            # Fallback: category-level templates
+            for cat_data in data.get("per_category", []):
+                if cat_data.get("survived", 0) > 0:
+                    prescriptions.append(
+                        {
+                            "function": func_key,
+                            "category": cat_data["category"],
+                            "survived": cat_data["survived"],
+                            "survival_rate": cat_data.get("survival_rate", 0),
+                            "action": prescription_for_category(cat_data["category"]),
+                            "source_of_evidence": "category_template",
+                        }
+                    )
     return prescriptions
 
 
