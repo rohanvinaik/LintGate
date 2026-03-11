@@ -96,10 +96,22 @@ def impl_run_sampling(
     return str(helpers["_json_dumps"](output, output_mode="compact"))
 
 
-def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> str:
+def impl_run_full(
+    helpers: Any,
+    path: str,
+    file: str,
+    function: str | None,
+    budget_ms: float = 600_000,
+    per_mutant_timeout_ms: float = 5000,
+) -> str:
+    import time as _time
+
     from lintgate.keys import canonical_function_key
     from lintgate.specification.mutation_engine import run_function_profiling
     from lintgate.specification.mutation_filter import filter_categories
+
+    call_start = _time.monotonic()
+    effective_budget = min(budget_ms, _HARD_TIMEOUT_MS)
 
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
@@ -107,6 +119,15 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         return str(helpers["_json_dumps"]({"error": err}))
 
     ctx = _build_mutation_context(project_root, full)
+
+    # Split budget across functions when analyzing a whole file
+    num_funcs = 1
+    if not function:
+        tree = parse_file(full)
+        if tree:
+            num_funcs = max(len(walk_functions(tree)), 1)
+    per_func_budget = max(effective_budget / num_funcs, 1000)
+
     results = run_on_functions_with_tests(
         ctx,
         func_node,
@@ -117,6 +138,8 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
             cats,
             tests,
             orig,
+            per_mutant_timeout_ms=per_mutant_timeout_ms,
+            budget_ms=per_func_budget,
         ),
         filter_categories,
         canonical_function_key,
@@ -125,6 +148,8 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         return results
 
     analysis = run_post_profiling_analysis(results, ctx.purity_map)
+    elapsed_total = (_time.monotonic() - call_start) * 1000
+    any_budget_exhausted = any(r.get("budget_exhausted") for r in results)
 
     next_actions = [
         NextAction(
@@ -144,8 +169,14 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         "tests_discovered": len(ctx.test_files),
         "results": results,
         "analysis": analysis,
+        "total_budget_ms": effective_budget,
+        "per_func_budget_ms": round(per_func_budget, 1),
+        "elapsed_ms": round(elapsed_total, 1),
         "next_actions": serialize_next_actions(next_actions),
     }
+    if any_budget_exhausted:
+        output["budget_exhausted"] = True
+        output["partial_results"] = True
     discovery_failures = [r for r in results if r.get("discovery_failed")]
     if discovery_failures:
         output["discovery_warning"] = (
@@ -363,7 +394,21 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
     return str(helpers["_json_dumps"](output, output_mode="compact"))
 
 
-def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None) -> str:
+
+# Hard circuit breaker — no mutation tool call can exceed this.
+_HARD_TIMEOUT_MS = 600_000  # 10 minutes
+
+
+def impl_refactor_loop(
+    helpers: Any,
+    path: str,
+    file: str,
+    function: str | None,
+    budget_ms: float = 300_000,
+) -> str:
+    import time as _time
+
+    call_start = _time.monotonic()
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
     if err:
@@ -374,9 +419,18 @@ def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None)
     if isinstance(targets, str):
         return str(helpers["_json_dumps"]({"error": targets}))
 
+    # Enforce hard circuit breaker
+    effective_budget = min(budget_ms, _HARD_TIMEOUT_MS)
+
     rel_path = os.path.relpath(full, project_root)
     test_files = discover_test_files(project_root, full)
-    results = _profile_targets(targets, full, rel_path, cache_dir, test_files)
+    results, timed_out_functions = _validate_targets(
+        targets, full, rel_path, cache_dir, test_files,
+        budget_ms=effective_budget, call_start=call_start,
+    )
+
+    elapsed_total = (_time.monotonic() - call_start) * 1000
+    budget_exhausted = elapsed_total >= effective_budget or len(timed_out_functions) > 0
 
     next_actions = [
         NextAction(
@@ -385,16 +439,19 @@ def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None)
             reason="Check if specification level now meets optimization hint thresholds",
         ),
     ]
-    return str(
-        helpers["_json_dumps"](
-            {
-                "file": file,
-                "results": results,
-                "next_actions": serialize_next_actions(next_actions),
-            },
-            output_mode="compact",
-        )
-    )
+    output: dict[str, Any] = {
+        "file": file,
+        "results": results,
+        "total_budget_ms": effective_budget,
+        "elapsed_ms": round(elapsed_total, 1),
+        "next_actions": serialize_next_actions(next_actions),
+    }
+    if budget_exhausted:
+        output["budget_exhausted"] = True
+        output["partial_results"] = True
+    if timed_out_functions:
+        output["timed_out_functions"] = timed_out_functions
+    return str(helpers["_json_dumps"](output, output_mode="compact"))
 
 
 def _resolve_refactor_targets(
@@ -411,20 +468,44 @@ def _resolve_refactor_targets(
     return walk_functions(tree)
 
 
-def _profile_targets(
+def _validate_targets(
     targets: list[tuple[str, Any]],
     full_path: str,
     rel_path: str,
     cache_dir: Any,
     test_files: list[str],
-) -> list[dict[str, Any]]:
-    """Profile each target function and compute survival deltas."""
+    budget_ms: float = 300_000,
+    call_start: float | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Validate targets using sampling with budget splitting.
+
+    Uses sampling (not exhaustive profiling) by default. Splits budget
+    evenly across functions and returns partial results if budget exhausted.
+
+    Returns (results, timed_out_functions).
+    """
+    import time as _time
+
     from lintgate.keys import canonical_function_key
-    from lintgate.specification.mutation_engine import run_function_profiling
+    from lintgate.specification.mutation_engine import run_function_sampling
     from lintgate.specification.mutation_filter import filter_categories
 
+    if call_start is None:
+        call_start = _time.monotonic()
+
+    num_funcs = max(len(targets), 1)
+    per_func_budget = max(budget_ms / num_funcs, 200)
+
     results: list[dict[str, Any]] = []
+    timed_out_functions: list[str] = []
+
     for qualname, node in targets:
+        # Check overall budget before starting each function
+        elapsed = (_time.monotonic() - call_start) * 1000
+        if elapsed >= budget_ms:
+            timed_out_functions.append(qualname)
+            continue
+
         func_key = canonical_function_key(rel_path, qualname)
         prev = load_cached_state(cache_dir, func_key)
         prev_survival = prev.get("survival_rate", 1.0) if prev else None
@@ -433,19 +514,30 @@ def _profile_targets(
         cats = filter_categories(node, is_pure=is_pure)
         bare_name = qualname.split(".")[-1]
         tests, discovery_diag = load_test_callables(test_files, bare_name)
-        pr = run_function_profiling(node, func_key, cats, tests, lambda *a: None)
-        result_dict: dict[str, Any] = pr.to_dict()
+
+        # Remaining budget capped by per-function allocation
+        remaining = budget_ms - (_time.monotonic() - call_start) * 1000
+        func_budget = min(per_func_budget, max(remaining, 200))
+
+        sr = run_function_sampling(
+            node, func_key, cats, tests, lambda *a: None,
+            budget_ms=func_budget,
+            per_mutant_timeout_ms=min(500, func_budget),
+        )
+        result_dict: dict[str, Any] = sr.to_dict()
         result_dict["tests_loaded"] = len(tests)
         result_dict["is_pure"] = is_pure
+        result_dict["per_func_budget_ms"] = round(func_budget, 1)
         if len(tests) == 0:
             result_dict["discovery_failed"] = len(test_files) > 0
             result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
         if prev_survival is not None:
             result_dict["previous_survival_rate"] = prev_survival
-            result_dict["survival_delta"] = round(pr.survival_rate - prev_survival, 3)
+            result_dict["survival_delta"] = round(sr.survival_rate - prev_survival, 3)
         results.append(result_dict)
         save_cached_state(cache_dir, func_key, result_dict)
-    return results
+
+    return results, timed_out_functions
 
 
 def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | None) -> str:

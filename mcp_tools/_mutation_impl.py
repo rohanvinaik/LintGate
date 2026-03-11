@@ -27,6 +27,7 @@ class DiscoveryDiagnostics:
     class_instantiation_failures: list[str] = field(default_factory=list)
     callables_loaded: int = 0
     fallback_used: bool = False
+    fallback_cap_applied: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -39,6 +40,8 @@ class DiscoveryDiagnostics:
             d["class_instantiation_failures"] = self.class_instantiation_failures[:5]
         if self.fallback_used:
             d["fallback_used"] = True
+        if self.fallback_cap_applied:
+            d["fallback_cap_applied"] = True
         if self.callables_loaded == 0:
             reasons: list[str] = []
             if self.test_files_found == 0:
@@ -278,7 +281,9 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
 
 
 def load_test_callables(
-    test_files: list[str], func_name: str,
+    test_files: list[str],
+    func_name: str,
+    max_fallback_tests: int = 50,
 ) -> tuple[list[Any], DiscoveryDiagnostics]:
     """Discover and import test callables for a function via test-impact map.
 
@@ -286,6 +291,11 @@ def load_test_callables(
     when the AST-based impact map finds no direct references to func_name.
     This handles indirect calls (fixtures, parametrize, helper wrappers)
     that static name matching misses.
+
+    Args:
+        max_fallback_tests: Cap on number of tests loaded via fallback.
+            Prevents combinatorial explosion when impact map misses and
+            test files contain hundreds of tests.
 
     Returns (callables, diagnostics) — diagnostics explain why discovery
     produced the result it did, especially when callables is empty.
@@ -305,9 +315,13 @@ def load_test_callables(
 
     # Fallback: load all test functions from the relevant test files.
     # The test files were already scoped by filename convention in
-    # discover_test_files, so this is bounded and relevant.
+    # discover_test_files, so this is partially bounded. We additionally
+    # cap at max_fallback_tests to prevent combinatorial explosion.
     diag.fallback_used = True
     callables = _load_all_tests_from_files(test_files, diag)
+    if len(callables) > max_fallback_tests:
+        callables = callables[:max_fallback_tests]
+        diag.fallback_cap_applied = True
     diag.callables_loaded = len(callables)
     return callables, diag
 

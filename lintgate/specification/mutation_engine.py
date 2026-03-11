@@ -121,6 +121,7 @@ class ProfilingResult:
     is_gateable: bool = True
     per_category: list[CategoryResult] = field(default_factory=list)
     kill_matrix: dict[str, list[str]] = field(default_factory=dict)
+    budget_exhausted: bool = False
     elapsed_ms: float = 0.0
 
     def to_dict(self) -> dict:
@@ -133,6 +134,7 @@ class ProfilingResult:
             "survival_rate": round(self.survival_rate, 3),
             "coverage_depth": self.coverage_depth,
             "is_gateable": self.is_gateable,
+            "budget_exhausted": self.budget_exhausted,
             "elapsed_ms": round(self.elapsed_ms, 1),
             "per_category": [
                 {
@@ -629,12 +631,19 @@ def run_function_sampling(
     original_func: Callable[..., Any],
     budget_ms: float = 500,
     max_per_category: int = 3,
+    per_mutant_timeout_ms: float = 500,
 ) -> SamplingResult:
     """Inline sampling mode — generate ≤max_per_category mutants per category.
 
     Evaluates within time budget. This is the "active hypothesis testing"
     from §6.2: each sampled mutant tests whether the test suite distinguishes
     a specific behavioral dimension.
+
+    Args:
+        budget_ms: Total wall-clock budget for the entire sampling run.
+        per_mutant_timeout_ms: Timeout for evaluating a single mutant.
+            Separate from budget_ms to prevent one slow mutant from
+            consuming the entire budget.
     """
     start = time.monotonic()
     mutants = generate_mutants(func_node, categories, max_per_category=max_per_category)
@@ -648,7 +657,7 @@ def run_function_sampling(
             budget_exhausted = True
             break
 
-        result = evaluate_mutant(mutant, test_functions, original_func, timeout_ms=budget_ms)
+        result = evaluate_mutant(mutant, test_functions, original_func, timeout_ms=per_mutant_timeout_ms)
         all_results.append(result)
 
         cr = results_by_cat.setdefault(mutant.category, CategoryResult(category=mutant.category))
@@ -687,19 +696,30 @@ def run_function_profiling(
     test_functions: list[Callable[..., None]],
     original_func: Callable[..., Any],
     per_mutant_timeout_ms: float = 5000,
+    budget_ms: float | None = None,
 ) -> ProfilingResult:
-    """Exhaustive profiling mode — generate all mutants, no time budget.
+    """Exhaustive profiling mode — generate all mutants, evaluate with optional budget.
 
     Returns full survival profile with kill matrix for convergence analysis.
     Result has coverage_depth="profiled" and is_gateable=True.
+
+    Args:
+        per_mutant_timeout_ms: Timeout for evaluating a single mutant.
+        budget_ms: Optional total wall-clock budget. None means unlimited.
+            When exceeded, returns partial results with budget_exhausted=True.
     """
     start = time.monotonic()
     mutants = generate_mutants(func_node, categories)
 
     results_by_cat: dict[MutationCategory, CategoryResult] = {}
     kill_matrix: dict[str, list[str]] = {}
+    budget_exhausted = False
 
     for mutant in mutants:
+        if budget_ms is not None and _elapsed(start) > budget_ms:
+            budget_exhausted = True
+            break
+
         result = evaluate_mutant(
             mutant, test_functions, original_func, timeout_ms=per_mutant_timeout_ms
         )
@@ -733,5 +753,6 @@ def run_function_profiling(
         survival_rate=survived / total if total > 0 else 0.0,
         per_category=per_cat,
         kill_matrix=kill_matrix,
+        budget_exhausted=budget_exhausted,
         elapsed_ms=_elapsed(start),
     )

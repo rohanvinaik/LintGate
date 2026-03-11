@@ -57,7 +57,13 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         return impl_run_sampling(helpers, path, file, function, budget_ms)
 
     @mcp.tool()
-    def mutation_run_full(path: str, file: str, function: str | None = None) -> str:
+    def mutation_run_full(
+        path: str,
+        file: str,
+        function: str | None = None,
+        budget_ms: float = 600_000,
+        per_mutant_timeout_ms: float = 5000,
+    ) -> str:
         """Deep exhaustive mutation profiling (Tier 2).
 
         WHEN TO USE: To verify test quality of a component. Generates all
@@ -68,8 +74,11 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             path: Project root path.
             file: Relative path to the Python file.
             function: Optional specific function name.
+            budget_ms: Total wall-clock budget (default 10min). Returns
+                partial results if exceeded.
+            per_mutant_timeout_ms: Per-mutant evaluation timeout (default 5s).
         """
-        return impl_run_full(helpers, path, file, function)
+        return impl_run_full(helpers, path, file, function, budget_ms, per_mutant_timeout_ms)
 
     @mcp.tool()
     def mutation_get_state(path: str, file: str | None = None, function: str | None = None) -> str:
@@ -118,18 +127,22 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         return impl_decompose(helpers, path, file, function, mode)
 
     @mcp.tool()
-    def mutation_refactor_loop(path: str, file: str = "", function: str | None = None) -> str:
+    def mutation_refactor_loop(
+        path: str, file: str = "", function: str | None = None,
+        budget_ms: float = 300_000,
+    ) -> str:
         """Re-profile after test improvement — close the feedback loop.
 
-        WHEN TO USE: After writing prescribed tests. Re-runs profiling
-        and computes survival rate delta.
+        WHEN TO USE: After writing prescribed tests. Re-runs sampling
+        and computes survival rate delta. Budget-bounded with partial results.
 
         Args:
             path: Project root path.
             file: File to re-profile.
             function: Optional function name.
+            budget_ms: Total wall-clock budget (default 5min).
         """
-        return impl_refactor_loop(helpers, path, file, function)
+        return impl_refactor_loop(helpers, path, file, function, budget_ms)
 
     @mcp.tool()
     def mutation_prescribe_tests(path: str, file: str = "", function: str | None = None) -> str:
@@ -146,18 +159,23 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         return impl_prescribe_tests(helpers, path, file, function)
 
     @mcp.tool()
-    def mutation_validate_tests(path: str, file: str = "", function: str | None = None) -> str:
-        """Re-profile and compute per-category survival deltas.
+    def mutation_validate_tests(
+        path: str, file: str = "", function: str | None = None,
+        budget_ms: float = 300_000,
+    ) -> str:
+        """Re-sample and compute per-category survival deltas.
 
         WHEN TO USE: After writing prescribed tests. Validates that new
         tests actually killed the surviving mutants they targeted.
+        Uses sampling (not exhaustive profiling) with budget splitting.
 
         Args:
             path: Project root path.
             file: Source file.
             function: Optional function name.
+            budget_ms: Total wall-clock budget (default 5min).
         """
-        return impl_refactor_loop(helpers, path, file, function)
+        return impl_refactor_loop(helpers, path, file, function, budget_ms)
 
     @mcp.tool()
     def mutation_clear_state(path: str, file: str | None = None) -> str:
