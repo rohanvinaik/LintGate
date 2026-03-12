@@ -15,7 +15,6 @@ from lintgate.testing.fresh_validation import (
     run_fresh_kill_rates,
 )
 
-
 # ── count_test_assertions ─────────────────────────────────────────────
 
 
