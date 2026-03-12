@@ -164,7 +164,7 @@ def run_fresh_kill_rates(
 
         kr = 1.0 - result.survival_rate
         rates.append(kr)
-        if kr == 0.0:
+        if kr <= 0.0:  # noqa: SIM102  # NOSONAR — exact zero check on discrete ratio
             zero += 1
 
         detail = {

@@ -25,7 +25,7 @@ def impl_rebuild_validate(
 
     project_root = helpers["_validate_project_root"](path)
 
-    if review_ceiling == 0.15:
+    if abs(review_ceiling - 0.15) < 1e-9:  # NOSONAR — sentinel default check
         cfg = _load_regen_config(project_root)
         review_ceiling = cfg.review_ceiling
 
