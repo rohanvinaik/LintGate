@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+
 from lintgate.testing.fresh_validation import (
     _is_trivial_assert,
     count_test_assertions,
