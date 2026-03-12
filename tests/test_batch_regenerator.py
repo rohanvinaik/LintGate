@@ -368,9 +368,10 @@ class TestBatchRegeneratorCheckPurity:
         assert regen._check_purity("src/mod.py", "f") is False
 
     @patch(_PURITY_SRC, side_effect=Exception("no"))
-    def test_exception_returns_false(self, _mock):
+    def test_exception_returns_false(self, mock_purity):
         regen = BatchRegenerator("/project")
         assert regen._check_purity("src/mod.py", "f") is False
+        mock_purity.assert_called_once()  # confirms exception path was hit
 
 
 class TestBatchRegeneratorResolveFuncNode:
@@ -435,9 +436,10 @@ class TestBatchRegeneratorGoldenCapture:
     @patch.object(BatchRegenerator, "_load_mutation_cache", return_value={})
     @patch.object(BatchRegenerator, "_check_purity", return_value=True)
     @patch(_CAPTURE_SRC, side_effect=Exception("boom"))
-    def test_exception_returns_empty(self, _cap, _pur, _cache):
+    def test_exception_returns_empty(self, mock_cap, _pur, _cache):
         regen = BatchRegenerator("/project")
         assert regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}]) == ""
+        mock_cap.assert_called_once()  # confirms exception path was hit
 
 
 class TestBatchRegeneratorExecutableProperties:
