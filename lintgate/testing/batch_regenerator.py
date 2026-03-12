@@ -7,9 +7,14 @@ auto_generate_unit targets.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lintgate.testing.oracle_light import ExecutableProperty
 
 
 @dataclass
@@ -20,6 +25,7 @@ class FunctionEnrichment:
     function_name: str
     inputs: list[dict] = field(default_factory=list)
     prescriptions: list[dict] = field(default_factory=list)
+    executable_properties: list[ExecutableProperty] = field(default_factory=list)
     characterization: str = ""
 
 
@@ -88,8 +94,17 @@ class BatchRegenerator:
                 if "mutation" not in sources:
                     sources.append("mutation")
 
-            # Lens 4: Characterization fallback
-            if not inputs and not prescriptions:
+            # Lens 4: Oracle-light executable properties from survivors
+            exec_props = self._get_executable_properties(
+                rel_file, func_key, func_name, enrichment.inputs,
+            )
+            if exec_props:
+                enrichment.executable_properties = exec_props
+                if "oracle_light" not in sources:
+                    sources.append("oracle_light")
+
+            # Lens 5: Characterization fallback (only if no other enrichment)
+            if not inputs and not prescriptions and not exec_props:
                 char_code = self._characterize(rel_file, func_name)
                 if char_code:
                     enrichment.characterization = char_code
@@ -178,6 +193,48 @@ class BatchRegenerator:
             return str(data.get("test_code", ""))
         except Exception:
             return ""
+
+    def _get_executable_properties(
+        self,
+        rel_file: str,
+        func_key: str,
+        func_name: str,
+        call_site_inputs: list[dict],
+    ) -> list[ExecutableProperty]:
+        """Lens 4: Oracle-light executable properties from survivor records."""
+        cache = self._load_mutation_cache()
+        state = cache.get(func_key)
+        if not state:
+            return []
+
+        survivors = state.get("survivor_records", [])
+        if not survivors:
+            return []
+
+        func_node = self._resolve_func_node(rel_file, func_name)
+
+        from lintgate.testing.oracle_light import generate_executable_property
+
+        return [
+            generate_executable_property(sr, func_key, func_node, call_site_inputs)
+            for sr in survivors
+        ]
+
+    def _resolve_func_node(
+        self, rel_file: str, func_name: str,
+    ) -> ast.FunctionDef | None:
+        """Resolve a function's AST node from the source file."""
+        try:
+            abs_path = os.path.join(self.project_root, rel_file)
+            with open(abs_path, encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if node.name == func_name:
+                        return node  # type: ignore[return-value]
+        except Exception:
+            pass
+        return None
 
     def _load_mutation_cache(self) -> dict[str, dict]:
         """Load mutation cache lazily."""
@@ -298,22 +355,39 @@ def _build_function_section(enr: FunctionEnrichment) -> str:
                 lines.append(f"#   {ctx[:80]}")
         lines.append("")
 
-    # Mutation-prescribed test stubs
-    for rx in enr.prescriptions:
-        cat = rx["category"]
-        test_name = f"test_{safe_name}_{cat.lower()}_mutation"
-        shape = rx.get("assertion_shape", "")
-        suggested = rx.get("suggested_input", "")
-        lines.append(f"def {test_name}():")
-        lines.append(f'    """{cat}: {shape}"""')
-        if suggested:
-            lines.append(f"    # suggested input: {suggested}")
-        lines.append("    # TODO: fill in expected values")
-        lines.append("    pass")
-        lines.append("")
+    # Oracle-light executable properties (preferred over text prescriptions)
+    if enr.executable_properties:
+        for prop in enr.executable_properties:
+            mid = prop.mutant_id or prop.category.lower()
+            test_name = f"test_{safe_name}_{mid.lower()}"
+            tag = "" if not prop.needs_oracle else " [needs oracle]"
+            lines.append(f"def {test_name}():")
+            lines.append(f'    """{prop.category}: mutation property{tag}"""')
+            for pc in prop.preconditions:
+                lines.append(f"    # Precondition: {pc}")
+            if prop.setup_code:
+                for sl in prop.setup_code.split("\n"):
+                    lines.append(f"    {sl}")
+            for al in prop.assertion_code.split("\n"):
+                lines.append(f"    {al}")
+            lines.append("")
+    else:
+        # Fallback: text prescription stubs
+        for rx in enr.prescriptions:
+            cat = rx["category"]
+            test_name = f"test_{safe_name}_{cat.lower()}_mutation"
+            shape = rx.get("assertion_shape", "")
+            suggested = rx.get("suggested_input", "")
+            lines.append(f"def {test_name}():")
+            lines.append(f'    """{cat}: {shape}"""')
+            if suggested:
+                lines.append(f"    # suggested input: {suggested}")
+            lines.append("    # TODO: fill in expected values")
+            lines.append("    pass")
+            lines.append("")
 
     # Characterization fallback
-    if enr.characterization and not enr.prescriptions:
+    if enr.characterization and not enr.prescriptions and not enr.executable_properties:
         lines.append(f"# Characterization test for {enr.function_name}")
         lines.append(enr.characterization)
         lines.append("")
