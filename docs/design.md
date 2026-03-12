@@ -1463,6 +1463,39 @@ The specification system estimates **σ(P,μ)** — the minimum tests to fully s
 
 **Pipeline integration with mutation testing**: Specification analysis is the diagnostic entry point; mutation testing is the empirical verification layer. The full pipeline: `spec_file_analyze` (diagnose σ, regime, phase) → `mutation_run_sampling`/`mutation_run_full` (profile which mutation categories survive) → `mutation_prescribe` → `mutation_prescribe_tests` → [write tests] → `mutation_validate_tests` (survival deltas) → `spec_gate_check` (stop criteria). The ledger accumulates ΔK across these cycles via `prior_ledger` parameter, enabling trajectory-aware phase detection. See the [Mutation Testing Engine](#mutation-testing-engine) section for execution details.
 
+### Test Regeneration
+
+| Tool | Purpose |
+|---|---|
+| `test_rebuild_plan(path, file?, write_manifest?, preserve_globs?)` | Classify all functions into regeneration strategies, write manifest |
+| `test_rebuild_generate(path, write?, max_files?)` | Generate test skeletons for `auto_generate_unit` targets |
+| `test_rebuild_validate(path, review_ceiling?)` | Run quality gates on generated tests (preserve pass, import/run, review share, artifact check) |
+| `test_rebuild_apply(path, dry_run?)` | Promote generated tests, quarantine old ones (dry_run=True by default) |
+
+The test regeneration system classifies every project function into one of four strategies:
+- **exclude_mutation** — entrypoint glue, topology-hostile surfaces (artifact discovery states)
+- **preserve_system** — functions with integration coverage on system surfaces
+- **manual_contract** — meaningful but mutation-resistant code requiring hand-written tests
+- **auto_generate_unit** — deterministic local logic with meaningful mutation signal
+
+The classifier composes evidence from spec analysis (`SpecEvidence`: σ, regime, phase, purity) and mutation cache (`MutationEvidence`: discovery/topology state, survival rate). Confidence is computed as `min(topology_confidence, 1.0 - survival_rate) * phase_weight`.
+
+**Four validation gates** in `test_rebuild_validate`:
+1. Preserved tests still pass (pytest execution)
+2. Generated tests import and run
+3. Manual review share stays under `review_ceiling` (default 0.15)
+4. No auto-generate target has artifact discovery state
+
+Configuration in `lintgate.yaml`:
+```yaml
+controlplane:
+  test_regeneration:
+    preserve_globs: ["test_conftest_*.py"]
+    review_ceiling: 0.15
+    generated_dir: "tests/generated"
+    quarantine_dir: "tests/quarantine"
+```
+
 ### Telemetry
 
 | Tool | Purpose |
