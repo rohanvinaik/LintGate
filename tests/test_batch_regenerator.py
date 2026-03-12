@@ -288,3 +288,167 @@ class TestBatchRegeneratorMutationCache:
         rx = regen._get_prescriptions("m::f")
         assert len(rx) == 1
         assert rx[0]["category"] == "VALUE"
+
+
+# ── Private method tests (coverage) ──────────────────────────────────
+
+# Late imports inside methods — patch at source modules
+_SKEL_SRC = "lintgate.controlplane.skeleton_generator.generate_test_skeleton"
+_INFER_SRC = "mcp_tools.cold_start_tools._impl_test_infer_inputs"
+_CHAR_SRC = "mcp_tools.cold_start_tools._impl_test_characterize"
+_PURITY_SRC = "mcp_tools._mutation_impl.detect_purity"
+_CACHE_DIR_SRC = "mcp_tools._mutation_impl.get_cache_dir"
+_ITER_CACHE_SRC = "mcp_tools._mutation_impl.iter_cached_states"
+_CAPTURE_SRC = "lintgate.testing.characterization.capture_golden"
+_CORROB_SRC = "lintgate.testing.characterization.corroborate_captures"
+_GOLDEN_SRC = "lintgate.testing.characterization.generate_golden_test"
+
+
+class TestBatchRegeneratorSkeleton:
+    @patch(_SKEL_SRC, return_value="# skel\n")
+    def test_success(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._generate_skeleton("/project/foo.py") == "# skel\n"
+
+    @patch(_SKEL_SRC, side_effect=ImportError("no module"))
+    def test_exception_returns_empty(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._generate_skeleton("/project/foo.py") == ""
+
+
+class TestBatchRegeneratorInferInputs:
+    @patch(_INFER_SRC)
+    def test_success(self, mock_infer):
+        mock_infer.return_value = '{"call_sites": [{"context": "f(1)"}]}'
+        regen = BatchRegenerator("/project")
+        result = regen._infer_inputs("src/mod.py", "func")
+        assert len(result) == 1
+        assert result[0]["context"] == "f(1)"
+
+    @patch(_INFER_SRC)
+    def test_error_response(self, mock_infer):
+        mock_infer.return_value = '{"error": "not found"}'
+        regen = BatchRegenerator("/project")
+        assert regen._infer_inputs("src/mod.py", "func") == []
+
+    @patch(_INFER_SRC, side_effect=Exception("fail"))
+    def test_exception_returns_empty(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._infer_inputs("src/mod.py", "func") == []
+
+
+class TestBatchRegeneratorCharacterize:
+    @patch(_CHAR_SRC)
+    def test_success(self, mock_char):
+        mock_char.return_value = '{"test_code": "assert f(1) == 42"}'
+        regen = BatchRegenerator("/project")
+        assert regen._characterize("src/mod.py", "f") == "assert f(1) == 42"
+
+    @patch(_CHAR_SRC)
+    def test_error_response(self, mock_char):
+        mock_char.return_value = '{"error": "fail"}'
+        regen = BatchRegenerator("/project")
+        assert regen._characterize("src/mod.py", "f") == ""
+
+    @patch(_CHAR_SRC, side_effect=Exception("boom"))
+    def test_exception_returns_empty(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._characterize("src/mod.py", "f") == ""
+
+
+class TestBatchRegeneratorCheckPurity:
+    @patch(_PURITY_SRC, return_value=True)
+    def test_pure(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._check_purity("src/mod.py", "f") is True
+
+    @patch(_PURITY_SRC, return_value=False)
+    def test_impure(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._check_purity("src/mod.py", "f") is False
+
+    @patch(_PURITY_SRC, side_effect=Exception("no"))
+    def test_exception_returns_false(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._check_purity("src/mod.py", "f") is False
+
+
+class TestBatchRegeneratorResolveFuncNode:
+    def test_finds_function(self, tmp_path):
+        src = tmp_path / "mod.py"
+        src.write_text("def helper():\n    return 1\n\ndef target():\n    return 2\n")
+        regen = BatchRegenerator(str(tmp_path))
+        node = regen._resolve_func_node("mod.py", "target")
+        assert node is not None
+        assert node.name == "target"
+
+    def test_missing_function_returns_none(self, tmp_path):
+        src = tmp_path / "mod.py"
+        src.write_text("def other(): pass\n")
+        regen = BatchRegenerator(str(tmp_path))
+        assert regen._resolve_func_node("mod.py", "missing") is None
+
+    def test_missing_file_returns_none(self):
+        regen = BatchRegenerator("/nonexistent")
+        assert regen._resolve_func_node("no.py", "f") is None
+
+
+class TestBatchRegeneratorLoadMutationCache:
+    @patch(_CACHE_DIR_SRC, return_value="/tmp/cache")
+    @patch(_ITER_CACHE_SRC, return_value=[{"function_key": "m::f", "data": 1}])
+    def test_loads_and_caches(self, _iter, _dir):
+        regen = BatchRegenerator("/project")
+        cache = regen._load_mutation_cache()
+        assert "m::f" in cache
+        # Second call returns cached result (no re-import)
+        cache2 = regen._load_mutation_cache()
+        assert cache2 is cache
+
+    @patch(_CACHE_DIR_SRC, side_effect=ImportError("no"))
+    def test_import_error_returns_empty(self, _mock):
+        regen = BatchRegenerator("/project")
+        assert regen._load_mutation_cache() == {}
+
+
+class TestBatchRegeneratorGoldenCapture:
+    @patch.object(BatchRegenerator, "_load_mutation_cache", return_value={})
+    @patch.object(BatchRegenerator, "_check_purity", return_value=True)
+    @patch(_CAPTURE_SRC, return_value=[{"val": 1}])
+    @patch(_CORROB_SRC, return_value=[{"val": 1}])
+    @patch(_GOLDEN_SRC, return_value="assert f() == 1")
+    def test_success(self, _gen, _corr, _cap, _pur, _cache):
+        regen = BatchRegenerator("/project")
+        result = regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}])
+        assert result == "assert f() == 1"
+
+    def test_no_module_path_returns_empty(self):
+        regen = BatchRegenerator("/project")
+        assert regen._golden_capture("src/mod.py", "f", "f", []) == ""
+
+    @patch.object(BatchRegenerator, "_load_mutation_cache", return_value={})
+    @patch.object(BatchRegenerator, "_check_purity", return_value=True)
+    @patch(_CAPTURE_SRC, return_value=[])
+    def test_no_captures_returns_empty(self, _cap, _pur, _cache):
+        regen = BatchRegenerator("/project")
+        assert regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}]) == ""
+
+    @patch.object(BatchRegenerator, "_load_mutation_cache", return_value={})
+    @patch.object(BatchRegenerator, "_check_purity", return_value=True)
+    @patch(_CAPTURE_SRC, side_effect=Exception("boom"))
+    def test_exception_returns_empty(self, _cap, _pur, _cache):
+        regen = BatchRegenerator("/project")
+        assert regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}]) == ""
+
+
+class TestBatchRegeneratorExecutableProperties:
+    @patch.object(BatchRegenerator, "_load_mutation_cache")
+    def test_no_state_returns_empty(self, mock_cache):
+        mock_cache.return_value = {}
+        regen = BatchRegenerator("/project")
+        assert regen._get_executable_properties("src/mod.py", "m::f", "f", []) == []
+
+    @patch.object(BatchRegenerator, "_load_mutation_cache")
+    def test_no_survivors_returns_empty(self, mock_cache):
+        mock_cache.return_value = {"m::f": {"survivor_records": []}}
+        regen = BatchRegenerator("/project")
+        assert regen._get_executable_properties("src/mod.py", "m::f", "f", []) == []
