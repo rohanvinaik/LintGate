@@ -659,15 +659,9 @@ class TestBuildValidityReport:
 
     def test_strong_profile(self):
         profile = {
-            "core_theory": [
-                {"heading": "A", "source": "a.md:1", "claims": ["c1", "c2", "c3"]}
-            ],
-            "problem_solving": [
-                {"heading": "B", "source": "b.md:2", "claims": ["c4", "c5"]}
-            ],
-            "alignment": [
-                {"heading": "C", "source": "c.md:3", "claims": ["c6", "c7"]}
-            ],
+            "core_theory": [{"heading": "A", "source": "a.md:1", "claims": ["c1", "c2", "c3"]}],
+            "problem_solving": [{"heading": "B", "source": "b.md:2", "claims": ["c4", "c5"]}],
+            "alignment": [{"heading": "C", "source": "c.md:3", "claims": ["c6", "c7"]}],
             "architecture": [],
             "anti_patterns": [],
             "abstractions": [],
@@ -687,15 +681,9 @@ class TestBuildValidityReport:
 
     def test_partial_status_when_low_density(self):
         profile = {
-            "core_theory": [
-                {"heading": "A", "source": "a.md:1", "claims": ["c1", "c2", "c3"]}
-            ],
-            "problem_solving": [
-                {"heading": "B", "source": "b.md:2", "claims": ["c4", "c5"]}
-            ],
-            "alignment": [
-                {"heading": "C", "source": "c.md:3", "claims": ["c6", "c7"]}
-            ],
+            "core_theory": [{"heading": "A", "source": "a.md:1", "claims": ["c1", "c2", "c3"]}],
+            "problem_solving": [{"heading": "B", "source": "b.md:2", "claims": ["c4", "c5"]}],
+            "alignment": [{"heading": "C", "source": "c.md:3", "claims": ["c6", "c7"]}],
             "architecture": [],
             "anti_patterns": [],
             "abstractions": [],
@@ -928,9 +916,7 @@ class TestBuildDigestText:
         assert text.count("LINTGATE_FORBID_REGEX") == 10
 
     def test_return_types(self):
-        text, tokens = _build_digest_text(
-            {"proposed_rules": [], "existing_rule_count": 0}, {}, []
-        )
+        text, tokens = _build_digest_text({"proposed_rules": [], "existing_rule_count": 0}, {}, [])
         assert isinstance(text, str)
         assert isinstance(tokens, int)
 
@@ -1031,9 +1017,7 @@ class TestGetTheoryContextFromProfile:
                 },
             ],
         }
-        result = get_theory_context_from_profile(
-            profile, keywords=["compositional", "modular"]
-        )
+        result = get_theory_context_from_profile(profile, keywords=["compositional", "modular"])
         assert result["claims"][0]["relevance_score"] == 2
 
     def test_truncation(self):
@@ -1066,9 +1050,7 @@ class TestGetTheoryContextFromProfile:
         assert "relevance_score" in claim
 
     def test_query_echoed_back(self):
-        result = get_theory_context_from_profile(
-            {}, facet="core_theory", keywords=["test"]
-        )
+        result = get_theory_context_from_profile({}, facet="core_theory", keywords=["test"])
         assert result["query"]["facet"] == "core_theory"
         assert result["query"]["keywords"] == ["test"]
 
@@ -1285,7 +1267,9 @@ class TestCollectCoveredSources:
 class TestHasSubstantialDocstring:
     def test_file_with_long_docstring(self, tmp_path):
         f = tmp_path / "mod.py"
-        f.write_text('"""This module provides substantial functionality for the project."""\nx = 1\n')
+        f.write_text(
+            '"""This module provides substantial functionality for the project."""\nx = 1\n'
+        )
         assert _has_substantial_docstring(str(f)) is True
 
     def test_file_with_short_docstring(self, tmp_path):

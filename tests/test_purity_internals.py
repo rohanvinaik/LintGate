@@ -12,14 +12,13 @@ from __future__ import annotations
 import ast
 
 from lintgate.linters.performance_checks.purity import (
-    _PureFunctionVisitor,
     _check_called_impurity,
     _compute_pure_confidence,
     _get_parameter_count,
     _propagate_impurity,
+    _PureFunctionVisitor,
     analyze_purity,
 )
-
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -28,8 +27,7 @@ def _parse_func(code: str, name: str | None = None) -> ast.FunctionDef | ast.Asy
     """Parse code and return the first (or named) FunctionDef."""
     tree = ast.parse(code)
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if name is None or node.name == name:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (name is None or node.name == name):
                 return node
     raise ValueError(f"No function {name!r} found")
 
@@ -97,9 +95,7 @@ class TestGetParameterCount:
         assert _get_parameter_count(node) == 6
 
     def test_self_counted_for_method(self):
-        node = _parse_func(
-            "class C:\n    def m(self, x): pass", name="m"
-        )
+        node = _parse_func("class C:\n    def m(self, x): pass", name="m")
         assert _get_parameter_count(node) == 2
 
     def test_async_function(self):
@@ -143,9 +139,7 @@ class TestComputePureConfidence:
         assert _compute_pure_confidence(visitor, {}) == 0.80
 
     def test_two_unresolved_lowercase_returns_0_80(self):
-        visitor = _make_visitor(
-            "def f(x): return step_a(step_b(x))"
-        )
+        visitor = _make_visitor("def f(x): return step_a(step_b(x))")
         assert _compute_pure_confidence(visitor, {}) == 0.80
 
     def test_three_unresolved_lowercase_returns_0_65(self):
@@ -201,10 +195,7 @@ class TestCheckCalledImpurity:
         assert result is None
 
     def test_same_module_impure_returns_side_effect(self):
-        code = (
-            "def impure():\n    global g\n    g = 1\n"
-            "def f(): return impure()"
-        )
+        code = "def impure():\n    global g\n    g = 1\ndef f(): return impure()"
         functions = self._build_functions(code)
         node = functions["f"][0]
         result = _check_called_impurity("impure", functions, node)
@@ -265,10 +256,7 @@ class TestPropagateImpurity:
         assert len(functions["f"][1].side_effects) == 1
 
     def test_transitive_one_hop(self):
-        code = (
-            "def impure():\n    global g\n    g = 1\n\n"
-            "def caller(): return impure()"
-        )
+        code = "def impure():\n    global g\n    g = 1\n\ndef caller(): return impure()"
         functions = self._build_functions(code)
         assert functions["caller"][1].side_effects == []
         _propagate_impurity(functions)
@@ -288,11 +276,7 @@ class TestPropagateImpurity:
         assert "mid" in functions["top"][1].side_effects[0].detail
 
     def test_pure_chain_unchanged(self):
-        code = (
-            "def a(x): return x + 1\n"
-            "def b(x): return a(x)\n"
-            "def c(x): return b(x)"
-        )
+        code = "def a(x): return x + 1\ndef b(x): return a(x)\ndef c(x): return b(x)"
         functions = self._build_functions(code)
         _propagate_impurity(functions)
         for name in ("a", "b", "c"):
@@ -384,8 +368,7 @@ class TestVisitorStateTracking:
     def test_yield_from_produces_side_effect(self):
         visitor = _make_visitor("def f(items):\n    yield from items")
         assert any(
-            se.kind == "generator" and se.node_type == "YieldFrom"
-            for se in visitor.side_effects
+            se.kind == "generator" and se.node_type == "YieldFrom" for se in visitor.side_effects
         )
 
 

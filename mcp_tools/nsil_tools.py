@@ -15,7 +15,7 @@ def register(mcp, helpers):
     """Register NSIL tools on the shared MCP server instance."""
 
     @mcp.tool()
-    def nsil_inference_snapshot(project_root: str = None) -> str:
+    def nsil_inference_snapshot(project_root: str | None = None) -> str:
         """
         Produce a point-in-time snapshot of the agent's inference context.
         Projected directly from ControlPlane semantic memory.
@@ -36,16 +36,21 @@ def register(mcp, helpers):
 
         from lintgate.renderers.nsil.projection import project_snapshot
 
+        if config is None:
+            return json.dumps(
+                {"error": "No ControlPlane config found. Ensure .claude/lintgate.yaml exists."}
+            )
+
         snapshot = project_snapshot(session, config, current_task="NSIL observation")
 
-        return helpers["_json_dumps"](asdict(snapshot))
+        return helpers["_json_dumps"](asdict(snapshot))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def nsil_verify_action(
         action_type: str,
         target: str = "",
         content: str = "",
-        project_root: str = None,
+        project_root: str | None = None,
     ) -> str:
         """
         Verify an action against behavioral constraints and gate contracts.
@@ -93,11 +98,11 @@ def register(mcp, helpers):
             active_constraints=active_constraints,
         )
 
-        return helpers["_json_dumps"](asdict(result))
+        return helpers["_json_dumps"](asdict(result))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def nsil_export_training_data(
-        project_root: str = None,
+        project_root: str | None = None,
         output_file: str = "nsil_training_data.jsonl",
     ) -> str:
         """
@@ -154,7 +159,7 @@ def register(mcp, helpers):
                     + "\n"
                 )
 
-        return helpers["_json_dumps"](
+        return helpers["_json_dumps"](  # type: ignore[no-any-return]
             {
                 "status": "success",
                 "exported_count": len(examples),
@@ -165,7 +170,7 @@ def register(mcp, helpers):
 
     @mcp.tool()
     def nsil_benchmark(
-        project_root: str = None,
+        project_root: str | None = None,
     ) -> str:
         """
         Run NSIL enforcement benchmarks.
@@ -220,7 +225,7 @@ def register(mcp, helpers):
         passed = sum(1 for r in results if r.passed)
         avg_latency = sum(r.latency_ms for r in results) / total if total > 0 else 0
 
-        return helpers["_json_dumps"](
+        return helpers["_json_dumps"](  # type: ignore[no-any-return]
             {
                 "status": "success",
                 "metrics": {

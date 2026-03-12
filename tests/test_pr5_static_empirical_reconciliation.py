@@ -33,62 +33,72 @@ class TestBuildOverlayStatus:
         assert overlay.status == OverlayStatus.NO_EMPIRICAL_DATA
 
     def test_discovery_failure_no_test_files(self):
-        cache = {"mod.py::f": {
-            "discovery_state": "NO_TEST_FILES",
-            "topology_state": "TOPOLOGY_UNKNOWN",
-            "survival_interpretation": "DISCOVERY_ARTIFACT",
-            "total_mutants": 8,
-            "survival_rate": 1.0,
-        }}
+        cache = {
+            "mod.py::f": {
+                "discovery_state": "NO_TEST_FILES",
+                "topology_state": "TOPOLOGY_UNKNOWN",
+                "survival_interpretation": "DISCOVERY_ARTIFACT",
+                "total_mutants": 8,
+                "survival_rate": 1.0,
+            }
+        }
         overlay = build_overlay("mod.py::f", 10, "A", "bulk", cache)
         assert overlay.status == OverlayStatus.DISCOVERY_FAILURE
         assert overlay.overlay_confidence == 0.2
         assert "NO_TEST_FILES" in overlay.overlay_rationale
 
     def test_discovery_failure_import_failed(self):
-        cache = {"mod.py::f": {
-            "discovery_state": "DISCOVERY_IMPORT_FAILED",
-            "topology_state": "TOPOLOGY_UNKNOWN",
-            "survival_interpretation": "DISCOVERY_ARTIFACT",
-            "total_mutants": 5,
-            "survival_rate": 1.0,
-        }}
+        cache = {
+            "mod.py::f": {
+                "discovery_state": "DISCOVERY_IMPORT_FAILED",
+                "topology_state": "TOPOLOGY_UNKNOWN",
+                "survival_interpretation": "DISCOVERY_ARTIFACT",
+                "total_mutants": 5,
+                "survival_rate": 1.0,
+            }
+        }
         overlay = build_overlay("mod.py::f", 10, "A", "bulk", cache)
         assert overlay.status == OverlayStatus.DISCOVERY_FAILURE
 
     def test_topology_limited_mock_dominant(self):
-        cache = {"mod.py::f": {
-            "discovery_state": "DISCOVERY_OK",
-            "topology_state": "MOCK_BOUNDARY_DOMINANT",
-            "survival_interpretation": "MOCK_BOUNDARY_ARTIFACT",
-            "total_mutants": 12,
-            "survival_rate": 0.8,
-        }}
+        cache = {
+            "mod.py::f": {
+                "discovery_state": "DISCOVERY_OK",
+                "topology_state": "MOCK_BOUNDARY_DOMINANT",
+                "survival_interpretation": "MOCK_BOUNDARY_ARTIFACT",
+                "total_mutants": 12,
+                "survival_rate": 0.8,
+            }
+        }
         overlay = build_overlay("mod.py::f", 10, "A", "bulk", cache)
         assert overlay.status == OverlayStatus.TOPOLOGY_LIMITED
         assert overlay.overlay_confidence == 0.3
         assert "mock" in overlay.overlay_rationale.lower()
 
     def test_agrees_when_consistent(self):
-        cache = {"mod.py::f": {
-            "discovery_state": "DISCOVERY_OK",
-            "topology_state": "NORMAL",
-            "survival_interpretation": "MEANINGFUL",
-            "total_mutants": 12,
-            "survival_rate": 0.4,
-        }}
+        cache = {
+            "mod.py::f": {
+                "discovery_state": "DISCOVERY_OK",
+                "topology_state": "NORMAL",
+                "survival_interpretation": "MEANINGFUL",
+                "total_mutants": 12,
+                "survival_rate": 0.4,
+            }
+        }
         overlay = build_overlay("mod.py::f", 10, "A", "bulk", cache)
         assert overlay.status == OverlayStatus.AGREES
 
     def test_contradicts_when_divergent(self):
         # Static says sigma=5 (small), empirical has 50 mutants (10x ratio)
-        cache = {"mod.py::f": {
-            "discovery_state": "DISCOVERY_OK",
-            "topology_state": "NORMAL",
-            "survival_interpretation": "MEANINGFUL",
-            "total_mutants": 50,
-            "survival_rate": 0.8,
-        }}
+        cache = {
+            "mod.py::f": {
+                "discovery_state": "DISCOVERY_OK",
+                "topology_state": "NORMAL",
+                "survival_interpretation": "MEANINGFUL",
+                "total_mutants": 50,
+                "survival_rate": 0.8,
+            }
+        }
         overlay = build_overlay("mod.py::f", 5, "A", "bulk", cache)
         assert overlay.status == OverlayStatus.CONTRADICTS
         assert "divergence" in overlay.overlay_rationale.lower()

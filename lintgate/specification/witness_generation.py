@@ -181,7 +181,8 @@ def _infer_input_from_diff(diff: str, fallback: str) -> str:
 
     # Look for numeric constants in the diff that hint at boundary values
     import re
-    numbers = re.findall(r'\b(\d+(?:\.\d+)?)\b', diff)
+
+    numbers = re.findall(r"\b(\d+(?:\.\d+)?)\b", diff)
     if numbers:
         vals = sorted(set(numbers))[:3]
         return f"values near {', '.join(vals)} (derived from mutated constants)"

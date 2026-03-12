@@ -129,7 +129,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
     @mcp.tool()
     def mutation_refactor_loop(
-        path: str, file: str = "", function: str | None = None,
+        path: str,
+        file: str = "",
+        function: str | None = None,
         budget_ms: float = 300_000,
     ) -> str:
         """Re-profile after test improvement — close the feedback loop.
@@ -161,7 +163,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
     @mcp.tool()
     def mutation_validate_tests(
-        path: str, file: str = "", function: str | None = None,
+        path: str,
+        file: str = "",
+        function: str | None = None,
         budget_ms: float = 300_000,
     ) -> str:
         """Re-sample and compute per-category survival deltas.

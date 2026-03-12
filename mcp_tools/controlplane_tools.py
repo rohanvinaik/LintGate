@@ -120,7 +120,7 @@ def register(mcp, helpers):
                 Use "full_sweep" for project-wide refactoring (no 50-file cap).
             files: Explicit list of files to analyze when scope="files".
         """
-        return _impl_controlplane_run(path, channels, strictness, scope, files, helpers)
+        return _impl_controlplane_run(path, channels, strictness, scope, files, helpers)  # type: ignore[no-any-return]
 
     @mcp.tool()
     def controlplane_get_details(
@@ -152,9 +152,15 @@ def register(mcp, helpers):
             time_budget_minutes: Return findings that fit within this time budget,
                 sorted by ROI. E.g., 30 = "best fixes in 30 minutes."
         """
-        return _impl_controlplane_get_details(
-            run_id, channel, severity, max_issues, sections, helpers,
-            top_n=top_n, time_budget_minutes=time_budget_minutes,
+        return _impl_controlplane_get_details(  # type: ignore[no-any-return]
+            run_id,
+            channel,
+            severity,
+            max_issues,
+            sections,
+            helpers,
+            top_n=top_n,
+            time_budget_minutes=time_budget_minutes,
         )
 
     @mcp.tool()
@@ -164,7 +170,7 @@ def register(mcp, helpers):
         Shows whether ControlPlane is enabled, which channels are configured,
         and the current config settings.
         """
-        return _impl_controlplane_status(path, helpers)
+        return _impl_controlplane_status(path, helpers)  # type: ignore[no-any-return]
 
     @mcp.tool()
     def controlplane_test_skeleton(
@@ -306,7 +312,7 @@ def register(mcp, helpers):
                 ``classification`` ("stale_test", "known_regression", "flaky", "out_of_scope"),
                 ``rationale`` (why this classification applies).
         """
-        return _impl_controlplane_agent_feedback(
+        return _impl_controlplane_agent_feedback(  # type: ignore[no-any-return]
             path,
             run_id,
             disagreement,
@@ -332,7 +338,7 @@ def register(mcp, helpers):
             action_ids: Specific action IDs to execute. If None, executes all safe pending repairs.
             safe_only: Only execute repairs marked as safe (default True).
         """
-        return _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers)
+        return _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers)  # type: ignore[no-any-return]
 
     @mcp.tool()
     def controlplane_get_work_queue(

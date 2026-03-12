@@ -115,8 +115,11 @@ class TestBuildKilledRecord:
             mutant_id="BOUNDARY_0",
         )
         result = MutantResult(
-            mutant=mutant, killed=True, killed_by="assertion",
-            test_name="test_boundary", elapsed_ms=5.0,
+            mutant=mutant,
+            killed=True,
+            killed_by="assertion",
+            test_name="test_boundary",
+            elapsed_ms=5.0,
         )
         record = build_killed_record(result)
 
@@ -140,8 +143,11 @@ class TestProfilingRecords:
             mutated_func(5)
 
         result = run_function_profiling(
-            func, "test.py::f", {MutationCategory.VALUE},
-            [weak_test], original,
+            func,
+            "test.py::f",
+            {MutationCategory.VALUE},
+            [weak_test],
+            original,
         )
         assert result.total_survived >= 1
         assert len(result.survivor_records) >= 1
@@ -158,8 +164,11 @@ class TestProfilingRecords:
             assert mutated_func(0) == 1
 
         result = run_function_profiling(
-            func, "test.py::f", {MutationCategory.VALUE},
-            [test_fn], original,
+            func,
+            "test.py::f",
+            {MutationCategory.VALUE},
+            [test_fn],
+            original,
         )
         assert result.total_killed >= 1
         assert len(result.killed_records) >= 1
@@ -176,8 +185,11 @@ class TestProfilingRecords:
             mutated_func(5)
 
         result = run_function_profiling(
-            func, "test.py::f", {MutationCategory.VALUE},
-            [weak_test], original,
+            func,
+            "test.py::f",
+            {MutationCategory.VALUE},
+            [weak_test],
+            original,
         )
         d = result.to_dict()
         if result.total_survived > 0:

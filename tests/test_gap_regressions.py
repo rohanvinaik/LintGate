@@ -96,13 +96,10 @@ class TestGapASurfaceWiring:
     def test_dynamic_landscape_yields_convergence(self, tmp_path):
         """Dynamic mode with surface='mcp' produces non-empty convergence."""
         (tmp_path / "mod.py").write_text(
-            "def compute(x, y):\n    return x + y\n\n"
-            "def process(data):\n    return len(data)\n"
+            "def compute(x, y):\n    return x + y\n\ndef process(data):\n    return len(data)\n"
         )
         (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_mod.py").write_text(
-            "def test_compute():\n    assert True\n"
-        )
+        (tmp_path / "tests" / "test_mod.py").write_text("def test_compute():\n    assert True\n")
 
         from mcp_tools.convergence_tools import _impl_optimization_landscape
 
@@ -279,7 +276,8 @@ class TestGapCStaticLandscapeFidelity:
         result = _build_static_landscape(str(tmp_path))
 
         detector_opps = [
-            o for o in result.get("parallel_opportunities", [])
+            o
+            for o in result.get("parallel_opportunities", [])
             if o.get("pattern") != "MANIFEST_HINT"
         ]
         for opp in detector_opps:
@@ -290,12 +288,8 @@ class TestGapCStaticLandscapeFidelity:
     def test_cache_dedupe_by_source_file_and_function(self, tmp_path):
         """Cache hotspots with same function name but different source files are preserved."""
         # Create two modules with same-named function
-        (tmp_path / "module_a.py").write_text(
-            "def compute(x):\n    return x + 1\n"
-        )
-        (tmp_path / "module_b.py").write_text(
-            "def compute(x):\n    return x * 2\n"
-        )
+        (tmp_path / "module_a.py").write_text("def compute(x):\n    return x + 1\n")
+        (tmp_path / "module_b.py").write_text("def compute(x):\n    return x * 2\n")
 
         from mcp_tools.convergence_tools import _build_static_landscape
 
@@ -314,9 +308,7 @@ class TestGapCStaticLandscapeFidelity:
 
     def test_cache_dedupe_same_file_dedupes(self, tmp_path):
         """Same (source_file, function) pair is properly deduped."""
-        (tmp_path / "mod.py").write_text(
-            "def compute(x):\n    return x + 1\n"
-        )
+        (tmp_path / "mod.py").write_text("def compute(x):\n    return x + 1\n")
 
         from mcp_tools.convergence_tools import _build_static_landscape
 
@@ -439,10 +431,7 @@ class TestP3TopNValidation:
         details = {
             "channels": {
                 "lint": {
-                    "findings": [
-                        {"severity": "warning", "message": f"w{i}"}
-                        for i in range(5)
-                    ]
+                    "findings": [{"severity": "warning", "message": f"w{i}"} for i in range(5)]
                 }
             }
         }
@@ -455,13 +444,7 @@ class TestP3TopNValidation:
         """top_n=0 should return 0 findings."""
         from mcp_tools._controlplane_impl_details import _extract_findings
 
-        details = {
-            "channels": {
-                "lint": {
-                    "findings": [{"severity": "warning", "message": "w1"}]
-                }
-            }
-        }
+        details = {"channels": {"lint": {"findings": [{"severity": "warning", "message": "w1"}]}}}
         result = _extract_findings(details, None, None, 10, top_n=0)
         assert len(result["findings"]) == 0
 
@@ -577,9 +560,7 @@ class TestP2DynamicLandscapeScoping:
         """Dynamic path sets event.context['python_files'] with production-filtered list."""
         (tmp_path / "core.py").write_text("def compute(x):\n    return x + 1\n")
         (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_core.py").write_text(
-            "def test_compute():\n    assert True\n"
-        )
+        (tmp_path / "tests" / "test_core.py").write_text("def test_compute():\n    assert True\n")
 
         # Inspect the source to verify context pre-population
         import ast
@@ -623,9 +604,7 @@ class TestP2DynamicLandscapeScoping:
         """Runtime prepass uses pre-populated python_files instead of rediscovering."""
         (tmp_path / "core.py").write_text("def f(x):\n    return x + 1\n")
         (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_core.py").write_text(
-            "def test_f():\n    assert True\n"
-        )
+        (tmp_path / "tests" / "test_core.py").write_text("def test_f():\n    assert True\n")
 
         from lintgate.controlplane.types import SupervisionEvent
 

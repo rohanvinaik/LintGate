@@ -76,7 +76,13 @@ class TestBuildActionPlan:
             ("mod.py::g", {"specification_level": 0.4, "phase": "transition"}),
         ]
         prescriptions = [
-            {"function": "mod.py::g", "category": "BOUNDARY", "why_this_matters": "Off-by-one", "assertion_shape": "", "confidence": 0.85},
+            {
+                "function": "mod.py::g",
+                "category": "BOUNDARY",
+                "why_this_matters": "Off-by-one",
+                "assertion_shape": "",
+                "confidence": 0.85,
+            },
         ]
         plan = _build_action_plan(targets, prescriptions)
         assert len(plan) == 2

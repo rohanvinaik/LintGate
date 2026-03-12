@@ -235,14 +235,16 @@ class TestBuildPosttoolusContext:
             channel_results=[],
             coherence=CoherenceResult(state="coupled"),
         )
-        ctx = _build_posttooluse_context(PostToolUseInputs(
-            mesh_result=mesh,
-            blocking_count=1,
-            warning_count=0,
-            informational_count=0,
-            hidden_findings=0,
-            channels_run=5,
-        ))
+        ctx = _build_posttooluse_context(
+            PostToolUseInputs(
+                mesh_result=mesh,
+                blocking_count=1,
+                warning_count=0,
+                informational_count=0,
+                hidden_findings=0,
+                channels_run=5,
+            )
+        )
         assert "coherence=coupled" in ctx
 
     def test_none_input_raises(self):

@@ -61,9 +61,15 @@ class TestPhaseClassification:
 class TestTeachingSetUpperBound:
     def test_counts_non_redundant_steps(self):
         steps = [
-            ConvergenceStep("t1", new_kills=3, delta_spec=0.3, cumulative_spec=0.3, meets_bound=True),
-            ConvergenceStep("t2", new_kills=2, delta_spec=0.2, cumulative_spec=0.5, meets_bound=True),
-            ConvergenceStep("t3", new_kills=0, delta_spec=0.0, cumulative_spec=0.5, meets_bound=True),
+            ConvergenceStep(
+                "t1", new_kills=3, delta_spec=0.3, cumulative_spec=0.3, meets_bound=True
+            ),
+            ConvergenceStep(
+                "t2", new_kills=2, delta_spec=0.2, cumulative_spec=0.5, meets_bound=True
+            ),
+            ConvergenceStep(
+                "t3", new_kills=0, delta_spec=0.0, cumulative_spec=0.5, meets_bound=True
+            ),
         ]
         conv = _make_convergence(steps=steps, redundant_tests=["t3"])
         traj = analyze_trajectory(conv, total_mutants=10, survival_rate=0.5)
@@ -82,8 +88,12 @@ class TestTailOnset:
     def test_detects_tail_when_delta_drops(self):
         # sigma_ub = 10, threshold = 0.1
         steps = [
-            ConvergenceStep("t1", new_kills=5, delta_spec=0.5, cumulative_spec=0.5, meets_bound=True),
-            ConvergenceStep("t2", new_kills=1, delta_spec=0.05, cumulative_spec=0.55, meets_bound=False),
+            ConvergenceStep(
+                "t1", new_kills=5, delta_spec=0.5, cumulative_spec=0.5, meets_bound=True
+            ),
+            ConvergenceStep(
+                "t2", new_kills=1, delta_spec=0.05, cumulative_spec=0.55, meets_bound=False
+            ),
         ]
         conv = _make_convergence(steps=steps)
         traj = analyze_trajectory(conv, total_mutants=10, survival_rate=0.45)
@@ -91,8 +101,12 @@ class TestTailOnset:
 
     def test_no_tail_when_all_above_threshold(self):
         steps = [
-            ConvergenceStep("t1", new_kills=5, delta_spec=0.5, cumulative_spec=0.5, meets_bound=True),
-            ConvergenceStep("t2", new_kills=3, delta_spec=0.3, cumulative_spec=0.8, meets_bound=True),
+            ConvergenceStep(
+                "t1", new_kills=5, delta_spec=0.5, cumulative_spec=0.5, meets_bound=True
+            ),
+            ConvergenceStep(
+                "t2", new_kills=3, delta_spec=0.3, cumulative_spec=0.8, meets_bound=True
+            ),
         ]
         conv = _make_convergence(steps=steps)
         traj = analyze_trajectory(conv, total_mutants=10, survival_rate=0.2)
@@ -127,8 +141,10 @@ class TestTrajectorySummary:
 class TestTrajectoryToDict:
     def test_basic_fields(self):
         result = TrajectoryResult(
-            function_key="f", sigma_upper_bound=10,
-            teaching_set_upper_bound=3, phase="bulk",
+            function_key="f",
+            sigma_upper_bound=10,
+            teaching_set_upper_bound=3,
+            phase="bulk",
         )
         d = result.to_dict()
         assert d["sigma_upper_bound"] == 10
@@ -152,22 +168,30 @@ class TestPostProfilingTrajectory:
     def test_trajectory_in_analysis_output(self):
         from mcp_tools._mutation_impl import run_post_profiling_analysis
 
-        results = [{
-            "function_key": "test.py::f",
-            "coverage_depth": "profiled",
-            "categories_tested": 1,
-            "total_mutants": 1,
-            "total_killed": 1,
-            "total_survived": 0,
-            "survival_rate": 0.0,
-            "per_category": [{
-                "category": "VALUE", "total": 1, "killed": 1,
-                "survived": 0, "killed_by_assertion": 1, "killed_by_crash": 0,
-            }],
-            "kill_matrix": {"VALUE_0: replace constant": ["test_f"]},
-            "is_pure": False,
-            "parameter_count": 1,
-        }]
+        results = [
+            {
+                "function_key": "test.py::f",
+                "coverage_depth": "profiled",
+                "categories_tested": 1,
+                "total_mutants": 1,
+                "total_killed": 1,
+                "total_survived": 0,
+                "survival_rate": 0.0,
+                "per_category": [
+                    {
+                        "category": "VALUE",
+                        "total": 1,
+                        "killed": 1,
+                        "survived": 0,
+                        "killed_by_assertion": 1,
+                        "killed_by_crash": 0,
+                    }
+                ],
+                "kill_matrix": {"VALUE_0: replace constant": ["test_f"]},
+                "is_pure": False,
+                "parameter_count": 1,
+            }
+        ]
         analysis = run_post_profiling_analysis(results, {})
         assert "trajectory" in analysis
         assert len(analysis["trajectory"]) == 1

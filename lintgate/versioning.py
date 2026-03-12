@@ -543,11 +543,12 @@ def _verify_environment(python_exec: str) -> dict[str, Any]:
         }
 
 
-def _tail(text: str, max_chars: int = 1200) -> str:
+def _tail(text: str | bytes, max_chars: int = 1200) -> str:
     """Return the trailing slice of potentially long command output."""
-    if len(text) <= max_chars:
-        return text
-    return text[-max_chars:]
+    decoded = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
+    if len(decoded) <= max_chars:
+        return decoded
+    return decoded[-max_chars:]
 
 
 def format_version_audit_summary(audit: dict[str, Any]) -> dict[str, Any]:

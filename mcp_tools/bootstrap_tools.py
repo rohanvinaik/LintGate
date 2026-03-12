@@ -38,7 +38,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         pipeline = BootstrapPipeline(project_root)
         result = pipeline.run(dry_run=dry_run, force=force)
 
-        return helpers["_json_dumps"](result.to_dict())
+        return helpers["_json_dumps"](result.to_dict())  # type: ignore[no-any-return]
 
     @mcp.tool()
     def bootstrap_status(path: str) -> str:
@@ -57,7 +57,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         from lintgate.orchestration.bootstrap_state import BootstrapState
 
         state = BootstrapState.load(project_root)
-        return helpers["_json_dumps"](state.to_summary())
+        return helpers["_json_dumps"](state.to_summary())  # type: ignore[no-any-return]
 
     return {
         "bootstrap_tests": bootstrap_tests,

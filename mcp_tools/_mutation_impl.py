@@ -70,8 +70,9 @@ class MutationContext:
 
 
 def _find_qualified_method(
-    tree: ast.Module, qualified_name: str,
-) -> tuple[ast.FunctionDef | None, str | None]:
+    tree: ast.Module,
+    qualified_name: str,
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef | None, str | None]:
     """Walk class hierarchy for a dotted name like 'Class.method'.
 
     Returns (func_node, error_message). One of them is always None.
@@ -81,27 +82,33 @@ def _find_qualified_method(
     scope: ast.AST = tree
     for class_name in parts[:-1]:
         match = next(
-            (c for c in getattr(scope, "body", [])
-             if isinstance(c, ast.ClassDef) and c.name == class_name),
+            (
+                c
+                for c in getattr(scope, "body", [])
+                if isinstance(c, ast.ClassDef) and c.name == class_name
+            ),
             None,
         )
         if match is None:
             return None, f"Class '{class_name}' not found"
         scope = match
-    match = next(
-        (c for c in getattr(scope, "body", [])
-         if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
-         and c.name == method_name),
+    func_match: ast.FunctionDef | ast.AsyncFunctionDef | None = next(
+        (
+            c
+            for c in getattr(scope, "body", [])
+            if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)) and c.name == method_name
+        ),
         None,
     )
-    if match is not None:
-        return match, None
+    if func_match is not None:
+        return func_match, None
     return None, f"Method '{method_name}' not found in class chain"
 
 
 def _find_toplevel_function(
-    tree: ast.Module, name: str,
-) -> ast.FunctionDef | None:
+    tree: ast.Module,
+    name: str,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     """Find a function/async function by name anywhere in the AST."""
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
@@ -113,7 +120,7 @@ def resolve_function(
     project_root: str,
     file: str,
     function: str | None,
-) -> tuple[str, ast.FunctionDef | None, str | None]:
+) -> tuple[str, ast.FunctionDef | ast.AsyncFunctionDef | None, str | None]:
     """Resolve file and optionally find a function node.
 
     Returns (full_path, func_node_or_None, error_or_None).
@@ -143,9 +150,9 @@ def resolve_function(
     return full, None, f"Function '{function}' not found in {file}"
 
 
-def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef]]:
+def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     """Walk AST yielding (qualname, node) for each function."""
-    results: list[tuple[str, ast.FunctionDef]] = []
+    results: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
 
     def _walk(scope: ast.AST, prefix: str) -> None:
         for node in getattr(scope, "body", []):
@@ -183,7 +190,8 @@ def load_cached_state(cache_dir: Path, func_key: str) -> dict | None:
         return None
     try:
         with open(cache_file, encoding="utf-8") as f:
-            return json.load(f)
+            result: dict[str, Any] = json.load(f)
+            return result
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -366,7 +374,9 @@ def _rank_test_files(test_files: list[str], source_file: str | None) -> list[str
 
 
 def _extract_test_callables_from_module(
-    mod: Any, tf: str, diag: DiscoveryDiagnostics | None,
+    mod: Any,
+    tf: str,
+    diag: DiscoveryDiagnostics | None,
 ) -> list[Any]:
     """Extract test functions and class-based test methods from a loaded module."""
     callables: list[Any] = []
@@ -376,13 +386,18 @@ def _extract_test_callables_from_module(
             continue
         if name.startswith("test_") and callable(obj):
             callables.append(obj)
-        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(mod, "__name__", ""):
+        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(
+            mod, "__name__", ""
+        ):
             callables.extend(_extract_class_test_methods(obj, name, tf, diag))
     return callables
 
 
 def _extract_class_test_methods(
-    cls: type, cls_name: str, tf: str, diag: DiscoveryDiagnostics | None,
+    cls: type,
+    cls_name: str,
+    tf: str,
+    diag: DiscoveryDiagnostics | None,
 ) -> list[Any]:
     """Extract test_* bound methods from a test class via fresh instance."""
     method_names = [m for m in dir(cls) if m.startswith("test_")]
@@ -398,7 +413,8 @@ def _extract_class_test_methods(
 
 
 def _load_all_tests_from_files(
-    test_files: list[str], diag: DiscoveryDiagnostics | None = None,
+    test_files: list[str],
+    diag: DiscoveryDiagnostics | None = None,
 ) -> list[Any]:
     """Import all test_ functions from the given test files.
 
@@ -420,7 +436,8 @@ def _load_all_tests_from_files(
 
 
 def _import_test_functions(
-    refs: list[Any], diag: DiscoveryDiagnostics | None = None,
+    refs: list[Any],
+    diag: DiscoveryDiagnostics | None = None,
 ) -> list[Any]:
     """Import test functions from TestReference objects.
 
@@ -495,7 +512,7 @@ def _try_import_module(filepath: str) -> Any:
     mod_name = f"_mutation_test_{os.path.basename(filepath).replace('.py', '')}"
     spec = importlib.util.spec_from_file_location(mod_name, filepath)
     if spec is None or spec.loader is None:
-        if path_added:
+        if path_added and project_root is not None:
             sys.path.remove(project_root)
         return None
     try:
@@ -606,9 +623,11 @@ def _run_single(
     cats = filter_fn(node, is_pure=is_pure)
     func_key = key_fn(ctx.rel_path, func_name)
     bare_name = func_name.split(".")[-1]
-    tests, discovery_diag = load_test_callables(ctx.test_files, bare_name, source_file=ctx.full_path)
+    tests, discovery_diag = load_test_callables(
+        ctx.test_files, bare_name, source_file=ctx.full_path
+    )
     sr = runner(node, func_key, cats, tests, lambda *a: None)
-    result_dict = sr.to_dict()
+    result_dict: dict[str, Any] = sr.to_dict()
     result_dict["tests_loaded"] = len(tests)
     result_dict["is_pure"] = is_pure
     result_dict["parameter_count"] = len(getattr(node, "args", _EMPTY_ARGS).args)
@@ -638,7 +657,9 @@ def _run_single(
     result_dict["topology_confidence"] = topology_result.topology_confidence
 
     survival_rate = result_dict.get("survival_rate", 0.0)
-    interpretation = interpret_survival(discovery_state, topology_result.topology_state, survival_rate)
+    interpretation = interpret_survival(
+        discovery_state, topology_result.topology_state, survival_rate
+    )
     result_dict["survival_interpretation"] = interpretation.value
 
     if topology_result.patched_symbols:

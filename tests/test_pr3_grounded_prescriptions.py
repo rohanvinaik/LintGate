@@ -130,17 +130,21 @@ class TestCollectPrescriptions:
     def test_uses_survivor_records_when_available(self):
         from mcp_tools._mutation_tools_impl import _collect_prescriptions
 
-        states = [{
-            "function_key": "mod.py::f",
-            "per_category": [{"category": "VALUE", "survived": 1, "survival_rate": 1.0}],
-            "survivor_records": [{
-                "mutant_id": "VALUE_0",
-                "category": "VALUE",
-                "description": "VALUE_0: replace constant",
-                "diff_summary": "- 1\n+ 0",
-                "status": "survived",
-            }],
-        }]
+        states = [
+            {
+                "function_key": "mod.py::f",
+                "per_category": [{"category": "VALUE", "survived": 1, "survival_rate": 1.0}],
+                "survivor_records": [
+                    {
+                        "mutant_id": "VALUE_0",
+                        "category": "VALUE",
+                        "description": "VALUE_0: replace constant",
+                        "diff_summary": "- 1\n+ 0",
+                        "status": "survived",
+                    }
+                ],
+            }
+        ]
         prescriptions = _collect_prescriptions(states)
         assert len(prescriptions) == 1
         rx = prescriptions[0]
@@ -151,11 +155,13 @@ class TestCollectPrescriptions:
     def test_falls_back_to_category_templates(self):
         from mcp_tools._mutation_tools_impl import _collect_prescriptions
 
-        states = [{
-            "function_key": "mod.py::g",
-            "per_category": [{"category": "BOUNDARY", "survived": 2, "survival_rate": 1.0}],
-            # No survivor_records key
-        }]
+        states = [
+            {
+                "function_key": "mod.py::g",
+                "per_category": [{"category": "BOUNDARY", "survived": 2, "survival_rate": 1.0}],
+                # No survivor_records key
+            }
+        ]
         prescriptions = _collect_prescriptions(states)
         assert len(prescriptions) == 1
         rx = prescriptions[0]
@@ -165,9 +171,11 @@ class TestCollectPrescriptions:
     def test_no_prescriptions_when_no_survivors(self):
         from mcp_tools._mutation_tools_impl import _collect_prescriptions
 
-        states = [{
-            "function_key": "mod.py::h",
-            "per_category": [{"category": "VALUE", "survived": 0}],
-        }]
+        states = [
+            {
+                "function_key": "mod.py::h",
+                "per_category": [{"category": "VALUE", "survived": 0}],
+            }
+        ]
         prescriptions = _collect_prescriptions(states)
         assert len(prescriptions) == 0

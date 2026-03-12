@@ -199,8 +199,10 @@ class TestBoundaryInference:
             spec_data={"sigma": 15, "regime": "B", "specification_level": 0.2},
         )
         if verdict.recommendation == DecompositionRecommendation.EXTRACT_BOUNDARY:
-            assert "pure computation" in verdict.responsibility_boundary.lower() or \
-                   "stateful" in verdict.responsibility_boundary.lower()
+            assert (
+                "pure computation" in verdict.responsibility_boundary.lower()
+                or "stateful" in verdict.responsibility_boundary.lower()
+            )
 
     def test_swap_and_boundary_boundary(self):
         verdict = evaluate_decomposition(
@@ -210,8 +212,10 @@ class TestBoundaryInference:
             spec_data={"sigma": 15, "regime": "B", "specification_level": 0.2},
         )
         if verdict.recommendation == DecompositionRecommendation.EXTRACT_BOUNDARY:
-            assert "parameter" in verdict.responsibility_boundary.lower() or \
-                   "boundary" in verdict.responsibility_boundary.lower()
+            assert (
+                "parameter" in verdict.responsibility_boundary.lower()
+                or "boundary" in verdict.responsibility_boundary.lower()
+            )
 
 
 # ── Benefits inference ───────────────────────────────────────────

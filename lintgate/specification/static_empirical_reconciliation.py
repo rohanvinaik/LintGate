@@ -113,7 +113,10 @@ def _reconcile(
         )
 
     # Topology limited — mocks dominate, survival is artifact
-    if topology_state == "MOCK_BOUNDARY_DOMINANT" or survival_interpretation == "MOCK_BOUNDARY_ARTIFACT":
+    if (
+        topology_state == "MOCK_BOUNDARY_DOMINANT"
+        or survival_interpretation == "MOCK_BOUNDARY_ARTIFACT"
+    ):
         return EmpiricalOverlay(
             status=OverlayStatus.TOPOLOGY_LIMITED,
             mutation_runs_seen=1,
@@ -130,12 +133,18 @@ def _reconcile(
     empirical_tail = _detect_empirical_tail(entry)
 
     agrees, rationale = _check_agreement(
-        static_sigma, static_regime, static_phase,
-        total_mutants, survival_rate, empirical_tail,
+        static_sigma,
+        static_regime,
+        static_phase,
+        total_mutants,
+        survival_rate,
+        empirical_tail,
     )
 
     confidence = _compute_overlay_confidence(
-        topology_state, survival_interpretation, total_mutants,
+        topology_state,
+        survival_interpretation,
+        total_mutants,
     )
 
     status = OverlayStatus.AGREES if agrees else OverlayStatus.CONTRADICTS
@@ -189,8 +198,7 @@ def _check_agreement(
         ratio = total_mutants / static_sigma
         if 0.3 <= ratio <= 3.0:
             parts.append(
-                f"Sigma consistent: static={static_sigma}, "
-                f"empirical mutants={total_mutants}."
+                f"Sigma consistent: static={static_sigma}, empirical mutants={total_mutants}."
             )
         else:
             contradictions.append(
@@ -203,9 +211,7 @@ def _check_agreement(
     if static_phase == empirical_phase:
         parts.append(f"Phase agrees: {static_phase}.")
     elif _phases_compatible(static_phase, empirical_phase):
-        parts.append(
-            f"Phase compatible: static={static_phase}, empirical={empirical_phase}."
-        )
+        parts.append(f"Phase compatible: static={static_phase}, empirical={empirical_phase}.")
     else:
         contradictions.append(
             f"Phase mismatch: static={static_phase}, empirical={empirical_phase}."
@@ -214,8 +220,7 @@ def _check_agreement(
     # Regime vs empirical tractability
     if static_regime == "A" and survival_rate > 0.7:
         contradictions.append(
-            f"Regime conflict: static says tractable (A) but "
-            f"survival rate is {survival_rate:.0%}."
+            f"Regime conflict: static says tractable (A) but survival rate is {survival_rate:.0%}."
         )
     elif static_regime == "B" and survival_rate < 0.1:
         parts.append("Regime-B function is well-specified empirically.")

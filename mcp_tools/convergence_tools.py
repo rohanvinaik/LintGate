@@ -11,9 +11,18 @@ from lintgate.next_action import NextAction, serialize_next_actions
 
 # Patterns for filtering non-production files from optimization targets
 _NON_PRODUCTION_PATTERNS = (
-    "test_", "tests/", "test/", "_test.py", "conftest.py",
-    "fuzz_", "fuzz/", "benchmark_", "benchmarks/",
-    "fixture", "testutil", "test_helper",
+    "test_",
+    "tests/",
+    "test/",
+    "_test.py",
+    "conftest.py",
+    "fuzz_",
+    "fuzz/",
+    "benchmark_",
+    "benchmarks/",
+    "fixture",
+    "testutil",
+    "test_helper",
 )
 
 
@@ -240,9 +249,9 @@ def _impl_extraction_plan(
     return result
 
 
-def _collect_manifest_hints(manifest: Any) -> tuple[
-    list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]
-]:
+def _collect_manifest_hints(
+    manifest: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Extract cache, parallel, and extraction hints from manifest pure functions."""
     cache_hotspots: list[dict[str, Any]] = []
     parallel_opportunities: list[dict[str, Any]] = []
@@ -262,21 +271,25 @@ def _collect_manifest_hints(manifest: Any) -> tuple[
         if "cacheable" in hints:
             cache_hotspots.append({**entry, "hints": list(hints)})
         if "parallelizable" in hints or "map-reduce-compatible" in hints:
-            parallel_opportunities.append({
-                "pattern": "MANIFEST_HINT",
-                "file": func.source_file or "",
-                "line": 0,
-                "callee": name,
-                "confidence": func.purity.confidence,
-                "constraints": [],
-                "detail": f"Manifest hints: {sorted(hints)}",
-            })
+            parallel_opportunities.append(
+                {
+                    "pattern": "MANIFEST_HINT",
+                    "file": func.source_file or "",
+                    "line": 0,
+                    "callee": name,
+                    "confidence": func.purity.confidence,
+                    "constraints": [],
+                    "detail": f"Manifest hints: {sorted(hints)}",
+                }
+            )
         if func.extraction_safety == "safe" and func.properties:
-            extraction_safe.append({
-                **entry,
-                "properties": [p.kind.value for p in func.properties],
-                "extraction_safety": func.extraction_safety,
-            })
+            extraction_safe.append(
+                {
+                    **entry,
+                    "properties": [p.kind.value for p in func.properties],
+                    "extraction_safety": func.extraction_safety,
+                }
+            )
 
     return cache_hotspots, parallel_opportunities, extraction_safe
 
@@ -296,13 +309,15 @@ def _run_detectors_on_file(
         purity = analyze_purity(tree)
         for qname, cs in score_all_cacheable(tree, purity).items():
             if cs.band in ("HIGH", "MEDIUM"):
-                cache_hotspots.append({
-                    "function": qname,
-                    "source_file": rel_path,
-                    "cache_score": cs.score,
-                    "cache_band": cs.band,
-                    "cache_factors": cs.factors,
-                })
+                cache_hotspots.append(
+                    {
+                        "function": qname,
+                        "source_file": rel_path,
+                        "cache_score": cs.score,
+                        "cache_band": cs.band,
+                        "cache_factors": cs.factors,
+                    }
+                )
     except ImportError:
         pass
 
@@ -375,8 +390,11 @@ def _build_static_landscape(
         except (OSError, SyntaxError):
             continue
         _run_detectors_on_file(
-            tree, os.path.relpath(fpath, path),
-            cache_hotspots, parallel_opportunities, jit_candidates,
+            tree,
+            os.path.relpath(fpath, path),
+            cache_hotspots,
+            parallel_opportunities,
+            jit_candidates,
         )
 
     deduped_cache = _dedupe_cache_hotspots(cache_hotspots)

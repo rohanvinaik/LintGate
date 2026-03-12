@@ -490,7 +490,7 @@ def _check_ship_gate_parity(project_root: str, strictness: str) -> dict[str, Any
             timeout=180,
         )
         try:
-            return json.loads(proc.stdout)
+            return json.loads(proc.stdout)  # type: ignore[no-any-return]
         except Exception:
             return {
                 "status": "error",
@@ -568,7 +568,7 @@ def _detect_edit_cycles(session, current_finding_index: dict) -> list[str] | Non
     for c in detected:
         if not c.cycle_detected:
             continue
-        template = _CYCLE_REASON_TEMPLATES.get(c.reason)
+        template = _CYCLE_REASON_TEMPLATES.get(c.reason) if c.reason else None
         if template:
             alerts.append(template.format_map(c.diagnostics))
     return alerts or None
@@ -826,7 +826,7 @@ def _build_run_result(ctx: _RunContext) -> str:
     if onboarding.get("config_state") != "config_enabled":
         compact["onboarding"] = onboarding
 
-    return ctx.helpers["_json_dumps"](compact, output_mode="compact")
+    return ctx.helpers["_json_dumps"](compact, output_mode="compact")  # type: ignore[no-any-return]
 
 
 def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):

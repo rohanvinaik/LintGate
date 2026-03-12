@@ -21,30 +21,6 @@ from lintgate.linters.test_effectiveness.source_mapper import (
 )
 
 
-def test_strip_test_prefix_simple():
-    """test_foo → foo."""
-    assert _strip_test_prefix("test_foo") == "foo"
-
-
-def test_strip_test_prefix_with_suffix():
-    """test_foo_returns_expected_output → foo."""
-    assert _strip_test_prefix("test_foo_returns_expected_output") == "foo"
-
-
-def test_strip_test_prefix_class_qualified():
-    """TestFoo.test_bar → bar."""
-    assert _strip_test_prefix("TestFoo.test_bar") == "bar"
-
-
-def test_strip_test_prefix_no_prefix():
-    """No test_ prefix returns as-is."""
-    assert _strip_test_prefix("helper_func") == "helper_func"
-
-
-def test_strip_test_prefix_raises_suffix():
-    """test_foo_raises_error → foo."""
-    assert _strip_test_prefix("test_foo_raises_error") == "foo"
-
 
 def test_build_source_function_index():
     """Indexes public functions from source files."""
@@ -514,13 +490,7 @@ def test_map_tests_to_source_module_alias_call_stays_module_level():
         test_path = os.path.join(tmpdir, "test_alias.py")
 
         with open(src_path, "w", encoding="utf-8") as f:
-            f.write(
-                "def foo():\n"
-                "    return 1\n\n"
-                "class X:\n"
-                "    def foo(self):\n"
-                "        return 2\n"
-            )
+            f.write("def foo():\n    return 1\n\nclass X:\n    def foo(self):\n        return 2\n")
         with open(test_path, "w", encoding="utf-8") as f:
             f.write("import a as mod\n\ndef test_module_function():\n    assert mod.foo() == 1\n")
 
@@ -565,12 +535,6 @@ def test_path_to_module_handles_relpath_value_error(monkeypatch):
     finally:
         monkeypatch.setattr(_os.path, "relpath", original)
 
-
-def test_module_and_symbol_hint_helpers_without_dots():
-    """Import helper parsing should preserve bare names without dots."""
-    assert _module_hint_from_import("foo") == "foo"
-    assert _symbol_name_from_import("foo") == "foo"
-    assert _coerce_candidate_paths(None) == []
 
 
 def test_test_function_collector_visits_async_defs():
@@ -738,3 +702,143 @@ def test_diagnostics_normalized_vs_raw():
 
         assert diag.attempted == 3
         assert diag.unique_symbols_mapped == 1
+
+
+# ── Mutation-guided tests (kill VALUE survivors) ─────────────────────
+
+
+class TestStripTestPrefixMutationKillers:
+    """Kill VALUE mutants on _strip_test_prefix suffix and index logic."""
+
+    def test_exact_prefix_length(self) -> None:
+        """Kill VALUE mutant on index 5 (test_[5:])."""
+        assert _strip_test_prefix("test_x") == "x"
+        # If index were 4, result would be "_x"; if 6, result would be ""
+        assert _strip_test_prefix("test_ab") == "ab"
+
+    def test_all_suffixes_stripped(self) -> None:
+        """Kill VALUE mutants on suffix list — each suffix must be removable."""
+        cases = {
+            "test_fn_returns_expected_output": "fn",
+            "test_fn_returns_expected": "fn",
+            "test_fn_raises_error": "fn",
+            "test_fn_raises_exception": "fn",
+            "test_fn_handles_errors_gracefully": "fn",
+            "test_fn_handles_errors": "fn",
+            "test_fn_with_valid_input": "fn",
+            "test_fn_with_invalid_input": "fn",
+            "test_fn_on_invalid_input": "fn",
+            "test_fn_with_defaults": "fn",
+            "test_fn_boundary_values": "fn",
+            "test_fn_edge_cases": "fn",
+            "test_fn_modifies_state": "fn",
+            "test_fn_is_correct": "fn",
+            "test_fn_works": "fn",
+        }
+        for test_name, expected in cases.items():
+            result = _strip_test_prefix(test_name)
+            assert result == expected, f"{test_name} → {result!r}, expected {expected!r}"
+
+    def test_suffix_not_stripped_when_candidate_empty(self) -> None:
+        """Suffix stripping skips when candidate would be empty."""
+        # "test_works" → stripped="works", suffix="_works" → candidate="" → skip → "works"
+        assert _strip_test_prefix("test_works") == "works"
+
+    def test_longest_suffix_wins(self) -> None:
+        """_returns_expected_output is longer than _returns_expected."""
+        assert _strip_test_prefix("test_fn_returns_expected_output") == "fn"
+
+    def test_class_dot_stripped_first(self) -> None:
+        """Class.test_foo → strips class, then prefix."""
+        assert _strip_test_prefix("MyClass.test_compute") == "compute"
+
+    def test_nested_dots_uses_last(self) -> None:
+        """a.b.test_foo → test_foo → foo (rsplit keeps last segment)."""
+        assert _strip_test_prefix("a.b.test_foo") == "foo"
+
+    def test_no_test_prefix_passthrough(self) -> None:
+        """Non-test names pass through unchanged."""
+        assert _strip_test_prefix("setup_fixture") == "setup_fixture"
+        assert _strip_test_prefix("") == ""
+
+
+class TestCoerceCandidatePathsMutationKillers:
+    """Kill TYPE+VALUE mutants on _coerce_candidate_paths."""
+
+    def test_none_returns_empty(self) -> None:
+        assert _coerce_candidate_paths(None) == []
+
+    def test_string_returns_singleton_list(self) -> None:
+        result = _coerce_candidate_paths("/a/b.py")
+        assert result == ["/a/b.py"]
+        assert isinstance(result, list)
+
+    def test_list_returns_copy(self) -> None:
+        original = ["/a.py", "/b.py"]
+        result = _coerce_candidate_paths(original)
+        assert result == ["/a.py", "/b.py"]
+        # Should be a new list (dict.fromkeys creates new)
+        assert result is not original
+
+    def test_list_deduplicates(self) -> None:
+        result = _coerce_candidate_paths(["/a.py", "/b.py", "/a.py"])
+        assert result == ["/a.py", "/b.py"]
+
+    def test_list_preserves_order(self) -> None:
+        result = _coerce_candidate_paths(["/b.py", "/a.py"])
+        assert result == ["/b.py", "/a.py"]
+
+    def test_empty_list(self) -> None:
+        assert _coerce_candidate_paths([]) == []
+
+    def test_single_element_list(self) -> None:
+        assert _coerce_candidate_paths(["/x.py"]) == ["/x.py"]
+
+
+class TestModuleHintFromImportMutationKillers:
+    """Kill VALUE mutants on _module_hint_from_import."""
+
+    def test_dotted_returns_module(self) -> None:
+        assert _module_hint_from_import("pkg.mod.func") == "pkg.mod"
+
+    def test_single_dot_returns_prefix(self) -> None:
+        assert _module_hint_from_import("mod.func") == "mod"
+
+    def test_no_dot_returns_itself(self) -> None:
+        assert _module_hint_from_import("func") == "func"
+
+    def test_deeply_nested(self) -> None:
+        assert _module_hint_from_import("a.b.c.d") == "a.b.c"
+
+    def test_rsplit_not_split(self) -> None:
+        """Verify rsplit (right split) — only last component removed."""
+        result = _module_hint_from_import("a.b.c")
+        assert result == "a.b"  # rsplit removes "c", keeps "a.b"
+
+
+class TestSymbolNameFromImportMutationKillers:
+    """Kill VALUE mutants on _symbol_name_from_import."""
+
+    def test_dotted_returns_symbol(self) -> None:
+        assert _symbol_name_from_import("pkg.mod.func") == "func"
+
+    def test_single_dot_returns_last(self) -> None:
+        assert _symbol_name_from_import("mod.func") == "func"
+
+    def test_no_dot_returns_itself(self) -> None:
+        assert _symbol_name_from_import("func") == "func"
+
+    def test_deeply_nested(self) -> None:
+        assert _symbol_name_from_import("a.b.c.d") == "d"
+
+    def test_rsplit_not_split(self) -> None:
+        """Verify rsplit (right split) — returns rightmost component."""
+        result = _symbol_name_from_import("a.b.c")
+        assert result == "c"
+
+    def test_module_and_symbol_are_complementary(self) -> None:
+        """module_hint + '.' + symbol_name should reconstruct the original."""
+        qualified = "lintgate.wiki.manifest.load_manifest"
+        module = _module_hint_from_import(qualified)
+        symbol = _symbol_name_from_import(qualified)
+        assert f"{module}.{symbol}" == qualified

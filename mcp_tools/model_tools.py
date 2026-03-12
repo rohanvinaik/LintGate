@@ -22,6 +22,7 @@ def register(mcp, helpers):
                 If None, returns summary of all stored profiles.
         """
         from lintgate.controlplane.model.profiles import (
+            ModelProfile,
             load_profiles,
             resolve_model_key,
         )
@@ -31,27 +32,25 @@ def register(mcp, helpers):
         if model_id is None:
             # Summary of all stored profiles
             summaries = []
-            for key, profile in store.profiles.items():
+            for key, prof in store.profiles.items():
                 status = (
                     "usable"
-                    if profile.is_usable()
-                    else ("stale" if profile.is_stale() else "low_confidence")
+                    if prof.is_usable()
+                    else ("stale" if prof.is_stale() else "low_confidence")
                 )
                 summaries.append(
                     {
                         "model_key": key,
                         "status": status,
-                        "confidence": profile.confidence,
-                        "probe_version": profile.probe_version,
-                        "probe_runs": profile.probe_runs,
-                        "telemetry_samples": profile.telemetry_samples,
-                        "signal_count": len(profile.signal_risk),
-                        "age_days": round(
-                            (__import__("time").time() - profile.updated_at) / 86400, 1
-                        ),
+                        "confidence": prof.confidence,
+                        "probe_version": prof.probe_version,
+                        "probe_runs": prof.probe_runs,
+                        "telemetry_samples": prof.telemetry_samples,
+                        "signal_count": len(prof.signal_risk),
+                        "age_days": round((__import__("time").time() - prof.updated_at) / 86400, 1),
                     }
                 )
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "profiles_count": len(summaries),
                     "profiles": summaries,
@@ -71,7 +70,7 @@ def register(mcp, helpers):
         # Specific model lookup
         canonical = resolve_model_key(model_id)
         if canonical is None:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "model_id": model_id,
                     "status": "unresolved",
@@ -86,9 +85,9 @@ def register(mcp, helpers):
                 }
             )
 
-        profile = store.profiles.get(canonical)
+        profile: ModelProfile | None = store.profiles.get(canonical)
         if profile is None:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "model_key": canonical,
                     "status": "no_profile",
@@ -144,7 +143,7 @@ def register(mcp, helpers):
                 "generate model-aware bootstrap content"
             )
         result["next_actions"] = next_actions
-        return helpers["_json_dumps"](result)
+        return helpers["_json_dumps"](result)  # type: ignore[no-any-return]
 
     @mcp.tool()
     def model_profile_probe_start(
@@ -178,7 +177,7 @@ def register(mcp, helpers):
 
         canonical = resolve_model_key(model_id)
         if canonical is None:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": f"Cannot resolve model identifier {model_id!r}.",
                     "hint": (
@@ -190,7 +189,7 @@ def register(mcp, helpers):
         try:
             tasks = get_probe_tasks(probe_set)
         except ValueError as e:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": str(e),
                     "supported_probe_sets": sorted(SUPPORTED_PROBE_SETS),
@@ -216,7 +215,7 @@ def register(mcp, helpers):
                 else ("stale" if existing.is_stale() else "low_confidence"),
             }
 
-        return helpers["_json_dumps"](
+        return helpers["_json_dumps"](  # type: ignore[no-any-return]
             {
                 "model_key": canonical,
                 "probe_version": f"v{PROBE_VERSION}",
@@ -300,7 +299,7 @@ def register(mcp, helpers):
         # Validate probe version
         expected_version = f"v{PROBE_VERSION}"
         if probe_version == "v1":
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": "Probe v1 is no longer supported.",
                     "current_version": expected_version,
@@ -314,7 +313,7 @@ def register(mcp, helpers):
                 }
             )
         if probe_version != expected_version:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": f"Unknown probe version: {probe_version!r}",
                     "expected": expected_version,
@@ -325,7 +324,7 @@ def register(mcp, helpers):
         # Validate model key
         canonical = resolve_model_key(model_id)
         if canonical is None:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": f"Cannot resolve model identifier {model_id!r}.",
                 }
@@ -333,7 +332,7 @@ def register(mcp, helpers):
 
         # Validate answers
         if not answers:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": "No answers provided.",
                     "hint": "Provide answers as {task_id: {text: '...', tool_calls: [...], ...}}.",
@@ -354,7 +353,7 @@ def register(mcp, helpers):
         valid_ids = {t.id for t in PROBE_TASKS}
         invalid_ids = set(normalized_answers.keys()) - valid_ids
         if invalid_ids:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": f"Unknown task IDs: {sorted(invalid_ids)}",
                     "valid_ids": sorted(valid_ids),
@@ -362,7 +361,7 @@ def register(mcp, helpers):
             )
 
         if len(normalized_answers) < 3:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {
                     "error": (
                         f"Minimum 3 task responses required, got {len(normalized_answers)}. "
@@ -375,7 +374,7 @@ def register(mcp, helpers):
         try:
             profile = build_profile_from_probe(model_id, normalized_answers)
         except ValueError as e:
-            return helpers["_json_dumps"]({"error": str(e)})
+            return helpers["_json_dumps"]({"error": str(e)})  # type: ignore[no-any-return]
 
         # Preserve run history on recalibration.
         existing = get_profile(model_id)
@@ -409,7 +408,7 @@ def register(mcp, helpers):
             f"model_profile_status(model_id='{model_id}') — view full profile details"
         )
 
-        return helpers["_json_dumps"](
+        return helpers["_json_dumps"](  # type: ignore[no-any-return]
             {
                 "model_key": canonical,
                 "status": status,

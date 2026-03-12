@@ -174,7 +174,9 @@ class TestFallbackTestCap:
         ):
             mock_impact.return_value.tests_for.return_value = []
             callables, diag = load_test_callables(
-                ["fake_test.py"], "some_func", max_fallback_tests=10,
+                ["fake_test.py"],
+                "some_func",
+                max_fallback_tests=10,
             )
             assert len(callables) == 10
             assert diag.fallback_used
@@ -192,7 +194,9 @@ class TestFallbackTestCap:
         ):
             mock_impact.return_value.tests_for.return_value = []
             callables, diag = load_test_callables(
-                ["fake_test.py"], "some_func", max_fallback_tests=50,
+                ["fake_test.py"],
+                "some_func",
+                max_fallback_tests=50,
             )
             assert len(callables) == 5
             assert diag.fallback_used
@@ -249,8 +253,12 @@ class TestValidateTargetsBudgetSplitting:
             mock_load.return_value = ([], DiscoveryDiagnostics())
 
             results, timed_out = _validate_targets(
-                targets, "/fake/path.py", "path.py",
-                MagicMock(), [], budget_ms=10000,
+                targets,
+                "/fake/path.py",
+                "path.py",
+                MagicMock(),
+                [],
+                budget_ms=10000,
             )
             # Both functions should have been processed
             assert len(results) == 2
@@ -283,8 +291,13 @@ class TestValidateTargetsBudgetSplitting:
             past_start = time.monotonic() - 1.0  # 1 second ago
 
             results, timed_out = _validate_targets(
-                targets, "/fake/path.py", "path.py",
-                MagicMock(), [], budget_ms=0, call_start=past_start,
+                targets,
+                "/fake/path.py",
+                "path.py",
+                MagicMock(),
+                [],
+                budget_ms=0,
+                call_start=past_start,
             )
             # Both functions should have been timed out
             assert len(timed_out) == 2

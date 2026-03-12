@@ -151,12 +151,14 @@ def _render_workflow(
 
     # concurrency
     if concurrency_prefix:
-        lines.extend([
-            "concurrency:",
-            f"  group: {concurrency_prefix}-${{{{ github.workflow }}}}-${{{{ github.ref }}}}",
-            "  cancel-in-progress: true",
-            "",
-        ])
+        lines.extend(
+            [
+                "concurrency:",
+                f"  group: {concurrency_prefix}-${{{{ github.workflow }}}}-${{{{ github.ref }}}}",
+                "  cancel-in-progress: true",
+                "",
+            ]
+        )
 
     # jobs
     lines.append("jobs:")
@@ -388,8 +390,7 @@ def _generate_quality_infra_gate_workflow() -> str:
     file_checks: list[str] = []
     for _name, rel_path in REQUIRED_ARTIFACTS.items():
         file_checks.append(
-            f'if [ ! -e "{rel_path}" ]; then '
-            f'echo "MISSING: {rel_path}"; MISSING=$((MISSING+1)); fi'
+            f'if [ ! -e "{rel_path}" ]; then echo "MISSING: {rel_path}"; MISSING=$((MISSING+1)); fi'
         )
 
     fp_checks: list[str] = []
@@ -403,15 +404,17 @@ def _generate_quality_infra_gate_workflow() -> str:
     check_lines = ["MISSING=0"]
     check_lines.extend(file_checks)
     check_lines.extend(fp_checks)
-    check_lines.extend([
-        'if [ "$MISSING" -gt 0 ]; then',
-        '  echo ""',
-        '  echo "Quality infrastructure is incomplete ($MISSING items missing)."',
-        '  echo "Fix: run setup_github_quality(path=..., write=True)"',
-        "  exit 1",
-        "fi",
-        'echo "Quality infrastructure: complete"',
-    ])
+    check_lines.extend(
+        [
+            'if [ "$MISSING" -gt 0 ]; then',
+            '  echo ""',
+            '  echo "Quality infrastructure is incomplete ($MISSING items missing)."',
+            '  echo "Fix: run setup_github_quality(path=..., write=True)"',
+            "  exit 1",
+            "fi",
+            'echo "Quality infrastructure: complete"',
+        ]
+    )
 
     return _render_workflow(
         "Quality Infrastructure Gate",

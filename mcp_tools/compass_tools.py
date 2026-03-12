@@ -26,7 +26,7 @@ def _load_mode_dict(project_root: str) -> dict[str, Any]:
         from lintgate.controlplane.session_memory import get_or_create_session
 
         session = get_or_create_session(project_root)
-        return session.behavior_compass.get("mode_state", {"current": "normal"})
+        return session.behavior_compass.get("mode_state", {"current": "normal"})  # type: ignore[no-any-return]
     except Exception:
         return {"current": "normal"}
 
@@ -421,7 +421,7 @@ def register(mcp, helpers):
 
         Example: compass_status(path="/my/project")
         """
-        return jd(_impl_status(vr(path), path))
+        return jd(_impl_status(vr(path), path))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def compass_check(path: str, action: str) -> str:
@@ -431,7 +431,7 @@ def register(mcp, helpers):
             path: Project root path.
             action: Description of the action to check.
         """
-        return jd(_impl_check(vr(path), action))
+        return jd(_impl_check(vr(path), action))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def compass_update(
@@ -456,7 +456,7 @@ def register(mcp, helpers):
         if not write:
             next_actions.append({"tool": "compass_update", "args": {"path": path, "write": True}})
         result["next_actions"] = next_actions
-        return jd(result)
+        return jd(result)  # type: ignore[no-any-return]
 
     @mcp.tool()
     def compass_interview(
@@ -471,7 +471,7 @@ def register(mcp, helpers):
             answers: Dict mapping "axis:question_idx" to answer text.
             skip: Set True to dismiss the interview recommendation.
         """
-        return jd(_impl_interview(vr(path), path, answers, skip))
+        return jd(_impl_interview(vr(path), path, answers, skip))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def compass_reset(path: str, scope: str = "compass", confirm: bool = False) -> str:
@@ -482,17 +482,17 @@ def register(mcp, helpers):
             scope: "compass" | "session" | "project" | "global".
             confirm: Set True to actually delete (default False = dry run).
         """
-        return jd(_impl_reset(vr(path), path, scope, confirm))
+        return jd(_impl_reset(vr(path), path, scope, confirm))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def theory_mode_enter(path: str) -> str:
         """Enter theory exploration mode. Normal->Theory allowed; Habit->Theory blocked."""
-        return jd(_impl_theory_enter(vr(path)))
+        return jd(_impl_theory_enter(vr(path)))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def theory_mode_freeze(path: str) -> str:
         """Freeze compass and exit theory mode to normal."""
-        return jd(_impl_theory_freeze(vr(path)))
+        return jd(_impl_theory_freeze(vr(path)))  # type: ignore[no-any-return]
 
     @mcp.tool()
     def setup_hooks(path: str, write: bool = False) -> str:
@@ -502,7 +502,7 @@ def register(mcp, helpers):
             path: Project root path.
             write: Write settings to disk (default False = preview).
         """
-        return jd(_impl_setup_hooks(vr(path), write))
+        return jd(_impl_setup_hooks(vr(path), write))  # type: ignore[no-any-return]
 
     return {
         "compass_status": compass_status,

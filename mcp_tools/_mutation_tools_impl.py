@@ -102,14 +102,12 @@ def impl_run_sampling(
 def _add_truthfulness_warnings(results: list[dict], output: dict[str, Any]) -> None:
     """Surface top-level warnings when survival is likely an artifact."""
     discovery_artifacts = [
-        r for r in results
+        r
+        for r in results
         if r.get("survival_interpretation") in ("DISCOVERY_ARTIFACT", "MOCK_BOUNDARY_ARTIFACT")
     ]
     discovery_failures = [r for r in results if r.get("discovery_failed")]
-    mock_artifacts = [
-        r for r in results
-        if r.get("topology_state") == "MOCK_BOUNDARY_DOMINANT"
-    ]
+    mock_artifacts = [r for r in results if r.get("topology_state") == "MOCK_BOUNDARY_DOMINANT"]
 
     warnings: list[str] = []
     if discovery_failures:
@@ -322,7 +320,10 @@ _CATEGORY_PERFORMANCE_MAP: dict[str, dict[str, Any]] = {
     "SWAP": {
         "unlock": "strategy_seam",
         "description": "Parameter-order or execution-order seams indicate interchangeable strategies",
-        "performance_actions": ["extract strategy interface", "enable strategy selection at call-site"],
+        "performance_actions": [
+            "extract strategy interface",
+            "enable strategy selection at call-site",
+        ],
         "cacheable_subunit": True,
         "parallelizable_subunit": True,
         "jit_eligible": False,
@@ -372,19 +373,21 @@ def _build_performance_unlocks(
             continue
         survival = survival_by_cat.get(cat, 0.5)
         confidence = min(0.9, 0.5 + survival * 0.4)
-        unlocks.append({
-            "category": cat,
-            "unlock_type": mapping["unlock"],
-            "description": mapping["description"],
-            "performance_actions": mapping["performance_actions"],
-            "predicted_subunits": {
-                "cacheable": mapping["cacheable_subunit"],
-                "parallelizable": mapping["parallelizable_subunit"],
-                "jit_eligible": mapping["jit_eligible"],
-            },
-            "confidence": round(confidence, 2),
-            "survival_rate": round(survival, 3),
-        })
+        unlocks.append(
+            {
+                "category": cat,
+                "unlock_type": mapping["unlock"],
+                "description": mapping["description"],
+                "performance_actions": mapping["performance_actions"],
+                "predicted_subunits": {
+                    "cacheable": mapping["cacheable_subunit"],
+                    "parallelizable": mapping["parallelizable_subunit"],
+                    "jit_eligible": mapping["jit_eligible"],
+                },
+                "confidence": round(confidence, 2),
+                "survival_rate": round(survival, 3),
+            }
+        )
     return unlocks
 
 
@@ -400,9 +403,7 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
     candidates: list[dict[str, Any]] = []
     for data in states:
         per_category = data.get("per_category", [])
-        surviving_cats = [
-            c["category"] for c in per_category if c.get("survived", 0) > 0
-        ]
+        surviving_cats = [c["category"] for c in per_category if c.get("survived", 0) > 0]
         if len(surviving_cats) < 2:
             continue
 
@@ -448,22 +449,28 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
 
         next_actions = []
         if rec_counts.get("EXTRACT_BOUNDARY", 0) > 0:
-            next_actions.append(NextAction(
-                tool="convergence_analyze",
-                args={"path": path, "file": file},
-                reason="See detailed multi-lens evidence for extraction candidates",
-            ))
+            next_actions.append(
+                NextAction(
+                    tool="convergence_analyze",
+                    args={"path": path, "file": file},
+                    reason="See detailed multi-lens evidence for extraction candidates",
+                )
+            )
         if rec_counts.get("KEEP_TESTING", 0) > 0:
-            next_actions.append(NextAction(
-                tool="mutation_prescribe_tests",
+            next_actions.append(
+                NextAction(
+                    tool="mutation_prescribe_tests",
+                    args={"path": path, "file": file},
+                    reason="Generate test skeletons — testing is preferred over extraction",
+                )
+            )
+        next_actions.append(
+            NextAction(
+                tool="spec_file_analyze",
                 args={"path": path, "file": file},
-                reason="Generate test skeletons — testing is preferred over extraction",
-            ))
-        next_actions.append(NextAction(
-            tool="spec_file_analyze",
-            args={"path": path, "file": file},
-            reason="Check specification gaps to strengthen decomposition evidence",
-        ))
+                reason="Check specification gaps to strengthen decomposition evidence",
+            )
+        )
         output["next_actions"] = serialize_next_actions(next_actions)
 
     return str(helpers["_json_dumps"](output, output_mode="compact"))
@@ -494,7 +501,6 @@ def _load_spec_data_for_decompose(
         return {}
 
 
-
 def impl_spec_improve(
     helpers: Any,
     path: str,
@@ -520,7 +526,9 @@ def impl_spec_improve(
     full_path = os.path.join(project_root, file) if not os.path.isabs(file) else file
 
     if not os.path.isfile(full_path):
-        return str(helpers["_json_dumps"]({"error": f"File not found: {file}"}, output_mode="compact"))
+        return str(
+            helpers["_json_dumps"]({"error": f"File not found: {file}"}, output_mode="compact")
+        )
 
     output: dict[str, Any] = {"file": file, "steps_completed": []}
     start = time.monotonic()
@@ -567,13 +575,15 @@ def impl_spec_improve(
 
     if not targets:
         output["summary"] = "No under-specified functions found. Specification is in good shape."
-        output["next_actions"] = serialize_next_actions([
-            NextAction(
-                tool="spec_gate_check",
-                args={"path": path, "file": file},
-                reason="Verify optimization gates pass",
-            ),
-        ])
+        output["next_actions"] = serialize_next_actions(
+            [
+                NextAction(
+                    tool="spec_gate_check",
+                    args={"path": path, "file": file},
+                    reason="Verify optimization gates pass",
+                ),
+            ]
+        )
         return str(helpers["_json_dumps"](output, output_mode="compact"))
 
     # Step 2: Mutation sampling on top targets
@@ -585,7 +595,10 @@ def impl_spec_improve(
     else:
         try:
             impl_run_sampling(
-                helpers, path, file, function,
+                helpers,
+                path,
+                file,
+                function,
                 budget_ms=remaining_budget,
             )
             output["steps_completed"].append("mutation_sampling")
@@ -607,18 +620,20 @@ def impl_spec_improve(
     # Step 4: Build action plan
     output["action_plan"] = _build_action_plan(targets, prescriptions)
 
-    output["next_actions"] = serialize_next_actions([
-        NextAction(
-            tool="mutation_prescribe_tests",
-            args={"path": path, "file": file},
-            reason="Generate test skeletons for the prescribed improvements",
-        ),
-        NextAction(
-            tool="mutation_validate_tests",
-            args={"path": path, "file": file},
-            reason="After writing tests, validate they kill targeted mutants",
-        ),
-    ])
+    output["next_actions"] = serialize_next_actions(
+        [
+            NextAction(
+                tool="mutation_prescribe_tests",
+                args={"path": path, "file": file},
+                reason="Generate test skeletons for the prescribed improvements",
+            ),
+            NextAction(
+                tool="mutation_validate_tests",
+                args={"path": path, "file": file},
+                reason="After writing tests, validate they kill targeted mutants",
+            ),
+        ]
+    )
 
     output["elapsed_ms"] = round((time.monotonic() - start) * 1000)
     return str(helpers["_json_dumps"](output, output_mode="compact"))
@@ -693,8 +708,13 @@ def impl_refactor_loop(
     rel_path = os.path.relpath(full, project_root)
     test_files = discover_test_files(project_root, full)
     results, timed_out_functions = _validate_targets(
-        targets, full, rel_path, cache_dir, test_files,
-        budget_ms=effective_budget, call_start=call_start,
+        targets,
+        full,
+        rel_path,
+        cache_dir,
+        test_files,
+        budget_ms=effective_budget,
+        call_start=call_start,
     )
 
     elapsed_total = (_time.monotonic() - call_start) * 1000
@@ -788,7 +808,11 @@ def _validate_targets(
         func_budget = min(per_func_budget, max(remaining, 200))
 
         sr = run_function_sampling(
-            node, func_key, cats, tests, lambda *a: None,
+            node,
+            func_key,
+            cats,
+            tests,
+            lambda *a: None,
             budget_ms=func_budget,
             per_mutant_timeout_ms=min(500, func_budget),
         )

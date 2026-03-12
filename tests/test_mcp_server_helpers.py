@@ -180,17 +180,13 @@ class TestCollectPythonFiles:
         assert len(result) == 1
 
     def test_empty_project(self, tmp_path):
-        with mock.patch(
-            "lintgate.discovery.discover_project_files", return_value=[]
-        ):
+        with mock.patch("lintgate.discovery.discover_project_files", return_value=[]):
             result = _collect_python_files(str(tmp_path))
         assert result == []
 
     def test_delegates_to_discover(self, tmp_path):
         expected = [str(tmp_path / "mod.py"), str(tmp_path / "pkg/init.py")]
-        with mock.patch(
-            "lintgate.discovery.discover_project_files", return_value=expected
-        ) as m:
+        with mock.patch("lintgate.discovery.discover_project_files", return_value=expected) as m:
             result = _collect_python_files(str(tmp_path))
         m.assert_called_once_with(str(tmp_path))
         assert result == expected
@@ -469,9 +465,7 @@ class TestBuildCpFullDetails:
         assert coh["loud_channels"] == ["lint"]
 
     def test_partial_and_incomplete(self):
-        mesh = self._make_mesh_result(
-            partial=True, incomplete_channels=["tests", "deps"]
-        )
+        mesh = self._make_mesh_result(partial=True, incomplete_channels=["tests", "deps"])
         result = _build_cp_full_details(mesh, {})
         assert result["partial"] is True
         assert result["incomplete_channels"] == ["tests", "deps"]
@@ -528,11 +522,14 @@ class TestComputeLintMetadata:
         files = [str(tmp_path / "a.py")]
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
@@ -540,10 +537,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="test-run-123"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, linter_results, lint_tier, project_root, files, 150.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, linter_results, lint_tier, project_root, files, 150.0, "compact"
             )
 
         assert run_id == "test-run-123"
@@ -573,11 +568,14 @@ class TestComputeLintMetadata:
         )
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
@@ -585,10 +583,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="empty-run"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
             )
 
         assert run_id == "empty-run"
@@ -619,10 +615,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-fallback"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
             )
 
         assert recurrence["repeated_issue_count"] == 0
@@ -633,9 +627,7 @@ class TestComputeLintMetadata:
         from mcp_server import _compute_lint_metadata
 
         agg = AggregatedResult(metrics={}, linter_statuses={})
-        lint_tier = LintTier(
-            name="tier_0_manual", linters=[], files=[], reason="test"
-        )
+        lint_tier = LintTier(name="tier_0_manual", linters=[], files=[], reason="test")
         prev_run = {"finding_index": {"f1": {"channel": "lint"}}}
         delta_result = {
             "resolved_count": 1,
@@ -645,25 +637,24 @@ class TestComputeLintMetadata:
         }
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=prev_run),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
             mock.patch("mcp_server.save_run_details"),
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-delta"),
-            mock.patch(
-                "lintgate.lint_delta.compute_lint_delta", return_value=delta_result
-            ),
+            mock.patch("lintgate.lint_delta.compute_lint_delta", return_value=delta_result),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
             )
 
         assert lint_delta == delta_result
@@ -672,16 +663,17 @@ class TestComputeLintMetadata:
         from mcp_server import _compute_lint_metadata
 
         agg = AggregatedResult(metrics={}, linter_statuses={})
-        lint_tier = LintTier(
-            name="tier_0_manual", linters=[], files=[], reason="test"
-        )
+        lint_tier = LintTier(name="tier_0_manual", linters=[], files=[], reason="test")
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch(
                 "mcp_server.format_report",
@@ -692,10 +684,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-report"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
             )
 
         assert full_details["report"] == "2 issues found"
@@ -709,16 +699,21 @@ class TestComputeLintMetadata:
             _make_linter_result(linter_name="ruff_check", duration_ms=5.3),
         ]
         lint_tier = LintTier(
-            name="tier_2_manual", linters=["ruff_check", "bandit"],
-            files=[], reason="test",
+            name="tier_2_manual",
+            linters=["ruff_check", "bandit"],
+            files=[],
+            reason="test",
         )
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
@@ -726,10 +721,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-diag"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, linter_results, lint_tier, str(tmp_path), [], 0.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, linter_results, lint_tier, str(tmp_path), [], 0.0, "compact"
             )
 
         diags = full_details["linter_diagnostics"]
@@ -782,13 +775,15 @@ class TestBuildNextActions:
         assert result == []
 
     def test_all_conditions_met_returns_multiple_ordered(self):
-        result = _build_next_actions({
-            "fixable": 2,
-            "blocking": 3,
-            "warnings": 8,
-            "run_id": "run-99",
-            "project": "/proj",
-        })
+        result = _build_next_actions(
+            {
+                "fixable": 2,
+                "blocking": 3,
+                "warnings": 8,
+                "run_id": "run-99",
+                "project": "/proj",
+            }
+        )
         assert len(result) == 3
         priorities = [a["priority"] for a in result]
         assert priorities == [1, 2, 3]
@@ -847,9 +842,7 @@ class TestBuildOnboardingStatus:
     def test_config_with_controlplane_disabled(self, tmp_path):
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: false\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         result = _build_onboarding_status(str(tmp_path))
         assert result["config_found"] is True
         assert result["controlplane_enabled"] is False
@@ -859,9 +852,7 @@ class TestBuildOnboardingStatus:
     def test_config_with_controlplane_enabled(self, tmp_path):
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         result = _build_onboarding_status(str(tmp_path))
         assert result["config_found"] is True
         assert result["controlplane_enabled"] is True
@@ -911,8 +902,13 @@ class TestBuildCompactOutput:
     def test_basic_fields(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r1", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py", "b.py"],
-            elapsed_ms=123.456, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r1",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py", "b.py"],
+            elapsed_ms=123.456,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert result["run_id"] == "r1"
         assert result["tier"] == "BASIC"
@@ -930,8 +926,13 @@ class TestBuildCompactOutput:
         ]
         agg = _make_aggregated(blocking=issues)
         result = _build_compact_output(
-            run_id="r2", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["x.py"],
-            elapsed_ms=50.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r2",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["x.py"],
+            elapsed_ms=50.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert result["blocking"] == 2
         assert len(result["blocking_issues"]) == 2
@@ -941,8 +942,13 @@ class TestBuildCompactOutput:
         issues = [_make_issue(severity="error", file=f"f{i}.py") for i in range(10)]
         agg = _make_aggregated(blocking=issues)
         result = _build_compact_output(
-            run_id="r3", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=3,
+            run_id="r3",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=3,
         )
         assert len(result["blocking_issues"]) == 3
         assert result["blocking_truncated"] == 7
@@ -951,28 +957,45 @@ class TestBuildCompactOutput:
         issues = [_make_issue(severity="error", file="a.py")]
         agg = _make_aggregated(blocking=issues)
         result = _build_compact_output(
-            run_id="r4", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r4",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "blocking_truncated" not in result
 
     def test_no_blocking_issues_key_when_empty(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r5", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r5",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "blocking_issues" not in result
 
     def test_delta_included(self):
         agg = _make_aggregated()
         delta = {
-            "resolved_count": 3, "new": [{"id": "W001"}],
-            "still_active_count": 5, "summary": "improved",
+            "resolved_count": 3,
+            "new": [{"id": "W001"}],
+            "still_active_count": 5,
+            "summary": "improved",
         }
         result = _build_compact_output(
-            run_id="r6", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=delta, max_findings=5,
+            run_id="r6",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=delta,
+            max_findings=5,
         )
         assert result["delta"]["resolved"] == 3
         assert result["delta"]["new"] == 1
@@ -982,16 +1005,26 @@ class TestBuildCompactOutput:
     def test_no_delta_key_when_none(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r7", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r7",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "delta" not in result
 
     def test_returns_dict(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r8", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=0.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r8",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=0.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert isinstance(result, dict)
 
@@ -1003,8 +1036,13 @@ class TestBuildStandardOutput:
     def test_basic_fields(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s1", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=200.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s1",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=200.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert result["run_id"] == "s1"
         assert result["tier"] == "STANDARD"
@@ -1016,8 +1054,13 @@ class TestBuildStandardOutput:
         issues = [_make_issue(severity="error", file="x.py", line=5)]
         agg = _make_aggregated(blocking=issues)
         result = _build_standard_output(
-            run_id="s2", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["x.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s2",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["x.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert len(result["blocking_issues"]) == 1
         # to_dict() returns full dict
@@ -1032,8 +1075,13 @@ class TestBuildStandardOutput:
         ]
         agg = _make_aggregated(blocking=blocking, warnings=warnings)
         result = _build_standard_output(
-            run_id="s3", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["b.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=3,
+            run_id="s3",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["b.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=3,
         )
         # max_findings=3, 1 blocking → 2 remaining for warnings
         assert len(result["warning_issues"]) == 2
@@ -1044,16 +1092,26 @@ class TestBuildStandardOutput:
         warnings = [_make_issue(severity="warning")]
         agg = _make_aggregated(blocking=blocking, warnings=warnings)
         result = _build_standard_output(
-            run_id="s4", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="s4",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "warning_issues" not in result
 
     def test_no_warnings_key_when_empty(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s5", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s5",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert "warning_issues" not in result
 
@@ -1061,23 +1119,38 @@ class TestBuildStandardOutput:
         agg = _make_aggregated()
         delta = {"resolved_count": 1, "new": [], "still_active_count": 0}
         result = _build_standard_output(
-            run_id="s6", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=delta, max_findings=10,
+            run_id="s6",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=delta,
+            max_findings=10,
         )
         assert result["delta"] is delta
 
     def test_no_delta_when_none(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s7", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s7",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert "delta" not in result
 
     def test_returns_dict(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s8", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=0.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="s8",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=0.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert isinstance(result, dict)

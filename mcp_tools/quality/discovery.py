@@ -234,7 +234,7 @@ def _detect_project_layout(project_root: str, max_depth: int = 5) -> dict[str, A
         exclude_patterns.append(f"{d}/")
     exclude_patterns.append(".claude/")
 
-    result = {
+    result: dict[str, Any] = {
         "source_dirs": source_dirs or ["."],
         "test_dirs": test_dirs,
         "doc_dirs": doc_dirs,

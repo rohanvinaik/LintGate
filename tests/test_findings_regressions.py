@@ -219,11 +219,11 @@ class TestFallbackRelevanceRanking:
 
     def test_three_tiers(self):
         files = [
-            "/proj/other/test_z.py",       # tier 3: rest
-            "/proj/tests/test_foo.py",      # tier 2: name match
-            "/proj/src/test_inline.py",     # tier 1: same dir
+            "/proj/other/test_z.py",  # tier 3: rest
+            "/proj/tests/test_foo.py",  # tier 2: name match
+            "/proj/src/test_inline.py",  # tier 1: same dir
         ]
         ranked = _rank_test_files(files, "/proj/src/foo.py")
         assert ranked[0] == "/proj/src/test_inline.py"  # same dir
-        assert ranked[1] == "/proj/tests/test_foo.py"   # name match
-        assert ranked[2] == "/proj/other/test_z.py"     # rest
+        assert ranked[1] == "/proj/tests/test_foo.py"  # name match
+        assert ranked[2] == "/proj/other/test_z.py"  # rest

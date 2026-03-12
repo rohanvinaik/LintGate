@@ -36,36 +36,51 @@ def _parse_func(source: str, name: str | None = None) -> ast.FunctionDef:
 class TestClassifyDiscoveryState:
     def test_no_test_files(self):
         state = classify_discovery_state(
-            test_files_found=0, callables_loaded=0,
-            import_failures=0, fallback_used=False, total_killed=0,
+            test_files_found=0,
+            callables_loaded=0,
+            import_failures=0,
+            fallback_used=False,
+            total_killed=0,
         )
         assert state == DiscoveryState.NO_TEST_FILES
 
     def test_import_failed(self):
         state = classify_discovery_state(
-            test_files_found=3, callables_loaded=0,
-            import_failures=3, fallback_used=True, total_killed=0,
+            test_files_found=3,
+            callables_loaded=0,
+            import_failures=3,
+            fallback_used=True,
+            total_killed=0,
         )
         assert state == DiscoveryState.DISCOVERY_IMPORT_FAILED
 
     def test_files_found_none_linked(self):
         state = classify_discovery_state(
-            test_files_found=2, callables_loaded=0,
-            import_failures=0, fallback_used=True, total_killed=0,
+            test_files_found=2,
+            callables_loaded=0,
+            import_failures=0,
+            fallback_used=True,
+            total_killed=0,
         )
         assert state == DiscoveryState.TEST_FILES_FOUND_NONE_LINKED
 
     def test_linked_zero_kills(self):
         state = classify_discovery_state(
-            test_files_found=2, callables_loaded=5,
-            import_failures=0, fallback_used=False, total_killed=0,
+            test_files_found=2,
+            callables_loaded=5,
+            import_failures=0,
+            fallback_used=False,
+            total_killed=0,
         )
         assert state == DiscoveryState.TESTS_LINKED_ZERO_KILLS
 
     def test_discovery_ok(self):
         state = classify_discovery_state(
-            test_files_found=2, callables_loaded=5,
-            import_failures=0, fallback_used=False, total_killed=3,
+            test_files_found=2,
+            callables_loaded=5,
+            import_failures=0,
+            fallback_used=False,
+            total_killed=3,
         )
         assert state == DiscoveryState.DISCOVERY_OK
 
@@ -76,19 +91,25 @@ class TestClassifyDiscoveryState:
 class TestInterpretSurvival:
     def test_no_test_files_is_artifact(self):
         interp = interpret_survival(
-            DiscoveryState.NO_TEST_FILES, TopologyState.NORMAL, 1.0,
+            DiscoveryState.NO_TEST_FILES,
+            TopologyState.NORMAL,
+            1.0,
         )
         assert interp == SurvivalInterpretation.DISCOVERY_ARTIFACT
 
     def test_import_failed_is_artifact(self):
         interp = interpret_survival(
-            DiscoveryState.DISCOVERY_IMPORT_FAILED, TopologyState.NORMAL, 1.0,
+            DiscoveryState.DISCOVERY_IMPORT_FAILED,
+            TopologyState.NORMAL,
+            1.0,
         )
         assert interp == SurvivalInterpretation.DISCOVERY_ARTIFACT
 
     def test_none_linked_is_artifact(self):
         interp = interpret_survival(
-            DiscoveryState.TEST_FILES_FOUND_NONE_LINKED, TopologyState.NORMAL, 1.0,
+            DiscoveryState.TEST_FILES_FOUND_NONE_LINKED,
+            TopologyState.NORMAL,
+            1.0,
         )
         assert interp == SurvivalInterpretation.DISCOVERY_ARTIFACT
 
@@ -102,13 +123,17 @@ class TestInterpretSurvival:
 
     def test_zero_kills_high_survival_is_low_confidence(self):
         interp = interpret_survival(
-            DiscoveryState.TESTS_LINKED_ZERO_KILLS, TopologyState.NORMAL, 1.0,
+            DiscoveryState.TESTS_LINKED_ZERO_KILLS,
+            TopologyState.NORMAL,
+            1.0,
         )
         assert interp == SurvivalInterpretation.LOW_CONFIDENCE
 
     def test_ok_normal_is_meaningful(self):
         interp = interpret_survival(
-            DiscoveryState.DISCOVERY_OK, TopologyState.NORMAL, 0.5,
+            DiscoveryState.DISCOVERY_OK,
+            TopologyState.NORMAL,
+            0.5,
         )
         assert interp == SurvivalInterpretation.MEANINGFUL
 

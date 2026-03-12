@@ -1199,9 +1199,14 @@ class TestExtractFindingIndexes:
 class TestPostProcessSession:
     def test_session_none(self):
         ctx = PostProcessContext(
-            session=None, mesh_result=MagicMock(), finding_index={},
-            cp_config=MagicMock(), input_data={}, tool_name="E",
-            tool_input={}, tool_output="",
+            session=None,
+            mesh_result=MagicMock(),
+            finding_index={},
+            cp_config=MagicMock(),
+            input_data={},
+            tool_name="E",
+            tool_input={},
+            tool_output="",
         )
         result = post_process_session(ctx)
         assert result == []
@@ -1221,9 +1226,14 @@ class TestPostProcessSession:
             patch("lintgate.hooks.controlplane.run_constraint_proposer", return_value=[]),
         ):
             ctx = PostProcessContext(
-                session=session, mesh_result=mesh, finding_index={},
-                cp_config=MagicMock(), input_data={}, tool_name="E",
-                tool_input={}, tool_output="",
+                session=session,
+                mesh_result=mesh,
+                finding_index={},
+                cp_config=MagicMock(),
+                input_data={},
+                tool_name="E",
+                tool_input={},
+                tool_output="",
             )
             result = post_process_session(ctx)
         assert result == []

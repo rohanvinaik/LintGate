@@ -43,7 +43,8 @@ def build_killed_record(result: MutantResult) -> dict[str, Any]:
 
 
 def _compute_diff_summary(
-    original_node: ast.AST, mutated_node: ast.AST,
+    original_node: ast.AST,
+    mutated_node: ast.AST,
 ) -> str:
     """Compute a human-readable diff summary between original and mutated AST.
 

@@ -15,7 +15,7 @@ _TPA_WEIGHT_2 = (ast.If, ast.While, ast.For, ast.Try, ast.ExceptHandler)
 _TPA_WEIGHT_1 = (ast.Raise,)
 
 
-def compute_tpa_points(func_node: ast.FunctionDef) -> int:
+def compute_tpa_points(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count weighted TPA points from AST structural elements."""
     points = 0.0
     for node in ast.walk(func_node):

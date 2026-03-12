@@ -188,7 +188,7 @@ def _classify_regime(
 # ── AST helpers ──────────────────────────────────────────────────────
 
 
-def count_ast_categories(func_node: ast.FunctionDef) -> int:
+def count_ast_categories(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count distinct AST node types in a function body."""
     categories: set[type] = set()
     for node in ast.walk(func_node):
@@ -196,7 +196,7 @@ def count_ast_categories(func_node: ast.FunctionDef) -> int:
     return len(categories)
 
 
-def count_branches(func_node: ast.FunctionDef) -> int:
+def count_branches(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count branching constructs (If/For/While/Try/Match)."""
     count = 0
     for node in ast.walk(func_node):
@@ -208,7 +208,7 @@ def count_branches(func_node: ast.FunctionDef) -> int:
 # ── DFT scoring ──────────────────────────────────────────────────────
 
 
-def compute_dft_score(func_node: ast.FunctionDef) -> TestabilityProfile:
+def compute_dft_score(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> TestabilityProfile:
     """Compute design-for-testability score.
 
     Starts at 1.0, deducts for statefulness, side effects,
@@ -240,7 +240,7 @@ def compute_dft_score(func_node: ast.FunctionDef) -> TestabilityProfile:
     )
 
 
-def detect_statefulness(func_node: ast.FunctionDef) -> bool:
+def detect_statefulness(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Detect if function writes to self.*, global, or nonlocal state."""
     for node in ast.walk(func_node):
         # self.attr = ... (store to self)
@@ -260,7 +260,7 @@ def detect_statefulness(func_node: ast.FunctionDef) -> bool:
     return False
 
 
-def _detect_side_effects(func_node: ast.FunctionDef) -> bool:
+def _detect_side_effects(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Detect I/O, network, file, or subprocess side effects."""
     io_names = frozenset(
         {
@@ -286,7 +286,7 @@ def _detect_side_effects(func_node: ast.FunctionDef) -> bool:
     return False
 
 
-def _count_hidden_deps(func_node: ast.FunctionDef) -> int:
+def _count_hidden_deps(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count global/module-level reads not via parameters."""
     param_names = {arg.arg for arg in func_node.args.args}
     hidden = 0
@@ -300,7 +300,7 @@ def _count_hidden_deps(func_node: ast.FunctionDef) -> int:
     return hidden
 
 
-def _count_injectable_deps(func_node: ast.FunctionDef) -> int:
+def _count_injectable_deps(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count parameters that are callable or have default=None."""
     count = 0
     defaults = func_node.args.defaults

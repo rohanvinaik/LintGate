@@ -512,7 +512,7 @@ def compute_token_economics_summary(
         if isinstance(e.get("delta"), (int, float))
     ]
     new_factors = [
-        float(e.get("new_factor"))
+        float(e.get("new_factor", 0.0))
         for e in token_estimates
         if isinstance(e.get("new_factor"), (int, float))
     ]

@@ -44,22 +44,6 @@ except ModuleNotFoundError:
     from lintgate.state import load_last_run, log_metric, save_run, update_issue_memory
     from lintgate.tier_selector import select_tier
 
-# ── Backward-compatible re-exports (tests import these names) ────────
-from lintgate.hooks.arbitration import arbitrate_output as _arbitrate_output  # noqa: F401,I001
-from lintgate.hooks.controlplane import (
-    can_apply_session_telemetry as _can_apply_session_telemetry,  # noqa: F401
-    mark_session_telemetry_applied as _mark_session_telemetry_applied,  # noqa: F401
-    resolve_event_model_key as _resolve_event_model_key,  # noqa: F401
-    select_telemetry_profile as _select_telemetry_profile,  # noqa: F401
-    session_telemetry_updates_used as _session_telemetry_updates_used,  # noqa: F401
-)
-from lintgate.hooks.habit import (
-    record_habit_event_lightweight as _record_habit_event_lightweight,  # noqa: F401
-)
-from lintgate.hooks.runtime_state import (
-    refresh_runtime_state_lightweight as _refresh_runtime_state_lightweight,  # noqa: F401
-)
-
 
 def _parse_hook_input() -> dict | None:
     """Parse and validate stdin JSON. Returns None on invalid input."""
@@ -395,7 +379,10 @@ def _evaluate_compliance(
 
 
 def _collect_disposition_nudge(
-    cp_config: Any, session: Any, event: Any, bus: Any,
+    cp_config: Any,
+    session: Any,
+    event: Any,
+    bus: Any,
 ) -> str | None:
     """Evaluate disposition and collect nudge into bus. Returns disposition string."""
     try:
@@ -459,7 +446,7 @@ def _collect_delivery_items(
     disposition = _collect_disposition_nudge(cp_config, session, event, bus)
     _collect_cycle_interventions(session, bus)
 
-    behavior_findings = next(
+    behavior_findings: list = next(
         (cr.findings for cr in mesh_result.channel_results if cr.channel == "behavior"),
         [],
     )
@@ -469,9 +456,7 @@ def _collect_delivery_items(
     return bus, disposition, compliance_outcome
 
 
-def _should_suppress_report(
-    hook_fp: str | None, prev_fp: str | None, mesh_result: Any
-) -> bool:
+def _should_suppress_report(hook_fp: str | None, prev_fp: str | None, mesh_result: Any) -> bool:
     """Check if report should be suppressed due to unchanged state and no blocking findings."""
     if hook_fp is None or prev_fp is None or hook_fp != prev_fp:
         return False
@@ -503,7 +488,12 @@ def _run_controlplane(
 
     channels = _build_channels(cp_config)
     session, advisory = setup_session_and_gate(
-        cp_config, cwd, tool_name, event, channels, load_global_priors(cp_config),
+        cp_config,
+        cwd,
+        tool_name,
+        event,
+        channels,
+        load_global_priors(cp_config),
     )
 
     mesh_result = run_mesh(event, cp_config, channels, session=session)
@@ -515,18 +505,34 @@ def _run_controlplane(
         finding_index = build_finding_index(mesh_result)
 
     idx = extract_finding_indexes(session)
-    previous_finding_index, baseline_finding_index, snapshot_count, last_disposition, last_nudge = idx
-
-    bus, disposition, compliance_outcome = _collect_delivery_items(
-        cp_config, session, event, mesh_result, last_disposition, last_nudge,
+    previous_finding_index, baseline_finding_index, snapshot_count, last_disposition, last_nudge = (
+        idx
     )
 
-    proposed_constraints = post_process_session(PostProcessContext(
-        session=session, mesh_result=mesh_result, finding_index=finding_index,
-        cp_config=cp_config, input_data=input_data,
-        tool_name=tool_name, tool_input=tool_input, tool_output=tool_output,
-        disposition=disposition, last_nudge=last_nudge, compliance_outcome=compliance_outcome,
-    ))
+    bus, disposition, compliance_outcome = _collect_delivery_items(
+        cp_config,
+        session,
+        event,
+        mesh_result,
+        last_disposition,
+        last_nudge,
+    )
+
+    proposed_constraints = post_process_session(
+        PostProcessContext(
+            session=session,
+            mesh_result=mesh_result,
+            finding_index=finding_index,
+            cp_config=cp_config,
+            input_data=input_data,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_output=tool_output,
+            disposition=disposition,
+            last_nudge=last_nudge,
+            compliance_outcome=compliance_outcome,
+        )
+    )
 
     save_run_details(mesh_result, finding_index, compliance_outcome=compliance_outcome)
 
@@ -537,7 +543,8 @@ def _run_controlplane(
         _exit_clean()
 
     report = format_mesh_report(
-        mesh_result, cp_config,
+        mesh_result,
+        cp_config,
         proposed_constraints=proposed_constraints,
         previous_finding_index=previous_finding_index,
         baseline_finding_index=baseline_finding_index,
@@ -578,8 +585,12 @@ def _run_controlplane(
 
     with contextlib.suppress(Exception):
         _log_controlplane_metric(
-            (cwd, tool_name), classification, mesh_result, session,
-            telemetry=telemetry, start=start,
+            (cwd, tool_name),
+            classification,
+            mesh_result,
+            session,
+            telemetry=telemetry,
+            start=start,
         )
 
     print(json.dumps(report if report else {}))
