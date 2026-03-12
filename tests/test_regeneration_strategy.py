@@ -36,20 +36,20 @@ from lintgate.specification.test_regeneration_strategy import (
 
 def _spec(**kwargs: object) -> SpecEvidence:
     """Shorthand for SpecEvidence with defaults."""
-    defaults = dict(
-        specification_level=0.0, sigma_upper_bound=0, regime="unknown",
-        phase="bulk", is_pure=False, is_stateful=False,
-        has_side_effects=False, testability_score=1.0,
-    )
+    defaults = {
+        "specification_level": 0.0, "sigma_upper_bound": 0, "regime": "unknown",
+        "phase": "bulk", "is_pure": False, "is_stateful": False,
+        "has_side_effects": False, "testability_score": 1.0,
+    }
     return SpecEvidence(**{**defaults, **kwargs})  # type: ignore[arg-type]
 
 
 def _mut(**kwargs: object) -> MutationEvidence:
     """Shorthand for MutationEvidence with defaults."""
-    defaults = dict(
-        discovery_state="", topology_state="",
-        survival_interpretation="", survival_rate=1.0, tests_loaded=0,
-    )
+    defaults = {
+        "discovery_state": "", "topology_state": "",
+        "survival_interpretation": "", "survival_rate": 1.0, "tests_loaded": 0,
+    }
     return MutationEvidence(**{**defaults, **kwargs})  # type: ignore[arg-type]
 
 
