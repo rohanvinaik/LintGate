@@ -8,7 +8,7 @@ import subprocess
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
-
+from lintgate.testing.fresh_validation import count_test_assertions, run_fresh_kill_rates
 from ._test_regeneration_impl import _load_regen_config
 
 
@@ -132,7 +132,11 @@ def _check_generated_gate(
     gates: dict,
     gate_pass: bool,
 ) -> tuple[bool, dict]:
-    """Gate 2: generated tests import and run. Fail if auto targets exist but no tests."""
+    """Gate 2: generated tests import, run, and contain assertions.
+
+    Fail if auto targets exist but no generated tests.
+    Fail if generated tests are all pass-stubs with no assertions.
+    """
     from lintgate.specification.test_regeneration_strategy import Strategy
 
     has_auto = any(f.strategy == Strategy.AUTO_GENERATE_UNIT for f in plan.functions)
@@ -152,6 +156,7 @@ def _check_generated_gate(
         gates["generated_tests_run"] = True
         return gate_pass, gates
 
+    # Sub-gate 2a: pytest sanity — tests import and don't crash
     result = subprocess.run(
         ["python", "-m", "pytest", *gen_files, "--tb=short", "-q"],
         capture_output=True,
@@ -163,6 +168,16 @@ def _check_generated_gate(
     if result.returncode != 0:
         gate_pass = False
         gates["generated_test_output"] = result.stdout[-500:] if result.stdout else ""
+        return gate_pass, gates
+
+    # Sub-gate 2b: assertion content — pass stubs are not real tests
+    assertion_count = count_test_assertions(gen_files)
+    gates["generated_assertion_count"] = assertion_count
+    if assertion_count == 0 and has_auto:
+        gates["generated_tests_run"] = False
+        gates["generated_test_reason"] = "no assertions found in generated tests"
+        gate_pass = False
+
     return gate_pass, gates
 
 
@@ -174,15 +189,11 @@ def _check_artifact_gate(
     """Gate 4: no auto target has artifact discovery state."""
     from lintgate.specification.test_regeneration_strategy import Strategy
 
+    _artifacts = ("DISCOVERY_ARTIFACT", "MOCK_BOUNDARY_ARTIFACT")
     artifact_count = sum(
-        1
-        for func in plan.functions
+        1 for func in plan.functions
         if func.strategy == Strategy.AUTO_GENERATE_UNIT
-        and func.evidence.discovery_state
-        in (
-            "DISCOVERY_ARTIFACT",
-            "MOCK_BOUNDARY_ARTIFACT",
-        )
+        and func.evidence.discovery_state in _artifacts
     )
     gates["no_artifact_auto_targets"] = artifact_count == 0
     if artifact_count > 0:
@@ -200,11 +211,14 @@ def _check_quality_gates(
     zero_kill_ceiling: float = 0.05,
 ) -> tuple[bool, dict]:
     """Gates 5-9: kill rate, zero-kill, effectiveness, hygiene, redundancy."""
-    # Gates 5-6: kill rate + zero-kill from mutation cache
     from lintgate.specification.test_regeneration_strategy import Strategy
 
     has_auto = any(f.strategy == Strategy.AUTO_GENERATE_UNIT for f in plan.functions)
-    kill_rates, zero_kill = _sample_kill_rates(plan, project_root)
+
+    # Gates 5-6: fresh targeted mutation sampling against generated tests
+    kill_rates, zero_kill, sampling_details = run_fresh_kill_rates(plan, project_root)
+    if sampling_details:
+        gates["fresh_sampling_details"] = sampling_details
     if kill_rates:
         avg = sum(kill_rates) / len(kill_rates)
         gates["kill_rate"] = round(avg, 3)
@@ -217,7 +231,6 @@ def _check_quality_gates(
         if zr > zero_kill_ceiling:
             gate_pass = False
     elif has_auto:
-        # Auto targets exist but no mutation data — cannot validate
         gates["kill_rate_ok"] = False
         gates["zero_kill_ok"] = False
         gate_pass = False
@@ -241,16 +254,11 @@ def _check_quality_gates(
     gates["hygiene_ok"] = True
     try:
         from lintgate.channels.test_hygiene_channel import TestHygieneChannel
-        from lintgate.controlplane.types import (
-            ControlPlaneConfig as CPC,
-        )
-        from lintgate.controlplane.types import (
-            SupervisionEvent as SE,
-        )
+        from lintgate.controlplane.types import ControlPlaneConfig as CPC
+        from lintgate.controlplane.types import SupervisionEvent as SE
 
         ch_result = TestHygieneChannel().execute(
-            SE(surface="mcp", project_root=project_root),
-            CPC(enabled=True, channels={}),
+            SE(surface="mcp", project_root=project_root), CPC(enabled=True, channels={})
         )
         critical = sum(1 for f in ch_result.findings if getattr(f, "severity", "INFO") == "ERROR")
         gates["hygiene_critical"] = critical
@@ -271,41 +279,6 @@ def _check_quality_gates(
         pass
 
     return gate_pass, gates
-
-
-def _sample_kill_rates(
-    plan: Any,
-    project_root: str,
-) -> tuple[list[float], int]:
-    """Extract kill rates from mutation cache for auto-generate targets."""
-    from lintgate.specification.test_regeneration_strategy import Strategy
-
-    auto_funcs = [f for f in plan.functions if f.strategy == Strategy.AUTO_GENERATE_UNIT]
-    if not auto_funcs:
-        return [], 0
-
-    try:
-        from mcp_tools._mutation_impl import get_cache_dir, iter_cached_states
-
-        cached = {
-            s["function_key"]: s
-            for s in iter_cached_states(get_cache_dir(project_root))
-            if "function_key" in s
-        }
-    except Exception:
-        return [], 0
-
-    rates: list[float] = []
-    zero = 0
-    for func in auto_funcs:
-        state = cached.get(func.evidence.function_key)
-        if not state:
-            continue
-        kr = 1.0 - state.get("survival_rate", 1.0)
-        rates.append(kr)
-        if kr == 0.0:
-            zero += 1
-    return rates, zero
 
 
 _GATE_LABELS = [
