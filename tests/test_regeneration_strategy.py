@@ -34,47 +34,51 @@ from lintgate.specification.test_regeneration_strategy import (
 )
 
 
+def _spec(**kwargs: object) -> SpecEvidence:
+    """Shorthand for SpecEvidence with defaults."""
+    defaults = dict(
+        specification_level=0.0, sigma_upper_bound=0, regime="unknown",
+        phase="bulk", is_pure=False, is_stateful=False,
+        has_side_effects=False, testability_score=1.0,
+    )
+    return SpecEvidence(**{**defaults, **kwargs})  # type: ignore[arg-type]
+
+
+def _mut(**kwargs: object) -> MutationEvidence:
+    """Shorthand for MutationEvidence with defaults."""
+    defaults = dict(
+        discovery_state="", topology_state="",
+        survival_interpretation="", survival_rate=1.0, tests_loaded=0,
+    )
+    return MutationEvidence(**{**defaults, **kwargs})  # type: ignore[arg-type]
+
+
 def _ev(
     function_key: str = "",
     source_file: str = "",
     *,
-    specification_level: float = 0.0,
-    sigma_upper_bound: int = 0,
-    regime: str = "unknown",
-    phase: str = "bulk",
-    is_pure: bool = False,
-    is_stateful: bool = False,
-    has_side_effects: bool = False,
-    testability_score: float = 1.0,
-    discovery_state: str = "",
-    topology_state: str = "",
-    survival_interpretation: str = "",
-    survival_rate: float = 1.0,
-    tests_loaded: int = 0,
     covering_tests: list[str] | None = None,
     assertion_count: int = 0,
+    **kwargs: object,
 ) -> FunctionEvidence:
-    """Factory for FunctionEvidence with flat kwargs."""
+    """Factory for FunctionEvidence with flat kwargs.
+
+    Spec kwargs: specification_level, sigma_upper_bound, regime, phase,
+        is_pure, is_stateful, has_side_effects, testability_score.
+    Mutation kwargs: discovery_state, topology_state,
+        survival_interpretation, survival_rate, tests_loaded.
+    """
+    spec_keys = {
+        "specification_level", "sigma_upper_bound", "regime", "phase",
+        "is_pure", "is_stateful", "has_side_effects", "testability_score",
+    }
+    spec_kw = {k: v for k, v in kwargs.items() if k in spec_keys}
+    mut_kw = {k: v for k, v in kwargs.items() if k not in spec_keys}
     return FunctionEvidence(
         function_key=function_key,
         source_file=source_file,
-        spec=SpecEvidence(
-            specification_level=specification_level,
-            sigma_upper_bound=sigma_upper_bound,
-            regime=regime,
-            phase=phase,
-            is_pure=is_pure,
-            is_stateful=is_stateful,
-            has_side_effects=has_side_effects,
-            testability_score=testability_score,
-        ),
-        mutation=MutationEvidence(
-            discovery_state=discovery_state,
-            topology_state=topology_state,
-            survival_interpretation=survival_interpretation,
-            survival_rate=survival_rate,
-            tests_loaded=tests_loaded,
-        ),
+        spec=_spec(**spec_kw),
+        mutation=_mut(**mut_kw),
         covering_tests=covering_tests or [],
         assertion_count=assertion_count,
     )
