@@ -27,8 +27,10 @@ def _parse_func(code: str, name: str | None = None) -> ast.FunctionDef | ast.Asy
     """Parse code and return the first (or named) FunctionDef."""
     tree = ast.parse(code)
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (name is None or node.name == name):
-                return node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+            name is None or node.name == name
+        ):
+            return node
     raise ValueError(f"No function {name!r} found")
 
 

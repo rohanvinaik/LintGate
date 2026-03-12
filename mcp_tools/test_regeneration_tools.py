@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._test_regeneration_gates import impl_rebuild_apply, impl_rebuild_validate
+from ._test_regeneration_apply import impl_rebuild_apply
+from ._test_regeneration_gates import impl_rebuild_validate
 from ._test_regeneration_impl import impl_rebuild_generate, impl_rebuild_plan
 
 
@@ -41,9 +42,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             write_manifest: Write manifest to .lintgate/test_rebuild_manifest.json.
             preserve_globs: Glob patterns for test files to always preserve.
         """
-        return impl_rebuild_plan(
-            helpers, path, file, write_manifest, preserve_globs
-        )
+        return impl_rebuild_plan(helpers, path, file, write_manifest, preserve_globs)
 
     @mcp.tool()
     def test_rebuild_generate(

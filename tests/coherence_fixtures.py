@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from lintgate.controlplane.coherence import compute_coherence
 from lintgate.controlplane.types import ChannelResult
@@ -29,7 +29,7 @@ def _issue(
     return LintIssue(
         linter=linter,
         kind=kind,
-        severity=severity,
+        severity=cast("str", severity),
         message=message,
         file=file,
         line=line,
@@ -46,8 +46,8 @@ def _channel(
 ) -> ChannelResult:
     return ChannelResult(
         channel=name,
-        status=status,
-        severity=severity,
+        status=cast("Literal['pass', 'fail', 'skip', 'error', 'timeout']", status),
+        severity=cast("Literal['blocking', 'warning', 'informational', 'none']", severity),
         findings=findings or [],
         error_message=error_message,
         duration_ms=duration_ms,
@@ -85,7 +85,8 @@ def _build_scenario(spec: dict[str, Any]) -> list[ChannelResult]:
 def _load_golden(name: str) -> dict[str, Any]:
     path = GOLDEN_DIR / f"{name}.json"
     with open(path) as f:
-        return json.load(f)
+        result: dict[str, Any] = json.load(f)
+        return result
 
 
 def _save_golden(name: str, data: dict[str, Any]) -> None:

@@ -21,7 +21,6 @@ from lintgate.linters.test_effectiveness.source_mapper import (
 )
 
 
-
 def test_build_source_function_index():
     """Indexes public functions from source files."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -534,7 +533,6 @@ def test_path_to_module_handles_relpath_value_error(monkeypatch):
         assert _path_to_module("/tmp/pkg/mod.py", "/tmp") == "mod"
     finally:
         monkeypatch.setattr(_os.path, "relpath", original)
-
 
 
 def test_test_function_collector_visits_async_defs():

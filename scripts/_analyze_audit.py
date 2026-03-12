@@ -22,7 +22,7 @@ p1 = [r for r in has_data if 0.50 <= (r["ratio"] or 1) < 0.70]
 p2 = [r for r in has_data if 0.70 <= (r["ratio"] or 1) < 0.80]
 good = [r for r in has_data if (r["ratio"] or 0) >= 0.80]
 
-kind_freq = collections.Counter()
+kind_freq: collections.Counter[str] = collections.Counter()
 for r in has_data:
     for wf in r.get("weak_fns", []):
         for k in wf.get("kinds", []):

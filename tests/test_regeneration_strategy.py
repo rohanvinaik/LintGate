@@ -221,16 +221,27 @@ class TestComputeConfidence:
 
 class TestComputeTargetTestFile:
     def test_simple_path(self) -> None:
-        assert _compute_target_test_file("lintgate/foo.py") == "tests/generated/test_foo.py"
+        assert (
+            _compute_target_test_file("lintgate/foo.py") == "tests/generated/test_lintgate_foo.py"
+        )
 
     def test_nested_path(self) -> None:
-        assert _compute_target_test_file("lintgate/a/b/bar.py") == "tests/generated/test_bar.py"
+        assert (
+            _compute_target_test_file("lintgate/a/b/bar.py")
+            == "tests/generated/test_lintgate_a_b_bar.py"
+        )
 
     def test_no_py_extension(self) -> None:
-        assert _compute_target_test_file("lintgate/baz") == "tests/generated/test_baz.py"
+        assert _compute_target_test_file("lintgate/baz") == "tests/generated/test_lintgate_baz.py"
 
     def test_basename_only(self) -> None:
         assert _compute_target_test_file("module.py") == "tests/generated/test_module.py"
+
+    def test_no_collision(self) -> None:
+        """Different source paths with same basename produce different targets."""
+        a = _compute_target_test_file("lintgate/api/utils.py")
+        b = _compute_target_test_file("lintgate/core/utils.py")
+        assert a != b
 
 
 # ── classify_function ────────────────────────────────────────────────
@@ -274,7 +285,8 @@ class TestClassifyFunction:
 
     def test_integration_coverage_with_system_name_preserves(self) -> None:
         ev = _ev(
-            "mod::register_hooks", "mod.py",
+            "mod::register_hooks",
+            "mod.py",
             covering_tests=["t1.py", "t2.py", "t3.py"],
         )
         result = classify_function(ev)
@@ -286,15 +298,18 @@ class TestClassifyFunction:
 
     def test_many_tests_without_system_name_not_preserved(self) -> None:
         ev = _ev(
-            "mod::compute_sigma", "mod.py",
+            "mod::compute_sigma",
+            "mod.py",
             covering_tests=["t1.py", "t2.py", "t3.py"],
-            is_pure=True, sigma_upper_bound=5,
+            is_pure=True,
+            sigma_upper_bound=5,
         )
         assert classify_function(ev).strategy != Strategy.PRESERVE_SYSTEM
 
     def test_system_name_without_enough_tests_not_preserved(self) -> None:
         ev = _ev(
-            "mod::register_tools", "mod.py",
+            "mod::register_tools",
+            "mod.py",
             covering_tests=["t1.py", "t2.py"],
             is_stateful=True,
         )
@@ -304,33 +319,45 @@ class TestClassifyFunction:
 
     def test_pure_function_with_signal_auto_generates(self) -> None:
         ev = _ev(
-            "mod::compute", "lintgate/foo.py",
-            is_pure=True, sigma_upper_bound=5,
-            topology_state="NORMAL", survival_interpretation="MEANINGFUL",
-            survival_rate=0.3, phase="bulk",
+            "mod::compute",
+            "lintgate/foo.py",
+            is_pure=True,
+            sigma_upper_bound=5,
+            topology_state="NORMAL",
+            survival_interpretation="MEANINGFUL",
+            survival_rate=0.3,
+            phase="bulk",
         )
         result = classify_function(ev)
         assert result.strategy == Strategy.AUTO_GENERATE_UNIT
         assert "pure_or_local" in result.reason_codes
         assert "mutation_meaningful" in result.reason_codes
         assert result.existing_test_action == ExistingTestAction.QUARANTINE_REPLACE
-        assert result.target_test_file == "tests/generated/test_foo.py"
+        assert result.target_test_file == "tests/generated/test_lintgate_foo.py"
         assert result.generation_mode == "spec+mutation+inputs"
 
     def test_local_non_stateful_non_sideeffect_auto_generates(self) -> None:
         ev = _ev(
-            "mod::helper", "lintgate/bar.py",
-            is_pure=False, is_stateful=False, has_side_effects=False,
-            sigma_upper_bound=3, phase="transition",
+            "mod::helper",
+            "lintgate/bar.py",
+            is_pure=False,
+            is_stateful=False,
+            has_side_effects=False,
+            sigma_upper_bound=3,
+            phase="transition",
         )
         assert classify_function(ev).strategy == Strategy.AUTO_GENERATE_UNIT
 
     def test_auto_generate_low_confidence_triggers_review(self) -> None:
         ev = _ev(
-            "mod::func", "lintgate/x.py",
-            is_pure=True, sigma_upper_bound=2,
-            topology_state="NORMAL", survival_interpretation="MEANINGFUL",
-            survival_rate=0.8, phase="bulk",
+            "mod::func",
+            "lintgate/x.py",
+            is_pure=True,
+            sigma_upper_bound=2,
+            topology_state="NORMAL",
+            survival_interpretation="MEANINGFUL",
+            survival_rate=0.8,
+            phase="bulk",
         )
         result = classify_function(ev)
         assert result.strategy == Strategy.AUTO_GENERATE_UNIT
@@ -339,10 +366,14 @@ class TestClassifyFunction:
 
     def test_auto_generate_high_confidence_no_review(self) -> None:
         ev = _ev(
-            "mod::func", "lintgate/x.py",
-            is_pure=True, sigma_upper_bound=2,
-            topology_state="NORMAL", survival_interpretation="MEANINGFUL",
-            survival_rate=0.0, phase="complete",
+            "mod::func",
+            "lintgate/x.py",
+            is_pure=True,
+            sigma_upper_bound=2,
+            topology_state="NORMAL",
+            survival_interpretation="MEANINGFUL",
+            survival_rate=0.0,
+            phase="complete",
         )
         result = classify_function(ev)
         assert result.strategy == Strategy.AUTO_GENERATE_UNIT
@@ -387,10 +418,13 @@ class TestClassifyFunction:
 
     def test_artifact_trumps_pure_auto_eligible(self) -> None:
         ev = _ev(
-            "mod::compute", "mod.py",
-            is_pure=True, sigma_upper_bound=5,
+            "mod::compute",
+            "mod.py",
+            is_pure=True,
+            sigma_upper_bound=5,
             discovery_state="DISCOVERY_ARTIFACT",
-            topology_state="NORMAL", survival_interpretation="MEANINGFUL",
+            topology_state="NORMAL",
+            survival_interpretation="MEANINGFUL",
         )
         assert classify_function(ev).strategy == Strategy.EXCLUDE_MUTATION
 
@@ -466,10 +500,14 @@ class TestBuildEvidence:
 class TestFunctionEvidenceToDict:
     def test_roundtrip_fields(self) -> None:
         ev = _ev(
-            specification_level=0.123456, sigma_upper_bound=5,
-            regime="A", phase="tail",
-            discovery_state="NORMAL", topology_state="NORMAL",
-            survival_interpretation="MEANINGFUL", is_pure=True,
+            specification_level=0.123456,
+            sigma_upper_bound=5,
+            regime="A",
+            phase="tail",
+            discovery_state="NORMAL",
+            topology_state="NORMAL",
+            survival_interpretation="MEANINGFUL",
+            is_pure=True,
         )
         d = ev.to_dict()
         assert d["specification_level"] == 0.123
@@ -591,22 +629,28 @@ class TestManifestSummary:
                 function_key="a",
                 strategy=Strategy.AUTO_GENERATE_UNIT,
                 existing_test_action=ExistingTestAction.QUARANTINE_REPLACE,
-                target_test_file="", confidence=0.8,
-                reason_codes=[], evidence=FunctionEvidence(),
+                target_test_file="",
+                confidence=0.8,
+                reason_codes=[],
+                evidence=FunctionEvidence(),
             ),
             ClassificationResult(
                 function_key="b",
                 strategy=Strategy.AUTO_GENERATE_UNIT,
                 existing_test_action=ExistingTestAction.QUARANTINE_REPLACE,
-                target_test_file="", confidence=0.6,
-                reason_codes=[], evidence=FunctionEvidence(),
+                target_test_file="",
+                confidence=0.6,
+                reason_codes=[],
+                evidence=FunctionEvidence(),
             ),
             ClassificationResult(
                 function_key="c",
                 strategy=Strategy.MANUAL_CONTRACT,
                 existing_test_action=ExistingTestAction.QUARANTINE_ONLY,
-                target_test_file="", confidence=0.3,
-                reason_codes=[], evidence=FunctionEvidence(),
+                target_test_file="",
+                confidence=0.3,
+                reason_codes=[],
+                evidence=FunctionEvidence(),
                 manual_review_required=True,
             ),
         ]
@@ -625,10 +669,15 @@ class TestManifestSummary:
 class TestManifestRoundtrip:
     def test_write_and_load(self, tmp_path: Path) -> None:
         ev = _ev(
-            "mod::compute", "lintgate/compute.py",
-            specification_level=0.75, sigma_upper_bound=8,
-            regime="A", phase="tail", is_pure=True,
-            topology_state="NORMAL", survival_interpretation="MEANINGFUL",
+            "mod::compute",
+            "lintgate/compute.py",
+            specification_level=0.75,
+            sigma_upper_bound=8,
+            regime="A",
+            phase="tail",
+            is_pure=True,
+            topology_state="NORMAL",
+            survival_interpretation="MEANINGFUL",
         )
         cr = ClassificationResult(
             function_key="mod::compute",
@@ -688,12 +737,14 @@ class TestManifestToDict:
             function_key="mod::f",
             strategy=Strategy.EXCLUDE_MUTATION,
             existing_test_action=ExistingTestAction.PRESERVE,
-            target_test_file="", confidence=0.0,
+            target_test_file="",
+            confidence=0.0,
             reason_codes=["discovery_artifact"],
             evidence=FunctionEvidence(),
         )
         m = RebuildManifest(
-            version=1, project_root="/proj",
+            version=1,
+            project_root="/proj",
             generated_at="2026-01-01T00:00:00Z",
             functions=[cr],
             preserve_test_files=["tests/a.py"],

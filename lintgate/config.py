@@ -169,6 +169,8 @@ def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
         cp_config.test_regeneration = TestRegenerationConfig(
             preserve_globs=regen_raw.get("preserve_globs", []),
             review_ceiling=float(regen_raw.get("review_ceiling", 0.15)),
+            kill_floor=float(regen_raw.get("kill_floor", 0.70)),
+            zero_kill_ceiling=float(regen_raw.get("zero_kill_ceiling", 0.05)),
             generated_dir=str(regen_raw.get("generated_dir", "tests/generated")),
             quarantine_dir=str(regen_raw.get("quarantine_dir", "tests/quarantine")),
         )

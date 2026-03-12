@@ -276,10 +276,8 @@ def test_get_name_unsupported_node_returns_empty():
 def test_unparse_expr_fallback_on_failure():
     """_unparse_expr falls back to _get_name when ast.unparse raises (lines 31-32)."""
     # Create a malformed node that causes ast.unparse to fail
-    node = ast.BoolOp()
-    # Remove required fields to make unparse fail
-    node.op = ast.And()
-    # Don't set 'values' — ast.unparse will raise
+    node = ast.BoolOp(op=ast.And(), values=[])
+    # values is empty — ast.unparse will raise
     result = _unparse_expr(node)
     # Falls through to _get_name which returns "" for BoolOp
     assert result == ""

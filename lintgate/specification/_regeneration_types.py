@@ -11,7 +11,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-
 # ── Strategy enum ────────────────────────────────────────────────────
 
 
@@ -31,9 +30,6 @@ class ExistingTestAction(str, Enum):
     QUARANTINE_REPLACE = "quarantine_replace"
     QUARANTINE_ONLY = "quarantine_only"
     DELETE = "delete"
-
-
-# ── Evidence sub-dataclasses ─────────────────────────────────────────
 
 
 @dataclass
@@ -61,16 +57,9 @@ class MutationEvidence:
     tests_loaded: int = 0
 
 
-# ── Composite evidence ───────────────────────────────────────────────
-
-
 @dataclass
 class FunctionEvidence:
-    """Evidence used to classify a function's strategy.
-
-    Composes SpecEvidence and MutationEvidence sub-dataclasses
-    to keep attribute count manageable.
-    """
+    """Composes SpecEvidence + MutationEvidence for the classifier."""
 
     function_key: str = ""
     source_file: str = ""
@@ -79,8 +68,7 @@ class FunctionEvidence:
     covering_tests: list[str] = field(default_factory=list)
     assertion_count: int = 0
 
-    # ── Convenience accessors (flat access for classifier) ───────
-
+    # Convenience accessors — flat access for classifier
     @property
     def specification_level(self) -> float:
         return self.spec.specification_level
@@ -135,18 +123,24 @@ class FunctionEvidence:
 
     def to_dict(self) -> dict:
         return {
+            "function_key": self.function_key,
+            "source_file": self.source_file,
             "specification_level": round(self.spec.specification_level, 3),
             "sigma_upper_bound": self.spec.sigma_upper_bound,
             "regime": self.spec.regime,
             "phase": self.spec.phase,
+            "purity": self.spec.is_pure,
+            "is_stateful": self.spec.is_stateful,
+            "has_side_effects": self.spec.has_side_effects,
+            "testability_score": round(self.spec.testability_score, 3),
             "discovery_state": self.mutation.discovery_state,
             "topology_state": self.mutation.topology_state,
             "survival_interpretation": self.mutation.survival_interpretation,
-            "purity": self.spec.is_pure,
+            "survival_rate": round(self.mutation.survival_rate, 3),
+            "tests_loaded": self.mutation.tests_loaded,
+            "covering_tests": self.covering_tests,
+            "assertion_count": self.assertion_count,
         }
-
-
-# ── Classification result ────────────────────────────────────────────
 
 
 @dataclass
@@ -175,9 +169,6 @@ class ClassificationResult:
             "generation_mode": self.generation_mode,
             "manual_review_required": self.manual_review_required,
         }
-
-
-# ── Manifest ─────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -263,22 +254,28 @@ def load_manifest(project_root: str) -> RebuildManifest | None:
                 regime=ev_data.get("regime", "unknown"),
                 phase=ev_data.get("phase", "bulk"),
                 is_pure=ev_data.get("purity", False),
+                is_stateful=ev_data.get("is_stateful", False),
+                has_side_effects=ev_data.get("has_side_effects", False),
+                testability_score=ev_data.get("testability_score", 1.0),
             ),
             mutation=MutationEvidence(
                 discovery_state=ev_data.get("discovery_state", ""),
                 topology_state=ev_data.get("topology_state", ""),
                 survival_interpretation=ev_data.get(
-                    "survival_interpretation", ""
+                    "survival_interpretation",
+                    "",
                 ),
+                survival_rate=ev_data.get("survival_rate", 1.0),
+                tests_loaded=ev_data.get("tests_loaded", 0),
             ),
+            covering_tests=ev_data.get("covering_tests", []),
+            assertion_count=ev_data.get("assertion_count", 0),
         )
         functions.append(
             ClassificationResult(
                 function_key=fd.get("function_key", ""),
                 strategy=Strategy(fd.get("strategy", "manual_contract")),
-                existing_test_action=ExistingTestAction(
-                    fd.get("existing_test_action", "preserve")
-                ),
+                existing_test_action=ExistingTestAction(fd.get("existing_test_action", "preserve")),
                 target_test_file=fd.get("target_test_file", ""),
                 confidence=fd.get("confidence", 0.0),
                 reason_codes=fd.get("reason_codes", []),

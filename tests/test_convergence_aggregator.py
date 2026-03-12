@@ -41,7 +41,6 @@ from lintgate.convergence.evidence import (
     LensKind,
 )
 
-
 # ── Core engine ──────────────────────────────────────────────────────
 
 
@@ -86,15 +85,24 @@ class TestClassifyFileActionability:
         assert classify_file_actionability(0.75, 3) == Actionability.SPLIT
 
     def test_cohesion_driven_split(self) -> None:
-        assert classify_file_actionability(0.5, 2, {"score": 0.2, "component_count": 4}) == Actionability.SPLIT
+        assert (
+            classify_file_actionability(0.5, 2, {"score": 0.2, "component_count": 4})
+            == Actionability.SPLIT
+        )
 
     def test_cohesion_score_boundary(self) -> None:
         # score=0.3 not < 0.3 → cohesion path skipped
-        assert classify_file_actionability(0.5, 2, {"score": 0.3, "component_count": 4}) == Actionability.INVESTIGATE
+        assert (
+            classify_file_actionability(0.5, 2, {"score": 0.3, "component_count": 4})
+            == Actionability.INVESTIGATE
+        )
 
     def test_cohesion_components_boundary(self) -> None:
         # components=2 < 3 → cohesion path skipped
-        assert classify_file_actionability(0.5, 2, {"score": 0.2, "component_count": 2}) == Actionability.INVESTIGATE
+        assert (
+            classify_file_actionability(0.5, 2, {"score": 0.2, "component_count": 2})
+            == Actionability.INVESTIGATE
+        )
 
 
 class TestApplyWeight:
@@ -113,7 +121,11 @@ class TestAggregate:
         assert aggregate([]) == []
 
     def test_single_support(self) -> None:
-        ev = [LensEvidence(lens=LensKind.PURITY, target="f", confidence=0.8, signal="support", detail="")]
+        ev = [
+            LensEvidence(
+                lens=LensKind.PURITY, target="f", confidence=0.8, signal="support", detail=""
+            )
+        ]
         r = aggregate(ev)
         assert len(r) == 1
         assert r[0].target == "f"
@@ -122,17 +134,27 @@ class TestAggregate:
 
     def test_support_minus_oppose(self) -> None:
         ev = [
-            LensEvidence(lens=LensKind.PURITY, target="f", confidence=0.8, signal="support", detail=""),
-            LensEvidence(lens=LensKind.COHESION, target="f", confidence=0.6, signal="oppose", detail=""),
+            LensEvidence(
+                lens=LensKind.PURITY, target="f", confidence=0.8, signal="support", detail=""
+            ),
+            LensEvidence(
+                lens=LensKind.COHESION, target="f", confidence=0.6, signal="oppose", detail=""
+            ),
         ]
         r = aggregate(ev)
         assert r[0].net_confidence == max(0.8 - 0.6, 0.0)
 
     def test_multi_lens_extract(self) -> None:
         ev = [
-            LensEvidence(lens=LensKind.PURITY, target="f", confidence=0.6, signal="support", detail=""),
-            LensEvidence(lens=LensKind.MUTATION, target="f", confidence=0.6, signal="support", detail=""),
-            LensEvidence(lens=LensKind.COHESION, target="f", confidence=0.6, signal="support", detail=""),
+            LensEvidence(
+                lens=LensKind.PURITY, target="f", confidence=0.6, signal="support", detail=""
+            ),
+            LensEvidence(
+                lens=LensKind.MUTATION, target="f", confidence=0.6, signal="support", detail=""
+            ),
+            LensEvidence(
+                lens=LensKind.COHESION, target="f", confidence=0.6, signal="support", detail=""
+            ),
         ]
         r = aggregate(ev)
         assert len(r[0].supporting_lenses) == 3
@@ -203,11 +225,18 @@ class TestAdaptImportTracing:
         assert r[0].signal == "oppose"
 
     def test_shallow_supports(self) -> None:
-        r = adapt_import_tracing({"m": {"has_module_level_io": False, "depth": 1, "non_stdlib_deps": 2}})
+        r = adapt_import_tracing(
+            {"m": {"has_module_level_io": False, "depth": 1, "non_stdlib_deps": 2}}
+        )
         assert r[0].signal == "support"
 
     def test_deep_skipped(self) -> None:
-        assert adapt_import_tracing({"m": {"has_module_level_io": False, "depth": 5, "non_stdlib_deps": 10}}) == []
+        assert (
+            adapt_import_tracing(
+                {"m": {"has_module_level_io": False, "depth": 5, "non_stdlib_deps": 10}}
+            )
+            == []
+        )
 
 
 # ── Function-level adapters (previously untested) ────────────────────
@@ -335,15 +364,22 @@ class TestAdaptDepClustering:
 
 class TestAdaptAssertionQuality:
     def test_low_score_supports(self) -> None:
-        r = adapt_assertion_quality({"f": {"effectiveness_score": 0.3, "weakness_taxonomy": ["weak"]}})
+        r = adapt_assertion_quality(
+            {"f": {"effectiveness_score": 0.3, "weakness_taxonomy": ["weak"]}}
+        )
         assert r[0].signal == "support"
         assert abs(r[0].confidence - 0.7) < 1e-10
 
     def test_high_score_no_weakness_skipped(self) -> None:
-        assert adapt_assertion_quality({"f": {"effectiveness_score": 0.9, "weakness_taxonomy": []}}) == []
+        assert (
+            adapt_assertion_quality({"f": {"effectiveness_score": 0.9, "weakness_taxonomy": []}})
+            == []
+        )
 
     def test_high_score_with_weakness_supports(self) -> None:
-        r = adapt_assertion_quality({"f": {"effectiveness_score": 0.9, "weakness_taxonomy": ["partial"]}})
+        r = adapt_assertion_quality(
+            {"f": {"effectiveness_score": 0.9, "weakness_taxonomy": ["partial"]}}
+        )
         assert r[0].signal == "support"
 
     def test_empty(self) -> None:
@@ -447,21 +483,35 @@ class TestAdaptImportWeightFile:
         assert r[0].lens == LensKind.IMPORT_TRACING
 
     def test_shallow_supports(self) -> None:
-        r = adapt_import_weight_file({"m": {"has_module_level_io": False, "depth": 1, "non_stdlib_deps": 2}})
+        r = adapt_import_weight_file(
+            {"m": {"has_module_level_io": False, "depth": 1, "non_stdlib_deps": 2}}
+        )
         assert r[0].signal == "support"
         assert r[0].confidence == 0.4
 
     def test_deep_skipped(self) -> None:
-        assert adapt_import_weight_file({"m": {"has_module_level_io": False, "depth": 5, "non_stdlib_deps": 10}}) == []
+        assert (
+            adapt_import_weight_file(
+                {"m": {"has_module_level_io": False, "depth": 5, "non_stdlib_deps": 10}}
+            )
+            == []
+        )
 
     def test_boundary_depth(self) -> None:
         # depth=2 <= 2 and non_stdlib=3 <= 3 → support
-        r = adapt_import_weight_file({"m": {"has_module_level_io": False, "depth": 2, "non_stdlib_deps": 3}})
+        r = adapt_import_weight_file(
+            {"m": {"has_module_level_io": False, "depth": 2, "non_stdlib_deps": 3}}
+        )
         assert r[0].signal == "support"
 
     def test_boundary_depth_over(self) -> None:
         # depth=3 > 2 → skipped
-        assert adapt_import_weight_file({"m": {"has_module_level_io": False, "depth": 3, "non_stdlib_deps": 2}}) == []
+        assert (
+            adapt_import_weight_file(
+                {"m": {"has_module_level_io": False, "depth": 3, "non_stdlib_deps": 2}}
+            )
+            == []
+        )
 
 
 class TestAggregateFile:
@@ -470,8 +520,12 @@ class TestAggregateFile:
 
     def test_weighted_aggregation(self) -> None:
         ev = [
-            LensEvidence(lens=LensKind.COHESION, target="f.py", confidence=0.4, signal="support", detail=""),
-            LensEvidence(lens=LensKind.FAN_IN, target="f.py", confidence=0.4, signal="support", detail=""),
+            LensEvidence(
+                lens=LensKind.COHESION, target="f.py", confidence=0.4, signal="support", detail=""
+            ),
+            LensEvidence(
+                lens=LensKind.FAN_IN, target="f.py", confidence=0.4, signal="support", detail=""
+            ),
         ]
         r = aggregate_file(ev)
         assert len(r) == 1
@@ -482,8 +536,12 @@ class TestAggregateFile:
 
     def test_with_cohesion_map(self) -> None:
         ev = [
-            LensEvidence(lens=LensKind.COHESION, target="f.py", confidence=0.5, signal="support", detail=""),
-            LensEvidence(lens=LensKind.FAN_IN, target="f.py", confidence=0.5, signal="support", detail=""),
+            LensEvidence(
+                lens=LensKind.COHESION, target="f.py", confidence=0.5, signal="support", detail=""
+            ),
+            LensEvidence(
+                lens=LensKind.FAN_IN, target="f.py", confidence=0.5, signal="support", detail=""
+            ),
         ]
         cohesion = {"f.py": {"score": 0.2, "component_count": 4}}
         r = aggregate_file(ev, cohesion_map=cohesion)
@@ -491,8 +549,16 @@ class TestAggregateFile:
 
     def test_sorted_descending(self) -> None:
         ev = [
-            LensEvidence(lens=LensKind.COHESION, target="low.py", confidence=0.2, signal="support", detail=""),
-            LensEvidence(lens=LensKind.COHESION, target="high.py", confidence=0.9, signal="support", detail=""),
+            LensEvidence(
+                lens=LensKind.COHESION, target="low.py", confidence=0.2, signal="support", detail=""
+            ),
+            LensEvidence(
+                lens=LensKind.COHESION,
+                target="high.py",
+                confidence=0.9,
+                signal="support",
+                detail="",
+            ),
         ]
         r = aggregate_file(ev)
         assert r[0].target == "high.py"

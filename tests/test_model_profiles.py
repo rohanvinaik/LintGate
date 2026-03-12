@@ -440,26 +440,30 @@ class TestStoreFromDictValues:
         assert store.format_version == 3
 
     def test_from_dict_preserves_profile_data(self) -> None:
-        store = ModelProfileStore.from_dict({
-            "format_version": 1,
-            "profiles": {
-                "test:a": {"model_key": "test:a", "confidence": 0.77},
-                "test:b": {"model_key": "test:b", "confidence": 0.33},
-            },
-        })
+        store = ModelProfileStore.from_dict(
+            {
+                "format_version": 1,
+                "profiles": {
+                    "test:a": {"model_key": "test:a", "confidence": 0.77},
+                    "test:b": {"model_key": "test:b", "confidence": 0.33},
+                },
+            }
+        )
         assert len(store.profiles) == 2
         assert store.profiles["test:a"].confidence == 0.77
         assert store.profiles["test:b"].confidence == 0.33
 
     def test_from_dict_type_filter(self) -> None:
         """Non-dict profiles should be filtered out, dict ones preserved."""
-        store = ModelProfileStore.from_dict({
-            "profiles": {
-                "good": {"model_key": "good", "confidence": 0.5},
-                "bad": "string-not-dict",
-                "also_bad": 42,
-            },
-        })
+        store = ModelProfileStore.from_dict(
+            {
+                "profiles": {
+                    "good": {"model_key": "good", "confidence": 0.5},
+                    "bad": "string-not-dict",
+                    "also_bad": 42,
+                },
+            }
+        )
         assert "good" in store.profiles
         assert "bad" not in store.profiles
         assert "also_bad" not in store.profiles

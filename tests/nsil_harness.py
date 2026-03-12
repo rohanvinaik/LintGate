@@ -3,6 +3,8 @@
 Systematically validates verify_action against regression scenarios.
 """
 
+from typing import Any, cast
+
 from lintgate.nsil.action_verifier import ActionProposal, verify_action
 
 SCENARIOS = [
@@ -110,8 +112,8 @@ def run_harness():
         print(f"Scenario: {scenario['name']}")
         res = verify_action(
             scenario["proposal"],
-            gate_contract=scenario.get("gate_contract"),
-            active_constraints=scenario.get("active_constraints"),
+            gate_contract=cast("dict[str, Any] | None", scenario.get("gate_contract")),
+            active_constraints=cast("list[str] | None", scenario.get("active_constraints")),
         )
 
         passed = res.approved == scenario["expected_approved"]
@@ -126,7 +128,8 @@ def run_harness():
             and scenario["expected_violation"] not in res.violation_codes
         ):
             print(
-                f"  FAILED: Expected violation {scenario['expected_violation']}, got {res.violation_codes}"
+                f"  FAILED: Expected violation {scenario['expected_violation']}, "
+                f"got {res.violation_codes}"
             )
             passed = False
 

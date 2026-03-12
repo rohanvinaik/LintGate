@@ -1469,7 +1469,7 @@ The specification system estimates **σ(P,μ)** — the minimum tests to fully s
 |---|---|
 | `test_rebuild_plan(path, file?, write_manifest?, preserve_globs?)` | Classify all functions into regeneration strategies, write manifest |
 | `test_rebuild_generate(path, write?, max_files?)` | Generate test skeletons for `auto_generate_unit` targets |
-| `test_rebuild_validate(path, review_ceiling?)` | Run quality gates on generated tests (preserve pass, import/run, review share, artifact check) |
+| `test_rebuild_validate(path, review_ceiling?)` | Run 9 quality gates: pytest sanity, review ceiling, artifact check, kill rate, zero-kill, effectiveness, hygiene, redundancy |
 | `test_rebuild_apply(path, dry_run?)` | Promote generated tests, quarantine old ones (dry_run=True by default) |
 
 The test regeneration system classifies every project function into one of four strategies:
@@ -1480,11 +1480,18 @@ The test regeneration system classifies every project function into one of four 
 
 The classifier composes evidence from spec analysis (`SpecEvidence`: σ, regime, phase, purity) and mutation cache (`MutationEvidence`: discovery/topology state, survival rate). Confidence is computed as `min(topology_confidence, 1.0 - survival_rate) * phase_weight`.
 
-**Four validation gates** in `test_rebuild_validate`:
+**Nine validation gates** in `test_rebuild_validate`:
 1. Preserved tests still pass (pytest execution)
 2. Generated tests import and run
 3. Manual review share stays under `review_ceiling` (default 0.15)
 4. No auto-generate target has artifact discovery state
+5. Kill rate floor — average kill rate ≥ `kill_floor` (default 0.70)
+6. Zero-kill ceiling — fraction of zero-kill auto targets ≤ `zero_kill_ceiling` (default 0.05)
+7. Effectiveness score — `project_effectiveness_score` must not regress (advisory)
+8. Test hygiene — no critical findings from `test_hygiene_scan`
+9. Test redundancy — advisory redundancy check via `test_redundancy_project`
+
+Gates 7 and 9 are advisory (do not block apply). Gates 1-6 and 8 are blocking.
 
 Configuration in `lintgate.yaml`:
 ```yaml
@@ -1492,6 +1499,8 @@ controlplane:
   test_regeneration:
     preserve_globs: ["test_conftest_*.py"]
     review_ceiling: 0.15
+    kill_floor: 0.70
+    zero_kill_ceiling: 0.05
     generated_dir: "tests/generated"
     quarantine_dir: "tests/quarantine"
 ```

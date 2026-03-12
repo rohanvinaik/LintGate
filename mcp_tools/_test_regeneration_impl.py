@@ -40,6 +40,8 @@ def impl_rebuild_plan(
         build_evidence,
         build_manifest,
         classify_function,
+    )
+    from lintgate.specification.test_regeneration_strategy import (
         write_manifest as write_manifest_fn,
     )
 
@@ -80,12 +82,12 @@ def impl_rebuild_plan(
     for source_file in source_files:
         rel = os.path.relpath(source_file, project_root)
         try:
-            ledger = analyze_file(source_file, project_root, enrich=False)
+            ledger = analyze_file(source_file, project_root, enrich=True)
         except Exception:
             continue
 
         for func_key, spec in ledger.functions.items():
-            spec_data = spec.to_dict()
+            spec_data = spec if isinstance(spec, dict) else spec.to_dict()
             mutation_data = mutation_by_key.get(func_key)
             evidence = build_evidence(func_key, rel, spec_data, mutation_data)
             result = classify_function(evidence)
@@ -120,6 +122,8 @@ def impl_rebuild_generate(
     """Generate tests for auto_generate_unit targets in the manifest."""
     from lintgate.specification.test_regeneration_strategy import (
         Strategy,
+    )
+    from lintgate.specification.test_regeneration_strategy import (
         load_manifest as load_manifest_fn,
     )
 
@@ -142,6 +146,9 @@ def impl_rebuild_generate(
         sf = func.evidence.source_file
         by_file.setdefault(sf, []).append(func.to_dict())
 
+    from lintgate.testing.batch_regenerator import BatchRegenerator
+
+    regenerator = BatchRegenerator(project_root)
     generated: list[dict] = []
     skeletons: dict[str, str] = {}
     files_processed = 0
@@ -155,28 +162,27 @@ def impl_rebuild_generate(
         if not os.path.isfile(full_path):
             continue
 
-        skeleton = _generate_skeleton(full_path, project_root)
-        if not skeleton:
+        result = regenerator.generate_for_file(full_path, funcs)
+        if result is None:
             continue
 
-        target_file = funcs[0].get("target_test_file", "")
-        if not target_file:
-            continue
-
-        skeletons[target_file] = skeleton
+        skeletons[result.target_test_file] = result.content
 
         if write:
-            out_path = os.path.join(project_root, target_file)
+            out_path = os.path.join(project_root, result.target_test_file)
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, "w", encoding="utf-8") as f:
-                f.write(skeleton)
+                f.write(result.content)
 
-        generated.append({
-            "source_file": source_file,
-            "target_test_file": target_file,
-            "functions": len(funcs),
-            "written": write,
-        })
+        generated.append(
+            {
+                "source_file": source_file,
+                "target_test_file": result.target_test_file,
+                "functions": result.functions_covered,
+                "enrichment_sources": result.enrichment_sources,
+                "written": write,
+            }
+        )
 
     output: dict[str, Any] = {
         "files_generated": len(generated),
@@ -198,15 +204,3 @@ def impl_rebuild_generate(
         ]
     )
     return str(helpers["_json_dumps"](output, output_mode="compact"))
-
-
-def _generate_skeleton(full_path: str, project_root: str) -> str:
-    """Generate a test skeleton for a source file."""
-    try:
-        from lintgate.controlplane.skeleton_generator import generate_test_skeleton
-
-        return generate_test_skeleton(
-            full_path, archetypes=None, project_root=project_root
-        )
-    except Exception:
-        return ""

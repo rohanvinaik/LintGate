@@ -1,11 +1,8 @@
-"""Validation gates and file operations for test regeneration.
-
-Extracted from _test_regeneration_impl.py: impl_rebuild_validate,
-impl_rebuild_apply, and their helper functions.
-"""
+"""Validation gates for test regeneration (9 gates)."""
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from typing import Any
@@ -27,7 +24,6 @@ def impl_rebuild_validate(
 
     project_root = helpers["_validate_project_root"](path)
 
-    # Apply config default for review_ceiling
     if review_ceiling == 0.15:
         cfg = _load_regen_config(project_root)
         review_ceiling = cfg.review_ceiling
@@ -44,13 +40,11 @@ def impl_rebuild_validate(
     gates: dict[str, Any] = {}
     gate_pass = True
 
-    gate_pass, gates = _check_preserve_gate(
-        plan, project_root, gates, gate_pass
-    )
-    gate_pass, gates = _check_generated_gate(
-        project_root, gates, gate_pass
-    )
+    # Gates 1-2: pytest sanity
+    gate_pass, gates = _check_preserve_gate(plan, project_root, gates, gate_pass)
+    gate_pass, gates = _check_generated_gate(plan, project_root, gates, gate_pass)
 
+    # Gate 3: review ceiling
     summary = plan.summary()
     review_share = summary.get("manual_review_share", 0.0)
     gates["review_share_ok"] = review_share <= review_ceiling
@@ -58,12 +52,31 @@ def impl_rebuild_validate(
     if review_share > review_ceiling:
         gate_pass = False
 
+    # Gate 4: artifact check
     gate_pass, gates = _check_artifact_gate(plan, gates, gate_pass)
+
+    # Gates 5-9: quality gates (kill rate, zero-kill, effectiveness, hygiene, redundancy)
+    cfg = _load_regen_config(project_root)
+    gate_pass, gates = _check_quality_gates(
+        plan,
+        project_root,
+        helpers,
+        gates,
+        gate_pass,
+        kill_floor=cfg.kill_floor,
+        zero_kill_ceiling=cfg.zero_kill_ceiling,
+    )
+
+    # Persist validation result so apply can gate on it
+    from ._test_regeneration_apply import persist_validation
+
+    persist_validation(project_root, gates, gate_pass)
 
     output = {
         "ready_to_apply": gate_pass,
         "gates": gates,
         "summary": summary,
+        "scorecard": _build_scorecard(gates),
     }
     output["next_actions"] = serialize_next_actions(
         [
@@ -86,26 +99,26 @@ def impl_rebuild_validate(
 
 
 def _check_preserve_gate(
-    plan: Any, project_root: str, gates: dict, gate_pass: bool,
+    plan: Any,
+    project_root: str,
+    gates: dict,
+    gate_pass: bool,
 ) -> tuple[bool, dict]:
     """Gate 1: preserved tests still pass."""
-    preserve_files = plan.preserve_test_files
-    if not preserve_files:
-        gates["preserve_tests_pass"] = True
-        return gate_pass, gates
-
     abs_preserve = [
         os.path.join(project_root, f)
-        for f in preserve_files
+        for f in plan.preserve_test_files
         if os.path.isfile(os.path.join(project_root, f))
     ]
     if not abs_preserve:
         gates["preserve_tests_pass"] = True
         return gate_pass, gates
-
     result = subprocess.run(
         ["python", "-m", "pytest", *abs_preserve, "--tb=no", "-q"],
-        capture_output=True, text=True, cwd=project_root, timeout=120,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        timeout=120,
     )
     gates["preserve_tests_pass"] = result.returncode == 0
     if result.returncode != 0:
@@ -114,149 +127,200 @@ def _check_preserve_gate(
 
 
 def _check_generated_gate(
-    project_root: str, gates: dict, gate_pass: bool,
+    plan: Any,
+    project_root: str,
+    gates: dict,
+    gate_pass: bool,
 ) -> tuple[bool, dict]:
-    """Gate 2: generated tests import and run."""
-    gen_dir = os.path.join(project_root, "tests", "generated")
-    if not os.path.isdir(gen_dir):
-        gates["generated_tests_run"] = True
-        return gate_pass, gates
+    """Gate 2: generated tests import and run. Fail if auto targets exist but no tests."""
+    from lintgate.specification.test_regeneration_strategy import Strategy
 
-    gen_files = [
-        os.path.join(gen_dir, f)
-        for f in os.listdir(gen_dir)
-        if f.endswith(".py") and f.startswith("test_")
-    ]
+    has_auto = any(f.strategy == Strategy.AUTO_GENERATE_UNIT for f in plan.functions)
+    gen_dir = os.path.join(project_root, "tests", "generated")
+    gen_files = []
+    if os.path.isdir(gen_dir):
+        gen_files = [
+            os.path.join(gen_dir, f)
+            for f in os.listdir(gen_dir)
+            if f.endswith(".py") and f.startswith("test_")
+        ]
+
     if not gen_files:
+        if has_auto:
+            gates["generated_tests_run"] = False
+            return False, gates
         gates["generated_tests_run"] = True
         return gate_pass, gates
 
     result = subprocess.run(
         ["python", "-m", "pytest", *gen_files, "--tb=short", "-q"],
-        capture_output=True, text=True, cwd=project_root, timeout=120,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        timeout=120,
     )
     gates["generated_tests_run"] = result.returncode == 0
-    gates["generated_test_output"] = (
-        result.stdout[-500:] if result.stdout else ""
-    )
     if result.returncode != 0:
         gate_pass = False
+        gates["generated_test_output"] = result.stdout[-500:] if result.stdout else ""
     return gate_pass, gates
 
 
 def _check_artifact_gate(
-    plan: Any, gates: dict, gate_pass: bool,
+    plan: Any,
+    gates: dict,
+    gate_pass: bool,
 ) -> tuple[bool, dict]:
     """Gate 4: no auto target has artifact discovery state."""
     from lintgate.specification.test_regeneration_strategy import Strategy
 
-    artifact_count = 0
-    for func in plan.functions:
-        if func.strategy == Strategy.AUTO_GENERATE_UNIT:
-            if func.evidence.discovery_state in (
-                "DISCOVERY_ARTIFACT", "MOCK_BOUNDARY_ARTIFACT",
-            ):
-                artifact_count += 1
+    artifact_count = sum(
+        1
+        for func in plan.functions
+        if func.strategy == Strategy.AUTO_GENERATE_UNIT
+        and func.evidence.discovery_state
+        in (
+            "DISCOVERY_ARTIFACT",
+            "MOCK_BOUNDARY_ARTIFACT",
+        )
+    )
     gates["no_artifact_auto_targets"] = artifact_count == 0
     if artifact_count > 0:
         gate_pass = False
     return gate_pass, gates
 
 
-def impl_rebuild_apply(
-    helpers: dict[str, Any],
-    path: str,
-    dry_run: bool = True,
-) -> str:
-    """Apply the test rebuild: promote generated, quarantine old."""
-    from lintgate.specification.test_regeneration_strategy import (
-        load_manifest as load_manifest_fn,
-    )
+def _check_quality_gates(
+    plan: Any,
+    project_root: str,
+    helpers: dict,
+    gates: dict,
+    gate_pass: bool,
+    kill_floor: float = 0.70,
+    zero_kill_ceiling: float = 0.05,
+) -> tuple[bool, dict]:
+    """Gates 5-9: kill rate, zero-kill, effectiveness, hygiene, redundancy."""
+    # Gates 5-6: kill rate + zero-kill from mutation cache
+    from lintgate.specification.test_regeneration_strategy import Strategy
 
-    project_root = helpers["_validate_project_root"](path)
-    plan = load_manifest_fn(project_root)
-    if plan is None:
-        return str(
-            helpers["_json_dumps"](
-                {"error": "No manifest found. Run test_rebuild_plan first."},
-                output_mode="compact",
-            )
+    has_auto = any(f.strategy == Strategy.AUTO_GENERATE_UNIT for f in plan.functions)
+    kill_rates, zero_kill = _sample_kill_rates(plan, project_root)
+    if kill_rates:
+        avg = sum(kill_rates) / len(kill_rates)
+        gates["kill_rate"] = round(avg, 3)
+        gates["kill_rate_ok"] = avg >= kill_floor
+        if avg < kill_floor:
+            gate_pass = False
+        zr = zero_kill / len(kill_rates)
+        gates["zero_kill_rate"] = round(zr, 3)
+        gates["zero_kill_ok"] = zr <= zero_kill_ceiling
+        if zr > zero_kill_ceiling:
+            gate_pass = False
+    elif has_auto:
+        # Auto targets exist but no mutation data — cannot validate
+        gates["kill_rate_ok"] = False
+        gates["zero_kill_ok"] = False
+        gate_pass = False
+    else:
+        gates["kill_rate_ok"] = True
+        gates["zero_kill_ok"] = True
+
+    # Gate 7: effectiveness (advisory)
+    gates["effectiveness_ok"] = True
+    try:
+        from mcp_tools.test_effectiveness_tools import _analyze_test_strength_impl
+
+        raw = _analyze_test_strength_impl(project_root, helpers)
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        score = data.get("summary", {}).get("effectiveness_score")
+        if score is not None:
+            gates["effectiveness_score"] = round(float(score), 3)
+    except Exception:
+        pass
+    # Gate 8: hygiene — critical findings block
+    gates["hygiene_ok"] = True
+    try:
+        from lintgate.channels.test_hygiene_channel import TestHygieneChannel
+        from lintgate.controlplane.types import (
+            ControlPlaneConfig as CPC,
+        )
+        from lintgate.controlplane.types import (
+            SupervisionEvent as SE,
         )
 
-    actions: list[dict] = []
-    actions = _quarantine_files(plan, project_root, dry_run, actions)
-    actions = _promote_generated(project_root, dry_run, actions)
-
-    output = {
-        "dry_run": dry_run,
-        "actions": actions,
-        "quarantined": sum(1 for a in actions if a["action"] == "quarantine"),
-        "promoted": sum(1 for a in actions if a["action"] == "promote"),
-    }
-
-    if dry_run:
-        output["next_actions"] = serialize_next_actions(
-            [
-                NextAction(
-                    tool="test_rebuild_apply",
-                    args={"path": path, "dry_run": False},
-                    reason="Execute the rebuild (non-dry-run)",
-                ),
-            ]
+        ch_result = TestHygieneChannel().execute(
+            SE(surface="mcp", project_root=project_root),
+            CPC(enabled=True, channels={}),
         )
+        critical = sum(1 for f in ch_result.findings if getattr(f, "severity", "INFO") == "ERROR")
+        gates["hygiene_critical"] = critical
+        if critical:
+            gates["hygiene_ok"] = False
+            gate_pass = False
+    except Exception:
+        pass
+    # Gate 9: redundancy (advisory)
+    gates["redundancy_ok"] = True
+    try:
+        from mcp_tools.redundancy_tools import _impl_redundancy_project
 
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+        raw = _impl_redundancy_project(project_root, top_n=10)
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        gates["redundant_test_count"] = data.get("redundant_test_count", 0)
+    except Exception:
+        pass
 
-
-def _quarantine_files(
-    plan: Any, project_root: str, dry_run: bool, actions: list[dict],
-) -> list[dict]:
-    """Move old test files to quarantine directory."""
-    import shutil
-
-    quarantine_dir = os.path.join(project_root, "tests", "quarantine")
-    for qf in plan.quarantine_test_files:
-        src = os.path.join(project_root, qf)
-        dst = os.path.join(quarantine_dir, os.path.basename(qf))
-        if os.path.isfile(src):
-            action = {
-                "action": "quarantine",
-                "source": qf,
-                "destination": os.path.relpath(dst, project_root),
-            }
-            if not dry_run:
-                os.makedirs(quarantine_dir, exist_ok=True)
-                shutil.move(src, dst)
-            actions.append(action)
-    return actions
+    return gate_pass, gates
 
 
-def _promote_generated(
-    project_root: str, dry_run: bool, actions: list[dict],
-) -> list[dict]:
-    """Promote generated tests from tests/generated/ to tests/."""
-    import shutil
+def _sample_kill_rates(
+    plan: Any,
+    project_root: str,
+) -> tuple[list[float], int]:
+    """Extract kill rates from mutation cache for auto-generate targets."""
+    from lintgate.specification.test_regeneration_strategy import Strategy
 
-    gen_dir = os.path.join(project_root, "tests", "generated")
-    if not os.path.isdir(gen_dir):
-        return actions
+    auto_funcs = [f for f in plan.functions if f.strategy == Strategy.AUTO_GENERATE_UNIT]
+    if not auto_funcs:
+        return [], 0
 
-    tests_dir = os.path.join(project_root, "tests")
-    for f in sorted(os.listdir(gen_dir)):
-        if not f.endswith(".py"):
-            continue
-        src = os.path.join(gen_dir, f)
-        dst = os.path.join(tests_dir, f)
-        action = {
-            "action": "promote",
-            "source": f"tests/generated/{f}",
-            "destination": f"tests/{f}",
+    try:
+        from mcp_tools._mutation_impl import get_cache_dir, iter_cached_states
+
+        cached = {
+            s["function_key"]: s
+            for s in iter_cached_states(get_cache_dir(project_root))
+            if "function_key" in s
         }
-        if not dry_run:
-            shutil.move(src, dst)
-        actions.append(action)
+    except Exception:
+        return [], 0
 
-    if not dry_run and os.path.isdir(gen_dir) and not os.listdir(gen_dir):
-        os.rmdir(gen_dir)
+    rates: list[float] = []
+    zero = 0
+    for func in auto_funcs:
+        state = cached.get(func.evidence.function_key)
+        if not state:
+            continue
+        kr = 1.0 - state.get("survival_rate", 1.0)
+        rates.append(kr)
+        if kr == 0.0:
+            zero += 1
+    return rates, zero
 
-    return actions
+
+_GATE_LABELS = [
+    ("preserve_tests_pass", "Preserve pass"),
+    ("generated_tests_run", "Generated run"),
+    ("review_share_ok", "Review ceiling"),
+    ("no_artifact_auto_targets", "No artifacts"),
+    ("kill_rate_ok", "Kill rate"),
+    ("zero_kill_ok", "Zero-kill"),
+    ("effectiveness_ok", "Effectiveness"),
+    ("hygiene_ok", "Hygiene"),
+    ("redundancy_ok", "Redundancy"),
+]
+
+
+def _build_scorecard(gates: dict[str, Any]) -> list[str]:
+    """Build compact scorecard lines from gate results."""
+    return [f"  [{'PASS' if gates[k] else 'FAIL'}] {lbl}" for k, lbl in _GATE_LABELS if k in gates]

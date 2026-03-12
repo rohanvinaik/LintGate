@@ -24,28 +24,64 @@ from ._regeneration_types import (
 
 # Re-export types for backward compatibility
 __all__ = [
-    "Strategy", "ExistingTestAction", "SpecEvidence", "MutationEvidence",
-    "FunctionEvidence", "ClassificationResult", "RebuildManifest",
-    "write_manifest", "load_manifest", "classify_function",
-    "build_evidence", "build_manifest",
+    "Strategy",
+    "ExistingTestAction",
+    "SpecEvidence",
+    "MutationEvidence",
+    "FunctionEvidence",
+    "ClassificationResult",
+    "RebuildManifest",
+    "write_manifest",
+    "load_manifest",
+    "classify_function",
+    "build_evidence",
+    "build_manifest",
 ]
 
-_ENTRYPOINT_NAME_PATTERNS = frozenset({
-    "main", "__main__", "cli", "run", "entry",
-})
-_HIGH_RISK_NAME_FRAGMENTS = frozenset({
-    "hook", "register", "bootstrap", "posttooluse",
-    "setup", "teardown", "conftest",
-})
-_SYSTEM_SURFACE_NAME_FRAGMENTS = frozenset({
-    "cli", "main", "hook", "register", "bootstrap",
-    "posttooluse", "pretooluse", "callback",
-})
-_ARTIFACT_STATES = frozenset({
-    "DISCOVERY_ARTIFACT", "TESTS_LINKED_ZERO_KILLS", "MOCK_BOUNDARY_ARTIFACT",
-})
+_ENTRYPOINT_NAME_PATTERNS = frozenset(
+    {
+        "main",
+        "__main__",
+        "cli",
+        "run",
+        "entry",
+    }
+)
+_HIGH_RISK_NAME_FRAGMENTS = frozenset(
+    {
+        "hook",
+        "register",
+        "bootstrap",
+        "posttooluse",
+        "setup",
+        "teardown",
+        "conftest",
+    }
+)
+_SYSTEM_SURFACE_NAME_FRAGMENTS = frozenset(
+    {
+        "cli",
+        "main",
+        "hook",
+        "register",
+        "bootstrap",
+        "posttooluse",
+        "pretooluse",
+        "callback",
+    }
+)
+_ARTIFACT_STATES = frozenset(
+    {
+        "DISCOVERY_ARTIFACT",
+        "TESTS_LINKED_ZERO_KILLS",
+        "MOCK_BOUNDARY_ARTIFACT",
+    }
+)
 _PHASE_WEIGHTS: dict[str, float] = {
-    "bulk": 0.6, "transition": 0.8, "tail": 0.95, "complete": 1.0,
+    "bulk": 0.6,
+    "transition": 0.8,
+    "tail": 0.95,
+    "complete": 1.0,
 }
 
 
@@ -111,10 +147,7 @@ def _try_exclude(evidence: FunctionEvidence) -> ClassificationResult | None:
 def _try_preserve(evidence: FunctionEvidence) -> ClassificationResult | None:
     """Tier 2: preserve-system (integration coverage + system surface)."""
     func_key = evidence.function_key
-    has_integration = (
-        len(evidence.covering_tests) >= 3
-        and _has_system_surface_name(func_key)
-    )
+    has_integration = len(evidence.covering_tests) >= 3 and _has_system_surface_name(func_key)
     if not has_integration:
         return None
     return ClassificationResult(
@@ -134,12 +167,9 @@ def _try_auto_generate(evidence: FunctionEvidence) -> ClassificationResult | Non
     mutation_meaningful = evidence.survival_interpretation in ("MEANINGFUL", "")
     not_artifact = evidence.discovery_state not in _ARTIFACT_STATES
     has_signal = evidence.sigma_upper_bound > 0 or evidence.is_pure
-    is_local = evidence.is_pure or (
-        not evidence.has_side_effects and not evidence.is_stateful
-    )
+    is_local = evidence.is_pure or (not evidence.has_side_effects and not evidence.is_stateful)
 
-    if not (topology_ok and mutation_meaningful and not_artifact
-            and has_signal and is_local):
+    if not (topology_ok and mutation_meaningful and not_artifact and has_signal and is_local):
         return None
 
     reasons = ["pure_or_local"]
@@ -196,16 +226,24 @@ def classify_function(evidence: FunctionEvidence) -> ClassificationResult:
 
 
 def _compute_target_test_file(source_file: str) -> str:
-    """lintgate/foo/bar.py -> tests/generated/test_bar.py"""
-    basename = os.path.basename(source_file)
-    if basename.endswith(".py"):
-        basename = basename[:-3]
-    return f"tests/generated/test_{basename}.py"
+    """lintgate/foo/bar.py -> tests/generated/test_lintgate_foo_bar.py
+
+    Uses the full relative path (underscored) to avoid collisions when
+    different source dirs contain files with the same basename.
+    """
+    stem = source_file.replace(os.sep, "/")
+    if stem.endswith(".py"):
+        stem = stem[:-3]
+    # lintgate/foo/bar -> lintgate_foo_bar
+    safe = stem.replace("/", "_").replace(".", "_")
+    return f"tests/generated/test_{safe}.py"
 
 
 def build_evidence(
-    func_key: str, source_file: str,
-    spec_data: dict | None = None, mutation_data: dict | None = None,
+    func_key: str,
+    source_file: str,
+    spec_data: dict | None = None,
+    mutation_data: dict | None = None,
 ) -> FunctionEvidence:
     """Build FunctionEvidence from spec analysis and mutation cache data."""
     spec_ev = SpecEvidence()
@@ -214,8 +252,10 @@ def build_evidence(
         spec_ev = SpecEvidence(
             specification_level=g("specification_level", 0.0),
             sigma_upper_bound=g("estimated_sigma", 0),
-            regime=g("regime", "unknown"), phase=g("phase", "bulk"),
-            is_pure=g("is_pure", False), is_stateful=g("is_stateful", False),
+            regime=g("regime", "unknown"),
+            phase=g("phase", "bulk"),
+            is_pure=g("is_pure", False),
+            is_stateful=g("is_stateful", False),
             has_side_effects=g("has_side_effects", False),
             testability_score=g("testability_score", 1.0),
         )
@@ -230,8 +270,10 @@ def build_evidence(
             tests_loaded=g("tests_loaded", 0),
         )
     return FunctionEvidence(
-        function_key=func_key, source_file=source_file,
-        spec=spec_ev, mutation=mut_ev,
+        function_key=func_key,
+        source_file=source_file,
+        spec=spec_ev,
+        mutation=mut_ev,
         covering_tests=spec_data.get("covering_tests", []) if spec_data else [],
         assertion_count=spec_data.get("assertion_count", 0) if spec_data else 0,
     )
@@ -256,7 +298,9 @@ def _collect_file_sets(
 
 
 def _apply_preserve_globs(
-    preserve_files: set[str], project_root: str, globs: list[str],
+    preserve_files: set[str],
+    project_root: str,
+    globs: list[str],
 ) -> None:
     """Add test files matching preserve globs to the preserve set."""
     import fnmatch

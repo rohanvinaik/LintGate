@@ -679,7 +679,11 @@ def _unpatch_mutant(
         return
     if isinstance(patch_target, dict):
         patch_target[func_name] = saved
-    elif isinstance(patch_target, tuple) and len(patch_target) == 2 and patch_target[0] == "closure_cell":
+    elif (
+        isinstance(patch_target, tuple)
+        and len(patch_target) == 2
+        and patch_target[0] == "closure_cell"
+    ):
         patch_target[1].cell_contents = saved
     else:
         setattr(patch_target, func_name, saved)
