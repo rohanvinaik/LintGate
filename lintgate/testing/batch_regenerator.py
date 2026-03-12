@@ -103,8 +103,18 @@ class BatchRegenerator:
                 if "oracle_light" not in sources:
                     sources.append("oracle_light")
 
-            # Lens 5: Characterization fallback (only if no other enrichment)
-            if not inputs and not prescriptions and not exec_props:
+            # Lens 5: Parametric golden capture with provenance
+            if enrichment.inputs:
+                golden = self._golden_capture(rel_file, func_key, func_name,
+                                              enrichment.inputs)
+                if golden:
+                    enrichment.characterization = golden
+                    if "golden_capture" not in sources:
+                        sources.append("golden_capture")
+
+            # Lens 6: Raw characterization fallback (only if nothing else)
+            if (not inputs and not prescriptions and not exec_props
+                    and not enrichment.characterization):
                 char_code = self._characterize(rel_file, func_name)
                 if char_code:
                     enrichment.characterization = char_code
@@ -193,6 +203,45 @@ class BatchRegenerator:
             return str(data.get("test_code", ""))
         except Exception:
             return ""
+
+    def _golden_capture(
+        self,
+        rel_file: str,
+        func_key: str,
+        func_name: str,
+        call_site_inputs: list[dict],
+    ) -> str:
+        """Lens 5: Parametric golden capture with provenance tracking."""
+        module_path = func_key.rsplit("::", 1)[0] if "::" in func_key else ""
+        if not module_path:
+            return ""
+        try:
+            from lintgate.testing.characterization import (
+                capture_golden,
+                corroborate_captures,
+                generate_golden_test,
+            )
+
+            captures = capture_golden(module_path, func_name, call_site_inputs)
+            if not captures:
+                return ""
+
+            mutation_state = self._load_mutation_cache().get(func_key)
+            is_pure = self._check_purity(rel_file, func_name)
+            captures = corroborate_captures(captures, mutation_state, is_pure)
+            return generate_golden_test(func_key, captures)
+        except Exception:
+            return ""
+
+    def _check_purity(self, rel_file: str, func_name: str) -> bool:
+        """Check if a function is pure via AST analysis."""
+        try:
+            from mcp_tools._mutation_impl import detect_purity
+
+            abs_path = os.path.join(self.project_root, rel_file)
+            return detect_purity(abs_path, func_name)
+        except Exception:
+            return False
 
     def _get_executable_properties(
         self,
