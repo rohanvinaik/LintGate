@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lintgate.specification._regeneration_types import RebuildManifest
-    from lintgate.specification.mutation_engine import MutationCategory
 
 
 def count_test_assertions(gen_files: list[str]) -> int:
@@ -41,9 +40,7 @@ def count_test_assertions(gen_files: list[str]) -> int:
 def _is_trivial_assert(node: ast.Assert) -> bool:
     """Check if an assert is trivially true (e.g., ``assert True``)."""
     test = node.test
-    if isinstance(test, ast.Constant) and test.value is True:
-        return True
-    return False
+    return isinstance(test, ast.Constant) and test.value is True
 
 
 def run_fresh_kill_rates(
@@ -61,12 +58,11 @@ def run_fresh_kill_rates(
     Returns:
         (kill_rates, zero_kill_count, per_function_details)
     """
-    from lintgate.specification.test_regeneration_strategy import Strategy
     from lintgate.specification.mutation_engine import (
         MutationCategory,
         run_function_sampling,
     )
-
+    from lintgate.specification.test_regeneration_strategy import Strategy
     from mcp_tools._mutation_impl import (
         _load_all_tests_from_files,
         detect_purity,
@@ -141,7 +137,8 @@ def run_fresh_kill_rates(
         # (AsyncFunctionDef has the same AST shape for mutation purposes)
         import ast as _ast
 
-        assert isinstance(func_node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+        if not isinstance(func_node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            raise ValueError(f"Expected FunctionDef or AsyncFunctionDef, got {type(func_node).__name__}")
         try:
             result = run_function_sampling(
                 func_node,  # type: ignore[arg-type]

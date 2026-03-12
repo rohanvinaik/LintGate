@@ -326,9 +326,15 @@ class TestValidationPersistence:
 class TestManifestRoundTrip:
     def test_evidence_survives_roundtrip(self, tmp_path):
         from lintgate.specification._regeneration_types import (
-            ClassificationResult, ExistingTestAction, FunctionEvidence,
-            MutationEvidence, RebuildManifest, SpecEvidence, Strategy,
-            load_manifest, write_manifest,
+            ClassificationResult,
+            ExistingTestAction,
+            FunctionEvidence,
+            MutationEvidence,
+            RebuildManifest,
+            SpecEvidence,
+            Strategy,
+            load_manifest,
+            write_manifest,
         )
 
         ev = FunctionEvidence(

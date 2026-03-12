@@ -15,7 +15,6 @@ from lintgate.testing.convergence_orchestrator import (
     update_target,
 )
 
-
 # ── Initialization ────────────────────────────────────────────────
 
 

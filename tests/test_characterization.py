@@ -12,7 +12,6 @@ from lintgate.testing.characterization import (
     generate_golden_test,
 )
 
-
 # ── Call-site evaluation ──────────────────────────────────────────
 
 

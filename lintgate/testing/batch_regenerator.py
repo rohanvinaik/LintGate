@@ -278,9 +278,8 @@ class BatchRegenerator:
             with open(abs_path, encoding="utf-8") as f:
                 tree = ast.parse(f.read())
             for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    if node.name == func_name:
-                        return node  # type: ignore[return-value]
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
+                    return node  # type: ignore[return-value]
         except Exception:
             pass
         return None

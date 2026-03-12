@@ -153,7 +153,7 @@ class Parser:
         assert len(mutants) >= 1
 
         namespace: dict[str, object] = {}
-        exec(
+        exec(  # nosec B102
             """
 class Parser:
     def parse(self, value):
@@ -190,7 +190,7 @@ class ModelProfile:
         assert len(mutants) >= 1
 
         namespace: dict[str, object] = {}
-        exec(
+        exec(  # nosec B102
             """
 class ModelProfile:
     @classmethod
@@ -228,7 +228,7 @@ class Normalizer:
         assert len(mutants) >= 1
 
         namespace: dict[str, object] = {}
-        exec(
+        exec(  # nosec B102
             """
 class Normalizer:
     @staticmethod

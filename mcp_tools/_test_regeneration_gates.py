@@ -9,6 +9,7 @@ from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
 from lintgate.testing.fresh_validation import count_test_assertions, run_fresh_kill_rates
+
 from ._test_regeneration_impl import _load_regen_config
 
 
@@ -254,11 +255,11 @@ def _check_quality_gates(
     gates["hygiene_ok"] = True
     try:
         from lintgate.channels.test_hygiene_channel import TestHygieneChannel
-        from lintgate.controlplane.types import ControlPlaneConfig as CPC
-        from lintgate.controlplane.types import SupervisionEvent as SE
+        from lintgate.controlplane.types import ControlPlaneConfig as CPConfig
+        from lintgate.controlplane.types import SupervisionEvent as SEvent
 
         ch_result = TestHygieneChannel().execute(
-            SE(surface="mcp", project_root=project_root), CPC(enabled=True, channels={})
+            SEvent(surface="mcp", project_root=project_root), CPConfig(enabled=True, channels={})
         )
         critical = sum(1 for f in ch_result.findings if getattr(f, "severity", "INFO") == "ERROR")
         gates["hygiene_critical"] = critical

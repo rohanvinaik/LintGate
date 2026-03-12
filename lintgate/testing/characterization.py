@@ -138,22 +138,19 @@ def generate_golden_test(
         args_str = ", ".join(repr(a) for a in cap.inputs)
         if cap.kwargs:
             kw_parts = [f"{k}={v!r}" for k, v in cap.kwargs.items()]
-            if args_str:
-                args_str = ", ".join([args_str, *kw_parts])
-            else:
-                args_str = ", ".join(kw_parts)
+            args_str = ", ".join([args_str, *kw_parts]) if args_str else ", ".join(kw_parts)
 
         lines.append(f"def {test_name}():")
         if cap.provenance == Provenance.PROVISIONAL:
             lines.append(
-                f'    """Golden capture — PROVISIONAL (may fossilize bugs)."""'
+                '    """Golden capture — PROVISIONAL (may fossilize bugs)."""'
             )
         elif cap.provenance == Provenance.CORROBORATED:
             lines.append(
                 f'    """Golden capture — corroborated via {cap.corroborating_lens}."""'
             )
         else:
-            lines.append(f'    """Golden capture — unchecked."""')
+            lines.append('    """Golden capture — unchecked."""')
 
         prov_tag = (
             f"  # {cap.provenance.value}"

@@ -12,10 +12,12 @@ Output structure per specification:
 
 from __future__ import annotations
 
-import ast
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import ast
 
 
 @dataclass
@@ -76,7 +78,7 @@ def _parse_diff_changes(diff: str) -> list[tuple[str, str]]:
     orig, mutated = diff[2:idx], diff[idx + 3:]
     return [
         (ol.strip(), ml.strip())
-        for ol, ml in zip(orig.split("\n"), mutated.split("\n"))
+        for ol, ml in zip(orig.split("\n"), mutated.split("\n"), strict=False)
         if ol.strip() != ml.strip()
     ]
 
