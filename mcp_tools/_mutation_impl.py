@@ -27,8 +27,6 @@ class DiscoveryDiagnostics:
     class_instantiation_failures: list[str] = field(default_factory=list)
     callables_loaded: int = 0
     fallback_used: bool = False
-    fallback_cap_applied: bool = False
-    linked_test_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -41,8 +39,6 @@ class DiscoveryDiagnostics:
             d["class_instantiation_failures"] = self.class_instantiation_failures[:5]
         if self.fallback_used:
             d["fallback_used"] = True
-        if self.fallback_cap_applied:
-            d["fallback_cap_applied"] = True
         if self.callables_loaded == 0:
             reasons: list[str] = []
             if self.test_files_found == 0:
@@ -70,9 +66,8 @@ class MutationContext:
 
 
 def _find_qualified_method(
-    tree: ast.Module,
-    qualified_name: str,
-) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef | None, str | None]:
+    tree: ast.Module, qualified_name: str,
+) -> tuple[ast.FunctionDef | None, str | None]:
     """Walk class hierarchy for a dotted name like 'Class.method'.
 
     Returns (func_node, error_message). One of them is always None.
@@ -82,33 +77,27 @@ def _find_qualified_method(
     scope: ast.AST = tree
     for class_name in parts[:-1]:
         match = next(
-            (
-                c
-                for c in getattr(scope, "body", [])
-                if isinstance(c, ast.ClassDef) and c.name == class_name
-            ),
+            (c for c in getattr(scope, "body", [])
+             if isinstance(c, ast.ClassDef) and c.name == class_name),
             None,
         )
         if match is None:
             return None, f"Class '{class_name}' not found"
         scope = match
-    func_match: ast.FunctionDef | ast.AsyncFunctionDef | None = next(
-        (
-            c
-            for c in getattr(scope, "body", [])
-            if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)) and c.name == method_name
-        ),
+    match = next(
+        (c for c in getattr(scope, "body", [])
+         if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
+         and c.name == method_name),
         None,
     )
-    if func_match is not None:
-        return func_match, None
+    if match is not None:
+        return match, None
     return None, f"Method '{method_name}' not found in class chain"
 
 
 def _find_toplevel_function(
-    tree: ast.Module,
-    name: str,
-) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    tree: ast.Module, name: str,
+) -> ast.FunctionDef | None:
     """Find a function/async function by name anywhere in the AST."""
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
@@ -120,7 +109,7 @@ def resolve_function(
     project_root: str,
     file: str,
     function: str | None,
-) -> tuple[str, ast.FunctionDef | ast.AsyncFunctionDef | None, str | None]:
+) -> tuple[str, ast.FunctionDef | None, str | None]:
     """Resolve file and optionally find a function node.
 
     Returns (full_path, func_node_or_None, error_or_None).
@@ -150,9 +139,9 @@ def resolve_function(
     return full, None, f"Function '{function}' not found in {file}"
 
 
-def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
+def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef]]:
     """Walk AST yielding (qualname, node) for each function."""
-    results: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
+    results: list[tuple[str, ast.FunctionDef]] = []
 
     def _walk(scope: ast.AST, prefix: str) -> None:
         for node in getattr(scope, "body", []):
@@ -190,8 +179,7 @@ def load_cached_state(cache_dir: Path, func_key: str) -> dict | None:
         return None
     try:
         with open(cache_file, encoding="utf-8") as f:
-            result: dict[str, Any] = json.load(f)
-            return result
+            return json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -290,10 +278,7 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
 
 
 def load_test_callables(
-    test_files: list[str],
-    func_name: str,
-    max_fallback_tests: int = 50,
-    source_file: str | None = None,
+    test_files: list[str], func_name: str,
 ) -> tuple[list[Any], DiscoveryDiagnostics]:
     """Discover and import test callables for a function via test-impact map.
 
@@ -301,14 +286,6 @@ def load_test_callables(
     when the AST-based impact map finds no direct references to func_name.
     This handles indirect calls (fixtures, parametrize, helper wrappers)
     that static name matching misses.
-
-    Args:
-        max_fallback_tests: Cap on number of tests loaded via fallback.
-            Prevents combinatorial explosion when impact map misses and
-            test files contain hundreds of tests.
-        source_file: Absolute path to the source file being tested.
-            Used to rank fallback tests by relevance (same directory,
-            module name match) before applying the cap.
 
     Returns (callables, diagnostics) — diagnostics explain why discovery
     produced the result it did, especially when callables is empty.
@@ -321,62 +298,22 @@ def load_test_callables(
     refs = impact.tests_for(func_name)
     diag.impact_map_refs = len(refs) if refs else 0
     if refs:
-        # Track which test files are actually linked to this function
-        diag.linked_test_files = sorted({r.test_file for r in refs})
         imported = _import_test_functions(refs, diag)
         if imported:
             diag.callables_loaded = len(imported)
             return imported, diag
 
-    # Fallback: load all test functions from relevance-ranked test files.
-    # Ranking: same directory > module-name match > everything else.
+    # Fallback: load all test functions from the relevant test files.
     # The test files were already scoped by filename convention in
-    # discover_test_files, so this is partially bounded. We additionally
-    # cap at max_fallback_tests to prevent combinatorial explosion.
+    # discover_test_files, so this is bounded and relevant.
     diag.fallback_used = True
-    ranked_files = _rank_test_files(test_files, source_file)
-    diag.linked_test_files = ranked_files
-    callables = _load_all_tests_from_files(ranked_files, diag)
-    if len(callables) > max_fallback_tests:
-        callables = callables[:max_fallback_tests]
-        diag.fallback_cap_applied = True
+    callables = _load_all_tests_from_files(test_files, diag)
     diag.callables_loaded = len(callables)
     return callables, diag
 
 
-def _rank_test_files(test_files: list[str], source_file: str | None) -> list[str]:
-    """Rank test files by relevance to the source file.
-
-    Order: same directory first, then module-name matches, then everything else.
-    Within each tier, preserves original order.
-    """
-    if not source_file or not test_files:
-        return test_files
-
-    source_dir = os.path.dirname(os.path.abspath(source_file))
-    source_module = os.path.basename(source_file).removesuffix(".py")
-
-    tier_same_dir: list[str] = []
-    tier_name_match: list[str] = []
-    tier_rest: list[str] = []
-
-    for tf in test_files:
-        tf_dir = os.path.dirname(os.path.abspath(tf))
-        tf_base = os.path.basename(tf)
-        if tf_dir == source_dir:
-            tier_same_dir.append(tf)
-        elif source_module in tf_base:
-            tier_name_match.append(tf)
-        else:
-            tier_rest.append(tf)
-
-    return tier_same_dir + tier_name_match + tier_rest
-
-
 def _extract_test_callables_from_module(
-    mod: Any,
-    tf: str,
-    diag: DiscoveryDiagnostics | None,
+    mod: Any, tf: str, diag: DiscoveryDiagnostics | None,
 ) -> list[Any]:
     """Extract test functions and class-based test methods from a loaded module."""
     callables: list[Any] = []
@@ -386,18 +323,13 @@ def _extract_test_callables_from_module(
             continue
         if name.startswith("test_") and callable(obj):
             callables.append(obj)
-        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(
-            mod, "__name__", ""
-        ):
+        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(mod, "__name__", ""):
             callables.extend(_extract_class_test_methods(obj, name, tf, diag))
     return callables
 
 
 def _extract_class_test_methods(
-    cls: type,
-    cls_name: str,
-    tf: str,
-    diag: DiscoveryDiagnostics | None,
+    cls: type, cls_name: str, tf: str, diag: DiscoveryDiagnostics | None,
 ) -> list[Any]:
     """Extract test_* bound methods from a test class via fresh instance."""
     method_names = [m for m in dir(cls) if m.startswith("test_")]
@@ -413,8 +345,7 @@ def _extract_class_test_methods(
 
 
 def _load_all_tests_from_files(
-    test_files: list[str],
-    diag: DiscoveryDiagnostics | None = None,
+    test_files: list[str], diag: DiscoveryDiagnostics | None = None,
 ) -> list[Any]:
     """Import all test_ functions from the given test files.
 
@@ -436,8 +367,7 @@ def _load_all_tests_from_files(
 
 
 def _import_test_functions(
-    refs: list[Any],
-    diag: DiscoveryDiagnostics | None = None,
+    refs: list[Any], diag: DiscoveryDiagnostics | None = None,
 ) -> list[Any]:
     """Import test functions from TestReference objects.
 
@@ -512,7 +442,7 @@ def _try_import_module(filepath: str) -> Any:
     mod_name = f"_mutation_test_{os.path.basename(filepath).replace('.py', '')}"
     spec = importlib.util.spec_from_file_location(mod_name, filepath)
     if spec is None or spec.loader is None:
-        if path_added and project_root is not None:
+        if path_added:
             sys.path.remove(project_root)
         return None
     try:
@@ -623,51 +553,14 @@ def _run_single(
     cats = filter_fn(node, is_pure=is_pure)
     func_key = key_fn(ctx.rel_path, func_name)
     bare_name = func_name.split(".")[-1]
-    tests, discovery_diag = load_test_callables(
-        ctx.test_files, bare_name, source_file=ctx.full_path
-    )
+    tests, discovery_diag = load_test_callables(ctx.test_files, bare_name)
     sr = runner(node, func_key, cats, tests, lambda *a: None)
-    result_dict: dict[str, Any] = sr.to_dict()
+    result_dict = sr.to_dict()
     result_dict["tests_loaded"] = len(tests)
     result_dict["is_pure"] = is_pure
     result_dict["parameter_count"] = len(getattr(node, "args", _EMPTY_ARGS).args)
 
-    # Classify discovery state and topology
-    from lintgate.specification.test_topology import (
-        analyze_topology,
-        classify_discovery_state,
-        interpret_survival,
-    )
-
-    total_killed = result_dict.get("total_killed", 0)
-    discovery_state = classify_discovery_state(
-        test_files_found=discovery_diag.test_files_found,
-        callables_loaded=discovery_diag.callables_loaded,
-        import_failures=len(discovery_diag.import_failures),
-        fallback_used=discovery_diag.fallback_used,
-        total_killed=total_killed,
-    )
-    result_dict["discovery_state"] = discovery_state.value
-
-    # Use only the test files that were actually linked to this function,
-    # not all discovered test files. This prevents unrelated patches in
-    # other test files from creating false MOCK_BOUNDARY_DOMINANT diagnoses.
-    topology_result = analyze_topology(node, discovery_diag.linked_test_files or ctx.test_files)
-    result_dict["topology_state"] = topology_result.topology_state.value
-    result_dict["topology_confidence"] = topology_result.topology_confidence
-
-    survival_rate = result_dict.get("survival_rate", 0.0)
-    interpretation = interpret_survival(
-        discovery_state, topology_result.topology_state, survival_rate
-    )
-    result_dict["survival_interpretation"] = interpretation.value
-
-    if topology_result.patched_symbols:
-        result_dict["patched_symbol_count"] = topology_result.patched_symbol_count
-    if topology_result.mocked_call_sites:
-        result_dict["mocked_call_sites"] = topology_result.mocked_call_sites[:10]
-
-    # Legacy fields for backward compat
+    # Flag discovery failures so consumers can distinguish "untested" from "discovery broken"
     if len(tests) == 0 and len(ctx.test_files) > 0:
         result_dict["discovery_failed"] = True
         result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
@@ -701,11 +594,9 @@ def run_post_profiling_analysis(
     """
     from lintgate.specification.greedy_convergence import analyze_convergence
     from lintgate.specification.symmetry_classifier import classify_regime_from_mutations
-    from lintgate.specification.trajectory_analysis import analyze_trajectory
 
     convergence_results: list[dict] = []
     symmetry_results: list[dict] = []
-    trajectory_results: list[dict] = []
 
     for result_dict in results:
         pr = reconstruct_profiling_result(result_dict)
@@ -723,14 +614,7 @@ def run_post_profiling_analysis(
         sym = classify_regime_from_mutations(pr, sigma, is_pure, param_count)
         symmetry_results.append(sym.to_dict())
 
-        traj = analyze_trajectory(conv, sigma, pr.survival_rate)
-        trajectory_results.append(traj.to_dict())
-
-    return {
-        "convergence": convergence_results,
-        "symmetry": symmetry_results,
-        "trajectory": trajectory_results,
-    }
+    return {"convergence": convergence_results, "symmetry": symmetry_results}
 
 
 def reconstruct_profiling_result(result_dict: dict) -> Any:

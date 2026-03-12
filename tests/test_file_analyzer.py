@@ -96,9 +96,7 @@ class TestAnalyzeFile:
         tests_dir = tmp_path / "tests" / "unit"
         tests_dir.mkdir(parents=True)
         test_file = tests_dir / "test_proof_auditor_extended.py"
-        test_file.write_text(
-            "from proof_auditor import check\n\ndef test_case():\n    assert check(1)\n"
-        )
+        test_file.write_text("from proof_auditor import check\n\ndef test_case():\n    assert check(1)\n")
 
         discovered = _discover_relevant_test_files(str(src), str(tmp_path))
         assert str(test_file) in discovered

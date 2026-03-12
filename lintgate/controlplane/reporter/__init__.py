@@ -213,20 +213,18 @@ def format_mesh_report(
     informational_count = (
         len(display_informational) if delta is not None else len(total_informational)
     )
-    additional_context = _build_posttooluse_context(
-        PostToolUseInputs(
-            mesh_result=mesh_result,
-            blocking_count=blocking_count,
-            warning_count=warning_count,
-            informational_count=informational_count,
-            hidden_findings=hidden_findings,
-            channels_run=len(active_channels),
-            delta=delta,
-            baseline_delta=baseline_delta,
-            resurfaced_count=resurfaced_count,
-            cycle_alerts=cycle_alerts or [],
-        )
-    )
+    additional_context = _build_posttooluse_context(PostToolUseInputs(
+        mesh_result=mesh_result,
+        blocking_count=blocking_count,
+        warning_count=warning_count,
+        informational_count=informational_count,
+        hidden_findings=hidden_findings,
+        channels_run=len(active_channels),
+        delta=delta,
+        baseline_delta=baseline_delta,
+        resurfaced_count=resurfaced_count,
+        cycle_alerts=cycle_alerts or [],
+    ))
     output["hookSpecificOutput"] = {
         "hookEventName": "PostToolUse",
         "additionalContext": additional_context,

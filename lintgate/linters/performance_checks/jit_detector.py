@@ -132,7 +132,7 @@ def _score_numeric_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> fl
 def _count_loops(body: list[ast.stmt]) -> int:
     """Recursively count For/While loops in a function body."""
     count = 0
-    for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+    for node in ast.walk(ast.Module(body=body, type_ignores=[]))  :
         if isinstance(node, (ast.For, ast.While)):
             count += 1
     return count
@@ -186,13 +186,7 @@ def _count_allocations(body: list[ast.stmt]) -> int:
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):
         if isinstance(node, ast.Call):
             name = get_name(node.func)
-            if (
-                name
-                and name in _ALLOC_CONSTRUCTORS
-                or name
-                and name[0].isupper()
-                and name not in _NUMERIC_TYPE_NAMES
-            ):
+            if name and name in _ALLOC_CONSTRUCTORS or name and name[0].isupper() and name not in _NUMERIC_TYPE_NAMES:
                 count += 1
         elif isinstance(node, ast.JoinedStr):
             # f-string allocates a string
@@ -274,7 +268,10 @@ def detect_jit_candidates(
         low_alloc = _score_low_allocation(node)
 
         jit_score = (
-            0.3 * numeric_sig + 0.25 * loop_density + 0.25 * arith_intensity + 0.2 * low_alloc
+            0.3 * numeric_sig
+            + 0.25 * loop_density
+            + 0.25 * arith_intensity
+            + 0.2 * low_alloc
         )
 
         if jit_score < 0.2:

@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 106 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 105 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -185,7 +185,6 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `spec_project_rollup` | Project-wide specification rollup with file-level caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code; set `include_tests=True` to include test files. Cache mode remains read-only by default; `analyze_uncached=True` for live analysis. |
 | `spec_composition`  | Composition gap (γ) and sheaf condition analysis with callee-uncertainty-weighted interface mutation points |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
-| `spec_improve`      | One-shot spec improvement — diagnose, profile, and prescribe in one call |
 
 ### Refactor Checkpointing
 

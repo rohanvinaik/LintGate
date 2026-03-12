@@ -41,12 +41,16 @@ def _is_shim_file(filepath: str) -> bool:
             return True
 
     # Strong signal: multiple noqa:F401 annotations indicate deliberate re-exports
-    noqa_f401_count = sum(1 for line in lines if "# noqa" in line and "F401" in line)
+    noqa_f401_count = sum(
+        1 for line in lines if "# noqa" in line and "F401" in line
+    )
     if noqa_f401_count >= 3:
         return True
 
     # Check for __all__ definition (re-export shims typically define __all__)
-    has_all_definition = any(line.strip().startswith("__all__") and "=" in line for line in lines)
+    has_all_definition = any(
+        line.strip().startswith("__all__") and "=" in line for line in lines
+    )
 
     # Heuristic: count from-import lines vs total code lines
     code_lines: list[str] = []
@@ -63,7 +67,9 @@ def _is_shim_file(filepath: str) -> bool:
             continue
         code_lines.append(stripped)
 
-    reexport_count = sum(1 for line in code_lines if line.startswith("from ") and "import" in line)
+    reexport_count = sum(
+        1 for line in code_lines if line.startswith("from ") and "import" in line
+    )
 
     if len(code_lines) < 2:
         return has_all_definition

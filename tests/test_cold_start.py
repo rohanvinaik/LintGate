@@ -60,7 +60,7 @@ class TestMCPInstructions:
     def test_mentions_tool_count(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
 
-        assert "106" in _MCP_INSTRUCTIONS
+        assert "105" in _MCP_INSTRUCTIONS
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────

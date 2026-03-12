@@ -193,8 +193,8 @@ class TestPostProfilingTrajectory:
             }
         ]
         analysis = run_post_profiling_analysis(results, {})
-        assert "trajectory" in analysis
-        assert len(analysis["trajectory"]) == 1
-        traj = analysis["trajectory"][0]
-        assert "phase" in traj
-        assert "sigma_upper_bound" in traj
+        assert "convergence" in analysis
+        assert len(analysis["convergence"]) == 1
+        conv = analysis["convergence"][0]
+        assert "function_key" in conv
+        assert "convergence_efficiency" in conv

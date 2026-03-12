@@ -84,7 +84,7 @@ _MCP_INSTRUCTIONS = (
     "Compass workflow: compass_update(path, write=true) → compass_interview(path) → "
     "compass_update(path, targets=['all'], write=true).\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "106 tools total — use getting_started or lint_status to explore."
+    "105 tools total — use getting_started or lint_status to explore."
 )
 
 
@@ -95,7 +95,7 @@ def _build_mcp_server() -> FastMCP:
         if "instructions" in sig.parameters:
             return FastMCP("LintGate", instructions=_MCP_INSTRUCTIONS)
         if "description" in sig.parameters:
-            return FastMCP("LintGate", description=_MCP_INSTRUCTIONS)  # type: ignore[call-arg]
+            return FastMCP("LintGate", description=_MCP_INSTRUCTIONS)
     except Exception:
         pass
     try:
@@ -235,7 +235,7 @@ def _build_onboarding_status(project_root: str) -> dict[str, Any]:
             "  controlplane:\n"
             "    enabled: true"
         )
-    elif cp_config is not None and not cp_config.enabled:
+    elif not cp_config.enabled:
         status["config_state"] = "config_disabled"
         status["setup_hint"] = (
             "Config file found but ControlPlane is disabled. To enable automatic quality "
@@ -463,10 +463,8 @@ def _execute_lint_pipeline(
     linter_results = run_linters(lint_tier, config, registry, timeout_ms=30000)
 
     aggregated = aggregate_results(
-        linter_results,
-        config,
-        tier_name=lint_tier.name,
-        tier_reason=lint_tier.reason,
+        linter_results, config,
+        tier_name=lint_tier.name, tier_reason=lint_tier.reason,
     )
     return aggregated, linter_results, lint_tier
 
@@ -654,26 +652,14 @@ def _build_lint_response(
     """Build the response dict based on output_mode (compact/standard/full)."""
     if output_mode == "compact":
         output = _build_compact_output(
-            run_id,
-            lint_tier,
-            files,
-            elapsed_ms,
-            aggregated,
-            lint_delta,
-            max_findings,
+            run_id, lint_tier, files, elapsed_ms, aggregated, lint_delta, max_findings,
         )
     elif output_mode == "standard":
         output = _build_standard_output(
-            run_id,
-            lint_tier,
-            files,
-            elapsed_ms,
-            aggregated,
-            lint_delta,
-            max_findings,
+            run_id, lint_tier, files, elapsed_ms, aggregated, lint_delta, max_findings,
         )
     else:
-        output = {"run_id": run_id, **full_details}
+        output: dict[str, Any] = {"run_id": run_id, **full_details}
         if lint_delta is not None:
             output["delta"] = lint_delta
 
@@ -701,35 +687,18 @@ def _run_lint(
         output_mode = "compact"
 
     aggregated, linter_results, lint_tier = _execute_lint_pipeline(
-        files,
-        project_root,
-        tier,
-        strictness,
+        files, project_root, tier, strictness,
     )
 
     elapsed_ms = (time.perf_counter() - start) * 1000
 
-    run_id, full_details, _recurrence, _report, lint_delta = _compute_lint_metadata(
-        aggregated,
-        linter_results,
-        lint_tier,
-        project_root,
-        files,
-        elapsed_ms,
-        output_mode,
+    run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+        aggregated, linter_results, lint_tier, project_root, files, elapsed_ms, output_mode,
     )
 
     return _build_lint_response(
-        output_mode,
-        run_id,
-        lint_tier,
-        files,
-        elapsed_ms,
-        aggregated,
-        full_details,
-        lint_delta,
-        project_root,
-        max_findings,
+        output_mode, run_id, lint_tier, files, elapsed_ms, aggregated,
+        full_details, lint_delta, project_root, max_findings,
     )
 
 

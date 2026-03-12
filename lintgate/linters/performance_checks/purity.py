@@ -245,11 +245,7 @@ class _PureFunctionVisitor(ast.NodeVisitor):
                 self.local_names.add(target.id)
             elif isinstance(target, ast.Attribute):
                 target_name = get_name(target.value)
-                if (
-                    self.is_method
-                    and target_name in ("self", "cls")
-                    and self.func_node.name != "__init__"
-                ):
+                if self.is_method and target_name in ("self", "cls") and self.func_node.name != "__init__":
                     self.side_effects.append(
                         SideEffect(
                             "attribute_mutation",
@@ -286,11 +282,7 @@ class _PureFunctionVisitor(ast.NodeVisitor):
         # x += 1 style — check if target is external
         if isinstance(node.target, ast.Attribute):
             target_name = get_name(node.target.value)
-            if (
-                self.is_method
-                and target_name in ("self", "cls")
-                and self.func_node.name != "__init__"
-            ):
+            if self.is_method and target_name in ("self", "cls") and self.func_node.name != "__init__":
                 self.side_effects.append(
                     SideEffect(
                         "attribute_mutation",

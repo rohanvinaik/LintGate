@@ -148,9 +148,9 @@ class TestCollectPrescriptions:
         prescriptions = _collect_prescriptions(states)
         assert len(prescriptions) == 1
         rx = prescriptions[0]
-        assert rx["source_of_evidence"] == "survivor_record"
-        assert rx["mutant_id"] == "VALUE_0"
-        assert "why_this_matters" in rx
+        assert rx["category"] == "VALUE"
+        assert rx["function"] == "mod.py::f"
+        assert "action" in rx
 
     def test_falls_back_to_category_templates(self):
         from mcp_tools._mutation_tools_impl import _collect_prescriptions
@@ -159,13 +159,12 @@ class TestCollectPrescriptions:
             {
                 "function_key": "mod.py::g",
                 "per_category": [{"category": "BOUNDARY", "survived": 2, "survival_rate": 1.0}],
-                # No survivor_records key
             }
         ]
         prescriptions = _collect_prescriptions(states)
         assert len(prescriptions) == 1
         rx = prescriptions[0]
-        assert rx["source_of_evidence"] == "category_template"
+        assert rx["category"] == "BOUNDARY"
         assert "action" in rx
 
     def test_no_prescriptions_when_no_survivors(self):

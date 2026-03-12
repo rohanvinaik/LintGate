@@ -25,12 +25,8 @@ def _filter_channels(channels_dict, channel_filter):
 
 
 _EFFORT_DEFAULTS: dict[str, float] = {
-    "ruff": 2.0,
-    "mypy": 10.0,
-    "radon": 15.0,
-    "bandit": 20.0,
-    "vulture": 5.0,
-    "structure": 15.0,
+    "ruff": 2.0, "mypy": 10.0, "radon": 15.0, "bandit": 20.0,
+    "vulture": 5.0, "structure": 15.0,
 }
 _SEV_WEIGHT: dict[str, float] = {"blocking": 3.0, "warning": 2.0, "informational": 1.0}
 
@@ -48,17 +44,12 @@ def _finding_roi(f: dict) -> float:
     effort = _finding_effort(f)
     weight = _SEV_WEIGHT.get(f.get("severity", "warning"), 1.0)
     confidence = f.get("confidence", 1.0)
-    return round(weight * confidence / max(effort, 0.1), 3)  # type: ignore[no-any-return]
+    return round(weight * confidence / max(effort, 0.1), 3)
 
 
 def _extract_findings(
-    details,
-    channel,
-    severity,
-    max_issues,
-    *,
-    top_n=None,
-    time_budget_minutes=None,
+    details, channel, severity, max_issues,
+    *, top_n=None, time_budget_minutes=None,
 ):
     """Extract and filter findings from run details.
 
@@ -204,12 +195,7 @@ def _extract_proven_resolutions_from_details(details: dict, channel) -> list[dic
 
 
 def _populate_findings_section(
-    output: dict,
-    details: dict,
-    channel,
-    severity,
-    max_issues,
-    **kwargs,
+    output: dict, details: dict, channel, severity, max_issues, **kwargs,
 ) -> None:
     """Populate findings + delegation annotations into output."""
     output.update(_extract_findings(details, channel, severity, max_issues, **kwargs))
@@ -278,15 +264,8 @@ _SECTION_POPULATORS: list[tuple[str, Any]] = [
 
 
 def _impl_controlplane_get_details(
-    run_id,
-    channel,
-    severity,
-    max_issues,
-    sections,
-    helpers,
-    *,
-    top_n=None,
-    time_budget_minutes=None,
+    run_id, channel, severity, max_issues, sections, helpers,
+    *, top_n=None, time_budget_minutes=None,
 ):
     """Core implementation of controlplane_get_details."""
     from lintgate.state import load_controlplane_run
@@ -312,7 +291,7 @@ def _impl_controlplane_get_details(
             else:
                 populator(output, details, channel, severity, max_issues, run_id)
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    return helpers["_json_dumps"](output)
 
 
 # ── controlplane_status helpers ─────────────────────────────────────────

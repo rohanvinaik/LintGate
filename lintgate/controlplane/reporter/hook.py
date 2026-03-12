@@ -201,8 +201,7 @@ def compute_hook_fingerprint_detailed(mesh_result: MeshResult) -> dict[str, Any]
 
 
 def compute_field_deltas(
-    current_fields: dict[str, str],
-    previous_fields: dict[str, str],
+    current_fields: dict[str, str], previous_fields: dict[str, str],
 ) -> dict[str, dict[str, str]]:
     """Return only fields that changed, with old and new values."""
     deltas: dict[str, dict[str, str]] = {}

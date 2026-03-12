@@ -269,7 +269,9 @@ def _apply_compass_delta(session: Any, cr: Any) -> None:
         session.behavior_compass["_theory_recent_codas"] = existing_codas
 
 
-def _apply_global_profile_delta(session: Any, cr: Any, cp_config: Any) -> None:
+def _apply_global_profile_delta(
+    session: Any, cr: Any, cp_config: Any
+) -> None:
     """Apply global behavior profile delta if enabled."""
     if not (cp_config.global_memory_enabled and "global_profile_delta" in cr.metrics):
         return
@@ -289,7 +291,9 @@ def _apply_global_profile_delta(session: Any, cr: Any, cp_config: Any) -> None:
         save_global_profile(gp)
 
 
-def _apply_model_telemetry(session: Any, input_data: dict) -> None:
+def _apply_model_telemetry(
+    session: Any, input_data: dict
+) -> None:
     """Refine model profile telemetry from session signal fires."""
     with contextlib.suppress(Exception):
         from lintgate.controlplane.model.profiles import (

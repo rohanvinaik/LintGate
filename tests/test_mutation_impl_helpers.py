@@ -28,7 +28,9 @@ def test_load_all_tests_from_files_accepts_non_test_prefix_classes(tmp_path):
     test_file = tmp_path / "tests" / "test_proof_auditor.py"
     test_file.parent.mkdir(parents=True)
     test_file.write_text(
-        "class ValidationSuite:\n    def test_accepts_valid_input(self):\n        assert True\n"
+        "class ValidationSuite:\n"
+        "    def test_accepts_valid_input(self):\n"
+        "        assert True\n"
     )
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n")
 
@@ -39,12 +41,9 @@ def test_load_all_tests_from_files_accepts_non_test_prefix_classes(tmp_path):
 
 
 def test_load_test_callables_falls_back_when_ref_imports_resolve_to_empty():
-    class _Ref:
-        test_file = "tests/test_demo.py"
-
     class _Impact:
         def tests_for(self, _func_name: str):
-            return [_Ref()]  # Non-empty refs path
+            return [object()]  # Non-empty refs path
 
     fallback = [lambda: None]
 
