@@ -10,7 +10,7 @@ import ast
 from .types import TestDesignSignals
 
 
-def extract_boundary_points(func_node: ast.FunctionDef) -> int:
+def extract_boundary_points(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count boundary points from comparisons with literal operands.
 
     Each comparison with a constant = 1 boundary point.
@@ -28,7 +28,7 @@ def extract_boundary_points(func_node: ast.FunctionDef) -> int:
     return count
 
 
-def extract_equivalence_partitions(func_node: ast.FunctionDef) -> int:
+def extract_equivalence_partitions(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count distinct equivalence partition categories from type checks."""
     partitions = 0
     for node in ast.walk(func_node):
@@ -36,7 +36,7 @@ def extract_equivalence_partitions(func_node: ast.FunctionDef) -> int:
     return partitions
 
 
-def extract_decision_rules(func_node: ast.FunctionDef) -> int:
+def extract_decision_rules(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count unique condition combinations in nested if/elif/match.
 
     Capped at 256 to signal complexity explosion (Regime B).
@@ -45,7 +45,7 @@ def extract_decision_rules(func_node: ast.FunctionDef) -> int:
     return min(count, 256)
 
 
-def extract_predicate_effects(func_node: ast.FunctionDef) -> int:
+def extract_predicate_effects(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Count predicate→effect edges (cause-effect links).
 
     For each if/elif predicate, count distinct effect kinds in its body.
@@ -62,7 +62,7 @@ def extract_predicate_effects(func_node: ast.FunctionDef) -> int:
     return links
 
 
-def extract_all(func_node: ast.FunctionDef) -> TestDesignSignals:
+def extract_all(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> TestDesignSignals:
     """Extract all test design signals from a function AST node."""
     return TestDesignSignals(
         boundary_points=extract_boundary_points(func_node),

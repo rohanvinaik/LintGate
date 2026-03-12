@@ -42,6 +42,22 @@ def _standalone_path(project_root: str) -> Path:
     return _HABIT_STATE_DIR / f"{_project_hash(project_root)}.json"
 
 
+def load_error_bootstrap(project_root: str) -> dict[str, Any]:
+    """Load bootstrapped error memory for a project.
+
+    Returns dict of {error_sig: {count, first_seen, last_seen}} or empty dict.
+    """
+    error_path = _HABIT_STATE_DIR / f"{_project_hash(project_root)}_errors.json"
+    if not error_path.exists():
+        return {}
+    try:
+        with open(error_path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def load_habit_state_standalone(
     project_root: str,
 ) -> tuple[HabitModeState, list[dict[str, Any]]]:

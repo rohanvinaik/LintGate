@@ -214,5 +214,5 @@ def setup_github_quality(
     output["next_actions"] = next_actions
 
     if _helpers and "_json_dumps" in _helpers:
-        return _helpers["_json_dumps"](output, output_mode="compact")
+        return _helpers["_json_dumps"](output, output_mode="compact")  # type: ignore[no-any-return]
     return json.dumps(output, indent=2)

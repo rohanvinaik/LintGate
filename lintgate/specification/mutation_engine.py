@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import copy
 import time
+import types
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -38,6 +39,7 @@ class Mutant:
     mutated_node: ast.AST
     description: str
     location: int = 0
+    mutant_id: str = ""
 
 
 @dataclass
@@ -121,6 +123,9 @@ class ProfilingResult:
     is_gateable: bool = True
     per_category: list[CategoryResult] = field(default_factory=list)
     kill_matrix: dict[str, list[str]] = field(default_factory=dict)
+    survivor_records: list[dict] = field(default_factory=list)
+    killed_records: list[dict] = field(default_factory=list)
+    budget_exhausted: bool = False
     elapsed_ms: float = 0.0
 
     def to_dict(self) -> dict:
@@ -133,6 +138,7 @@ class ProfilingResult:
             "survival_rate": round(self.survival_rate, 3),
             "coverage_depth": self.coverage_depth,
             "is_gateable": self.is_gateable,
+            "budget_exhausted": self.budget_exhausted,
             "elapsed_ms": round(self.elapsed_ms, 1),
             "per_category": [
                 {
@@ -149,6 +155,10 @@ class ProfilingResult:
         }
         if self.kill_matrix:
             d["kill_matrix"] = self.kill_matrix
+        if self.survivor_records:
+            d["survivor_records"] = self.survivor_records
+        if self.killed_records:
+            d["killed_records"] = self.killed_records
         return d
 
 
@@ -399,13 +409,15 @@ def _generate_state_mutants(
             ast.fix_missing_locations(mutated_node)
 
             if transformer.applied:
+                mid = f"{cat.value}_{mode}_{i}"
                 mutants.append(
                     Mutant(
                         category=cat,
                         original_node=func_node,
                         mutated_node=mutated_node,
-                        description=f"{cat.value}_{mode}_{i}: {desc}",
+                        description=f"{mid}: {desc}",
                         location=getattr(func_node, "lineno", 0),
+                        mutant_id=mid,
                     )
                 )
 
@@ -443,13 +455,15 @@ def generate_mutants(
             ast.fix_missing_locations(mutated_node)
 
             if transformer.applied:
+                mid = f"{cat.value}_{i}"
                 mutants.append(
                     Mutant(
                         category=cat,
                         original_node=func_node,
                         mutated_node=mutated_node,
-                        description=f"{cat.value}_{i}: {desc}",
+                        description=f"{mid}: {desc}",
                         location=getattr(func_node, "lineno", 0),
+                        mutant_id=mid,
                     )
                 )
 
@@ -477,8 +491,8 @@ def _make_transformer(category: MutationCategory, index: int) -> tuple[_BaseMuta
 
 def _patch_mutant_into_test(
     test_fn: Callable[..., None],
-    func_name: str | None,
-    mutated_func: Any,
+    qualname: str | None,
+    mutated_obj: Any,
 ) -> tuple[bool, Any, Any]:
     """Patch mutated function into the test's namespace.
 
@@ -488,8 +502,10 @@ def _patch_mutant_into_test(
     Returns (patched, saved_original, patch_target) where patch_target
     is either a dict (__globals__) or a module object.
     """
-    if not func_name:
+    if not qualname:
         return False, None, None
+
+    func_name = qualname.split(".")[-1]
 
     # Primary: use __globals__ — the test function's defining module globals.
     # Works for bound methods, regular functions, and dynamically imported modules.
@@ -500,21 +516,156 @@ def _patch_mutant_into_test(
         if underlying is not None:
             test_globals = getattr(underlying, "__globals__", None)
 
-    if test_globals is not None and func_name in test_globals:
-        saved = test_globals[func_name]
-        test_globals[func_name] = mutated_func
-        return True, saved, test_globals
+    closure_bindings = _get_closure_bindings(test_fn)
 
-    # Fallback: inspect.getmodule (works for regular module-level functions)
     import inspect
 
     test_module = inspect.getmodule(test_fn)
+
+    owner = _resolve_qualified_owner(test_globals, closure_bindings, test_module, qualname)
+    if owner is not None and hasattr(owner, func_name):
+        saved = _get_raw_attr(owner, func_name)
+        setattr(owner, func_name, _preserve_descriptor_shape(saved, mutated_obj))
+        return True, saved, owner
+
+    closure_cell = _find_closure_cell(closure_bindings, func_name)
+    if closure_cell is not None:
+        saved = closure_cell.cell_contents
+        closure_cell.cell_contents = _preserve_closure_binding_shape(saved, mutated_obj)
+        return True, saved, ("closure_cell", closure_cell)
+
+    if test_globals is not None and func_name in test_globals:
+        saved = test_globals[func_name]
+        test_globals[func_name] = _unwrap_descriptor(mutated_obj)
+        return True, saved, test_globals
+
+    # Fallback: inspect.getmodule (works for regular module-level functions)
     if test_module is not None and hasattr(test_module, func_name):
         saved = getattr(test_module, func_name)
-        setattr(test_module, func_name, mutated_func)
+        setattr(test_module, func_name, _unwrap_descriptor(mutated_obj))
         return True, saved, test_module
 
     return False, None, None
+
+
+def _resolve_qualified_owner(
+    test_globals: dict[str, Any] | None,
+    closure_bindings: list[tuple[str, Any, Any]],
+    test_module: Any,
+    qualname: str,
+) -> Any:
+    """Resolve the owning object for a qualified symbol like ``Class.method``."""
+    if "." not in qualname:
+        return None
+
+    import inspect
+
+    owner_parts = qualname.split(".")[:-1]
+    root_name = owner_parts[0]
+    candidates: list[Any] = []
+    seen: set[int] = set()
+
+    def _add_candidate(obj: Any) -> None:
+        if obj is None:
+            return
+        marker = id(obj)
+        if marker in seen:
+            return
+        seen.add(marker)
+        candidates.append(obj)
+
+    for _, value, _ in closure_bindings:
+        if inspect.ismodule(value) and hasattr(value, root_name):
+            _add_candidate(getattr(value, root_name))
+        elif isinstance(value, type) and value.__name__ == root_name:
+            _add_candidate(value)
+
+    if test_globals is not None:
+        _add_candidate(test_globals.get(root_name))
+        for value in test_globals.values():
+            if inspect.ismodule(value) and hasattr(value, root_name):
+                _add_candidate(getattr(value, root_name))
+            elif isinstance(value, type) and value.__name__ == root_name:
+                _add_candidate(value)
+
+    if test_module is not None and hasattr(test_module, root_name):
+        _add_candidate(getattr(test_module, root_name))
+
+    for candidate in candidates:
+        current = candidate
+        for part in owner_parts[1:]:
+            if not hasattr(current, part):
+                current = None
+                break
+            current = getattr(current, part)
+        if current is not None:
+            return current
+    return None
+
+
+def _get_closure_bindings(test_fn: Callable[..., None]) -> list[tuple[str, Any, Any]]:
+    """Extract ``(freevar_name, value, cell)`` bindings from a test closure."""
+    underlying = getattr(test_fn, "__func__", test_fn)
+    cells = getattr(underlying, "__closure__", None) or ()
+    code = getattr(underlying, "__code__", None)
+    freevars = getattr(code, "co_freevars", ())
+
+    bindings: list[tuple[str, Any, Any]] = []
+    for name, cell in zip(freevars, cells, strict=False):
+        try:
+            value = cell.cell_contents
+        except ValueError:
+            continue
+        bindings.append((name, value, cell))
+    return bindings
+
+
+def _find_closure_cell(
+    closure_bindings: list[tuple[str, Any, Any]],
+    func_name: str,
+) -> Any:
+    """Find the closure cell that directly binds a symbol name."""
+    for name, _, cell in closure_bindings:
+        if name == func_name:
+            return cell
+    return None
+
+
+def _get_raw_attr(owner: Any, attr_name: str) -> Any:
+    """Get the raw stored attribute to preserve descriptor identity."""
+    from collections.abc import Mapping
+
+    namespace = getattr(owner, "__dict__", None)
+    if isinstance(namespace, Mapping) and attr_name in namespace:
+        return namespace[attr_name]
+    return getattr(owner, attr_name)
+
+
+def _unwrap_descriptor(obj: Any) -> Any:
+    """Extract the underlying callable from classmethod/staticmethod wrappers."""
+    if isinstance(obj, (classmethod, staticmethod)):
+        return obj.__func__
+    return obj
+
+
+def _preserve_descriptor_shape(original: Any, mutated_obj: Any) -> Any:
+    """Wrap the mutant to match the original descriptor semantics."""
+    if isinstance(original, classmethod):
+        if isinstance(mutated_obj, classmethod):
+            return mutated_obj
+        return classmethod(_unwrap_descriptor(mutated_obj))
+    if isinstance(original, staticmethod):
+        if isinstance(mutated_obj, staticmethod):
+            return mutated_obj
+        return staticmethod(_unwrap_descriptor(mutated_obj))
+    return _unwrap_descriptor(mutated_obj)
+
+
+def _preserve_closure_binding_shape(original: Any, mutated_obj: Any) -> Any:
+    """Wrap the mutant to match common closure-bound callable shapes."""
+    if isinstance(original, types.MethodType):
+        return types.MethodType(_unwrap_descriptor(mutated_obj), original.__self__)
+    return _unwrap_descriptor(mutated_obj)
 
 
 def _unpatch_mutant(
@@ -528,6 +679,12 @@ def _unpatch_mutant(
         return
     if isinstance(patch_target, dict):
         patch_target[func_name] = saved
+    elif (
+        isinstance(patch_target, tuple)
+        and len(patch_target) == 2
+        and patch_target[0] == "closure_cell"
+    ):
+        patch_target[1].cell_contents = saved
     else:
         setattr(patch_target, func_name, saved)
 
@@ -537,6 +694,7 @@ def evaluate_mutant(
     test_functions: list[Callable[..., None]],
     original_func: Callable[..., Any],
     timeout_ms: float = 5000,
+    qualname: str | None = None,
 ) -> MutantResult:
     """Evaluate a mutant against test functions.
 
@@ -548,14 +706,14 @@ def evaluate_mutant(
 
     # Compile mutated function
     try:
-        module_ast = ast.Module(body=[mutant.mutated_node], type_ignores=[])
+        module_ast = ast.Module(body=[mutant.mutated_node], type_ignores=[])  # type: ignore[list-item]
         ast.fix_missing_locations(module_ast)
         code = compile(module_ast, "<mutant>", "exec")
         namespace: dict[str, Any] = {}
         exec(code, namespace)  # noqa: S102  # nosec B102 — intentional: compiling AST mutants
         func_name = getattr(mutant.mutated_node, "name", None)
-        mutated_func = namespace.get(func_name) if func_name else None
-        if mutated_func is None:
+        mutated_obj = namespace.get(func_name) if func_name else None
+        if mutated_obj is None:
             return MutantResult(
                 mutant=mutant,
                 killed=True,
@@ -572,7 +730,8 @@ def evaluate_mutant(
 
     # Run tests against mutated function
     for test_fn in test_functions:
-        if _elapsed(start) > timeout_ms:
+        remaining_ms = timeout_ms - _elapsed(start)
+        if remaining_ms <= 0:
             return MutantResult(
                 mutant=mutant, killed=True, killed_by="timeout", elapsed_ms=_elapsed(start)
             )
@@ -581,37 +740,68 @@ def evaluate_mutant(
         # (the test function's defining module globals) which works reliably for
         # both regular imports and dynamically loaded test modules. Falls back to
         # inspect.getmodule for inline test callables without __globals__.
-        patched, saved, patch_target = _patch_mutant_into_test(test_fn, func_name, mutated_func)
+        patch_name = qualname or func_name
+        patched, saved, patch_target = _patch_mutant_into_test(test_fn, patch_name, mutated_obj)
         try:
-            if patched:
-                test_fn()
-            else:
-                # Fallback: pass mutant as arg (inline test callables)
-                try:
-                    test_fn(mutated_func)
-                except TypeError:
-                    # Zero-arg test without module patching — call without args
-                    test_fn()
-        except AssertionError:
-            return MutantResult(
-                mutant=mutant,
-                killed=True,
-                killed_by="assertion",
-                test_name=getattr(test_fn, "__name__", "unknown"),
-                elapsed_ms=_elapsed(start),
+            result = _run_test_with_timeout(
+                test_fn,
+                _unwrap_descriptor(mutated_obj),
+                patched,
+                remaining_ms,
             )
-        except Exception:
-            return MutantResult(
-                mutant=mutant,
-                killed=True,
-                killed_by="crash",
-                test_name=getattr(test_fn, "__name__", "unknown"),
-                elapsed_ms=_elapsed(start),
-            )
+            if result is not None:
+                return MutantResult(
+                    mutant=mutant,
+                    killed=True,
+                    killed_by=result,
+                    test_name=getattr(test_fn, "__name__", "unknown"),
+                    elapsed_ms=_elapsed(start),
+                )
         finally:
             _unpatch_mutant(patched, saved, patch_target, func_name)
 
     return MutantResult(mutant=mutant, killed=False, elapsed_ms=_elapsed(start))
+
+
+def _run_test_with_timeout(
+    test_fn: Callable[..., None],
+    mutated_func: Any,
+    patched: bool,
+    timeout_ms: float,
+) -> str | None:
+    """Run a single test function with a hard thread-based timeout.
+
+    Returns the kill reason ("assertion", "crash", "timeout") if killed,
+    or None if the test passed (mutant survived this test).
+    """
+    import threading
+
+    result_box: list[str | None] = [None]  # None = survived
+
+    def _target() -> None:
+        try:
+            if patched:
+                test_fn()
+            else:
+                try:
+                    test_fn(mutated_func)
+                except TypeError:
+                    test_fn()
+        except AssertionError:
+            result_box[0] = "assertion"
+        except Exception:
+            result_box[0] = "crash"
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_ms / 1000.0)
+
+    if thread.is_alive():
+        # Thread is stuck — treat as timeout kill.
+        # Daemon thread will be cleaned up on process exit.
+        return "timeout"
+
+    return result_box[0]
 
 
 def _elapsed(start: float) -> float:
@@ -629,12 +819,19 @@ def run_function_sampling(
     original_func: Callable[..., Any],
     budget_ms: float = 500,
     max_per_category: int = 3,
+    per_mutant_timeout_ms: float = 500,
 ) -> SamplingResult:
     """Inline sampling mode — generate ≤max_per_category mutants per category.
 
     Evaluates within time budget. This is the "active hypothesis testing"
     from §6.2: each sampled mutant tests whether the test suite distinguishes
     a specific behavioral dimension.
+
+    Args:
+        budget_ms: Total wall-clock budget for the entire sampling run.
+        per_mutant_timeout_ms: Timeout for evaluating a single mutant.
+            Separate from budget_ms to prevent one slow mutant from
+            consuming the entire budget.
     """
     start = time.monotonic()
     mutants = generate_mutants(func_node, categories, max_per_category=max_per_category)
@@ -642,13 +839,20 @@ def run_function_sampling(
     results_by_cat: dict[MutationCategory, CategoryResult] = {}
     budget_exhausted = False
     all_results: list[MutantResult] = []
+    qualname = func_key.split("::", 1)[1] if "::" in func_key else getattr(func_node, "name", None)
 
     for mutant in mutants:
         if _elapsed(start) > budget_ms:
             budget_exhausted = True
             break
 
-        result = evaluate_mutant(mutant, test_functions, original_func, timeout_ms=budget_ms)
+        result = evaluate_mutant(
+            mutant,
+            test_functions,
+            original_func,
+            timeout_ms=per_mutant_timeout_ms,
+            qualname=qualname,
+        )
         all_results.append(result)
 
         cr = results_by_cat.setdefault(mutant.category, CategoryResult(category=mutant.category))
@@ -687,21 +891,41 @@ def run_function_profiling(
     test_functions: list[Callable[..., None]],
     original_func: Callable[..., Any],
     per_mutant_timeout_ms: float = 5000,
+    budget_ms: float | None = None,
 ) -> ProfilingResult:
-    """Exhaustive profiling mode — generate all mutants, no time budget.
+    """Exhaustive profiling mode — generate all mutants, evaluate with optional budget.
 
     Returns full survival profile with kill matrix for convergence analysis.
     Result has coverage_depth="profiled" and is_gateable=True.
+
+    Args:
+        per_mutant_timeout_ms: Timeout for evaluating a single mutant.
+        budget_ms: Optional total wall-clock budget. None means unlimited.
+            When exceeded, returns partial results with budget_exhausted=True.
     """
+    from lintgate.specification.mutant_reporting import build_killed_record, build_survivor_record
+
     start = time.monotonic()
     mutants = generate_mutants(func_node, categories)
 
     results_by_cat: dict[MutationCategory, CategoryResult] = {}
     kill_matrix: dict[str, list[str]] = {}
+    survivor_records: list[dict] = []
+    killed_records: list[dict] = []
+    budget_exhausted = False
+    qualname = func_key.split("::", 1)[1] if "::" in func_key else getattr(func_node, "name", None)
 
     for mutant in mutants:
+        if budget_ms is not None and _elapsed(start) > budget_ms:
+            budget_exhausted = True
+            break
+
         result = evaluate_mutant(
-            mutant, test_functions, original_func, timeout_ms=per_mutant_timeout_ms
+            mutant,
+            test_functions,
+            original_func,
+            timeout_ms=per_mutant_timeout_ms,
+            qualname=qualname,
         )
 
         cr = results_by_cat.setdefault(mutant.category, CategoryResult(category=mutant.category))
@@ -716,8 +940,10 @@ def run_function_profiling(
                 cr.timed_out += 1
             if result.test_name:
                 kill_matrix.setdefault(mutant.description, []).append(result.test_name)
+            killed_records.append(build_killed_record(result))
         else:
             cr.survived += 1
+            survivor_records.append(build_survivor_record(result))
 
     per_cat = list(results_by_cat.values())
     total = sum(cr.total for cr in per_cat)
@@ -733,5 +959,8 @@ def run_function_profiling(
         survival_rate=survived / total if total > 0 else 0.0,
         per_category=per_cat,
         kill_matrix=kill_matrix,
+        survivor_records=survivor_records,
+        killed_records=killed_records,
+        budget_exhausted=budget_exhausted,
         elapsed_ms=_elapsed(start),
     )

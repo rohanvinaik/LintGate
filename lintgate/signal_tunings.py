@@ -88,7 +88,7 @@ def load_tunings(project_root: str) -> list[dict[str, Any]]:
             data = yaml.safe_load(f)
         if not isinstance(data, dict):
             return []
-        return data.get("tunings", [])
+        return list(data.get("tunings", []))
     except Exception:
         return []
 
@@ -149,7 +149,7 @@ def is_tunable(
         return False
 
     min_recurrence = policy.get("min_recurrence", 3)
-    return recurrence_count >= min_recurrence
+    return recurrence_count >= min_recurrence  # type: ignore[no-any-return]
 
 
 def build_finding_signature(issue: LintIssue) -> str:

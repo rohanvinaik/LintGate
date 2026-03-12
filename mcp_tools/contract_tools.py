@@ -88,25 +88,26 @@ def register(mcp, helpers):
                 "finding_deps": len(schema.finding_deps),
             }
 
+        next_actions: list[dict[str, str]] = []
+        if all_issues:
+            next_actions.append(
+                {
+                    "tool": "controlplane_run",
+                    "args": str({"path": path}),
+                    "reason": f"{len(all_issues)} contract issue(s) found — run full analysis",
+                }
+            )
+
         result = {
             "status": "pass" if not all_issues else "fail",
             "active_channels": active,
             "issues": all_issues,
             "issue_count": len(all_issues),
             "schema_summary": schema_summary,
-            "next_actions": [],
+            "next_actions": next_actions,
         }
 
-        if all_issues:
-            result["next_actions"].append(
-                {
-                    "tool": "controlplane_run",
-                    "args": {"path": path},
-                    "reason": f"{len(all_issues)} contract issue(s) found — run full analysis",
-                }
-            )
-
         clear_schemas()
-        return helpers["_json_dumps"](result, output_mode="compact")
+        return helpers["_json_dumps"](result, output_mode="compact")  # type: ignore[no-any-return]
 
     return {"contract_audit": contract_audit}

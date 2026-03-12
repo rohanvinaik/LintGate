@@ -247,6 +247,18 @@ class DispositionEnforcementConfig:
 
 
 @dataclass
+class TestRegenerationConfig:
+    """Configuration for the test regeneration workflow."""
+
+    preserve_globs: list[str] = field(default_factory=list)
+    review_ceiling: float = 0.15
+    kill_floor: float = 0.70
+    zero_kill_ceiling: float = 0.05
+    generated_dir: str = "tests/generated"
+    quarantine_dir: str = "tests/quarantine"
+
+
+@dataclass
 class ControlPlaneConfig:
     """Top-level ControlPlane configuration.
 
@@ -297,6 +309,8 @@ class ControlPlaneConfig:
     disposition_enforcement: DispositionEnforcementConfig = field(
         default_factory=DispositionEnforcementConfig
     )
+    # Test regeneration workflow settings
+    test_regeneration: TestRegenerationConfig = field(default_factory=TestRegenerationConfig)
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

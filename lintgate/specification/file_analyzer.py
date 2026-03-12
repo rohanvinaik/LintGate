@@ -159,6 +159,17 @@ def _do_analyze(
     # Build per-function output
     total_spec = 0.0
     for key, fs in ledger.functions.items():
+        # Build empirical overlay from mutation cache
+        from lintgate.specification.static_empirical_reconciliation import build_overlay
+
+        overlay = build_overlay(
+            function_key=key,
+            static_sigma=fs.core.estimated_sigma,
+            static_regime=fs.core.regime,
+            static_phase=fs.core.phase,
+            mutation_cache=mutation_cache,
+        )
+
         result.functions[key] = {
             "sigma": fs.core.estimated_sigma,
             "sigma_confidence": round(fs.core.sigma_confidence, 3),
@@ -177,6 +188,7 @@ def _do_analyze(
                 "decision_rule_count": fs.design_signals.decision_rule_count,
                 "predicate_effect_links": fs.design_signals.predicate_effect_links,
             },
+            "empirical_overlay": overlay.to_dict(),
             "optimization_hints": fs.optimization_hints,
             "stop_criteria_met": fs.stop_criteria_met,
         }

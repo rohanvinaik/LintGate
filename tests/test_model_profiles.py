@@ -322,6 +322,153 @@ class TestPersistenceExtended:
             assert (nested / "model_profiles.json").exists()
 
 
+class TestFromDictFieldPreservation:
+    """Kill SWAP+VALUE mutants on ModelProfile.from_dict."""
+
+    def test_from_dict_preserves_all_fields(self) -> None:
+        now = time.time()
+        data = {
+            "model_key": "anthropic:claude-opus-4",
+            "created_at": now - 1000,
+            "updated_at": now - 500,
+            "last_seen_at": now - 100,
+            "probe_version": 3,
+            "probe_runs": 7,
+            "confidence": 0.82,
+            "signal_risk": {"approach_cycling": 0.4, "verification_debt": 0.2},
+            "custom_anti_patterns": ["avoid X"],
+            "custom_dispositions": ["prefer Y"],
+            "telemetry_samples": 42,
+            "stale_after_days": 14,
+        }
+        p = ModelProfile.from_dict(data)
+        assert p.model_key == "anthropic:claude-opus-4"
+        assert p.created_at == now - 1000
+        assert p.updated_at == now - 500
+        assert p.last_seen_at == now - 100
+        assert p.probe_version == 3
+        assert p.probe_runs == 7
+        assert p.confidence == 0.82
+        assert p.signal_risk == {"approach_cycling": 0.4, "verification_debt": 0.2}
+        assert p.custom_anti_patterns == ["avoid X"]
+        assert p.custom_dispositions == ["prefer Y"]
+        assert p.telemetry_samples == 42
+        assert p.stale_after_days == 14
+
+    def test_from_dict_fields_not_swapped(self) -> None:
+        """Ensure created_at != updated_at != last_seen_at after deserialization."""
+        data = {
+            "created_at": 1000.0,
+            "updated_at": 2000.0,
+            "last_seen_at": 3000.0,
+        }
+        p = ModelProfile.from_dict(data)
+        assert p.created_at == 1000.0
+        assert p.updated_at == 2000.0
+        assert p.last_seen_at == 3000.0
+
+
+class TestIsStaleEdgeCases:
+    """Kill BOUNDARY+VALUE mutants on ModelProfile.is_stale."""
+
+    def test_stale_at_exact_boundary(self) -> None:
+        """Exactly stale_after_days old should be stale (> not >=)."""
+        p = ModelProfile(
+            stale_after_days=30,
+            updated_at=time.time() - (30 * 86400) - 1,
+        )
+        assert p.is_stale()
+
+    def test_not_stale_just_under_boundary(self) -> None:
+        p = ModelProfile(
+            stale_after_days=30,
+            updated_at=time.time() - (30 * 86400) + 3600,
+        )
+        assert not p.is_stale()
+
+    def test_stale_uses_stale_after_days_field(self) -> None:
+        """Custom stale_after_days=7 should use that, not the default 30."""
+        p = ModelProfile(
+            stale_after_days=7,
+            updated_at=time.time() - (8 * 86400),
+        )
+        assert p.is_stale()
+        p2 = ModelProfile(
+            stale_after_days=7,
+            updated_at=time.time() - (6 * 86400),
+        )
+        assert not p2.is_stale()
+
+    def test_stale_division_constant(self) -> None:
+        """Verify 86400 seconds per day is correct."""
+        p = ModelProfile(
+            stale_after_days=1,
+            updated_at=time.time() - 86401,
+        )
+        assert p.is_stale()
+        p2 = ModelProfile(
+            stale_after_days=1,
+            updated_at=time.time() - 86000,
+        )
+        assert not p2.is_stale()
+
+
+class TestStoreToDictValues:
+    """Kill VALUE mutants on ModelProfileStore.to_dict."""
+
+    def test_to_dict_includes_format_version(self) -> None:
+        store = ModelProfileStore(format_version=2)
+        d = store.to_dict()
+        assert d["format_version"] == 2
+
+    def test_to_dict_profiles_serialized(self) -> None:
+        store = ModelProfileStore()
+        store.profiles["k1"] = ModelProfile(model_key="k1", confidence=0.9)
+        store.profiles["k2"] = ModelProfile(model_key="k2", confidence=0.3)
+        d = store.to_dict()
+        assert len(d["profiles"]) == 2
+        assert d["profiles"]["k1"]["confidence"] == 0.9
+        assert d["profiles"]["k2"]["confidence"] == 0.3
+        assert d["profiles"]["k1"]["model_key"] == "k1"
+
+
+class TestStoreFromDictValues:
+    """Kill SWAP+TYPE+VALUE mutants on ModelProfileStore.from_dict."""
+
+    def test_from_dict_preserves_format_version(self) -> None:
+        store = ModelProfileStore.from_dict({"format_version": 3, "profiles": {}})
+        assert store.format_version == 3
+
+    def test_from_dict_preserves_profile_data(self) -> None:
+        store = ModelProfileStore.from_dict(
+            {
+                "format_version": 1,
+                "profiles": {
+                    "test:a": {"model_key": "test:a", "confidence": 0.77},
+                    "test:b": {"model_key": "test:b", "confidence": 0.33},
+                },
+            }
+        )
+        assert len(store.profiles) == 2
+        assert store.profiles["test:a"].confidence == 0.77
+        assert store.profiles["test:b"].confidence == 0.33
+
+    def test_from_dict_type_filter(self) -> None:
+        """Non-dict profiles should be filtered out, dict ones preserved."""
+        store = ModelProfileStore.from_dict(
+            {
+                "profiles": {
+                    "good": {"model_key": "good", "confidence": 0.5},
+                    "bad": "string-not-dict",
+                    "also_bad": 42,
+                },
+            }
+        )
+        assert "good" in store.profiles
+        assert "bad" not in store.profiles
+        assert "also_bad" not in store.profiles
+
+
 class TestApplyConfidenceDecay:
     def test_no_decay_within_grace_period(self) -> None:
         p = ModelProfile(

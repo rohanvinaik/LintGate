@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from lintgate.wiki.manifest import (
+    WikiManifest,
+    WikiPage,
     _parse_source_ref,
     load_manifest,
 )
@@ -191,3 +193,101 @@ def test_generator_page(tmp_path):
     assert profile.generator == "theory_profile"
     assert profile.theory_scope is False
     assert profile.sources == []
+
+
+# ── Mutation-guided tests (kill STATE+VALUE survivors) ──────────────
+
+
+class TestBuildTagIndex:
+    """Kill STATE+VALUE mutants on WikiManifest._build_tag_index."""
+
+    def test_tag_index_maps_tags_to_pages(self) -> None:
+        pages = [
+            WikiPage(name="A", title="A", pillar="p", tags=["x", "y"]),
+            WikiPage(name="B", title="B", pillar="p", tags=["y", "z"]),
+        ]
+        m = WikiManifest(version=1, pages=pages)
+        assert "x" in m._tag_index
+        assert m._tag_index["x"] == ["A"]
+        assert sorted(m._tag_index["y"]) == ["A", "B"]
+        assert m._tag_index["z"] == ["B"]
+
+    def test_tag_index_empty_tags(self) -> None:
+        pages = [WikiPage(name="A", title="A", pillar="p", tags=[])]
+        m = WikiManifest(version=1, pages=pages)
+        assert m._tag_index == {}
+
+    def test_tag_index_rebuilt_on_init(self) -> None:
+        """Ensure __post_init__ triggers _build_tag_index."""
+        pages = [WikiPage(name="P", title="P", pillar="p", tags=["t"])]
+        m = WikiManifest(version=1, pages=pages)
+        assert m._tag_index["t"] == ["P"]
+
+
+class TestPagesByRail:
+    """Kill VALUE mutants on WikiManifest.pages_by_rail."""
+
+    def test_pages_sorted_by_chapter(self) -> None:
+        # Names intentionally reverse-alphabetical to chapter order
+        # so chapter-sort != name-sort (kills sort-key VALUE mutants)
+        pages = [
+            WikiPage(name="Zulu", title="Z", pillar="p", rail="r1", chapter=1),
+            WikiPage(name="Alpha", title="A", pillar="p", rail="r1", chapter=3),
+            WikiPage(name="Mike", title="M", pillar="p", rail="r1", chapter=2),
+            WikiPage(name="Xray", title="X", pillar="p", rail="r2", chapter=1),
+        ]
+        m = WikiManifest(version=1, pages=pages)
+        result = m.pages_by_rail("r1")
+        assert [p.name for p in result] == ["Zulu", "Mike", "Alpha"]
+
+    def test_pages_by_rail_excludes_other_rails(self) -> None:
+        pages = [
+            WikiPage(name="X", title="X", pillar="p", rail="r1", chapter=1),
+            WikiPage(name="Y", title="Y", pillar="p", rail="r2", chapter=1),
+        ]
+        m = WikiManifest(version=1, pages=pages)
+        assert [p.name for p in m.pages_by_rail("r1")] == ["X"]
+
+    def test_pages_by_rail_empty(self) -> None:
+        m = WikiManifest(version=1, pages=[])
+        assert m.pages_by_rail("anything") == []
+
+
+class TestPrevNextInRail:
+    """Kill mutants on WikiManifest.prev_next_in_rail."""
+
+    def _make_rail_manifest(self) -> WikiManifest:
+        pages = [
+            WikiPage(name="A", title="A", pillar="p", rail="r", chapter=1),
+            WikiPage(name="B", title="B", pillar="p", rail="r", chapter=2),
+            WikiPage(name="C", title="C", pillar="p", rail="r", chapter=3),
+        ]
+        return WikiManifest(version=1, pages=pages)
+
+    def test_middle_has_prev_and_next(self) -> None:
+        m = self._make_rail_manifest()
+        b = next(p for p in m.pages if p.name == "B")
+        prev_p, next_p = m.prev_next_in_rail(b)
+        assert prev_p is not None and prev_p.name == "A"
+        assert next_p is not None and next_p.name == "C"
+
+    def test_first_has_no_prev(self) -> None:
+        m = self._make_rail_manifest()
+        a = next(p for p in m.pages if p.name == "A")
+        prev_p, next_p = m.prev_next_in_rail(a)
+        assert prev_p is None
+        assert next_p is not None and next_p.name == "B"
+
+    def test_last_has_no_next(self) -> None:
+        m = self._make_rail_manifest()
+        c = next(p for p in m.pages if p.name == "C")
+        prev_p, next_p = m.prev_next_in_rail(c)
+        assert prev_p is not None and prev_p.name == "B"
+        assert next_p is None
+
+    def test_no_rail_returns_none_none(self) -> None:
+        m = self._make_rail_manifest()
+        page = WikiPage(name="X", title="X", pillar="p", rail="")
+        prev_p, next_p = m.prev_next_in_rail(page)
+        assert prev_p is None
+        assert next_p is None

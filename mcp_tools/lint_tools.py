@@ -141,7 +141,7 @@ def register(mcp, helpers):
         except Exception:
             pass
 
-        return helpers["_json_dumps"](result, "compact")
+        return helpers["_json_dumps"](result, "compact")  # type: ignore[no-any-return]
 
     @mcp.tool()
     def lint_project(
@@ -176,7 +176,7 @@ def register(mcp, helpers):
             output_mode="compact",
         )
         result["total_python_files"] = len(py_files)
-        return helpers["_json_dumps"](result, "compact")
+        return helpers["_json_dumps"](result, "compact")  # type: ignore[no-any-return]
 
     @mcp.tool()
     def lint_get_details(
@@ -236,7 +236,7 @@ def register(mcp, helpers):
         if details.get("linter_diagnostics"):
             output["linter_diagnostics"] = details["linter_diagnostics"]
 
-        return helpers["_json_dumps"](output, "standard")
+        return helpers["_json_dumps"](output, "standard")  # type: ignore[no-any-return]
 
     @mcp.tool()
     def lint_status(path: str | None = None) -> str:
@@ -420,17 +420,17 @@ def register(mcp, helpers):
         if path:
             project_root = helpers["_validate_project_root"](path)
         else:
-            project_root = os.path.dirname(os.path.abspath(files[0]))
+            project_root = os.path.dirname(os.path.abspath(files[0]))  # type: ignore[index]
 
         # Resolve files
         if files:
-            existing, missing = helpers["_resolve_files"](files, project_root)
+            existing, _missing = helpers["_resolve_files"](files, project_root)
             target_files = existing
         else:
             target_files = helpers["_collect_python_files"](project_root)
 
         if not target_files:
-            return helpers["_json_dumps"](
+            return helpers["_json_dumps"](  # type: ignore[no-any-return]
                 {"error": "No Python files found", "dry_run": dry_run}, "standard"
             )
 
@@ -441,7 +441,7 @@ def register(mcp, helpers):
             safe_only=safe_only,
         )
 
-        return helpers["_json_dumps"](result.to_dict(), "standard")
+        return helpers["_json_dumps"](result.to_dict(), "standard")  # type: ignore[no-any-return]
 
     return {
         "lint_files": lint_files,

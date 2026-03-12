@@ -117,7 +117,7 @@ def _impl_redundancy_project(project_root: str, top_n: int) -> str:
         for t, u in unique_kills.items()
         if u == 0
     ]
-    zero_unique.sort(key=lambda x: x["test"])
+    zero_unique.sort(key=lambda x: str(x["test"]))
 
     # Compute minimal covering set (greedy set cover)
     covering_set = _greedy_covering_set(test_kills, all_mutants)
@@ -169,7 +169,7 @@ def _greedy_covering_set(test_kills: dict[str, set[str]], all_mutants: set[str])
         # Pick the test that covers the most uncovered mutants
         best_test = max(
             remaining,
-            key=lambda t, uncovered=uncovered: len(remaining[t] & uncovered),
+            key=lambda t, _r=remaining, _u=uncovered: len(_r[t] & _u),  # type: ignore[return-value]
         )
         covered = remaining[best_test] & uncovered
         if not covered:

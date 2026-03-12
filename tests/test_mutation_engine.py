@@ -22,6 +22,17 @@ def _parse_func(source: str) -> ast.FunctionDef:
     raise ValueError(msg)
 
 
+def _parse_method(source: str, class_name: str, method_name: str) -> ast.FunctionDef:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef) and child.name == method_name:
+                    return child
+    msg = f"No method found: {class_name}.{method_name}"
+    raise ValueError(msg)
+
+
 class TestGenerateMutants:
     def test_value_mutants_for_add(self):
         func = _parse_func("def add(a, b): return a + b + 1")
@@ -127,6 +138,198 @@ class TestEvaluateMutant:
         result = evaluate_mutant(mutants[0], [test_fn], original)
         assert result.killed
         assert result.killed_by == "crash"
+
+    def test_kills_instance_method_via_class_patch(self):
+        func = _parse_method(
+            """
+class Parser:
+    def parse(self, value):
+        return value + 1
+""",
+            "Parser",
+            "parse",
+        )
+        mutants = generate_mutants(func, {MutationCategory.VALUE})
+        assert len(mutants) >= 1
+
+        namespace: dict[str, object] = {}
+        exec(  # nosec B102
+            """
+class Parser:
+    def parse(self, value):
+        return value + 1
+
+def test_fn():
+    assert Parser().parse(1) == 2
+""",
+            namespace,
+        )
+        test_fn = namespace["test_fn"]
+
+        result = evaluate_mutant(
+            mutants[0],
+            [test_fn],
+            lambda value: value + 1,
+            qualname="Parser.parse",
+        )
+        assert result.killed
+        assert result.killed_by == "assertion"
+
+    def test_kills_classmethod_via_owner_patch(self):
+        func = _parse_method(
+            """
+class ModelProfile:
+    @classmethod
+    def from_dict(cls, value):
+        return value + 1
+""",
+            "ModelProfile",
+            "from_dict",
+        )
+        mutants = generate_mutants(func, {MutationCategory.VALUE})
+        assert len(mutants) >= 1
+
+        namespace: dict[str, object] = {}
+        exec(  # nosec B102
+            """
+class ModelProfile:
+    @classmethod
+    def from_dict(cls, value):
+        return value + 1
+
+def test_fn():
+    assert ModelProfile.from_dict(1) == 2
+""",
+            namespace,
+        )
+        test_fn = namespace["test_fn"]
+
+        result = evaluate_mutant(
+            mutants[0],
+            [test_fn],
+            lambda value: value + 1,
+            qualname="ModelProfile.from_dict",
+        )
+        assert result.killed
+        assert result.killed_by == "assertion"
+
+    def test_kills_staticmethod_via_owner_patch(self):
+        func = _parse_method(
+            """
+class Normalizer:
+    @staticmethod
+    def normalize(value):
+        return value + 1
+""",
+            "Normalizer",
+            "normalize",
+        )
+        mutants = generate_mutants(func, {MutationCategory.VALUE})
+        assert len(mutants) >= 1
+
+        namespace: dict[str, object] = {}
+        exec(  # nosec B102
+            """
+class Normalizer:
+    @staticmethod
+    def normalize(value):
+        return value + 1
+
+def test_fn():
+    assert Normalizer.normalize(1) == 2
+""",
+            namespace,
+        )
+        test_fn = namespace["test_fn"]
+
+        result = evaluate_mutant(
+            mutants[0],
+            [test_fn],
+            lambda value: value + 1,
+            qualname="Normalizer.normalize",
+        )
+        assert result.killed
+        assert result.killed_by == "assertion"
+
+    def test_kills_local_instance_method_via_closure_owner_patch(self):
+        func = _parse_method(
+            """
+class Parser:
+    def parse(self, value):
+        return value + 1
+""",
+            "Parser",
+            "parse",
+        )
+        mutants = generate_mutants(func, {MutationCategory.VALUE})
+        assert len(mutants) >= 1
+
+        class Parser:
+            def parse(self, value):
+                return value + 1
+
+        def test_fn():
+            assert Parser().parse(1) == 2
+
+        result = evaluate_mutant(
+            mutants[0],
+            [test_fn],
+            lambda value: value + 1,
+            qualname="Parser.parse",
+        )
+        assert result.killed
+        assert result.killed_by == "assertion"
+
+    def test_kills_local_classmethod_via_closure_owner_patch(self):
+        func = _parse_method(
+            """
+class ModelProfile:
+    @classmethod
+    def from_dict(cls, value):
+        return value + 1
+""",
+            "ModelProfile",
+            "from_dict",
+        )
+        mutants = generate_mutants(func, {MutationCategory.VALUE})
+        assert len(mutants) >= 1
+
+        class ModelProfile:
+            @classmethod
+            def from_dict(cls, value):
+                return value + 1
+
+        def test_fn():
+            assert ModelProfile.from_dict(1) == 2
+
+        result = evaluate_mutant(
+            mutants[0],
+            [test_fn],
+            lambda value: value + 1,
+            qualname="ModelProfile.from_dict",
+        )
+        assert result.killed
+        assert result.killed_by == "assertion"
+
+    def test_kills_local_function_via_closure_cell_patch(self):
+        func = _parse_func("def score(value): return value + 1")
+        mutants = generate_mutants(func, {MutationCategory.VALUE})
+        assert len(mutants) >= 1
+
+        def score(value):
+            return value + 1
+
+        def test_fn():
+            assert score(1) == 2
+
+        result = evaluate_mutant(
+            mutants[0],
+            [test_fn],
+            lambda value: value + 1,
+            qualname="score",
+        )
+        assert result.killed
+        assert result.killed_by == "assertion"
 
 
 class TestSampling:

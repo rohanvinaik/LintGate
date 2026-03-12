@@ -318,11 +318,11 @@ def _impl_generate_property_tests(
     if from_prescriptions:
         return _generate_from_prescriptions(path, function, max_functions, helpers)
 
-    project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
+    _project_root, manifest, py_files = _build_manifest_for_project(path, helpers)
     if not py_files or manifest is None:
         return json.dumps({"error": "No Python files found in project"})
 
-    hotspot_functions = None
+    hotspot_functions: set[str] | None = None
     if prefer_mutation_hotspots:
         hotspot_functions = set()
 
@@ -353,7 +353,7 @@ def _impl_generate_property_tests(
             "prefer_mutation_hotspots: use mutation_run_full → mutation_prescribe for hotspot data."
         )
 
-    return helpers["_json_dumps"](output)
+    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +392,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         summary = _build_manifest_summary(manifest, project_root)
         result = _filter_manifest(summary, filter_by, function)
-        return helpers["_json_dumps"](result, output_mode="compact")
+        return helpers["_json_dumps"](result, output_mode="compact")  # type: ignore[no-any-return]
 
     @mcp.tool()
     def generate_property_tests(

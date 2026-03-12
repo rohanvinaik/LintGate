@@ -259,20 +259,28 @@ MCP tools:
 
 ### Mutation Testing Engine
 
-The mutation subsystem provides 9 MCP tools for inline AST mutation analysis. It generates mutants across 5 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE), evaluates them against existing tests, and produces survival profiles that reveal specification gaps.
+The mutation subsystem provides 10 MCP tools for inline AST mutation analysis. It generates mutants across 5 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE), evaluates them against existing tests, and produces survival profiles that reveal specification gaps.
 
 **Two-tier execution model**:
 - `mutation_run_sampling` — fast sampled run (<=3 mutants per category, time-budgeted). Use after editing files for quick feedback.
-- `mutation_run_full` — exhaustive profiling with full kill matrix. Use to verify test quality of a component. Produces gateable results.
+- `mutation_run_full` — exhaustive profiling with full kill matrix, budget semantics (`budget_ms`, `per_mutant_timeout_ms`), and per-function budget splitting. Returns survivor records, discovery/topology diagnostics, and trajectory analysis. Hard circuit breaker at 10 minutes.
 
-**Prescription pipeline**: `mutation_prescribe` analyzes survival profiles and recommends specific test improvements per surviving category. `mutation_prescribe_tests` generates pytest skeletons targeting those categories. `mutation_validate_tests` re-profiles and computes per-category survival deltas to close the loop.
+**Runtime safety (PR0)**: Outer wall-clock budget is separated from per-mutant timeout. Fallback test loading is capped at 50 tests. Multi-function runs split budget per function. All mutation tools have a hard circuit breaker and return partial results on timeout.
 
-**Decomposition detection**: `mutation_decompose` identifies functions where multiple mutation categories survive, suggesting the function has too many responsibilities. Supports three modes: `auto` (merged static + dynamic), `static` (AST-only, no test data needed), `dynamic` (mutation-data-driven).
+**Discovery truthfulness (PR1)**: Every mutation result includes `discovery_state` (NO_TEST_FILES, TEST_FILES_FOUND_NONE_LINKED, TESTS_LINKED_ZERO_KILLS, DISCOVERY_IMPORT_FAILED, DISCOVERY_OK), `topology_state` (NORMAL, MOCK_BOUNDARY_DOMINANT, PATCHED_INTERNAL_CALLS, TOPOLOGY_UNKNOWN), and `survival_interpretation` (MEANINGFUL, DISCOVERY_ARTIFACT, MOCK_BOUNDARY_ARTIFACT, LOW_CONFIDENCE).
+
+**Survivor records (PR2)**: Each mutant has a stable `mutant_id` and produces a survivor/killed record with `diff_summary` (via `ast.unparse`), enabling grounded prescriptions downstream.
+
+**Prescription pipeline (PR3)**: `mutation_prescribe` uses survivor records for witness-based prescriptions (`why_this_matters`, `suggested_input`, `assertion_shape`, `confidence`, `source_of_evidence`). Falls back to category templates when survivor data is unavailable. `mutation_prescribe_tests` generates pytest skeletons. `mutation_validate_tests` uses sampled re-profiling with budget splitting.
+
+**Trajectory analysis (PR4)**: Post-profiling analysis computes teaching-set upper bounds, tail onset detection, and phase classification (bulk/transition/tail/complete) via `trajectory_analysis.py`. All greedy quantities use explicit upper-bound language.
+
+**Cross-lens decomposition (PR6)**: `mutation_decompose` requires multi-lens agreement (mutation + specification + composition gap) before recommending EXTRACT_BOUNDARY. Single-lens mutation evidence returns KEEP_TESTING. Mock-dominant topology blocks extraction. Supports three modes: `auto` (merged static + dynamic), `static` (AST-only, no test data needed), `dynamic` (mutation-data-driven).
 
 | Tool | Purpose |
 |---|---|
 | `mutation_run_sampling(path, file, function?, budget_ms?)` | Fast sampled mutation run — inline AST mutation sampling |
-| `mutation_run_full(path, file, function?)` | Deep exhaustive mutation profiling (full kill matrix) |
+| `mutation_run_full(path, file, function?, budget_ms?, per_mutant_timeout_ms?)` | Deep exhaustive mutation profiling with survivor records, trajectory analysis, and discovery/topology diagnostics |
 | `mutation_get_state(path, file?, function?)` | View cached mutation state and metrics |
 | `mutation_prescribe(path, file?, function?)` | Deterministic prescriptions from survival profiles |
 | `mutation_decompose(path, file?, function?, mode?)` | Find entangled functions (auto/static/dynamic) |
@@ -280,6 +288,7 @@ The mutation subsystem provides 9 MCP tools for inline AST mutation analysis. It
 | `mutation_prescribe_tests(path, file?, function?)` | Generate test skeletons from mutation profiles |
 | `mutation_validate_tests(path, file?, function?)` | Re-profile and compute survival deltas |
 | `mutation_clear_state(path, file?)` | Clear stale mutation state |
+| `spec_improve(path, file, function?, budget_ms?)` | One-shot spec improvement: diagnose → sample → prescribe in one call |
 
 **Integration with specification pipeline**: Mutation tools compose with specification tools (`spec_file_analyze`, `spec_prescribe`, `spec_gate_check`) in a closed-loop pipeline:
 
@@ -1444,7 +1453,7 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | `spec_prescribe(path, function?)` | Risk-prioritized test prescriptions with expanded taxonomy |
 | `spec_composition(path, module_a?, module_b?)` | Composition gap (γ) and sheaf condition analysis across modules |
 | `spec_gate_check(path, function?)` | Optimization gate validation — checks specification level against hint thresholds |
-| `spec_file_analyze(path, file, enrich?)` | Single-file spec analysis. Default `enrich=True` builds manifests for full analysis; `enrich=False` runs AST-only symbolic baseline (no manifest dependencies, faster). |
+| `spec_file_analyze(path, file, enrich?)` | Single-file spec analysis with empirical overlay (PR5). Default `enrich=True` builds manifests and computes static/empirical reconciliation from cached mutation data. Overlay status: NO_EMPIRICAL_DATA, AGREES, CONTRADICTS, DISCOVERY_FAILURE, TOPOLOGY_LIMITED. `enrich=False` runs AST-only symbolic baseline. |
 | `spec_file_prescribe(path, file, max_prescriptions?)` | Single-file test prescriptions sorted by risk priority |
 | `spec_project_rollup(path, use_cache?, analyze_uncached?, include_tests?)` | Project-wide rollup with file-level content-hash caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code. Default mode is cache-read-only; `analyze_uncached=True` runs live analysis on cache misses. |
 
@@ -1453,6 +1462,48 @@ The specification system estimates **σ(P,μ)** — the minimum tests to fully s
 **Composition analysis** computes the composition gap γ(A,B) for cross-module call edges. Interface mutation point counting uses value mutations (per parameter), swap mutations (C(n,2) transpositions), and state mutations (shared mutable coupling), weighted by callee uncertainty — well-specified callees reduce effective mutation points. The sheaf condition holds when total obstruction < threshold.
 
 **Pipeline integration with mutation testing**: Specification analysis is the diagnostic entry point; mutation testing is the empirical verification layer. The full pipeline: `spec_file_analyze` (diagnose σ, regime, phase) → `mutation_run_sampling`/`mutation_run_full` (profile which mutation categories survive) → `mutation_prescribe` → `mutation_prescribe_tests` → [write tests] → `mutation_validate_tests` (survival deltas) → `spec_gate_check` (stop criteria). The ledger accumulates ΔK across these cycles via `prior_ledger` parameter, enabling trajectory-aware phase detection. See the [Mutation Testing Engine](#mutation-testing-engine) section for execution details.
+
+### Test Regeneration
+
+| Tool | Purpose |
+|---|---|
+| `test_rebuild_plan(path, file?, write_manifest?, preserve_globs?)` | Classify all functions into regeneration strategies, write manifest |
+| `test_rebuild_generate(path, write?, max_files?)` | Generate test skeletons for `auto_generate_unit` targets |
+| `test_rebuild_validate(path, review_ceiling?)` | Run 9 quality gates: pytest sanity, review ceiling, artifact check, kill rate, zero-kill, effectiveness, hygiene, redundancy |
+| `test_rebuild_apply(path, dry_run?)` | Promote generated tests, quarantine old ones (dry_run=True by default) |
+
+The test regeneration system classifies every project function into one of four strategies:
+- **exclude_mutation** — entrypoint glue, topology-hostile surfaces (artifact discovery states)
+- **preserve_system** — functions with integration coverage on system surfaces
+- **manual_contract** — meaningful but mutation-resistant code requiring hand-written tests
+- **auto_generate_unit** — deterministic local logic with meaningful mutation signal
+
+The classifier composes evidence from spec analysis (`SpecEvidence`: σ, regime, phase, purity) and mutation cache (`MutationEvidence`: discovery/topology state, survival rate). Confidence is computed as `min(topology_confidence, 1.0 - survival_rate) * phase_weight`.
+
+**Nine validation gates** in `test_rebuild_validate`:
+1. Preserved tests still pass (pytest execution)
+2. Generated tests import and run
+3. Manual review share stays under `review_ceiling` (default 0.15)
+4. No auto-generate target has artifact discovery state
+5. Kill rate floor — average kill rate ≥ `kill_floor` (default 0.70)
+6. Zero-kill ceiling — fraction of zero-kill auto targets ≤ `zero_kill_ceiling` (default 0.05)
+7. Effectiveness score — `project_effectiveness_score` must not regress (advisory)
+8. Test hygiene — no critical findings from `test_hygiene_scan`
+9. Test redundancy — advisory redundancy check via `test_redundancy_project`
+
+Gates 7 and 9 are advisory (do not block apply). Gates 1-6 and 8 are blocking.
+
+Configuration in `lintgate.yaml`:
+```yaml
+controlplane:
+  test_regeneration:
+    preserve_globs: ["test_conftest_*.py"]
+    review_ceiling: 0.15
+    kill_floor: 0.70
+    zero_kill_ceiling: 0.05
+    generated_dir: "tests/generated"
+    quarantine_dir: "tests/quarantine"
+```
 
 ### Telemetry
 

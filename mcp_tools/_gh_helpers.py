@@ -31,7 +31,7 @@ def _run_gh(args: list[str], cwd: str | None = None) -> dict[str, Any]:
         if not proc.stdout.strip():
             return {}
         try:
-            return json.loads(proc.stdout)
+            return json.loads(proc.stdout)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             return {"raw": proc.stdout.strip()}
     except FileNotFoundError:

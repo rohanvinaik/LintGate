@@ -90,6 +90,7 @@ def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
         DispositionEnforcementConfig,
         InquiryConfig,
         QualityGateConfig,
+        TestRegenerationConfig,
         TokenPolicy,
     )
 
@@ -160,6 +161,18 @@ def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
             enabled=bool(disp_raw.get("enabled", True)),
             max_ignores_before_blocking=int(disp_raw.get("max_ignores_before_blocking", 3)),
             enforce_on_channels=disp_raw.get("enforce_on_channels", ["behavior", "lint"]),
+        )
+
+    # Parse test regeneration config
+    regen_raw = cp_raw.get("test_regeneration", {})
+    if isinstance(regen_raw, dict):
+        cp_config.test_regeneration = TestRegenerationConfig(
+            preserve_globs=regen_raw.get("preserve_globs", []),
+            review_ceiling=float(regen_raw.get("review_ceiling", 0.15)),
+            kill_floor=float(regen_raw.get("kill_floor", 0.70)),
+            zero_kill_ceiling=float(regen_raw.get("zero_kill_ceiling", 0.05)),
+            generated_dir=str(regen_raw.get("generated_dir", "tests/generated")),
+            quarantine_dir=str(regen_raw.get("quarantine_dir", "tests/quarantine")),
         )
 
     # Parse per-channel configs

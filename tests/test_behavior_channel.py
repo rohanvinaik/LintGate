@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import pytest
 
@@ -35,7 +36,7 @@ from lintgate.controlplane.types import (
 
 def _make_event(compass: BehaviorCompass | None = None, **kwargs) -> SupervisionEvent:
     """Build a SupervisionEvent with compass data injected."""
-    raw_input = kwargs.pop("raw_input", {})
+    raw_input: dict[str, Any] = kwargs.pop("raw_input", {})
     if compass is not None:
         raw_input["behavior_compass"] = compass.to_dict()
     return SupervisionEvent(

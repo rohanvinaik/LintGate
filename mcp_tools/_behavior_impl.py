@@ -162,7 +162,7 @@ def impl_hygiene_check(helpers: dict[str, Any], path: str, planned_action: str) 
                 )
     output["next_actions"] = serialize_next_actions(_na_list)
 
-    return helpers["_json_dumps"](output)
+    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
 
 
 def impl_constraint_check(
@@ -274,7 +274,7 @@ def impl_constraint_check(
     if _cc_actions:
         output["next_actions"] = serialize_next_actions(_cc_actions)
 
-    return helpers["_json_dumps"](output)
+    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
 
 
 def impl_prediction_register(
@@ -311,7 +311,7 @@ def impl_prediction_register(
 
     valid_types = {"exit_code", "error_signature", "stdout_contains"}
     if prediction_type not in valid_types:
-        return helpers["_json_dumps"](
+        return helpers["_json_dumps"](  # type: ignore[no-any-return]
             {
                 "error": f"Invalid prediction_type: {prediction_type!r}",
                 "valid_types": sorted(valid_types),
@@ -344,7 +344,7 @@ def impl_prediction_register(
     )
 
     if not _is_bash_action or not command_sig or command_sig == "unknown:unknown":
-        return helpers["_json_dumps"](
+        return helpers["_json_dumps"](  # type: ignore[no-any-return]
             {
                 "status": "not_applicable",
                 "message": (
@@ -417,7 +417,7 @@ def impl_prediction_register(
         ]
     )
 
-    return helpers["_json_dumps"](output)
+    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
 
 
 def impl_behavior_precheck(
@@ -511,7 +511,7 @@ def impl_behavior_precheck(
         },
     }
 
-    return helpers["_json_dumps"](output)
+    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
 
 
 def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
@@ -520,7 +520,7 @@ def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
     project_root = os.path.abspath(path)
     cp_config = load_controlplane_config(project_root)
     if cp_config is None:
-        return helpers["_json_dumps"]({"error": "ControlPlane not configured"})
+        return helpers["_json_dumps"]({"error": "ControlPlane not configured"})  # type: ignore[no-any-return]
 
     from lintgate.controlplane.global_behavior_profile import (
         GLOBAL_PROFILE_PATH,
@@ -583,7 +583,7 @@ def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
         },
     }
 
-    return helpers["_json_dumps"](output)
+    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
 
 
 def impl_global_memory_reset(helpers: dict[str, Any], path: str) -> str:
@@ -595,7 +595,7 @@ def impl_global_memory_reset(helpers: dict[str, Any], path: str) -> str:
 
     project_root = os.path.abspath(path)
     save_global_profile(GlobalBehaviorProfile())
-    return helpers["_json_dumps"](
+    return helpers["_json_dumps"](  # type: ignore[no-any-return]
         {
             "scope": "project",
             "scope_note": "Cross-session memory for this project (not cross-project)",

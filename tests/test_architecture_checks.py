@@ -132,6 +132,7 @@ class TestBuildLayerMapAndFindLayer:
         ]
         layer_map = build_layer_map(layers)
         found = find_layer("app.core.models", layer_map)
+        assert found is not None
         assert found["name"] == "specific"
 
     def test_find_no_match(self):
@@ -144,7 +145,9 @@ class TestBuildLayerMapAndFindLayer:
         assert find_layer("otherapp.core", layer_map) is None
         # Contrast: exact prefix and child prefix DO match, confirming dispatch logic
         assert find_layer("app.core", layer_map) == {"name": "core", "modules": ["app.core"]}
-        assert find_layer("app.core.utils", layer_map)["name"] == "core"
+        core_layer = find_layer("app.core.utils", layer_map)
+        assert core_layer is not None
+        assert core_layer["name"] == "core"
 
 
 # ─── Layer Contracts ──────────────────────────────────────────────────

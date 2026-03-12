@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from lintgate.channels.behavior_detection import (
     _detect_amnesia_from_action_history,
@@ -193,7 +194,7 @@ class TestDetectAmnesiaFromActionHistory:
         ]
         compass = _fresh_compass()
         coord = _make_coord(compass)
-        evidence = {"extra": "data"}
+        evidence: dict[str, Any] = {"extra": "data"}
         result = _detect_amnesia_from_action_history(recent, evidence, coord)
         assert result is True
         findings, _, _, _ = coord.finalize()
@@ -227,7 +228,7 @@ class TestDetectAmnesiaFromErrorMemory:
             error_memory={key: {"count": 3, "first_seen": now - 300, "last_seen": now}}
         )
         coord = _make_coord(compass)
-        evidence = {}
+        evidence: dict[str, Any] = {}
         result = _detect_amnesia_from_error_memory(compass, err, evidence, coord)
         assert result is True
         findings, _, _, _ = coord.finalize()
@@ -270,7 +271,7 @@ class TestDetectAmnesiaFromHypotheses:
         )
         compass = _fresh_compass(hypotheses=[hyp])
         coord = _make_coord(compass)
-        evidence = {}
+        evidence: dict[str, Any] = {}
         _detect_amnesia_from_hypotheses(compass, "connection refused timeout", evidence, coord)
         findings, _, _, _ = coord.finalize()
         assert len(findings) == 1

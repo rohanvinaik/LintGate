@@ -1,6 +1,8 @@
 """Mutable state module for integration testing."""
 
-_db = {}
+from typing import Any
+
+_db: dict[str, Any] = {}
 
 
 def clear():

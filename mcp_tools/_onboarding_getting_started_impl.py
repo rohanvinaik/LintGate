@@ -110,7 +110,7 @@ def _handle_tool_installs(
                         "count": len(attempts),
                     }
                 )
-            return attempts
+            return attempts  # type: ignore[no-any-return]
         return []
 
 
@@ -301,7 +301,7 @@ def _impl_getting_started(
 
     json_dumps = helpers.get("_json_dumps")
     if json_dumps:
-        return json_dumps(output, output_mode="compact")
+        return json_dumps(output, output_mode="compact")  # type: ignore[no-any-return]
     return json.dumps(output, indent=2)
 
 
@@ -365,7 +365,7 @@ def _impl_tool_applicability_guide(helpers: dict) -> str:
     """Core logic for the tool_applicability_guide MCP tool."""
     json_dumps = helpers.get("_json_dumps")
     if json_dumps:
-        return json_dumps(_TOOL_APPLICABILITY_GUIDE)
+        return json_dumps(_TOOL_APPLICABILITY_GUIDE)  # type: ignore[no-any-return]
     return json.dumps(_TOOL_APPLICABILITY_GUIDE, indent=2)
 
 
