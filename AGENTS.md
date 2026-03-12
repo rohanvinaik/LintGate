@@ -96,6 +96,10 @@ LintGate provides 100 MCP tools backed by 18 linters. Source of truth: `grep -Rh
 | `test_characterize` | Generate characterization tests with golden-value capture. |
 | `test_characterize_mark` | Mark characterization test maturity: unchecked → approved → specified. |
 | `test_redundancy_project` | Project-wide mutation redundancy: zero-unique-kill tests, minimal covering set. |
+| `test_rebuild_plan` | Classify all functions into regeneration strategies, build manifest. |
+| `test_rebuild_generate` | Generate test skeletons for auto_generate_unit targets. |
+| `test_rebuild_validate` | Validate generated tests against quality gates. |
+| `test_rebuild_apply` | Promote generated tests, quarantine old ones (dry_run default). |
 | `mutation_run_sampling` | Fast sampled mutation run — inline AST mutation sampling per semantic category. |
 | `mutation_run_full` | Deep exhaustive mutation profiling — full kill matrix for gateable results. |
 | `mutation_get_state` | View cached mutation state, survival rates, and coverage depth. |
@@ -252,4 +256,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 99). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 106). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

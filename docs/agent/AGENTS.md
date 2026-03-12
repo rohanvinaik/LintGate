@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 102 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 106 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Ship Pipeline
 
@@ -187,6 +187,10 @@ spec_prescribe         mutation_prescribe ──→ mutation_prescribe_tests
 | `test_characterize` | Generate characterization tests | Lock in current behavior before refactoring |
 | `test_characterize_mark` | Mark characterization test maturity | After reviewing or mutation-validating tests |
 | `test_redundancy_project` | Project-wide kill-matrix redundancy analysis | After exhaustive mutation profiling |
+| `test_rebuild_plan` | Classify functions into regen strategies, build manifest | First step of test regeneration |
+| `test_rebuild_generate` | Generate test skeletons for auto targets | After test_rebuild_plan |
+| `test_rebuild_validate` | Validate generated tests against quality gates | After test_rebuild_generate with write=True |
+| `test_rebuild_apply` | Promote generated, quarantine old (dry_run default) | After test_rebuild_validate passes |
 
 ### Performance & Algebra
 

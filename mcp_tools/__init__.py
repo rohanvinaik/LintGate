@@ -36,6 +36,8 @@ Domain modules:
 - test_hygiene_tools: test_hygiene_scan
 - cold_start_tools: test_triage, test_infer_inputs, test_characterize, test_characterize_mark
 - redundancy_tools: test_redundancy_project
+- test_regeneration_tools: test_rebuild_plan, test_rebuild_generate,
+                          test_rebuild_validate, test_rebuild_apply
 """
 
 from . import (
@@ -62,6 +64,7 @@ from . import (
     telemetry_tools,
     test_effectiveness_tools,
     test_hygiene_tools,
+    test_regeneration_tools,
     wiki_tools,
 )
 
@@ -90,6 +93,7 @@ ALL_MODULES = [
     test_hygiene_tools,
     cold_start_tools,
     redundancy_tools,
+    test_regeneration_tools,
 ]
 
 

@@ -1,6 +1,6 @@
 # LintGate Reference
 
-Technical reference for LintGate's 100 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 106 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
@@ -57,6 +57,10 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `test_characterize`      | Generate characterization tests with golden-value capture                   |
 | `test_characterize_mark` | Mark characterization test maturity: unchecked → approved → specified       |
 | `test_redundancy_project`| Project-wide mutation redundancy: zero-unique-kill tests, minimal cover set |
+| `test_rebuild_plan`      | Classify functions into regeneration strategies, build manifest              |
+| `test_rebuild_generate`  | Generate test skeletons for auto_generate_unit targets                      |
+| `test_rebuild_validate`  | Validate generated tests against quality gates                              |
+| `test_rebuild_apply`     | Promote generated tests, quarantine old ones (dry_run default)              |
 
 ### Bootstrap
 
@@ -84,6 +88,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `habit_status`     | Read-only status: habit score, signals, active files, token state   |
 | `habit_compact`    | Trigger compaction NOW, returns structured Habit State Snapshot     |
 | `habit_configure`  | Runtime threshold adjustment (session-scoped, clamped to safe ranges)|
+| `habit_bootstrap`  | Bootstrap habit state from historical Claude Code session data       |
 
 ### Model Calibration
 
@@ -180,6 +185,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `spec_project_rollup` | Project-wide specification rollup with file-level caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code; set `include_tests=True` to include test files. Cache mode remains read-only by default; `analyze_uncached=True` for live analysis. |
 | `spec_composition`  | Composition gap (γ) and sheaf condition analysis with callee-uncertainty-weighted interface mutation points |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
+| `spec_improve`      | One-shot spec improvement — diagnose, profile, and prescribe in one call |
 
 ### Refactor Checkpointing
 
