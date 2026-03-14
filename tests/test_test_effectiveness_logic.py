@@ -337,12 +337,17 @@ class TestHandleNoMappedFunctions:
         assert result["diagnostics"]["counts"]["attempted"] == 2
 
     def test_returns_valid_json_string(self):
-        """Return value is a valid JSON string."""
+        """Return value is a valid JSON string with exact expected structure."""
         diag = MappingDiagnostics()
         manifest = _make_manifest(diagnostics=diag)
         raw = handle_no_mapped_functions(manifest, [], [])
         parsed = json.loads(raw)
-        assert isinstance(parsed, dict)
+        assert parsed["note"] == "No mapped functions analyzed."
+        assert parsed["state"] == AnalysisState.UNMAPPED_TESTS.value
+        assert parsed["hint"] == "Check if source functions are public and tests follow naming conventions."
+        assert parsed["details"] == "Scanned 0 source files and 0 test files. (Mapped: 0 / Attempted: 0)"
+        assert parsed["schema_version"] == TEFF_SCHEMA_VERSION
+        assert set(parsed.keys()) == {"note", "details", "hint", "state", "diagnostics", "schema_version"}
 
     def test_no_dominant_reason_with_attempted(self):
         """When attempted > 0 but no dominant_drop_reason, fallback hint is used."""

@@ -365,3 +365,247 @@ def test_runtime_crash():
         )
         assert valid is False
         assert any("test_runtime_crash" in e for e in errors)
+
+    # ── Additional branch coverage for validate_test_file ────────────
+
+    def test_docstring_only_body_detected(self):
+        """A test with only a docstring (no assert, no pass) → 'no assert'."""
+        code = '''
+def test_docs_only():
+    """This test does nothing."""
+'''
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert any("no assert" in e for e in errors)
+
+    def test_multiple_errors_from_multiple_tests(self):
+        """Each bad test produces its own error(s); errors accumulate."""
+        code = """
+def test_a():
+    pass
+
+def test_b():
+    x = undeclared_name
+    assert x
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        # test_a: empty body + no assert; test_b: undefined name
+        assert any("test_a" in e and "empty body" in e for e in errors)
+        assert any("test_a" in e and "no assert" in e for e in errors)
+        assert any("test_b" in e and "undefined name 'undeclared_name'" in e for e in errors)
+
+    def test_run_pytest_false_skips_runtime(self):
+        """run_pytest=False (default) → no runtime validation even with project_root."""
+        code = """
+def test_ok():
+    assert 1 == 1
+"""
+        valid, errors = validate_test_file(code, project_root="/tmp", run_pytest=False)
+        assert valid is True
+        assert errors == []
+
+    def test_run_pytest_true_without_project_root_skips_runtime(self):
+        """run_pytest=True but no project_root → runtime validation skipped."""
+        code = """
+def test_ok():
+    assert 1 == 1
+"""
+        valid, errors = validate_test_file(code, project_root=None, run_pytest=True)
+        assert valid is True
+        assert errors == []
+
+    def test_duplicate_names_exact_error_format(self):
+        """Duplicate test name error includes line number and exact message."""
+        code = """
+def test_dup():
+    assert True
+
+def test_dup():
+    assert False
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert len(errors) == 1
+        assert "test_dup" in errors[0]
+        assert "duplicate test name" in errors[0]
+        assert "line" in errors[0]
+
+    def test_syntax_error_exact_return_shape(self):
+        """SyntaxError → (False, ['SyntaxError: ...']) with exactly one error."""
+        valid, errors = validate_test_file("def test_broken(:\n")
+        assert valid is False
+        assert len(errors) == 1
+        assert errors[0].startswith("SyntaxError:")
+
+    def test_assert_in_nested_if_still_counts(self):
+        """Assert inside an if block still counts as having an assertion."""
+        code = """
+def test_conditional():
+    x = 42
+    if x > 0:
+        assert x == 42
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_walrus_operator_target_not_flagged(self):
+        """Named expression (walrus) target should not be flagged as undefined."""
+        code = """
+def test_walrus():
+    items = [1, 2, 3]
+    if (n := len(items)) > 0:
+        assert n == 3
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_module_level_assignment_name_not_flagged(self):
+        """Module-level assigned names are available to tests."""
+        code = """
+CONSTANT = 42
+
+def test_uses_constant():
+    assert CONSTANT == 42
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_tuple_unpack_assignment_names_not_flagged(self):
+        """Tuple unpack at module level makes all names available."""
+        code = """
+A, B = 1, 2
+
+def test_tuple_unpack():
+    assert A == 1
+    assert B == 2
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_class_level_test_ignored(self):
+        """Tests inside a class are walked but class test_ functions at
+        module level are what get checked."""
+        code = """
+class TestGroup:
+    def test_inner(self):
+        assert True
+
+def test_top():
+    assert True
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_comprehension_target_not_flagged(self):
+        """Comprehension variable should not be flagged as undefined."""
+        code = """
+def test_comprehension():
+    result = [x * 2 for x in range(5)]
+    assert len(result) == 5
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_valid_returns_true_empty_errors(self):
+        """Exact return shape for a valid test file."""
+        code = """
+def test_simple():
+    assert 1 + 1 == 2
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+        assert isinstance(valid, bool)
+        assert isinstance(errors, list)
+
+
+# ── Additional synthesize_value branch coverage ──────────────────
+
+
+class TestSynthesizeValueAdditional:
+    """Cover remaining branches in synthesize_value."""
+
+    def test_nonetype_string(self):
+        """'NoneType' string treated same as 'None'."""
+        v = synthesize_value("NoneType")
+        assert v.code == "None"
+        assert v.is_placeholder is False
+        assert v.type_name == "None"
+
+    def test_tuple_type(self):
+        v = synthesize_value("tuple")
+        assert v.code == "()"
+        assert v.is_placeholder is False
+        assert v.type_name == "tuple"
+
+    def test_bytes_primitive(self):
+        v = synthesize_value("bytes")
+        assert v.code == 'b""'
+        assert v.is_placeholder is False
+        assert v.type_name == "bytes"
+
+    def test_list_with_primitive_arg(self):
+        """list[int] → empty list (inner is primitive, not dataclass)."""
+        v = synthesize_value("list[int]")
+        assert v.code == "[]"
+        assert v.is_placeholder is False
+        assert v.type_name == "list"
+
+    def test_optional_with_inner_type(self):
+        """Optional[str] resolves to the inner str."""
+        v = synthesize_value("Optional[str]")
+        assert v.code == '""'
+        assert v.is_placeholder is False
+        assert v.type_name == "str"
+
+    def test_set_type(self):
+        v = synthesize_value("Set")
+        assert v.code == "set()"
+        assert v.type_name == "set"
+
+    def test_dict_type(self):
+        v = synthesize_value("Dict")
+        assert v.code == "{}"
+        assert v.type_name == "dict"
+
+    def test_list_type_alias(self):
+        v = synthesize_value("List")
+        assert v.code == "[]"
+        assert v.type_name == "list"
+
+    def test_fallback_no_name(self):
+        """Empty annotation + empty param_name → None placeholder."""
+        v = synthesize_value("", "")
+        assert v.code == "None"
+        assert v.is_placeholder is True
+        assert v.type_name == "unknown"
+
+    def test_fallback_dir_param(self):
+        """Fallback heuristic for 'dir' in param name."""
+        v = synthesize_value("", "output_dir")
+        assert v.code == '"test.py"'
+        assert v.is_placeholder is True
+
+    def test_str_with_message_param(self):
+        """str annotation + 'message' param_name → name heuristic."""
+        v = synthesize_value("str", "error_message")
+        assert v.code == '"test message"'
+
+    def test_str_with_linter_param(self):
+        """str annotation + 'linter' param_name → 'name' heuristic wins
+        because _default_for_field checks 'name' before 'linter'."""
+        v = synthesize_value("str", "linter_name")
+        # 'name' check fires first in _default_for_field → '"test"'
+        assert v.code == '"test"'
+
+    def test_str_with_pure_linter_param(self):
+        """str annotation + 'linter' (no 'name' substring) → 'ruff'."""
+        v = synthesize_value("str", "linter")
+        assert v.code == '"ruff"'

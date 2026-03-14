@@ -92,23 +92,23 @@ class TestModelProfile:
 
     def test_is_usable_when_confident_and_fresh(self):
         p = ModelProfile(confidence=0.75, updated_at=time.time())
-        assert p.is_usable()
+        assert p.is_usable() is True
 
     def test_not_usable_when_low_confidence(self):
         p = ModelProfile(confidence=0.3, updated_at=time.time())
-        assert not p.is_usable()
+        assert p.is_usable() is False
 
     def test_not_usable_when_stale(self):
         p = ModelProfile(
             confidence=0.75,
             updated_at=time.time() - (31 * 86400),
         )
-        assert not p.is_usable()
+        assert p.is_usable() is False
 
     def test_custom_min_confidence(self):
         p = ModelProfile(confidence=0.4, updated_at=time.time())
-        assert not p.is_usable(min_confidence=0.55)
-        assert p.is_usable(min_confidence=0.3)
+        assert p.is_usable(min_confidence=0.55) is False
+        assert p.is_usable(min_confidence=0.3) is True
 
 
 class TestModelProfileStore:
@@ -300,7 +300,7 @@ class TestModelProfileExtended:
             confidence=DEFAULT_MIN_CONFIDENCE,
             updated_at=time.time(),
         )
-        assert p.is_usable()
+        assert p.is_usable() is True
 
 
 class TestModelProfileStoreExtended:

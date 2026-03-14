@@ -391,12 +391,14 @@ class TestValidationPersistence:
     def test_persist_and_load(self, tmp_path):
         from mcp_tools._test_regeneration_apply import _load_validation, persist_validation
 
-        persist_validation(str(tmp_path), {"kill_rate_ok": True}, True)
+        returned_path = persist_validation(str(tmp_path), {"kill_rate_ok": True}, True)
+        assert returned_path == str(tmp_path / ".lintgate" / "test_rebuild_validation.json")
         result = _load_validation(str(tmp_path))
-        assert result is not None
-        assert result["ready_to_apply"] is True
-        assert result["review_ready_to_apply"] is False
-        assert result["gates"]["kill_rate_ok"] is True
+        assert result == {
+            "ready_to_apply": True,
+            "review_ready_to_apply": False,
+            "gates": {"kill_rate_ok": True},
+        }
 
     def test_load_missing(self, tmp_path):
         from mcp_tools._test_regeneration_apply import _load_validation

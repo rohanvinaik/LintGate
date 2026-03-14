@@ -879,16 +879,26 @@ class TestRecordBehaviorEvent:
     def test_returns_early_if_behavior_channel_disabled(self):
         """Does nothing when behavior channel is disabled."""
         cp_config = FakeCpConfig(_enabled_channels={"behavior": False}, session_memory=True)
-        with patch("lintgate.controlplane.session_memory.get_or_create_session") as mock_session:
-            record_behavior_event(cp_config, "/proj", "Read", {}, "output")
+        with (
+            patch("lintgate.controlplane.session_memory.get_or_create_session") as mock_session,
+            patch("lintgate.controlplane.session_memory.save_session") as mock_save,
+        ):
+            result = record_behavior_event(cp_config, "/proj", "Read", {}, "output")
+            assert result is None
             mock_session.assert_not_called()
+            mock_save.assert_not_called()
 
     def test_returns_early_if_session_memory_off(self):
         """Does nothing when session_memory is disabled."""
         cp_config = FakeCpConfig(session_memory=False)
-        with patch("lintgate.controlplane.session_memory.get_or_create_session") as mock_session:
-            record_behavior_event(cp_config, "/proj", "Read", {}, "output")
+        with (
+            patch("lintgate.controlplane.session_memory.get_or_create_session") as mock_session,
+            patch("lintgate.controlplane.session_memory.save_session") as mock_save,
+        ):
+            result = record_behavior_event(cp_config, "/proj", "Read", {}, "output")
+            assert result is None
             mock_session.assert_not_called()
+            mock_save.assert_not_called()
 
     def test_records_event_and_calls_path_a_when_habit_enabled(self):
         """Full path: records event, saves compass, calls Path A."""
@@ -912,7 +922,8 @@ class TestRecordBehaviorEvent:
             patch("lintgate.hooks.habit._update_habit_mode_path_a") as mock_path_a,
             patch("lintgate.hooks.runtime_state.refresh_runtime_state_with_session"),
         ):
-            record_behavior_event(cp_config, "/proj", "Edit", {"file_path": "/a"}, "ok")
+            result = record_behavior_event(cp_config, "/proj", "Edit", {"file_path": "/a"}, "ok")
+            assert result is None
             mock_record.assert_called_once_with(mock_compass, "Edit", {"file_path": "/a"}, "ok")
             mock_save_compass.assert_called_once_with(mock_session, mock_compass)
             mock_path_a.assert_called_once_with(
@@ -943,7 +954,8 @@ class TestRecordBehaviorEvent:
             ) as mock_refresh,
             patch("lintgate.hooks.habit._update_habit_mode_path_a") as mock_path_a,
         ):
-            record_behavior_event(cp_config, "/proj", "Read", {}, "out")
+            result = record_behavior_event(cp_config, "/proj", "Read", {}, "out")
+            assert result is None
             mock_path_a.assert_not_called()
             mock_refresh.assert_called_once_with(
                 "/proj",

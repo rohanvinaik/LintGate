@@ -1445,3 +1445,311 @@ class TestHandleSpecification:
         with self._patch_imports(compass_state=compass_state, exec_compass=ec):
             result = handle(data)
         assert type(result["systemMessage"]) is str
+
+    # ── Additional branch coverage for handle() ──────────────────────────
+
+    def test_dr5_import_error_bash_with_nonblocking_gate(self) -> None:
+        """DR5: ImportError on ExecutionCompass + Bash + non-blocking gate → advisory flows."""
+        from lintgate.hooks.pre_tool import handle
+
+        data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m 'wip'"},
+            "cwd": "/tmp",
+        }
+        gate = QualityGateResult(
+            should_block=False,
+            messages=[
+                "[QualityGate] Advisory: Tests are failing.",
+                "[QualityGate] Advisory: 2 blocking issue(s) remain.",
+            ],
+        )
+        with self._patch_imports(gate_result=gate, import_error=True):
+            result = handle(data)
+        assert result["continue"] is True
+        assert result["systemMessage"] == (
+            "[QualityGate] Advisory: Tests are failing."
+            " | [QualityGate] Advisory: 2 blocking issue(s) remain."
+        )
+
+    def test_compass_none_theory_bash_returns_early(self) -> None:
+        """Compass None + theory mode + Bash (not a write tool) → early return."""
+        from lintgate.hooks.pre_tool import handle
+
+        data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo hi"},
+            "cwd": "/tmp",
+        }
+        with self._patch_imports(compass_state=None, mode="theory"):
+            result = handle(data)
+        # Bash is NOT in _WRITE_TOOLS, so the guard triggers and returns early
+        assert result == {"continue": True}
+
+    def test_theory_bash_with_compass_no_theory_advisory(self) -> None:
+        """Theory mode + Bash + compass present → no theory advisory (Bash not a write tool),
+        but alignment check still runs."""
+        from lintgate.hooks.pre_tool import handle
+
+        data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "python test.py"},
+            "cwd": "/tmp",
+        }
+        ec = self._mock_exec_compass()
+        compass_state = SimpleNamespace(directives=[], axes={})
+        with self._patch_imports(mode="theory", compass_state=compass_state, exec_compass=ec):
+            result = handle(data)
+        assert result["continue"] is True
+        # Bash is not in _WRITE_TOOLS → theory_msg is empty, alignment clean → empty
+        assert result["systemMessage"] == ""
+
+    def test_compass_none_normal_bash_with_gate_advisory(self) -> None:
+        """Compass None + gate advisory + Bash → gate messages flow through early-return path."""
+        from lintgate.hooks.pre_tool import handle
+
+        data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m 'fix'"},
+            "cwd": "/tmp",
+        }
+        gate = QualityGateResult(
+            should_block=False,
+            messages=["[QualityGate] Advisory: Stale run."],
+        )
+        with self._patch_imports(compass_state=None, mode="normal", gate_result=gate):
+            result = handle(data)
+        assert result["continue"] is True
+        assert result["systemMessage"] == "[QualityGate] Advisory: Stale run."
+
+    def test_gate_advisory_plus_alignment_warning_combined(self) -> None:
+        """Gate advisory + alignment warning → both pipe-joined (not violation)."""
+        from lintgate.hooks.pre_tool import handle
+
+        data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m 'fix'"},
+            "cwd": "/tmp",
+        }
+        gate = QualityGateResult(
+            should_block=False,
+            messages=["[QualityGate] Advisory: Stale."],
+        )
+        ec = MagicMock()
+        ec.check_alignment.return_value = {
+            "violations": [],
+            "warnings": ["away: prefer rebase over merge"],
+        }
+        compass_state = SimpleNamespace(directives=[], axes={})
+        with self._patch_imports(gate_result=gate, compass_state=compass_state, exec_compass=ec):
+            result = handle(data)
+        assert result["continue"] is True
+        assert result["systemMessage"] == (
+            "[QualityGate] Advisory: Stale."
+            " | [Compass] Alignment warning: away: prefer rebase over merge"
+        )
+
+    def test_theory_write_with_compass_and_gate_advisory(self) -> None:
+        """Theory mode + Write + compass present + gate advisory → theory msg only.
+        Write is not Bash so gate is never invoked, gate_result stays empty."""
+        from lintgate.hooks.pre_tool import handle
+
+        data = {"tool_name": "Write", "cwd": "/tmp"}
+        ec = self._mock_exec_compass()
+        compass_state = SimpleNamespace(directives=[], axes={})
+        # Gate messages would only exist if command was non-empty (Bash tool)
+        with self._patch_imports(mode="theory", compass_state=compass_state, exec_compass=ec):
+            result = handle(data)
+        assert result["continue"] is True
+        assert "[Compass] Theory mode active" in result["systemMessage"]
+        # No gate message because Write is not Bash
+        assert "[QualityGate]" not in result["systemMessage"]
+
+
+# ── _check_quality_gate branch coverage ──────────────────────────────────
+
+
+class TestCheckQualityGateBranches:
+    """Tests for untested branches in _check_quality_gate."""
+
+    def test_push_blocked_disabled_returns_empty(self) -> None:
+        """Push command with block_push=False → no blocking."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(enabled=True, block_push=False, advise_commit=True)
+        cp_config = SimpleNamespace(quality_gate=qg)
+        with patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config):
+            result = _check_quality_gate("git push origin main", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_commit_advisory_disabled_returns_empty(self) -> None:
+        """Commit command with advise_commit=False → no advisory."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(enabled=True, block_push=True, advise_commit=False)
+        cp_config = SimpleNamespace(quality_gate=qg)
+        with patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config):
+            result = _check_quality_gate("git commit -m 'msg'", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_commit_no_state_returns_empty(self) -> None:
+        """Commit (not push) with no runtime state → empty result (fail-open for commit)."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(
+            enabled=True, block_push=True, advise_commit=True,
+            staleness_threshold_s=1800, check_secrets=False,
+        )
+        cp_config = SimpleNamespace(quality_gate=qg)
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=None),
+        ):
+            result = _check_quality_gate("git commit -m 'msg'", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_push_no_state_blocks_with_exact_message(self) -> None:
+        """Push with no runtime state → blocked with exact message."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(
+            enabled=True, block_push=True, advise_commit=True,
+            staleness_threshold_s=1800, check_secrets=False,
+        )
+        cp_config = SimpleNamespace(quality_gate=qg)
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=None),
+        ):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is True
+        assert result.messages == [
+            "[QualityGate] BLOCKED: No quality run found. Run `controlplane_run` first."
+        ]
+
+    def test_config_load_exception_fails_open(self) -> None:
+        """Config load crash → fail-open, empty result."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        with patch(
+            "lintgate.hooks.pre_tool.load_controlplane_config",
+            side_effect=RuntimeError("crash"),
+        ):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_config_none_fails_open(self) -> None:
+        """Config returns None → fail-open."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        with patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=None):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_quality_gate_disabled_fails_open(self) -> None:
+        """Quality gate disabled in config → fail-open."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(enabled=False, block_push=True, advise_commit=True)
+        cp_config = SimpleNamespace(quality_gate=qg)
+        with patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_non_git_command_returns_empty(self) -> None:
+        """Non-git command → empty result, no config loaded."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        with patch("lintgate.hooks.pre_tool.load_controlplane_config") as mock_cfg:
+            result = _check_quality_gate("echo hello", "/tmp")
+        mock_cfg.assert_not_called()
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_push_with_failures_exact_prefixed_messages(self) -> None:
+        """Push with state failures → BLOCKED-prefixed messages."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(
+            enabled=True, block_push=True, advise_commit=True,
+            staleness_threshold_s=1800.0, check_secrets=False,
+        )
+        cp_config = SimpleNamespace(quality_gate=qg)
+        state = SimpleNamespace(
+            timestamp=time.time(), blocking_issues=0, last_test_status="fail",
+        )
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+        ):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is True
+        assert result.messages == ["[QualityGate] BLOCKED: Tests are failing."]
+
+    def test_commit_with_failures_advisory_prefixed_messages(self) -> None:
+        """Commit with state failures → Advisory-prefixed messages."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(
+            enabled=True, block_push=True, advise_commit=True,
+            staleness_threshold_s=1800.0, check_secrets=False,
+        )
+        cp_config = SimpleNamespace(quality_gate=qg)
+        state = SimpleNamespace(
+            timestamp=time.time(), blocking_issues=0, last_test_status="fail",
+        )
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+        ):
+            result = _check_quality_gate("git commit -m 'fix'", "/tmp")
+        assert result.should_block is False
+        assert result.messages == ["[QualityGate] Advisory: Tests are failing."]
+
+    def test_push_no_failures_returns_empty(self) -> None:
+        """Push with clean state → empty result."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(
+            enabled=True, block_push=True, advise_commit=True,
+            staleness_threshold_s=1800.0, check_secrets=False,
+        )
+        cp_config = SimpleNamespace(quality_gate=qg)
+        state = SimpleNamespace(
+            timestamp=time.time(), blocking_issues=0, last_test_status="pass",
+        )
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
+            patch("lintgate.hooks.pre_tool.load_runtime_state", return_value=state),
+        ):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is False
+        assert result.messages == []
+
+    def test_runtime_state_load_exception_push_no_state(self) -> None:
+        """Runtime state load crash → state is None → push blocked."""
+        from lintgate.hooks.pre_tool import _check_quality_gate
+
+        qg = SimpleNamespace(
+            enabled=True, block_push=True, advise_commit=True,
+            staleness_threshold_s=1800.0, check_secrets=False,
+        )
+        cp_config = SimpleNamespace(quality_gate=qg)
+        with (
+            patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
+            patch(
+                "lintgate.hooks.pre_tool.load_runtime_state",
+                side_effect=RuntimeError("crash"),
+            ),
+        ):
+            result = _check_quality_gate("git push", "/tmp")
+        assert result.should_block is True
+        assert result.messages == [
+            "[QualityGate] BLOCKED: No quality run found. Run `controlplane_run` first."
+        ]

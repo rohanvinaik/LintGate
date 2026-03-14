@@ -271,10 +271,66 @@ def test_proposed_artifacts_no_target_test_file():
 
 
 def test_reroute_manual_contract_empty_keys():
-    """Empty function_keys should be a no-op."""
-    reroute_manual_contract_candidates("/tmp", [])  # Should not raise
+    """Empty function_keys should be a no-op — load_manifest never called."""
+    from unittest.mock import patch as _patch
+
+    with _patch(
+        "lintgate.specification.test_regeneration_strategy.load_manifest"
+    ) as mock_load:
+        reroute_manual_contract_candidates("/tmp", [])
+        mock_load.assert_not_called()
 
 
 def test_reroute_manual_contract_no_crash():
-    """Should handle missing manifest gracefully."""
-    reroute_manual_contract_candidates("/nonexistent/project", ["mod.func"])
+    """Should handle missing manifest gracefully — returns without writing."""
+    from unittest.mock import patch as _patch
+
+    with (
+        _patch(
+            "lintgate.specification.test_regeneration_strategy.load_manifest",
+            return_value=None,
+        ) as mock_load,
+        _patch(
+            "lintgate.specification.test_regeneration_strategy.write_manifest"
+        ) as mock_write,
+    ):
+        reroute_manual_contract_candidates("/nonexistent/project", ["mod.func"])
+        mock_load.assert_called_once_with("/nonexistent/project")
+        mock_write.assert_not_called()
+
+
+def test_reroute_manual_contract_updates_matching_functions():
+    """Matching functions get strategy/fields updated and manifest is written."""
+    from unittest.mock import MagicMock, patch as _patch
+
+    from lintgate.specification._regeneration_types import ExistingTestAction, Strategy
+
+    func_match = MagicMock()
+    func_match.function_key = "mod.func_a"
+    func_match.reason_codes = []
+
+    func_skip = MagicMock()
+    func_skip.function_key = "mod.func_b"
+
+    manifest = MagicMock()
+    manifest.functions = [func_match, func_skip]
+
+    with (
+        _patch(
+            "lintgate.specification.test_regeneration_strategy.load_manifest",
+            return_value=manifest,
+        ),
+        _patch(
+            "lintgate.specification.test_regeneration_strategy.write_manifest"
+        ) as mock_write,
+    ):
+        reroute_manual_contract_candidates("/proj", ["mod.func_a"])
+        # Verify the matched function was updated with exact enum values
+        assert func_match.strategy == Strategy.MANUAL_CONTRACT
+        assert func_match.existing_test_action == ExistingTestAction.QUARANTINE_ONLY
+        assert func_match.target_test_file == ""
+        assert func_match.generation_mode == "manual_contract"
+        assert func_match.manual_review_required is True
+        assert func_match.reason_codes == ["no_executable_witness"]
+        # Verify manifest was written
+        mock_write.assert_called_once_with(manifest, "/proj")

@@ -285,16 +285,11 @@ class TestLoadGlobalPriors:
             patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
         ):
             result = load_global_priors(cfg)
-        assert result is not None
-        assert result["enabled"] is True
-        assert result["alpha"] == 0.6
-        assert result["decay_horizon"] == 50
-        assert result["computed_bias_adjustments"] == {"sig": 0.1}
-        assert set(result.keys()) == {
-            "enabled",
-            "alpha",
-            "decay_horizon",
-            "computed_bias_adjustments",
+        assert result == {
+            "enabled": True,
+            "alpha": 0.6,
+            "decay_horizon": 50,
+            "computed_bias_adjustments": {"sig": 0.1},
         }
 
     def test_import_error(self):

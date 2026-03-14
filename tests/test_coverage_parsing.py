@@ -198,6 +198,10 @@ def test_find_by_absolute_path():
     data = {"/proj/mod.py": cov}
     result = find_file_coverage("/proj/mod.py", data, "/proj")
     assert result is cov
+    assert result.executed_lines == {1, 2}
+    assert result.missing_lines == set()
+    assert result.excluded_lines == set()
+    assert result.missing_branches == []
 
 
 def test_find_by_relative_path():
@@ -206,6 +210,8 @@ def test_find_by_relative_path():
     data = {"mod.py": cov}
     result = find_file_coverage("/proj/mod.py", data, "/proj")
     assert result is cov
+    assert result.executed_lines == {1, 2}
+    assert result.missing_lines == set()
 
 
 def test_find_by_join_match():
@@ -214,9 +220,12 @@ def test_find_by_join_match():
     data = {"src/mod.py": cov}
     result = find_file_coverage("/proj/src/mod.py", data, "/proj")
     assert result is cov
+    assert result.executed_lines == {1, 2}
+    assert result.missing_lines == set()
 
 
 def test_find_returns_none_when_absent():
     """No match returns None."""
     result = find_file_coverage("/proj/unknown.py", {}, "/proj")
     assert result is None
+    assert find_file_coverage("/proj/other.py", {"/proj/mod.py": _make_file_cov()}, "/proj") is None

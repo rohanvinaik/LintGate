@@ -652,11 +652,20 @@ class TestClearGrammarConstraint:
         adapter._grammar_constraint = {"gbnf": "rule"}
         adapter.clear_grammar_constraint()
         assert adapter._grammar_constraint is None
+        # Verify cleared constraint does not affect payload
+        payload: dict[str, Any] = {"model": "test"}
+        adapter._apply_grammar_to_payload(payload)
+        assert "extra_body" not in payload
 
     def test_clears_when_already_none(self) -> None:
         adapter = VLLMAdapter()
+        assert adapter._grammar_constraint is None
         adapter.clear_grammar_constraint()
         assert adapter._grammar_constraint is None
+        # Verify check_rejection returns not-rejected after clear
+        rejected, reason = adapter.check_rejection("anything")
+        assert rejected is False
+        assert reason == ""
 
 
 # ===========================================================================
