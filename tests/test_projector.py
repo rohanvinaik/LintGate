@@ -115,7 +115,7 @@ class TestCacheableProjection:
         pure_func = pure_tree.body[0]
 
         # Directly test purity
-        purity = _analyze_projected_purity(pure_func)
+        purity = _analyze_projected_purity(pure_func)  # type: ignore[arg-type]  # stmt from .body[0], actually FunctionDef
         assert purity.is_pure
 
     def test_project_finds_cacheable(self):
@@ -308,12 +308,12 @@ class TestNumericDetection:
     def test_numeric_heavy(self):
         code = "def f(x, y):\n    return x * y + x - y / 2\n"
         tree = ast.parse(code)
-        assert _is_numeric_heavy(tree.body[0])
+        assert _is_numeric_heavy(tree.body[0])  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
     def test_not_numeric(self):
         code = "def f(s):\n    return s.upper()\n"
         tree = ast.parse(code)
-        assert not _is_numeric_heavy(tree.body[0])
+        assert not _is_numeric_heavy(tree.body[0])  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
 
 # ── Integration with ExtractionPlan ───────────────────────────────────

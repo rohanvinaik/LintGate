@@ -150,7 +150,7 @@ class TestGenerateCharacterizationTest:
         assert "def test_compute_characterization" in code
         assert "Maturity: unchecked" in code
         assert "x = 0" in code  # int type hint
-        assert 'y = ""' in code  # str type hint
+        assert 'y = "test"' in code  # str type — synthesis uses name heuristic
 
     def test_skips_self_param(self):
         sig = {

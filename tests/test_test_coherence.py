@@ -380,7 +380,7 @@ def test_severity_counts_empty_findings_uses_channel():
 
 
 def test_severity_counts_empty_findings_unknown_severity():
-    r = ChannelResult(channel="lint", status="fail", severity="critical", findings=[])
+    r = ChannelResult(channel="lint", status="fail", severity="critical", findings=[])  # type: ignore[arg-type]  # intentional: test invalid severity
     counts = _finding_severity_counts(r)
     assert counts["warning"] == 1  # fallback
 

@@ -281,7 +281,7 @@ class TestExtractMonkeypatchTarget:
         code = 'monkeypatch.setattr("mypackage.core.my_func", lambda: 1)'
         tree = ast.parse(code)
         call = cast("ast.Expr", tree.body[0]).value  # The Call node
-        result = _extract_monkeypatch_target(call, {"mypackage"})
+        result = _extract_monkeypatch_target(call, {"mypackage"})  # type: ignore[arg-type]  # .value is expr, actually Call
         assert result is not None
         assert result["module"] == "mypackage.core"
         assert result["symbol"] == "my_func"
@@ -294,7 +294,7 @@ class TestExtractMonkeypatchTarget:
         code = 'monkeypatch.setattr("os.path.exists", lambda: True)'
         tree = ast.parse(code)
         call = cast("ast.Expr", tree.body[0]).value
-        result = _extract_monkeypatch_target(call, {"mypackage"})
+        result = _extract_monkeypatch_target(call, {"mypackage"})  # type: ignore[arg-type]  # .value is expr, actually Call
         assert result is None
 
     def test_non_setattr_ignored(self):
@@ -304,5 +304,5 @@ class TestExtractMonkeypatchTarget:
         code = 'monkeypatch.delattr("mypackage.core.func")'
         tree = ast.parse(code)
         call = cast("ast.Expr", tree.body[0]).value
-        result = _extract_monkeypatch_target(call, {"mypackage"})
+        result = _extract_monkeypatch_target(call, {"mypackage"})  # type: ignore[arg-type]  # .value is expr, actually Call
         assert result is None

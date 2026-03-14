@@ -47,7 +47,7 @@ class TestTokenTrackerState:
         assert tracker.calibration_factor == DEFAULT_CALIBRATION_FACTOR
 
     def test_from_none(self):
-        tracker = TokenTrackerState.from_dict(None)
+        tracker = TokenTrackerState.from_dict(None)  # type: ignore[arg-type]  # intentional: test None handling
         assert tracker.tool_call_count == 0
 
 

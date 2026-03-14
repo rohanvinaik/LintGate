@@ -15,7 +15,7 @@ from lintgate.orchestration.behavioral_contracts import (
 )
 
 
-def _make_func(code: str) -> ast.FunctionDef:
+def _make_func(code: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     """Parse a function definition and return the AST node."""
     tree = ast.parse(textwrap.dedent(code))
     for node in ast.walk(tree):

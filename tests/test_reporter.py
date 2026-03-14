@@ -20,6 +20,7 @@ Also covers re-exported symbols and module-level constants.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
 
 from lintgate.controlplane.reporter import (
@@ -41,7 +42,11 @@ from lintgate.controlplane.reporter import (
     _format_repairs,
     _format_warnings,
     _short_path,
+    build_finding_index,
+    compute_finding_delta,
+    compute_finding_fingerprint,
     format_mesh_report,
+    format_mesh_report_compact,
 )
 from lintgate.controlplane.types import (
     ChannelResult,
@@ -59,7 +64,7 @@ from lintgate.types import LintIssue
 
 def _mesh(
     channel_results: list[ChannelResult] | None = None,
-    coherence_state: str = "stable",
+    coherence_state: Any = "stable",
     coherence_summary: str = "",
     coherence_confidence: float = 1.0,
     coherence_action: str = "",
@@ -930,7 +935,7 @@ def test_format_mesh_report_telemetry_when_delta() -> None:
             ),
         ],
     )
-    prev_index = {}  # empty previous => everything is "new"
+    prev_index: dict[str, Any] = {}  # empty previous => everything is "new"
     report = format_mesh_report(mesh, previous_finding_index=prev_index)
     # Telemetry should be present since delta generates counters
     assert "_telemetry" in report
@@ -1098,3 +1103,455 @@ def test_budget_constants_are_positive() -> None:
 def test_budget_ordering() -> None:
     """Blocking costs more than warning which costs more than info."""
     assert _BUDGET_PER_BLOCKING > _BUDGET_PER_WARNING > _BUDGET_PER_INFO
+
+
+# ── Empty report edge case ────────────────────────────────────────────────
+
+
+def test_format_mesh_report_empty_with_no_channels() -> None:
+    """No channels at all -> empty report."""
+    mesh = _mesh(channel_results=[])
+    report = format_mesh_report(mesh)
+    assert report == {}
+
+
+# ── PostToolUse hook context details ──────────────────────────────────────
+
+
+def test_posttooluse_context_includes_coherence_and_counts() -> None:
+    mesh = _mesh(
+        channel_results=[
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[_issue("warning")],
+            ),
+        ],
+    )
+    report = format_mesh_report(mesh)
+    hs = report["hookSpecificOutput"]
+    assert hs["hookEventName"] == "PostToolUse"
+    ctx = hs["additionalContext"]
+    assert "coherence=stable" in ctx
+    assert "channels_run=1" in ctx
+    assert "warnings=1" in ctx
+
+
+def test_posttooluse_context_includes_channel_statuses() -> None:
+    mesh = _mesh(
+        channel_results=[
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[_issue("warning")],
+            ),
+            ChannelResult(channel="tests", status="pass"),
+            ChannelResult(channel="deps", status="skip"),
+        ],
+    )
+    report = format_mesh_report(mesh)
+    ctx = report["hookSpecificOutput"]["additionalContext"]
+    assert "loud=" in ctx
+    assert "lint:fail" in ctx
+    assert "deps" not in ctx  # Skip channels excluded
+
+
+# ── XML structure ─────────────────────────────────────────────────────────
+
+
+def test_report_has_xml_structure() -> None:
+    mesh = _mesh(
+        channel_results=[
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[_issue("warning")],
+            ),
+        ],
+    )
+    report = format_mesh_report(mesh)
+    msg = report["systemMessage"]
+    assert msg.startswith("<controlplane-report")
+    assert msg.strip().endswith("</controlplane-report>")
+
+
+# ── Duration in header ────────────────────────────────────────────────────
+
+
+def test_duration_in_header() -> None:
+    mesh = _mesh(
+        channel_results=[
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[_issue("warning")],
+            ),
+        ],
+        duration_ms=42.5,
+    )
+    report = format_mesh_report(mesh)
+    assert (
+        'duration="42ms"' in report["systemMessage"] or 'duration="43ms"' in report["systemMessage"]
+    )
+
+
+# ── Delta with repeated fingerprints ─────────────────────────────────────
+
+
+def test_delta_report_limits_repeated_finding_display() -> None:
+    """Delta mode should show only the new count for repeated fingerprints."""
+    previous_mesh = _mesh(
+        channel_results=[
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    _issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="/tmp/test/foo.py",
+                    )
+                ],
+            ),
+        ],
+    )
+    previous_index = build_finding_index(previous_mesh)
+
+    current_mesh = _mesh(
+        channel_results=[
+            ChannelResult(
+                channel="lint",
+                status="fail",
+                severity="warning",
+                findings=[
+                    _issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="/tmp/test/foo.py",
+                    ),
+                    _issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="/tmp/test/foo.py",
+                    ),
+                    _issue(
+                        "warning",
+                        linter="ruff",
+                        kind="E501",
+                        message="Repeated warning",
+                        file="/tmp/test/foo.py",
+                    ),
+                ],
+            ),
+        ],
+    )
+    report = format_mesh_report(
+        current_mesh, previous_finding_index=previous_index, snapshot_count=1
+    )
+    msg = report["systemMessage"]
+    assert "DELTA: 2 new" in msg
+
+
+# ── Finding Fingerprint ──────────────────────────────────────────────────
+
+
+class TestFindingFingerprint:
+    def test_stable_across_line_changes(self) -> None:
+        issue_a = _issue(
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'x'",
+            file="/tmp/test/foo.py",
+        )
+        issue_a.line = 10
+        issue_b = _issue(
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'x'",
+            file="/tmp/test/foo.py",
+        )
+        issue_b.line = 25
+        assert compute_finding_fingerprint(issue_a, "lint") == compute_finding_fingerprint(
+            issue_b, "lint"
+        )
+
+    def test_different_messages_different_fingerprints(self) -> None:
+        issue_a = _issue(
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'x'",
+            file="/tmp/test/foo.py",
+        )
+        issue_b = _issue(
+            "blocking",
+            linter="ruff",
+            kind="F821",
+            message="Undefined name 'y'",
+            file="/tmp/test/foo.py",
+        )
+        assert compute_finding_fingerprint(issue_a, "lint") != compute_finding_fingerprint(
+            issue_b, "lint"
+        )
+
+    def test_different_channels_different_fingerprints(self) -> None:
+        issue = _issue("warning", linter="test", kind="test_fail", message="test_x failed")
+        assert compute_finding_fingerprint(issue, "lint") != compute_finding_fingerprint(
+            issue, "tests"
+        )
+
+    def test_full_path_distinguishes_same_basename(self) -> None:
+        issue_a = _issue("warning", file="/a/b/foo.py", message="some issue")
+        issue_b = _issue("warning", file="/c/d/foo.py", message="some issue")
+        assert compute_finding_fingerprint(issue_a, "lint") != compute_finding_fingerprint(
+            issue_b, "lint"
+        )
+
+    def test_empty_file_handled(self) -> None:
+        issue = _issue("warning", message="no file", file=None)
+        fp = compute_finding_fingerprint(issue, "lint")
+        assert isinstance(fp, str) and len(fp) == 16
+
+
+# ── Build Finding Index ──────────────────────────────────────────────────
+
+
+class TestBuildFindingIndex:
+    def test_indexes_findings_from_mesh(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="blocking",
+                    findings=[
+                        _issue("blocking", message="Error A", file="/tmp/test/a.py"),
+                        _issue("warning", message="Warn B", file="/tmp/test/b.py"),
+                    ],
+                ),
+            ]
+        )
+        index = build_finding_index(mesh)
+        assert len(index) == 2
+        for info in index.values():
+            assert "channel" in info and "kind" in info and "severity" in info
+
+    def test_multi_channel_findings(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="blocking",
+                    findings=[_issue("blocking", message="lint error")],
+                ),
+                ChannelResult(
+                    channel="tests",
+                    status="fail",
+                    severity="warning",
+                    findings=[_issue("warning", linter="test_ch", message="test failed")],
+                ),
+            ]
+        )
+        index = build_finding_index(mesh)
+        channels = {info["channel"] for info in index.values()}
+        assert "lint" in channels and "tests" in channels
+
+    def test_empty_mesh_empty_index(self) -> None:
+        mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="pass")])
+        assert build_finding_index(mesh) == {}
+
+    def test_duplicate_findings_are_counted(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="warning",
+                    findings=[
+                        _issue(
+                            "warning", kind="E501", message="Line too long", file="/tmp/test/foo.py"
+                        ),
+                        _issue(
+                            "warning", kind="E501", message="Line too long", file="/tmp/test/foo.py"
+                        ),
+                    ],
+                ),
+            ]
+        )
+        index = build_finding_index(mesh)
+        assert len(index) == 1
+        assert next(iter(index.values()))["count"] == 2
+
+
+# ── Compute Finding Delta ────────────────────────────────────────────────
+
+
+class TestComputeFindingDelta:
+    def _idx(self, fp: str, severity: str = "warning", channel: str = "lint") -> dict:
+        return {fp: {"channel": channel, "kind": "test", "severity": severity, "message": "m"}}
+
+    def test_new_findings_detected(self) -> None:
+        prev = self._idx("fp1")
+        curr = {**self._idx("fp1"), **self._idx("fp2")}
+        delta = compute_finding_delta(curr, prev)
+        assert len(delta["new"]) == 1
+        assert delta["new"][0]["fingerprint"] == "fp2"
+
+    def test_resolved_findings_detected(self) -> None:
+        prev = {**self._idx("fp1"), **self._idx("fp2")}
+        curr = self._idx("fp1")
+        delta = compute_finding_delta(curr, prev)
+        assert delta["resolved_count"] == 1
+
+    def test_escalated_severity_detected(self) -> None:
+        prev = self._idx("fp1", severity="warning")
+        curr = self._idx("fp1", severity="blocking")
+        delta = compute_finding_delta(curr, prev)
+        assert len(delta["escalated"]) == 1
+
+    def test_empty_previous_all_new(self) -> None:
+        curr = {**self._idx("fp1"), **self._idx("fp2")}
+        delta = compute_finding_delta(curr, {})
+        assert len(delta["new"]) == 2
+
+    def test_empty_current_all_resolved(self) -> None:
+        prev = {**self._idx("fp1"), **self._idx("fp2")}
+        delta = compute_finding_delta({}, prev)
+        assert delta["resolved_count"] == 2
+
+    def test_count_increase_reported_as_new_delta(self) -> None:
+        prev = {
+            "fp1": {
+                "channel": "lint",
+                "kind": "k",
+                "severity": "warning",
+                "message": "m",
+                "count": 1,
+            }
+        }
+        curr = {
+            "fp1": {
+                "channel": "lint",
+                "kind": "k",
+                "severity": "warning",
+                "message": "m",
+                "count": 3,
+            }
+        }
+        delta = compute_finding_delta(curr, prev)
+        assert len(delta["new"]) == 1
+        assert delta["new"][0]["count"] == 2
+
+
+# ── Compact ControlPlane Reporter ────────────────────────────────────────
+
+
+class TestFormatMeshReportCompact:
+    def test_first_run_inline_blocking(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="blocking",
+                    findings=[_issue("blocking", message="Undefined 'x'", file="/tmp/test/foo.py")],
+                ),
+            ]
+        )
+        compact = format_mesh_report_compact(mesh)
+        assert "run_id" in compact
+        assert "blocking_issues" in compact
+        assert "delta" not in compact
+        assert compact["counts"]["blocking"] == 1
+
+    def test_delta_run_has_delta_section(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="blocking",
+                    findings=[
+                        _issue("blocking", message="Error A", file="/tmp/test/a.py"),
+                        _issue("warning", message="Warn B", file="/tmp/test/b.py"),
+                    ],
+                ),
+            ]
+        )
+        previous_index = build_finding_index(
+            _mesh(
+                channel_results=[
+                    ChannelResult(
+                        channel="lint",
+                        status="fail",
+                        severity="warning",
+                        findings=[_issue("warning", message="Warn B", file="/tmp/test/b.py")],
+                    ),
+                ]
+            )
+        )
+        compact = format_mesh_report_compact(mesh, previous_finding_index=previous_index)
+        assert "delta" in compact
+        assert "blocking_issues" not in compact
+
+    def test_next_actions_always_present(self) -> None:
+        mesh = _mesh(channel_results=[ChannelResult(channel="lint", status="pass")])
+        compact = format_mesh_report_compact(mesh)
+        assert "next_actions" in compact
+        assert isinstance(compact["next_actions"], list)
+
+    def test_coherence_always_present(self) -> None:
+        mesh = _mesh(
+            channel_results=[ChannelResult(channel="lint", status="pass")],
+            coherence_state="isolated",
+            coherence_summary="Lint channel failing",
+        )
+        compact = format_mesh_report_compact(mesh)
+        assert compact["coherence"]["state"] == "isolated"
+
+    def test_channels_summary(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="blocking",
+                    findings=[_issue("blocking")],
+                ),
+                ChannelResult(channel="tests", status="pass"),
+                ChannelResult(channel="deps", status="skip"),
+            ]
+        )
+        compact = format_mesh_report_compact(mesh)
+        assert "lint" in compact["channels"]
+        assert compact["channels"]["tests"] == "pass"
+        assert "deps" not in compact["channels"]
+
+    def test_finding_index_in_output(self) -> None:
+        mesh = _mesh(
+            channel_results=[
+                ChannelResult(
+                    channel="lint",
+                    status="fail",
+                    severity="warning",
+                    findings=[_issue("warning", message="test")],
+                ),
+            ]
+        )
+        compact = format_mesh_report_compact(mesh)
+        assert "finding_index" in compact
+        assert len(compact["finding_index"]) == 1

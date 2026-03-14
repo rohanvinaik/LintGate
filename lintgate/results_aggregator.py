@@ -57,7 +57,8 @@ def _collect_raw_issues(
 
 
 def _apply_config_overrides(
-    issues: list[LintIssue], config: ProjectConfig,
+    issues: list[LintIssue],
+    config: ProjectConfig,
 ) -> tuple[list[LintIssue], int]:
     """Apply severity overrides, exemptions, and signal tunings. Returns (filtered, tuned_count)."""
     if config.severity_overrides:
@@ -78,7 +79,9 @@ def _apply_config_overrides(
     return issues, tuned_count
 
 
-def _split_by_severity(issues: list[LintIssue]) -> tuple[list[LintIssue], list[LintIssue], list[LintIssue]]:
+def _split_by_severity(
+    issues: list[LintIssue],
+) -> tuple[list[LintIssue], list[LintIssue], list[LintIssue]]:
     """Split issues into blocking/warning/informational, each sorted by file+line."""
     sort_key = lambda i: (i.file or "", i.line or 0)  # noqa: E731
     blocking = sorted([i for i in issues if i.severity == "blocking"], key=sort_key)
@@ -130,7 +133,9 @@ def aggregate_results(
             issue.estimated_effort_minutes = estimate_effort(issue)
 
     blocking, warnings, informational = _split_by_severity(unique)
-    metrics = _compute_metrics(unique, blocking, warnings, informational, tuned_count, linter_statuses)
+    metrics = _compute_metrics(
+        unique, blocking, warnings, informational, tuned_count, linter_statuses
+    )
 
     project_root = config.project_root
     files_linted = sorted({_normalize_file_path(f, project_root) for i in unique if (f := i.file)})
@@ -225,11 +230,11 @@ def _resolve_severity_override(kind: str, overrides: dict[str, str]) -> str | No
 # ── Effort estimation + ROI scoring ────────────────────────────────────
 
 _EFFORT_HEURISTICS: dict[str, float] = {
-    "ruff": 2.0,       # auto-fixable style/import issues
-    "mypy": 10.0,      # type errors require understanding
-    "radon": 15.0,     # complexity reduction = refactoring
-    "bandit": 20.0,    # security issues need careful review
-    "vulture": 5.0,    # dead code removal
+    "ruff": 2.0,  # auto-fixable style/import issues
+    "mypy": 10.0,  # type errors require understanding
+    "radon": 15.0,  # complexity reduction = refactoring
+    "bandit": 20.0,  # security issues need careful review
+    "vulture": 5.0,  # dead code removal
     "structure": 15.0,  # architectural issues
 }
 

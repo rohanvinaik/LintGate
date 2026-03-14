@@ -175,7 +175,7 @@ class TestSynthesizeLandscape:
             _make_plan("m.py::f2", steps=3, cc_reduction=10),
             _make_plan("m.py::f3", steps=2, cc_reduction=5),
         ]
-        results = []
+        results: list[ConvergenceResult] = []
 
         landscape = synthesize_landscape(results, plans)
 
@@ -218,7 +218,7 @@ class TestDependencyOrder:
                 ],
             ),
         ]
-        results = []
+        results: list[ConvergenceResult] = []
 
         landscape = synthesize_landscape(results, plans)
 
@@ -249,7 +249,7 @@ class TestDependencyOrder:
 class TestTopoSort:
     def test_no_edges(self):
         """No dependencies → sorted by score descending."""
-        edges = {"a": set(), "b": set(), "c": set()}
+        edges: dict[str, set[str]] = {"a": set(), "b": set(), "c": set()}
         scores = {"a": 1.0, "b": 3.0, "c": 2.0}
         result = _topo_sort_weighted(edges, scores)
         assert result == ["b", "c", "a"]
@@ -272,7 +272,7 @@ class TestTopoSort:
 
     def test_tie_breaking_by_score(self):
         """When multiple nodes are ready, highest score goes first."""
-        edges = {"x": set(), "y": set()}
+        edges: dict[str, set[str]] = {"x": set(), "y": set()}
         scores = {"x": 0.5, "y": 0.9}
         result = _topo_sort_weighted(edges, scores)
         assert result[0] == "y"

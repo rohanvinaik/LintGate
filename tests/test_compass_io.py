@@ -336,7 +336,7 @@ class TestMigrateFromTheoryProfile:
         assert state.gap_report is not None
 
     def test_non_dict_profile_handled(self):
-        state = migrate_from_theory_profile("not a dict")
+        state = migrate_from_theory_profile("not a dict")  # type: ignore[arg-type]  # intentional: test non-dict input
         assert isinstance(state, CompassState)
         assert state.version == 1
 

@@ -103,7 +103,7 @@ def _run_main_payload(payload: dict | list, monkeypatch: pytest.MonkeyPatch) -> 
     with pytest.raises(SystemExit) as exc:
         main()
 
-    return int(exc.value.code), stdout.getvalue().strip()
+    return int(exc.value.code), stdout.getvalue().strip()  # type: ignore[arg-type]  # code is int at runtime
 
 
 def test_main_exits_clean_on_non_dict_payload(monkeypatch: pytest.MonkeyPatch) -> None:

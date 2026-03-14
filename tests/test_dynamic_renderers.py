@@ -40,7 +40,7 @@ def _make_runtime(**kwargs) -> RuntimeState:
         "approach_failures": 0,
     }
     defaults.update(kwargs)
-    return RuntimeState(**defaults)
+    return RuntimeState(**defaults)  # type: ignore[arg-type]  # dict unpacking
 
 
 # ── render_session_content ───────────────────────────────────────────

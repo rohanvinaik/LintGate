@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -43,15 +43,15 @@ class TestCountTestAssertions:
 
 class TestIsTrivialAssert:
     def test_assert_true_is_trivial(self):
-        node = ast.parse("assert True").body[0]
+        node = cast("ast.Assert", ast.parse("assert True").body[0])
         assert _is_trivial_assert(node) is True
 
     def test_assert_false_not_trivial(self):
-        node = ast.parse("assert False").body[0]
+        node = cast("ast.Assert", ast.parse("assert False").body[0])
         assert _is_trivial_assert(node) is False
 
     def test_assert_expr_not_trivial(self):
-        node = ast.parse("assert x == 1").body[0]
+        node = cast("ast.Assert", ast.parse("assert x == 1").body[0])
         assert _is_trivial_assert(node) is False
 
 
@@ -103,7 +103,7 @@ class TestRunFreshKillRates:
     def test_empty_when_no_auto_targets(self):
         plan = _Plan(functions=[_FuncEntry(strategy="MANUAL_REVIEW")])
         with patch(_STRATEGY, _FakeStrategy):
-            rates, zero, details = run_fresh_kill_rates(plan, "/project")
+            rates, zero, details = run_fresh_kill_rates(plan, "/project")  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert rates == []
         assert zero == 0
         assert details == []
@@ -111,10 +111,34 @@ class TestRunFreshKillRates:
     def test_no_generated_file(self, tmp_path):
         plan = _Plan(functions=[_FuncEntry(target_test_file="tests/generated/test_missing.py")])
         with patch(_STRATEGY, _FakeStrategy):
-            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
+            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert rates == [0.0]
         assert zero == 1
         assert details[0]["status"] == "no_generated_file"
+
+    def test_generated_dir_uses_staged_basename(self, tmp_path):
+        staging = tmp_path / "workflow" / "staged"
+        staging.mkdir(parents=True)
+        (staging / "test_mod.py").write_text("def test_x(): assert 1\n")
+
+        func_node = ast.parse("def func(): pass").body[0]
+        result_obj = _SamplingResult(survival_rate=0.25)
+        plan = _Plan(functions=[_FuncEntry(target_test_file="tests/generated/test_mod.py")])
+        with (
+            patch(_STRATEGY, _FakeStrategy),
+            patch(_LOAD_TESTS, return_value=[lambda: None]),
+            patch(_RESOLVE, return_value=("/abs/mod.py", func_node, None)),
+            patch(_PURITY, return_value=True),
+            patch(_SAMPLING, return_value=result_obj),
+        ):
+            rates, zero, details = run_fresh_kill_rates(  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
+                plan,
+                str(tmp_path),
+                generated_dir=str(staging),
+            )
+        assert rates[0] == pytest.approx(0.75)
+        assert zero == 0
+        assert details[0]["status"] == "sampled"
 
     def test_no_test_callables(self, tmp_path):
         gen_dir = tmp_path / "tests" / "generated"
@@ -126,7 +150,7 @@ class TestRunFreshKillRates:
             patch(_STRATEGY, _FakeStrategy),
             patch(_LOAD_TESTS, return_value=[]),
         ):
-            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
+            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert rates == [0.0]
         assert zero == 1
         assert details[0]["status"] == "no_test_callables"
@@ -142,7 +166,7 @@ class TestRunFreshKillRates:
             patch(_LOAD_TESTS, return_value=[lambda: None]),
             patch(_RESOLVE, return_value=(None, None, "not found")),
         ):
-            _rates, _zero, details = run_fresh_kill_rates(plan, str(tmp_path))
+            _rates, _zero, details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert len(details) == 1
         assert details[0]["status"] == "source_unresolved"
 
@@ -160,7 +184,7 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             patch(_SAMPLING, side_effect=RuntimeError("boom")),
         ):
-            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
+            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert rates == [0.0]
         assert zero == 1
         assert details[0]["status"] == "sampling_error"
@@ -181,7 +205,7 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             patch(_SAMPLING, return_value=result_obj),
         ):
-            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
+            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert len(rates) == 1
         assert rates[0] == pytest.approx(0.7, abs=0.01)
         assert zero == 0
@@ -209,7 +233,7 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=False),
             patch(_SAMPLING, side_effect=fake_sampling),
         ):
-            run_fresh_kill_rates(plan, str(tmp_path))
+            run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         from lintgate.specification.mutation_engine import MutationCategory
 
         assert MutationCategory.STATE in captured_categories["cats"]
@@ -229,7 +253,7 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             patch(_SAMPLING, return_value=result_obj),
         ):
-            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
+            rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert rates[0] <= 0.0
         assert zero == 1
 
@@ -248,7 +272,7 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             patch(_SAMPLING, return_value=result_obj),
         ):
-            rates, _zero, _details = run_fresh_kill_rates(plan, str(tmp_path))
+            rates, _zero, _details = run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert rates[0] == pytest.approx(0.5)
 
     def test_non_function_node_raises(self, tmp_path):
@@ -265,7 +289,7 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             pytest.raises(ValueError, match="Expected FunctionDef"),
         ):
-            run_fresh_kill_rates(plan, str(tmp_path))
+            run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
 
     def test_func_key_splitting(self, tmp_path):
         """Function key with :: splits correctly."""
@@ -292,5 +316,5 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             patch(_SAMPLING, return_value=result_obj),
         ):
-            run_fresh_kill_rates(plan, str(tmp_path))
+            run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
         assert resolve_calls[0] == "my_func"

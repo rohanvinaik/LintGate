@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import textwrap
+from typing import Any
 
 import pytest
 
@@ -292,7 +293,7 @@ class TestOrphanDetection:
         assert "pkg.sub" not in orphan_modules
 
     def test_orphan_has_correct_code(self, tmp_path):
-        graph = {}
+        graph: dict[str, Any] = {}
         file_map = {"pkg.lonely": str(tmp_path / "pkg" / "lonely.py")}
         findings = _check_orphans([file_map["pkg.lonely"]], graph, file_map, str(tmp_path))
         assert len(findings) == 1
@@ -620,7 +621,7 @@ class TestCheckOrphansReexports:
         pkg.mkdir()
         _write_file(str(pkg / "__init__.py"), "from .sub import Foo\n")
         _write_file(str(pkg / "sub.py"), "Foo = 1\n")
-        graph = {}
+        graph: dict[str, Any] = {}
         file_map = {"pkg.sub": str(pkg / "sub.py")}
         py_files = [str(pkg / "__init__.py"), str(pkg / "sub.py")]
         findings = _check_orphans(py_files, graph, file_map, str(tmp_path))

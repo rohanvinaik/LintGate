@@ -15,6 +15,9 @@ class TestDesignSignals:
     predicate_effect_links: int = 0
 
 
+TestDesignSignals.__test__ = False  # type: ignore[attr-defined]
+
+
 @dataclass
 class TestabilityProfile:
     """Design-for-testability score components."""
@@ -24,6 +27,9 @@ class TestabilityProfile:
     has_side_effects: bool = False
     injectable_deps: int = 0
     hidden_deps: int = 0
+
+
+TestabilityProfile.__test__ = False  # type: ignore[attr-defined]
 
 
 @dataclass

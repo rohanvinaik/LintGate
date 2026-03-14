@@ -17,13 +17,18 @@ from lintgate.quality_infra import (
     _check_gate_contract_drift,
     _check_parity_map,
     _cli_main,
+    _collect_workflow_declared_checks,
+    _contract_local_ids,
     _contract_local_steps,
     _contract_string_list,
+    _extract_pre_push_gate_ids,
     _fetch_branch_protection_required_checks,
     _github_repo_slug,
     _has_github_remote,
     _is_git_repo,
     _load_gate_contract,
+    _matrix_axis_values,
+    _workflow_declared_checks,
     audit_quality_infrastructure,
 )
 
@@ -216,10 +221,57 @@ local_pre_push:
 def _write_contract_workflows(tmp_path: Path) -> None:
     workflow_dir = tmp_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True, exist_ok=True)
-    for wf in ("tests.yml", "qlty.yml", "sonarcloud.yml", "quality-infra-gate.yml"):
-        (workflow_dir / wf).write_text(
-            "name: wf\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
-        )
+    (workflow_dir / "tests.yml").write_text(
+        """
+name: Tests
+on: push
+jobs:
+  tests:
+    name: Tests (${{ matrix.python-version }})
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"""
+    )
+    (workflow_dir / "qlty.yml").write_text(
+        """
+name: Qlty Analysis
+on: push
+jobs:
+  qlty:
+    name: Qlty
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"""
+    )
+    (workflow_dir / "sonarcloud.yml").write_text(
+        """
+name: Sonar
+on: push
+jobs:
+  sonarcloud:
+    name: SonarQube Cloud Scan
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"""
+    )
+    (workflow_dir / "quality-infra-gate.yml").write_text(
+        """
+name: Quality Infra
+on: push
+jobs:
+  gate:
+    name: Quality Infrastructure Gate
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"""
+    )
 
 
 def test_gate_contract_drift_none_when_all_parity_checks_pass(tmp_path: Path) -> None:
@@ -402,6 +454,47 @@ def test_gate_contract_drift_detects_extra_remote_required_checks(
     assert any("extra required check(s) not in contract: Extra Check" in e for e in errors)
 
 
+def test_gate_contract_drift_detects_required_check_missing_from_workflows(
+    tmp_path: Path,
+) -> None:
+    _write_valid_gate_contract(tmp_path)
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    (workflow_dir / "tests.yml").write_text(
+        "name: Tests\non: push\njobs:\n  tests:\n    name: Tests (3.11)\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+    )
+    (workflow_dir / "qlty.yml").write_text(
+        "name: Qlty Analysis\non: push\njobs:\n  qlty:\n    name: Qlty\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+    )
+    (workflow_dir / "sonarcloud.yml").write_text(
+        "name: Sonar\non: push\njobs:\n  sonarcloud:\n    name: SonarQube Cloud Scan\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+    )
+    (workflow_dir / "quality-infra-gate.yml").write_text(
+        "name: Quality Infra\non: push\njobs:\n  gate:\n    name: Quality Infrastructure Gate\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+    )
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text(
+        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+    )
+
+    with patch(
+        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        return_value=[
+            "Tests (3.11)",
+            "Tests (3.12)",
+            "Qlty",
+            "SonarQube Cloud Scan",
+        ],
+    ):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert any(
+        "Contract required check(s) not declared by ci_workflows: Tests (3.12)" in e
+        for e in errors
+    )
+
+
 # ── Contract helper coverage ────────────────────────────────────────────
 
 
@@ -420,6 +513,68 @@ def test_contract_string_list_non_list_returns_empty() -> None:
 def test_contract_local_steps_handles_non_list_and_string_entries() -> None:
     assert _contract_local_steps("not-a-list") == []
     assert _contract_local_steps(["qlty check --all"]) == ["qlty check --all"]
+
+
+def test_contract_local_ids_extracts_ids_only() -> None:
+    assert _contract_local_ids("not-a-list") == []
+    assert _contract_local_ids(
+        [
+            {"id": "qlty", "command": "qlty check --all"},
+            {"id": "tests"},
+            {"command": "pytest"},
+            "not-a-dict",
+        ]
+    ) == ["qlty", "tests"]
+
+
+def test_extract_pre_push_gate_ids_parses_should_run_blocks() -> None:
+    content = """
+if _should_run qlty; then
+  qlty check --all
+fi
+if _should_run tests && [ -d tests ]; then
+  python -m pytest
+fi
+"""
+    assert _extract_pre_push_gate_ids(content) == ["qlty", "tests"]
+
+
+def test_matrix_axis_values_expand_string_expression() -> None:
+    raw = '${{ fromJSON(github.event_name == "pull_request" && \'["3.11", "3.12"]\' || \'["3.12"]\') }}'
+    assert _matrix_axis_values(raw) == ["3.11", "3.12"]
+
+
+def test_workflow_declared_checks_expands_matrix_names(tmp_path: Path) -> None:
+    workflow = tmp_path / "tests.yml"
+    workflow.write_text(
+        """
+name: Tests
+on: push
+jobs:
+  tests:
+    name: Tests (${{ matrix.python-version }})
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"""
+    )
+    assert _workflow_declared_checks(workflow) == {"Tests (3.11)", "Tests (3.12)"}
+
+
+def test_collect_workflow_declared_checks_unions_all_workflows(tmp_path: Path) -> None:
+    _write_contract_workflows(tmp_path)
+    checks = _collect_workflow_declared_checks(
+        tmp_path,
+        [
+            ".github/workflows/tests.yml",
+            ".github/workflows/qlty.yml",
+            ".github/workflows/sonarcloud.yml",
+        ],
+    )
+    assert {"Tests (3.11)", "Tests (3.12)", "Qlty", "SonarQube Cloud Scan"} <= checks
 
 
 # ── Branch protection fetch helper coverage ─────────────────────────────

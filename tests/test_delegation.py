@@ -73,7 +73,7 @@ class TestComputeDelegationSuitability:
         assert blocking_result.score < warning_result.score
 
     def test_downstream_dependents_penalty(self):
-        graph = {"app": ["utils"], "main": ["utils"], "utils": []}
+        graph: dict[str, list[str] | set[str]] = {"app": ["utils"], "main": ["utils"], "utils": []}
         file_map = {"app": "app.py", "main": "main.py", "utils": "utils.py"}
         # utils.py has 2 downstream dependents
         result = compute_delegation_suitability(_finding(file="utils.py"), graph, file_map)
@@ -81,7 +81,7 @@ class TestComputeDelegationSuitability:
         assert result.score < 0.5
 
     def test_no_dependents_no_penalty(self):
-        graph = {"app": ["utils"], "utils": []}
+        graph: dict[str, list[str] | set[str]] = {"app": ["utils"], "utils": []}
         file_map = {"app": "app.py", "utils": "utils.py"}
         # app.py has 0 downstream dependents
         result = compute_delegation_suitability(_finding(file="app.py"), graph, file_map)
@@ -100,7 +100,7 @@ class TestComputeDelegationSuitability:
 class TestAnnotateFindings:
     def test_annotates_in_place(self):
         findings = [_finding(kind="F401"), _finding(kind="C901")]
-        details = {"channels": {}}
+        details: dict[str, dict[str, object]] = {"channels": {}}
         annotate_findings_with_suitability(findings, details)
         assert "delegation_suitability" in findings[0]
         assert "delegation_suitability" in findings[1]

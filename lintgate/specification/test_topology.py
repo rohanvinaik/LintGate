@@ -36,6 +36,7 @@ class DiscoveryState(str, Enum):
 
     NO_TEST_FILES = "NO_TEST_FILES"
     TEST_FILES_FOUND_NONE_LINKED = "TEST_FILES_FOUND_NONE_LINKED"
+    DISCOVERY_WEAK_LINKAGE = "DISCOVERY_WEAK_LINKAGE"
     TESTS_LINKED_ZERO_KILLS = "TESTS_LINKED_ZERO_KILLS"
     DISCOVERY_IMPORT_FAILED = "DISCOVERY_IMPORT_FAILED"
     DISCOVERY_OK = "DISCOVERY_OK"
@@ -127,15 +128,21 @@ def classify_discovery_state(
     callables_loaded: int,
     import_failures: int,
     fallback_used: bool,
+    weak_linkage_suspected: bool,
     total_killed: int,
 ) -> DiscoveryState:
     """Classify the discovery outcome from diagnostics."""
-    if test_files_found == 0:
+    # If callables were loaded (e.g. via dynamic coverage linkage),
+    # skip the NO_TEST_FILES check — tests exist even if conventional
+    # filename-based discovery didn't find them.
+    if test_files_found == 0 and callables_loaded == 0:
         return DiscoveryState.NO_TEST_FILES
     if import_failures > 0 and callables_loaded == 0:
         return DiscoveryState.DISCOVERY_IMPORT_FAILED
     if callables_loaded == 0:
         return DiscoveryState.TEST_FILES_FOUND_NONE_LINKED
+    if weak_linkage_suspected and fallback_used:
+        return DiscoveryState.DISCOVERY_WEAK_LINKAGE
     if callables_loaded > 0 and total_killed == 0:
         return DiscoveryState.TESTS_LINKED_ZERO_KILLS
     return DiscoveryState.DISCOVERY_OK
@@ -145,13 +152,18 @@ def interpret_survival(
     discovery_state: DiscoveryState,
     topology_state: TopologyState,
     survival_rate: float,
+    *,
+    weak_linkage_suspected: bool = False,
 ) -> SurvivalInterpretation:
     """Determine how to interpret mutation survival."""
     if discovery_state in (
         DiscoveryState.NO_TEST_FILES,
         DiscoveryState.TEST_FILES_FOUND_NONE_LINKED,
         DiscoveryState.DISCOVERY_IMPORT_FAILED,
+        DiscoveryState.DISCOVERY_WEAK_LINKAGE,
     ):
+        return SurvivalInterpretation.DISCOVERY_ARTIFACT
+    if weak_linkage_suspected:
         return SurvivalInterpretation.DISCOVERY_ARTIFACT
 
     if topology_state == TopologyState.MOCK_BOUNDARY_DOMINANT:

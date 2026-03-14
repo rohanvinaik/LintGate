@@ -278,7 +278,9 @@ class TestDeepMerge:
     def test_does_not_mutate_base(self) -> None:
         base = {"a": 1, "nested": {"x": 10}}
         _deep_merge(base, {"nested": {"y": 20}})
-        assert "y" not in base["nested"]
+        nested = base["nested"]
+        assert isinstance(nested, dict)
+        assert "y" not in nested
 
     def test_type_mismatch_override_wins(self) -> None:
         assert _deep_merge({"a": [1]}, {"a": {"k": "v"}}) == {"a": {"k": "v"}}

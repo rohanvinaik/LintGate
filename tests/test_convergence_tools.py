@@ -181,7 +181,7 @@ class TestOptimizationLandscape:
 
 class TestRegistration:
     def test_register_returns_three_tools(self):
-        """register() returns dict with 3 tool functions."""
+        """register() returns all convergence and golden-path tools."""
 
         class FakeMCP:
             def tool(self):
@@ -196,9 +196,14 @@ class TestRegistration:
         assert "convergence_analyze" in tools
         assert "extraction_plan" in tools
         assert "optimization_landscape" in tools
+        assert "platonic_converge" in tools
+        assert "platonic_project" in tools
+        assert "platonic_continue" in tools
+        assert "platonic_apply" in tools
         assert callable(tools["convergence_analyze"])
         assert callable(tools["extraction_plan"])
         assert callable(tools["optimization_landscape"])
+        assert callable(tools["platonic_project"])
 
     def test_tool_functions_return_json(self, tmp_project):
         """Tool functions return valid JSON strings."""
@@ -217,6 +222,40 @@ class TestRegistration:
         result_str = tools["convergence_analyze"](tmp_project)
         result = json.loads(result_str)
         assert isinstance(result, dict)
+
+    def test_golden_path_wrappers_return_json(self, tmp_project):
+        class FakeMCP:
+            def tool(self):
+                def decorator(fn):
+                    return fn
+
+                return decorator
+
+        helpers = _make_helpers(tmp_project)
+        tools = register(FakeMCP(), helpers)
+
+        with (
+            pytest.MonkeyPatch.context() as mp,
+        ):
+            mp.setattr(
+                "mcp_tools._platonic_impl.impl_platonic_project",
+                lambda *_a, **_kw: json.dumps({"workflow_id": "wf1", "state": "PROFILING"}),
+            )
+            mp.setattr(
+                "mcp_tools._platonic_impl.impl_platonic_continue",
+                lambda *_a, **_kw: json.dumps({"workflow_id": "wf1", "state": "VALIDATING"}),
+            )
+            mp.setattr(
+                "mcp_tools._platonic_impl.impl_platonic_apply",
+                lambda *_a, **_kw: json.dumps({"workflow_id": "wf1", "state": "READY_TO_APPLY"}),
+            )
+            project = json.loads(tools["platonic_project"](tmp_project))
+            cont = json.loads(tools["platonic_continue"](tmp_project, "wf1"))
+            apply = json.loads(tools["platonic_apply"](tmp_project, "wf1"))
+
+        assert project["workflow_id"] == "wf1"
+        assert cont["state"] == "VALIDATING"
+        assert apply["state"] == "READY_TO_APPLY"
 
         # extraction_plan
         result_str = tools["extraction_plan"](tmp_project, "module.py::compute")

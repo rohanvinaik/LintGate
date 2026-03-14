@@ -348,10 +348,10 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
 
     stdout = (
-        "blocked: symbol gate failed\n"
-        "quality infrastructure incomplete\n"
-        "pytest FAILED test_file.py::test_case\n"
-        "sonar fail"
+        "[lintgate][gate:symbol_gate] BLOCKED: symbol gate failed\n"
+        "[lintgate][gate:quality_infra] BLOCKED: quality infrastructure incomplete\n"
+        "[lintgate][gate:tests] FAIL: pytest failed\n"
+        "[lintgate][gate:sonar] BLOCKED: sonar fail\n"
     )
     monkeypatch.setattr(
         ship_main.subprocess,
@@ -368,7 +368,7 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     assert payload["failed_gate_ids"] == [
         "symbol_gate",
         "quality_infra",
-        "pytest",
+        "tests",
         "sonar",
     ]
 
@@ -429,7 +429,7 @@ def test_run_preflight_json_output(ship_main, monkeypatch, tmp_path, capsys):
     data = json.loads(out)
     assert data["status"] == "fail"
     assert data["exit_code"] == 1
-    assert "secrets_scan" in data["failed_gate_ids"]
+    assert "gitleaks" in data["failed_gate_ids"]
 
 
 def test_run_preflight_json_missing_hook_emits_error(ship_main, tmp_path, capsys):

@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from lintgate.context_auditor import check_session_readiness
 from lintgate.theory_extractor import (
@@ -216,7 +217,7 @@ class TestCheckTheoryStaleness:
             py_path = os.path.join(tmpdir, "simple.py")
             Path(py_path).write_text("import os\nx = 1\n")
 
-            profile = {"core_theory": []}
+            profile: dict[str, Any] = {"core_theory": []}
             result = check_theory_staleness(
                 tmpdir,
                 theory_profile=profile,

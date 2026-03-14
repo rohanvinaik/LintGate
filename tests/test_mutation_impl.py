@@ -107,7 +107,7 @@ class TestCollectPrescriptions:
 
 class TestResolveRefactorTargets:
     def test_with_func_node_and_function(self):
-        node = MagicMock()
+        node = MagicMock(spec=[])  # spec=[] prevents auto-creating _lintgate_qualname
         result = _resolve_refactor_targets("/path/file.py", node, "my_func")
         assert result == [("my_func", node)]
 

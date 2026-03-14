@@ -59,7 +59,7 @@ def _load_golden(name: str) -> dict[str, Any]:
     """Load a golden input JSON file."""
     path = GOLDEN_DIR / name
     with open(path) as f:
-        return json.load(f)
+        return json.load(f)  # type: ignore[no-any-return]
 
 
 def _run_direct_pipeline(

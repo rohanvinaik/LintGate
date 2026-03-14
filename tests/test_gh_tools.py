@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from mcp_tools._gh_helpers import (
@@ -207,7 +208,7 @@ class TestRenderTheoryWikiPage:
         assert "- align to speed" in result
 
     def test_facets_empty_claims(self):
-        theory = {"facets": {"core_theory": []}}
+        theory: dict[str, Any] = {"facets": {"core_theory": []}}
         result = _render_theory_wiki_page(theory)
         assert "_No claims extracted._" in result
 

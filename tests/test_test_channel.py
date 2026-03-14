@@ -14,6 +14,7 @@ Skeleton, fallback, filter, and edge case tests are in test_test_channel_edge.py
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from lintgate.channels.test_channel import (
@@ -464,7 +465,7 @@ def test_suggestion_no_evidence():
 def test_message_text_branch_only():
     from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
-    findings = []
+    findings: list[Any] = []
     gate = MockGateResult([MockSymbolResult(missing_branches=[(1, 2), (2, 3)])])
     ctx = SymbolGateContext(surface="hook", findings=findings)
     _emit_symbol_findings(gate, ctx)
@@ -475,7 +476,7 @@ def test_message_text_branch_only():
 def test_partial_run_confidence_reduced():
     from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
-    findings = []
+    findings: list[Any] = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
     ctx = SymbolGateContext(
         surface="hook",
@@ -492,7 +493,7 @@ def test_partial_run_confidence_reduced():
 def test_full_run_confidence_1():
     from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
-    findings = []
+    findings: list[Any] = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
     ctx = SymbolGateContext(
         surface="hook",
@@ -509,7 +510,7 @@ def test_full_run_confidence_1():
 def test_gate_context_in_evidence():
     from lintgate.channels.test_channel import SymbolGateContext, _emit_symbol_findings
 
-    findings = []
+    findings: list[Any] = []
     gate = MockGateResult([MockSymbolResult(missing_lines=[1])])
     ctx = SymbolGateContext(
         surface="hook",

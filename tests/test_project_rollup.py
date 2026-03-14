@@ -327,3 +327,95 @@ class TestRollupProject:
         assert "cache_misses" in d
         assert d["include_tests"] is False
         assert d["skipped_test_files"] == 0
+
+
+class TestMappingCoverageSemantics:
+    """mapping_coverage must reflect empirical test linkage (mutation cache),
+    NOT design-for-testability (testability_score)."""
+
+    def test_mapping_coverage_requires_mutation_data(self):
+        """Function with high testability_score but no mutation cache entry is NOT mapped."""
+        rollup = ProjectRollup(project_root="/proj")
+        results = [
+            FileSpecResult(
+                file="a.py",
+                project_root="/proj",
+                functions={
+                    "a.py::f": {
+                        "sigma": 5,
+                        "phase": "bulk",
+                        "testability_score": 0.8,
+                        "specification_level": 0.4,
+                    },
+                },
+                total_sigma=5,
+                mean_spec_level=0.4,
+                regime_distribution={"A": 1},
+                risk_distribution={"P2": 1},
+            ),
+        ]
+        # No mutation cache → no mapping
+        _aggregate(rollup, results, project_root="/proj")
+        assert rollup.mapping_coverage == 0.0
+
+    def test_mapping_coverage_with_mutation_cache(self, tmp_path):
+        """Function WITH a mutation cache entry IS mapped."""
+        import json
+
+        # Set up mutation cache on disk
+        cache_dir = tmp_path / ".lintgate" / "mutation"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "func1.json").write_text(
+            json.dumps({"function_key": "a.py::f", "survival_rate": 0.3})
+        )
+
+        rollup = ProjectRollup(project_root=str(tmp_path))
+        results = [
+            FileSpecResult(
+                file="a.py",
+                project_root=str(tmp_path),
+                functions={
+                    "a.py::f": {
+                        "sigma": 5,
+                        "phase": "bulk",
+                        "testability_score": 0.0,
+                        "specification_level": 0.4,
+                    },
+                },
+                total_sigma=5,
+                mean_spec_level=0.4,
+                regime_distribution={"A": 1},
+                risk_distribution={"P2": 1},
+            ),
+        ]
+        _aggregate(rollup, results, project_root=str(tmp_path))
+        assert rollup.mapping_coverage == 1.0
+
+    def test_mapping_coverage_partial(self, tmp_path):
+        """Only functions WITH mutation cache entries count as mapped."""
+        import json
+
+        cache_dir = tmp_path / ".lintgate" / "mutation"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "func1.json").write_text(
+            json.dumps({"function_key": "a.py::f1", "survival_rate": 0.3})
+        )
+
+        rollup = ProjectRollup(project_root=str(tmp_path))
+        results = [
+            FileSpecResult(
+                file="a.py",
+                project_root=str(tmp_path),
+                functions={
+                    "a.py::f1": {"sigma": 5, "phase": "bulk", "specification_level": 0.4},
+                    "a.py::f2": {"sigma": 3, "phase": "bulk", "specification_level": 0.6},
+                },
+                total_sigma=8,
+                mean_spec_level=0.5,
+                regime_distribution={"A": 2},
+                risk_distribution={"P2": 2},
+            ),
+        ]
+        _aggregate(rollup, results, project_root=str(tmp_path))
+        # 1 of 2 functions mapped
+        assert rollup.mapping_coverage == 0.5

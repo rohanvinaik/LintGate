@@ -17,6 +17,9 @@ def impl_rebuild_validate(
     helpers: dict[str, Any],
     path: str,
     review_ceiling: float = 0.15,
+    *,
+    generated_dir: str | None = None,
+    validation_path: str | None = None,
 ) -> str:
     """Validate generated tests against quality gates."""
     from lintgate.specification.test_regeneration_strategy import (
@@ -43,7 +46,9 @@ def impl_rebuild_validate(
 
     # Gates 1-2: pytest sanity
     gate_pass, gates = _check_preserve_gate(plan, project_root, gates, gate_pass)
-    gate_pass, gates = _check_generated_gate(plan, project_root, gates, gate_pass)
+    gate_pass, gates = _check_generated_gate(
+        plan, project_root, gates, gate_pass, generated_dir=generated_dir
+    )
 
     # Gate 3: review ceiling
     summary = plan.summary()
@@ -66,15 +71,26 @@ def impl_rebuild_validate(
         gate_pass,
         kill_floor=cfg.kill_floor,
         zero_kill_ceiling=cfg.zero_kill_ceiling,
+        generated_dir=generated_dir,
     )
+
+    # Compute review_ready_to_apply: true when the ONLY blocking failure is review ceiling
+    review_ready = _is_review_ready_to_apply(gates, gate_pass)
 
     # Persist validation result so apply can gate on it
     from ._test_regeneration_apply import persist_validation
 
-    persist_validation(project_root, gates, gate_pass)
+    persist_validation(
+        project_root,
+        gates,
+        gate_pass,
+        validation_path=validation_path,
+        review_ready_to_apply=review_ready,
+    )
 
     output = {
         "ready_to_apply": gate_pass,
+        "review_ready_to_apply": review_ready,
         "gates": gates,
         "summary": summary,
         "scorecard": _build_scorecard(gates),
@@ -87,7 +103,7 @@ def impl_rebuild_validate(
                 reason="Apply validated test rebuild",
             )
         ]
-        if gate_pass
+        if gate_pass or review_ready
         else [
             NextAction(
                 tool="test_rebuild_generate",
@@ -97,6 +113,18 @@ def impl_rebuild_validate(
         ]
     )
     return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+
+def _is_review_ready_to_apply(gates: dict[str, Any], gate_pass: bool) -> bool:
+    """Return True when review ceiling is the only blocking validation failure."""
+    if gate_pass or gates.get("review_share_ok") is not False:
+        return False
+    for gate_key, _label in _GATE_LABELS:
+        if gate_key == "review_share_ok":
+            continue
+        if gate_key in gates and gates.get(gate_key) is not True:
+            return False
+    return True
 
 
 def _check_preserve_gate(
@@ -132,6 +160,8 @@ def _check_generated_gate(
     project_root: str,
     gates: dict,
     gate_pass: bool,
+    *,
+    generated_dir: str | None = None,
 ) -> tuple[bool, dict]:
     """Gate 2: generated tests import, run, and contain assertions.
 
@@ -141,7 +171,7 @@ def _check_generated_gate(
     from lintgate.specification.test_regeneration_strategy import Strategy
 
     has_auto = any(f.strategy == Strategy.AUTO_GENERATE_UNIT for f in plan.functions)
-    gen_dir = os.path.join(project_root, "tests", "generated")
+    gen_dir = generated_dir or os.path.join(project_root, "tests", "generated")
     gen_files = []
     if os.path.isdir(gen_dir):
         gen_files = [
@@ -190,11 +220,16 @@ def _check_artifact_gate(
     """Gate 4: no auto target has artifact discovery state."""
     from lintgate.specification.test_regeneration_strategy import Strategy
 
-    _artifacts = ("DISCOVERY_ARTIFACT", "MOCK_BOUNDARY_ARTIFACT")
+    _artifacts = ("DISCOVERY_ARTIFACT", "MOCK_BOUNDARY_ARTIFACT", "DISCOVERY_WEAK_LINKAGE")
     artifact_count = sum(
-        1 for func in plan.functions
+        1
+        for func in plan.functions
         if func.strategy == Strategy.AUTO_GENERATE_UNIT
-        and func.evidence.discovery_state in _artifacts
+        and (
+            func.evidence.discovery_state in _artifacts
+            or func.evidence.survival_interpretation in _artifacts
+            or func.evidence.mutation_truth_label in _artifacts
+        )
     )
     gates["no_artifact_auto_targets"] = artifact_count == 0
     if artifact_count > 0:
@@ -210,6 +245,8 @@ def _check_quality_gates(
     gate_pass: bool,
     kill_floor: float = 0.70,
     zero_kill_ceiling: float = 0.05,
+    *,
+    generated_dir: str | None = None,
 ) -> tuple[bool, dict]:
     """Gates 5-9: kill rate, zero-kill, effectiveness, hygiene, redundancy."""
     from lintgate.specification.test_regeneration_strategy import Strategy
@@ -217,7 +254,9 @@ def _check_quality_gates(
     has_auto = any(f.strategy == Strategy.AUTO_GENERATE_UNIT for f in plan.functions)
 
     # Gates 5-6: fresh targeted mutation sampling against generated tests
-    kill_rates, zero_kill, sampling_details = run_fresh_kill_rates(plan, project_root)
+    kill_rates, zero_kill, sampling_details = run_fresh_kill_rates(
+        plan, project_root, generated_dir=generated_dir
+    )
     if sampling_details:
         gates["fresh_sampling_details"] = sampling_details
     if kill_rates:

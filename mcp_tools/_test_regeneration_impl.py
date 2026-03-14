@@ -20,7 +20,7 @@ def _load_regen_config(project_root: str) -> Any:
         cp = load_controlplane_config(project_root)
         if cp is not None:
             return cp.test_regeneration
-    except Exception:
+    except (ImportError, OSError, ValueError):
         pass
     from lintgate.controlplane.types import TestRegenerationConfig
 
@@ -79,11 +79,13 @@ def impl_rebuild_plan(
 
     # Classify each function
     classifications = []
+    errors: list[str] = []
     for source_file in source_files:
         rel = os.path.relpath(source_file, project_root)
         try:
             ledger = analyze_file(source_file, project_root, enrich=True)
-        except Exception:
+        except (SyntaxError, OSError, ValueError) as exc:
+            errors.append(f"{rel}: {exc}")
             continue
 
         for func_key, spec in ledger.functions.items():
@@ -101,6 +103,7 @@ def impl_rebuild_plan(
 
     output = manifest.summary()
     output["manifest_path"] = manifest_path
+    output["errors"] = errors
     output["next_actions"] = serialize_next_actions(
         [
             NextAction(

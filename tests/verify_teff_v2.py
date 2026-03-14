@@ -19,6 +19,7 @@ def test_v2_schema_and_taxonomy():
     fe_untested.compute_scores()
     print(f"UNTESTED Taxonomy: {fe_untested.weakness_taxonomy}")
     assert fe_untested.weakness_taxonomy == EffectivenessWeakness.UNTESTED
+    assert fe_untested.confidence is not None
     assert fe_untested.confidence.score == 0.1
 
     # 2. Test GENUINELY_WEAK

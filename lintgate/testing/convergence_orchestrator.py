@@ -33,6 +33,29 @@ class IterationRecord:
     phase: str = ""
     timestamp_ms: float = 0.0
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "iteration": self.iteration,
+            "spec_level": self.spec_level,
+            "kill_rate": self.kill_rate,
+            "delta_spec": self.delta_spec,
+            "delta_kill": self.delta_kill,
+            "phase": self.phase,
+            "timestamp_ms": self.timestamp_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IterationRecord:
+        return cls(
+            iteration=int(data.get("iteration", 0)),
+            spec_level=float(data.get("spec_level", 0.0)),
+            kill_rate=float(data.get("kill_rate", 0.0)),
+            delta_spec=float(data.get("delta_spec", 0.0)),
+            delta_kill=float(data.get("delta_kill", 0.0)),
+            phase=str(data.get("phase", "")),
+            timestamp_ms=float(data.get("timestamp_ms", 0.0)),
+        )
+
 
 @dataclass
 class TargetState:
@@ -48,6 +71,36 @@ class TargetState:
     trajectory: list[IterationRecord] = field(default_factory=list)
     status: str = "eligible"  # eligible | converged | halted | decompose
     halt_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "function_key": self.function_key,
+            "source_file": self.source_file,
+            "target_test_file": self.target_test_file,
+            "spec_level": self.spec_level,
+            "kill_rate": self.kill_rate,
+            "phase": self.phase,
+            "convergence_rate": self.convergence_rate,
+            "trajectory": [r.to_dict() for r in self.trajectory],
+            "status": self.status,
+            "halt_reason": self.halt_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TargetState:
+        trajectory = [IterationRecord.from_dict(r) for r in data.get("trajectory", [])]
+        return cls(
+            function_key=str(data.get("function_key", "")),
+            source_file=str(data.get("source_file", "")),
+            target_test_file=str(data.get("target_test_file", "")),
+            spec_level=float(data.get("spec_level", 0.0)),
+            kill_rate=float(data.get("kill_rate", 0.0)),
+            phase=str(data.get("phase", "bulk")),
+            convergence_rate=float(data.get("convergence_rate", 0.0)),
+            trajectory=trajectory,
+            status=str(data.get("status", "eligible")),
+            halt_reason=str(data.get("halt_reason", "")),
+        )
 
 
 @dataclass
@@ -96,6 +149,24 @@ class OrchestratorState:
     @property
     def ready_to_apply(self) -> bool:
         return self.eligible_count == 0 and self.converged_count > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "targets": {k: v.to_dict() for k, v in self.targets.items()},
+            "iteration_count": self.iteration_count,
+            "start_ms": self.start_ms,
+            "elapsed_ms": self.elapsed_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrchestratorState:
+        targets = {k: TargetState.from_dict(v) for k, v in data.get("targets", {}).items()}
+        return cls(
+            targets=targets,
+            iteration_count=int(data.get("iteration_count", 0)),
+            start_ms=float(data.get("start_ms", 0.0)),
+            elapsed_ms=float(data.get("elapsed_ms", 0.0)),
+        )
 
 
 # ── Initialization ────────────────────────────────────────────────
@@ -212,12 +283,14 @@ def decide(
             target.status = action if action == "decompose" else "halted"
             target.halt_reason = reason
 
-        decisions.append(ConvergenceDecision(
-            function_key=fk,
-            action=action,
-            priority=priority,
-            reason=reason,
-        ))
+        decisions.append(
+            ConvergenceDecision(
+                function_key=fk,
+                action=action,
+                priority=priority,
+                reason=reason,
+            )
+        )
 
     decisions.sort(key=lambda d: d.priority)
     return decisions
@@ -230,8 +303,10 @@ def _check_halt(
 ) -> tuple[str, str]:
     """Check if a target should stop iterating. Returns (action, reason)."""
     # 1. Threshold reached
-    if (target.spec_level >= config.target_spec_level
-            and target.kill_rate >= config.target_kill_rate):
+    if (
+        target.spec_level >= config.target_spec_level
+        and target.kill_rate >= config.target_kill_rate
+    ):
         return "converged", "threshold_reached"
 
     # 2. Phase is complete
@@ -248,10 +323,9 @@ def _check_halt(
 
     # 5. Stall detection
     if len(target.trajectory) >= config.stall_limit:
-        recent = target.trajectory[-config.stall_limit:]
+        recent = target.trajectory[-config.stall_limit :]
         if all(
-            abs(r.delta_spec) < config.min_delta
-            and abs(r.delta_kill) < config.min_delta
+            abs(r.delta_spec) < config.min_delta and abs(r.delta_kill) < config.min_delta
             for r in recent
         ):
             if target.phase == "tail":

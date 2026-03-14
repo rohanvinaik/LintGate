@@ -1,0 +1,367 @@
+"""Tests for lintgate/testing/typed_synthesis.py.
+
+Covers value synthesis from type annotations, dataclass resolution,
+factory generation, annotation parsing, and post-generation validation.
+"""
+
+from __future__ import annotations
+
+from lintgate.testing.typed_synthesis import (
+    _parse_annotation_str,
+    synthesize_factory,
+    synthesize_value,
+    validate_test_file,
+)
+
+# ── _parse_annotation_str ────────────────────────────────────────
+
+
+class TestParseAnnotationStr:
+    def test_simple_name(self):
+        base, args = _parse_annotation_str("str")
+        assert base == "str"
+        assert args == []
+
+    def test_list_subscript(self):
+        base, args = _parse_annotation_str("list[int]")
+        assert base == "list"
+        assert args == ["int"]
+
+    def test_dict_subscript(self):
+        base, args = _parse_annotation_str("dict[str, int]")
+        assert base == "dict"
+        assert args == ["str", "int"]
+
+    def test_optional_union(self):
+        base, args = _parse_annotation_str("str | None")
+        assert base == "str"
+
+    def test_ast_dump_name(self):
+        base, args = _parse_annotation_str("Name(id='LintIssue')")
+        assert base == "LintIssue"
+        assert args == []
+
+    def test_empty_string(self):
+        base, args = _parse_annotation_str("")
+        assert base == ""
+
+    def test_none_literal(self):
+        base, _ = _parse_annotation_str("None")
+        assert base == "None"
+
+    def test_list_of_dataclass(self):
+        base, args = _parse_annotation_str("list[LintIssue]")
+        assert base == "list"
+        assert args == ["LintIssue"]
+
+
+# ── synthesize_value ─────────────────────────────────────────────
+
+
+class TestSynthesizeValue:
+    def test_str(self):
+        v = synthesize_value("str")
+        assert v.code == '""'
+        assert v.imports == []
+        assert v.is_placeholder is False
+        assert v.type_name == "str"
+
+    def test_int(self):
+        v = synthesize_value("int")
+        assert v.code == "0"
+        assert v.is_placeholder is False
+
+    def test_float(self):
+        v = synthesize_value("float")
+        assert v.code == "0.0"
+
+    def test_bool(self):
+        v = synthesize_value("bool")
+        assert v.code == "False"
+
+    def test_none_type(self):
+        v = synthesize_value("None")
+        assert v.code == "None"
+        assert v.is_placeholder is False
+
+    def test_empty_annotation_fallback(self):
+        v = synthesize_value("")
+        assert v.is_placeholder is True
+
+    def test_list_empty(self):
+        v = synthesize_value("list")
+        assert v.code == "[]"
+        assert v.is_placeholder is False
+
+    def test_dict_empty(self):
+        v = synthesize_value("dict")
+        assert v.code == "{}"
+
+    def test_set_empty(self):
+        v = synthesize_value("set")
+        assert v.code == "set()"
+
+    def test_optional_resolves_inner(self):
+        v = synthesize_value("Optional", "name")
+        # Optional with no args falls back to None
+        assert v.code == "None"
+
+    def test_any_is_placeholder(self):
+        v = synthesize_value("Any")
+        assert v.is_placeholder is True
+
+    def test_name_heuristic_path(self):
+        v = synthesize_value("", "file_path")
+        assert "test" in v.code or "py" in v.code
+
+    def test_name_heuristic_count(self):
+        v = synthesize_value("", "item_count")
+        assert v.code == "0"
+
+    def test_name_heuristic_flag(self):
+        v = synthesize_value("", "is_enabled")
+        assert v.code == "False"
+
+    def test_str_with_name_heuristic(self):
+        v = synthesize_value("str", "file_path")
+        assert "test" in v.code  # name heuristic produces better default
+
+    def test_dataclass_lint_issue(self):
+        v = synthesize_value("LintIssue", "", "lintgate.types")
+        assert v.is_placeholder is False
+        assert "LintIssue(" in v.code
+        assert "linter=" in v.code
+        assert "kind=" in v.code
+        assert len(v.imports) == 1
+        assert "from lintgate.types import LintIssue" in v.imports[0]
+
+    def test_dataclass_linter_result(self):
+        v = synthesize_value("LinterResult", "", "lintgate.types")
+        assert v.is_placeholder is False
+        assert "LinterResult(" in v.code
+        assert "linter_name=" in v.code
+
+    def test_list_of_dataclass(self):
+        v = synthesize_value("list[LintIssue]", "", "lintgate.types")
+        assert v.is_placeholder is False
+        assert "LintIssue(" in v.code
+        assert v.code.startswith("[")
+        assert v.code.endswith("]")
+
+    def test_unknown_type_is_placeholder(self):
+        v = synthesize_value("SomeUnknownType", "", "")
+        assert v.is_placeholder is True
+
+    def test_union_with_none_uses_non_none(self):
+        v = synthesize_value("str | None")
+        assert v.code == '""'
+        assert v.type_name == "str"
+
+
+# ── synthesize_factory ───────────────────────────────────────────
+
+
+class TestSynthesizeFactory:
+    def test_lint_issue_factory(self):
+        result = synthesize_factory("LintIssue", "lintgate.types")
+        assert result is not None
+        code, imports = result
+        assert "def _issue(" in code
+        assert "linter=" in code
+        assert "kind=" in code
+        assert "-> LintIssue:" in code
+        assert any("LintIssue" in imp for imp in imports)
+
+    def test_linter_result_factory(self):
+        result = synthesize_factory("LinterResult", "lintgate.types")
+        assert result is not None
+        code, imports = result
+        assert "def _make_linterresult(" in code
+        assert "linter_name=" in code
+
+    def test_unknown_type_returns_none(self):
+        result = synthesize_factory("CompletelyUnknownType", "")
+        assert result is None
+
+
+# ── validate_test_file ───────────────────────────────────────────
+
+
+class TestValidateTestFile:
+    def test_valid_test(self):
+        code = """
+def test_foo():
+    assert 1 == 1
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_syntax_error(self):
+        valid, errors = validate_test_file("def test_foo(:\n")
+        assert valid is False
+        assert any("SyntaxError" in e for e in errors)
+
+    def test_pass_only_body(self):
+        code = """
+def test_foo():
+    pass
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert any("empty body" in e for e in errors)
+
+    def test_no_assert(self):
+        code = """
+def test_foo():
+    x = 1 + 2
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert any("no assert" in e for e in errors)
+
+    def test_non_test_function_ignored(self):
+        code = """
+def helper():
+    pass
+
+def test_foo():
+    assert True
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_pytest_raises_counts_as_assert(self):
+        code = """
+import pytest
+
+def test_foo():
+    with pytest.raises(ValueError):
+        raise ValueError()
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+        assert errors == []
+
+    def test_multiple_tests_mixed(self):
+        code = """
+def test_good():
+    assert 1 == 1
+
+def test_bad():
+    pass
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert len(errors) == 2  # empty body + no assert
+        assert all("test_bad" in e for e in errors)
+
+    # ── Undefined name detection ──────────────────────────────────
+
+    def test_undefined_name_detected(self):
+        """Catches 'd = obj.to_dict()' when obj is never defined."""
+        code = """
+def test_foo():
+    d = obj.to_dict()
+    assert d["x"] == 1
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert any("undefined name 'obj'" in e for e in errors)
+
+    def test_imported_name_not_flagged(self):
+        code = """
+from os.path import join
+
+def test_join():
+    result = join("a", "b")
+    assert result == "a/b"
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_locally_assigned_name_not_flagged(self):
+        code = """
+def test_foo():
+    obj = {"x": 1}
+    d = obj.copy()
+    assert d["x"] == 1
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_for_target_not_flagged(self):
+        code = """
+def test_foo():
+    items = [1, 2, 3]
+    for x in items:
+        assert x > 0
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_with_target_not_flagged(self):
+        code = """
+import pytest
+
+def test_foo():
+    with pytest.raises(ValueError) as exc_info:
+        raise ValueError("boom")
+    assert "boom" in str(exc_info.value)
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_builtin_not_flagged(self):
+        code = """
+def test_foo():
+    x = len([1, 2, 3])
+    assert x == 3
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_function_param_not_flagged(self):
+        code = """
+import pytest
+
+@pytest.fixture
+def my_fixture():
+    return 42
+
+def test_foo(my_fixture):
+    assert my_fixture == 42
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is True
+
+    def test_duplicate_test_name_detected(self):
+        code = """
+def test_dup():
+    assert True
+
+def test_dup():
+    assert True
+"""
+        valid, errors = validate_test_file(code)
+        assert valid is False
+        assert any("duplicate test name" in e for e in errors)
+
+    def test_runtime_validation_catches_crashing_test(self, tmp_path):
+        src = tmp_path / "mod.py"
+        src.write_text("def build_value():\n    return 0\n")
+        code = """
+from mod import build_value
+
+def test_runtime_crash():
+    obj = build_value()
+    d = obj.to_dict()
+    assert d["x"] == 1
+"""
+        valid, errors = validate_test_file(
+            code,
+            project_root=str(tmp_path),
+            run_pytest=True,
+        )
+        assert valid is False
+        assert any("test_runtime_crash" in e for e in errors)

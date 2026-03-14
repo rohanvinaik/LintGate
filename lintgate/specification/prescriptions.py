@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .static_empirical_reconciliation import EmpiricalOverlay
     from .types import FunctionSpecification
+
+from .static_empirical_reconciliation import OverlayStatus as _OverlayStatus
+
+_CONTRADICTS = _OverlayStatus.CONTRADICTS
 
 _BAND_SORT_ORDER: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2}
 
@@ -32,12 +37,22 @@ class TestPrescription:
     regression_relevant: bool = False
 
 
+TestPrescription.__test__ = False  # type: ignore[attr-defined]
+
+
 def prescribe(
     func_spec: FunctionSpecification,
     max_prescriptions: int = 10,
     regression_mode: bool = False,
+    overlay: EmpiricalOverlay | None = None,
 ) -> list[TestPrescription]:
-    """Generate risk-prioritized test prescriptions for a function."""
+    """Generate risk-prioritized test prescriptions for a function.
+
+    When overlay is provided with CONTRADICTS status and high confidence,
+    priority bands are adjusted:
+    - Low survival (empirical good, static bad) → deprioritize: P0→P1
+    - High survival (both agree bad) → boost: P2→P1
+    """
     phase = func_spec.core.phase
     sigma = func_spec.core.estimated_sigma
     assertion_count = func_spec.traceability.assertion_count
@@ -51,6 +66,18 @@ def prescribe(
     generators = _phase_generators(phase, regression_mode)
     for gen_fn in generators:
         gen_fn(func_spec, sigma, assertion_count, history, prescriptions)
+
+    # Overlay-aware priority adjustment
+    if overlay is not None and overlay.status == _CONTRADICTS and overlay.overlay_confidence >= 0.7:
+        for rx in prescriptions:
+            if overlay.empirical_survival_rate < 0.2:
+                # Low survival: empirical says well-specified, static disagrees
+                # Deprioritize — this is a measurement artifact
+                if rx.priority_band == "P0":
+                    rx.priority_band = "P1"
+            elif overlay.empirical_survival_rate > 0.5 and rx.priority_band == "P2":
+                # High survival: both agree bad — boost priority
+                rx.priority_band = "P1"
 
     # Sort: P0 first, then by info_gain descending
     prescriptions.sort(

@@ -284,6 +284,7 @@ class TestLoadGlobalPriors:
             patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
         ):
             result = load_global_priors(cfg)
+        assert result is not None
         assert result["enabled"] is True
         assert result["alpha"] == 0.6
         assert result["decay_horizon"] == 50
@@ -1017,7 +1018,7 @@ class TestSaveRunDetails:
     def test_none_index_skips_save(self):
         """None finding_index => early return, no save call."""
         with patch("lintgate.state.save_controlplane_run") as save_fn:
-            save_run_details(MagicMock(), None)
+            save_run_details(MagicMock(), None)  # type: ignore[arg-type]  # intentional: test None handling
         save_fn.assert_not_called()
 
     def test_saves_complete_details_structure(self):
@@ -1199,9 +1200,14 @@ class TestExtractFindingIndexes:
 class TestPostProcessSession:
     def test_session_none(self):
         ctx = PostProcessContext(
-            session=None, mesh_result=MagicMock(), finding_index={},
-            cp_config=MagicMock(), input_data={}, tool_name="E",
-            tool_input={}, tool_output="",
+            session=None,
+            mesh_result=MagicMock(),
+            finding_index={},
+            cp_config=MagicMock(),
+            input_data={},
+            tool_name="E",
+            tool_input={},
+            tool_output="",
         )
         result = post_process_session(ctx)
         assert result == []
@@ -1221,9 +1227,14 @@ class TestPostProcessSession:
             patch("lintgate.hooks.controlplane.run_constraint_proposer", return_value=[]),
         ):
             ctx = PostProcessContext(
-                session=session, mesh_result=mesh, finding_index={},
-                cp_config=MagicMock(), input_data={}, tool_name="E",
-                tool_input={}, tool_output="",
+                session=session,
+                mesh_result=mesh,
+                finding_index={},
+                cp_config=MagicMock(),
+                input_data={},
+                tool_name="E",
+                tool_input={},
+                tool_output="",
             )
             result = post_process_session(ctx)
         assert result == []

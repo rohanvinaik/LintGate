@@ -119,7 +119,7 @@ def test_load_configured_server_command_handles_bad_shapes(tmp_path) -> None:
 
 def test_cmd_install_unknown_agent() -> None:
     args = SimpleNamespace(agent="missing", dry_run=False)
-    assert admin.cmd_install(args) == 1
+    assert admin.cmd_install(args) == 1  # type: ignore[arg-type]
 
 
 def test_cmd_install_dry_run_and_write_report(tmp_path, monkeypatch) -> None:
@@ -133,11 +133,11 @@ def test_cmd_install_dry_run_and_write_report(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(admin, "PROFILES", {"demo": fake_profile})
 
     dry_run_args = SimpleNamespace(agent="demo", dry_run=True)
-    assert admin.cmd_install(dry_run_args) == 0
+    assert admin.cmd_install(dry_run_args) == 0  # type: ignore[arg-type]
     assert not (tmp_path / "install_report.json").exists()
 
     apply_args = SimpleNamespace(agent="demo", dry_run=False)
-    assert admin.cmd_install(apply_args) == 0
+    assert admin.cmd_install(apply_args) == 0  # type: ignore[arg-type]
     report = json.loads((tmp_path / "install_report.json").read_text(encoding="utf-8"))
     assert report["agent"] == "demo"
     assert report["status"] == "configured"
@@ -153,7 +153,7 @@ def test_cmd_install_reports_already_configured(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(admin, "PROFILES", {"demo": fake_profile})
 
     args = SimpleNamespace(agent="demo", dry_run=False)
-    assert admin.cmd_install(args) == 0
+    assert admin.cmd_install(args) == 0  # type: ignore[arg-type]
     report = json.loads((tmp_path / "install_report.json").read_text(encoding="utf-8"))
     assert report["status"] == "already_configured"
 
@@ -171,22 +171,22 @@ def test_cmd_install_fails_when_server_command_unresolved(monkeypatch) -> None:
     )
 
     args = SimpleNamespace(agent="demo", dry_run=False)
-    assert admin.cmd_install(args) == 1
+    assert admin.cmd_install(args) == 1  # type: ignore[arg-type]
 
 
 def test_cmd_bootstrap_propagates_install_and_doctor(monkeypatch) -> None:
     args = SimpleNamespace(agent="claude", dry_run=False)
     monkeypatch.setattr(admin, "cmd_install", lambda _args: 2)
-    assert admin.cmd_bootstrap(args) == 2
+    assert admin.cmd_bootstrap(args) == 2  # type: ignore[arg-type]
 
     monkeypatch.setattr(admin, "cmd_install", lambda _args: 0)
     monkeypatch.setattr(admin, "cmd_doctor", lambda _args: 7)
-    assert admin.cmd_bootstrap(args) == 7
+    assert admin.cmd_bootstrap(args) == 7  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_unknown_and_dry_run(monkeypatch) -> None:
     unknown_args = SimpleNamespace(agent="missing", dry_run=True, fix=False)
-    assert admin.cmd_doctor(unknown_args) == 1
+    assert admin.cmd_doctor(unknown_args) == 1  # type: ignore[arg-type]
 
     fake_profile = SimpleNamespace(display_name="Demo Agent", schema_strict=False)
     monkeypatch.setattr(admin, "PROFILES", {"demo": fake_profile})
@@ -199,7 +199,7 @@ def test_cmd_doctor_unknown_and_dry_run(monkeypatch) -> None:
         },
     )
     dry_run_args = SimpleNamespace(agent="demo", dry_run=True, fix=False)
-    assert admin.cmd_doctor(dry_run_args) == 0
+    assert admin.cmd_doctor(dry_run_args) == 0  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_enforces_missing_safety_tools(monkeypatch) -> None:
@@ -220,7 +220,7 @@ def test_cmd_doctor_enforces_missing_safety_tools(monkeypatch) -> None:
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
     with pytest.raises(SystemExit):
-        admin.cmd_doctor(args)
+        admin.cmd_doctor(args)  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_flags_missing_expected_tools(monkeypatch) -> None:
@@ -242,7 +242,7 @@ def test_cmd_doctor_flags_missing_expected_tools(monkeypatch) -> None:
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
     with pytest.raises(SystemExit):
-        admin.cmd_doctor(args)
+        admin.cmd_doctor(args)  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_missing_expected_with_fix_prints_hint(monkeypatch) -> None:
@@ -264,7 +264,7 @@ def test_cmd_doctor_missing_expected_with_fix_prints_hint(monkeypatch) -> None:
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
     with pytest.raises(SystemExit):
-        admin.cmd_doctor(args)
+        admin.cmd_doctor(args)  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_schema_error_path(monkeypatch) -> None:
@@ -292,7 +292,7 @@ def test_cmd_doctor_schema_error_path(monkeypatch) -> None:
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
     with pytest.raises(SystemExit):
-        admin.cmd_doctor(args)
+        admin.cmd_doctor(args)  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_fix_path_runs_install(monkeypatch) -> None:
@@ -313,12 +313,15 @@ def test_cmd_doctor_fix_path_runs_install(monkeypatch) -> None:
     monkeypatch.setitem(__import__("sys").modules, "mcp_server", fake_mcp_server)
 
     called = {"install": False}
-    monkeypatch.setattr(
-        admin, "cmd_install", lambda _args: called.__setitem__("install", True) or 0
-    )
+
+    def _fake_install(_args):  # type: ignore[no-untyped-def]
+        called["install"] = True
+        return 0
+
+    monkeypatch.setattr(admin, "cmd_install", _fake_install)
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
-    assert admin.cmd_doctor(args) == 0
+    assert admin.cmd_doctor(args) == 0  # type: ignore[arg-type]
     assert called["install"] is True
 
 
@@ -342,7 +345,7 @@ def test_cmd_doctor_fails_unrunnable_configured_command(tmp_path, monkeypatch) -
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=False)
     with pytest.raises(SystemExit):
-        admin.cmd_doctor(args)
+        admin.cmd_doctor(args)  # type: ignore[arg-type]
 
 
 def test_cmd_doctor_fix_path_exits_when_install_repair_fails(tmp_path, monkeypatch) -> None:
@@ -366,7 +369,7 @@ def test_cmd_doctor_fix_path_exits_when_install_repair_fails(tmp_path, monkeypat
 
     args = SimpleNamespace(agent="demo", dry_run=False, fix=True)
     with pytest.raises(SystemExit):
-        admin.cmd_doctor(args)
+        admin.cmd_doctor(args)  # type: ignore[arg-type]
 
 
 def test_main_routes_subcommands(monkeypatch) -> None:

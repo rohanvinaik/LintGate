@@ -97,19 +97,27 @@ def corroborate_captures(
             continue
 
         if cap.deterministic and is_pure:
-            result.append(GoldenCapture(
-                inputs=cap.inputs, kwargs=cap.kwargs,
-                output=cap.output, deterministic=cap.deterministic,
-                provenance=Provenance.CORROBORATED,
-                corroborating_lens="pure_deterministic",
-            ))
+            result.append(
+                GoldenCapture(
+                    inputs=cap.inputs,
+                    kwargs=cap.kwargs,
+                    output=cap.output,
+                    deterministic=cap.deterministic,
+                    provenance=Provenance.CORROBORATED,
+                    corroborating_lens="pure_deterministic",
+                )
+            )
         elif value_killed:
-            result.append(GoldenCapture(
-                inputs=cap.inputs, kwargs=cap.kwargs,
-                output=cap.output, deterministic=cap.deterministic,
-                provenance=Provenance.CORROBORATED,
-                corroborating_lens="mutation_value_killed",
-            ))
+            result.append(
+                GoldenCapture(
+                    inputs=cap.inputs,
+                    kwargs=cap.kwargs,
+                    output=cap.output,
+                    deterministic=cap.deterministic,
+                    provenance=Provenance.CORROBORATED,
+                    corroborating_lens="mutation_value_killed",
+                )
+            )
         else:
             result.append(cap)
 
@@ -142,29 +150,21 @@ def generate_golden_test(
 
         lines.append(f"def {test_name}():")
         if cap.provenance == Provenance.PROVISIONAL:
-            lines.append(
-                '    """Golden capture — PROVISIONAL (may fossilize bugs)."""'
-            )
+            lines.append('    """Golden capture — PROVISIONAL (may fossilize bugs)."""')
         elif cap.provenance == Provenance.CORROBORATED:
-            lines.append(
-                f'    """Golden capture — corroborated via {cap.corroborating_lens}."""'
-            )
+            lines.append(f'    """Golden capture — corroborated via {cap.corroborating_lens}."""')
         else:
             lines.append('    """Golden capture — unchecked."""')
 
         prov_tag = (
-            f"  # {cap.provenance.value}"
-            if cap.provenance != Provenance.CORROBORATED
-            else ""
+            f"  # {cap.provenance.value}" if cap.provenance != Provenance.CORROBORATED else ""
         )
         if cap.deterministic:
             lines.append(f"    result = {fname}({args_str})")
             lines.append(f"    assert repr(result) == {cap.output!r}{prov_tag}")
         else:
             lines.append(f"    result = {fname}({args_str})")
-            lines.append(
-                f"    assert result is not None  # non-deterministic{prov_tag}"
-            )
+            lines.append(f"    assert result is not None  # non-deterministic{prov_tag}")
         lines.append("")
 
     return "\n".join(lines)
@@ -187,8 +187,10 @@ def _try_capture(
         result2 = func(*args, **kwargs)
         repr1, repr2 = repr(result1), repr(result2)
         return GoldenCapture(
-            inputs=list(args), kwargs=dict(kwargs),
-            output=repr1, deterministic=(repr1 == repr2),
+            inputs=list(args),
+            kwargs=dict(kwargs),
+            output=repr1,
+            deterministic=(repr1 == repr2),
         )
     except Exception:
         return None
@@ -200,7 +202,10 @@ def _eval_call_site(site: dict) -> tuple[list[Any], dict[str, Any]] | None:
     Returns None if any arg is a variable name or non-literal expression.
     """
     args: list[Any] = []
-    for a in site.get("args", []):
+    # Support both key conventions: _find_call_sites uses "positional_args"/"keyword_args",
+    # older callers may use "args"/"kwargs".
+    raw_args = site.get("positional_args") or site.get("args") or []
+    for a in raw_args:
         if isinstance(a, str):
             try:
                 args.append(ast.literal_eval(a))
@@ -210,7 +215,8 @@ def _eval_call_site(site: dict) -> tuple[list[Any], dict[str, Any]] | None:
             args.append(a)
 
     kwargs: dict[str, Any] = {}
-    for k, v in site.get("kwargs", {}).items():
+    raw_kwargs = site.get("keyword_args") or site.get("kwargs") or {}
+    for k, v in raw_kwargs.items():
         if isinstance(v, str):
             try:
                 kwargs[k] = ast.literal_eval(v)

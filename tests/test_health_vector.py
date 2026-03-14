@@ -70,36 +70,33 @@ class TestComputeHealth:
 
 class TestVetoGates:
     def test_discovery_artifact_vetoes(self):
-        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0,
-                           has_discovery_artifact=True)
+        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0, has_discovery_artifact=True)
         assert h.vetoed is True
         assert h.vetoes[VetoGate.DISCOVERY_ARTIFACT.value] is True
         assert h.scalar == 0.0
 
     def test_mock_boundary_vetoes(self):
-        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0,
-                           mock_boundary_share=0.6)
+        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0, mock_boundary_share=0.6)
         assert h.vetoed is True
         assert h.vetoes[VetoGate.MOCK_BOUNDARY.value] is True
         assert h.scalar == 0.0
 
     def test_budget_instability_vetoes(self):
-        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0,
-                           budget_exhausted_share=0.4)
+        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0, budget_exhausted_share=0.4)
         assert h.vetoed is True
         assert h.vetoes[VetoGate.BUDGET_INSTABILITY.value] is True
 
     def test_below_threshold_no_veto(self):
-        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0,
-                           mock_boundary_share=0.3,
-                           budget_exhausted_share=0.2)
+        h = compute_health(
+            1.0, 1.0, 1.0, 0.0, 1.0, mock_boundary_share=0.3, budget_exhausted_share=0.2
+        )
         assert h.vetoed is False
         assert h.scalar == pytest.approx(1.0)
 
     def test_custom_thresholds(self):
-        h = compute_health(1.0, 1.0, 1.0, 0.0, 1.0,
-                           mock_boundary_share=0.3,
-                           mock_boundary_threshold=0.2)
+        h = compute_health(
+            1.0, 1.0, 1.0, 0.0, 1.0, mock_boundary_share=0.3, mock_boundary_threshold=0.2
+        )
         assert h.vetoes[VetoGate.MOCK_BOUNDARY.value] is True
         assert h.vetoed is True
 
@@ -110,6 +107,54 @@ class TestVetoGates:
     def test_all_veto_gates_present(self):
         h = compute_health(0.5, 0.5, 0.5, 0.0, 0.5)
         assert set(h.vetoes.keys()) == {g.value for g in VetoGate}
+
+
+class TestUnmeasuredAxes:
+    def test_unmeasured_convergence_excluded_from_mean(self):
+        # convergence=0.0 with convergence_measured=False should not drag scalar to 0
+        h = compute_health(0.8, 0.8, 0.0, 0.0, 0.8, convergence_measured=False)
+        # scalar = gmean(0.8, 0.8, 1.0, 0.8) — convergence skipped, composition=1.0
+        expected = (0.8 * 0.8 * 1.0 * 0.8) ** (1 / 4)
+        assert h.scalar == pytest.approx(expected, abs=0.001)
+        assert h.scalar > 0.0
+
+    def test_all_unmeasured_returns_zero(self):
+        # Only convergence measured and it's zero → scalar = 0.0
+        h = compute_health(0.0, 0.0, 0.0, 0.0, 0.0, convergence_measured=True)
+        assert h.scalar == 0.0
+
+    def test_explicit_convergence_measured_overrides_inference(self):
+        # convergence=0.5 but explicit convergence_measured=False → excludes convergence
+        h = compute_health(0.8, 0.8, 0.5, 0.0, 0.8, convergence_measured=False)
+        # scalar = gmean(0.8, 0.8, 1.0, 0.8) — convergence excluded despite non-zero value
+        expected = (0.8 * 0.8 * 1.0 * 0.8) ** (1 / 4)
+        assert h.scalar == pytest.approx(expected, abs=0.001)
+
+    def test_backward_compat_default(self):
+        # No convergence_measured param → convergence=0.0 inferred as unmeasured
+        # (convergence > 0.0 is False) so convergence excluded from mean.
+        # This fixes the old scalar collapse: previously convergence=0 killed
+        # the geometric mean even when no convergence data existed.
+        h = compute_health(0.8, 0.8, 0.0, 0.0, 0.8)
+        # scalar = gmean(0.8, 0.8, 1.0, 0.8) — convergence excluded
+        expected = (0.8 * 0.8 * 1.0 * 0.8) ** (1 / 4)
+        assert h.scalar == pytest.approx(expected, abs=0.001)
+        assert h.axes_measured[HealthAxis.CONVERGENCE.value] is False
+
+    def test_axes_measured_populated(self):
+        h = compute_health(0.8, 0.8, 0.0, 0.0, 0.8, convergence_measured=False)
+        assert set(h.axes_measured.keys()) == {a.value for a in HealthAxis}
+        assert h.axes_measured[HealthAxis.CONVERGENCE.value] is False
+        assert h.axes_measured[HealthAxis.SPEC_LEVEL.value] is True
+        assert h.axes_measured[HealthAxis.KILL_RATE.value] is True
+        assert h.axes_measured[HealthAxis.COMPOSITION.value] is True
+        assert h.axes_measured[HealthAxis.TEST_EFFICIENCY.value] is True
+
+    def test_geometric_mean_with_measured_mask(self):
+        # Direct test: gmean([0.8, 0.0, 0.6], measured=[True, False, True]) = gmean(0.8, 0.6)
+        result = _geometric_mean([0.8, 0.0, 0.6], [True, False, True])
+        expected = (0.8 * 0.6) ** 0.5
+        assert result == pytest.approx(expected)
 
 
 class TestEdgeCases:

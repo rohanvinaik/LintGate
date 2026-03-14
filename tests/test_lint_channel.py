@@ -45,13 +45,13 @@ def _make_event(
     risk_level: str = "moderate",
     project_root: str = "/tmp",
     raw_input: dict[str, Any] | None = None,
-    classification: ChangeClassification | None = "auto",
+    classification: ChangeClassification | None = "auto",  # type: ignore[assignment]  # sentinel value
 ) -> SupervisionEvent:
     """Build a SupervisionEvent with optional classification."""
     if classification == "auto":
         classification = ChangeClassification(risk_level=risk_level)
     return SupervisionEvent(
-        surface=surface,
+        surface=surface,  # type: ignore[arg-type]  # str vs Literal; default is valid
         project_root=project_root,
         tool_name="Edit",
         raw_input=raw_input or {},

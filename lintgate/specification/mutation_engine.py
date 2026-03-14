@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import time
 import types
 from dataclasses import dataclass, field
@@ -182,10 +183,25 @@ class _ValueMutator(_BaseMutator):
     # targets or mark ``applied`` when we encounter them.
     _MUTABLE_TYPES = (bool, int, float, str)
 
+    def __init__(
+        self,
+        target_index: int = 0,
+        docstring_positions: set[tuple[int, int]] | None = None,
+    ):
+        super().__init__(target_index)
+        self._ds_pos = docstring_positions or set()
+
     def visit_Constant(self, node: ast.Constant) -> ast.AST:
         if self.applied:
             return node
         if not isinstance(node.value, self._MUTABLE_TYPES):
+            return node
+        # Skip docstring constants — they produce equivalent mutants.
+        if (
+            self._ds_pos
+            and isinstance(node.value, str)
+            and (node.lineno, node.col_offset) in self._ds_pos
+        ):
             return node
         if self.current == self.target:
             mutated = self._mutate_constant(node)
@@ -305,19 +321,52 @@ class _TypeMutator(_BaseMutator):
 # ── Mutant Generation ─────────────────────────────────────────────
 
 
+def _docstring_positions(func_node: ast.FunctionDef) -> set[tuple[int, int]]:
+    """Return (lineno, col_offset) of docstring Constant nodes in a function.
+
+    A docstring is the first statement if it's ``Expr(Constant(str))``.
+    We collect positions so that both counting and mutation can skip them
+    using position-based identity (survives ``copy.deepcopy``).
+    """
+    positions: set[tuple[int, int]] = set()
+    if (
+        func_node.body
+        and isinstance(func_node.body[0], ast.Expr)
+        and isinstance(func_node.body[0].value, ast.Constant)
+        and isinstance(func_node.body[0].value.value, str)
+    ):
+        ds = func_node.body[0].value
+        positions.add((ds.lineno, ds.col_offset))
+    return positions
+
+
 def _count_targets(func_node: ast.FunctionDef, category: MutationCategory) -> int:
     """Count how many mutation targets exist for a category in a function."""
     counter = _TARGET_COUNTERS.get(category)
     if counter is None:
         return 0
+    # VALUE needs docstring exclusion — pass positions through.
+    if category == MutationCategory.VALUE:
+        ds_pos = _docstring_positions(func_node)
+        return sum(_count_value_target(node, ds_pos) for node in ast.walk(func_node))
     return sum(counter(node) for node in ast.walk(func_node))
 
 
-def _count_value_target(node: ast.AST) -> int:
+def _count_value_target(
+    node: ast.AST,
+    docstring_positions: set[tuple[int, int]] | None = None,
+) -> int:
     # Only count constants whose types _ValueMutator can actually mutate.
     # None, bytes, complex, and Ellipsis are left unchanged by _mutate_constant,
     # so counting them produces phantom mutants that always survive.
+    # Skip docstring constants — they produce equivalent mutants that waste budget.
     if isinstance(node, ast.Constant) and isinstance(node.value, _ValueMutator._MUTABLE_TYPES):
+        if (
+            docstring_positions
+            and isinstance(node.value, str)
+            and (node.lineno, node.col_offset) in docstring_positions
+        ):
+            return 0
         return 1
     return 0
 
@@ -428,6 +477,7 @@ def generate_mutants(
     func_node: ast.FunctionDef,
     categories: set[MutationCategory],
     max_per_category: int = 0,
+    seed: int | None = None,
 ) -> list[Mutant]:
     """Generate mutants for a function across specified categories.
 
@@ -435,8 +485,13 @@ def generate_mutants(
         func_node: The function AST node to mutate.
         categories: Set of mutation categories to generate.
         max_per_category: Max mutants per category (0 = unlimited).
+        seed: Deterministic seed for shuffling target indices. When set and
+              ``max_per_category > 0``, the target indices are shuffled before
+              truncation so different seeds sample different mutants from the
+              same function. ``None`` (default) preserves AST-walk order.
     """
     mutants: list[Mutant] = []
+    ds_pos = _docstring_positions(func_node)
 
     for cat in sorted(categories, key=lambda c: c.value):
         # STATE needs special handling: two independent sub-modes with
@@ -446,11 +501,18 @@ def generate_mutants(
             continue
 
         target_count = _count_targets(func_node, cat)
-        limit = min(target_count, max_per_category) if max_per_category > 0 else target_count
+        indices = list(range(target_count))
 
-        for i in range(limit):
+        # Stable shuffle: deterministic per seed, varies across iterations.
+        if seed is not None and max_per_category > 0 and target_count > max_per_category:
+            indices = _stable_target_order(indices, seed=seed, category=cat.value)
+
+        limit = min(target_count, max_per_category) if max_per_category > 0 else target_count
+        selected = indices[:limit]
+
+        for i in selected:
             mutated_tree = copy.deepcopy(func_node)
-            transformer, desc = _make_transformer(cat, i)
+            transformer, desc = _make_transformer(cat, i, ds_pos)
             mutated_node = transformer.visit(mutated_tree)
             ast.fix_missing_locations(mutated_node)
 
@@ -470,10 +532,25 @@ def generate_mutants(
     return mutants
 
 
-def _make_transformer(category: MutationCategory, index: int) -> tuple[_BaseMutator, str]:
+def _stable_target_order(indices: list[int], *, seed: int, category: str) -> list[int]:
+    """Return a deterministic pseudo-shuffled order for target indices."""
+    return sorted(indices, key=lambda idx: _stable_target_key(seed, category, idx))
+
+
+def _stable_target_key(seed: int, category: str, idx: int) -> bytes:
+    """Build a stable hash key for deterministic mutant sampling order."""
+    payload = f"{seed}:{category}:{idx}".encode()
+    return hashlib.sha256(payload).digest()
+
+
+def _make_transformer(
+    category: MutationCategory,
+    index: int,
+    docstring_positions: set[tuple[int, int]] | None = None,
+) -> tuple[_BaseMutator, str]:
     """Create the appropriate transformer for a category + target index."""
     if category == MutationCategory.VALUE:
-        return _ValueMutator(index), "replace constant with boundary value"
+        return _ValueMutator(index, docstring_positions), "replace constant with boundary value"
     if category == MutationCategory.BOUNDARY:
         return _BoundaryMutator(index), "off-by-one comparison"
     if category == MutationCategory.SWAP:
@@ -484,6 +561,73 @@ def _make_transformer(category: MutationCategory, index: int) -> tuple[_BaseMuta
         return _TypeMutator(index), "replace isinstance with True"
     msg = f"Unknown category: {category}"
     raise ValueError(msg)
+
+
+@dataclass
+class BoundaryInput:
+    """A synthesized boundary test input from a Compare mutation."""
+
+    parameter: str
+    boundary_value: int | float
+    inputs: list[tuple[str, int | float]]  # [(param, value), ...]
+
+
+def extract_boundary_inputs(mutant: Mutant) -> list[BoundaryInput]:
+    """Extract boundary test inputs from a BOUNDARY mutant.
+
+    Walks the original Compare node to find the parameter name and constant
+    involved, then synthesizes inputs at boundary, boundary-1, boundary+1.
+    Only works for Compare nodes comparing a Name to a numeric Constant.
+    """
+    if mutant.category != MutationCategory.BOUNDARY:
+        return []
+
+    results: list[BoundaryInput] = []
+    orig_compares = [n for n in ast.walk(mutant.original_node) if isinstance(n, ast.Compare)]
+    mut_compares = [n for n in ast.walk(mutant.mutated_node) if isinstance(n, ast.Compare)]
+
+    for orig_cmp, mut_cmp in zip(orig_compares, mut_compares, strict=False):
+        # Find the op that changed
+        for orig_op, mut_op in zip(orig_cmp.ops, mut_cmp.ops, strict=False):
+            if type(orig_op) is type(mut_op):
+                continue
+            # Found the mutated comparison — extract param + constant
+            param, const = _extract_compare_parts(orig_cmp)
+            if param and const is not None and isinstance(const, (int, float)):
+                offsets = [0, -1, 1]
+                inputs = [(param, const + off) for off in offsets]
+                results.append(
+                    BoundaryInput(
+                        parameter=param,
+                        boundary_value=const,
+                        inputs=inputs,
+                    )
+                )
+    return results
+
+
+def _extract_compare_parts(
+    cmp_node: ast.Compare,
+) -> tuple[str | None, int | float | None]:
+    """Extract (parameter_name, constant_value) from a Compare node.
+
+    Handles both ``x < 10`` and ``10 < x`` orientations.
+    """
+    left = cmp_node.left
+    comparators = cmp_node.comparators
+
+    if isinstance(left, ast.Name) and len(comparators) == 1:
+        comp = comparators[0]
+        if isinstance(comp, ast.Constant) and isinstance(comp.value, (int, float)):
+            return left.id, comp.value
+    if (
+        isinstance(left, ast.Constant)
+        and isinstance(left.value, (int, float))
+        and len(comparators) == 1
+        and isinstance(comparators[0], ast.Name)
+    ):
+        return comparators[0].id, left.value
+    return None, None
 
 
 # ── Mutant Evaluation ─────────────────────────────────────────────
@@ -536,13 +680,13 @@ def _patch_mutant_into_test(
 
     if test_globals is not None and func_name in test_globals:
         saved = test_globals[func_name]
-        test_globals[func_name] = _unwrap_descriptor(mutated_obj)
+        test_globals[func_name] = _preserve_closure_binding_shape(saved, mutated_obj)
         return True, saved, test_globals
 
     # Fallback: inspect.getmodule (works for regular module-level functions)
     if test_module is not None and hasattr(test_module, func_name):
         saved = getattr(test_module, func_name)
-        setattr(test_module, func_name, _unwrap_descriptor(mutated_obj))
+        setattr(test_module, func_name, _preserve_closure_binding_shape(saved, mutated_obj))
         return True, saved, test_module
 
     return False, None, None
@@ -574,19 +718,33 @@ def _resolve_qualified_owner(
         seen.add(marker)
         candidates.append(obj)
 
-    for _, value, _ in closure_bindings:
+    def _add_from_value(value: Any) -> None:
+        if value is None:
+            return
         if inspect.ismodule(value) and hasattr(value, root_name):
             _add_candidate(getattr(value, root_name))
-        elif isinstance(value, type) and value.__name__ == root_name:
-            _add_candidate(value)
+            return
+        if isinstance(value, type):
+            if value.__name__ == root_name:
+                _add_candidate(value)
+            return
+        bound_self = getattr(value, "__self__", None)
+        if bound_self is not None:
+            owner = bound_self if isinstance(bound_self, type) else type(bound_self)
+            if getattr(owner, "__name__", "") == root_name:
+                _add_candidate(owner)
+            return
+        owner_type = type(value)
+        if getattr(owner_type, "__name__", "") == root_name:
+            _add_candidate(owner_type)
+
+    for _, value, _ in closure_bindings:
+        _add_from_value(value)
 
     if test_globals is not None:
         _add_candidate(test_globals.get(root_name))
         for value in test_globals.values():
-            if inspect.ismodule(value) and hasattr(value, root_name):
-                _add_candidate(getattr(value, root_name))
-            elif isinstance(value, type) and value.__name__ == root_name:
-                _add_candidate(value)
+            _add_from_value(value)
 
     if test_module is not None and hasattr(test_module, root_name):
         _add_candidate(getattr(test_module, root_name))
@@ -692,7 +850,7 @@ def _unpatch_mutant(
 def evaluate_mutant(
     mutant: Mutant,
     test_functions: list[Callable[..., None]],
-    original_func: Callable[..., Any],
+    original_func: Callable[..., Any],  # noqa: ARG001 — kept for API compat
     timeout_ms: float = 5000,
     qualname: str | None = None,
 ) -> MutantResult:
@@ -820,6 +978,7 @@ def run_function_sampling(
     budget_ms: float = 500,
     max_per_category: int = 3,
     per_mutant_timeout_ms: float = 500,
+    seed: int | None = None,
 ) -> SamplingResult:
     """Inline sampling mode — generate ≤max_per_category mutants per category.
 
@@ -832,9 +991,17 @@ def run_function_sampling(
         per_mutant_timeout_ms: Timeout for evaluating a single mutant.
             Separate from budget_ms to prevent one slow mutant from
             consuming the entire budget.
+        seed: Deterministic shuffle seed for target selection. Different seeds
+            sample different mutants from the same function, reducing sampling
+            bias across convergence iterations.
     """
     start = time.monotonic()
-    mutants = generate_mutants(func_node, categories, max_per_category=max_per_category)
+    mutants = generate_mutants(
+        func_node,
+        categories,
+        max_per_category=max_per_category,
+        seed=seed,
+    )
 
     results_by_cat: dict[MutationCategory, CategoryResult] = {}
     budget_exhausted = False

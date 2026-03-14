@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+from typing import cast
 
 from lintgate.linters.structure_checks.dependency_clustering import (
     _analyze_closure,
@@ -23,7 +24,7 @@ from lintgate.linters.structure_checks.dependency_clustering import (
 )
 
 
-def _parse_func(code: str) -> ast.FunctionDef:
+def _parse_func(code: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     """Parse code and return the first function definition."""
     tree = ast.parse(textwrap.dedent(code))
     for node in ast.walk(tree):
@@ -142,6 +143,7 @@ class TestNestedHandlerExtraction:
 
         # Each candidate should propose _impl_ prefix
         for c in handler_candidates:
+            assert c.proposed_name is not None
             assert c.proposed_name.startswith("_impl_")
 
     def test_decorated_handlers_higher_confidence(self):
@@ -212,7 +214,7 @@ class TestClosureAnalysis:
                 return count
         """
         node = _parse_func(code)
-        nested = node.body[1]
+        nested = cast("ast.FunctionDef", node.body[1])
 
         reads, writes = _analyze_closure(nested, {"count", "mcp"})
         assert "count" in writes
@@ -227,7 +229,7 @@ class TestClosureAnalysis:
                 return local_var
         """
         node = _parse_func(code)
-        nested = node.body[1]
+        nested = cast("ast.FunctionDef", node.body[1])
 
         reads, writes = _analyze_closure(nested, {"engine", "mcp"})
         assert "local_var" not in reads
@@ -241,7 +243,7 @@ class TestClosureAnalysis:
                 return engine.run()
         """
         node = _parse_func(code)
-        nested = node.body[1]
+        nested = cast("ast.FunctionDef", node.body[1])
 
         reads, writes = _analyze_closure(nested, {"engine", "mcp"})
         # engine is a parameter of tool(), so it should NOT be captured

@@ -133,6 +133,35 @@ class TestFunctionSpecification:
         assert d["regime"] == "A"
 
 
+class TestTestCoverageMap:
+    def test_preserves_class_qualified_test_names(self, tmp_path):
+        from lintgate.specification.ledger import _build_test_coverage_map
+
+        test_file = tmp_path / "test_demo.py"
+        test_file.write_text(
+            "\n".join(
+                [
+                    "class TestAlpha:",
+                    "    def test_duplicate_name(self):",
+                    "        target_alpha()",
+                    "",
+                    "class TestBeta:",
+                    "    def test_duplicate_name(self):",
+                    "        target_alpha()",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        coverage, file_coverage = _build_test_coverage_map([str(test_file)])
+
+        assert coverage["target_alpha"] == [
+            "TestAlpha.test_duplicate_name",
+            "TestBeta.test_duplicate_name",
+        ]
+        assert file_coverage["target_alpha"] == {str(test_file)}
+
+
 class TestFindFuncNode:
     """Tests for _find_func_node — qualified name resolution including nested classes."""
 

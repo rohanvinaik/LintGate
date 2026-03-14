@@ -233,6 +233,10 @@ exemptions:
       codes: ["github_token"]
       reason: "Synthetic GitHub token in git channel test fixtures."
       ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
+    "test_lint_fixer.py":
+      codes: ["private_key"]
+      reason: "Synthetic private key in test_detects_private_key_blocking — verifies SecretChecker detection."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
   lint:
     "pyproject.toml":
       codes: ["version-missing"]

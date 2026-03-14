@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from lintgate.controlplane.reporter.compact import (
     _build_channel_summary,
     _build_cp_next_actions,
@@ -41,7 +43,7 @@ def _make_mesh(
 ) -> MeshResult:
     return MeshResult(
         channel_results=channel_results or [],
-        coherence=CoherenceResult(state=coherence_state, summary="ok"),
+        coherence=CoherenceResult(state=coherence_state, summary="ok"),  # type: ignore[arg-type]
         event=_make_event(),
         duration_ms=100.0,
     )
@@ -76,6 +78,26 @@ class TestCountFindingsBySeverity:
         assert result["blocking"] == 1
         assert result["warning"] == 0
 
+    def test_missing_severity_key(self) -> None:
+        """Finding without severity key defaults to empty string, skipped."""
+        index = {"fp1": {"count": 2}}
+        result = _count_findings_by_severity(index)
+        assert result == {"blocking": 0, "warning": 0, "informational": 0}
+
+    def test_missing_count_defaults_to_one(self) -> None:
+        """Finding without count key defaults to 1."""
+        index = {"fp1": {"severity": "warning"}}
+        result = _count_findings_by_severity(index)
+        assert result["warning"] == 1
+
+    def test_multiple_blocking_entries_sum(self) -> None:
+        index = {
+            "fp1": {"severity": "blocking", "count": 2},
+            "fp4": {"severity": "blocking", "count": 1},
+        }
+        result = _count_findings_by_severity(index)
+        assert result["blocking"] == 3
+
 
 # ── _build_channel_summary ─────────────────────────────────────────────
 
@@ -103,10 +125,17 @@ class TestBuildChannelSummary:
 
     def test_unknown_status_passthrough(self) -> None:
         """Channel with status not 'fail'/'pass'/'skip' uses raw status string."""
-        cr = ChannelResult(channel="custom", status="degraded", severity="none", findings=[])
+        status: Any = "degraded"
+        cr = ChannelResult(channel="custom", status=status, severity="none", findings=[])
         mesh = _make_mesh([cr])
         summary = _build_channel_summary(mesh)
         assert summary["custom"] == "degraded"
+
+    def test_timeout_status_passthrough(self) -> None:
+        cr = ChannelResult(channel="structure", status="timeout", severity="none", findings=[])
+        mesh = _make_mesh([cr])
+        summary = _build_channel_summary(mesh)
+        assert summary["structure"] == "timeout"
 
 
 # ── _build_cp_next_actions ─────────────────────────────────────────────
@@ -154,6 +183,17 @@ class TestBuildCpNextActions:
         )
         assert actions[0].tool == "terminal"
         assert actions[0].args["command"] == "python scripts/ship_main.py --preflight"
+
+    def test_repairs_available_singular(self) -> None:
+        counts = {"blocking": 0, "warning": 0, "repairs_available": 1}
+        actions = _build_cp_next_actions("run1", counts)
+        assert len(actions) == 1
+        assert "1 safe repair available" in actions[0].reason
+
+    def test_all_counts_produce_all_actions(self) -> None:
+        counts = {"blocking": 1, "warning": 2, "repairs_available": 1}
+        actions = _build_cp_next_actions("run1", counts)
+        assert len(actions) == 3
 
 
 # ── _collect_symbol_coverage_blockers ──────────────────────────────────
@@ -229,6 +269,46 @@ class TestCollectSymbolCoverageBlockers:
         blockers = _collect_symbol_coverage_blockers(mesh)
         assert len(blockers) == 1
         assert blockers[0]["kind"] == "unresolved_required_symbol"
+
+    def test_missing_lines_truncated_to_12(self) -> None:
+        lines = list(range(1, 20))
+        finding = LintIssue(
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="uncovered",
+            severity="blocking",
+            evidence={"symbol_key": "x", "missing_lines": lines},
+        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
+        mesh = _make_mesh([cr])
+        blockers = _collect_symbol_coverage_blockers(mesh)
+        assert len(blockers[0]["missing_lines"]) == 12
+
+    def test_missing_lines_empty_list_excluded(self) -> None:
+        finding = LintIssue(
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="uncovered",
+            severity="blocking",
+            evidence={"symbol_key": "x", "missing_lines": []},
+        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
+        mesh = _make_mesh([cr])
+        blockers = _collect_symbol_coverage_blockers(mesh)
+        assert "missing_lines" not in blockers[0]
+
+    def test_no_file_omits_file_key(self) -> None:
+        finding = LintIssue(
+            linter="test_channel",
+            kind="symbol_uncovered",
+            message="uncovered",
+            severity="blocking",
+            evidence={"symbol_key": "x"},
+        )
+        cr = ChannelResult(channel="tests", status="fail", severity="blocking", findings=[finding])
+        mesh = _make_mesh([cr])
+        blockers = _collect_symbol_coverage_blockers(mesh)
+        assert "file" not in blockers[0]
 
 
 class TestCompactReport:

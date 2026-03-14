@@ -88,6 +88,8 @@ class MutationScheduler:
         is_pure: bool = False,
         has_hints: bool = False,
         coverage_depth: str = "none",
+        overlay_status: str = "",
+        overlay_confidence: float = 0.0,
     ) -> None:
         """Add a function to the priority queue."""
         priority = _compute_priority(
@@ -96,6 +98,8 @@ class MutationScheduler:
             is_pure=is_pure,
             has_hints=has_hints,
             coverage_depth=coverage_depth,
+            overlay_status=overlay_status,
+            overlay_confidence=overlay_confidence,
         )
         tier = "profiling" if coverage_depth == "sampled" else "sampling"
         self._queue.append(
@@ -204,8 +208,15 @@ def _compute_priority(
     is_pure: bool = False,
     has_hints: bool = False,
     coverage_depth: str = "none",
+    overlay_status: str = "",
+    overlay_confidence: float = 0.0,
 ) -> float:
-    """Compute scheduling priority for a function."""
+    """Compute scheduling priority for a function.
+
+    Reconciliation-aware: CONTRADICTS with high confidence gets a boost
+    (disagreement needs resolution), NO_EMPIRICAL_DATA gets a smaller
+    boost (needs profiling).
+    """
     score = 0.0
     score += min(sigma / 30.0, 1.0) * 40
     score += risk_score * 30
@@ -217,6 +228,12 @@ def _compute_priority(
 
     if is_pure and has_hints:
         score += 10
+
+    # Reconciliation boost
+    if overlay_status == "CONTRADICTS" and overlay_confidence >= 0.7:
+        score += 15
+    elif overlay_status == "NO_EMPIRICAL_DATA":
+        score += 8
 
     return score
 

@@ -303,7 +303,9 @@ def _check_if_branches(
             current = elif_node
         else:
             # Plain else — include it too
-            branches.append((current.orelse, current.orelse[0].lineno if current.orelse else current.lineno))
+            branches.append(
+                (current.orelse, current.orelse[0].lineno if current.orelse else current.lineno)
+            )
             break
 
     if len(branches) < 2:

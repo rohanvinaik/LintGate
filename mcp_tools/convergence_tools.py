@@ -1,4 +1,4 @@
-"""Convergence tools — analyze, plan extractions, and view optimization landscape."""
+"""Convergence tools — analyze, converge, and drive the platonic golden path."""
 
 from __future__ import annotations
 
@@ -11,9 +11,18 @@ from lintgate.next_action import NextAction, serialize_next_actions
 
 # Patterns for filtering non-production files from optimization targets
 _NON_PRODUCTION_PATTERNS = (
-    "test_", "tests/", "test/", "_test.py", "conftest.py",
-    "fuzz_", "fuzz/", "benchmark_", "benchmarks/",
-    "fixture", "testutil", "test_helper",
+    "test_",
+    "tests/",
+    "test/",
+    "_test.py",
+    "conftest.py",
+    "fuzz_",
+    "fuzz/",
+    "benchmark_",
+    "benchmarks/",
+    "fixture",
+    "testutil",
+    "test_helper",
 )
 
 
@@ -240,9 +249,9 @@ def _impl_extraction_plan(
     return result
 
 
-def _collect_manifest_hints(manifest: Any) -> tuple[
-    list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]
-]:
+def _collect_manifest_hints(
+    manifest: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Extract cache, parallel, and extraction hints from manifest pure functions."""
     cache_hotspots: list[dict[str, Any]] = []
     parallel_opportunities: list[dict[str, Any]] = []
@@ -262,21 +271,25 @@ def _collect_manifest_hints(manifest: Any) -> tuple[
         if "cacheable" in hints:
             cache_hotspots.append({**entry, "hints": list(hints)})
         if "parallelizable" in hints or "map-reduce-compatible" in hints:
-            parallel_opportunities.append({
-                "pattern": "MANIFEST_HINT",
-                "file": func.source_file or "",
-                "line": 0,
-                "callee": name,
-                "confidence": func.purity.confidence,
-                "constraints": [],
-                "detail": f"Manifest hints: {sorted(hints)}",
-            })
+            parallel_opportunities.append(
+                {
+                    "pattern": "MANIFEST_HINT",
+                    "file": func.source_file or "",
+                    "line": 0,
+                    "callee": name,
+                    "confidence": func.purity.confidence,
+                    "constraints": [],
+                    "detail": f"Manifest hints: {sorted(hints)}",
+                }
+            )
         if func.extraction_safety == "safe" and func.properties:
-            extraction_safe.append({
-                **entry,
-                "properties": [p.kind.value for p in func.properties],
-                "extraction_safety": func.extraction_safety,
-            })
+            extraction_safe.append(
+                {
+                    **entry,
+                    "properties": [p.kind.value for p in func.properties],
+                    "extraction_safety": func.extraction_safety,
+                }
+            )
 
     return cache_hotspots, parallel_opportunities, extraction_safe
 
@@ -296,13 +309,15 @@ def _run_detectors_on_file(
         purity = analyze_purity(tree)
         for qname, cs in score_all_cacheable(tree, purity).items():
             if cs.band in ("HIGH", "MEDIUM"):
-                cache_hotspots.append({
-                    "function": qname,
-                    "source_file": rel_path,
-                    "cache_score": cs.score,
-                    "cache_band": cs.band,
-                    "cache_factors": cs.factors,
-                })
+                cache_hotspots.append(
+                    {
+                        "function": qname,
+                        "source_file": rel_path,
+                        "cache_score": cs.score,
+                        "cache_band": cs.band,
+                        "cache_factors": cs.factors,
+                    }
+                )
     except ImportError:
         pass
 
@@ -375,8 +390,11 @@ def _build_static_landscape(
         except (OSError, SyntaxError):
             continue
         _run_detectors_on_file(
-            tree, os.path.relpath(fpath, path),
-            cache_hotspots, parallel_opportunities, jit_candidates,
+            tree,
+            os.path.relpath(fpath, path),
+            cache_hotspots,
+            parallel_opportunities,
+            jit_candidates,
         )
 
     deduped_cache = _dedupe_cache_hotspots(cache_hotspots)
@@ -611,8 +629,194 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         """
         return json.dumps(_impl_optimization_landscape(path, helpers, mode=mode))
 
+    @mcp.tool()
+    def platonic_converge(
+        path: str,
+        file: str,
+        max_iterations: int = 5,
+        target_spec_level: float = 0.80,
+        target_kill_rate: float = 0.70,
+        budget_ms: float = 30_000,
+        reconciliation_threshold: float = 0.7,
+    ) -> str:
+        """Run iterative specification convergence toward platonic ideal.
+
+        WHEN TO USE: After initial mutation profiling reveals surviving
+        categories. Runs an automated loop of profile → generate → validate
+        until convergence or budget exhaustion. Non-destructive: tests go
+        to tests/generated/.
+
+        Pipeline per iteration:
+        1. Spec analysis — σ, regime, phase, trajectory
+        2. Mutation sampling — purity-aware category profiling
+        3. Health vector — 5-axis transparent quality measure
+        4. Test generation — 6-lens batch composition (oracle-light preferred)
+        5. Convergence check — stop when thresholds met or stalled
+
+        Args:
+            path: Project root path.
+            file: Relative path to the Python file.
+            max_iterations: Maximum convergence iterations (default 5).
+            target_spec_level: Stop when spec_level >= this (default 0.80).
+            target_kill_rate: Stop when kill_rate >= this (default 0.70).
+            budget_ms: Total time budget in milliseconds (default 30000).
+            reconciliation_threshold: Confidence threshold for empirical
+                override of static spec_level (default 0.7).
+        """
+        from ._platonic_impl import impl_platonic_converge
+
+        return impl_platonic_converge(
+            helpers,
+            path,
+            file,
+            max_iterations=max_iterations,
+            target_spec_level=target_spec_level,
+            target_kill_rate=target_kill_rate,
+            budget_ms=budget_ms,
+            reconciliation_threshold=reconciliation_threshold,
+        )
+
+    @mcp.tool()
+    def platonic_project(
+        path: str,
+        max_files: int = 5,
+        budget_ms: int = 30_000,
+    ) -> str:
+        """Pick the first deterministic platonic target and start a workflow.
+
+        WHEN TO USE: Default golden-path entrypoint when you want LintGate to
+        choose the next highest-value module automatically. It uses
+        reconciliation-aware project rollup, routing, and veto logic to avoid
+        topology-hostile or already-good files.
+
+        Returns a persisted workflow envelope with one obvious next move:
+        `primary_next_action` and `primary_next_args`.
+
+        Args:
+            path: Project root path.
+            max_files: Maximum hotspot files to inspect before choosing.
+            budget_ms: Budget for the started workflow.
+        """
+        from ._platonic_impl import impl_platonic_project
+
+        return impl_platonic_project(
+            helpers,
+            path,
+            max_files=max_files,
+            budget_ms=budget_ms,
+        )
+
+    @mcp.tool()
+    def platonic_continue(
+        path: str,
+        workflow_id: str,
+    ) -> str:
+        """Resume a persisted platonic workflow by workflow_id.
+
+        WHEN TO USE: After `platonic_project` or `platonic_converge`, follow the
+        returned `primary_next_action` rather than rebuilding arguments by hand.
+        If the workflow is already terminal, this returns the terminal envelope
+        immediately. VALIDATING workflows re-run only validation; PROFILING
+        workflows resume from their persisted convergence snapshot when available.
+
+        Args:
+            path: Project root path.
+            workflow_id: Workflow identifier returned by the golden-path tools.
+        """
+        from ._platonic_impl import impl_platonic_continue
+
+        return impl_platonic_continue(helpers, path, workflow_id)
+
+    @mcp.tool()
+    def platonic_apply(
+        path: str,
+        workflow_id: str,
+        dry_run: bool = True,
+    ) -> str:
+        """Apply a validated platonic workflow when it is safe to do so.
+
+        WHEN TO USE: Only after a golden-path workflow reports
+        `state=\"READY_TO_APPLY\"` or `state=\"READY_TO_APPLY_WITH_REVIEW\"`.
+        This is the only destructive step in the platonic path. It promotes
+        staged artifacts into the live test suite after validation.
+
+        Args:
+            path: Project root path.
+            workflow_id: Workflow identifier returned by the golden-path tools.
+            dry_run: Preview quarantine/promotion actions before executing them.
+        """
+        from ._platonic_impl import impl_platonic_apply
+
+        return impl_platonic_apply(helpers, path, workflow_id, dry_run=dry_run)
+
+    @mcp.tool()
+    def platonic_sweep(
+        path: str,
+        budget_s: float = 300.0,
+        max_files: int = 10,
+        batch_size: int = 10,
+        resume: bool = True,
+    ) -> str:
+        """Run a scheduler-driven specification sweep across multiple project files.
+
+        WHEN TO USE: After initial quality work (lint clean, tests passing),
+        to systematically profile and close specification gaps across the codebase.
+        Uses priority-queue scheduling with budget controls and cross-session persistence.
+
+        Pipeline: loads hotspots → enqueues functions → batch mutation sampling →
+        auto-promotes high-survival to full profiling → persists state for resumption.
+
+        Args:
+            path: Project root path.
+            budget_s: Total time budget in seconds (default 300).
+            max_files: Maximum hotspot files to enqueue (default 10).
+            batch_size: Functions per scheduler batch (default 10).
+            resume: If True, resume from persisted scheduler state (default True).
+        """
+        from ._platonic_impl import impl_platonic_sweep
+
+        return impl_platonic_sweep(
+            helpers,
+            path,
+            budget_s=budget_s,
+            max_files=max_files,
+            batch_size=batch_size,
+            resume=resume,
+        )
+
+    @mcp.tool()
+    def colab_sweep_generate(
+        path: str,
+        workers: int = 4,
+        budget_ms: int = 500,
+        output: str = "",
+    ) -> str:
+        """Generate a Google Colab notebook for offloading mutation sweeps.
+
+        WHEN TO USE: When local mutation profiling is too slow (300+ files),
+        when running many concurrent operations, or when you want to use
+        free cloud compute for batch specification coverage. Generates a
+        self-contained .ipynb pre-configured with the project's repo URL,
+        branch, and settings. Results sync back to .lintgate/mutation/.
+
+        Args:
+            path: Project root path.
+            workers: Parallel workers for Colab (default 4, good for free tier).
+            budget_ms: Per-function mutation budget in ms (default 500).
+            output: Custom output path for the notebook (default: scripts/).
+        """
+        from ._colab_impl import impl_colab_sweep_generate
+
+        return impl_colab_sweep_generate(helpers, path, workers, budget_ms, output)
+
     return {
         "convergence_analyze": convergence_analyze,
         "extraction_plan": extraction_plan,
         "optimization_landscape": optimization_landscape,
+        "platonic_converge": platonic_converge,
+        "platonic_project": platonic_project,
+        "platonic_continue": platonic_continue,
+        "platonic_apply": platonic_apply,
+        "platonic_sweep": platonic_sweep,
+        "colab_sweep_generate": colab_sweep_generate,
     }

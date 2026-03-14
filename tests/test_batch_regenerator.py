@@ -56,19 +56,48 @@ class TestGeneratedFile:
 
 class TestMergeEnrichments:
     def test_skeleton_only(self):
-        result = _merge_enrichments("# skeleton", [])
+        result, manual = _merge_enrichments("# skeleton", [])
         assert result.startswith("# skeleton")
         assert result.endswith("\n")
+        assert manual == []
 
     def test_with_enrichments(self):
         enr = FunctionEnrichment(
             function_key="m::f",
             function_name="f",
-            prescriptions=[{"category": "VALUE", "assertion_shape": "x == 1"}],
+            characterization="assert f(1) == 1",
         )
-        result = _merge_enrichments("# skeleton", [enr])
-        assert "test_f_value_mutation" in result
-        assert "VALUE" in result
+        result, manual = _merge_enrichments("# skeleton", [enr])
+        assert "Characterization test for f" in result
+        assert manual == []
+
+    def test_strips_placeholder_skeleton_tests(self):
+        skeleton = (
+            '"""Tests for foo."""\n\n'
+            "from __future__ import annotations\n\n"
+            "import pytest\n\n"
+            "def test_placeholder() -> None:\n"
+            "    result = func(...)\n"
+            "    assert result == EXPECTED  # TODO: replace\n\n"
+            "def test_real_error_path() -> None:\n"
+            "    with pytest.raises(ValueError):\n"
+            "        raise ValueError()\n"
+        )
+        result, manual = _merge_enrichments(skeleton, [])
+        assert "test_placeholder" not in result
+        assert "test_real_error_path" in result
+        assert "import pytest" in result
+        assert manual == []
+
+    def test_tracks_manual_contract_candidates(self):
+        enr = FunctionEnrichment(
+            function_key="m::f",
+            function_name="f",
+            prescriptions=[{"category": "VALUE", "assertion_shape": "assert result == 1"}],
+        )
+        result, manual = _merge_enrichments("# skeleton", [enr])
+        assert result.startswith("# skeleton")
+        assert manual == ["m::f"]
 
 
 class TestBuildFunctionSection:
@@ -83,8 +112,7 @@ class TestBuildFunctionSection:
             inputs=[{"context": "f(1, 2)"}],
         )
         section = _build_function_section(enr)
-        assert "Input examples for f" in section
-        assert "f(1, 2)" in section
+        assert section == ""
 
     def test_prescriptions(self):
         enr = FunctionEnrichment(
@@ -95,9 +123,7 @@ class TestBuildFunctionSection:
             ],
         )
         section = _build_function_section(enr)
-        assert "def test_f_swap_mutation():" in section
-        assert "SWAP" in section
-        assert "suggested input: x=1" in section
+        assert section == ""
 
     def test_characterization_fallback(self):
         enr = FunctionEnrichment(
@@ -109,7 +135,7 @@ class TestBuildFunctionSection:
         assert "Characterization test for f" in section
         assert "assert f(1) == 42" in section
 
-    def test_characterization_suppressed_when_prescriptions_exist(self):
+    def test_characterization_provisional_when_prescriptions_exist(self):
         enr = FunctionEnrichment(
             function_key="m::f",
             function_name="f",
@@ -117,16 +143,58 @@ class TestBuildFunctionSection:
             characterization="assert f(1) == 42",
         )
         section = _build_function_section(enr)
-        assert "Characterization" not in section
+        assert "PROVISIONAL" in section
+        assert "assert f(1) == 42" in section
+
+    def test_callsite_assertion_promotion(self):
+        enr = FunctionEnrichment(
+            function_key="m::f",
+            function_name="f",
+            inputs=[
+                {"context": "assert f(0, 5) == 1.0"},
+                {"context": "assert f(10, 3) == 0.3"},
+                {"context": "f(1, 2)"},  # not an assert — stays as comment
+            ],
+        )
+        section = _build_function_section(enr)
+        assert "def test_f_callsite():" in section
+        assert "assert f(0, 5) == 1.0" in section
+        assert "assert f(10, 3) == 0.3" in section
+        assert "promoted from call-site" in section
+        # Non-assert input still appears as comment
+        assert "f(1, 2)" in section
+
+    def test_callsite_promotion_rejects_non_literal(self):
+        enr = FunctionEnrichment(
+            function_key="m::f",
+            function_name="f",
+            inputs=[
+                {"context": "assert f(some_var) == 1"},  # non-literal arg
+            ],
+        )
+        section = _build_function_section(enr)
+        assert "test_f_callsite" not in section
+
+    def test_callsite_promotion_deduplicates(self):
+        enr = FunctionEnrichment(
+            function_key="m::f",
+            function_name="f",
+            inputs=[
+                {"context": "assert f(1) == 2"},
+                {"context": "assert f(1) == 2"},  # duplicate
+            ],
+        )
+        section = _build_function_section(enr)
+        assert section.count("assert f(1) == 2") == 1
 
     def test_dot_in_name_replaced(self):
         enr = FunctionEnrichment(
             function_key="m::Cls.method",
             function_name="Cls.method",
-            prescriptions=[{"category": "STATE", "assertion_shape": "attr==X"}],
+            characterization="assert Cls.method(1) == 2",
         )
         section = _build_function_section(enr)
-        assert "test_Cls_method_state_mutation" in section
+        assert "Characterization test for Cls.method" in section
 
     def test_inputs_truncated_to_three(self):
         enr = FunctionEnrichment(
@@ -135,9 +203,30 @@ class TestBuildFunctionSection:
             inputs=[{"context": f"call{i}()"} for i in range(5)],
         )
         section = _build_function_section(enr)
-        assert "call0()" in section
-        assert "call2()" in section
-        assert "call3()" not in section
+        assert section == ""
+
+    def test_needs_oracle_property_skipped(self):
+        from lintgate.testing.oracle_light import ExecutableProperty
+
+        enr = FunctionEnrichment(
+            function_key="mod::f",
+            function_name="f",
+            executable_properties=[
+                ExecutableProperty(
+                    category="VALUE",
+                    inputs={},
+                    setup_code="",
+                    assertion_code="assert result == ...",
+                    preconditions=["needs expected value"],
+                    confidence=0.3,
+                    source_lenses=["mutation"],
+                    needs_oracle=True,
+                    function_key="mod::f",
+                    mutant_id="value_0",
+                )
+            ],
+        )
+        assert _build_function_section(enr) == ""
 
 
 class TestCategoryAssertionHint:
@@ -221,7 +310,8 @@ class TestBatchRegeneratorGenerateForFile:
         assert result is not None
         assert "inputs" in result.enrichment_sources
         assert "mutation" in result.enrichment_sources
-        assert "test_f_value_mutation" in result.content
+        assert result.manual_contract_candidates == ["m::f"]
+        assert "test_f_value_mutation" not in result.content
 
     @patch.object(BatchRegenerator, "_generate_skeleton", return_value="# skel\n")
     @patch.object(BatchRegenerator, "_infer_inputs", return_value=[])
@@ -393,6 +483,14 @@ class TestBatchRegeneratorResolveFuncNode:
         regen = BatchRegenerator("/nonexistent")
         assert regen._resolve_func_node("no.py", "f") is None
 
+    def test_finds_qualified_method(self, tmp_path):
+        src = tmp_path / "mod.py"
+        src.write_text("class Item:\n    def to_dict(self):\n        return {'x': 1}\n")
+        regen = BatchRegenerator(str(tmp_path))
+        node = regen._resolve_func_node("mod.py", "Item.to_dict")
+        assert node is not None
+        assert node.name == "to_dict"
+
 
 class TestBatchRegeneratorLoadMutationCache:
     @patch(_CACHE_DIR_SRC, return_value="/tmp/cache")
@@ -419,26 +517,33 @@ class TestBatchRegeneratorGoldenCapture:
     @patch(_GOLDEN_SRC, return_value="assert f() == 1")
     def test_success(self, _gen, _corr, _cap, _pur, _cache):
         regen = BatchRegenerator("/project")
-        result = regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}])
-        assert result == "assert f() == 1"
+        rendered, captures = regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}])
+        assert rendered == "assert f() == 1"
+        assert captures == [{"val": 1}]
 
     def test_no_module_path_returns_empty(self):
         regen = BatchRegenerator("/project")
-        assert regen._golden_capture("src/mod.py", "f", "f", []) == ""
+        rendered, captures = regen._golden_capture("src/mod.py", "f", "f", [])
+        assert rendered == ""
+        assert captures == []
 
     @patch.object(BatchRegenerator, "_load_mutation_cache", return_value={})
     @patch.object(BatchRegenerator, "_check_purity", return_value=True)
     @patch(_CAPTURE_SRC, return_value=[])
     def test_no_captures_returns_empty(self, _cap, _pur, _cache):
         regen = BatchRegenerator("/project")
-        assert regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}]) == ""
+        rendered, captures = regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}])
+        assert rendered == ""
+        assert captures == []
 
     @patch.object(BatchRegenerator, "_load_mutation_cache", return_value={})
     @patch.object(BatchRegenerator, "_check_purity", return_value=True)
     @patch(_CAPTURE_SRC, side_effect=Exception("boom"))
     def test_exception_returns_empty(self, mock_cap, _pur, _cache):
         regen = BatchRegenerator("/project")
-        assert regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}]) == ""
+        rendered, captures = regen._golden_capture("src/mod.py", "mod::f", "f", [{"args": [1]}])
+        assert rendered == ""
+        assert captures == []
         mock_cap.assert_called_once()  # confirms exception path was hit
 
 
@@ -454,3 +559,116 @@ class TestBatchRegeneratorExecutableProperties:
         mock_cache.return_value = {"m::f": {"survivor_records": []}}
         regen = BatchRegenerator("/project")
         assert regen._get_executable_properties("src/mod.py", "m::f", "f", []) == []
+
+
+# ── Integration: factory import ordering (P0-2) ─────────────────────
+
+
+class TestFactoryImportOrdering:
+    def test_factory_imports_after_docstring_and_future_annotations(self, monkeypatch):
+        """Factory imports must not precede from __future__ import annotations."""
+        skeleton = '"""Tests."""\n\nfrom __future__ import annotations\n\nimport pytest\n\n'
+        enr = FunctionEnrichment(
+            function_key="m::f",
+            function_name="f",
+            executable_properties=[],
+        )
+        monkeypatch.setattr(
+            "lintgate.testing.batch_regenerator._generate_shared_factories",
+            lambda _enrichments: ("", ["from lintgate.types import LintIssue"]),
+        )
+        content, _ = _merge_enrichments(skeleton, [enr])
+
+        # Verify: from __future__ must be the first non-comment, non-blank import
+        lines = content.split("\n")
+        first_import_idx = None
+        future_idx = None
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("from ") or stripped.startswith("import "):
+                if first_import_idx is None:
+                    first_import_idx = i
+                if "from __future__" in stripped:
+                    future_idx = i
+                    break
+        if future_idx is not None:
+            assert future_idx == first_import_idx, (
+                f"__future__ import at line {future_idx} but first import at {first_import_idx}"
+            )
+
+
+class TestSectionValidation:
+    def test_invalid_section_routes_to_manual_contract(self):
+        from lintgate.testing.oracle_light import ExecutableProperty
+
+        enr = FunctionEnrichment(
+            function_key="m::f",
+            function_name="f",
+            executable_properties=[
+                ExecutableProperty(
+                    category="VALUE",
+                    inputs={},
+                    setup_code="",
+                    assertion_code="result = missing_name\nassert result == 1",
+                    preconditions=[],
+                    confidence=0.8,
+                    source_lenses=["test"],
+                    needs_oracle=False,
+                )
+            ],
+        )
+        content, manual = _merge_enrichments("import pytest\n", [enr])
+        assert manual == ["m::f"]
+        assert "test_f_value" not in content
+
+
+# ── Integration: round-trip naming uniqueness (P1-3) ────────────────
+
+
+class TestRoundTripNaming:
+    def test_distinct_names_for_multiple_pairs(self):
+        """Multiple round-trip pairs must produce distinct test function names."""
+        from lintgate.testing.oracle_light import ExecutableProperty
+
+        prop_a = ExecutableProperty(
+            category="ROUND_TRIP",
+            inputs={},
+            setup_code="from m import A",
+            assertion_code="assert True",
+            preconditions=[],
+            confidence=0.9,
+            source_lenses=["pair_detection"],
+            needs_oracle=False,
+            function_key="m.py::Alpha.to_dict",
+            mutant_id="",
+        )
+        prop_b = ExecutableProperty(
+            category="ROUND_TRIP",
+            inputs={},
+            setup_code="from m import B",
+            assertion_code="assert True",
+            preconditions=[],
+            confidence=0.9,
+            source_lenses=["pair_detection"],
+            needs_oracle=False,
+            function_key="m.py::Beta.to_dict",
+            mutant_id="",
+        )
+        enr_a = FunctionEnrichment(
+            function_key="m.py::Alpha.to_dict",
+            function_name="round_trip_Alpha",
+            executable_properties=[prop_a],
+        )
+        enr_b = FunctionEnrichment(
+            function_key="m.py::Beta.to_dict",
+            function_name="round_trip_Beta",
+            executable_properties=[prop_b],
+        )
+        content, _ = _merge_enrichments("# skel\n", [enr_a, enr_b])
+
+        # Extract test function names
+        import re
+
+        test_names = re.findall(r"def (test_\w+)\(", content)
+        assert len(test_names) >= 2, f"Expected >=2 test functions, got {test_names}"
+        assert len(test_names) == len(set(test_names)), f"Duplicate test names: {test_names}"

@@ -424,3 +424,50 @@ class TestComputeImportPathValueErrorFallback:
         ):
             result = _compute_import_path("/x/y/mymod.py", "/some/root")
         assert result == "mymod"
+
+
+# ── Mutation-aware skeleton quality (moved from test_skeleton_mutation_aware.py) ──
+
+
+class TestSkeletonMutationAware:
+    """Tests for mutation-aware skeleton generator enhancements."""
+
+    def test_skeleton_uses_equality_not_is_not_none(self, tmp_path: object) -> None:
+        """Generated skeletons use assert == EXPECTED instead of assert is not None."""
+        import pathlib
+
+        src = pathlib.Path(str(tmp_path)) / "compute.py"
+        src.write_text("def compute(x):\n    return x + 1\n")
+
+        skeleton = generate_test_skeleton(str(src))
+        assert "assert result == EXPECTED" in skeleton
+        assert "assert result is not None" not in skeleton
+
+    def test_skeleton_generates_boundary_tests(self, tmp_path: object) -> None:
+        """Generated skeletons include boundary test stubs for functions with args."""
+        import pathlib
+
+        src = pathlib.Path(str(tmp_path)) / "process.py"
+        src.write_text("def process(data, count):\n    return data[:count]\n")
+
+        skeleton = generate_test_skeleton(str(src))
+        assert "boundary" in skeleton.lower()
+        assert "TODO" in skeleton
+
+    def test_skeleton_class_uses_equality(self, tmp_path: object) -> None:
+        """Generated class test skeletons use equality assertions."""
+        import pathlib
+
+        src = pathlib.Path(str(tmp_path)) / "config.py"
+        src.write_text(
+            "from dataclasses import dataclass\n"
+            "\n"
+            "@dataclass\n"
+            "class Config:\n"
+            "    name: str = 'default'\n"
+            "    count: int = 0\n"
+        )
+
+        skeleton = generate_test_skeleton(str(src))
+        # Should not contain the old weak pattern
+        assert "assert obj is not None" not in skeleton

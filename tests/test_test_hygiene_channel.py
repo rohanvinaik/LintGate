@@ -38,7 +38,7 @@ class TestIsStubBody:
         src = "def test_foo():\n    pass\n"
         path = _write_test_file(tmp_path, "test_stub.py", src)
         tree = _parse_file(path)
-        funcs = _extract_test_functions(tree)
+        funcs = _extract_test_functions(tree)  # type: ignore[arg-type]  # tree is Module (file is valid)
         assert len(funcs) == 1
         assert _is_stub_body(funcs[0][1]) == "pass"
 
@@ -46,28 +46,28 @@ class TestIsStubBody:
         src = "def test_foo():\n    ...\n"
         path = _write_test_file(tmp_path, "test_stub.py", src)
         tree = _parse_file(path)
-        funcs = _extract_test_functions(tree)
+        funcs = _extract_test_functions(tree)  # type: ignore[arg-type]  # tree is Module (file is valid)
         assert _is_stub_body(funcs[0][1]) == "ellipsis"
 
     def test_not_implemented_stub(self, tmp_path):
         src = "def test_foo():\n    raise NotImplementedError()\n"
         path = _write_test_file(tmp_path, "test_stub.py", src)
         tree = _parse_file(path)
-        funcs = _extract_test_functions(tree)
+        funcs = _extract_test_functions(tree)  # type: ignore[arg-type]  # tree is Module (file is valid)
         assert _is_stub_body(funcs[0][1]) == "not_implemented"
 
     def test_docstring_then_pass(self, tmp_path):
         src = 'def test_foo():\n    """Docstring."""\n    pass\n'
         path = _write_test_file(tmp_path, "test_stub.py", src)
         tree = _parse_file(path)
-        funcs = _extract_test_functions(tree)
+        funcs = _extract_test_functions(tree)  # type: ignore[arg-type]  # tree is Module (file is valid)
         assert _is_stub_body(funcs[0][1]) == "pass"
 
     def test_real_body_not_stub(self, tmp_path):
         src = "def test_foo():\n    assert 1 == 1\n"
         path = _write_test_file(tmp_path, "test_stub.py", src)
         tree = _parse_file(path)
-        funcs = _extract_test_functions(tree)
+        funcs = _extract_test_functions(tree)  # type: ignore[arg-type]  # tree is Module (file is valid)
         assert _is_stub_body(funcs[0][1]) is None
 
 

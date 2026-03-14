@@ -64,47 +64,46 @@ def _check_venv(root: Path) -> HealthCheck:
     )
 
 
-def _check_lockfiles(root: Path) -> list[HealthCheck]:
-    """Check that manifests have corresponding lockfiles."""
+def _report_found_lockfiles(root: Path) -> list[HealthCheck]:
+    """Report which lockfiles are present when no lockfiles are missing."""
     checks: list[HealthCheck] = []
-    missing = _missing_lockfiles(root)
-
-    if not missing:
-        # Check what we DO have
-        for _ecosystem, lock_names in _LOCKFILES.items():
-            for lock_name in lock_names:
-                if (root / lock_name).exists():
-                    checks.append(
-                        HealthCheck(
-                            name=f"lockfile_{lock_name}",
-                            status="ok",
-                            message=f"Lockfile {lock_name} present",
-                        )
+    for _ecosystem, lock_names in _LOCKFILES.items():
+        for lock_name in lock_names:
+            if (root / lock_name).exists():
+                checks.append(
+                    HealthCheck(
+                        name=f"lockfile_{lock_name}",
+                        status="ok",
+                        message=f"Lockfile {lock_name} present",
                     )
-        if not checks:
-            # No manifests or lockfiles at all — that's fine for non-package projects
-            checks.append(
-                HealthCheck(
-                    name="lockfile",
-                    status="ok",
-                    message="No dependency manifests found — lockfile not needed",
                 )
-            )
-        return checks
-
-    for manifest, expected_locks in missing:
-        lock_str = " or ".join(expected_locks)
+    if not checks:
         checks.append(
             HealthCheck(
-                name=f"lockfile_for_{manifest}",
-                status="error",
-                message=f"{manifest} exists but no lockfile ({lock_str}) found",
-                suggestion="Run `uv lock` to generate a lockfile",
-                evidence={"manifest": manifest, "expected_locks": expected_locks},
+                name="lockfile",
+                status="ok",
+                message="No dependency manifests found — lockfile not needed",
             )
         )
-
     return checks
+
+
+def _check_lockfiles(root: Path) -> list[HealthCheck]:
+    """Check that manifests have corresponding lockfiles."""
+    missing = _missing_lockfiles(root)
+    if not missing:
+        return _report_found_lockfiles(root)
+
+    return [
+        HealthCheck(
+            name=f"lockfile_for_{manifest}",
+            status="error",
+            message=f"{manifest} exists but no lockfile ({' or '.join(expected_locks)}) found",
+            suggestion="Run `uv lock` to generate a lockfile",
+            evidence={"manifest": manifest, "expected_locks": expected_locks},
+        )
+        for manifest, expected_locks in missing
+    ]
 
 
 def _check_lockfile_freshness(root: Path) -> list[HealthCheck]:

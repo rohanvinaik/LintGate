@@ -1,6 +1,15 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 105 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 111 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+
+## Golden Path (Auto-Improve)
+
+The platonic golden path auto-improves any Python codebase toward the platonic ideal. It is the **default workflow** when a user asks to "improve tests", "increase coverage", or "sweep the codebase".
+
+**Codebase sweep**: `platonic_project(path)` → follow `primary_next_action` → `platonic_apply` → repeat.
+**Single file**: `platonic_converge(path, file)` → follow `primary_next_action` → `platonic_apply`.
+
+Each iteration: profiles mutation survival → generates typed tests with field-enumeration assertions → validates tests kill targeted mutants → persists for apply. The test generation pipeline uses typed input synthesis (resolves dataclass annotations into constructible values), shared factory generation (emits `_issue()` helpers when types repeat), round-trip pair detection (`to_dict`/`from_dict`), and post-generation validation (strips broken tests before writing to disk).
 
 ## Ship Pipeline
 
@@ -102,9 +111,14 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
+| `platonic_project` | Golden-path entrypoint that selects the first deterministic high-value target | Default repo-wide improvement workflow |
 | `convergence_analyze` | Multi-lens convergence aggregation on functions/files | After controlplane_run identifies decomposition candidates |
 | `extraction_plan` | Build stepwise extraction plan for a specific function | After convergence_analyze shows EXTRACT actionability |
 | `optimization_landscape` | Project-wide optimization opportunity map | Strategic view of codebase optimization potential |
+| `platonic_converge` | File-scoped platonic workflow: profile, route, generate, validate, persist | Improve one known module toward the platonic ideal |
+| `platonic_continue` | Resume a persisted platonic workflow by `workflow_id` | Follow the returned `primary_next_action` |
+| `platonic_apply` | Apply a validated platonic workflow (dry-run default) | Only after `READY_TO_APPLY` |
+| `platonic_sweep` | Scheduler-driven multi-file specification sweep with budget controls | After initial quality work, to systematically close specification gaps |
 
 ### Specification Complexity
 

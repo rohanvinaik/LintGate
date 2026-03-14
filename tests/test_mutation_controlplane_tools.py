@@ -6,6 +6,8 @@ Targets:
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp_tools.controlplane_tools import _filter_channels
 
 # ── _filter_channels — exact VALUE assertions ────────────────────────────
@@ -40,19 +42,19 @@ def test_filter_channels_empty_dict_with_filter_returns_empty() -> None:
 
 
 def test_filter_channels_single_channel_no_filter() -> None:
-    channels = {"behavior": {"findings": []}}
+    channels: dict[str, Any] = {"behavior": {"findings": []}}
     result = list(_filter_channels(channels, None))
     assert result == [("behavior", {"findings": []})]
 
 
 def test_filter_channels_single_channel_matching_filter() -> None:
-    channels = {"behavior": {"findings": []}}
+    channels: dict[str, Any] = {"behavior": {"findings": []}}
     result = list(_filter_channels(channels, "behavior"))
     assert result == [("behavior", {"findings": []})]
 
 
 def test_filter_channels_single_channel_non_matching_filter() -> None:
-    channels = {"behavior": {"findings": []}}
+    channels: dict[str, Any] = {"behavior": {"findings": []}}
     result = list(_filter_channels(channels, "lint"))
     assert result == []
 

@@ -89,7 +89,7 @@ class TestParseHookInput:
         assert result is None
 
     def test_json_array_returns_none(self) -> None:
-        result = self._call('[1, 2, 3]')
+        result = self._call("[1, 2, 3]")
         assert result is None
 
     def test_json_string_returns_none(self) -> None:
@@ -132,7 +132,7 @@ class TestComputeFingerprintState:
     def test_session_without_behavior_compass_dict(self) -> None:
         mesh = StubMeshResult()
         session = StubSession()
-        session.behavior_compass = "not a dict"
+        session.behavior_compass = "not a dict"  # type: ignore[assignment]  # intentional wrong-type test
         current, prev, cur_fields, prev_fields = _compute_fingerprint_state(mesh, session)
         assert prev is None
 
@@ -267,6 +267,7 @@ class TestDetectWriteFunctions:
     def test_multiple_functions(self) -> None:
         content = "def foo():\n    pass\n\ndef bar():\n    pass\n"
         result = _detect_write_functions({"content": content, "file_path": "/mod.py"})
+        assert result is not None
         assert len(result) == 2
         assert result[0]["name"] == "foo"
         assert result[1]["name"] == "bar"
@@ -307,15 +308,9 @@ class TestDetectWriteFunctions:
         assert result is None
 
     def test_mixed_toplevel_and_nested(self) -> None:
-        content = (
-            "def top():\n"
-            "    def inner():\n"
-            "        pass\n"
-            "\n"
-            "async def other():\n"
-            "    pass\n"
-        )
+        content = "def top():\n    def inner():\n        pass\n\nasync def other():\n    pass\n"
         result = _detect_write_functions({"content": content, "file_path": "/mix.py"})
+        assert result is not None
         assert len(result) == 2
         assert result[0]["name"] == "top"
         assert result[1]["name"] == "other"
@@ -333,90 +328,110 @@ class TestDetectEditFunctions:
     """Tests for _detect_edit_functions which finds new defs in edit diffs."""
 
     def test_new_function_detected(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "x = 1\n",
-            "new_string": "x = 1\ndef added():\n    pass\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "x = 1\n",
+                "new_string": "x = 1\ndef added():\n    pass\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is not None
         assert len(result) == 1
         assert result[0]["name"] == "added"
         assert result[0]["file"] == "/a.py"
 
     def test_existing_function_not_detected(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "def existing():\n    pass\n",
-            "new_string": "def existing():\n    return 1\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "def existing():\n    pass\n",
+                "new_string": "def existing():\n    return 1\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is None
 
     def test_async_function_detected(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "",
-            "new_string": "async def new_handler():\n    pass\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "",
+                "new_string": "async def new_handler():\n    pass\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is not None
         assert result[0]["name"] == "new_handler"
 
     def test_non_python_returns_none(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "",
-            "new_string": "def foo():\n    pass\n",
-            "file_path": "/a.js",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "",
+                "new_string": "def foo():\n    pass\n",
+                "file_path": "/a.js",
+            }
+        )
         assert result is None
 
     def test_empty_new_string_returns_none(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "x = 1\n",
-            "new_string": "",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "x = 1\n",
+                "new_string": "",
+                "file_path": "/a.py",
+            }
+        )
         assert result is None
 
     def test_missing_file_path_returns_none(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "",
-            "new_string": "def foo():\n    pass\n",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "",
+                "new_string": "def foo():\n    pass\n",
+            }
+        )
         assert result is None
 
     def test_no_new_defs_returns_none(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "x = 1\n",
-            "new_string": "x = 2\ny = 3\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "x = 1\n",
+                "new_string": "x = 2\ny = 3\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is None
 
     def test_multiple_new_functions(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "",
-            "new_string": "def alpha():\n    pass\ndef beta():\n    pass\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "",
+                "new_string": "def alpha():\n    pass\ndef beta():\n    pass\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is not None
         assert len(result) == 2
         assert result[0]["name"] == "alpha"
         assert result[1]["name"] == "beta"
 
     def test_line_numbers_are_relative_to_new_string(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "",
-            "new_string": "# comment\n\ndef at_line_3():\n    pass\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "",
+                "new_string": "# comment\n\ndef at_line_3():\n    pass\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is not None
         assert result[0]["line"] == 3
 
     def test_indented_def_detected(self) -> None:
-        result = _detect_edit_functions({
-            "old_string": "",
-            "new_string": "    def indented_method(self):\n        pass\n",
-            "file_path": "/a.py",
-        })
+        result = _detect_edit_functions(
+            {
+                "old_string": "",
+                "new_string": "    def indented_method(self):\n        pass\n",
+                "file_path": "/a.py",
+            }
+        )
         assert result is not None
         assert result[0]["name"] == "indented_method"
 
@@ -495,7 +510,7 @@ class TestFinalizeReport:
         assert "lint results" in msg
 
     def test_advisory_sets_message_when_empty(self) -> None:
-        report = {"hookSpecificOutput": {}}
+        report: dict[str, Any] = {"hookSpecificOutput": {}}
         cp_config = self._make_cp_config()
         result, _ = _finalize_report(report, "ADVISORY: note", None, cp_config)
         assert result.get("systemMessage") == "ADVISORY: note"
@@ -513,7 +528,7 @@ class TestFinalizeReport:
 
     def test_none_report_returns_dict(self) -> None:
         cp_config = self._make_cp_config()
-        result, telemetry = _finalize_report(None, None, None, cp_config)
+        result, telemetry = _finalize_report(None, None, None, cp_config)  # type: ignore[arg-type]  # intentional: test None handling
         assert isinstance(result, dict)
         assert telemetry == {}
 
@@ -528,7 +543,7 @@ class TestFinalizeReport:
         report = {"systemMessage": "msg"}
         cp_config = self._make_cp_config()
         session = StubSession()
-        session.behavior_compass = "not a dict"
+        session.behavior_compass = "not a dict"  # type: ignore[assignment]  # intentional wrong-type test
         result, _ = _finalize_report(report, None, session, cp_config)
         assert isinstance(result, dict)
 
@@ -570,12 +585,17 @@ class TestEvaluateCompliance:
     def test_returns_string_on_success(self):
         session = StubSession(behavior_compass={})
         event = StubEvent()
-        mock_cm = type("MockCM", (), {
-            "__init__": lambda self, bc: None,
-            "evaluate_and_record": lambda self, *a, **kw: "followed",
-        })
+        mock_cm = type(
+            "MockCM",
+            (),
+            {
+                "__init__": lambda self, bc: None,
+                "evaluate_and_record": lambda self, *a, **kw: "followed",
+            },
+        )
         with patch(
-            "lintgate.orchestration.compliance.ComplianceManager", mock_cm,
+            "lintgate.orchestration.compliance.ComplianceManager",
+            mock_cm,
         ):
             result = _evaluate_compliance(session, event, "orient", {"rule": "x"})
         assert result == "followed"
@@ -583,14 +603,19 @@ class TestEvaluateCompliance:
     def test_catches_exception_returns_none(self):
         session = StubSession(behavior_compass={})
         event = StubEvent()
-        mock_cm = type("MockCM", (), {
-            "__init__": lambda self, bc: None,
-            "evaluate_and_record": lambda self, *a, **kw: (_ for _ in ()).throw(
-                RuntimeError("boom")
-            ),
-        })
+        mock_cm = type(
+            "MockCM",
+            (),
+            {
+                "__init__": lambda self, bc: None,
+                "evaluate_and_record": lambda self, *a, **kw: (_ for _ in ()).throw(
+                    RuntimeError("boom")
+                ),
+            },
+        )
         with patch(
-            "lintgate.orchestration.compliance.ComplianceManager", mock_cm,
+            "lintgate.orchestration.compliance.ComplianceManager",
+            mock_cm,
         ):
             result = _evaluate_compliance(session, event, None, None)
         assert result is None
@@ -626,9 +651,14 @@ class TestCollectDispositionNudge:
         assert result is None or isinstance(result, str)
 
     def test_returns_disposition_string_on_success(self):
-        mock_enforcer_instance = type("MockEnf", (), {
-            "evaluate": lambda self, event: ("orient", "rule_001"),
-        })()
+        mock_enforcer_instance = type(
+            "MockEnf",
+            (),
+            {
+                "evaluate": lambda self, event: ("orient", "rule_001"),
+            },
+        )()
+
         def mock_enforcer_cls(*a, **kw):
             return mock_enforcer_instance
 
@@ -646,17 +676,20 @@ class TestCollectDispositionNudge:
             ),
         ):
             bus = StubBus()
-            result = _collect_disposition_nudge(
-                StubCpConfig(), StubSession(), StubEvent(), bus
-            )
+            result = _collect_disposition_nudge(StubCpConfig(), StubSession(), StubEvent(), bus)
         assert result == "orient"
         assert len(bus.items) == 1
         assert bus.items[0]["disposition"] == "orient"
 
     def test_no_collect_when_disposition_none(self):
-        mock_enforcer_instance = type("MockEnf", (), {
-            "evaluate": lambda self, event: (None, None),
-        })()
+        mock_enforcer_instance = type(
+            "MockEnf",
+            (),
+            {
+                "evaluate": lambda self, event: (None, None),
+            },
+        )()
+
         def mock_enforcer_cls(*a, **kw):
             return mock_enforcer_instance
 
@@ -671,9 +704,7 @@ class TestCollectDispositionNudge:
             ),
         ):
             bus = StubBus()
-            result = _collect_disposition_nudge(
-                StubCpConfig(), StubSession(), StubEvent(), bus
-            )
+            result = _collect_disposition_nudge(StubCpConfig(), StubSession(), StubEvent(), bus)
         assert result is None
         assert len(bus.items) == 0
 
@@ -695,7 +726,7 @@ class TestCollectCycleInterventions:
 
     def test_noop_when_behavior_compass_not_dict(self):
         session = StubSession()
-        session.behavior_compass = "not-a-dict"
+        session.behavior_compass = "not-a-dict"  # type: ignore[assignment]  # intentional wrong-type test
         bus = StubBus()
         _collect_cycle_interventions(session, bus)
         assert bus.items == []
@@ -727,9 +758,7 @@ class TestCollectCycleInterventions:
         assert len(bus.items) >= 1
 
     def test_skips_invalid_entries_gracefully(self):
-        session = StubSession(
-            behavior_compass={"cycle_detections": [{"invalid": "data"}]}
-        )
+        session = StubSession(behavior_compass={"cycle_detections": [{"invalid": "data"}]})
         bus = StubBus()
         # Should not raise — catches exceptions per entry
         _collect_cycle_interventions(session, bus)

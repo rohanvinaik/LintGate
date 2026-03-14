@@ -40,7 +40,7 @@ class TestReverseImportGraph:
 
     def test_single_node_no_edges(self) -> None:
         """Single module with no imports → appears with empty set."""
-        forward = {"A": set()}
+        forward: dict[str, set[str]] = {"A": set()}
         reverse = build_reverse_import_graph(forward)
         assert reverse == {"A": set()}
 

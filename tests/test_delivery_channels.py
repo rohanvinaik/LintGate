@@ -105,6 +105,7 @@ def test_deliver_finding_success():
     payload, chan_type = deliver_finding(finding, preferred)
 
     assert chan_type == "hook_text"
+    assert payload is not None
     assert "🔍 Behavioral observation: test message" in payload
     assert finding["delivery_channel"] == "hook_text"
     assert finding["reliability"] == 1.0
@@ -119,6 +120,7 @@ def test_deliver_finding_fallback():
     payload, chan_type = deliver_finding(finding, preferred)
 
     assert chan_type == "rule_file"
+    assert payload is not None
     assert "### 🔍 Behavioral observation" in payload
 
 

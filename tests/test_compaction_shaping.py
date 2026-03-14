@@ -14,7 +14,7 @@ def _extract_capsule(result: dict) -> dict:
     msg = result["systemMessage"]
     m = re.search(r"<lintgate-compact-state>(.*?)</lintgate-compact-state>", msg, re.DOTALL)
     assert m, f"No <lintgate-compact-state> tag in systemMessage: {msg!r}"
-    return json.loads(m.group(1))
+    return json.loads(m.group(1))  # type: ignore[no-any-return]
 
 
 def _extract_capsule_str(result: dict) -> str:
@@ -322,11 +322,15 @@ class TestHandleEdgeCases:
 
         from lintgate.runtime_state import load_runtime_state
 
-        gen_before = load_runtime_state(str(tmp_path)).generation
+        state_before = load_runtime_state(str(tmp_path))
+        assert state_before is not None
+        gen_before = state_before.generation
 
         handle({"cwd": str(tmp_path)})
 
-        gen_after = load_runtime_state(str(tmp_path)).generation
+        state_after = load_runtime_state(str(tmp_path))
+        assert state_after is not None
+        gen_after = state_after.generation
         assert gen_after > gen_before
 
 

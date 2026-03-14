@@ -23,14 +23,14 @@ from lintgate.types import LintIssue
 # ── Test fixtures ─────────────────────────────────────────────────────
 
 
-def _make_event(**kwargs) -> SupervisionEvent:
-    defaults = {
+def _make_event(**kwargs: object) -> SupervisionEvent:
+    defaults: dict[str, object] = {
         "project_root": "/tmp/test",
         "tool_name": "Edit",
         "files_changed": ["/tmp/test/app.py"],
     }
     defaults.update(kwargs)
-    return SupervisionEvent(**defaults)
+    return SupervisionEvent(**defaults)  # type: ignore[arg-type]  # dict unpacking
 
 
 def _make_config(**kwargs) -> ControlPlaneConfig:
@@ -159,7 +159,7 @@ def test_single_failing_channel() -> None:
 
 
 def test_mixed_pass_and_fail() -> None:
-    channels = [PassChannel(), FailChannel()]
+    channels: list[Channel] = [PassChannel(), FailChannel()]
     result = run_mesh(_make_event(), _make_config(), channels)
 
     assert len(result.channel_results) == 2
@@ -198,7 +198,7 @@ def test_disabled_channel_skipped() -> None:
 
 def test_slow_channel_is_shed_under_tight_budget() -> None:
     config = _make_config(latency_budget_ms=500)  # Very tight
-    channels = [SlowChannel(sleep_seconds=5.0)]  # Much longer than budget
+    channels: list[Channel] = [SlowChannel(sleep_seconds=5.0)]  # Much longer than budget
 
     result = run_mesh(_make_event(), config, channels)
 
@@ -210,7 +210,7 @@ def test_slow_channel_is_shed_under_tight_budget() -> None:
 
 def test_fast_channel_completes_while_slow_shed() -> None:
     config = _make_config(latency_budget_ms=2000)
-    channels = [PassChannel(), SlowChannel(sleep_seconds=10.0)]
+    channels: list[Channel] = [PassChannel(), SlowChannel(sleep_seconds=10.0)]
 
     result = run_mesh(_make_event(), config, channels)
 
@@ -225,7 +225,7 @@ def test_fast_channel_completes_while_slow_shed() -> None:
 
 def test_global_budget_respected() -> None:
     config = _make_config(latency_budget_ms=3000)
-    channels = [
+    channels: list[Channel] = [
         SlowChannel(name="slow1", sleep_seconds=10.0),
         SlowChannel(name="slow2", sleep_seconds=10.0),
     ]

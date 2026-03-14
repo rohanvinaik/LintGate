@@ -7,8 +7,10 @@ The public API is mutation_tools.register(); this module is private.
 from __future__ import annotations
 
 import ast
+import inspect
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,23 +24,38 @@ class DiscoveryDiagnostics:
 
     test_files_found: int = 0
     impact_map_refs: int = 0
+    ast_test_callables: int = 0
     import_successes: int = 0
     import_failures: list[str] = field(default_factory=list)
     class_instantiation_failures: list[str] = field(default_factory=list)
     callables_loaded: int = 0
     fallback_used: bool = False
+    weak_linkage_suspected: bool = False
+    linkage_source: str = ""  # "dynamic", "static", or "" (fallback)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
             "test_files_found": self.test_files_found,
             "callables_loaded": self.callables_loaded,
         }
+        if self.impact_map_refs:
+            d["impact_map_refs"] = self.impact_map_refs
+        if self.ast_test_callables:
+            d["ast_test_callables"] = self.ast_test_callables
         if self.import_failures:
             d["import_failures"] = self.import_failures[:5]
         if self.class_instantiation_failures:
             d["class_instantiation_failures"] = self.class_instantiation_failures[:5]
+        if self.linkage_source:
+            d["linkage_source"] = self.linkage_source
         if self.fallback_used:
             d["fallback_used"] = True
+        if self.weak_linkage_suspected:
+            d["weak_linkage_suspected"] = True
+            d["sanity_warning"] = (
+                "Callable loading appears incomplete for the discovered test files. "
+                "Treat mutation survival as a discovery artifact."
+            )
         if self.callables_loaded == 0:
             reasons: list[str] = []
             if self.test_files_found == 0:
@@ -60,14 +77,16 @@ class MutationContext:
     cache_dir: Path
     purity_map: dict[str, bool] = field(default_factory=dict)
     test_files: list[str] = field(default_factory=list)
+    project_root: str = ""
 
 
 # ── File/function resolution ──────────────────────────────────────
 
 
 def _find_qualified_method(
-    tree: ast.Module, qualified_name: str,
-) -> tuple[ast.FunctionDef | None, str | None]:
+    tree: ast.Module,
+    qualified_name: str,
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef | None, str | None]:
     """Walk class hierarchy for a dotted name like 'Class.method'.
 
     Returns (func_node, error_message). One of them is always None.
@@ -76,28 +95,34 @@ def _find_qualified_method(
     method_name = parts[-1]
     scope: ast.AST = tree
     for class_name in parts[:-1]:
-        match = next(
-            (c for c in getattr(scope, "body", [])
-             if isinstance(c, ast.ClassDef) and c.name == class_name),
+        cls_match = next(
+            (
+                c
+                for c in getattr(scope, "body", [])
+                if isinstance(c, ast.ClassDef) and c.name == class_name
+            ),
             None,
         )
-        if match is None:
+        if cls_match is None:
             return None, f"Class '{class_name}' not found"
-        scope = match
-    match = next(
-        (c for c in getattr(scope, "body", [])
-         if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
-         and c.name == method_name),
+        scope = cls_match
+    func_match = next(
+        (
+            c
+            for c in getattr(scope, "body", [])
+            if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)) and c.name == method_name
+        ),
         None,
     )
-    if match is not None:
-        return match, None
+    if func_match is not None:
+        return func_match, None
     return None, f"Method '{method_name}' not found in class chain"
 
 
 def _find_toplevel_function(
-    tree: ast.Module, name: str,
-) -> ast.FunctionDef | None:
+    tree: ast.Module,
+    name: str,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     """Find a function/async function by name anywhere in the AST."""
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
@@ -109,7 +134,7 @@ def resolve_function(
     project_root: str,
     file: str,
     function: str | None,
-) -> tuple[str, ast.FunctionDef | None, str | None]:
+) -> tuple[str, ast.FunctionDef | ast.AsyncFunctionDef | None, str | None]:
     """Resolve file and optionally find a function node.
 
     Returns (full_path, func_node_or_None, error_or_None).
@@ -131,17 +156,22 @@ def resolve_function(
         node, err = _find_qualified_method(tree, function)
         if err:
             return full, None, f"{err} in {file}"
+        setattr(node, "_lintgate_qualname", function)  # noqa: B010
         return full, node, None
 
     node = _find_toplevel_function(tree, function)
     if node is not None:
+        for qualname, candidate in walk_functions(tree):
+            if candidate is node:
+                setattr(node, "_lintgate_qualname", qualname)  # noqa: B010
+                break
         return full, node, None
     return full, None, f"Function '{function}' not found in {file}"
 
 
-def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef]]:
+def walk_functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     """Walk AST yielding (qualname, node) for each function."""
-    results: list[tuple[str, ast.FunctionDef]] = []
+    results: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
 
     def _walk(scope: ast.AST, prefix: str) -> None:
         for node in getattr(scope, "body", []):
@@ -179,7 +209,8 @@ def load_cached_state(cache_dir: Path, func_key: str) -> dict | None:
         return None
     try:
         with open(cache_file, encoding="utf-8") as f:
-            return json.load(f)
+            result: dict | None = json.load(f)
+            return result
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -234,11 +265,22 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
        also search for test_{package_name}*.py
     4. Recursive directory walk under tests/ and test/ (nested layouts)
     """
-    base = os.path.splitext(os.path.basename(source_file))[0]
+    raw_base = os.path.splitext(os.path.basename(source_file))[0]
+    base_candidates = {raw_base}
+    stripped_base = raw_base.lstrip("_")
+    if stripped_base:
+        base_candidates.add(stripped_base)
     test_dirs = ["tests", "test"]
 
     # Build candidate patterns: exact match + parent package match
-    exact_candidates = {f"test_{base}.py", f"{base}_test.py", f"test_char_{base}.py"}
+    exact_candidates = {
+        candidate
+        for base in base_candidates
+        for candidate in (f"test_{base}.py", f"{base}_test.py", f"test_char_{base}.py")
+    }
+    generated_candidate = _generated_test_candidate(project_root, source_file)
+    if generated_candidate:
+        exact_candidates.add(generated_candidate)
 
     # For files in subpackages, also try the parent package name
     # e.g., lintgate/linters/performance_checks/perf001.py → test_performance_checks*.py
@@ -260,9 +302,9 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
                     continue
                 match = (
                     entry in exact_candidates
-                    or entry.startswith(f"test_{base}_")
-                    or entry.startswith(f"{base}_test")
-                    or entry.startswith(f"test_char_{base}_")
+                    or any(entry.startswith(f"test_{base}_") for base in base_candidates)
+                    or any(entry.startswith(f"{base}_test") for base in base_candidates)
+                    or any(entry.startswith(f"test_char_{base}_") for base in base_candidates)
                     or any(
                         entry.startswith(prefix) and entry.endswith(".py")
                         for prefix in package_candidates
@@ -277,13 +319,37 @@ def discover_test_files(project_root: str, source_file: str) -> list[str]:
     return found
 
 
+def _generated_test_candidate(project_root: str, source_file: str) -> str | None:
+    """Compute the path-safe generated test basename for a source file."""
+    try:
+        rel = os.path.relpath(source_file, project_root)
+    except ValueError:
+        return None
+    if rel.startswith(".."):
+        return None
+    stem = rel.replace(os.sep, "/")
+    if stem.endswith(".py"):
+        stem = stem[:-3]
+    safe = stem.replace("/", "_").replace(".", "_")
+    return f"test_{safe}.py"
+
+
 def load_test_callables(
-    test_files: list[str], func_name: str,
+    test_files: list[str],
+    func_name: str,
+    *,
+    project_root: str = "",
+    func_key: str = "",
 ) -> tuple[list[Any], DiscoveryDiagnostics]:
-    """Discover and import test callables for a function via test-impact map.
+    """Discover and import test callables for a function.
+
+    Resolution order (highest to lowest confidence):
+    1. Dynamic coverage linkage (execution-traced, from .coverage contexts)
+    2. Static AST-based impact map (call-name matching)
+    3. Fallback: all test functions from discovered test files
 
     Falls back to loading all test functions from the discovered test files
-    when the AST-based impact map finds no direct references to func_name.
+    when neither dynamic nor static mapping finds references to func_name.
     This handles indirect calls (fixtures, parametrize, helper wrappers)
     that static name matching misses.
 
@@ -293,7 +359,21 @@ def load_test_callables(
     from lintgate.specification.test_impact import build_test_impact_map
 
     diag = DiscoveryDiagnostics(test_files_found=len(test_files))
+    diag.ast_test_callables = _count_ast_test_callables(test_files)
 
+    # ── Layer 1: dynamic coverage linkage (highest confidence) ─────
+    if project_root and func_key:
+        dynamic_refs = _resolve_dynamic_linkage(project_root, func_key)
+        if dynamic_refs:
+            diag.impact_map_refs = len(dynamic_refs)
+            diag.linkage_source = "dynamic"
+            imported = _import_test_functions(dynamic_refs, diag)
+            if imported:
+                diag.callables_loaded = len(imported)
+                diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
+                return imported, diag
+
+    # ── Layer 2: static AST-based impact map ───────────────────────
     impact = build_test_impact_map(test_files)
     refs = impact.tests_for(func_name)
     diag.impact_map_refs = len(refs) if refs else 0
@@ -301,19 +381,116 @@ def load_test_callables(
         imported = _import_test_functions(refs, diag)
         if imported:
             diag.callables_loaded = len(imported)
+            diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
             return imported, diag
 
-    # Fallback: load all test functions from the relevant test files.
+    # ── Layer 3: fallback — all test functions from discovered files ─
     # The test files were already scoped by filename convention in
     # discover_test_files, so this is bounded and relevant.
     diag.fallback_used = True
     callables = _load_all_tests_from_files(test_files, diag)
     diag.callables_loaded = len(callables)
+    diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
     return callables, diag
 
 
+def _resolve_dynamic_linkage(
+    project_root: str,
+    func_key: str,
+) -> list[Any]:
+    """Resolve dynamic linkage for a function, building the cache if needed.
+
+    Returns a list of TestReference-compatible objects if dynamic
+    linkage exists, empty list otherwise.  Uses build_or_load_linkage()
+    so the cache is auto-built from .coverage when missing or stale.
+    """
+    from lintgate.specification.dynamic_coverage import build_or_load_linkage
+    from lintgate.specification.test_impact import TestReference
+
+    dlm = build_or_load_linkage(project_root)
+    if not dlm.linkages:
+        return []
+
+    entries = dlm.tests_for(func_key)
+    if not entries:
+        return []
+
+    # Convert LinkageEntry to TestReference for _import_test_functions.
+    # Resolve relative test_file paths to absolute for module import.
+    # Strip module prefix from test_function names — coverage.py contexts
+    # use "module.Class.method" but _resolve_test_reference expects
+    # "Class.method" relative to the imported module.
+    refs: list[TestReference] = []
+    for entry in entries:
+        if entry.confidence in ("dynamic", "hybrid"):
+            test_file = entry.test_file
+            if test_file and not os.path.isabs(test_file):
+                test_file = os.path.join(project_root, test_file)
+            test_func = _strip_module_prefix(entry.test_function, test_file)
+            refs.append(
+                TestReference(
+                    test_file=test_file,
+                    test_function=test_func,
+                )
+            )
+    return refs
+
+
+def _strip_module_prefix(test_function: str, test_file: str) -> str:
+    """Strip module name prefix from a coverage.py context function name.
+
+    Coverage.py dynamic contexts produce names like:
+      "test_controlplane_runtime.TestClass.test_method"
+    but _resolve_test_reference needs:
+      "TestClass.test_method"
+
+    Derives the module name from the test file path and strips it.
+    """
+    if not test_file or "." not in test_function:
+        return test_function
+    module_name = os.path.basename(test_file).removesuffix(".py")
+    prefix = module_name + "."
+    if test_function.startswith(prefix):
+        return test_function[len(prefix) :]
+    return test_function
+
+
+def _count_ast_test_callables(test_files: list[str]) -> int:
+    """Count test_* callables visible in AST across the discovered test files."""
+    total = 0
+    for tf in test_files:
+        try:
+            with open(tf, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=tf)
+        except (OSError, SyntaxError):
+            continue
+        for node in getattr(tree, "body", []):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+                "test_"
+            ):
+                total += 1
+            elif isinstance(node, ast.ClassDef):
+                for child in node.body:
+                    if isinstance(
+                        child, (ast.FunctionDef, ast.AsyncFunctionDef)
+                    ) and child.name.startswith("test_"):
+                        total += 1
+    return total
+
+
+def _suspect_weak_linkage(diag: DiscoveryDiagnostics) -> bool:
+    """Detect implausibly small callable sets relative to discovered test bodies."""
+    if not diag.fallback_used or diag.callables_loaded <= 0 or diag.ast_test_callables <= 0:
+        return False
+    if diag.ast_test_callables >= 3 and diag.callables_loaded <= 1:
+        return True
+    return diag.ast_test_callables >= 8 and diag.callables_loaded * 4 < diag.ast_test_callables
+
+
 def _extract_test_callables_from_module(
-    mod: Any, tf: str, diag: DiscoveryDiagnostics | None,
+    mod: Any,
+    tf: str,
+    diag: DiscoveryDiagnostics | None,
 ) -> list[Any]:
     """Extract test functions and class-based test methods from a loaded module."""
     callables: list[Any] = []
@@ -323,13 +500,18 @@ def _extract_test_callables_from_module(
             continue
         if name.startswith("test_") and callable(obj):
             callables.append(obj)
-        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(mod, "__name__", ""):
+        elif isinstance(obj, type) and getattr(obj, "__module__", None) == getattr(
+            mod, "__name__", ""
+        ):
             callables.extend(_extract_class_test_methods(obj, name, tf, diag))
     return callables
 
 
 def _extract_class_test_methods(
-    cls: type, cls_name: str, tf: str, diag: DiscoveryDiagnostics | None,
+    cls: type,
+    cls_name: str,
+    tf: str,
+    diag: DiscoveryDiagnostics | None,
 ) -> list[Any]:
     """Extract test_* bound methods from a test class via fresh instance."""
     method_names = [m for m in dir(cls) if m.startswith("test_")]
@@ -345,7 +527,8 @@ def _extract_class_test_methods(
 
 
 def _load_all_tests_from_files(
-    test_files: list[str], diag: DiscoveryDiagnostics | None = None,
+    test_files: list[str],
+    diag: DiscoveryDiagnostics | None = None,
 ) -> list[Any]:
     """Import all test_ functions from the given test files.
 
@@ -367,7 +550,8 @@ def _load_all_tests_from_files(
 
 
 def _import_test_functions(
-    refs: list[Any], diag: DiscoveryDiagnostics | None = None,
+    refs: list[Any],
+    diag: DiscoveryDiagnostics | None = None,
 ) -> list[Any]:
     """Import test functions from TestReference objects.
 
@@ -388,16 +572,37 @@ def _import_test_functions(
         mod = loaded_modules[ref.test_file]
         if mod is None:
             continue
-        # Try module-level first
-        test_fn = getattr(mod, ref.test_function, None)
-        if test_fn is not None and callable(test_fn):
-            callables.append(test_fn)
-            continue
-        # Search Test* classes for the method
-        found = _find_method_in_test_classes(mod, ref.test_function)
+        found = _resolve_test_reference(mod, ref.test_function)
         if found is not None:
             callables.append(found)
     return callables
+
+
+def _resolve_test_reference(mod: Any, test_function: str) -> Any:
+    """Resolve a test reference, preserving class-qualified method identity."""
+    test_fn = getattr(mod, test_function, None)
+    if test_fn is not None and callable(test_fn):
+        return test_fn
+    if "." in test_function:
+        return _find_qualified_test_method(mod, test_function)
+    return _find_method_in_test_classes(mod, test_function)
+
+
+def _find_qualified_test_method(mod: Any, qualified_name: str) -> Any:
+    """Resolve Class.method or Nested.Class.method against a test module."""
+    parts = qualified_name.split(".")
+    scope: Any = mod
+    for class_name in parts[:-1]:
+        scope = getattr(scope, class_name, None)
+        if not isinstance(scope, type):
+            return None
+    method_name = parts[-1]
+    try:
+        instance = scope()
+    except Exception:
+        return None
+    method = getattr(instance, method_name, None)
+    return method if callable(method) else None
 
 
 def _find_method_in_test_classes(mod: Any, method_name: str) -> Any:
@@ -442,14 +647,18 @@ def _try_import_module(filepath: str) -> Any:
     mod_name = f"_mutation_test_{os.path.basename(filepath).replace('.py', '')}"
     spec = importlib.util.spec_from_file_location(mod_name, filepath)
     if spec is None or spec.loader is None:
-        if path_added:
+        if path_added and project_root is not None:
             sys.path.remove(project_root)
         return None
     try:
         mod = importlib.util.module_from_spec(spec)
+        # Register in sys.modules BEFORE exec so dataclass decorators,
+        # __module__ introspection, and intra-test imports resolve.
+        sys.modules[mod_name] = mod
         spec.loader.exec_module(mod)
         return mod
     except Exception:
+        sys.modules.pop(mod_name, None)
         return None
     finally:
         # Leave project_root in sys.path — other test modules may need it
@@ -530,7 +739,10 @@ def run_on_functions_with_tests(
     """Run mutation analysis with real test selection and purity-aware filtering."""
     results: list[dict] = []
     if func_node and function:
-        results.append(_run_single(ctx, func_node, function, runner, filter_fn, key_fn))
+        # Explicit function target — always profile, skip triviality filter
+        results.append(
+            _run_single(ctx, func_node, function, runner, filter_fn, key_fn, skip_triviality=True)
+        )
     else:
         tree = parse_file(ctx.full_path)
         if tree is None:
@@ -547,29 +759,79 @@ def _run_single(
     runner: Any,
     filter_fn: Any,
     key_fn: Any,
+    *,
+    skip_triviality: bool = False,
 ) -> dict:
     """Run mutation analysis on a single function with tests and purity."""
-    is_pure = lookup_purity(ctx.purity_map, func_name)
+    qualname = getattr(node, "_lintgate_qualname", func_name)
+    func_key = key_fn(ctx.rel_path, qualname)
+
+    # ── Triviality pre-filter: skip profiling for structurally trivial functions ─
+    # Disabled when a specific function is explicitly targeted (skip_triviality=True).
+    triviality = _classify_triviality(node, qualname)
+    if not skip_triviality and triviality != "nontrivial":
+        result_dict = _trivial_result(func_key, node, triviality)
+        save_cached_state(ctx.cache_dir, func_key, result_dict)
+        return result_dict
+
+    is_pure = lookup_purity(ctx.purity_map, qualname)
     cats = filter_fn(node, is_pure=is_pure)
-    func_key = key_fn(ctx.rel_path, func_name)
-    bare_name = func_name.split(".")[-1]
-    tests, discovery_diag = load_test_callables(ctx.test_files, bare_name)
+    bare_name = qualname.split(".")[-1]
+    tests, discovery_diag = load_test_callables(
+        ctx.test_files,
+        bare_name,
+        project_root=ctx.project_root,
+        func_key=func_key,
+    )
     sr = runner(node, func_key, cats, tests, lambda *a: None)
     result_dict = sr.to_dict()
     result_dict["tests_loaded"] = len(tests)
     result_dict["is_pure"] = is_pure
     result_dict["parameter_count"] = len(getattr(node, "args", _EMPTY_ARGS).args)
 
-    # Flag discovery failures so consumers can distinguish "untested" from "discovery broken"
-    if len(tests) == 0 and len(ctx.test_files) > 0:
-        result_dict["discovery_failed"] = True
-        result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
-    elif len(tests) == 0:
-        result_dict["discovery_failed"] = False
-        result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
+    _enrich_mutation_result(result_dict, node, tests, discovery_diag)
 
     save_cached_state(ctx.cache_dir, func_key, result_dict)
-    return result_dict
+    ret: dict = result_dict
+    return ret
+
+
+def _classify_triviality(node: Any, qualname: str) -> str:
+    """Classify function triviality, returning the TrivialityClass value string."""
+    from lintgate.specification.triviality_filter import classify_triviality
+
+    return classify_triviality(node, function_name=qualname).value
+
+
+def _trivial_result(func_key: str, node: Any, triviality_class: str) -> dict:
+    """Build a synthetic mutation result for a trivial function.
+
+    Trivial functions are tagged as EQUIVALENT_OR_UNINTERESTING without
+    running any mutations — they would only produce equivalent mutants.
+    """
+    return {
+        "function_key": func_key,
+        "categories_tested": 0,
+        "total_mutants": 0,
+        "total_killed": 0,
+        "total_survived": 0,
+        "survival_rate": 0.0,
+        "coverage_depth": "skipped",
+        "budget_exhausted": False,
+        "elapsed_ms": 0.0,
+        "per_category": [],
+        "tests_loaded": 0,
+        "is_pure": False,
+        "parameter_count": len(getattr(node, "args", _EMPTY_ARGS).args),
+        "kill_rate": 1.0,
+        "discovery_state": "SKIPPED_TRIVIAL",
+        "topology_state": "TOPOLOGY_UNKNOWN",
+        "survival_interpretation": "EQUIVALENT_OR_UNINTERESTING",
+        "last_updated": int(time.time()),
+        "mutation_truth_label": "EQUIVALENT_OR_UNINTERESTING",
+        "discovery_failed": False,
+        "triviality_class": triviality_class,
+    }
 
 
 class _EmptyArgs:
@@ -577,6 +839,86 @@ class _EmptyArgs:
 
 
 _EMPTY_ARGS = _EmptyArgs()
+
+
+def _enrich_mutation_result(
+    result_dict: dict[str, Any],
+    node: Any,
+    tests: list[Any],
+    discovery_diag: DiscoveryDiagnostics,
+) -> None:
+    """Attach topology/truth metadata required by downstream workflow logic."""
+    from lintgate.specification.test_topology import (
+        TopologyState,
+        analyze_topology,
+        classify_discovery_state,
+        interpret_survival,
+    )
+
+    linked_test_files = _test_files_for_callables(tests)
+    topology = analyze_topology(node, linked_test_files) if tests else None
+
+    discovery_state = classify_discovery_state(
+        test_files_found=discovery_diag.test_files_found,
+        callables_loaded=discovery_diag.callables_loaded,
+        import_failures=len(discovery_diag.import_failures),
+        fallback_used=discovery_diag.fallback_used,
+        weak_linkage_suspected=discovery_diag.weak_linkage_suspected,
+        total_killed=result_dict.get("total_killed", 0),
+    )
+    topology_state = topology.topology_state if topology else TopologyState.TOPOLOGY_UNKNOWN
+    survival_rate = float(result_dict.get("survival_rate", 1.0))
+    survival_interp = interpret_survival(
+        discovery_state,
+        topology_state,
+        survival_rate,
+        weak_linkage_suspected=discovery_diag.weak_linkage_suspected,
+    )
+
+    result_dict["kill_rate"] = round(1.0 - survival_rate, 3)
+    result_dict["discovery_state"] = discovery_state.value
+    result_dict["topology_state"] = topology_state.value
+    result_dict["survival_interpretation"] = survival_interp.value
+    result_dict["last_updated"] = int(time.time())
+    result_dict["mutation_truth_label"] = _truth_label(
+        result_dict,
+        survival_interp.value,
+    )
+    result_dict["discovery_failed"] = survival_interp.value == "DISCOVERY_ARTIFACT"
+    result_dict["discovery_diagnostics"] = discovery_diag.to_dict()
+    if discovery_diag.weak_linkage_suspected:
+        result_dict["discovery_artifact_reason"] = (
+            "fallback callable loading captured too few tests for the discovered files"
+        )
+    if topology is not None:
+        result_dict["topology_details"] = topology.to_dict()
+
+
+def _truth_label(result_dict: dict[str, Any], survival_interpretation: str) -> str:
+    """Normalize the top-level mutation truth label for downstream routing."""
+    if result_dict.get("budget_exhausted"):
+        return "BUDGET_INSTABILITY"
+    if survival_interpretation == "DISCOVERY_ARTIFACT":
+        return "DISCOVERY_ARTIFACT"
+    if survival_interpretation == "MOCK_BOUNDARY_ARTIFACT":
+        return "MOCK_BOUNDARY_ARTIFACT"
+    if result_dict.get("total_mutants", 0) <= 0:
+        return "EQUIVALENT_OR_UNINTERESTING"
+    return "MEANINGFUL"
+
+
+def _test_files_for_callables(test_callables: list[Any]) -> list[str]:
+    """Map loaded test callables back to the concrete test files that were used."""
+    files: list[str] = []
+    seen: set[str] = set()
+    for fn in test_callables:
+        underlying = getattr(fn, "__func__", fn)
+        path = inspect.getsourcefile(underlying) or inspect.getfile(underlying)
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        files.append(path)
+    return files
 
 
 # ── Post-profiling analysis ───────────────────────────────────────

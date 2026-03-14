@@ -37,9 +37,14 @@ from lintgate.specification.test_regeneration_strategy import (
 def _spec(**kwargs: object) -> SpecEvidence:
     """Shorthand for SpecEvidence with defaults."""
     defaults = {
-        "specification_level": 0.0, "sigma_upper_bound": 0, "regime": "unknown",
-        "phase": "bulk", "is_pure": False, "is_stateful": False,
-        "has_side_effects": False, "testability_score": 1.0,
+        "specification_level": 0.0,
+        "sigma_upper_bound": 0,
+        "regime": "unknown",
+        "phase": "bulk",
+        "is_pure": False,
+        "is_stateful": False,
+        "has_side_effects": False,
+        "testability_score": 1.0,
     }
     return SpecEvidence(**{**defaults, **kwargs})  # type: ignore[arg-type]
 
@@ -47,8 +52,11 @@ def _spec(**kwargs: object) -> SpecEvidence:
 def _mut(**kwargs: object) -> MutationEvidence:
     """Shorthand for MutationEvidence with defaults."""
     defaults = {
-        "discovery_state": "", "topology_state": "",
-        "survival_interpretation": "", "survival_rate": 1.0, "tests_loaded": 0,
+        "discovery_state": "",
+        "topology_state": "",
+        "survival_interpretation": "",
+        "survival_rate": 1.0,
+        "tests_loaded": 0,
     }
     return MutationEvidence(**{**defaults, **kwargs})  # type: ignore[arg-type]
 
@@ -69,8 +77,14 @@ def _ev(
         survival_interpretation, survival_rate, tests_loaded.
     """
     spec_keys = {
-        "specification_level", "sigma_upper_bound", "regime", "phase",
-        "is_pure", "is_stateful", "has_side_effects", "testability_score",
+        "specification_level",
+        "sigma_upper_bound",
+        "regime",
+        "phase",
+        "is_pure",
+        "is_stateful",
+        "has_side_effects",
+        "testability_score",
     }
     spec_kw = {k: v for k, v in kwargs.items() if k in spec_keys}
     mut_kw = {k: v for k, v in kwargs.items() if k not in spec_keys}
@@ -271,8 +285,22 @@ class TestClassifyFunction:
         ev = _ev("mod::func", "mod.py", discovery_state="TESTS_LINKED_ZERO_KILLS")
         assert classify_function(ev).strategy == Strategy.EXCLUDE_MUTATION
 
+    def test_weak_linkage_excludes(self) -> None:
+        ev = _ev("mod::func", "mod.py", discovery_state="DISCOVERY_WEAK_LINKAGE")
+        assert classify_function(ev).strategy == Strategy.EXCLUDE_MUTATION
+
     def test_mock_boundary_artifact_excludes(self) -> None:
         ev = _ev("mod::func", "mod.py", discovery_state="MOCK_BOUNDARY_ARTIFACT")
+        assert classify_function(ev).strategy == Strategy.EXCLUDE_MUTATION
+
+    def test_truth_label_artifact_excludes(self) -> None:
+        ev = _ev(
+            "mod::func",
+            "mod.py",
+            discovery_state="DISCOVERY_OK",
+            survival_interpretation="DISCOVERY_ARTIFACT",
+            mutation_truth_label="DISCOVERY_ARTIFACT",
+        )
         assert classify_function(ev).strategy == Strategy.EXCLUDE_MUTATION
 
     def test_entrypoint_surface_excludes(self) -> None:

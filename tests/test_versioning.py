@@ -14,6 +14,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -720,7 +721,7 @@ class TestFormatVersionAuditSummary:
         assert summary["auto_fix_applied"] is True
 
     def test_empty_audit(self):
-        audit = {}
+        audit: dict[str, Any] = {}
         summary = format_version_audit_summary(audit)
         assert summary["issue_count"] == 0
         assert summary["tools_checked"] == 0

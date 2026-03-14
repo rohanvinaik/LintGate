@@ -465,13 +465,33 @@ def _scan_test_file(
     except (OSError, SyntaxError):
         return
 
-    test_funcs = [
-        n
-        for n in ast_mod.walk(tree)
-        if isinstance(n, ast_mod.FunctionDef) and n.name.startswith("test_")
-    ]
-    for test_func in test_funcs:
-        _collect_calls_in_test(test_func, coverage, filepath, file_coverage)
+    _collect_tests_from_body(tree.body, coverage, filepath, file_coverage)
+
+
+def _collect_tests_from_body(
+    body: list[Any],
+    coverage: dict[str, list[str]],
+    filepath: str,
+    file_coverage: dict[str, set[str]] | None = None,
+    prefix: str = "",
+) -> None:
+    """Collect test functions and methods with qualified class context."""
+    import ast as ast_mod
+
+    for node in body:
+        if isinstance(
+            node, (ast_mod.FunctionDef, ast_mod.AsyncFunctionDef)
+        ) and node.name.startswith("test_"):
+            qualified = f"{prefix}{node.name}" if prefix else node.name
+            _collect_calls_in_test(node, coverage, filepath, file_coverage, qualified)
+        elif isinstance(node, ast_mod.ClassDef):
+            _collect_tests_from_body(
+                node.body,
+                coverage,
+                filepath,
+                file_coverage,
+                prefix=f"{prefix}{node.name}.",
+            )
 
 
 def _collect_calls_in_test(
@@ -479,16 +499,18 @@ def _collect_calls_in_test(
     coverage: dict[str, list[str]],
     test_filepath: str | None = None,
     file_coverage: dict[str, set[str]] | None = None,
+    test_name: str | None = None,
 ) -> None:
     """Find function calls within a test and update coverage map."""
     import ast as ast_mod
 
+    label: str = test_name or str(getattr(test_func, "name", ""))
     for child in ast_mod.walk(test_func):
         if not isinstance(child, ast_mod.Call):
             continue
         name = _extract_call_name(child)
         if name:
-            coverage.setdefault(name, []).append(test_func.name)
+            coverage.setdefault(name, []).append(label)
             if file_coverage is not None and test_filepath:
                 file_coverage.setdefault(name, set()).add(test_filepath)
 

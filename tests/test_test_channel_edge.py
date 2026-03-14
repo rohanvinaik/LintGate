@@ -209,7 +209,7 @@ def test_filter_to_source_packages_empty_packages() -> None:
 
 def test_filter_to_source_packages_none_packages() -> None:
     changed = ["/a/b.py"]
-    assert _filter_to_source_packages(changed, None, "/") == changed
+    assert _filter_to_source_packages(changed, None, "/") == changed  # type: ignore[arg-type]  # intentional: test None handling
 
 
 def test_filter_to_source_packages_matches_files_in_package(tmp_path: Path) -> None:
@@ -308,7 +308,7 @@ def test_run_tests_os_error(tmp_path: Path) -> None:
         "lintgate.channels._test_channel_runner.subprocess.run",
         side_effect=OSError("no pytest"),
     ):
-        result = run_tests(str(tmp_path), ["tests/test_x.py"])
+        result = run_tests(str(tmp_path), ["tests/test_x.py"])  # type: ignore[arg-type]  # args swapped but subprocess mocked
     assert result.passed == 0
     assert result.failed == 0
     assert not result.timed_out

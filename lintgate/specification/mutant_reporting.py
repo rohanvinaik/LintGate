@@ -50,6 +50,9 @@ def _compute_diff_summary(
 
     Attempts to unparse both nodes. Falls back to description-only
     when unparsing fails (e.g., partial AST fragments).
+
+    Compares full unparsed source BEFORE truncating so that mutations
+    deep inside a function body are still visible.
     """
     try:
         orig_src = ast.unparse(original_node)
@@ -57,14 +60,27 @@ def _compute_diff_summary(
     except Exception:
         return "AST mutation (unparse unavailable)"
 
-    # Truncate for readability
-    max_len = 120
-    if len(orig_src) > max_len:
-        orig_src = orig_src[:max_len] + "..."
-    if len(mut_src) > max_len:
-        mut_src = mut_src[:max_len] + "..."
-
     if orig_src == mut_src:
         return "No visible diff (mutation may be in nested structure)"
 
-    return f"- {orig_src}\n+ {mut_src}"
+    # Show only the differing lines for readability
+    orig_lines = orig_src.splitlines()
+    mut_lines = mut_src.splitlines()
+    diff_parts: list[str] = []
+    for ol, ml in zip(orig_lines, mut_lines, strict=False):
+        if ol != ml:
+            diff_parts.append(f"- {ol[:120]}")
+            diff_parts.append(f"+ {ml[:120]}")
+    # Handle length differences (added/removed lines)
+    if len(orig_lines) > len(mut_lines):
+        for ol in orig_lines[len(mut_lines) :]:
+            diff_parts.append(f"- {ol[:120]}")
+    elif len(mut_lines) > len(orig_lines):
+        for ml in mut_lines[len(orig_lines) :]:
+            diff_parts.append(f"+ {ml[:120]}")
+
+    if not diff_parts:
+        return "No visible diff (mutation may be in nested structure)"
+
+    # Cap total output to 3 diff pairs for readability
+    return "\n".join(diff_parts[:6])

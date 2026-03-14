@@ -376,3 +376,183 @@ def test_reset_compass_deletes(tmp_path: Path):
 def test_reset_compass_missing(tmp_path: Path):
     result = reset_compass(str(tmp_path))
     assert result is None
+
+
+# ── Persistence fidelity and hardening (moved from test_hook_hardening.py) ──
+
+
+def test_compass_persistence_fidelity(tmp_path: Path) -> None:
+    """Verify that CompassState round-trips through disk with fidelity."""
+    project_root = str(tmp_path)
+    axis = CompassAxis(
+        name="problem",
+        claims=[CompassClaim(text="Test claim", source="test_file:10", confidence=0.9)],
+        summary="Test summary",
+        depth=1,
+    )
+    state = CompassState(axes={"problem": axis})
+
+    # Save
+    path = save_compass(project_root, state)
+    assert path.exists()
+    assert state.forged_at > 0
+
+    # Load
+    loaded = load_compass(project_root)
+    assert loaded is not None
+    assert loaded.version == state.version
+    assert "problem" in loaded.axes
+    assert loaded.axes["problem"].claims[0].text == "Test claim"
+    assert loaded.axes["problem"].depth == 1
+    assert loaded.forged_at == state.forged_at
+
+
+def test_refuses_to_save_empty_compass(tmp_path: Path) -> None:
+    """save_compass should raise ValueError if axes are missing (schema hardening)."""
+    import pytest
+
+    state = CompassState(axes={})
+    with pytest.raises(ValueError, match="Refusing to save empty CompassState"):
+        save_compass(str(tmp_path), state)
+
+
+def test_staleness_and_decay_logic() -> None:
+    """Verify compute_staleness logic for signal decay simulation."""
+    now = time.time()
+
+    # Just forged
+    state_new = CompassState(forged_at=now)
+    assert compute_staleness(state_new, max_age_hours=24) < 0.001
+
+    # 12 hours old
+    state_mid = CompassState(forged_at=now - (12 * 3600))
+    # Close enough to 0.5
+    assert 0.49 < compute_staleness(state_mid, max_age_hours=24) < 0.51
+
+    # 24 hours old
+    state_old = CompassState(forged_at=now - (24 * 3600))
+    assert compute_staleness(state_old, max_age_hours=24) == 1.0
+
+    # 48 hours old (capped at 1.0)
+    state_ancient = CompassState(forged_at=now - (48 * 3600))
+    assert compute_staleness(state_ancient, max_age_hours=24) == 1.0
+
+
+def test_load_compass_handles_corrupt_data(tmp_path: Path) -> None:
+    """load_compass should return None for corrupt or non-dict YAML."""
+    project_root = str(tmp_path)
+    path = tmp_path / ".claude" / "compass.yaml"
+    path.parent.mkdir(parents=True)
+
+    # Case 1: Not a dict
+    path.write_text("Hello World")
+    assert load_compass(project_root) is None
+
+    # Case 2: Missing required axes (runtime validation)
+    path.write_text("version: 1\naxes: {}")
+    assert load_compass(project_root) is None
+
+
+# ── Property-based roundtrip tests (moved from test_compass_properties.py) ──
+
+from hypothesis import given  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+
+def _compass_claims():
+    return st.builds(
+        CompassClaim,
+        text=st.text(min_size=1),
+        source=st.text(),
+        heading=st.text(),
+        confidence=st.floats(min_value=0.0, max_value=1.0),
+        provenance=st.sampled_from(["parsed", "inferred", "interviewed"]),
+        origin_facet=st.text(),
+    )
+
+
+def _compass_axes():
+    return st.builds(
+        CompassAxis,
+        name=st.sampled_from(["problem", "solution", "implementation", "world"]),
+        claims=st.lists(_compass_claims()),
+        summary=st.text(),
+        depth=st.integers(min_value=0, max_value=3),
+    )
+
+
+def _compass_directives():
+    return st.builds(
+        CompassDirective,
+        kind=st.sampled_from(["toward", "away", "forbidden"]),
+        text=st.text(min_size=1),
+        source=st.text(),
+    )
+
+
+def _gap_reports():
+    return st.builds(
+        GapReport,
+        axis_depths=st.dictionaries(st.text(), st.integers(min_value=0, max_value=3)),
+        # Round input spikiness to avoid precision errors, as to_dict rounds to 4 decimals
+        spikiness=st.floats(min_value=0.0, max_value=1.0).map(lambda x: round(x, 4)),
+        sparse_axes=st.lists(st.text()),
+        interview_recommended=st.booleans(),
+    )
+
+
+def _compass_states():
+    return st.builds(
+        CompassState,
+        version=st.integers(min_value=1),
+        axes=st.dictionaries(st.text(), _compass_axes()),
+        directives=st.lists(_compass_directives()),
+        gap_report=_gap_reports(),
+        forged_at=st.floats(min_value=0.0),
+        frozen=st.booleans(),
+        frozen_hash=st.text(),
+    )
+
+
+@given(claim=_compass_claims())
+def test_property_compass_claim_roundtrip(claim):
+    """Verify CompassClaim can be serialized and deserialized."""
+    data = claim.to_dict()
+    restored = CompassClaim.from_dict(data)
+    assert restored == claim
+
+
+@given(axis=_compass_axes())
+def test_property_compass_axis_roundtrip(axis):
+    """Verify CompassAxis can be serialized and deserialized."""
+    data = axis.to_dict()
+    restored = CompassAxis.from_dict(data)
+    assert restored == axis
+
+
+@given(directive=_compass_directives())
+def test_property_compass_directive_roundtrip(directive):
+    """Verify CompassDirective can be serialized and deserialized."""
+    data = directive.to_dict()
+    restored = CompassDirective.from_dict(data)
+    assert restored == directive
+
+
+@given(report=_gap_reports())
+def test_property_gap_report_roundtrip(report):
+    """Verify GapReport can be serialized and deserialized."""
+    data = report.to_dict()
+    restored = GapReport.from_dict(data)
+    # Compare dictionary forms to handle float rounding effectively
+    assert restored.to_dict() == data
+    # Also verify object equality since we clamped input precision
+    assert restored == report
+
+
+@given(state=_compass_states())
+def test_property_compass_state_roundtrip(state):
+    """Verify CompassState can be serialized and deserialized."""
+    data = state.to_dict()
+    restored = CompassState.from_dict(data)
+    assert restored.to_dict() == data
+    assert restored == state

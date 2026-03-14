@@ -125,7 +125,7 @@ def test_run_linters_returns_list_of_linter_results() -> None:
     config = ProjectConfig(project_root=".")
     registry = {"nop": _NopLinter()}
 
-    results = run_linters(tier, config, registry, timeout_ms=5000)
+    results = run_linters(tier, config, registry, timeout_ms=5000)  # type: ignore[arg-type]  # dict invariance: _NopLinter vs BaseLinter
     assert isinstance(results, list)
     assert all(isinstance(r, LinterResult) for r in results)
 
@@ -135,7 +135,7 @@ def test_linter_result_has_required_fields() -> None:
     config = ProjectConfig(project_root=".")
     registry = {"nop": _NopLinter()}
 
-    results = run_linters(tier, config, registry, timeout_ms=5000)
+    results = run_linters(tier, config, registry, timeout_ms=5000)  # type: ignore[arg-type]  # dict invariance: _NopLinter vs BaseLinter
     assert len(results) == 1
     r = results[0]
     assert r.linter_name == "nop"

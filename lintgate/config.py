@@ -89,6 +89,7 @@ def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
         ChannelConfig,
         DispositionEnforcementConfig,
         InquiryConfig,
+        PlatonicWorkflowConfig,
         QualityGateConfig,
         TestRegenerationConfig,
         TokenPolicy,
@@ -173,6 +174,25 @@ def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
             zero_kill_ceiling=float(regen_raw.get("zero_kill_ceiling", 0.05)),
             generated_dir=str(regen_raw.get("generated_dir", "tests/generated")),
             quarantine_dir=str(regen_raw.get("quarantine_dir", "tests/quarantine")),
+            reconciliation_confidence_threshold=float(
+                regen_raw.get("reconciliation_confidence_threshold", 0.7)
+            ),
+        )
+
+    # Parse platonic workflow config
+    platonic_raw = cp_raw.get("platonic_workflow", {})
+    if isinstance(platonic_raw, dict):
+        cp_config.platonic_workflow = PlatonicWorkflowConfig(
+            enabled=bool(platonic_raw.get("enabled", True)),
+            project_max_files=int(platonic_raw.get("project_max_files", 5)),
+            default_budget_ms=int(platonic_raw.get("default_budget_ms", 30_000)),
+            target_spec_level=float(platonic_raw.get("target_spec_level", 0.80)),
+            target_kill_rate=float(platonic_raw.get("target_kill_rate", 0.70)),
+            reconciliation_confidence_threshold=float(
+                platonic_raw.get("reconciliation_confidence_threshold", 0.7)
+            ),
+            max_iterations=int(platonic_raw.get("max_iterations", 5)),
+            workflow_dir=str(platonic_raw.get("workflow_dir", ".lintgate/platonic_workflows")),
         )
 
     # Parse per-channel configs

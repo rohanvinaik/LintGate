@@ -226,7 +226,7 @@ class TestPipAuditParsing:
         req = tmp_path / "requirements.txt"
         req.write_text("requests==2.31.0\n")
 
-        data = {"dependencies": []}
+        data: dict[str, list[object]] = {"dependencies": []}
         mock_result = MagicMock()
         mock_result.stdout = json.dumps(data)
 

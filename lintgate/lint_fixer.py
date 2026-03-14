@@ -20,6 +20,23 @@ from typing import Any
 _SHIM_MARKER = "# lintgate: shim"
 
 
+def _extract_code_lines(lines: list[str]) -> list[str]:
+    """Extract non-comment, non-docstring, non-blank code lines."""
+    code_lines: list[str] = []
+    in_docstring = False
+    for line in lines:
+        stripped = line.strip()
+        if '"""' in stripped or "'''" in stripped:
+            count = stripped.count('"""') + stripped.count("'''")
+            if count % 2 == 1:
+                in_docstring = not in_docstring
+            continue
+        if in_docstring or not stripped or stripped.startswith("#"):
+            continue
+        code_lines.append(stripped)
+    return code_lines
+
+
 def _is_shim_file(filepath: str) -> bool:
     """Detect if a file is a re-export shim that should skip F401 removal.
 
@@ -36,45 +53,21 @@ def _is_shim_file(filepath: str) -> bool:
         return False
 
     # Check for explicit marker in first 10 lines
-    for line in lines[:10]:
-        if _SHIM_MARKER in line:
-            return True
+    if any(_SHIM_MARKER in line for line in lines[:10]):
+        return True
 
     # Strong signal: multiple noqa:F401 annotations indicate deliberate re-exports
-    noqa_f401_count = sum(
-        1 for line in lines if "# noqa" in line and "F401" in line
-    )
+    noqa_f401_count = sum(1 for line in lines if "# noqa" in line and "F401" in line)
     if noqa_f401_count >= 3:
         return True
 
-    # Check for __all__ definition (re-export shims typically define __all__)
-    has_all_definition = any(
-        line.strip().startswith("__all__") and "=" in line for line in lines
-    )
-
-    # Heuristic: count from-import lines vs total code lines
-    code_lines: list[str] = []
-    in_docstring = False
-    for line in lines:
-        stripped = line.strip()
-        # Rough docstring tracking (handles most cases)
-        if '"""' in stripped or "'''" in stripped:
-            count = stripped.count('"""') + stripped.count("'''")
-            if count % 2 == 1:
-                in_docstring = not in_docstring
-            continue
-        if in_docstring or not stripped or stripped.startswith("#"):
-            continue
-        code_lines.append(stripped)
-
-    reexport_count = sum(
-        1 for line in code_lines if line.startswith("from ") and "import" in line
-    )
+    has_all_definition = any(line.strip().startswith("__all__") and "=" in line for line in lines)
+    code_lines = _extract_code_lines(lines)
+    reexport_count = sum(1 for line in code_lines if line.startswith("from ") and "import" in line)
 
     if len(code_lines) < 2:
         return has_all_definition
 
-    # Moderate signal: __all__ + some from-imports
     if has_all_definition and reexport_count >= 2:
         return True
 

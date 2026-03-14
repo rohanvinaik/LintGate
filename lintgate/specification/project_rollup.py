@@ -40,9 +40,13 @@ class ProjectRollup:
     total_functions: int = 0
     total_sigma: int = 0
     mean_spec_level: float = 0.0
+    mean_reconciled_spec_level: float = 0.0
+    mapping_coverage: float = 0.0
     regime_distribution: dict[str, int] = field(default_factory=dict)
     risk_distribution: dict[str, int] = field(default_factory=dict)
     phase_distribution: dict[str, int] = field(default_factory=dict)
+    reconciliation_distribution: dict[str, int] = field(default_factory=dict)
+    gap_class_distribution: dict[str, int] = field(default_factory=dict)
     hotspot_files: list[dict[str, Any]] = field(default_factory=list)
     cache_hits: int = 0
     cache_misses: int = 0
@@ -57,9 +61,13 @@ class ProjectRollup:
             "total_functions": self.total_functions,
             "total_sigma": self.total_sigma,
             "mean_spec_level": round(self.mean_spec_level, 3),
+            "mean_reconciled_spec_level": round(self.mean_reconciled_spec_level, 3),
+            "mapping_coverage": round(self.mapping_coverage, 3),
             "regime_distribution": self.regime_distribution,
             "risk_distribution": self.risk_distribution,
             "phase_distribution": self.phase_distribution,
+            "reconciliation_distribution": self.reconciliation_distribution,
+            "gap_class_distribution": self.gap_class_distribution,
             "hotspot_files": self.hotspot_files,
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
@@ -127,7 +135,7 @@ def rollup_project(
             rollup.cache_hits += 1
 
     # Aggregate
-    _aggregate(rollup, file_results)
+    _aggregate(rollup, file_results, project_root=project_root)
     return rollup
 
 
@@ -231,11 +239,92 @@ def _deserialize_file_result(data: dict[str, Any]) -> FileSpecResult:
     )
 
 
-def _aggregate(rollup: ProjectRollup, results: list[FileSpecResult]) -> None:
+def _load_mutation_cache(project_root: str) -> dict[str, dict] | None:
+    """Load all mutation cache entries for a project."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    cache_dir = _Path(project_root) / ".lintgate" / "mutation"
+    if not cache_dir.exists():
+        return None
+
+    cache: dict[str, dict] = {}
+    for cache_file in cache_dir.glob("*.json"):
+        if cache_file.name == "scheduler_state.json":
+            continue
+        try:
+            with open(cache_file, encoding="utf-8") as f:
+                data = _json.load(f)
+        except (OSError, ValueError):
+            continue
+        func_key = data.get("function_key", "")
+        if func_key:
+            cache[func_key] = data
+    return cache if cache else None
+
+
+def _reconciliation_priority(
+    func_data: dict,
+    overlay_status: str,
+    overlay_confidence: float,
+    survival_rate: float,
+    static_spec_level: float,
+    sigma: int,
+) -> tuple[float, str]:
+    """Score a function for hotspot priority using reconciliation state.
+
+    Returns (score, reason).
+    """
+    composition_gamma = float(func_data.get("composition_gamma", 0.0) or 0.0)
+    structural_signal = bool(func_data)
+    sigma_weight = min(max(float(sigma), 0.0) / 30.0, 1.0) * 0.2 if structural_signal else 0.0
+    composition_weight = min(max(composition_gamma, 0.0), 2.0) * 0.4 if structural_signal else 0.0
+    structural_boost = sigma_weight + composition_weight
+
+    # Static low + empirical bad: genuine high-priority gap.
+    if static_spec_level < 0.3 and survival_rate > 0.5:
+        if overlay_status == "CONTRADICTS" and overlay_confidence >= 0.7:
+            return (2.5 + structural_boost, "under_specified_contradiction")
+        return (3.0 + structural_boost, "both_under_specified")
+
+    # Static low + empirical good under a contradiction: likely measurement artifact.
+    if (
+        overlay_status == "CONTRADICTS"
+        and overlay_confidence >= 0.7
+        and survival_rate < 0.2
+        and static_spec_level < 0.3
+    ):
+        return (0.5 + sigma_weight, "measurement_artifact")
+
+    # No empirical data — unknown, needs profiling.
+    if overlay_status == "NO_EMPIRICAL_DATA" and static_spec_level < 0.3:
+        return (1.5 + structural_boost, "needs_profiling")
+
+    # Low spec without strong empirical disagreement.
+    if static_spec_level < 0.3:
+        return (2.0 + structural_boost, "genuinely_under_specified")
+
+    if composition_gamma >= 0.5:
+        return (1.2 + composition_weight + sigma_weight, "composition_gap")
+
+    return (1.0 + sigma_weight, "default")
+
+
+def _aggregate(
+    rollup: ProjectRollup,
+    results: list[FileSpecResult],
+    project_root: str = "",
+) -> None:
     """Aggregate per-file results into the project rollup."""
+    from .gap_classifier import classify_from_func_data
+    from .static_empirical_reconciliation import build_overlay, reconcile_spec_level
+
     total_spec = 0.0
+    total_reconciled_spec = 0.0
     total_funcs = 0
-    file_sigma_pairs: list[tuple[str, int]] = []
+    mapped_count = 0
+    mutation_cache = _load_mutation_cache(project_root) if project_root else None
+    file_hotspot_data: list[tuple[str, int, float, str]] = []  # file, sigma, priority, reason
 
     for r in results:
         rollup.total_files += 1
@@ -244,7 +333,9 @@ def _aggregate(rollup: ProjectRollup, results: list[FileSpecResult]) -> None:
         rollup.total_sigma += r.total_sigma
         total_spec += r.mean_spec_level * n_funcs
 
-        file_sigma_pairs.append((r.file, r.total_sigma))
+        file_priority_sum = 0.0
+        file_priority_reason = "default"
+        best_reason_score = float("-inf")
 
         # Merge distributions
         for regime, count in r.regime_distribution.items():
@@ -252,16 +343,71 @@ def _aggregate(rollup: ProjectRollup, results: list[FileSpecResult]) -> None:
         for band, count in r.risk_distribution.items():
             rollup.risk_distribution[band] = rollup.risk_distribution.get(band, 0) + count
 
-        # Phase distribution from per-function data
-        for func_data in r.functions.values():
-            phase = func_data.get("phase", "bulk") if isinstance(func_data, dict) else "bulk"
+        # Phase distribution + reconciliation from per-function data
+        for func_key, func_data in r.functions.items():
+            if not isinstance(func_data, dict):
+                continue
+            phase = func_data.get("phase", "bulk")
             rollup.phase_distribution[phase] = rollup.phase_distribution.get(phase, 0) + 1
+
+            # Track test mapping coverage
+            # A function is "mapped" if it has empirical mutation data (test linkage exists)
+            if mutation_cache and func_key in mutation_cache:
+                mapped_count += 1
+
+            # Build overlay for reconciliation distribution
+            sigma = func_data.get("sigma", func_data.get("estimated_sigma", 0)) or 0
+            regime = func_data.get("regime", "A")
+            overlay = build_overlay(func_key, int(sigma), regime, phase, mutation_cache)
+            status_key = overlay.status.value
+            rollup.reconciliation_distribution[status_key] = (
+                rollup.reconciliation_distribution.get(status_key, 0) + 1
+            )
+
+            # Gap classification — trust persisted gap_class from file_analyzer
+            # when available (it has function_name context for serializer heuristics).
+            # Only recompute for old cached entries that lack the field.
+            gap_class = func_data.get("gap_class")
+            if not gap_class:
+                mutation_entry = mutation_cache.get(func_key) if mutation_cache else None
+                gap_class = classify_from_func_data(func_data, mutation_entry).value
+            rollup.gap_class_distribution[gap_class] = (
+                rollup.gap_class_distribution.get(gap_class, 0) + 1
+            )
+
+            # Reconciled spec_level
+            static_spec = func_data.get("specification_level", 0.0)
+            reconciled_val, _src = reconcile_spec_level(static_spec, overlay)
+            total_reconciled_spec += reconciled_val
+
+            # Priority scoring
+            score, reason = _reconciliation_priority(
+                func_data,
+                status_key,
+                overlay.overlay_confidence,
+                overlay.empirical_survival_rate,
+                static_spec,
+                int(sigma),
+            )
+            file_priority_sum += score
+            if reason != "default" and score > best_reason_score:
+                best_reason_score = score
+                file_priority_reason = reason
+
+        avg_priority = file_priority_sum / n_funcs if n_funcs > 0 else 0.0
+        final_priority = avg_priority
+        file_hotspot_data.append((r.file, r.total_sigma, final_priority, file_priority_reason))
 
     rollup.total_functions = total_funcs
     rollup.mean_spec_level = total_spec / total_funcs if total_funcs > 0 else 0.0
+    rollup.mean_reconciled_spec_level = (
+        total_reconciled_spec / total_funcs if total_funcs > 0 else 0.0
+    )
+    rollup.mapping_coverage = mapped_count / total_funcs if total_funcs > 0 else 0.0
 
-    # Top-N hotspot files by sigma
-    file_sigma_pairs.sort(key=lambda x: x[1], reverse=True)
+    # Top-N hotspot files by reconciliation-aware priority score
+    file_hotspot_data.sort(key=lambda x: x[2], reverse=True)
     rollup.hotspot_files = [
-        {"file": f, "sigma": s} for f, s in file_sigma_pairs[:_MAX_HOTSPOT_FILES]
+        {"file": f, "sigma": s, "priority_score": round(p, 3), "priority_reason": reason}
+        for f, s, p, reason in file_hotspot_data[:_MAX_HOTSPOT_FILES]
     ]

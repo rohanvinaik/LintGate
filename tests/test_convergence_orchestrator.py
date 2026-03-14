@@ -45,9 +45,11 @@ class TestInitFromTargets:
         assert state.start_ms > 0
 
     def test_target_test_file_preserved(self):
-        state = init_from_targets([
-            {"function_key": "f", "target_test_file": "tests/test_f.py"},
-        ])
+        state = init_from_targets(
+            [
+                {"function_key": "f", "target_test_file": "tests/test_f.py"},
+            ]
+        )
         assert state.targets["f"].target_test_file == "tests/test_f.py"
 
 
@@ -122,8 +124,9 @@ class TestCheckHalt:
     def test_max_iterations(self):
         t = self._target()
         t.trajectory = [IterationRecord(i, 0.3, 0.2) for i in range(5)]
-        action, reason = _check_halt(t, ConvergenceConfig(max_iterations=5),
-                                     budget_remaining_ms=10000)
+        action, reason = _check_halt(
+            t, ConvergenceConfig(max_iterations=5), budget_remaining_ms=10000
+        )
         assert action == "halt"
         assert reason == "max_iterations"
 
@@ -139,8 +142,9 @@ class TestCheckHalt:
             IterationRecord(1, 0.5, 0.3, delta_spec=0.005, delta_kill=0.005),
             IterationRecord(2, 0.505, 0.305, delta_spec=0.005, delta_kill=0.005),
         ]
-        action, reason = _check_halt(t, ConvergenceConfig(stall_limit=2, min_delta=0.01),
-                                     budget_remaining_ms=10000)
+        action, reason = _check_halt(
+            t, ConvergenceConfig(stall_limit=2, min_delta=0.01), budget_remaining_ms=10000
+        )
         assert action == "halt"
         assert reason == "stall_detected"
 
@@ -150,8 +154,9 @@ class TestCheckHalt:
             IterationRecord(1, 0.5, 0.3, delta_spec=0.005, delta_kill=0.005),
             IterationRecord(2, 0.505, 0.305, delta_spec=0.005, delta_kill=0.005),
         ]
-        action, reason = _check_halt(t, ConvergenceConfig(stall_limit=2, min_delta=0.01),
-                                     budget_remaining_ms=10000)
+        action, reason = _check_halt(
+            t, ConvergenceConfig(stall_limit=2, min_delta=0.01), budget_remaining_ms=10000
+        )
         assert action == "decompose"
         assert reason == "stall_in_tail"
 
@@ -165,8 +170,7 @@ class TestCheckHalt:
         """Converged takes priority over max_iterations."""
         t = self._target(spec_level=0.9, kill_rate=0.8)
         t.trajectory = [IterationRecord(i, 0.9, 0.8) for i in range(5)]
-        action, _ = _check_halt(t, ConvergenceConfig(max_iterations=5),
-                                budget_remaining_ms=10000)
+        action, _ = _check_halt(t, ConvergenceConfig(max_iterations=5), budget_remaining_ms=10000)
         assert action == "converged"
 
 
@@ -192,10 +196,12 @@ class TestComputePriority:
 
 class TestDecide:
     def test_eligible_targets_get_decisions(self):
-        state = init_from_targets([
-            {"function_key": "a"},
-            {"function_key": "b"},
-        ])
+        state = init_from_targets(
+            [
+                {"function_key": "a"},
+                {"function_key": "b"},
+            ]
+        )
         decisions = decide(state)
         assert len(decisions) == 2
         assert all(isinstance(d, ConvergenceDecision) for d in decisions)
@@ -238,10 +244,12 @@ class TestDecide:
         assert t.status == "decompose"
 
     def test_decisions_sorted_by_priority(self):
-        state = init_from_targets([
-            {"function_key": "tail_fn"},
-            {"function_key": "bulk_fn"},
-        ])
+        state = init_from_targets(
+            [
+                {"function_key": "tail_fn"},
+                {"function_key": "bulk_fn"},
+            ]
+        )
         state.targets["tail_fn"].phase = "tail"
         state.targets["bulk_fn"].phase = "bulk"
         decisions = decide(state)

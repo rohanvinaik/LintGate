@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ def _register_tools(tmp_path: Path) -> dict:
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
     helpers = _make_helpers(tmp_path)
-    return register(mcp, helpers)
+    return register(mcp, helpers)  # type: ignore[no-any-return]
 
 
 # ── register() ───────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ class TestDepHealthCheck:
 
     def test_passes_project_root(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
-        mock_health = {"summary": {}, "checks": []}
+        mock_health: dict[str, Any] = {"summary": {}, "checks": []}
         with patch(
             "lintgate.dependency_health.full_dependency_health",
             return_value=mock_health,

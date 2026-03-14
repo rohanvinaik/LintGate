@@ -621,7 +621,9 @@ def set_debug(val):
 """
         r = analyze_purity(ast.parse(code))["set_debug"]
         assert r.is_pure is False
-        assert any(se.kind == "attribute_mutation" and "config.debug" in se.detail for se in r.side_effects)
+        assert any(
+            se.kind == "attribute_mutation" and "config.debug" in se.detail for se in r.side_effects
+        )
 
 
 class TestConfidenceBands:

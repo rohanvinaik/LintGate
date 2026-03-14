@@ -26,18 +26,21 @@ class TestBuildPrimer:
         state = RuntimeState(mode="habit", habit_score=0.82)
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Mode: habit (82%)" in primer
 
     def test_focus_files_basenames(self, tmp_path):
         state = RuntimeState(active_files=["/src/main.py", "/src/utils.py", "/tests/test_main.py"])
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Focus: [main.py, utils.py, test_main.py]" in primer
 
     def test_focus_files_capped_at_3(self, tmp_path):
         state = RuntimeState(active_files=[f"/src/{i}.py" for i in range(10)])
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         # Should only show 3 files
         assert primer.count(".py") <= 3
 
@@ -45,18 +48,21 @@ class TestBuildPrimer:
         state = RuntimeState(blocking_issues=5)
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "BLOCKING: 5 issues" in primer
 
     def test_no_blocking_when_zero(self, tmp_path):
         state = RuntimeState(blocking_issues=0)
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "BLOCKING" not in primer
 
     def test_approach_failures_warning(self, tmp_path):
         state = RuntimeState(approach_failures=3)
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "WARNING: 3 failed approaches" in primer
         assert "constraint_check" in primer
 
@@ -64,30 +70,35 @@ class TestBuildPrimer:
         state = RuntimeState(prediction_accuracy=0.3, approach_failures=0)
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Prediction accuracy: 30%" in primer
 
     def test_no_prediction_when_no_data(self, tmp_path):
         state = RuntimeState(prediction_accuracy=-1.0, approach_failures=0)
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Prediction" not in primer
 
     def test_coherence_alert_systemic(self, tmp_path):
         state = RuntimeState(coherence_state="systemic")
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Coherence: systemic" in primer
 
     def test_coherence_alert_coupled(self, tmp_path):
         state = RuntimeState(coherence_state="coupled")
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Coherence: coupled" in primer
 
     def test_no_coherence_when_stable(self, tmp_path):
         state = RuntimeState(coherence_state="stable")
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert "Coherence" not in primer
 
     def test_max_chars_enforced(self, tmp_path):
@@ -102,6 +113,7 @@ class TestBuildPrimer:
         )
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert len(primer) <= _PRIMER_MAX_CHARS
 
     def test_pipe_separated_parts(self, tmp_path):
@@ -113,6 +125,7 @@ class TestBuildPrimer:
         )
         save_runtime_state(str(tmp_path), state)
         primer = _build_primer(str(tmp_path))
+        assert primer is not None
         assert " | " in primer
 
 

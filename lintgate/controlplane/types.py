@@ -256,6 +256,21 @@ class TestRegenerationConfig:
     zero_kill_ceiling: float = 0.05
     generated_dir: str = "tests/generated"
     quarantine_dir: str = "tests/quarantine"
+    reconciliation_confidence_threshold: float = 0.7
+
+
+@dataclass
+class PlatonicWorkflowConfig:
+    """Configuration for the platonic workflow golden path."""
+
+    enabled: bool = True
+    project_max_files: int = 5
+    default_budget_ms: int = 30_000
+    target_spec_level: float = 0.80
+    target_kill_rate: float = 0.70
+    reconciliation_confidence_threshold: float = 0.7
+    max_iterations: int = 5
+    workflow_dir: str = ".lintgate/platonic_workflows"
 
 
 @dataclass
@@ -311,6 +326,8 @@ class ControlPlaneConfig:
     )
     # Test regeneration workflow settings
     test_regeneration: TestRegenerationConfig = field(default_factory=TestRegenerationConfig)
+    # Platonic workflow golden path settings
+    platonic_workflow: PlatonicWorkflowConfig = field(default_factory=PlatonicWorkflowConfig)
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

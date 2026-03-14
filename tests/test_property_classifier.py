@@ -77,6 +77,7 @@ def test_detect_bounded_nested_order():
     purity = _mock_purity("clamp")
     props = classify_properties(node, purity)
     prop = [p for p in props.properties if p.kind == PropertyKind.BOUNDED][0]
+    assert prop.bound_spec is not None
     assert prop.bound_spec.lower == -100.0
     assert prop.bound_spec.upper == 100.0
 

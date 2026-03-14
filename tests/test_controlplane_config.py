@@ -59,3 +59,23 @@ def test_behavior_channel_settings_parsed(tmp_path: Path) -> None:
     behavior = cp.channels["behavior"]
     assert behavior.settings["thresholds"]["approach_cycling_count"] == 5
     assert behavior.settings["premature_action_ratio"] == 4.0
+
+
+def test_platonic_workflow_settings_parsed(tmp_path: Path) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    config_file = claude_dir / "lintgate.yaml"
+    config_file.write_text(
+        "controlplane:\n"
+        "  enabled: true\n"
+        "  platonic_workflow:\n"
+        "    project_max_files: 7\n"
+        "    default_budget_ms: 45000\n"
+        "    reconciliation_confidence_threshold: 0.9\n"
+    )
+
+    cp = load_controlplane_config(str(tmp_path))
+    assert cp is not None
+    assert cp.platonic_workflow.project_max_files == 7
+    assert cp.platonic_workflow.default_budget_ms == 45000
+    assert cp.platonic_workflow.reconciliation_confidence_threshold == 0.9

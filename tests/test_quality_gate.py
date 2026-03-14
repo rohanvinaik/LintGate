@@ -78,7 +78,7 @@ def _make_config(enabled: bool = True, **overrides):
         "check_secrets": True,
     }
     qg_kwargs.update(overrides)
-    cp = ControlPlaneConfig(enabled=True, quality_gate=QualityGateConfig(**qg_kwargs))
+    cp = ControlPlaneConfig(enabled=True, quality_gate=QualityGateConfig(**qg_kwargs))  # type: ignore[arg-type]  # dict[str, float] unpacking
     return cp
 
 
@@ -90,7 +90,7 @@ def _fresh_state(**overrides) -> RuntimeState:
         "last_test_status": "",
     }
     defaults.update(overrides)
-    return RuntimeState(**defaults)
+    return RuntimeState(**defaults)  # type: ignore[arg-type]  # dict[str, object] unpacking
 
 
 class TestQualityGatePush:
