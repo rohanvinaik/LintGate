@@ -25,8 +25,10 @@ def test_property_kind_values():
 
 
 def test_property_kind_from_string():
-    assert PropertyKind("pure") is PropertyKind.PURE
-    assert PropertyKind("bounded") is PropertyKind.BOUNDED
+    assert PropertyKind("pure") == PropertyKind.PURE
+    assert PropertyKind("bounded") == PropertyKind.BOUNDED
+    assert PropertyKind("monotonic") == PropertyKind.MONOTONIC
+    assert PropertyKind("idempotent") == PropertyKind.IDEMPOTENT
 
 
 # --- SideEffect ---
@@ -81,6 +83,7 @@ def test_bound_spec_none_bounds():
     bs = BoundSpec(lower=None, upper=None, source="ratio")
     assert bs.lower is None
     assert bs.upper is None
+    assert bs.source == "ratio"
 
 
 # --- PurityResult ---

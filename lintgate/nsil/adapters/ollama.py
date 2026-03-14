@@ -47,6 +47,17 @@ class OllamaAdapter:
     _action_hooks: list[Callable[[str, Any], None]] = field(default_factory=list)
     _injected_state: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Validate endpoint uses http/https scheme only."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.endpoint)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"Ollama endpoint must use http:// or https:// scheme, "
+                f"got: {parsed.scheme!r}"
+            )
+
     def get_capabilities(self) -> RuntimeCapabilities:
         """Get Ollama runtime capabilities."""
         return RuntimeCapabilities(
@@ -121,7 +132,7 @@ class OllamaAdapter:
 
         try:
             req = self._make_request(url, payload)
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310 — scheme validated in __post_init__
                 yield from _iter_jsonl_stream(response)
         except urllib.error.URLError as e:
             yield f"[Error: Ollama unavailable - {e.reason}]"

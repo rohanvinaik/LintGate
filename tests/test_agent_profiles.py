@@ -37,6 +37,9 @@ def test_get_profile_case_insensitive():
 def test_get_profile_unknown_returns_none():
     result = get_profile("nonexistent_agent")
     assert result is None
+    # Verify known profile returns AgentProfile (not None)
+    known = get_profile("claude")
+    assert isinstance(known, AgentProfile)
 
 
 # --- _load_existing_config ---

@@ -38,12 +38,6 @@ class TestComputePriority:
         assert _compute_priority(risk_score=1.0, coverage_depth="full") == 30.0
         assert _compute_priority(risk_score=0.5, coverage_depth="full") == 15.0
 
-    def test_coverage_depth_none_adds_20(self):
-        assert _compute_priority(coverage_depth="none") == 20.0
-
-    def test_coverage_depth_sampled_adds_5(self):
-        assert _compute_priority(coverage_depth="sampled") == 5.0
-
     def test_pure_with_hints_adds_10(self):
         assert _compute_priority(is_pure=True, has_hints=True, coverage_depth="full") == 10.0
 

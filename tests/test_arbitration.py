@@ -565,18 +565,20 @@ class TestBuildPulseDelta:
     def test_coherence_detected(self):
         report = {"systemMessage": "Low coherence score detected"}
         delta = build_pulse_delta(report, None, 2, [])
-        assert delta["changes"]["coherence_mentioned"] is True
+        assert delta["changes"] == {"coherence_mentioned": True}
+        assert delta["events_since_last"] == 2
 
     def test_coherence_case_insensitive(self):
         report = {"systemMessage": "COHERENCE is fine"}
         delta = build_pulse_delta(report, None, 1, [])
-        assert delta["changes"]["coherence_mentioned"] is True
+        assert delta["changes"] == {"coherence_mentioned": True}
+        assert delta["events_since_last"] == 1
 
     def test_both_blocking_and_coherence(self):
         report = {"systemMessage": "BLOCKING with low coherence"}
         delta = build_pulse_delta(report, None, 4, [])
-        assert delta["changes"]["has_blockers"] is True
-        assert delta["changes"]["coherence_mentioned"] is True
+        assert delta["changes"] == {"has_blockers": True, "coherence_mentioned": True}
+        assert delta["events_since_last"] == 4
 
     def test_dispositions_included(self):
         disps = [{"disposition": "test", "priority": 1}]

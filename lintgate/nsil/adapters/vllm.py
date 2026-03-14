@@ -81,6 +81,17 @@ class VLLMAdapter:
     _injected_state: dict[str, Any] = field(default_factory=dict)
     _grammar_constraint: dict[str, Any] | None = field(default_factory=lambda: None)
 
+    def __post_init__(self) -> None:
+        """Validate endpoint uses http/https scheme only."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.endpoint)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"vLLM endpoint must use http:// or https:// scheme, "
+                f"got: {parsed.scheme!r}"
+            )
+
     def get_capabilities(self) -> RuntimeCapabilities:
         """Get vLLM runtime capabilities.
 
@@ -220,7 +231,7 @@ class VLLMAdapter:
 
         try:
             req = self._make_request(url, payload)
-            with urllib.request.urlopen(req, timeout=60) as response:
+            with urllib.request.urlopen(req, timeout=60) as response:  # nosec B310 — scheme validated in __post_init__
                 yield from _iter_sse_stream(response)
         except urllib.error.URLError as e:
             yield f"[Error: vLLM unavailable - {e.reason}]"

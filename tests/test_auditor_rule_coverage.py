@@ -63,7 +63,8 @@ class TestSyntacticIdentifiers:
         assert _has_syntactic_id("Call run_tests() first")
 
     def test_plain_prose(self):
-        assert not _has_syntactic_id("Keep it simple and clear")
+        assert _has_syntactic_id("Keep it simple and clear") is False
+        assert _count_syntactic_ids("Keep it simple and clear") == 0
 
     def test_count_multiple(self):
         text = "Use `foo_bar()` and MAX_VALUE with mod.path"
@@ -112,6 +113,8 @@ class TestIsRegexEnforceable:
 
     def test_not_enforceable(self):
         assert _is_regex_enforceable("DO NOT take shortcuts") is False
+        # Verify the inverse: a syntactic directive IS enforceable
+        assert _is_regex_enforceable("DO NOT use `os.system()`") is True
 
 
 # ── _directive_has_matching_rule ──────────────────────────────────

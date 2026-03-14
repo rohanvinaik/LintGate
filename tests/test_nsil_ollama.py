@@ -473,9 +473,10 @@ class TestIsAvailable:
         adapter = OllamaAdapter()
         assert adapter.is_available() is False
 
-    def test_invalid_endpoint_returns_false(self) -> None:
-        adapter = OllamaAdapter(endpoint="no-port-here")
-        assert adapter.is_available() is False
+    def test_invalid_endpoint_rejected(self) -> None:
+        import pytest
+        with pytest.raises(ValueError, match="http"):
+            OllamaAdapter(endpoint="no-port-here")
 
     @patch("socket.socket")
     def test_custom_port(self, mock_socket_cls: MagicMock) -> None:
