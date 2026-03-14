@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import time
 import types
 from dataclasses import dataclass, field
@@ -489,8 +490,6 @@ def generate_mutants(
               truncation so different seeds sample different mutants from the
               same function. ``None`` (default) preserves AST-walk order.
     """
-    import random as _random
-
     mutants: list[Mutant] = []
     ds_pos = _docstring_positions(func_node)
 
@@ -506,8 +505,7 @@ def generate_mutants(
 
         # Stable shuffle: deterministic per seed, varies across iterations.
         if seed is not None and max_per_category > 0 and target_count > max_per_category:
-            rng = _random.Random(seed ^ hash(cat.value))
-            rng.shuffle(indices)
+            indices = _stable_target_order(indices, seed=seed, category=cat.value)
 
         limit = min(target_count, max_per_category) if max_per_category > 0 else target_count
         selected = indices[:limit]
@@ -532,6 +530,17 @@ def generate_mutants(
                 )
 
     return mutants
+
+
+def _stable_target_order(indices: list[int], *, seed: int, category: str) -> list[int]:
+    """Return a deterministic pseudo-shuffled order for target indices."""
+    return sorted(indices, key=lambda idx: _stable_target_key(seed, category, idx))
+
+
+def _stable_target_key(seed: int, category: str, idx: int) -> bytes:
+    """Build a stable hash key for deterministic mutant sampling order."""
+    payload = f"{seed}:{category}:{idx}".encode()
+    return hashlib.sha256(payload).digest()
 
 
 def _make_transformer(

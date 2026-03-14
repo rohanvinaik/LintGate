@@ -29,7 +29,6 @@ Signal space (9 signals, same as v1):
 from __future__ import annotations
 
 import hashlib
-import random
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -179,13 +178,9 @@ def get_probe_tasks(probe_set: str = "quick", seed: int | None = None) -> list[d
         day_str = str(int(_time.time() / 86400))
         seed = int(hashlib.sha256(day_str.encode()).hexdigest()[:8], 16)
 
-    rng = random.Random(seed)
-
     tasks_out = []
     for task in PROBE_TASKS:
-        variant = rng.choice(
-            task.variants
-        )  # NOSONAR — deterministic probe variant selection, not crypto
+        variant = task.variants[_variant_index(seed, task.id, len(task.variants))]
         tasks_out.append(
             {
                 "id": task.id,
@@ -204,6 +199,12 @@ def get_probe_tasks(probe_set: str = "quick", seed: int | None = None) -> list[d
         )
 
     return tasks_out
+
+
+def _variant_index(seed: int, task_id: str, variant_count: int) -> int:
+    """Select a deterministic variant without relying on PRNG APIs."""
+    digest = hashlib.sha256(f"{seed}:{task_id}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") % variant_count
 
 
 def get_probe_questions(probe_set: str = "quick") -> list[dict[str, Any]]:

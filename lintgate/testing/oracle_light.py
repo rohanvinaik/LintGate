@@ -270,7 +270,7 @@ def _state_property(
     attr = _extract_self_attr(diff)
     rhs_info = _extract_assign_rhs(diff, params) if attr else None
     if attr and rhs_info:
-        rhs_kind, rhs_value = rhs_info
+        _, rhs_value = rhs_info
         # Extract class name from func_key: "mod::ClassName.method" → "ClassName"
         class_name = fname.split(".")[0] if "." in fname else None
         method_name = _bare_name(fname)

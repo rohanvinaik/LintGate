@@ -64,7 +64,7 @@ _BADGE_BLOCK_END = "<!-- lintgate:quality-badges:end -->"
 _README_NAMES = ("README.md", "readme.md", "Readme.md", "README.MD")
 
 _GITHUB_REMOTE_RE = re.compile(r"github\.com[:/]([^/]+)/([^/.\s]+)")
-_PRE_PUSH_GATE_ID_RE = re.compile(r"_should_run\s+([A-Za-z0-9_]+)")
+_PRE_PUSH_GATE_ID_RE = re.compile(r"_should_run\s+(\w+)")
 _MATRIX_EXPR_RE = re.compile(r"\${{\s*matrix\.([A-Za-z0-9_-]+)\s*}}")
 
 

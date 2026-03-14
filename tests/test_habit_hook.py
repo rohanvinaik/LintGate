@@ -180,9 +180,8 @@ class TestCheckHabitApiCalibration:
                 side_effect=RuntimeError("boom"),
             ),
         ):
-            # Should not raise
             check_habit_api_calibration(tracker, 5, "/p", {}, cp_config)
-            assert True  # Reached without exception
+            assert tracker.tool_call_count == 20
 
 
 # ── try_habit_compaction ─────────────────────────────────────────────

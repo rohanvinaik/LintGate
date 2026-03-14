@@ -27,6 +27,7 @@ Implementation split across focused helpers:
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,11 @@ from lintgate.testing.platonic_outcomes import (
 from lintgate.testing.platonic_outcomes import (
     workflow_state_from_outputs as _workflow_state_from_outputs_impl,
 )
+
+
+def _is_default_float(value: float, default: float) -> bool:
+    """Treat near-identical float inputs as the unchanged public default."""
+    return math.isclose(value, default, rel_tol=0.0, abs_tol=1e-9)
 
 
 def impl_platonic_project(
@@ -297,13 +303,13 @@ def impl_platonic_converge(
         preserve_globs = cp_config.test_regeneration.preserve_globs
         if max_iterations == 5:
             max_iterations = platonic_cfg.max_iterations
-        if target_spec_level == 0.80:
+        if _is_default_float(target_spec_level, 0.80):
             target_spec_level = platonic_cfg.target_spec_level
-        if target_kill_rate == 0.70:
+        if _is_default_float(target_kill_rate, 0.70):
             target_kill_rate = platonic_cfg.target_kill_rate
         if budget_ms == 30_000:
             budget_ms = platonic_cfg.default_budget_ms
-        if reconciliation_threshold == 0.7:
+        if _is_default_float(reconciliation_threshold, 0.7):
             effective_reconciliation_threshold = platonic_cfg.reconciliation_confidence_threshold
     if workflow_id is None:
         workflow_id = create_workflow_id()
@@ -430,7 +436,7 @@ def impl_platonic_converge(
     ]
     orch_state = init_from_targets(target_dicts)
     if restored_state is not None:
-        for func_key, target in list(orch_state.targets.items()):
+        for func_key, target in orch_state.targets.items():
             restored_target = restored_state.targets.get(func_key)
             if restored_target is None:
                 continue
@@ -471,7 +477,7 @@ def impl_platonic_converge(
             }
 
         # Build per-function metrics from mutation + spec
-        for func_key, target in list(orch_state.targets.items()):
+        for func_key, target in orch_state.targets.items():
             if target.status != "eligible":
                 continue
 
