@@ -10,10 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mcp_tools._controlplane_impl_details import (
-    _build_config_status,
-    _build_details_next_actions,
     _DEFAULT_SECTIONS,
     _EFFORT_DEFAULTS,
+    _SECTION_POPULATORS,
+    _SEV_WEIGHT,
+    _build_config_status,
+    _build_details_next_actions,
     _extract_channel_details,
     _extract_evidence,
     _extract_findings,
@@ -33,10 +35,7 @@ from mcp_tools._controlplane_impl_details import (
     _populate_next_actions,
     _populate_proven_resolutions,
     _populate_repairs,
-    _SECTION_POPULATORS,
-    _SEV_WEIGHT,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -582,8 +581,7 @@ class TestImplControlplaneGetDetails:
     @patch("mcp_tools._controlplane_impl_details.load_controlplane_run", create=True)
     def test_run_not_found_raises(self, _mock_load):
         # Patch the actual import inside the function
-        with patch("lintgate.state.load_controlplane_run", return_value=None):
-            with pytest.raises(ValueError, match="No ControlPlane run found"):
+        with patch("lintgate.state.load_controlplane_run", return_value=None), pytest.raises(ValueError, match="No ControlPlane run found"):
                 _impl_controlplane_get_details(
                     "bad-id", None, None, 10, None, {"_json_dumps": json.dumps}
                 )
@@ -826,10 +824,10 @@ class TestConstants:
         assert _SEV_WEIGHT["informational"] == 1.0
 
     def test_default_sections_content(self):
-        assert _DEFAULT_SECTIONS == frozenset([
+        assert frozenset([
             "findings", "channel_details", "evidence",
             "repairs", "coherence", "next_actions", "proven_resolutions",
-        ])
+        ]) == _DEFAULT_SECTIONS
 
     def test_section_populators_order(self):
         names = [name for name, _ in _SECTION_POPULATORS]

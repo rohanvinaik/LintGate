@@ -58,8 +58,9 @@ class TestMCPInstructions:
         assert "next_actions" in _MCP_INSTRUCTIONS
 
     def test_mentions_tool_count(self) -> None:
-        from mcp_server import _MCP_INSTRUCTIONS
         from pathlib import Path
+
+        from mcp_server import _MCP_INSTRUCTIONS
 
         root = Path(__file__).resolve().parent.parent
         tool_count = (root / "mcp_server.py").read_text().count("@mcp.tool()")

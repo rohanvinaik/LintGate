@@ -482,8 +482,8 @@ def _check_pspec002(
     threshold: float = 2.0,
 ) -> None:
     """PSPEC002: Prescriptive σ diverges >threshold× from retrospective σ."""
-    from lintgate.specification.prescriptive_spec import load_spec
     from lintgate.specification.prescriptive_sigma import compute_convergence_signal
+    from lintgate.specification.prescriptive_spec import load_spec
 
     spec = load_spec(project_root, fs.function_key)
     if spec is None:

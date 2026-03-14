@@ -58,9 +58,7 @@ def extract_fingerprint(filepath: str) -> list[str]:
                 tokens.append(alias.name)
 
         # Defined names
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            tokens.append(node.name)
-        elif isinstance(node, ast.ClassDef):
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             tokens.append(node.name)
 
         # Called names
@@ -281,7 +279,7 @@ def discover_semantic_test_files(
 
     # Filter and sort
     results: list[tuple[str, float]] = []
-    for tf, score in zip(test_files, scores):
+    for tf, score in zip(test_files, scores, strict=False):
         if score >= threshold:
             results.append((tf, round(score, 4)))
 

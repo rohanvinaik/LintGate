@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 
-import pytest
-
 
 class TestScanAllImports:
     """Test AST-based import scanning."""
@@ -163,7 +161,6 @@ class TestGenerateShim:
             "def public_func():\n    pass\n\nclass PublicClass:\n    pass\n"
         )
 
-        old_dir = tmp_path / "lintgate"
         shim_path = generate_shim(str(tmp_path), "lintgate.old_module", "lintgate.new_module")
         assert os.path.exists(shim_path)
 

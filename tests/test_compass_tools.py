@@ -11,9 +11,7 @@ import json
 import os
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from mcp_tools.compass_tools import (
     _apply_answers,
@@ -34,7 +32,6 @@ from mcp_tools.compass_tools import (
     _save_mode,
     register,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -655,7 +652,7 @@ class TestImplUpdateExact:
         assert result["inferred_claims"] == 3
 
     def test_inferred_claim_unknown_facet_routes_to_world(self) -> None:
-        from lintgate.compass import CompassAxis, CompassClaim, CompassState, GapReport
+        from lintgate.compass import CompassClaim, CompassState, GapReport
 
         state = CompassState()
         state.gap_report = GapReport()

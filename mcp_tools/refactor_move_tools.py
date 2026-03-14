@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+
 def register(mcp, helpers):
     """Register refactor_move tools on the shared MCP instance."""
 

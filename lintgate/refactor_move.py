@@ -233,9 +233,7 @@ def _is_mock_patch(node: ast.Call) -> bool:
     func = node.func
     if isinstance(func, ast.Name) and func.id == "patch":
         return True
-    if isinstance(func, ast.Attribute) and func.attr == "patch":
-        return True
-    return False
+    return isinstance(func, ast.Attribute) and func.attr == "patch"
 
 
 def _is_patch_object(node: ast.Call) -> bool:
@@ -266,11 +264,7 @@ def _compute_rewrites(
 ) -> None:
     """Fill in new_text for each reference."""
     for ref in refs:
-        if ref.kind == "import":
-            ref.new_text = ref.old_text.replace(old_module, new_module)
-        elif ref.kind == "from_import":
-            ref.new_text = ref.old_text.replace(old_module, new_module)
-        elif ref.kind == "string_ref":
+        if ref.kind in ("import", "from_import", "string_ref"):
             ref.new_text = ref.old_text.replace(old_module, new_module)
 
 
@@ -316,7 +310,7 @@ def _rewrite_file_with_libcst(
         def __init__(self) -> None:
             self.changed = False
 
-        def leave_ImportFrom(
+        def leave_ImportFrom(  # noqa: N802
             self,
             original_node: cst.ImportFrom,
             updated_node: cst.ImportFrom,
@@ -334,7 +328,7 @@ def _rewrite_file_with_libcst(
                     return updated_node.with_changes(module=new_mod)
             return updated_node
 
-        def leave_Import(
+        def leave_Import(  # noqa: N802
             self,
             original_node: cst.Import,
             updated_node: cst.Import,
@@ -524,9 +518,8 @@ def _extract_public_names(filepath: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "__all__":
-                    if isinstance(node.value, (ast.List, ast.Tuple)):
-                        return [
+                if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(node.value, (ast.List, ast.Tuple)):
+                    return [
                             elt.value
                             for elt in node.value.elts
                             if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
@@ -535,10 +528,7 @@ def _extract_public_names(filepath: str) -> list[str]:
     # Fallback: all non-underscore top-level names
     names: list[str] = []
     for node in getattr(tree, "body", []):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if not node.name.startswith("_"):
-                names.append(node.name)
-        elif isinstance(node, ast.ClassDef):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             if not node.name.startswith("_"):
                 names.append(node.name)
         elif isinstance(node, ast.Assign):
