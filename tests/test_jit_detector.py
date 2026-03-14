@@ -214,7 +214,7 @@ def identity(x):
 # ==================================================================
 
 
-def _parse_func(code: str) -> ast.FunctionDef:
+def _parse_func(code: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     """Parse a single function definition from *code*."""
     tree = ast.parse(code)
     for node in ast.walk(tree):

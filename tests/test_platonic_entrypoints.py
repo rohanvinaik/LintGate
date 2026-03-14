@@ -48,7 +48,7 @@ def _make_workflow(
     step: str = "assess",
     **overrides: Any,
 ) -> PlatonicWorkflowRecord:
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         workflow_id=workflow_id,
         scope="file",
         target="src/foo.py",
@@ -65,7 +65,7 @@ def _make_workflow(
         },
     )
     defaults.update(overrides)
-    return PlatonicWorkflowRecord(**defaults)
+    return PlatonicWorkflowRecord(**defaults)  # type: ignore[arg-type]
 
 
 # ── _load_validation_from_path ──────────────────────────────────────

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+from typing import cast
 
 from lintgate.linters.performance_checks.perf011_pure_uncached_in_loop import (
     _analyze_file_purity,
@@ -253,22 +254,22 @@ class TestGetLoopTargets:
 class TestExtractAssignTargetName:
     def test_simple_name(self):
         tree = ast.parse("x = 1")
-        target = tree.body[0].targets[0]
+        target = cast(ast.Assign, tree.body[0]).targets[0]
         assert _extract_assign_target_name(target) == "x"
 
     def test_subscript_target(self):
         tree = ast.parse("data[0] = 1")
-        target = tree.body[0].targets[0]
+        target = cast(ast.Assign, tree.body[0]).targets[0]
         assert _extract_assign_target_name(target) == "data"
 
     def test_attribute_target_returns_none(self):
         tree = ast.parse("obj.attr = 1")
-        target = tree.body[0].targets[0]
+        target = cast(ast.Assign, tree.body[0]).targets[0]
         assert _extract_assign_target_name(target) is None
 
     def test_tuple_target_returns_none(self):
         tree = ast.parse("a, b = 1, 2")
-        target = tree.body[0].targets[0]
+        target = cast(ast.Assign, tree.body[0]).targets[0]
         assert _extract_assign_target_name(target) is None
 
 
@@ -352,12 +353,12 @@ class TestCollectLoopMutations:
 class TestCheckPositionalArgsInvariant:
     def test_all_constants(self):
         tree = ast.parse("f(1, 2, 3)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_positional_args_invariant(call.args, {"x"}) is True
 
     def test_one_variant_arg(self):
         tree = ast.parse("f(1, x)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_positional_args_invariant(call.args, {"x"}) is False
 
     def test_empty_args(self):
@@ -365,7 +366,7 @@ class TestCheckPositionalArgsInvariant:
 
     def test_name_outside_targets(self):
         tree = ast.parse("f(z)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_positional_args_invariant(call.args, {"x"}) is True
 
 
@@ -375,12 +376,12 @@ class TestCheckPositionalArgsInvariant:
 class TestCheckKeywordArgsInvariant:
     def test_all_constant_kwargs(self):
         tree = ast.parse("f(a=1, b=2)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_keyword_args_invariant(call.keywords, {"x"}) is True
 
     def test_one_variant_kwarg(self):
         tree = ast.parse("f(a=x)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_keyword_args_invariant(call.keywords, {"x"}) is False
 
     def test_empty_kwargs(self):
@@ -388,7 +389,7 @@ class TestCheckKeywordArgsInvariant:
 
     def test_kwarg_references_external_name(self):
         tree = ast.parse("f(key=z)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_keyword_args_invariant(call.keywords, {"x"}) is True
 
 
@@ -398,22 +399,22 @@ class TestCheckKeywordArgsInvariant:
 class TestCheckAllArgsInvariant:
     def test_all_invariant(self):
         tree = ast.parse("f(1, key=2)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_all_args_invariant(call, {"x"}) is True
 
     def test_positional_variant(self):
         tree = ast.parse("f(x, key=2)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_all_args_invariant(call, {"x"}) is False
 
     def test_keyword_variant(self):
         tree = ast.parse("f(1, key=x)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_all_args_invariant(call, {"x"}) is False
 
     def test_both_variant(self):
         tree = ast.parse("f(x, key=x)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         assert _check_all_args_invariant(call, {"x"}) is False
 
 
@@ -429,7 +430,7 @@ class TestCheckCallInLoop:
 
     def test_pure_builtin_invariant_returns_issue(self):
         tree = ast.parse("len(data)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         issue = _check_call_in_loop(call, set(), "test.py")
         assert issue is not None
         assert issue.kind == "PERF011"
@@ -439,7 +440,7 @@ class TestCheckCallInLoop:
     def test_pure_manifest_returns_lower_confidence(self):
         set_manifest_pure_names({"compute"})
         tree = ast.parse("compute(cfg)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         issue = _check_call_in_loop(call, set(), "test.py")
         assert issue is not None
         assert issue.confidence == 0.7
@@ -447,25 +448,25 @@ class TestCheckCallInLoop:
 
     def test_unknown_func_returns_none(self):
         tree = ast.parse("mystery(data)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         issue = _check_call_in_loop(call, set(), "test.py")
         assert issue is None
 
     def test_no_args_returns_none(self):
         tree = ast.parse("len()", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         issue = _check_call_in_loop(call, set(), "test.py")
         assert issue is None
 
     def test_variant_args_returns_none(self):
         tree = ast.parse("len(x)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         issue = _check_call_in_loop(call, {"x"}, "test.py")
         assert issue is None
 
     def test_local_pure_returns_issue(self):
         tree = ast.parse("helper(cfg)", mode="eval")
-        call = tree.body
+        call = cast(ast.Call, tree.body)
         issue = _check_call_in_loop(call, set(), "test.py", local_pure_names={"helper"})
         assert issue is not None
         assert issue.confidence == 0.7

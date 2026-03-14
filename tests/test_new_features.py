@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-import tomllib
+import tomllib  # type: ignore[import-not-found]
 
 import lintgate.versioning as versioning
 import mcp_server

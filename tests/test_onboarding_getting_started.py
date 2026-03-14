@@ -48,7 +48,7 @@ class TestDetectMutationGuard:
             assert _detect_mutation_guard() is False
 
     def test_returns_false_when_empty_hooks(self):
-        settings = {"hooks": {}}
+        settings: dict[str, dict[str, list[object]]] = {"hooks": {}}
         with patch("builtins.open", mock_open(read_data=json.dumps(settings))):
             assert _detect_mutation_guard() is False
 
