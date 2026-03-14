@@ -9,8 +9,10 @@ paths = [
     '''tests/test_secrets_scanning\.py''',
     '''tests/test_behavior_compass_core\.py''',
     '''tests/test_git_channel_helpers\.py''',
+    '''tests/test_git_secrets\.py''',
     '''\.githooks/pre-push''',
     '''mcp_tools/onboarding_tools\.py''',
     '''worker/src/auth/github-app\.ts''',
+    '''scripts/ci/run_sonar_gate\.sh''',
 ]
 
