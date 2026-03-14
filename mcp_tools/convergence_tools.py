@@ -790,6 +790,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         workers: int = 4,
         budget_ms: int = 500,
         output: str = "",
+        mode: str = "sweep",
     ) -> str:
         """Generate a Google Colab notebook for offloading mutation sweeps.
 
@@ -804,10 +805,12 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             workers: Parallel workers for Colab (default 4, good for free tier).
             budget_ms: Per-function mutation budget in ms (default 500).
             output: Custom output path for the notebook (default: scripts/).
+            mode: "sweep" for mutation-only, "golden_path" for full pipeline
+                  (sweep + spec analysis + reconciliation + coverage report).
         """
         from ._colab_impl import impl_colab_sweep_generate
 
-        return impl_colab_sweep_generate(helpers, path, workers, budget_ms, output)
+        return impl_colab_sweep_generate(helpers, path, workers, budget_ms, output, mode)
 
     return {
         "convergence_analyze": convergence_analyze,
