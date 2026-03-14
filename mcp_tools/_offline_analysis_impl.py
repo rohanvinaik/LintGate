@@ -213,6 +213,19 @@ def impl_offline_analysis_run(
 # ── Notebook builder ──────────────────────────────────────────────────
 
 
+def _get_lintgate_repo_url() -> str:
+    """Get the LintGate repo URL for notebook installation."""
+    # Try to get from the lintgate package itself
+    try:
+        lintgate_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        info = _get_git_info(lintgate_dir)
+        if info["repo_url"]:
+            return info["repo_url"]
+    except Exception:
+        pass
+    return "https://github.com/rohanvinaik/LintGate.git"
+
+
 def _build_full_analysis_notebook(
     *,
     repo_url: str,
@@ -223,57 +236,125 @@ def _build_full_analysis_notebook(
     src_dirs: list[str],
     local_project_path: str,
 ) -> dict[str, Any]:
-    """Build a self-contained .ipynb for comprehensive offline analysis."""
+    """Build a self-contained .ipynb for comprehensive offline analysis.
+
+    Architecture: TWO clones on Colab —
+    1. LintGate (the tool) → installed as a pip package
+    2. Target project → cloned as PROJECT_DIR, analyzed by LintGate
+    """
+    lintgate_url = _get_lintgate_repo_url()
     src_dirs_str = repr(src_dirs)
     mutation_flag = "True" if include_mutation else "False"
 
-    # ── Cell 1: Install & clone ───────────────────────────────────
-    install_cell = (
-        "import importlib, os, shutil, subprocess, sys\n"
-        "\n"
-        f'REPO_URL = "{repo_url}"\n'
-        f'BRANCH = "{branch}"\n'
-        'PROJECT_DIR = "/content/project"\n'
-        f"SRC_DIRS = {src_dirs_str}\n"
-        "\n"
-        "# Uncomment if repo is private:\n"
-        '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
-        "\n"
-        "if os.path.exists(PROJECT_DIR):\n"
-        "    shutil.rmtree(PROJECT_DIR)\n"
-        "\n"
-        "clone_url = REPO_URL\n"
-        "try:\n"
-        "    GITHUB_TOKEN\n"
-        '    clone_url = REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
-        "    print('Using authenticated clone')\n"
-        "except NameError:\n"
-        "    print('Using public clone')\n"
-        "\n"
-        "result = subprocess.run(\n"
-        "    ['git', 'clone', '--depth', '1', '--branch', BRANCH, clone_url, PROJECT_DIR],\n"
-        "    capture_output=True, text=True\n"
-        ")\n"
-        "if result.returncode != 0:\n"
-        "    result = subprocess.run(\n"
-        "        ['git', 'clone', '--depth', '1', clone_url, PROJECT_DIR],\n"
-        "        capture_output=True, text=True\n"
-        "    )\n"
-        "    if result.returncode != 0:\n"
-        "        raise RuntimeError(f'Clone failed: {result.stderr}')\n"
-        "print(f'Cloned to {PROJECT_DIR}')\n"
-        "\n"
-        "# Install dependencies\n"
-        "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
-        "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR], capture_output=True, text=True)\n"
-        "if PROJECT_DIR not in sys.path:\n"
-        "    sys.path.insert(0, PROJECT_DIR)\n"
-        "for m in list(sys.modules):\n"
-        "    if any(m.startswith(d.split('/')[0]) for d in SRC_DIRS):\n"
-        "        del sys.modules[m]\n"
-        "importlib.invalidate_caches()\n"
-        "print('Setup complete!')"
-    )
+    # Detect if the target IS lintgate (self-analysis mode)
+    is_self_analysis = repo_url.rstrip("/").rstrip(".git") == lintgate_url.rstrip("/").rstrip(".git")
+
+    # ── Cell 1: Install LintGate + clone target ───────────────────
+    if is_self_analysis:
+        # Self-analysis: single clone, LintGate is both tool and target
+        install_cell = (
+            "import importlib, os, shutil, subprocess, sys\n"
+            "\n"
+            f'REPO_URL = "{repo_url}"\n'
+            f'BRANCH = "{branch}"\n'
+            'PROJECT_DIR = "/content/project"\n'
+            f"SRC_DIRS = {src_dirs_str}\n"
+            "\n"
+            "# Uncomment if repo is private:\n"
+            '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
+            "\n"
+            "if os.path.exists(PROJECT_DIR):\n"
+            "    shutil.rmtree(PROJECT_DIR)\n"
+            "\n"
+            "clone_url = REPO_URL\n"
+            "try:\n"
+            "    GITHUB_TOKEN\n"
+            '    clone_url = REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
+            "    print('Using authenticated clone')\n"
+            "except NameError:\n"
+            "    print('Using public clone')\n"
+            "\n"
+            "result = subprocess.run(\n"
+            "    ['git', 'clone', '--depth', '1', '--branch', BRANCH, clone_url, PROJECT_DIR],\n"
+            "    capture_output=True, text=True\n"
+            ")\n"
+            "if result.returncode != 0:\n"
+            "    result = subprocess.run(\n"
+            "        ['git', 'clone', '--depth', '1', clone_url, PROJECT_DIR],\n"
+            "        capture_output=True, text=True\n"
+            "    )\n"
+            "    if result.returncode != 0:\n"
+            "        raise RuntimeError(f'Clone failed: {result.stderr}')\n"
+            "print(f'Cloned to {PROJECT_DIR}')\n"
+            "\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR], capture_output=True, text=True)\n"
+            "if PROJECT_DIR not in sys.path:\n"
+            "    sys.path.insert(0, PROJECT_DIR)\n"
+            "for m in list(sys.modules):\n"
+            "    if any(m.startswith(d.split('/')[0]) for d in SRC_DIRS):\n"
+            "        del sys.modules[m]\n"
+            "importlib.invalidate_caches()\n"
+            "print('Self-analysis mode: LintGate is both tool and target')"
+        )
+    else:
+        # External project: install LintGate as tool, clone target separately
+        install_cell = (
+            "import importlib, os, shutil, subprocess, sys\n"
+            "\n"
+            f'TARGET_REPO_URL = "{repo_url}"\n'
+            f'TARGET_BRANCH = "{branch}"\n'
+            f'LINTGATE_REPO_URL = "{lintgate_url}"\n'
+            'LINTGATE_DIR = "/content/lintgate"\n'
+            'PROJECT_DIR = "/content/project"\n'
+            f"SRC_DIRS = {src_dirs_str}\n"
+            "\n"
+            "# Uncomment if repos are private:\n"
+            '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
+            "\n"
+            "def _clone(url, branch, dest):\n"
+            "    if os.path.exists(dest):\n"
+            "        shutil.rmtree(dest)\n"
+            "    clone_url = url\n"
+            "    try:\n"
+            "        GITHUB_TOKEN\n"
+            '        clone_url = url.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
+            "    except NameError:\n"
+            "        pass\n"
+            "    result = subprocess.run(\n"
+            "        ['git', 'clone', '--depth', '1', '--branch', branch, clone_url, dest],\n"
+            "        capture_output=True, text=True\n"
+            "    )\n"
+            "    if result.returncode != 0:\n"
+            "        result = subprocess.run(\n"
+            "            ['git', 'clone', '--depth', '1', clone_url, dest],\n"
+            "            capture_output=True, text=True\n"
+            "        )\n"
+            "        if result.returncode != 0:\n"
+            "            raise RuntimeError(f'Clone {url} failed: {result.stderr}')\n"
+            "    print(f'Cloned {url} → {dest}')\n"
+            "\n"
+            "# Step 1: Clone and install LintGate (the analysis tool)\n"
+            "print('Installing LintGate...')\n"
+            "_clone(LINTGATE_REPO_URL, 'main', LINTGATE_DIR)\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', LINTGATE_DIR], capture_output=True, text=True)\n"
+            "if LINTGATE_DIR not in sys.path:\n"
+            "    sys.path.insert(0, LINTGATE_DIR)\n"
+            "\n"
+            "# Step 2: Clone the target project\n"
+            "print(f'Cloning target project...')\n"
+            f"_clone(TARGET_REPO_URL, TARGET_BRANCH, PROJECT_DIR)\n"
+            "\n"
+            "# Verify LintGate is importable\n"
+            "for m in list(sys.modules):\n"
+            "    if m.startswith('lintgate'):\n"
+            "        del sys.modules[m]\n"
+            "importlib.invalidate_caches()\n"
+            "from lintgate.offline_analysis import run_full_analysis\n"
+            "print(f'LintGate installed. Target project at {PROJECT_DIR}')\n"
+            "print(f'Source dirs to analyze: {SRC_DIRS}')"
+        )
 
     # ── Cell 2: Run full analysis ─────────────────────────────────
     analysis_cell = (
@@ -388,6 +469,12 @@ def _build_full_analysis_notebook(
         f"print(f'  \"Apply results to: {local_project_path}\"')"
     )
 
+    mode_note = (
+        "**Mode**: Self-analysis (LintGate analyzing itself)"
+        if is_self_analysis
+        else f"**Mode**: External project analysis\n- **Tool**: LintGate (`{lintgate_url}`)\n- **Target**: `{repo_url}`"
+    )
+
     cells = [
         _md(
             "# LintGate Full Analysis\n"
@@ -396,10 +483,11 @@ def _build_full_analysis_notebook(
             "Runs the entire LintGate analysis pipeline offline and produces\n"
             "a portable JSON artifact with a prioritized action plan.\n"
             "\n"
-            f"- **Repo**: `{repo_url}`\n"
+            f"- **Target repo**: `{repo_url}`\n"
             f"- **Branch**: `{branch}`\n"
             f"- **Source dirs**: `{src_dirs_str}`\n"
             f"- **Mutation profiling**: `{mutation_flag}`\n"
+            f"- {mode_note}\n"
             "\n"
             "**How to use:** Runtime > Run all. Download the zip at the end.\n"
             "Pass the `action_plan.json` to any LLM coding agent.\n"
@@ -409,7 +497,7 @@ def _build_full_analysis_notebook(
             "- **Dependency-ordered**: lint fixes before spec work, tests before mutation profiling\n"
             "- **Actionable**: each item has specific tool commands and expected outcomes"
         ),
-        _md("## Step 1: Clone & Install"),
+        _md("## Step 1: Install LintGate + Clone Target"),
         _code(install_cell),
         _md("## Step 2: Run Full Analysis"),
         _code(analysis_cell),
