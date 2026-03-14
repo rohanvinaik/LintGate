@@ -1348,7 +1348,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 110 MCP tools. The default workflows are: **lint → drill-down → fix → verify** for raw supervision, and **platonic_project/platonic_converge → primary_next_action → platonic_apply** for closed-loop specification improvement toward the platonic ideal. The platonic path is step-aware: `platonic_continue` resumes validation-only or profiling-from-snapshot when possible, and `platonic_apply` can advance both fully-ready and review-ready workflows into the live suite.
+LintGate exposes 111 MCP tools. The default workflows are: **lint → drill-down → fix → verify** for raw supervision, and **platonic_project/platonic_converge → primary_next_action → platonic_apply** for closed-loop specification improvement toward the platonic ideal. The platonic path is step-aware: `platonic_continue` resumes validation-only or profiling-from-snapshot when possible, and `platonic_apply` can advance both fully-ready and review-ready workflows into the live suite.
 
 ### Core Lint Workflow
 

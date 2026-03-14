@@ -20,7 +20,7 @@
 
 AI writes code fast but breaks things. A senior engineer's instincts — check imports after refactoring, notice when complexity creeps, feel when a function does too much — are pattern recognition over structural invariants. Pattern recognition over structural invariants is what symbolic systems do.
 
-110 MCP tools. 18 linters. 6 parallel analysis channels. No LLM inference in the supervision path — symbolic checks on a CPU, at the speed your agent writes code.
+111 MCP tools. 18 linters. 6 parallel analysis channels. No LLM inference in the supervision path — symbolic checks on a CPU, at the speed your agent writes code.
 
 | | Without LintGate | With LintGate |
 |---|---|---|
@@ -163,6 +163,6 @@ The savings come from what doesn't happen. Every uncaught discipline failure deg
 
 Part of a research program on structured navigation through constrained semantic spaces — the same paradigm applied to [ML model discovery](https://github.com/rohanvinaik/ModelAtlas) and [theorem proving](https://github.com/rohanvinaik/Wayfinder).
 
-*110 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
+*111 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
 
 MIT — Rohan Vinaik
