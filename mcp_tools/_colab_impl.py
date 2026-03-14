@@ -16,6 +16,145 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+_LINTGATE_REPO_URL = "https://github.com/rohanvinaik/LintGate.git"
+
+
+def _get_lintgate_repo_url() -> str:
+    """Get the LintGate repo URL for notebook installation."""
+    try:
+        lintgate_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        info = _get_git_info(lintgate_dir)
+        if info["repo_url"]:
+            return info["repo_url"]
+    except Exception:
+        pass
+    return _LINTGATE_REPO_URL
+
+
+def _is_self_analysis(repo_url: str) -> bool:
+    """Check if the target repo IS lintgate itself."""
+    lintgate_url = _get_lintgate_repo_url()
+    return repo_url.rstrip("/").rstrip(".git").lower() == lintgate_url.rstrip("/").rstrip(".git").lower()
+
+
+def _build_install_cell(
+    repo_url: str,
+    branch: str,
+    src_dirs_str: str,
+    *,
+    self_analysis: bool,
+) -> str:
+    """Build the install cell for either self-analysis or external project mode.
+
+    Self-analysis: single clone (LintGate = both tool and target).
+    External: two clones — LintGate as tool, target project as subject.
+    """
+    if self_analysis:
+        return (
+            "import importlib, os, shutil, subprocess, sys\n"
+            "\n"
+            f'REPO_URL = "{repo_url}"\n'
+            f'BRANCH = "{branch}"\n'
+            'PROJECT_DIR = "/content/project"\n'
+            f"SRC_DIRS = {src_dirs_str}\n"
+            "\n"
+            "# Uncomment if repo is private:\n"
+            '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
+            "\n"
+            "if os.path.exists(PROJECT_DIR):\n"
+            "    shutil.rmtree(PROJECT_DIR)\n"
+            "\n"
+            "clone_url = REPO_URL\n"
+            "try:\n"
+            "    GITHUB_TOKEN\n"
+            '    clone_url = REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
+            "    print('Using authenticated clone')\n"
+            "except NameError:\n"
+            "    print('Using public clone')\n"
+            "\n"
+            "result = subprocess.run(\n"
+            "    ['git', 'clone', '--depth', '1', '--branch', BRANCH, clone_url, PROJECT_DIR],\n"
+            "    capture_output=True, text=True\n"
+            ")\n"
+            "if result.returncode != 0:\n"
+            "    result = subprocess.run(\n"
+            "        ['git', 'clone', '--depth', '1', clone_url, PROJECT_DIR],\n"
+            "        capture_output=True, text=True\n"
+            "    )\n"
+            "    if result.returncode != 0:\n"
+            "        raise RuntimeError(f'Clone failed: {result.stderr}')\n"
+            "print(f'Cloned to {PROJECT_DIR}')\n"
+            "\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR], capture_output=True, text=True)\n"
+            "if PROJECT_DIR not in sys.path:\n"
+            "    sys.path.insert(0, PROJECT_DIR)\n"
+            "for m in list(sys.modules):\n"
+            "    if m.startswith('lintgate') or m.startswith('mcp_tools'):\n"
+            "        del sys.modules[m]\n"
+            "importlib.invalidate_caches()\n"
+            "print('Self-analysis mode: LintGate is both tool and target')"
+        )
+
+    lintgate_url = _get_lintgate_repo_url()
+    return (
+        "import importlib, os, shutil, subprocess, sys\n"
+        "\n"
+        f'TARGET_REPO_URL = "{repo_url}"\n'
+        f'TARGET_BRANCH = "{branch}"\n'
+        f'LINTGATE_REPO_URL = "{lintgate_url}"\n'
+        'LINTGATE_DIR = "/content/lintgate"\n'
+        'PROJECT_DIR = "/content/project"\n'
+        f"SRC_DIRS = {src_dirs_str}\n"
+        "\n"
+        "# Uncomment if repos are private:\n"
+        '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
+        "\n"
+        "def _clone(url, branch, dest):\n"
+        "    if os.path.exists(dest):\n"
+        "        shutil.rmtree(dest)\n"
+        "    clone_url = url\n"
+        "    try:\n"
+        "        GITHUB_TOKEN\n"
+        '        clone_url = url.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
+        "    except NameError:\n"
+        "        pass\n"
+        "    result = subprocess.run(\n"
+        "        ['git', 'clone', '--depth', '1', '--branch', branch, clone_url, dest],\n"
+        "        capture_output=True, text=True\n"
+        "    )\n"
+        "    if result.returncode != 0:\n"
+        "        result = subprocess.run(\n"
+        "            ['git', 'clone', '--depth', '1', clone_url, dest],\n"
+        "            capture_output=True, text=True\n"
+        "        )\n"
+        "        if result.returncode != 0:\n"
+        "            raise RuntimeError(f'Clone {url} failed: {result.stderr}')\n"
+        "    print(f'Cloned {url} → {dest}')\n"
+        "\n"
+        "# Step 1: Install LintGate (the analysis tool)\n"
+        "print('Installing LintGate...')\n"
+        "_clone(LINTGATE_REPO_URL, 'main', LINTGATE_DIR)\n"
+        "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
+        "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', LINTGATE_DIR], capture_output=True, text=True)\n"
+        "if LINTGATE_DIR not in sys.path:\n"
+        "    sys.path.insert(0, LINTGATE_DIR)\n"
+        "\n"
+        "# Step 2: Clone the target project\n"
+        "print('Cloning target project...')\n"
+        "_clone(TARGET_REPO_URL, TARGET_BRANCH, PROJECT_DIR)\n"
+        "\n"
+        "# Verify LintGate is importable\n"
+        "for m in list(sys.modules):\n"
+        "    if m.startswith('lintgate') or m.startswith('mcp_tools'):\n"
+        "        del sys.modules[m]\n"
+        "importlib.invalidate_caches()\n"
+        "from lintgate.specification.mutation_engine import MutationCategory\n"
+        "print(f'LintGate installed. Categories: {[c.value for c in MutationCategory]}')\n"
+        "print(f'Target project at {PROJECT_DIR}')\n"
+        f"print(f'Source dirs: {src_dirs_str}')"
+    )
+
 
 def _get_git_info(project_root: str) -> dict[str, str]:
     """Extract repo URL and branch from git."""
@@ -76,8 +215,13 @@ def _build_notebook(
     cached_count: int,
     source_count: int,
     local_project_path: str,
+    src_dirs: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the .ipynb notebook structure."""
+    if src_dirs is None:
+        src_dirs = ["lintgate", "mcp_tools"]
+    src_dirs_str = repr(src_dirs)
+    self_analysis = _is_self_analysis(repo_url)
 
     def _md(source: str) -> dict[str, Any]:
         return {
@@ -261,68 +405,8 @@ def _build_notebook(
             "**How to use:** Runtime > Run all. Wait. Download the zip at the end.\n"
             f"Then: `cd {local_project_path} && unzip ~/Downloads/mutation_results.zip`"
         ),
-        _md("## Step 1: Clone & install"),
-        _code(
-            "import importlib, os, shutil, subprocess, sys\n"
-            "\n"
-            f'REPO_URL = "{repo_url}"\n'
-            'BRANCH = "main"\n'
-            'PROJECT_DIR = "/content/lintgate"\n'
-            "\n"
-            "# Uncomment if repo is private:\n"
-            '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
-            "\n"
-            "if os.path.exists(PROJECT_DIR):\n"
-            "    shutil.rmtree(PROJECT_DIR)\n"
-            "\n"
-            "clone_url = REPO_URL\n"
-            "try:\n"
-            "    GITHUB_TOKEN\n"
-            '    clone_url = REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
-            "    print('Using authenticated clone')\n"
-            "except NameError:\n"
-            "    print('Using public clone')\n"
-            "\n"
-            "result = subprocess.run(\n"
-            "    ['git', 'clone', '--depth', '1', '--branch', BRANCH, clone_url, PROJECT_DIR],\n"
-            "    capture_output=True, text=True\n"
-            ")\n"
-            "if result.returncode != 0:\n"
-            "    print(f'Branch {BRANCH} failed, trying default branch...')\n"
-            "    result = subprocess.run(\n"
-            "        ['git', 'clone', '--depth', '1', clone_url, PROJECT_DIR],\n"
-            "        capture_output=True, text=True\n"
-            "    )\n"
-            "    if result.returncode != 0:\n"
-            "        print(f'Clone failed: {result.stderr}')\n"
-            "        raise RuntimeError('Clone failed')\n"
-            "print(f'Cloned to {PROJECT_DIR}')\n"
-            "\n"
-            "# Install deps\n"
-            "subprocess.run(\n"
-            "    [sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'],\n"
-            "    check=True\n"
-            ")\n"
-            "# Try editable install but don't rely on it\n"
-            "subprocess.run(\n"
-            "    [sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR],\n"
-            "    capture_output=True, text=True\n"
-            ")\n"
-            "\n"
-            "# Always ensure PROJECT_DIR is on sys.path (belt and suspenders)\n"
-            "if PROJECT_DIR not in sys.path:\n"
-            "    sys.path.insert(0, PROJECT_DIR)\n"
-            "\n"
-            "# Purge any stale module cache entries, then invalidate import caches\n"
-            "for m in list(sys.modules):\n"
-            "    if m.startswith('lintgate') or m.startswith('mcp_tools'):\n"
-            "        del sys.modules[m]\n"
-            "importlib.invalidate_caches()\n"
-            "\n"
-            "from lintgate.specification.mutation_engine import MutationCategory\n"
-            "print(f'Import OK. Categories: {[c.value for c in MutationCategory]}')\n"
-            "print('Ready for Step 2!')"
-        ),
+        _md("## Step 1: Install LintGate + Clone Target"),
+        _code(_build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis)),
         _md("## Step 2: Run sweep"),
         _code(sweep_code),
         _md("## Step 3: Review & download"),
@@ -538,6 +622,7 @@ def _build_golden_path_notebook(
     if src_dirs is None:
         src_dirs = ["lintgate", "mcp_tools"]
     src_dirs_str = repr(src_dirs)
+    self_analysis = _is_self_analysis(repo_url)
 
     def _md(source: str) -> dict[str, Any]:
         return {
@@ -555,61 +640,7 @@ def _build_golden_path_notebook(
             "source": [line + "\n" for line in source.split("\n")],
         }
 
-    # Step 1: Clone & install
-    install_cell = (
-        "import importlib, os, shutil, subprocess, sys\n"
-        "\n"
-        f'REPO_URL = "{repo_url}"\n'
-        'BRANCH = "main"\n'
-        'PROJECT_DIR = "/content/project"\n'
-        f"SRC_DIRS = {src_dirs_str}\n"
-        "\n"
-        "# Uncomment if repo is private:\n"
-        '# GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
-        "\n"
-        "if os.path.exists(PROJECT_DIR):\n"
-        "    shutil.rmtree(PROJECT_DIR)\n"
-        "\n"
-        "clone_url = REPO_URL\n"
-        "try:\n"
-        "    GITHUB_TOKEN\n"
-        '    clone_url = REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")\n'
-        "    print('Using authenticated clone')\n"
-        "except NameError:\n"
-        "    print('Using public clone')\n"
-        "\n"
-        "result = subprocess.run(\n"
-        "    ['git', 'clone', '--depth', '1', '--branch', BRANCH, clone_url, PROJECT_DIR],\n"
-        "    capture_output=True, text=True\n"
-        ")\n"
-        "if result.returncode != 0:\n"
-        "    result = subprocess.run(\n"
-        "        ['git', 'clone', '--depth', '1', clone_url, PROJECT_DIR],\n"
-        "        capture_output=True, text=True\n"
-        "    )\n"
-        "    if result.returncode != 0:\n"
-        "        raise RuntimeError(f'Clone failed: {result.stderr}')\n"
-        "print(f'Cloned to {PROJECT_DIR}')\n"
-        "\n"
-        "subprocess.run(\n"
-        "    [sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'],\n"
-        "    check=True\n"
-        ")\n"
-        "subprocess.run(\n"
-        "    [sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR],\n"
-        "    capture_output=True, text=True\n"
-        ")\n"
-        "if PROJECT_DIR not in sys.path:\n"
-        "    sys.path.insert(0, PROJECT_DIR)\n"
-        "for m in list(sys.modules):\n"
-        "    if any(m.startswith(d.split('/')[0]) for d in SRC_DIRS):\n"
-        "        del sys.modules[m]\n"
-        "importlib.invalidate_caches()\n"
-        "\n"
-        "from lintgate.specification.mutation_engine import MutationCategory\n"
-        "print(f'Import OK. Categories: {[c.value for c in MutationCategory]}')\n"
-        "print('Ready!')"
-    )
+    install_cell = _build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis)
 
     # Step 2: Mutation sweep (same proven logic)
     sweep_cell = (
@@ -948,16 +979,20 @@ def impl_colab_sweep_generate(
         })
 
     # Detect source directories for the target project
-    src_dirs = []
-    for candidate in ("src", "lib", "lintgate", "mcp_tools"):
-        if os.path.isdir(os.path.join(project_root, candidate)):
-            src_dirs.append(candidate)
+    skip = {"tests", "test", "docs", "scripts", "node_modules", "venv", ".venv", "__pycache__"}
+    src_dirs: list[str] = []
+    for entry in sorted(os.listdir(project_root)):
+        if entry.startswith(".") or entry.startswith("_") or entry in skip:
+            continue
+        full = os.path.join(project_root, entry)
+        if not os.path.isdir(full):
+            continue
+        has_py = any(f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f)))
+        has_init = os.path.isfile(os.path.join(full, "__init__.py"))
+        if has_py or has_init:
+            src_dirs.append(entry)
     if not src_dirs:
-        # Fallback: use top-level .py-containing dirs
-        for entry in os.listdir(project_root):
-            full = os.path.join(project_root, entry)
-            if os.path.isdir(full) and not entry.startswith(".") and entry != "tests" and any(f.endswith(".py") for f in os.listdir(full)):
-                    src_dirs.append(entry)
+        src_dirs = ["."]
 
     if mode == "golden_path":
         notebook = _build_golden_path_notebook(
@@ -977,6 +1012,7 @@ def impl_colab_sweep_generate(
             cached_count=cached_count,
             source_count=source_count,
             local_project_path=project_root,
+            src_dirs=src_dirs,
         )
         default_name = "LintGate_Mutation_Sweep.ipynb"
 
