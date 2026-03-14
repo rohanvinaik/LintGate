@@ -34,4 +34,4 @@ jobs:
 
       - name: Enforce centralized quality gate contract
         run: |
-          python -m lintgate.quality_infra --enforce .
+          bash scripts/ci/run_quality_infra_gate.sh

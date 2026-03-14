@@ -14,35 +14,37 @@ ci_workflows:
   - ".github/workflows/codeql.yml"
   - ".github/workflows/quality-infra-gate.yml"
 
+parity_workflows:
+  - ".github/workflows/tests.yml"
+  - ".github/workflows/qlty.yml"
+  - ".github/workflows/sonarcloud.yml"
+  - ".github/workflows/security-lite.yml"
+  - ".github/workflows/quality-infra-gate.yml"
+
 local_pre_push:
   - id: "quality_infra"
-    command: "python -m lintgate.quality_infra --enforce"
+    command: "bash scripts/ci/run_quality_infra_gate.sh"
   - id: "qlty"
-    command: "qlty check --all"
-  - id: "gitleaks"
-    command: "gitleaks detect --source . --no-banner --redact"
-  - id: "tests"
-    command: "python -m pytest"
-  - id: "symbol_gate"
-    command: "python -m lintgate.symbol_gate_runner"
-  - id: "pip_audit"
-    command: "pip-audit"
+    command: "bash scripts/ci/run_qlty_gate.sh"
+  - id: "security_lite"
+    command: "bash scripts/ci/run_security_lite_gate.sh"
+  - id: "tests_311"
+    command: "bash scripts/ci/run_tests_gate.sh --python-version 3.11"
+  - id: "tests_312"
+    command: "bash scripts/ci/run_tests_gate.sh --python-version 3.12"
   - id: "sonar"
-    command: "api/qualitygates/project_status"
+    command: "bash scripts/ci/run_sonar_gate.sh"
 
 parity_map:
-  # local gate ID → CI required_check name (null = local-only or embedded)
+  # local gate ID → CI workflow job/check name
   # Every required_checks entry must appear as a value here.
   # Every local_pre_push ID must appear as a key here.
   quality_infra: "Quality Infrastructure Gate"
   qlty: "Qlty"
-  gitleaks: "Secrets + SAST + Supply Chain"
-  tests: ["Tests (3.11)", "Tests (3.12)"]
-  symbol_gate: ["Tests (3.11)", "Tests (3.12)"]
-  pip_audit: "Secrets + SAST + Supply Chain"
-  sonar:
-    ci_check: "SonarQube Cloud Scan"
-    local_mode: "ci_only"
+  security_lite: "Secrets + SAST + Supply Chain"
+  tests_311: "Tests (3.11)"
+  tests_312: "Tests (3.12)"
+  sonar: "SonarQube Cloud Scan"
 
 symbol_gate:
   # Single source of truth for advisory policy.
@@ -69,8 +71,8 @@ tools:
     init_policy: "dry_run_then_init"
     shellcheckrc_policy: "backup_restore"
   sonar:
-    local_mode: "ci_only"
-    freshness_source: "ci_check_run"
+    local_mode: "local_scan"
+    freshness_source: "scanner_quality_gate"
 
 toolchain:
   # Single source of truth for CLI tool provisioning.
@@ -112,7 +114,7 @@ toolchain:
       kind: python_cli
       package: "bandit>=1.7"
       required: false
-      required_by: [lint, ci]
+      required_by: [lint, pre_push, ci]
       auto_install: true
 
     - id: pip-audit
@@ -147,6 +149,15 @@ toolchain:
       install:
         darwin: "brew install gitleaks"
         linux: "brew install gitleaks"
+
+    - id: sonar-scanner
+      kind: native_binary
+      required: true
+      required_by: [pre_push]
+      auto_install: false
+      install:
+        darwin: "brew install sonar-scanner"
+        linux: "brew install sonar-scanner"
 
 compliance:
   # Minimum rolling compliance rate (0.0-1.0) required to ship

@@ -12,16 +12,25 @@ import pytest
 from lintgate.controlplane.model.profiles import ModelProfile, ModelProfileStore
 from lintgate.hook_posttooluse import (
     _can_apply_session_telemetry,
+    _fallback_config,
     _mark_session_telemetry_applied,
     _record_habit_event_lightweight,
     _refresh_runtime_state_lightweight,
     _resolve_event_model_key,
+    _run_controlplane,
     _select_telemetry_profile,
     _session_telemetry_updates_used,
     main,
 )
+from lintgate.controlplane.types import (
+    ChannelResult,
+    CoherenceResult,
+    MeshResult,
+    SupervisionEvent,
+)
 from lintgate.renderers.dynamic import read_generation_from_file
 from lintgate.runtime_state import load_runtime_state
+from lintgate.types import ChangeClassification, ProjectConfig
 
 
 def test_resolve_event_model_key_from_top_level() -> None:
@@ -170,15 +179,12 @@ class TestFallbackConfig:
     """Cover _fallback_config (lines 385-389)."""
 
     def test_returns_project_config_with_cwd(self, tmp_path) -> None:
-        from lintgate.hook_posttooluse import _fallback_config
-        from lintgate.types import ProjectConfig
 
         config = _fallback_config(str(tmp_path))
         assert isinstance(config, ProjectConfig)
         assert config.project_root == str(tmp_path)
 
     def test_returns_fresh_instance_each_call(self, tmp_path) -> None:
-        from lintgate.hook_posttooluse import _fallback_config
 
         a = _fallback_config(str(tmp_path))
         b = _fallback_config(str(tmp_path))
@@ -195,8 +201,6 @@ class TestRunControlplane:
         """risk_level='none' triggers _exit_clean (line 282)."""
         from unittest.mock import MagicMock, patch
 
-        from lintgate.hook_posttooluse import _run_controlplane
-        from lintgate.types import ChangeClassification
 
         classification = ChangeClassification(
             change_kind="none",
@@ -229,14 +233,6 @@ class TestRunControlplane:
         import io
         from unittest.mock import MagicMock, patch
 
-        from lintgate.controlplane.types import (
-            ChannelResult,
-            CoherenceResult,
-            MeshResult,
-            SupervisionEvent,
-        )
-        from lintgate.hook_posttooluse import _run_controlplane
-        from lintgate.types import ChangeClassification
 
         classification = ChangeClassification(
             change_kind="code",
@@ -302,14 +298,6 @@ class TestRunControlplane:
         import io
         from unittest.mock import MagicMock, patch
 
-        from lintgate.controlplane.types import (
-            ChannelResult,
-            CoherenceResult,
-            MeshResult,
-            SupervisionEvent,
-        )
-        from lintgate.hook_posttooluse import _run_controlplane
-        from lintgate.types import ChangeClassification
 
         classification = ChangeClassification(
             change_kind="code",

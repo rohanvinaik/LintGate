@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from lintgate.context_auditor import SessionReadiness
 from lintgate.hooks.controlplane import (
     _SESSION_TELEMETRY_UPDATE_CAP,
     PostProcessContext,
@@ -464,7 +465,6 @@ class TestSetupSessionAndGate:
         event = MagicMock()
         event.raw_input = {}
 
-        from lintgate.context_auditor import SessionReadiness
 
         not_ready = SessionReadiness(
             ready=False,
@@ -517,7 +517,6 @@ class TestSetupSessionAndGate:
         event = MagicMock()
         event.raw_input = {}
 
-        from lintgate.context_auditor import SessionReadiness
 
         ready = SessionReadiness(ready=True, missing=[], recommendation="")
         behavior_ch = MagicMock()
@@ -623,7 +622,6 @@ class TestSetupSessionAndGate:
         event = MagicMock()
         event.raw_input = {}
 
-        from lintgate.context_auditor import SessionReadiness
 
         not_ready = SessionReadiness(ready=False, missing=["alignment"], recommendation="Fix it")
 

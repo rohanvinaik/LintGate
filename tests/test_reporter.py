@@ -810,8 +810,6 @@ def test_format_mesh_report_informational_count() -> None:
 
 def test_format_mesh_report_delta_escalated_and_resolved() -> None:
     # Set up fingerprints using actual logic
-    from lintgate.controlplane.reporter.delta import compute_finding_fingerprint
-
     # ESCALATED finding: warning -> blocking
     issue_escalated = _issue("blocking", message="Escalated")
     fp_escalated = compute_finding_fingerprint(issue_escalated, "lint")
@@ -963,7 +961,6 @@ def test_format_mesh_report_delta_new_findings() -> None:
 
 def test_format_mesh_report_delta_resolved() -> None:
     """Delta shows resolved count when findings disappear."""
-    from lintgate.controlplane.reporter import build_finding_index
 
     issue_a = _issue(
         "warning",
@@ -991,7 +988,6 @@ def test_format_mesh_report_delta_resolved() -> None:
 
 def test_format_mesh_report_delta_suppresses_unchanged() -> None:
     """Delta mode suppresses unchanged findings."""
-    from lintgate.controlplane.reporter import build_finding_index
 
     issue_a = _issue(
         "warning",
@@ -1017,7 +1013,6 @@ def test_format_mesh_report_delta_suppresses_unchanged() -> None:
 
 def test_format_mesh_report_resurfacing_cadence() -> None:
     """Persistent blocking findings resurface every 10 snapshots."""
-    from lintgate.controlplane.reporter import build_finding_index
 
     issue_a = _issue(
         "blocking",

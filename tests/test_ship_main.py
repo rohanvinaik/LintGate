@@ -348,9 +348,10 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
 
     stdout = (
-        "[lintgate][gate:symbol_gate] BLOCKED: symbol gate failed\n"
         "[lintgate][gate:quality_infra] BLOCKED: quality infrastructure incomplete\n"
-        "[lintgate][gate:tests] FAIL: pytest failed\n"
+        "[lintgate][gate:security_lite] BLOCKED: bandit failed\n"
+        "[lintgate][gate:tests_311] FAIL: pytest failed\n"
+        "[lintgate][gate:tests_312] FAIL: pytest failed\n"
         "[lintgate][gate:sonar] BLOCKED: sonar fail\n"
     )
     monkeypatch.setattr(
@@ -366,9 +367,10 @@ def test_run_preflight_json_parses_failed_gate_ids(ship_main, monkeypatch, tmp_p
     assert code == 1
     assert payload["status"] == "fail"
     assert payload["failed_gate_ids"] == [
-        "symbol_gate",
         "quality_infra",
-        "tests",
+        "security_lite",
+        "tests_311",
+        "tests_312",
         "sonar",
     ]
 

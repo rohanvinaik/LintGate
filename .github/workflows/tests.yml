@@ -35,72 +35,7 @@ jobs:
       - name: Validate workflow action references
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          import sys
-          from pathlib import Path
-          from urllib import error, request
-
-          pattern = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)")
-          workflow_files = sorted(Path(".github/workflows").glob("*.yml"))
-          references: dict[str, list[str]] = {}
-          for wf in workflow_files:
-              for line in wf.read_text(encoding="utf-8").splitlines():
-                  match = pattern.match(line)
-                  if not match:
-                      continue
-                  ref = match.group(1).strip().strip("\"'")
-                  references.setdefault(ref, []).append(str(wf))
-
-          checked_repos: dict[str, tuple[bool, str]] = {}
-          failures: list[str] = []
-
-          for ref, files in sorted(references.items()):
-              if ref.startswith("./") or ref.startswith("docker://"):
-                  continue
-              if "@" not in ref:
-                  failures.append(f"{ref}: missing @ref (in {', '.join(files)})")
-                  continue
-
-              action_path, _ = ref.split("@", 1)
-              segments = action_path.split("/")
-              if len(segments) < 2:
-                  failures.append(
-                      f"{ref}: expected owner/repo@ref (in {', '.join(files)})"
-                  )
-                  continue
-              repo = "/".join(segments[:2])
-
-              if repo not in checked_repos:
-                  headers = {"User-Agent": "lintgate-action-ref-check"}
-                  token = os.getenv("GITHUB_TOKEN", "").strip()
-                  if token:
-                      headers["Authorization"] = f"Bearer {token}"
-                  req = request.Request(f"https://api.github.com/repos/{repo}", headers=headers)
-                  try:
-                      with request.urlopen(req, timeout=15) as resp:
-                          checked_repos[repo] = (200 <= resp.status < 300, f"HTTP {resp.status}")
-                  except error.HTTPError as exc:
-                      checked_repos[repo] = (False, f"HTTP {exc.code}")
-                  except Exception as exc:  # pragma: no cover - CI-only
-                      checked_repos[repo] = (False, f"{type(exc).__name__}: {exc}")
-
-              ok, detail = checked_repos[repo]
-              if not ok:
-                  failures.append(f"{ref}: repo check failed ({detail}) in {', '.join(files)}")
-
-          if failures:
-              print("Invalid/unresolvable GitHub Action references detected:")
-              for failure in failures:
-                  print(f"  - {failure}")
-              sys.exit(1)
-
-          print(
-              f"Validated {len(references)} action refs across {len(workflow_files)} workflows."
-          )
-          PY
+        run: python scripts/ci/validate_action_refs.py
 
       - name: Install dependencies
         run: |
@@ -114,117 +49,33 @@ jobs:
         id: quality_policy
         run: |
           python - <<'PY'
+          import json
           import os
+          import subprocess
           from pathlib import Path
 
-          coverage_min = 80
-          diff_coverage_min = 80
-          source_packages = ["lintgate", "mcp_tools"]
-
-          cfg = Path(".claude/lintgate.yaml")
-          if cfg.exists():
-              try:
-                  import yaml
-
-                  raw = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
-                  qp = raw.get("quality_policy", {})
-                  cov = qp.get("coverage", {})
-                  coverage_min = int(cov.get("global_threshold", coverage_min))
-                  diff_coverage_min = int(cov.get("diff_threshold", diff_coverage_min))
-                  source_packages = cov.get("source_packages", source_packages)
-                  if not isinstance(source_packages, list):
-                      source_packages = ["lintgate", "mcp_tools"]
-                  source_packages = [str(p) for p in source_packages if str(p).strip()]
-                  if not source_packages:
-                      source_packages = ["lintgate", "mcp_tools"]
-              except Exception:
-                  pass
-
-          cov_args = " ".join(f"--cov={pkg}" for pkg in source_packages)
+          raw = subprocess.check_output(
+              ["python", "scripts/ci/resolve_quality_policy.py"],
+              text=True,
+          )
+          data = json.loads(raw)
           out = Path(os.environ["GITHUB_OUTPUT"])
           with out.open("a", encoding="utf-8") as fh:
-              fh.write(f"coverage_min={coverage_min}\n")
-              fh.write(f"diff_coverage_min={diff_coverage_min}\n")
-              fh.write(f"cov_args={cov_args}\n")
+              fh.write(f"coverage_min={data['coverage_min']}\n")
+              fh.write(f"diff_coverage_min={data['diff_coverage_min']}\n")
+              fh.write(f"cov_args={' '.join(data['cov_args'])}\n")
           PY
 
       - name: Run tests with coverage (telemetry)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -d tests ]; then TEST_DIR=tests; elif [ -d test ]; then TEST_DIR=test; else TEST_DIR=.; fi
-          echo "Coverage telemetry target: ${{ steps.quality_policy.outputs.coverage_min }}%"
-          echo "Coverage packages: ${{ steps.quality_policy.outputs.cov_args }}"
-          python -m pytest "$TEST_DIR" \
-            ${{ steps.quality_policy.outputs.cov_args }} \
-            --cov-config=.coveragerc \
-            --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term-missing \
-            --junitxml=pytest-results.xml \
-            --tb=short -q
+          # CONTRACT: bash scripts/ci/run_tests_gate.sh --python-version 3.11
+          # CONTRACT: bash scripts/ci/run_tests_gate.sh --python-version 3.12
+          bash scripts/ci/run_tests_gate.sh --python-version "${{ matrix.python-version }}"
 
       - name: Enforce symbol coverage gate
-        run: |
-          set +e
-          BASE=""
-          HEAD="${{ github.sha }}"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-            BASE="origin/${{ github.base_ref }}"
-          else
-            # Always use HEAD~1 for push events. github.event.before is
-            # unreliable after force-pushes and rebases (points to old branch
-            # tip, making the diff scope enormous). HEAD~1 matches the local
-            # pre-push hook behavior — single-commit incremental gate.
-            BASE="HEAD~1"
-          fi
-
-          if [ -n "$BASE" ] && ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
-            BASE=""
-          fi
-
-          if [ -n "$BASE" ]; then
-            python -m lintgate.symbol_gate_runner \
-              --project-root . \
-              --coverage-json coverage.json \
-              --base "$BASE" \
-              --head "$HEAD" \
-              --surface ci
-            GATE_STATUS=$?
-          else
-            python -m lintgate.symbol_gate_runner \
-              --project-root . \
-              --coverage-json coverage.json \
-              --head "$HEAD" \
-              --surface ci
-            GATE_STATUS=$?
-          fi
-
-          # Advisory policy: read from gate_contract.yaml (single source of truth).
-          # Push events only fire on main (branches: [main] trigger), and the
-          # contract marks main as advisory. PR events are always advisory per
-          # pr_always_advisory: true. So in CI, the symbol gate is always advisory.
-          ADVISORY_MODE="$(python -c "
-          import yaml, fnmatch, sys
-          try:
-              c = yaml.safe_load(open('gate_contract.yaml'))
-              policy = c.get('symbol_gate', {}).get('advisory_policy', {})
-              event = '${{ github.event_name }}'
-              ref = '${{ github.ref }}'.replace('refs/heads/', '')
-              if event == 'pull_request' and policy.get('pr_always_advisory', True):
-                  print(1)
-              elif event == 'push':
-                  patterns = policy.get('advisory_branches', ['main'])
-                  print(1 if any(fnmatch.fnmatch(ref, p) for p in patterns) else 0)
-              else:
-                  print(0)
-          except Exception:
-              print(0)
-          " 2>/dev/null || echo 0)"
-
-          if [ "$GATE_STATUS" -ne 0 ] && [ "$ADVISORY_MODE" -eq 1 ]; then
-            echo "::warning::Symbol coverage gate failed; advisory in Tests workflow for ${{ github.event_name }} on ${{ github.ref }}."
-            exit 0
-          fi
-
-          exit "$GATE_STATUS"
+        run: echo "symbol gate enforced inside scripts/ci/run_tests_gate.sh"
 
       - name: Diff coverage telemetry (non-blocking)
         if: always() && github.event_name == 'pull_request'

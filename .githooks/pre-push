@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Ensure qlty is discoverable (installed to ~/.qlty/bin by default)
 if [ -d "$HOME/.qlty/bin" ]; then
   export PATH="$HOME/.qlty/bin:$PATH"
 fi
@@ -11,25 +10,28 @@ if [ "${LINTGATE_SKIP_PRE_PUSH:-0}" = "1" ]; then
   exit 0
 fi
 
-# Gate selection: LINTGATE_GATE_ID env var OR --gate-id flag
-# Valid gate IDs: quality_infra, qlty, gitleaks, tests, symbol_gate, pip_audit, sonar
-# Empty = run all gates (default).
 GATE_ID="${LINTGATE_GATE_ID:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --gate-id) GATE_ID="$2"; shift 2 ;;
-    --gate-id=*) GATE_ID="${1#--gate-id=}"; shift ;;
-    *) shift ;;
+    --gate-id)
+      GATE_ID="$2"
+      shift 2
+      ;;
+    --gate-id=*)
+      GATE_ID="${1#--gate-id=}"
+      shift
+      ;;
+    *)
+      shift
+      ;;
   esac
 done
 
-# Backward-compat alias: "secrets" was the old gate name before contract alignment.
 if [ "$GATE_ID" = "secrets" ]; then
-  GATE_ID="gitleaks"
+  GATE_ID="security_lite"
 fi
 
 _should_run() {
-  # Run gate if no filter specified, or if gate matches the filter
   [ -z "$GATE_ID" ] || [ "$GATE_ID" = "$1" ]
 }
 
@@ -49,18 +51,20 @@ _gate_fail() {
   _gate_note "$1" "FAIL: $2"
 }
 
-_gate_blocked() {
-  _gate_note "$1" "BLOCKED: $2"
+_run_gate() {
+  local gate_id="$1"
+  shift
+  _gate_start "$gate_id"
+  if "$@"; then
+    _gate_pass "$gate_id"
+  else
+    _gate_fail "$gate_id" "$* failed"
+    exit 1
+  fi
 }
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
-
-# Source local secrets (.env is gitignored)
-if [ -f "$REPO_ROOT/.env" ]; then
-  # shellcheck disable=SC1091
-  . "$REPO_ROOT/.env"
-fi
 
 if [ -z "$GATE_ID" ]; then
   echo "[lintgate] running local quality checks before push"
@@ -68,8 +72,6 @@ else
   echo "[lintgate] running gate: $GATE_ID"
 fi
 
-# Toolchain verification: check required tools before running gates.
-# Reads from gate_contract.yaml manifest — self-managing source of truth.
 if [ -z "$GATE_ID" ] && command -v python >/dev/null 2>&1; then
   MISSING_TOOLS="$(python -m lintgate.tool_manifest --check-required --project-root "$REPO_ROOT" 2>/dev/null || true)"
   if [ -n "$MISSING_TOOLS" ]; then
@@ -77,260 +79,39 @@ if [ -z "$GATE_ID" ] && command -v python >/dev/null 2>&1; then
     echo "$MISSING_TOOLS"
     echo "[lintgate] Run: python -m lintgate.tool_manifest --install --project-root $REPO_ROOT"
     echo "[lintgate] Or:  toolchain_health_check(path='$REPO_ROOT', install_missing=True)"
-    # Non-blocking warning — tools may still work via alternate paths
   fi
 fi
 
-# Quality infrastructure gate (hard fail)
 if _should_run quality_infra; then
-  _gate_start quality_infra
-  echo "[lintgate] checking quality infrastructure completeness"
-  if LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1 python -m lintgate.quality_infra --enforce "$REPO_ROOT" 2>/dev/null; then
-    echo "[lintgate] quality infrastructure: complete"
-    _gate_pass quality_infra
-  else
-    echo "[lintgate] quality infrastructure: INCOMPLETE — run setup_github_quality to fix"
-    _gate_blocked quality_infra "quality infrastructure incomplete"
-    exit 1
-  fi
+  _run_gate quality_infra env \
+    LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED=1 \
+    bash scripts/ci/run_quality_infra_gate.sh
 fi
 
-# qlty analysis (mirrors CI qlty.yml — init parity + shellcheckrc safety)
 if _should_run qlty; then
-  _gate_start qlty
-  # Handle .shellcheckrc symlink collision (qlty init may create .shellcheckrc symlink).
-  if [ -f "$REPO_ROOT/.shellcheckrc" ] && [ ! -L "$REPO_ROOT/.shellcheckrc" ]; then
-    cp "$REPO_ROOT/.shellcheckrc" "$REPO_ROOT/.shellcheckrc.bak"
-  fi
-
-  # Mirror CI init step: dry-run probe first, init fallback if needed.
-  if ! qlty check --all --dry-run >/dev/null 2>&1; then
-    qlty init --skip-plugins 2>/dev/null || true
-  fi
-
-  # Restore original .shellcheckrc when qlty init replaced it with a symlink.
-  if [ -f "$REPO_ROOT/.shellcheckrc.bak" ] && [ -L "$REPO_ROOT/.shellcheckrc" ]; then
-    rm "$REPO_ROOT/.shellcheckrc"
-    mv "$REPO_ROOT/.shellcheckrc.bak" "$REPO_ROOT/.shellcheckrc"
-  elif [ -f "$REPO_ROOT/.shellcheckrc.bak" ]; then
-    rm "$REPO_ROOT/.shellcheckrc.bak"
-  fi
-
-  if qlty check --all; then
-    _gate_pass qlty
-  else
-    _gate_fail qlty "qlty check --all failed"
-    exit 1
-  fi
+  _run_gate qlty bash scripts/ci/run_qlty_gate.sh
 fi
 
-TEST_DIR=""
-if [ -d tests ]; then
-  TEST_DIR=tests
-elif [ -d test ]; then
-  TEST_DIR=test
-fi
-COVERAGE_READY=0
-
-_run_tests_gate() {
-  _gate_start tests
-  echo "[lintgate] running tests with coverage"
-  # Use free CPU capacity for parallel tests.
-  # Floor of 2 workers prevents single-threaded runs on loaded machines.
-  NCPU=$(python -c "
-import os
-cores = os.cpu_count() or 1
-try:
-    load = os.getloadavg()[0]          # 1-min avg
-except OSError:
-    load = cores * 0.5                 # conservative fallback
-idle = max(0, cores - load)
-workers = max(2, int(idle * 0.5))      # floor=2 to avoid single-threaded gate
-print(min(workers, cores))
-" 2>/dev/null || echo "2")
-  XDIST_FLAG=""
-  if python -c "import xdist" 2>/dev/null; then
-    XDIST_FLAG="-n $NCPU --dist worksteal"
-  fi
-  # shellcheck disable=SC2086
-  if python -m pytest "$TEST_DIR" $XDIST_FLAG --cov --cov-config=.coveragerc \
-    --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=term:skip-covered \
-    --tb=short -q; then
-    COVERAGE_READY=1
-    _gate_pass tests
-  else
-    _gate_fail tests "pytest failed"
-    exit 1
-  fi
-}
-
-_run_symbol_gate() {
-  _gate_start symbol_gate
-  if [ "$COVERAGE_READY" -ne 1 ] || [ ! -f coverage.json ]; then
-    echo "[lintgate] coverage.json missing; running tests gate before symbol gate"
-    _run_tests_gate
-  fi
-
-  BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
-
-  # Base selection: use merge-base for ship branches (avoids HEAD~1 scope inflation
-  # on repair/revert commits), HEAD~1 for normal branches.
-  SHIP_BASE_STRATEGY="head~1"
-  if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
-    SHIP_BASE_STRATEGY="$(python -c "
-import yaml
-try:
-    c = yaml.safe_load(open('$REPO_ROOT/gate_contract.yaml'))
-    print(c.get('symbol_gate', {}).get('ship_base_strategy', 'head~1'))
-except Exception:
-    print('head~1')
-" 2>/dev/null || echo 'head~1')"
-  fi
-
-  BASE='HEAD~1'
-  if [[ "$BRANCH_NAME" == codex/ship-* ]] && [ "$SHIP_BASE_STRATEGY" = "merge-base" ]; then
-    MERGE_BASE="$(git merge-base origin/main HEAD 2>/dev/null || echo '')"
-    if [ -n "$MERGE_BASE" ]; then
-      BASE="$MERGE_BASE"
-      echo "[lintgate] using merge-base for ship branch (strategy: $SHIP_BASE_STRATEGY)"
-    fi
-  fi
-
-  if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
-    BASE=''
-  fi
-  SYMBOL_GATE_STATUS=0
-  set +e
-  if [ -n "$BASE" ]; then
-    python -m lintgate.symbol_gate_runner \
-      --project-root "$REPO_ROOT" \
-      --coverage-json coverage.json \
-      --base "$BASE" --head HEAD --surface ci
-  else
-    python -m lintgate.symbol_gate_runner \
-      --project-root "$REPO_ROOT" \
-      --coverage-json coverage.json \
-      --head HEAD --surface ci
-  fi
-  SYMBOL_GATE_STATUS=$?
-  set -e
-
-  if [ "$SYMBOL_GATE_STATUS" -ne 0 ]; then
-    # Read advisory policy from gate_contract.yaml (single source of truth).
-    # Falls back to hardcoded defaults if contract is missing or unreadable.
-    ADVISORY=0
-    if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
-      ADVISORY="$(python -c "
-import yaml, fnmatch
-try:
-    c = yaml.safe_load(open('$REPO_ROOT/gate_contract.yaml'))
-    patterns = c.get('symbol_gate', {}).get('advisory_policy', {}).get('advisory_branches', ['main'])
-    branch = '$BRANCH_NAME'
-    print(1 if any(fnmatch.fnmatch(branch, p) for p in patterns) else 0)
-except Exception:
-    print(0)
-" 2>/dev/null || echo 0)"
-    fi
-
-    if [ "$ADVISORY" = "1" ]; then
-      echo "[lintgate] symbol gate advisory for branch '$BRANCH_NAME' (non-blocking per gate_contract.yaml)"
-      _gate_note symbol_gate "ADVISORY: symbol gate failed but branch policy is non-blocking"
-    else
-      _gate_fail symbol_gate "symbol gate failed"
-      exit "$SYMBOL_GATE_STATUS"
-    fi
-  else
-    _gate_pass symbol_gate
-  fi
-}
-
-# Secrets scan (mirrors CI gitleaks check)
-if _should_run gitleaks; then
-  _gate_start gitleaks
-  echo "[lintgate] scanning for secrets (gitleaks)"
-  if gitleaks detect --source . --no-banner --redact; then
-    _gate_pass gitleaks
-  else
-    echo "[lintgate] BLOCKED: secrets detected — fix before pushing."
-    _gate_blocked gitleaks "secrets detected"
-    exit 1
-  fi
+if _should_run security_lite; then
+  _run_gate security_lite bash scripts/ci/run_security_lite_gate.sh
 fi
 
-# Tests and symbol gate are now explicit contract-aligned gates.
-if _should_run tests && [ -n "$TEST_DIR" ]; then
-  _run_tests_gate
+if _should_run tests_311; then
+  _run_gate tests_311 env \
+    LINTGATE_VERSIONED_ARTIFACTS=1 \
+    bash scripts/ci/run_tests_gate.sh --python-version 3.11
 fi
 
-if _should_run symbol_gate && [ -n "$TEST_DIR" ]; then
-  _run_symbol_gate
+if _should_run tests_312; then
+  _run_gate tests_312 env \
+    LINTGATE_VERSIONED_ARTIFACTS=1 \
+    bash scripts/ci/run_tests_gate.sh --python-version 3.12
 fi
 
-# pip-audit (mirrors CI security-lite.yml)
-if _should_run pip_audit && command -v pip-audit >/dev/null 2>&1; then
-  _gate_start pip_audit
-  if [ -f requirements.txt ] || [ -f requirements-dev.txt ] || [ -f pyproject.toml ]; then
-    echo "[lintgate] running pip-audit (supply-chain scan)"
-    if pip-audit; then
-      _gate_pass pip_audit
-    else
-      _gate_blocked pip_audit "pip-audit failed"
-      exit 1
-    fi
-  else
-    _gate_pass pip_audit
-  fi
-fi
-
-# Sonar local mode from contract (default: ci_only).
-# ci_only prevents stale-read split-brain; CI check-runs are authoritative.
 if _should_run sonar; then
-  _gate_start sonar
-  SONAR_LOCAL_MODE="${SONAR_LOCAL_MODE:-ci_only}"
-  if [ -f "$REPO_ROOT/gate_contract.yaml" ] && command -v python >/dev/null 2>&1; then
-    _CONTRACT_MODE="$(python -c "
-import yaml
-try:
-    c = yaml.safe_load(open('$REPO_ROOT/gate_contract.yaml'))
-    print(c.get('tools', {}).get('sonar', {}).get('local_mode', 'ci_only'))
-except Exception:
-    print('ci_only')
-" 2>/dev/null || echo 'ci_only')"
-    SONAR_LOCAL_MODE="${_CONTRACT_MODE}"
-  fi
-
-  if [ "$SONAR_LOCAL_MODE" = "ci_only" ]; then
-    echo "[lintgate] Sonar local mode: ci_only (CI SonarCloud check-run is authoritative)"
-    _gate_pass sonar
-  else
-    if [ -z "${SONAR_TOKEN:-}" ] || [ -z "${SONAR_PROJECT_KEY:-}" ]; then
-      echo "[lintgate] BLOCKED: SONAR_TOKEN or SONAR_PROJECT_KEY is not set."
-      _gate_blocked sonar "SONAR_TOKEN or SONAR_PROJECT_KEY missing"
-      exit 1
-    fi
-
-    echo "[lintgate] checking Sonar quality gate for ${SONAR_PROJECT_KEY} (mode: api_read)"
-    SONAR_HOST="${SONAR_HOST_URL:-https://sonarcloud.io}"
-    if command -v curl >/dev/null 2>&1; then
-      if SONAR_RESPONSE="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST%/}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null)"; then  # gitleaks:allow
-        SONAR_STATUS="$(printf %s "$SONAR_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get(\"projectStatus\",{}).get(\"status\",\"\"))' 2>/dev/null || true)"
-        if [ -n "$SONAR_STATUS" ] && [ "$SONAR_STATUS" != "OK" ]; then
-          echo "[lintgate] BLOCKED: Sonar quality gate is ${SONAR_STATUS} (cached remote state)."
-          _gate_blocked sonar "Sonar quality gate is ${SONAR_STATUS}"
-          exit 1
-        fi
-        _gate_pass sonar
-      else
-        echo "[lintgate] BLOCKED: could not query Sonar quality gate."
-        _gate_blocked sonar "could not query Sonar quality gate"
-        exit 1
-      fi
-    else
-      echo "[lintgate] BLOCKED: curl is not installed - required for Sonar gate."
-      _gate_blocked sonar "curl is required for Sonar gate"
-      exit 1
-    fi
-  fi
+  _run_gate sonar env \
+    LINTGATE_REQUIRE_SONAR_TOKEN=1 \
+    bash scripts/ci/run_sonar_gate.sh
 fi
 
 echo "[lintgate] pre-push checks passed"

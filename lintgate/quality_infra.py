@@ -236,6 +236,7 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
 
     required_checks = _contract_string_list(contract.get("required_checks"))
     workflows = _contract_string_list(contract.get("ci_workflows"))
+    parity_workflows = _contract_string_list(contract.get("parity_workflows")) or workflows
     local_steps = _contract_local_steps(contract.get("local_pre_push"))
     local_ids = _contract_local_ids(contract.get("local_pre_push"))
 
@@ -250,6 +251,15 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         wf = root / rel
         if not wf.exists():
             errors.append(f"Contract workflow missing in repo: {rel}")
+    for rel in parity_workflows:
+        if rel not in workflows:
+            errors.append(f"Contract parity_workflow is not listed in ci_workflows: {rel}")
+
+    parity_contents = ""
+    for rel in parity_workflows:
+        wf = root / rel
+        if wf.exists():
+            parity_contents += "\n" + wf.read_text(errors="ignore")
 
     if not pre_push_path.exists():
         errors.append("Missing .githooks/pre-push required by gate contract")
@@ -258,6 +268,8 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         for cmd in local_steps:
             if cmd not in pre_push_content:
                 errors.append(f"pre-push missing contract command fragment: {cmd}")
+            if cmd not in parity_contents:
+                errors.append(f"parity_workflows missing contract command fragment: {cmd}")
         hook_gate_ids = _extract_pre_push_gate_ids(pre_push_content)
         if hook_gate_ids:
             missing_hook_ids = sorted(set(local_ids) - set(hook_gate_ids))
@@ -272,15 +284,24 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
                     + ", ".join(extra_hook_ids)
                 )
 
-    _check_parity_map(contract, errors)
+    declared_checks = _collect_workflow_declared_checks(root, parity_workflows)
 
-    declared_checks = _collect_workflow_declared_checks(root, workflows)
+    _check_parity_map(contract, declared_checks, errors)
+
     missing_declared = sorted(set(required_checks) - declared_checks)
     if missing_declared:
         errors.append(
-            "Contract required check(s) not declared by ci_workflows: "
+            "Contract required check(s) not declared by parity_workflows: "
             + ", ".join(missing_declared)
         )
+
+    sonar_mode = (
+        ((contract.get("tools") or {}).get("sonar") or {}).get("local_mode", "")
+        if isinstance(contract.get("tools"), dict)
+        else ""
+    )
+    if "SonarQube Cloud Scan" in required_checks and str(sonar_mode).strip() != "local_scan":
+        errors.append("tools.sonar.local_mode must be 'local_scan' for local/CI parity")
 
     remote_checks = _fetch_branch_protection_required_checks(project_root)
     require_remote = _branch_protection_fail_closed()
@@ -322,11 +343,16 @@ def _collect_ci_check_names(parity_map: dict[str, Any]) -> set[str]:
     return ci_check_names
 
 
-def _check_parity_map(contract: dict[str, Any], errors: list[str]) -> None:
+def _check_parity_map(
+    contract: dict[str, Any],
+    declared_checks: set[str],
+    errors: list[str],
+) -> None:
     """Validate parity_map ties local gates to CI checks bidirectionally.
 
     1. Every required_checks entry must appear as a CI check name in parity_map values.
     2. Every local_pre_push ID must appear as a parity_map key.
+    3. Every parity_map CI check must be emitted by parity_workflows.
     """
     parity_map = contract.get("parity_map")
     if not isinstance(parity_map, dict):
@@ -344,6 +370,13 @@ def _check_parity_map(contract: dict[str, Any], errors: list[str]) -> None:
     for check in required_checks:
         if check not in ci_check_names:
             errors.append(f"parity_map missing CI mapping for required_check: {check}")
+
+    undeclared_checks = sorted(ci_check_names - declared_checks)
+    if declared_checks and undeclared_checks:
+        errors.append(
+            "parity_map references check(s) not declared by parity_workflows: "
+            + ", ".join(undeclared_checks)
+        )
 
     parity_keys = set(parity_map.keys())
     for lid in local_ids:
