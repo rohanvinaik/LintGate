@@ -9,6 +9,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from lintgate.specification.mutation_engine import (
+    CategoryResult,
+    Mutant,
+    MutantResult,
     MutationCategory,
     ProfilingResult,
     SamplingResult,
@@ -826,7 +829,6 @@ class TestSamplingResultToDictValues:
     """Kill VALUE mutants on SamplingResult.to_dict by asserting exact values."""
 
     def test_exact_field_values(self):
-        from lintgate.specification.mutation_engine import CategoryResult
 
         cr = CategoryResult(category=MutationCategory.VALUE, total=5, killed=3, survived=2)
         result = SamplingResult(
@@ -863,7 +865,6 @@ class TestProfilingResultToDictValues:
     """Kill VALUE mutants on ProfilingResult.to_dict by asserting exact values."""
 
     def test_exact_field_values(self):
-        from lintgate.specification.mutation_engine import CategoryResult
 
         cr = CategoryResult(
             category=MutationCategory.SWAP,
@@ -921,7 +922,6 @@ class TestProfilingResultToDictValues:
 class TestBuildSurvivorRecord:
     def test_basic_structure(self):
         from lintgate.specification.mutant_reporting import build_survivor_record
-        from lintgate.specification.mutation_engine import Mutant, MutantResult
 
         mutant = Mutant(
             category=MutationCategory.VALUE,
@@ -943,7 +943,6 @@ class TestBuildSurvivorRecord:
 
     def test_diff_summary_shows_change(self):
         from lintgate.specification.mutant_reporting import build_survivor_record
-        from lintgate.specification.mutation_engine import Mutant, MutantResult
 
         orig = ast.parse("x + 1").body[0]
         mut = ast.parse("x + 0").body[0]
@@ -963,7 +962,6 @@ class TestBuildSurvivorRecord:
 class TestBuildKilledRecord:
     def test_basic_structure(self):
         from lintgate.specification.mutant_reporting import build_killed_record
-        from lintgate.specification.mutation_engine import Mutant, MutantResult
 
         mutant = Mutant(
             category=MutationCategory.BOUNDARY,

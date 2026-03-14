@@ -26,10 +26,13 @@ jobs:
           fetch-depth: 0
 
       - name: Scan for committed secrets (gitleaks)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
+        run: |
+          if ! command -v gitleaks >/dev/null 2>&1; then
+            export GOBIN="$HOME/.local/bin"
+            export PATH="$GOBIN:$PATH"
+            go install github.com/gitleaks/gitleaks/v8@v8.30.0
+            echo "$GOBIN" >> "$GITHUB_PATH"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -42,21 +45,4 @@ jobs:
           python -m pip install bandit pip-audit
 
       - name: Run Bandit (fast, scoped)
-        run: |
-          bandit -q -r . \
-            -x tests,.venv,venv,env,__pycache__,.git,node_modules,docs \
-            -s B101,B105,B106,B108,B110,B112,B310,B311,B404,B603,B607
-
-      - name: Run pip-audit (requirements if present)
-        shell: bash
-        run: |
-          shopt -s nullglob
-          reqs=(requirements*.txt)
-          if [ ${#reqs[@]} -eq 0 ]; then
-            echo "No requirements*.txt found; skipping pip-audit."
-            exit 0
-          fi
-          for f in "${reqs[@]}"; do
-            echo "Auditing $f"
-            pip-audit -r "$f"
-          done
+        run: bash scripts/ci/run_security_lite_gate.sh

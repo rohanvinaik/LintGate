@@ -24,10 +24,7 @@ jobs:
         uses: qltysh/qlty-action/install@0814173ae3b13074fc896ca0e8e6d631c8352509 # main
 
       - name: Initialize qlty (if needed)
-        run: |
-          if ! qlty check --all --dry-run >/dev/null 2>&1; then
-            qlty init --skip-plugins 2>/dev/null || true
-          fi
+        run: true
 
       - name: Run qlty checks
-        run: qlty check --all
+        run: bash scripts/ci/run_qlty_gate.sh

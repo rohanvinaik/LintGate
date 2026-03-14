@@ -29,10 +29,16 @@ Parallelism:
 
 Skip already-profiled files:
     Set MUTATION_SKIP_CACHED=1 to skip files that already have cached results.
+
+Force re-profile (clear cache first):
+    Set MUTATION_FORCE=1 to delete all cached profiles before running.
+    Use this after improving test linkage (e.g., moving local imports to
+    top-level) so the profiler picks up the enhanced test discovery.
 """
 from __future__ import annotations
 
 import ast
+import json
 import os
 import sys
 import time
@@ -92,11 +98,14 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
     cache_dir = get_cache_dir(project_root)
     start = time.monotonic()
 
-    result = {
+    result: dict = {
         "file": rel_path,
         "functions_profiled": 0,
         "functions_skipped_cached": 0,
         "functions_skipped_trivial": 0,
+        "total_killed": 0,
+        "total_survived": 0,
+        "discovery_states": {},
         "errors": [],
         "elapsed_s": 0.0,
     }
@@ -147,7 +156,7 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
         cats = filter_categories(node, is_pure=is_pure)  # type: ignore[arg-type]
 
         bare_name = qualname.split(".")[-1]
-        tests, _discovery_diag = load_test_callables(
+        tests, discovery_diag = load_test_callables(
             ctx.test_files,
             bare_name,
             project_root=ctx.project_root,
@@ -168,13 +177,51 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
             result_dict["is_pure"] = is_pure
             args_node = getattr(node, "args", None)
             result_dict["parameter_count"] = len(args_node.args) if args_node else 0
+
+            # Add discovery diagnostics to cached output
+            if discovery_diag:
+                result_dict["discovery_diagnostics"] = discovery_diag
+
+            # Determine discovery state
+            if not ctx.test_files:
+                ds = "NO_TEST_FILES"
+            elif len(tests) == 0:
+                ds = "TESTS_LINKED_ZERO_LOADED"
+            elif sr.total_killed == 0 and sr.total_mutants == 0:
+                ds = "EQUIVALENT_OR_UNINTERESTING"
+            elif sr.total_killed == 0 and sr.total_mutants > 0:
+                ds = "TESTS_LINKED_ZERO_KILLS"
+            else:
+                ds = "DISCOVERY_OK"
+            result_dict["discovery_state"] = ds
+
             save_cached_state(ctx.cache_dir, func_key, result_dict)
             result["functions_profiled"] += 1
+            result["total_killed"] += sr.total_killed
+            result["total_survived"] += sr.total_survived
+
+            # Track discovery state distribution
+            result["discovery_states"][ds] = result["discovery_states"].get(ds, 0) + 1
+
         except Exception as e:
             result["errors"].append(f"{func_key}: {type(e).__name__}: {e}")
 
     result["elapsed_s"] = round(time.monotonic() - start, 2)
     return result
+
+
+def clear_mutation_cache(project_root: str) -> int:
+    """Delete all cached mutation profiles. Returns count deleted."""
+    cache_dir = Path(project_root) / ".lintgate" / "mutation"
+    if not cache_dir.exists():
+        return 0
+    count = 0
+    for f in cache_dir.glob("*.json"):
+        if f.name == "scheduler_state.json":
+            continue
+        f.unlink()
+        count += 1
+    return count
 
 
 def main() -> None:
@@ -187,6 +234,13 @@ def main() -> None:
     workers = int(os.environ.get("MUTATION_WORKERS", "4"))
     budget_ms = float(os.environ.get("MUTATION_BUDGET_MS", "500"))
     skip_cached = os.environ.get("MUTATION_SKIP_CACHED", "1") == "1"
+    force = os.environ.get("MUTATION_FORCE", "0") == "1"
+
+    # Force mode: clear cache before running
+    if force:
+        deleted = clear_mutation_cache(project_root)
+        print(f"Force mode: cleared {deleted} cached profiles")
+        skip_cached = False
 
     files = collect_python_files(project_root)
     print(f"Found {len(files)} source files to profile")
@@ -204,6 +258,9 @@ def main() -> None:
     total_cached = 0
     total_trivial = 0
     total_errors = 0
+    total_killed = 0
+    total_survived = 0
+    discovery_states: dict[str, int] = {}
     start = time.monotonic()
 
     # Run with process pool for true parallelism
@@ -217,6 +274,10 @@ def main() -> None:
                 total_cached += result["functions_skipped_cached"]
                 total_trivial += result["functions_skipped_trivial"]
                 total_errors += len(result["errors"])
+                total_killed += result.get("total_killed", 0)
+                total_survived += result.get("total_survived", 0)
+                for ds, count in result.get("discovery_states", {}).items():
+                    discovery_states[ds] = discovery_states.get(ds, 0) + count
                 status = (
                     f"[{i}/{len(files)}] {rel_path}: "
                     f"{result['functions_profiled']} profiled, "
@@ -231,14 +292,40 @@ def main() -> None:
                 total_errors += 1
 
     elapsed = round(time.monotonic() - start, 1)
-    print(f"\n{'='*60}")
+    total_mutants = total_killed + total_survived
+    kill_rate = f"{total_killed / total_mutants:.1%}" if total_mutants > 0 else "N/A"
+
+    print(f"\n{'=' * 60}")
     print(f"Sweep complete in {elapsed}s")
     print(f"  Functions profiled: {total_functions}")
     print(f"  Skipped (cached):   {total_cached}")
     print(f"  Skipped (trivial):  {total_trivial}")
     print(f"  Errors:             {total_errors}")
-    print(f"  Results in:         {cache_dir}")
+    print(f"\n  Kill rate: {total_killed}/{total_mutants} ({kill_rate})")
+    print(f"  Discovery states:")
+    for ds, count in sorted(discovery_states.items()):
+        print(f"    {ds}: {count}")
+    print(f"\n  Results in: {cache_dir}")
     print("\nTo sync back to local: scp -r <colab>:.lintgate/mutation/ .lintgate/mutation/")
+
+    # Write a sweep summary JSON for easy consumption
+    summary = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "files_scanned": len(files),
+        "functions_profiled": total_functions,
+        "functions_cached": total_cached,
+        "functions_trivial": total_trivial,
+        "total_killed": total_killed,
+        "total_survived": total_survived,
+        "kill_rate": round(total_killed / total_mutants, 4) if total_mutants > 0 else 0.0,
+        "discovery_states": discovery_states,
+        "errors": total_errors,
+        "elapsed_s": elapsed,
+    }
+    summary_path = cache_dir / "sweep_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+    print(f"  Summary: {summary_path}")
 
 
 if __name__ == "__main__":

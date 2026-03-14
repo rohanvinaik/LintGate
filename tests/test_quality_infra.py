@@ -210,10 +210,37 @@ ci_workflows:
   - ".github/workflows/tests.yml"
   - ".github/workflows/qlty.yml"
   - ".github/workflows/sonarcloud.yml"
+  - ".github/workflows/security-lite.yml"
+  - ".github/workflows/quality-infra-gate.yml"
+parity_workflows:
+  - ".github/workflows/tests.yml"
+  - ".github/workflows/qlty.yml"
+  - ".github/workflows/sonarcloud.yml"
+  - ".github/workflows/security-lite.yml"
   - ".github/workflows/quality-infra-gate.yml"
 local_pre_push:
-  - command: "python -m lintgate.quality_infra --enforce"
-  - command: "qlty check --all"
+  - id: "quality_infra"
+    command: "bash scripts/ci/run_quality_infra_gate.sh"
+  - id: "qlty"
+    command: "bash scripts/ci/run_qlty_gate.sh"
+  - id: "security_lite"
+    command: "bash scripts/ci/run_security_lite_gate.sh"
+  - id: "tests_311"
+    command: "bash scripts/ci/run_tests_gate.sh --python-version 3.11"
+  - id: "tests_312"
+    command: "bash scripts/ci/run_tests_gate.sh --python-version 3.12"
+  - id: "sonar"
+    command: "bash scripts/ci/run_sonar_gate.sh"
+parity_map:
+  quality_infra: "Quality Infrastructure Gate"
+  qlty: "Qlty"
+  security_lite: "Secrets + SAST + Supply Chain"
+  tests_311: "Tests (3.11)"
+  tests_312: "Tests (3.12)"
+  sonar: "SonarQube Cloud Scan"
+tools:
+  sonar:
+    local_mode: "local_scan"
 """
     )
 
@@ -233,7 +260,8 @@ jobs:
         python-version: ["3.11", "3.12"]
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - run: bash scripts/ci/run_tests_gate.sh --python-version 3.11
+      - run: bash scripts/ci/run_tests_gate.sh --python-version 3.12
 """
     )
     (workflow_dir / "qlty.yml").write_text(
@@ -245,7 +273,7 @@ jobs:
     name: Qlty
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - run: bash scripts/ci/run_qlty_gate.sh
 """
     )
     (workflow_dir / "sonarcloud.yml").write_text(
@@ -257,7 +285,7 @@ jobs:
     name: SonarQube Cloud Scan
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - run: bash scripts/ci/run_sonar_gate.sh
 """
     )
     (workflow_dir / "quality-infra-gate.yml").write_text(
@@ -269,7 +297,19 @@ jobs:
     name: Quality Infrastructure Gate
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - run: bash scripts/ci/run_quality_infra_gate.sh
+"""
+    )
+    (workflow_dir / "security-lite.yml").write_text(
+        """
+name: Security Lite
+on: push
+jobs:
+  security:
+    name: Secrets + SAST + Supply Chain
+    runs-on: ubuntu-latest
+    steps:
+      - run: bash scripts/ci/run_security_lite_gate.sh
 """
     )
 
@@ -280,7 +320,18 @@ def test_gate_contract_drift_none_when_all_parity_checks_pass(tmp_path: Path) ->
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
     (hook_dir / "pre-push").write_text(
-        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+        "_should_run quality_infra\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\n"
+        "_should_run qlty\n"
+        "bash scripts/ci/run_qlty_gate.sh\n"
+        "_should_run security_lite\n"
+        "bash scripts/ci/run_security_lite_gate.sh\n"
+        "_should_run tests_311\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.11\n"
+        "_should_run tests_312\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.12\n"
+        "_should_run sonar\n"
+        "bash scripts/ci/run_sonar_gate.sh\n"
     )
 
     with patch(
@@ -302,7 +353,9 @@ def test_gate_contract_drift_detects_missing_pre_push_command(tmp_path: Path) ->
     _write_contract_workflows(tmp_path)
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
-    (hook_dir / "pre-push").write_text("python -m lintgate.quality_infra --enforce .\n")
+    (hook_dir / "pre-push").write_text(
+        "_should_run quality_infra\nbash scripts/ci/run_quality_infra_gate.sh\n"
+    )
 
     with patch(
         "lintgate.quality_infra._fetch_branch_protection_required_checks",
@@ -315,7 +368,10 @@ def test_gate_contract_drift_detects_missing_pre_push_command(tmp_path: Path) ->
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
 
-    assert any("pre-push missing contract command fragment: qlty check --all" in e for e in errors)
+    assert any(
+        "pre-push missing contract command fragment: bash scripts/ci/run_qlty_gate.sh" in e
+        for e in errors
+    )
 
 
 def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) -> None:
@@ -324,7 +380,18 @@ def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) 
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
     (hook_dir / "pre-push").write_text(
-        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+        "_should_run quality_infra\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\n"
+        "_should_run qlty\n"
+        "bash scripts/ci/run_qlty_gate.sh\n"
+        "_should_run security_lite\n"
+        "bash scripts/ci/run_security_lite_gate.sh\n"
+        "_should_run tests_311\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.11\n"
+        "_should_run tests_312\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.12\n"
+        "_should_run sonar\n"
+        "bash scripts/ci/run_sonar_gate.sh\n"
     )
 
     with patch(
@@ -344,7 +411,18 @@ def test_gate_contract_drift_best_effort_when_remote_unavailable_by_default(
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
     (hook_dir / "pre-push").write_text(
-        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+        "_should_run quality_infra\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\n"
+        "_should_run qlty\n"
+        "bash scripts/ci/run_qlty_gate.sh\n"
+        "_should_run security_lite\n"
+        "bash scripts/ci/run_security_lite_gate.sh\n"
+        "_should_run tests_311\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.11\n"
+        "_should_run tests_312\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.12\n"
+        "_should_run sonar\n"
+        "bash scripts/ci/run_sonar_gate.sh\n"
     )
 
     with patch(
@@ -362,7 +440,18 @@ def test_gate_contract_drift_fails_closed_when_env_enabled(tmp_path: Path) -> No
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
     (hook_dir / "pre-push").write_text(
-        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+        "_should_run quality_infra\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\n"
+        "_should_run qlty\n"
+        "bash scripts/ci/run_qlty_gate.sh\n"
+        "_should_run security_lite\n"
+        "bash scripts/ci/run_security_lite_gate.sh\n"
+        "_should_run tests_311\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.11\n"
+        "_should_run tests_312\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.12\n"
+        "_should_run sonar\n"
+        "bash scripts/ci/run_sonar_gate.sh\n"
     )
 
     with (
@@ -410,12 +499,12 @@ required_checks:
 ci_workflows:
   - ".github/workflows/tests.yml"
 local_pre_push:
-  - command: "python -m lintgate.quality_infra --enforce"
+  - command: "bash scripts/ci/run_quality_infra_gate.sh"
 """
     )
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
-    (hook_dir / "pre-push").write_text("python -m lintgate.quality_infra --enforce\n")
+    (hook_dir / "pre-push").write_text("bash scripts/ci/run_quality_infra_gate.sh\n")
 
     with patch(
         "lintgate.quality_infra._fetch_branch_protection_required_checks",
@@ -436,7 +525,7 @@ def test_gate_contract_drift_detects_extra_remote_required_checks(
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
     (hook_dir / "pre-push").write_text(
-        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\nbash scripts/ci/run_qlty_gate.sh\n"
     )
 
     with patch(
@@ -472,10 +561,24 @@ def test_gate_contract_drift_detects_required_check_missing_from_workflows(
     (workflow_dir / "quality-infra-gate.yml").write_text(
         "name: Quality Infra\non: push\njobs:\n  gate:\n    name: Quality Infrastructure Gate\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
     )
+    (workflow_dir / "security-lite.yml").write_text(
+        "name: Security Lite\non: push\njobs:\n  security:\n    name: Secrets + SAST + Supply Chain\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+    )
     hook_dir = tmp_path / ".githooks"
     hook_dir.mkdir(parents=True, exist_ok=True)
     (hook_dir / "pre-push").write_text(
-        "python -m lintgate.quality_infra --enforce .\nqlty check --all\n"
+        "_should_run quality_infra\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\n"
+        "_should_run qlty\n"
+        "bash scripts/ci/run_qlty_gate.sh\n"
+        "_should_run security_lite\n"
+        "bash scripts/ci/run_security_lite_gate.sh\n"
+        "_should_run tests_311\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.11\n"
+        "_should_run tests_312\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.12\n"
+        "_should_run sonar\n"
+        "bash scripts/ci/run_sonar_gate.sh\n"
     )
 
     with patch(
@@ -490,7 +593,7 @@ def test_gate_contract_drift_detects_required_check_missing_from_workflows(
         errors = _check_gate_contract_drift(str(tmp_path))
 
     assert any(
-        "Contract required check(s) not declared by ci_workflows: Tests (3.12)" in e
+        "Contract required check(s) not declared by parity_workflows: Tests (3.12)" in e
         for e in errors
     )
 
@@ -512,14 +615,16 @@ def test_contract_string_list_non_list_returns_empty() -> None:
 
 def test_contract_local_steps_handles_non_list_and_string_entries() -> None:
     assert _contract_local_steps("not-a-list") == []
-    assert _contract_local_steps(["qlty check --all"]) == ["qlty check --all"]
+    assert _contract_local_steps(["bash scripts/ci/run_qlty_gate.sh"]) == [
+        "bash scripts/ci/run_qlty_gate.sh"
+    ]
 
 
 def test_contract_local_ids_extracts_ids_only() -> None:
     assert _contract_local_ids("not-a-list") == []
     assert _contract_local_ids(
         [
-            {"id": "qlty", "command": "qlty check --all"},
+            {"id": "qlty", "command": "bash scripts/ci/run_qlty_gate.sh"},
             {"id": "tests"},
             {"command": "pytest"},
             "not-a-dict",
@@ -530,7 +635,7 @@ def test_contract_local_ids_extracts_ids_only() -> None:
 def test_extract_pre_push_gate_ids_parses_should_run_blocks() -> None:
     content = """
 if _should_run qlty; then
-  qlty check --all
+  bash scripts/ci/run_qlty_gate.sh
 fi
 if _should_run tests && [ -d tests ]; then
   python -m pytest
@@ -829,27 +934,37 @@ def test_parity_map_valid_passes() -> None:
     """Valid parity_map with all required_checks and local_pre_push IDs → no errors."""
     contract = {
         "required_checks": ["Tests (3.11)", "Tests (3.12)", "Qlty", "SonarQube Cloud Scan"],
+        "tools": {"sonar": {"local_mode": "local_scan"}},
         "local_pre_push": [
-            {"id": "quality_infra", "command": "python -m lintgate.quality_infra --enforce"},
-            {"id": "qlty", "command": "qlty check --all"},
-            {"id": "gitleaks", "command": "gitleaks detect"},
-            {"id": "tests", "command": "python -m pytest"},
-            {"id": "symbol_gate", "command": "python -m lintgate.symbol_gate_runner"},
-            {"id": "pip_audit", "command": "pip-audit"},
-            {"id": "sonar"},
+            {"id": "quality_infra", "command": "bash scripts/ci/run_quality_infra_gate.sh"},
+            {"id": "qlty", "command": "bash scripts/ci/run_qlty_gate.sh"},
+            {"id": "security_lite", "command": "bash scripts/ci/run_security_lite_gate.sh"},
+            {"id": "tests_311", "command": "bash scripts/ci/run_tests_gate.sh --python-version 3.11"},
+            {"id": "tests_312", "command": "bash scripts/ci/run_tests_gate.sh --python-version 3.12"},
+            {"id": "sonar", "command": "bash scripts/ci/run_sonar_gate.sh"},
         ],
         "parity_map": {
-            "quality_infra": None,
+            "quality_infra": "Quality Infrastructure Gate",
             "qlty": "Qlty",
-            "gitleaks": None,
-            "tests": ["Tests (3.11)", "Tests (3.12)"],
-            "symbol_gate": None,
-            "pip_audit": None,
-            "sonar": {"ci_check": "SonarQube Cloud Scan", "local_mode": "ci_only"},
+            "security_lite": "Secrets + SAST + Supply Chain",
+            "tests_311": "Tests (3.11)",
+            "tests_312": "Tests (3.12)",
+            "sonar": "SonarQube Cloud Scan",
         },
     }
     errors: list[str] = []
-    _check_parity_map(contract, errors)
+    _check_parity_map(
+        contract,
+        {
+            "Quality Infrastructure Gate",
+            "Qlty",
+            "Secrets + SAST + Supply Chain",
+            "Tests (3.11)",
+            "Tests (3.12)",
+            "SonarQube Cloud Scan",
+        },
+        errors,
+    )
     assert errors == []
 
 
@@ -858,7 +973,7 @@ def test_parity_map_missing_required_check_fails() -> None:
     contract = {
         "required_checks": ["Tests (3.11)", "Qlty", "SonarQube Cloud Scan"],
         "local_pre_push": [
-            {"id": "qlty", "command": "qlty check --all"},
+            {"id": "qlty", "command": "bash scripts/ci/run_qlty_gate.sh"},
         ],
         "parity_map": {
             "qlty": "Qlty",
@@ -866,7 +981,7 @@ def test_parity_map_missing_required_check_fails() -> None:
         },
     }
     errors: list[str] = []
-    _check_parity_map(contract, errors)
+    _check_parity_map(contract, {"Qlty"}, errors)
     assert any(
         "parity_map missing CI mapping for required_check: Tests (3.11)" in e for e in errors
     )
@@ -881,7 +996,7 @@ def test_parity_map_missing_local_pre_push_key_fails() -> None:
     contract = {
         "required_checks": ["Qlty"],
         "local_pre_push": [
-            {"id": "qlty", "command": "qlty check --all"},
+            {"id": "qlty", "command": "bash scripts/ci/run_qlty_gate.sh"},
             {"id": "gitleaks", "command": "gitleaks detect"},
         ],
         "parity_map": {
@@ -890,7 +1005,7 @@ def test_parity_map_missing_local_pre_push_key_fails() -> None:
         },
     }
     errors: list[str] = []
-    _check_parity_map(contract, errors)
+    _check_parity_map(contract, {"Qlty"}, errors)
     assert any("parity_map missing key for local_pre_push gate: gitleaks" in e for e in errors)
 
 
@@ -901,7 +1016,7 @@ def test_parity_map_absent_skips_validation() -> None:
         "local_pre_push": [{"id": "tests", "command": "pytest"}],
     }
     errors: list[str] = []
-    _check_parity_map(contract, errors)
+    _check_parity_map(contract, set(), errors)
     assert errors == []
 
 
@@ -913,5 +1028,44 @@ def test_parity_map_not_a_dict_skips_validation() -> None:
         "parity_map": "invalid",
     }
     errors: list[str] = []
-    _check_parity_map(contract, errors)
+    _check_parity_map(contract, set(), errors)
     assert errors == []
+
+
+def test_gate_contract_drift_rejects_sonar_ci_only_mode(tmp_path: Path) -> None:
+    _write_valid_gate_contract(tmp_path)
+    (tmp_path / "gate_contract.yaml").write_text(
+        (tmp_path / "gate_contract.yaml")
+        .read_text()
+        .replace('local_mode: "local_scan"', 'local_mode: "ci_only"')
+    )
+    _write_contract_workflows(tmp_path)
+    hook_dir = tmp_path / ".githooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "pre-push").write_text(
+        "_should_run quality_infra\n"
+        "bash scripts/ci/run_quality_infra_gate.sh\n"
+        "_should_run qlty\n"
+        "bash scripts/ci/run_qlty_gate.sh\n"
+        "_should_run security_lite\n"
+        "bash scripts/ci/run_security_lite_gate.sh\n"
+        "_should_run tests_311\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.11\n"
+        "_should_run tests_312\n"
+        "bash scripts/ci/run_tests_gate.sh --python-version 3.12\n"
+        "_should_run sonar\n"
+        "bash scripts/ci/run_sonar_gate.sh\n"
+    )
+
+    with patch(
+        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        return_value=[
+            "Tests (3.11)",
+            "Tests (3.12)",
+            "Qlty",
+            "SonarQube Cloud Scan",
+        ],
+    ):
+        errors = _check_gate_contract_drift(str(tmp_path))
+
+    assert "tools.sonar.local_mode must be 'local_scan' for local/CI parity" in errors
