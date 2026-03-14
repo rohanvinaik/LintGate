@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -232,26 +233,7 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
 
         # Heuristic for failed blocks
         if status == "fail":
-            stdout_lower = proc.stdout.lower()
-            stderr_lower = proc.stderr.lower()
-            if "blocked: secrets" in stdout_lower or "blocked: secrets" in stderr_lower:
-                failed_gate_ids.append("secrets_scan")
-            if (
-                ("blocked" in stdout_lower or "blocked" in stderr_lower)
-                and "symbol_gate" not in failed_gate_ids
-                and ("symbol" in stdout_lower or "symbol" in stderr_lower)
-            ):
-                failed_gate_ids.append("symbol_gate")
-            if ("incomplete" in stdout_lower or "incomplete" in stderr_lower) and (
-                "quality infrastructure" in stdout_lower or "quality infrastructure" in stderr_lower
-            ):
-                failed_gate_ids.append("quality_infra")
-            if "pytest" in stdout_lower and (
-                proc.stdout.count("FAILED ") > 0 or proc.stdout.count("FAILURES ") > 0
-            ):
-                failed_gate_ids.append("pytest")
-            if "sonar" in stdout_lower and "fail" in stdout_lower:
-                failed_gate_ids.append("sonar")
+            failed_gate_ids = _extract_failed_gate_ids(proc.stdout, proc.stderr)
 
             if not failed_gate_ids:
                 failed_gate_ids.append("pre-push-hook")
@@ -260,6 +242,47 @@ def _run_preflight(repo_root: str, json_mode: bool) -> int:
         return proc.returncode
 
     return proc.returncode
+
+
+def _extract_failed_gate_ids(stdout: str, stderr: str) -> list[str]:
+    """Extract canonical gate IDs from pre-push output.
+
+    Prefers structured markers emitted by .githooks/pre-push:
+      [lintgate][gate:<id>] FAIL|BLOCKED|ERROR|INCOMPLETE ...
+    Falls back to legacy substring heuristics for backward compatibility.
+    """
+    combined = "\n".join(part for part in (stdout, stderr) if part)
+    marker_re = re.compile(
+        r"^\[lintgate\]\[gate:([a-z0-9_]+)\]\s+(?:FAIL|BLOCKED|ERROR|INCOMPLETE)\b",
+        re.MULTILINE,
+    )
+    seen: list[str] = []
+    for gate_id in marker_re.findall(combined):
+        if gate_id not in seen:
+            seen.append(gate_id)
+    if seen:
+        return seen
+
+    stdout_lower = stdout.lower()
+    stderr_lower = stderr.lower()
+    legacy_ids: list[str] = []
+    if "blocked: secrets" in stdout_lower or "blocked: secrets" in stderr_lower:
+        legacy_ids.append("gitleaks")
+    if (
+        ("blocked" in stdout_lower or "blocked" in stderr_lower)
+        and "symbol_gate" not in legacy_ids
+        and ("symbol" in stdout_lower or "symbol" in stderr_lower)
+    ):
+        legacy_ids.append("symbol_gate")
+    if ("incomplete" in stdout_lower or "incomplete" in stderr_lower) and (
+        "quality infrastructure" in stdout_lower or "quality infrastructure" in stderr_lower
+    ):
+        legacy_ids.append("quality_infra")
+    if "pytest" in stdout_lower and (stdout.count("FAILED ") > 0 or stdout.count("FAILURES ") > 0):
+        legacy_ids.append("tests")
+    if "sonar" in stdout_lower and "fail" in stdout_lower:
+        legacy_ids.append("sonar")
+    return legacy_ids
 
 
 def _push_branch(repo_root: str, remote: str, branch: str) -> None:

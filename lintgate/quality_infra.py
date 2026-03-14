@@ -13,6 +13,7 @@ a CLI entry point for hard enforcement in hooks and CI.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -63,6 +64,8 @@ _BADGE_BLOCK_END = "<!-- lintgate:quality-badges:end -->"
 _README_NAMES = ("README.md", "readme.md", "Readme.md", "README.MD")
 
 _GITHUB_REMOTE_RE = re.compile(r"github\.com[:/]([^/]+)/([^/.\s]+)")
+_PRE_PUSH_GATE_ID_RE = re.compile(r"_should_run\s+([A-Za-z0-9_]+)")
+_MATRIX_EXPR_RE = re.compile(r"\${{\s*matrix\.([A-Za-z0-9_-]+)\s*}}")
 
 
 # ── Result dataclass ─────────────────────────────────────────────────────
@@ -234,6 +237,7 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
     required_checks = _contract_string_list(contract.get("required_checks"))
     workflows = _contract_string_list(contract.get("ci_workflows"))
     local_steps = _contract_local_steps(contract.get("local_pre_push"))
+    local_ids = _contract_local_ids(contract.get("local_pre_push"))
 
     if not required_checks:
         errors.append("gate_contract.yaml required_checks is missing or empty")
@@ -254,8 +258,29 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         for cmd in local_steps:
             if cmd not in pre_push_content:
                 errors.append(f"pre-push missing contract command fragment: {cmd}")
+        hook_gate_ids = _extract_pre_push_gate_ids(pre_push_content)
+        if hook_gate_ids:
+            missing_hook_ids = sorted(set(local_ids) - set(hook_gate_ids))
+            extra_hook_ids = sorted(set(hook_gate_ids) - set(local_ids))
+            if missing_hook_ids:
+                errors.append(
+                    "pre-push missing contract gate id(s): " + ", ".join(missing_hook_ids)
+                )
+            if extra_hook_ids:
+                errors.append(
+                    "pre-push exposes gate id(s) not in gate_contract.yaml: "
+                    + ", ".join(extra_hook_ids)
+                )
 
     _check_parity_map(contract, errors)
+
+    declared_checks = _collect_workflow_declared_checks(root, workflows)
+    missing_declared = sorted(set(required_checks) - declared_checks)
+    if missing_declared:
+        errors.append(
+            "Contract required check(s) not declared by ci_workflows: "
+            + ", ".join(missing_declared)
+        )
 
     remote_checks = _fetch_branch_protection_required_checks(project_root)
     require_remote = _branch_protection_fail_closed()
@@ -376,6 +401,110 @@ def _contract_local_steps(value: Any) -> list[str]:
             if isinstance(command, str) and command.strip():
                 commands.append(command.strip())
     return commands
+
+
+def _contract_local_ids(value: Any) -> list[str]:
+    """Extract local pre-push gate IDs from contract."""
+    if not isinstance(value, list):
+        return []
+    ids: list[str] = []
+    for entry in value:
+        if isinstance(entry, dict):
+            gate_id = entry.get("id")
+            if isinstance(gate_id, str) and gate_id.strip():
+                ids.append(gate_id.strip())
+    return ids
+
+
+def _extract_pre_push_gate_ids(pre_push_content: str) -> list[str]:
+    """Extract explicit gate IDs from .githooks/pre-push.
+
+    The canonical hook surface is `_should_run <gate_id>`.
+    """
+    return sorted(set(_PRE_PUSH_GATE_ID_RE.findall(pre_push_content)))
+
+
+def _collect_workflow_declared_checks(
+    root: Path,
+    workflows: list[str],
+) -> set[str]:
+    """Collect concrete check names declared by the workflow files."""
+    declared: set[str] = set()
+    for rel in workflows:
+        declared.update(_workflow_declared_checks(root / rel))
+    return declared
+
+
+def _workflow_declared_checks(workflow_path: Path) -> set[str]:
+    """Extract emitted check names from a GitHub Actions workflow file."""
+    try:
+        import yaml
+
+        content = yaml.safe_load(workflow_path.read_text())
+    except Exception:
+        return set()
+    if not isinstance(content, dict):
+        return set()
+    jobs = content.get("jobs")
+    if not isinstance(jobs, dict):
+        return set()
+
+    declared: set[str] = set()
+    for job_id, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        declared.update(_expand_workflow_job_names(job_id, job))
+    return declared
+
+
+def _expand_workflow_job_names(job_id: str, job: dict[str, Any]) -> set[str]:
+    """Expand a job `name:` into concrete emitted check names.
+
+    Supports simple matrix substitutions such as:
+      name: Tests (${{ matrix.python-version }})
+      strategy.matrix.python-version: ["3.11", "3.12"]
+    """
+    raw_name = job.get("name")
+    name_template = raw_name if isinstance(raw_name, str) and raw_name.strip() else job_id
+    names = {name_template}
+
+    matrix = (job.get("strategy") or {}).get("matrix")
+    if not isinstance(matrix, dict):
+        return names
+
+    axes = _MATRIX_EXPR_RE.findall(name_template)
+    if not axes:
+        return names
+
+    expanded = [name_template]
+    for axis in axes:
+        values = _matrix_axis_values(matrix.get(axis))
+        if not values:
+            continue
+        axis_re = re.compile(r"\${{\s*matrix\." + re.escape(axis) + r"\s*}}")
+        next_expanded: list[str] = []
+        for current in expanded:
+            for value in values:
+                next_expanded.append(axis_re.sub(value, current))
+        expanded = next_expanded or expanded
+    return set(expanded)
+
+
+def _matrix_axis_values(value: Any) -> list[str]:
+    """Extract concrete values from a workflow matrix axis."""
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        values: list[str] = []
+        for candidate in re.findall(r"\[[^\]]*\]", value):
+            try:
+                parsed = json.loads(candidate)
+            except Exception:
+                continue
+            if isinstance(parsed, list):
+                values.extend(str(item) for item in parsed)
+        return list(dict.fromkeys(values))
+    return []
 
 
 def _fetch_branch_protection_required_checks(project_root: str) -> list[str] | None:
