@@ -439,12 +439,23 @@ def impl_behavior_precheck(
 
         log_feature_usage("behavior_precheck_deprecated", project_root)
 
+    # Call constraint_check, then undo the session counter increment
+    # so behavior_precheck counts as ONE constraint check, not two.
     constraint_result_raw = tools["constraint_check"](
         path=path,
         planned_action=planned_action,
         known_constraints=known_constraints,
     )
     output = json.loads(constraint_result_raw)
+
+    # Undo the double-count: constraint_check incremented the counter,
+    # but this wrapper call should not count as a separate invocation.
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.session_memory import get_or_create_session, load_behavior_compass
+        _session = get_or_create_session(project_root, 4.0)
+        _compass = load_behavior_compass(_session)
+        if _compass.constraint_check_count_session > 0:
+            _compass.constraint_check_count_session -= 1
 
     prediction_registered = False
     _valid_prediction_types = {"exit_code", "error_signature", "stdout_contains"}

@@ -92,7 +92,7 @@ _MCP_INSTRUCTIONS = (
     "  Alternative: platonic_converge(path, file) — if you already know which file to improve\n"
     "For a full codebase sweep: loop platonic_project → follow actions → platonic_apply → repeat.\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "109 tools total — use getting_started or lint_status to explore."
+    "111 tools total — use getting_started or lint_status to explore."
 )
 
 
