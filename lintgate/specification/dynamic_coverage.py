@@ -333,7 +333,7 @@ def build_dynamic_linkage(
     for abs_path in files_to_process:
         # Normalize path for lookup
         norm_path = os.path.normpath(abs_path)
-        line_ctxs = _find_file_contexts(norm_path, file_contexts, project_root)
+        line_ctxs = _find_file_contexts(norm_path, file_contexts, project_root)  # type: ignore[assignment]
         if not line_ctxs:
             continue
 

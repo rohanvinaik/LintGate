@@ -186,7 +186,7 @@ class HabitBootstrapper:
             List of per-project summary dicts.
         """
         try:
-            from mneme.ingest.session_parser import iter_sessions
+            from mneme.ingest.session_parser import iter_sessions  # type: ignore[import-not-found]
         except ImportError:
             return [{"error": "mneme.ingest.session_parser not importable"}]
 

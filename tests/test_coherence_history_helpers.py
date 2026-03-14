@@ -26,16 +26,12 @@ def _snapshot(
 
 
 def _session(snapshots: list[SessionSnapshot]) -> SessionMemory:
-    mem = SessionMemory.__new__(SessionMemory)
+    mem = SessionMemory()
     mem.snapshots = snapshots
     mem.session_id = "test"
-    mem.project_path = "/tmp"
-    mem.project_hash = "abc"
+    mem.project_root = "/tmp"
     mem.started_at = 0.0
     mem.last_active = 0.0
-    mem.repairs_proposed = {}
-    mem.repairs_applied = {}
-    mem.session_knowledge = None
     return mem
 
 

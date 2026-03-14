@@ -53,7 +53,6 @@ class TestPlaceholderRegex:
 
 class TestScanLine:
     def test_detects_aws_key(self):
-        line = 'aws_key = "AKIAIOSFODNN7EXAMPLE"'
         # "EXAMPLE" triggers placeholder → skip
         # Use a non-placeholder key
         line2 = 'aws_key = "AKIA1234567890ABCDEF"'

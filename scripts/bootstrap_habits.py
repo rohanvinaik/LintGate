@@ -30,7 +30,7 @@ def main() -> None:
 
     # Ensure mneme is importable
     try:
-        from mneme.ingest.session_parser import iter_sessions
+        from mneme.ingest.session_parser import iter_sessions  # type: ignore[import-not-found]
     except ImportError:
         print("Error: mneme package not found. Install it or add to PYTHONPATH.", file=sys.stderr)
         sys.exit(1)

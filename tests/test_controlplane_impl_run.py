@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -281,7 +282,7 @@ class TestResolveGitChangedFiles:
             mock_run.return_value = SimpleNamespace(
                 stdout="changed.py\n", returncode=0
             )
-            result = _resolve_git_changed_files(
+            _resolve_git_changed_files(
                 str(tmp_path), "staged", [str(tmp_path / "changed.py")]
             )
             # Check the git command used for staged
@@ -295,7 +296,7 @@ class TestResolveGitChangedFiles:
                 SimpleNamespace(stdout="a.py\n", returncode=0),
                 SimpleNamespace(stdout="b.py\n", returncode=0),
             ]
-            result = _resolve_git_changed_files(
+            _resolve_git_changed_files(
                 str(tmp_path), "changed", [str(tmp_path / "a.py"), str(tmp_path / "b.py")]
             )
             assert mock_run.call_count == 2
@@ -1144,25 +1145,25 @@ class TestUpdateRefactorState:
 
 class TestApplyExitGateToCompact:
     def test_no_advisories_no_change(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         _apply_exit_gate_to_compact(compact, None, None)
         assert "session_exit_gate" not in compact
         assert "persistent_test_failures" not in compact
 
     def test_advisories_add_gate_section(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         _apply_exit_gate_to_compact(compact, ["adv1", "adv2"], None)
         assert compact["session_exit_gate"]["advisories"] == ["adv1", "adv2"]
         assert compact["session_exit_gate"]["persistent_failures"] == 0
 
     def test_persistent_failures_truncated_to_10(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         failures = list(range(15))
         _apply_exit_gate_to_compact(compact, None, failures)
         assert len(compact["persistent_test_failures"]) == 10
 
     def test_both_advisories_and_failures(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         _apply_exit_gate_to_compact(compact, ["a1"], ["f1", "f2"])
         assert compact["session_exit_gate"]["persistent_failures"] == 2
         assert compact["persistent_test_failures"] == ["f1", "f2"]
@@ -1173,19 +1174,19 @@ class TestApplyExitGateToCompact:
 
 class TestCheckTheoryStalenessForCompact:
     def test_no_git_context_is_noop(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         mesh = _make_mesh_result()
         _check_theory_staleness_for_compact(compact, mesh, None, "/root")
         assert "theory_staleness" not in compact
 
     def test_empty_modified_and_untracked_is_noop(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         mesh = SimpleNamespace(git_context={"modified_files": [], "untracked_files": []})
         _check_theory_staleness_for_compact(compact, mesh, None, "/root")
         assert "theory_staleness" not in compact
 
     def test_stale_theory_enriches_compact(self):
-        compact = {"next_actions": []}
+        compact: dict[str, Any] = {"next_actions": []}
         mesh = SimpleNamespace(git_context={"modified_files": ["a.py"]})
         session = SimpleNamespace(theory_profile_cache={"facets": {}})
         staleness = {
@@ -1199,15 +1200,16 @@ class TestCheckTheoryStalenessForCompact:
             return_value=staleness,
         ):
             _check_theory_staleness_for_compact(compact, mesh, session, "/root")
-        assert compact["theory_staleness"]["stale"] is True
-        assert len(compact["theory_staleness"]["uncovered_files"]) == 10  # capped at 10
-        assert compact["theory_staleness"]["total_uncommitted_py"] == 15
+        ts: dict[str, Any] = compact["theory_staleness"]
+        assert ts["stale"] is True
+        assert len(ts["uncovered_files"]) == 10  # capped at 10
+        assert ts["total_uncommitted_py"] == 15
         assert len(compact["next_actions"]) == 1
         assert compact["next_actions"][0]["tool"] == "build_theory_pack"
         assert compact["next_actions"][0]["priority"] == 2
 
     def test_not_stale_does_not_enrich(self):
-        compact = {}
+        compact: dict[str, Any] = {}
         mesh = SimpleNamespace(git_context={"modified_files": ["a.py"]})
         with mock.patch(
             "lintgate.theory_extractor.check_theory_staleness",

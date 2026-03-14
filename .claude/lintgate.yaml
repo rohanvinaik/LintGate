@@ -237,6 +237,12 @@ exemptions:
       codes: ["private_key"]
       reason: "Synthetic private key in test_detects_private_key_blocking — verifies SecretChecker detection."
       ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
+    "test_git_secrets.py":
+      reason: "Synthetic secrets used as test fixtures for _git_secrets.py pattern matching tests."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
+    "test_secret_checker.py":
+      reason: "Synthetic secrets used as test fixtures for secret_checker.py detection tests."
+      ticket: "LINTGATE-EXEMPT-TESTFIXTURE"
   lint:
     "pyproject.toml":
       codes: ["version-missing"]

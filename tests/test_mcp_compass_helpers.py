@@ -724,7 +724,7 @@ class TestRenderTargetsExact:
         reg.detect_tools.return_value = []
         reg.render_for_targets.return_value = {}
         with patch("lintgate.renderers.build_default_registry", return_value=reg):
-            result = _render_targets("/root", None, ["all"], write=False)
+            _render_targets("/root", None, ["all"], write=False)
         call_targets = reg.render_for_targets.call_args[0][0]
         assert call_targets == ["claude", "generic"]
 
@@ -733,7 +733,7 @@ class TestRenderTargetsExact:
         reg.detect_tools.return_value = None
         reg.render_for_targets.return_value = {}
         with patch("lintgate.renderers.build_default_registry", return_value=reg):
-            result = _render_targets("/root", None, ["all"], write=False)
+            _render_targets("/root", None, ["all"], write=False)
         call_targets = reg.render_for_targets.call_args[0][0]
         assert call_targets == ["claude", "generic"]
 
@@ -1066,7 +1066,7 @@ class TestImplSetupHooksExact:
         claude_dir.mkdir()
         existing = {"custom": True, "hooks": {"MyHook": [{"hooks": [{"type": "x"}]}]}}
         (claude_dir / "settings.json").write_text(json.dumps(existing))
-        result = _impl_setup_hooks(str(tmp_path), write=True)
+        _impl_setup_hooks(str(tmp_path), write=True)
         content = json.loads((claude_dir / "settings.json").read_text())
         assert content["custom"] is True
         assert "MyHook" in content["hooks"]

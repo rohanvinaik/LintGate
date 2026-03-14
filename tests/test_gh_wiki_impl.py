@@ -67,7 +67,7 @@ class TestRenderTheoryWikiPage:
         assert "- Solve incrementally" in result
 
     def test_facet_with_empty_claims(self):
-        theory = {"facets": {"alignment": {"claims": []}}}
+        theory: dict[str, Any] = {"facets": {"alignment": {"claims": []}}}
         result = _render_theory_wiki_page(theory)
         assert "_No claims extracted._" in result
 

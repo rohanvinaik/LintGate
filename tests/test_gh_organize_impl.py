@@ -200,10 +200,10 @@ class TestCheckUnlabeledIssues:
         assert _check_unlabeled_issues(issues) == []
 
     def test_some_unlabeled(self):
-        issues = [
-            {"number": 1, "labels": [{"name": "bug"}]},
-            {"number": 2, "labels": []},
-            {"number": 3, "labels": None},
+        issues: list[dict[str, Any]] = [
+            dict(number=1, labels=[{"name": "bug"}]),
+            dict(number=2, labels=[]),
+            dict(number=3, labels=None),
         ]
         gaps = _check_unlabeled_issues(issues)
         assert len(gaps) == 1

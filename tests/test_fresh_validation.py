@@ -131,8 +131,8 @@ class TestRunFreshKillRates:
             patch(_PURITY, return_value=True),
             patch(_SAMPLING, return_value=result_obj),
         ):
-            rates, zero, details = run_fresh_kill_rates(  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
-                plan,
+            rates, zero, details = run_fresh_kill_rates(
+                plan,  # type: ignore[arg-type]
                 str(tmp_path),
                 generated_dir=str(staging),
             )

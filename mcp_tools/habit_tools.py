@@ -343,7 +343,7 @@ def _impl_habit_configure(
 def _impl_habit_bootstrap(project_root: str) -> str:
     """Implementation for habit_bootstrap tool."""
     try:
-        from mneme.ingest.session_parser import iter_sessions
+        from mneme.ingest.session_parser import iter_sessions  # type: ignore[import-not-found]
     except ImportError:
         return json.dumps({"error": "mneme package not available for session parsing"})
 

@@ -21,7 +21,7 @@ def _result(
     channel: str, findings: list[LintIssue] | None = None, status: str = "fail"
 ) -> ChannelResult:
     return ChannelResult(
-        channel=channel, status=status, severity="warning", findings=findings or []
+        channel=channel, status=status, severity="warning", findings=findings or []  # type: ignore[arg-type]
     )
 
 

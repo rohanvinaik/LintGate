@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -606,7 +607,7 @@ class TestBuildConfigStatus:
         assert status["onboarding"] == {"onboard": True}
 
     def test_session_memory_includes_session(self):
-        helpers = {"_build_onboarding_status": lambda _: {}}
+        helpers: dict[str, Any] = {"_build_onboarding_status": lambda _: {}}
         cfg = _make_cp_config(session_memory=True)
         with patch(
             "mcp_tools._controlplane_impl_details._get_session_status",
@@ -616,7 +617,7 @@ class TestBuildConfigStatus:
         assert status["session"] == {"session_id": "s1"}
 
     def test_token_policy(self):
-        helpers = {"_build_onboarding_status": lambda _: {}}
+        helpers: dict[str, Any] = {"_build_onboarding_status": lambda _: {}}
         cfg = _make_cp_config()
         status = _build_config_status(cfg, "/tmp/project", helpers)
         assert status["token_policy"]["hook_max_tokens"] == 500

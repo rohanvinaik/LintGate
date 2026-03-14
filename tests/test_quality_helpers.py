@@ -729,7 +729,7 @@ class TestComputeBanditCiSkips:
 
 class TestGenerateSonarWorkflow:
     def test_returns_deprecation_message(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             result = _generate_sonar_workflow()
         assert "deprecated" in result.lower() or "Sonar workflow" in result

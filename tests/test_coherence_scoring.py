@@ -36,8 +36,8 @@ def _make_result(
 ) -> ChannelResult:
     return ChannelResult(
         channel=channel,
-        status=status,
-        severity=severity,
+        status=status,  # type: ignore[arg-type]
+        severity=severity,  # type: ignore[arg-type]
         findings=findings or [],
     )
 

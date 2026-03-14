@@ -24,7 +24,7 @@ from lintgate.linters.cognitive_complexity import (
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-def _parse_func(source: str) -> ast.FunctionDef:
+def _parse_func(source: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     """Parse a function source string and return its FunctionDef node."""
     tree = ast.parse(textwrap.dedent(source))
     for node in ast.walk(tree):

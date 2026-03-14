@@ -343,7 +343,7 @@ class TestMergeOptionalField:
     def test_non_dict_new_value_falls_back(self) -> None:
         data: dict[str, Any] = {}
         existing: dict[str, Any] = {"k": {"old": 1}}
-        # type: ignore — deliberately passing wrong type to test guard
+        # Deliberately passing wrong type to test guard
         _merge_optional_field(data, existing, "k", "not_a_dict")  # type: ignore[arg-type]
         assert data["k"] == {"old": 1}
 

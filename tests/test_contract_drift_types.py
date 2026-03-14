@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+from typing import cast
 
 import pytest
 
@@ -93,25 +94,25 @@ class TestArityFromAnnotation:
     def test_tuple_annotation(self):
         src = "def f() -> tuple[int, str, float]: pass"
         tree = ast.parse(src)
-        func_node = tree.body[0]
+        func_node = cast(ast.FunctionDef, tree.body[0])
         assert _arity_from_annotation(func_node) == 3
 
     def test_no_annotation(self):
         src = "def f(): pass"
         tree = ast.parse(src)
-        func_node = tree.body[0]
+        func_node = cast(ast.FunctionDef, tree.body[0])
         assert _arity_from_annotation(func_node) is None
 
     def test_non_tuple_annotation(self):
         src = "def f() -> int: pass"
         tree = ast.parse(src)
-        func_node = tree.body[0]
+        func_node = cast(ast.FunctionDef, tree.body[0])
         assert _arity_from_annotation(func_node) is None
 
     def test_non_subscript_annotation(self):
         src = "def f() -> list: pass"
         tree = ast.parse(src)
-        func_node = tree.body[0]
+        func_node = cast(ast.FunctionDef, tree.body[0])
         assert _arity_from_annotation(func_node) is None
 
 

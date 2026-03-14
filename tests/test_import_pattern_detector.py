@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import textwrap
+from typing import cast
 
 from lintgate.linters.import_pattern_detector import (
     OptionalImport,
@@ -88,33 +90,25 @@ class TestCatchesImportError:
     """Tests for handler-type detection."""
 
     def test_bare_except_returns_true(self) -> None:
-        import ast
-
         tree = ast.parse("try:\n    pass\nexcept:\n    pass\n")
-        try_node = tree.body[0]
+        try_node = cast(ast.Try, tree.body[0])
         assert _catches_import_error(try_node) is True
 
     def test_import_error_handler(self) -> None:
-        import ast
-
         tree = ast.parse("try:\n    pass\nexcept ImportError:\n    pass\n")
-        try_node = tree.body[0]
+        try_node = cast(ast.Try, tree.body[0])
         assert _catches_import_error(try_node) is True
 
     def test_tuple_handler_with_import_error(self) -> None:
-        import ast
-
         tree = ast.parse(
             "try:\n    pass\nexcept (ImportError, ValueError):\n    pass\n"
         )
-        try_node = tree.body[0]
+        try_node = cast(ast.Try, tree.body[0])
         assert _catches_import_error(try_node) is True
 
     def test_value_error_only_returns_false(self) -> None:
-        import ast
-
         tree = ast.parse("try:\n    pass\nexcept ValueError:\n    pass\n")
-        try_node = tree.body[0]
+        try_node = cast(ast.Try, tree.body[0])
         assert _catches_import_error(try_node) is False
 
 
@@ -125,30 +119,24 @@ class TestFindFallbackAssignment:
     """Tests for fallback value detection in except bodies."""
 
     def test_finds_none_assignment(self) -> None:
-        import ast
-
         src = "try:\n    pass\nexcept ImportError:\n    foo = None\n"
         tree = ast.parse(src)
-        handlers = tree.body[0].handlers
+        handlers = cast(ast.Try, tree.body[0]).handlers
         result = _find_fallback_assignment("foo", handlers)
         assert result is not None
         assert "None" in result
 
     def test_no_matching_name_returns_none(self) -> None:
-        import ast
-
         src = "try:\n    pass\nexcept ImportError:\n    bar = None\n"
         tree = ast.parse(src)
-        handlers = tree.body[0].handlers
+        handlers = cast(ast.Try, tree.body[0]).handlers
         result = _find_fallback_assignment("foo", handlers)
         assert result is None
 
     def test_empty_handler_body(self) -> None:
-        import ast
-
         src = "try:\n    pass\nexcept ImportError:\n    pass\n"
         tree = ast.parse(src)
-        handlers = tree.body[0].handlers
+        handlers = cast(ast.Try, tree.body[0]).handlers
         result = _find_fallback_assignment("foo", handlers)
         assert result is None
 
