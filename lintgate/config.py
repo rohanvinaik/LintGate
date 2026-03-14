@@ -195,6 +195,20 @@ def _parse_channel_configs(cp_config: ControlPlaneConfig, cp_raw: dict) -> None:
             workflow_dir=str(platonic_raw.get("workflow_dir", ".lintgate/platonic_workflows")),
         )
 
+    # Parse prescriptive spec config
+    pspec_raw = cp_raw.get("prescriptive_spec", {})
+    if isinstance(pspec_raw, dict):
+        cp_config.prescriptive_spec_enabled = bool(pspec_raw.get("enabled", False))
+        cp_config.prescriptive_spec_auto_compose_on_freeze = bool(
+            pspec_raw.get("auto_compose_on_freeze", True)
+        )
+        cp_config.prescriptive_spec_emit_advisory = bool(
+            pspec_raw.get("emit_advisory_on_write", True)
+        )
+        cp_config.prescriptive_spec_sigma_divergence_threshold = float(
+            pspec_raw.get("sigma_divergence_threshold", 2.0)
+        )
+
     # Parse per-channel configs
     channels_raw = cp_raw.get("channels", {})
     if isinstance(channels_raw, dict):

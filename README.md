@@ -22,7 +22,7 @@
 
 AI writes code fast but breaks things. A senior engineer's instincts — check imports after refactoring, notice when complexity creeps, feel when a function does too much — are pattern recognition over structural invariants. Pattern recognition over structural invariants is what symbolic systems do.
 
-111 MCP tools. 18 linters. 6 parallel analysis channels. No LLM inference in the supervision path — symbolic checks on a CPU, at the speed your agent writes code.
+118 MCP tools. 18 linters. 6 parallel analysis channels. No LLM inference in the supervision path — symbolic checks on a CPU, at the speed your agent writes code.
 
 | | Without LintGate | With LintGate |
 |---|---|---|
@@ -87,8 +87,8 @@ Auto-detects Claude Code, Cursor, Copilot, Windsurf, Gemini CLI, Cline, Roo Code
 
 1. `getting_started(path)` — project onboarding + startup automation
 2. `controlplane_run(path)` — full health check across 6 channels (works without config)
-3. `controlplane_get_details(run_id)` — drill into what matters
-4. `lint_fix(path)` — auto-fix safe issues
+3. `controlplane_get_details(run_id, finding_domain="code")` — drill into code findings without dependency noise; the default response also splits code vs environment in its summary
+4. `controlplane_apply_repairs(path, run_id=...)` or `lint_fix(path)` — replay persisted safe repairs from that run, or use direct lint autofix
 5. `bootstrap_context_files(path, write=True)` — generate persistent project context
 
 ## Golden path for agents
@@ -136,6 +136,54 @@ Each `platonic_converge` run:
 4. **Validates** generated tests by re-profiling — confirms new tests actually kill targeted mutants
 5. **Persists** workflow state so it can be resumed or applied later
 
+## Prescriptive specifications
+
+LintGate normally operates *retrospectively*: code is written, then analyzed. The Prescriptive Spec system flips this to *prospective*: before code is written, a behavioral contract is composed from project theory and compass directives.
+
+### How it works
+
+```
+prescriptive_spec_compose(path, target)     # theory + compass → behavioral contract
+  ↓
+prescriptive_spec_compile(path, target)     # contract → test skeletons + generation constraints
+  ↓
+[write code guided by generation_prompt]    # LLM sees MUST/MUST NOT constraints
+  ↓
+prescriptive_spec_verify(path, file)        # refinement check: sigma convergence + mutation kill expectations
+```
+
+Each spec is a **typed Predicate IR** — not strings. Predicates are normalizable, comparable, and checked against the function AST at ControlPlane time (PSPEC001). The `CUSTOM` escape hatch handles predicates that require semantic understanding.
+
+### Three problem-class backends
+
+| Backend | Compiles to |
+|---------|-------------|
+| **Pure** | Hypothesis property skeletons, exact-value assertions, mutation kill expectations |
+| **Stateful** | Init/Next/Invariant transition tests, state variable initialization checks |
+| **Distributed** | Protocol conformance tests, message sequence monitors |
+
+### Hook integration (8 points)
+
+- **PostToolUse**: advisory when editing files with specs
+- **PreToolUse**: obligation + generation constraint guidance before writes
+- **UserPromptSubmit**: `PSpec: N specs (X% covered)` in primer
+- **PreCompact**: prescriptive state preserved in compaction capsule
+- **Theory freeze**: auto-composes specs for high-confidence targets
+- **ControlPlane**: PSPEC001 (AST invariant violation), PSPEC002 (sigma divergence), PSPEC003 (missing spec)
+- **Living context**: `prescriptive_rules` managed section in CLAUDE.md
+- **Compass alignment**: `check_alignment_with_specs()` checks actions against forbidden behaviors
+
+### Config
+
+```yaml
+controlplane:
+  prescriptive_spec:
+    enabled: true
+    auto_compose_on_freeze: true
+    emit_advisory_on_write: true
+    sigma_divergence_threshold: 2.0
+```
+
 ## Bootstrap progression
 
 Works from zero state. Gets better as it accumulates signal.
@@ -144,6 +192,7 @@ Works from zero state. Gets better as it accumulates signal.
 **Stage 1** — Theory extraction. Scans project docs, produces context with dispositions and enforceable rules.
 **Stage 2** — Model calibration. Behavioral micro-probe profiles the model's coding tendencies.
 **Stage 3** — Living context. Recurring patterns flow back as patches. The project's self-model evolves.
+**Stage 4** — Prescriptive specs. Behavioral contracts composed from theory, enforced via AST checks, refined through mutation verification.
 
 Each stage stands alone. Each layer is additive.
 
@@ -165,6 +214,6 @@ The savings come from what doesn't happen. Every uncaught discipline failure deg
 
 Part of a research program on structured navigation through constrained semantic spaces — the same paradigm applied to [ML model discovery](https://github.com/rohanvinaik/ModelAtlas) and [theorem proving](https://github.com/rohanvinaik/Wayfinder).
 
-*111 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
+*118 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
 
 MIT — Rohan Vinaik

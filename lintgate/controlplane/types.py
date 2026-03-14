@@ -328,6 +328,11 @@ class ControlPlaneConfig:
     test_regeneration: TestRegenerationConfig = field(default_factory=TestRegenerationConfig)
     # Platonic workflow golden path settings
     platonic_workflow: PlatonicWorkflowConfig = field(default_factory=PlatonicWorkflowConfig)
+    # PrescriptiveSpec system (obligation contracts + refinement guidance)
+    prescriptive_spec_enabled: bool = False
+    prescriptive_spec_auto_compose_on_freeze: bool = True
+    prescriptive_spec_emit_advisory: bool = True
+    prescriptive_spec_sigma_divergence_threshold: float = 2.0
 
     def channel_enabled(self, name: str) -> bool:
         """Check if a specific channel is enabled."""

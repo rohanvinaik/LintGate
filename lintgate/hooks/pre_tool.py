@@ -10,6 +10,7 @@ Protocol: stdin JSON → stdout JSON, exit 0 always.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -55,18 +56,140 @@ def _extract_bash_command(data: dict[str, Any]) -> str:
     return ""
 
 
-def _check_bash_alignment(data: dict[str, Any], exec_compass: Any) -> str:
-    """Check Bash command alignment against compass directives."""
+def _check_bash_alignment(
+    data: dict[str, Any], exec_compass: Any, project_root: str = ""
+) -> str:
+    """Check Bash command alignment against compass + prescriptive spec directives."""
     command = _extract_bash_command(data)
     if not command:
         return ""
 
-    result = exec_compass.check_alignment(command)
+    # Try enhanced alignment with prescriptive specs
+    specs = None
+    if project_root:
+        try:
+            from lintgate.specification.prescriptive_spec import load_all_specs
+
+            all_specs = load_all_specs(project_root)
+            if all_specs:
+                specs = list(all_specs.values())
+        except Exception:
+            pass
+
+    if specs:
+        result = exec_compass.check_alignment_with_specs(command, specs=specs)
+    else:
+        result = exec_compass.check_alignment(command)
+
     if result.get("violations"):
         return f"[Compass] Alignment violation: {result['violations'][0]}"
     if result.get("warnings"):
         return f"[Compass] Alignment warning: {result['warnings'][0]}"
     return ""
+
+
+def _check_prescriptive_obligations(data: dict[str, Any], project_root: str) -> str:
+    """Check if Write/Edit target has prescriptive spec obligations.
+
+    Resolves at function granularity when possible: for Edit operations,
+    extracts function names from old_string/new_string context and matches
+    against specific spec target_keys. Falls back to module-level matching
+    only when function detection fails.
+    """
+    tool_input = data.get("input", {})
+    filepath = tool_input.get("file_path", "")
+    if not filepath or not filepath.endswith(".py"):
+        return ""
+
+    from lintgate.specification.prescriptive_spec import load_spec_index
+
+    index = load_spec_index(project_root)
+    if not index:
+        return ""
+
+    rel = os.path.relpath(filepath, project_root) if os.path.isabs(filepath) else filepath
+    module = rel.replace(os.sep, ".").removesuffix(".py")
+
+    # Try function-level matching first: extract function names from edit context
+    matching: list[str] = []
+    edit_text = tool_input.get("new_string", "") or tool_input.get("old_string", "") or ""
+    if edit_text:
+        # Look for function defs in the edit context
+        import re as _re
+
+        func_matches = _re.findall(r"\bdef\s+(\w+)\s*\(", edit_text)
+        for func_name in func_matches:
+            candidate = f"{module}::{func_name}"
+            if candidate in index:
+                matching.append(candidate)
+
+    # Fall back to module-level matching if no function-level hits
+    if not matching:
+        matching = [k for k in index if module in k]
+    if not matching:
+        return ""
+
+    from lintgate.specification.prescriptive_spec import load_spec
+
+    invariant_descs: list[str] = []
+    constraint_descs: list[str] = []
+    func_names: list[str] = []
+    for target_key in matching[:3]:
+        spec = load_spec(project_root, target_key)
+        if spec:
+            func_name = target_key.split("::")[-1] if "::" in target_key else target_key
+            func_names.append(func_name)
+            for inv in spec.invariants[:2]:
+                invariant_descs.append(inv.description[:80])
+            for gc in spec.generation_constraints[:2]:
+                if gc.constraint_type == "must_not_use":
+                    constraint_descs.append(f"MUST NOT: {gc.description[:60]}")
+                elif gc.constraint_type == "must_use":
+                    constraint_descs.append(f"MUST: {gc.description[:60]}")
+
+    parts: list[str] = []
+    if func_names:
+        parts.append(f"Specs: {', '.join(func_names[:3])}")
+    if invariant_descs:
+        parts.append(f"Obligations: {'; '.join(invariant_descs[:2])}")
+    if constraint_descs:
+        parts.append(f"Constraints: {'; '.join(constraint_descs[:2])}")
+    if parts:
+        return "[PSpec] " + " | ".join(parts)
+    return ""
+
+
+def _extract_write_signature(data: dict[str, Any]) -> str:
+    """Extract an action signature from Write/Edit tool input for alignment checking.
+
+    For Edit: uses old_string + new_string to summarize the change.
+    For Write: uses file_path + first meaningful line of content.
+    """
+    tool_input = data.get("input", {})
+    filepath = tool_input.get("file_path", "")
+    parts: list[str] = []
+    if filepath:
+        parts.append(os.path.basename(filepath))
+
+    # Edit tool: old_string → new_string gives the change intent
+    old = tool_input.get("old_string", "")
+    new = tool_input.get("new_string", "")
+    if old or new:
+        # Take first non-empty line of new content as the signature
+        for line in (new or old).split("\n"):
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                parts.append(stripped[:80])
+                break
+    elif tool_input.get("content", ""):
+        # Write tool: first meaningful line
+        for line in tool_input["content"].split("\n"):
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and not stripped.startswith('"""'):
+                parts.append(stripped[:80])
+                break
+
+    return " ".join(parts)
 
 
 def _classify_git_command(command: str) -> str | None:
@@ -259,9 +382,31 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
         messages.append(theory_msg)
 
     if tool_name == "Bash" and exec_compass:
-        alignment_msg = _check_bash_alignment(data, exec_compass)
+        alignment_msg = _check_bash_alignment(data, exec_compass, project_root)
         if alignment_msg:
             messages.append(alignment_msg)
+
+    # Write/Edit alignment: check compass away/forbidden + prescriptive forbidden behaviors
+    if tool_name in _WRITE_TOOLS and exec_compass:
+        try:
+            write_sig = _extract_write_signature(data)
+            if write_sig:
+                alignment_msg = _check_bash_alignment(
+                    {"input": {"command": write_sig}}, exec_compass, project_root
+                )
+                if alignment_msg:
+                    messages.append(alignment_msg.replace("[Compass]", "[Compass/Write]"))
+        except Exception:
+            pass
+
+    # PrescriptiveSpec obligation guidance for Write/Edit
+    if tool_name in _WRITE_TOOLS:
+        try:
+            pspec_guidance = _check_prescriptive_obligations(data, project_root)
+            if pspec_guidance:
+                messages.append(pspec_guidance)
+        except Exception:
+            pass
 
     return {
         "continue": True,

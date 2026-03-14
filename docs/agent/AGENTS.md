@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 111 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 116 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Golden Path (Auto-Improve)
 
@@ -53,10 +53,10 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `controlplane_run` | Run 6-channel project health check | Session start, after significant changes |
-| `controlplane_get_details` | Drill into a ControlPlane run | After `controlplane_run` |
+| `controlplane_get_details` | Drill into a ControlPlane run with code-vs-environment summary/filtering | After `controlplane_run` |
 | `controlplane_status` | Show ControlPlane config and status | Orientation |
 | `controlplane_test_skeleton` | Generate pytest skeleton for a source file | When adding tests |
-| `controlplane_apply_repairs` | Execute proposed repair actions | After reviewing repairs |
+| `controlplane_apply_repairs` | Execute proposed repair actions, preferably with the originating `run_id` | After reviewing repairs |
 | `controlplane_report_repair` | Report repair outcome (applied/ignored/rejected) | After applying or skipping repair |
 | `controlplane_agent_feedback` | Record disagreements or accept/reject constraints | When findings seem wrong |
 | `controlplane_get_work_queue` | Get dependency-ordered work queue from a cached run | When resuming work without re-running |
@@ -101,8 +101,8 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 |------|---------|-------------|
 | `compass_status` | Show axes, depths, gaps, staleness | Orientation |
 | `compass_check` | Check action against toward/away/forbidden | Before architectural changes |
-| `compass_update` | Re-extract compass from project docs | After doc changes |
-| `compass_interview` | Gap-filling interview | When compass has gaps |
+| `compass_update` | Re-extract compass from project docs and retain interviewed claims | After doc changes |
+| `compass_interview` | Gap-filling interview whose answers persist across updates | When compass has gaps |
 | `compass_reset` | Scoped state reset | After major pivots |
 | `theory_mode_enter` | Enter theory exploration mode | Deep design exploration |
 | `theory_mode_freeze` | Freeze compass and exit theory mode | Done exploring |
@@ -142,6 +142,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `mutation_prescribe` | Grounded prescriptions from survivor records with witness generation (per-mutant `why_this_matters`, `suggested_input`, `assertion_shape`, `confidence`). Falls back to category templates when survivor data unavailable. | After mutation run |
 | `mutation_decompose` | Cross-lens decomposition guidance (mode: auto/static/dynamic). Requires multi-lens agreement (mutation + specification + composition) for EXTRACT_BOUNDARY; single-lens mutation returns KEEP_TESTING. Mock-dominant topology blocks extraction. | Refactoring decisions, cold-start projects |
 | `mutation_refactor_loop` | Re-profile after test improvement | Close the test improvement loop |
+| `refactor_move` | Move a Python module with automatic import rewriting (libcst, dry-run default) | Safe module moves with shim generation |
 | `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles | After `mutation_prescribe` identifies surviving categories |
 | `mutation_validate_tests` | Sampled re-profiling with per-category survival deltas and budget splitting (`budget_ms`). Safe for routine feedback loop use. | After writing prescribed tests |
 | `mutation_clear_state` | Clear mutation state | Code has drifted significantly |

@@ -680,6 +680,41 @@ class TestImplUpdateExact:
             result = _impl_update("/root", None, write=False)
         assert "rendered" not in result
 
+    def test_preserves_interviewed_claims_from_existing_compass(self) -> None:
+        from lintgate.compass import CompassAxis, CompassClaim, CompassState, GapReport
+
+        state = CompassState(axes={"solution": CompassAxis(name="solution")})
+        state.gap_report = GapReport()
+        existing = CompassState(
+            axes={
+                "solution": CompassAxis(
+                    name="solution",
+                    claims=[
+                        CompassClaim(
+                            text="Why this approach over alternatives?",
+                            heading="Why this approach over alternatives?",
+                            source="interview:solution",
+                            provenance="interviewed",
+                        )
+                    ],
+                )
+            }
+        )
+        p = self._patches(state=state)
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=existing),
+            p[0],
+            p[1],
+            p[2],
+            p[3],
+            p[4],
+            p[5],
+            p[6],
+        ):
+            result = _impl_update("/root", None, write=False)
+        assert result["retained_interview_claims"] == 1
+        assert any(c.provenance == "interviewed" for c in state.axes["solution"].claims)
+
 
 # ===================================================================
 # _render_targets — exact boundary conditions

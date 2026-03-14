@@ -127,6 +127,23 @@ class SpecificationChannel:
         )
         save_cached_ledger(SPEC_CACHE_DIR, project_hash, ledger)
 
+        # Persist slim graph projection for prescriptive retrospective compose
+        try:
+            from lintgate.specification.prescriptive_projection import (
+                build_projection_from_ledger,
+                save_projection,
+            )
+
+            ledger_flat = {k: v.to_dict() for k, v in ledger.functions.items()}
+            cg_flat = None
+            if call_graph is not None and hasattr(call_graph, "calls"):
+                cg_flat = {k: list(v) for k, v in call_graph.calls.items()}
+            projections = build_projection_from_ledger(ledger_flat, cg_flat)
+            if projections:
+                save_projection(event.project_root, projections)
+        except Exception:
+            pass
+
         # Composition analysis reuses the same call graph
         comp_result = None
         if call_graph is not None:
@@ -171,6 +188,9 @@ def _emit_findings(
         _check_spec010(fs, findings, count)
         _check_spec012(fs, findings)
         _check_spec013(fs, findings)
+        _check_pspec001(fs, findings, project_root)
+        _check_pspec002(fs, findings, project_root)
+        _check_pspec003(fs, findings, project_root)
 
     return findings
 
@@ -396,6 +416,129 @@ def _check_spec013(
             evidence={"spec_level": fs.core.specification_level, "hints": fs.optimization_hints},
         )
     )
+
+
+def _check_pspec001(
+    fs: FunctionSpecification,
+    findings: list[LintIssue],
+    project_root: str,
+) -> None:
+    """PSPEC001: Function violates prescriptive spec invariants (AST check)."""
+    from lintgate.specification.prescriptive_spec import load_spec
+
+    spec = load_spec(project_root, fs.function_key)
+    if spec is None or not spec.invariants:
+        return
+
+    # Need source file to run AST checker
+    source_file = fs.source_file
+    if not source_file:
+        return
+
+    import os
+
+    if not os.path.isabs(source_file):
+        source_file = os.path.join(project_root, source_file)
+    if not os.path.isfile(source_file):
+        return
+
+    try:
+        with open(source_file, encoding="utf-8") as f:
+            source = f.read()
+    except (OSError, UnicodeDecodeError):
+        return
+
+    from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
+
+    func_name = fs.function_key.split("::")[-1] if "::" in fs.function_key else fs.function_key
+    results = check_invariants_against_ast(source, func_name, spec.invariants)
+
+    for r in results:
+        if r.status == "fail":
+            findings.append(
+                LintIssue(
+                    linter="specification",
+                    kind="PSPEC001",
+                    message=(
+                        f"Invariant violation: '{fs.function_key}' fails "
+                        f"'{r.invariant_name}' — {r.reason}"
+                    ),
+                    file=fs.source_file or fs.function_key,
+                    severity="warning",
+                    confidence=0.80,
+                    evidence={
+                        "invariant": r.invariant_name,
+                        "reason": r.reason,
+                        "spec_id": spec.spec_id,
+                    },
+                )
+            )
+
+
+def _check_pspec002(
+    fs: FunctionSpecification,
+    findings: list[LintIssue],
+    project_root: str,
+    threshold: float = 2.0,
+) -> None:
+    """PSPEC002: Prescriptive σ diverges >threshold× from retrospective σ."""
+    from lintgate.specification.prescriptive_spec import load_spec
+    from lintgate.specification.prescriptive_sigma import compute_convergence_signal
+
+    spec = load_spec(project_root, fs.function_key)
+    if spec is None:
+        return
+
+    retro_sigma = fs.core.estimated_sigma
+    signal = compute_convergence_signal(spec.prescriptive_sigma, retro_sigma)
+    if signal["assessment"] in ("under_specified", "over_specified"):
+        ratio = signal["ratio"]
+        if ratio > threshold or (ratio > 0 and ratio < 1.0 / threshold):
+            findings.append(
+                LintIssue(
+                    linter="specification",
+                    kind="PSPEC002",
+                    message=(
+                        f"Prescriptive σ divergence for '{fs.function_key}': "
+                        f"prescriptive={spec.prescriptive_sigma}, "
+                        f"retrospective={retro_sigma} (ratio={ratio:.2f})"
+                    ),
+                    file=fs.source_file or fs.function_key,
+                    severity="warning",
+                    confidence=0.75,
+                    evidence={
+                        "prescriptive_sigma": spec.prescriptive_sigma,
+                        "retrospective_sigma": retro_sigma,
+                        "ratio": ratio,
+                        "assessment": signal["assessment"],
+                    },
+                )
+            )
+
+
+def _check_pspec003(
+    fs: FunctionSpecification,
+    findings: list[LintIssue],
+    project_root: str,
+) -> None:
+    """PSPEC003: Function written without prescriptive spec (advisory)."""
+    from lintgate.specification.prescriptive_spec import load_spec_index
+
+    index = load_spec_index(project_root)
+    if not index:
+        return  # No specs at all — don't spam
+
+    if fs.function_key not in index:
+        findings.append(
+            LintIssue(
+                linter="specification",
+                kind="PSPEC003",
+                message=f"Function '{fs.function_key}' has no prescriptive spec",
+                file=fs.source_file or fs.function_key,
+                severity="informational",
+                confidence=0.60,
+            )
+        )
 
 
 def _is_test_file(filepath: str) -> bool:

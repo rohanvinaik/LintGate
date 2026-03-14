@@ -31,7 +31,10 @@ class DiscoveryDiagnostics:
     callables_loaded: int = 0
     fallback_used: bool = False
     weak_linkage_suspected: bool = False
-    linkage_source: str = ""  # "dynamic", "static", or "" (fallback)
+    linkage_source: str = ""  # "dynamic", "static", "semantic", or "" (fallback)
+    semantic_matches: int = 0
+    semantic_available: bool = False
+    semantic_scores: list[float] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -48,6 +51,12 @@ class DiscoveryDiagnostics:
             d["class_instantiation_failures"] = self.class_instantiation_failures[:5]
         if self.linkage_source:
             d["linkage_source"] = self.linkage_source
+        if self.semantic_matches:
+            d["semantic_matches"] = self.semantic_matches
+        if self.semantic_available:
+            d["semantic_available"] = self.semantic_available
+        if self.semantic_scores:
+            d["semantic_scores"] = self.semantic_scores
         if self.fallback_used:
             d["fallback_used"] = True
         if self.weak_linkage_suspected:
@@ -341,6 +350,7 @@ def load_test_callables(
     *,
     project_root: str = "",
     func_key: str = "",
+    source_file: str = "",
 ) -> tuple[list[Any], DiscoveryDiagnostics]:
     """Discover and import test callables for a function.
 
@@ -384,6 +394,23 @@ def load_test_callables(
             diag.callables_loaded = len(imported)
             diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
             return imported, diag
+
+    # ── Layer 1.5: semantic discovery fallback ────────────────────
+    # Consulted only when both dynamic (Layer 1) and static (Layer 2)
+    # yield zero linkage for this function. Discovers additional test
+    # files via TF-IDF fingerprint similarity, loads their callables,
+    # and tags the linkage as low-confidence "semantic".
+    if project_root and source_file:
+        semantic_files = _discover_semantic_fallback(
+            project_root, source_file, test_files, diag
+        )
+        if semantic_files:
+            diag.linkage_source = "semantic"
+            sem_callables = _load_all_tests_from_files(semantic_files, diag)
+            if sem_callables:
+                diag.callables_loaded = len(sem_callables)
+                diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
+                return sem_callables, diag
 
     # ── Layer 3: fallback — all test functions from discovered files ─
     # The test files were already scoped by filename convention in
@@ -486,6 +513,47 @@ def _suspect_weak_linkage(diag: DiscoveryDiagnostics) -> bool:
     if diag.ast_test_callables >= 3 and diag.callables_loaded <= 1:
         return True
     return diag.ast_test_callables >= 8 and diag.callables_loaded * 4 < diag.ast_test_callables
+
+
+def _discover_semantic_fallback(
+    project_root: str,
+    source_file: str,
+    already_found: list[str],
+    diag: DiscoveryDiagnostics,
+) -> list[str]:
+    """Try semantic discovery when dynamic + static linkage both fail.
+
+    Returns additional test files found via TF-IDF fingerprint similarity,
+    excluding any already in the discovered set. Updates diag with
+    semantic_available/semantic_matches/semantic_scores.
+    """
+    try:
+        from lintgate.specification.semantic_discovery import discover_semantic_test_files
+
+        diag.semantic_available = True
+    except Exception:
+        return []
+
+    try:
+        results = discover_semantic_test_files(project_root, source_file)
+    except Exception:
+        return []
+
+    if not results:
+        return []
+
+    seen = set(already_found)
+    new_files: list[str] = []
+    scores: list[float] = []
+    for tf, score in results:
+        if tf not in seen:
+            new_files.append(tf)
+            scores.append(score)
+            seen.add(tf)
+
+    diag.semantic_matches = len(new_files)
+    diag.semantic_scores = scores
+    return new_files
 
 
 def _extract_test_callables_from_module(
@@ -783,8 +851,9 @@ def _run_single(
         bare_name,
         project_root=ctx.project_root,
         func_key=func_key,
+        source_file=ctx.full_path,
     )
-    sr = runner(node, func_key, cats, tests, lambda *a: None)
+    sr = runner(node, func_key, cats, tests, lambda *_a: None)
     result_dict = sr.to_dict()
     result_dict["tests_loaded"] = len(tests)
     result_dict["is_pure"] = is_pure
@@ -866,6 +935,7 @@ def _enrich_mutation_result(
         fallback_used=discovery_diag.fallback_used,
         weak_linkage_suspected=discovery_diag.weak_linkage_suspected,
         total_killed=result_dict.get("total_killed", 0),
+        linkage_source=discovery_diag.linkage_source,
     )
     topology_state = topology.topology_state if topology else TopologyState.TOPOLOGY_UNKNOWN
     survival_rate = float(result_dict.get("survival_rate", 1.0))

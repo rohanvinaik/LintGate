@@ -40,7 +40,7 @@ from mcp_tools._controlplane_impl_feedback import (
 class _FakeSnapshot:
     run_id: str = "run-1"
     repairs_proposed: list[str] = field(default_factory=list)
-    repair_catalog: dict[str, dict[str, str]] = field(default_factory=dict)
+    repair_catalog: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -460,6 +460,24 @@ class TestLoadAllRepairs:
         assert repairs[0]["safe"] is True
 
     @patch("lintgate.state.load_controlplane_run")
+    def test_fallback_catalog_preserves_payload(self, mock_load):
+        mock_load.return_value = None
+        snapshot = _FakeSnapshot(
+            run_id="run-1",
+            repair_catalog={
+                "aid-1": {
+                    "kind": "command",
+                    "summary": "fix it",
+                    "safe": "true",
+                    "channel": "lint",
+                    "payload": {"command": "ruff check --fix"},
+                },
+            },
+        )
+        repairs = _load_all_repairs(snapshot)
+        assert repairs[0]["payload"] == {"command": "ruff check --fix"}
+
+    @patch("lintgate.state.load_controlplane_run")
     def test_empty_run_id(self, mock_load):
         snapshot = _FakeSnapshot(run_id="")
         repairs = _load_all_repairs(snapshot)
@@ -564,6 +582,21 @@ class TestCollectPendingRepairs:
         assert len(pending) == 1
         assert pending[0]["action_id"] == "a1"
         assert skipped == []
+
+    @patch("lintgate.state.load_controlplane_run")
+    def test_run_id_uses_persisted_run_when_snapshot_missing(self, mock_load):
+        mock_load.return_value = {
+            "channels": {
+                "lint": {
+                    "repairs": [{"action_id": "a1", "safe": True, "kind": "command"}],
+                }
+            }
+        }
+        session = _FakeSession()
+        pending, skipped = _collect_pending_repairs(session, None, False, run_id="run-9")
+        assert skipped == []
+        assert len(pending) == 1
+        assert pending[0]["action_id"] == "a1"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -872,3 +905,18 @@ class TestImplControlplaneApplyRepairs:
         result_str = _impl_controlplane_apply_repairs("/proj", None, False, helpers)
         result = json.loads(result_str)
         assert result["pending_remaining"] == 2
+
+    @patch("lintgate.controlplane.session_memory.save_session")
+    @patch("mcp_tools._controlplane_impl_feedback._execute_single_repair")
+    @patch("mcp_tools._controlplane_impl_feedback._collect_pending_repairs")
+    @patch("lintgate.controlplane.session_memory.get_or_create_session")
+    def test_passes_run_id_to_collection(
+        self, mock_get_session, mock_collect, mock_exec, mock_save
+    ):
+        session = _FakeSession()
+        mock_get_session.return_value = session
+        mock_collect.return_value = ([], [])
+        helpers = {"_validate_project_root": lambda p: "/proj"}
+
+        _impl_controlplane_apply_repairs("/proj", None, False, helpers, run_id="run-7")
+        mock_collect.assert_called_once_with(session, None, False, run_id="run-7")

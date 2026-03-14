@@ -301,6 +301,12 @@ def render_claude_md(
     context_map_lines.append("<!-- LINTGATE:END context_map -->")
     lines.extend(context_map_lines)
 
+    # Prescriptive spec section (only when specs exist)
+    if project_root:
+        pspec_lines = _render_prescriptive_rules(project_root)
+        if pspec_lines:
+            lines.extend(pspec_lines)
+
     lines.extend(
         [
             "",
@@ -321,6 +327,31 @@ def render_claude_md(
     )
 
     return "\n".join(lines).strip()
+
+
+def _render_prescriptive_rules(project_root: str) -> list[str]:
+    """Render prescriptive_rules managed section from saved specs."""
+    try:
+        from lintgate.specification.prescriptive_spec import load_all_specs
+
+        specs = load_all_specs(project_root)
+        if not specs:
+            return []
+    except Exception:
+        return []
+
+    lines = [
+        "",
+        "<!-- LINTGATE:BEGIN prescriptive_rules v1 -->",
+        "## Prescriptive Specifications",
+        "",
+    ]
+    for spec in list(specs.values())[:10]:
+        invariant_strs = [inv.description[:60] for inv in spec.invariants[:2]]
+        summary = "; ".join(invariant_strs) if invariant_strs else "no invariants"
+        lines.append(f"- `{spec.target_key}` ({spec.problem_class}): {summary}")
+    lines.append("<!-- LINTGATE:END prescriptive_rules -->")
+    return lines
 
 
 # ── AGENTS.md Renderer ────────────────────────────────────────────────

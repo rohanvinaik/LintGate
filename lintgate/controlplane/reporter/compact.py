@@ -394,7 +394,7 @@ def _build_cp_next_actions(
         actions.append(
             NextAction(
                 tool="controlplane_apply_repairs",
-                args={"path": ".", "safe_only": True},
+                args={"path": ".", "run_id": run_id, "safe_only": True},
                 reason=f"{counts['repairs_available']} safe repair{'s' if counts['repairs_available'] != 1 else ''} available",
                 priority=4 if symbol_count > 0 else 2,
             )

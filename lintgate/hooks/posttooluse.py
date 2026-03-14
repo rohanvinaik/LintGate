@@ -589,10 +589,46 @@ def _run_controlplane(
     with contextlib.suppress(Exception):
         new_funcs = _detect_new_functions(tool_name, tool_input, cwd)
         if new_funcs and report:
-            report["test_generation_hint"] = {
-                "new_functions": new_funcs,
-                "suggestion": "Consider bootstrap_tests or controlplane_test_skeleton for new functions",
-            }
+            if cp_config.prescriptive_spec_enabled:
+                report["test_generation_hint"] = {
+                    "new_functions": new_funcs,
+                    "suggestion": (
+                        "New functions detected. Run prescriptive_spec_compose to create "
+                        "behavioral contracts, then prescriptive_spec_compile for test "
+                        "skeletons + generation constraints"
+                    ),
+                }
+            else:
+                report["test_generation_hint"] = {
+                    "new_functions": new_funcs,
+                    "suggestion": "Consider bootstrap_tests or controlplane_test_skeleton for new functions",
+                }
+
+    # PrescriptiveSpec advisory — notify when edited functions have specs
+    with contextlib.suppress(Exception):
+        if tool_name in ("Write", "Edit", "MultiEdit") and cp_config.prescriptive_spec_enabled:
+            pspec_msg = _check_prescriptive_specs(tool_input, cwd)
+            if pspec_msg and report:
+                report.setdefault("prescriptive_advisory", pspec_msg)
+
+    # Surface proposed constraints and prescriptive advisories in systemMessage
+    # so the model sees them at the highest-attention position
+    with contextlib.suppress(Exception):
+        high_priority_addons: list[str] = []
+        if proposed_constraints:
+            constraint_texts = [c.get("rule", c.get("text", ""))[:60] for c in proposed_constraints[:2]]
+            if any(constraint_texts):
+                high_priority_addons.append(f"[Constraint] New: {'; '.join(t for t in constraint_texts if t)}")
+        if report and report.get("prescriptive_advisory"):
+            high_priority_addons.append(report["prescriptive_advisory"])
+        if report and report.get("test_generation_hint", {}).get("new_functions"):
+            hint = report["test_generation_hint"]
+            func_names = [f.get("name", "") for f in hint["new_functions"][:3]]
+            high_priority_addons.append(f"[New] {', '.join(f for f in func_names if f)}: {hint['suggestion'][:80]}")
+        if high_priority_addons and advisory:
+            advisory += " | " + " | ".join(high_priority_addons)
+        elif high_priority_addons:
+            advisory = " | ".join(high_priority_addons)
 
     accumulate_session_telemetry(report, session)
     refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)
@@ -611,6 +647,31 @@ def _run_controlplane(
 
     print(json.dumps(report if report else {}))
     sys.exit(0)
+
+
+def _check_prescriptive_specs(tool_input: dict, project_root: str) -> str | None:
+    """Check if written/edited functions have prescriptive specs."""
+    filepath = tool_input.get("file_path", "")
+    if not filepath or not filepath.endswith(".py"):
+        return None
+
+    from lintgate.specification.prescriptive_spec import load_spec_index
+
+    index = load_spec_index(project_root)
+    if not index:
+        return None
+
+    # Check if any indexed target matches this file
+    import os
+
+    rel = os.path.relpath(filepath, project_root) if os.path.isabs(filepath) else filepath
+    module = rel.replace(os.sep, ".").removesuffix(".py")
+    matching = [k for k in index if module in k]
+    if not matching:
+        return None
+
+    funcs = [k.split("::")[-1] if "::" in k else k for k in matching[:3]]
+    return f"[PSpec] {', '.join(funcs)} have prescriptive specs. Run prescriptive_spec_verify to check refinement."
 
 
 def _detect_write_functions(tool_input: dict) -> list[dict] | None:

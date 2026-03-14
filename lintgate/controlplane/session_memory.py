@@ -84,7 +84,7 @@ class SessionSnapshot:
     pattern_alerts: list[dict[str, Any]] = field(default_factory=list)
     repairs_proposed: list[str] = field(default_factory=list)  # action_ids
     repairs_applied: list[str] = field(default_factory=list)  # action_ids confirmed
-    repair_catalog: dict[str, dict[str, str]] = field(
+    repair_catalog: dict[str, dict[str, Any]] = field(
         default_factory=dict
     )  # action_id → compact meta
     behavior: BehaviorEventData = field(default_factory=BehaviorEventData)
@@ -389,7 +389,7 @@ def record_mesh_run(
     all_repair_ids: list[str] = []
     pattern_this_run: dict[str, int] = {}
 
-    repair_catalog: dict[str, dict[str, str]] = {}
+    repair_catalog: dict[str, dict[str, Any]] = {}
 
     for cr in mesh_result.channel_results:
         for finding in cr.findings:
@@ -404,12 +404,14 @@ def record_mesh_run(
             all_repair_ids.append(repair.action_id)
             if repair.action_id not in session.repair_outcomes:
                 session.repair_outcomes[repair.action_id] = "pending"
-            # Compact catalog entry (no full payload — stays on disk)
+            # Persist enough metadata to replay repairs even if the run snapshot
+            # becomes unavailable or the session rolls forward.
             repair_catalog[repair.action_id] = {
                 "channel": repair.channel,
                 "kind": repair.kind,
                 "summary": repair.summary,
                 "safe": str(repair.safe).lower(),
+                "payload": dict(repair.payload),
             }
 
     # Extract pattern alerts from lint channel metrics

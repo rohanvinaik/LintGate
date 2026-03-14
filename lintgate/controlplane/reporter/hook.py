@@ -37,32 +37,54 @@ def _build_posttooluse_context(inputs: PostToolUseInputs) -> str:
     """Build compact additional context for Claude PostToolUse hooks.
 
     Fixed key order, compact format. Keys with zero/empty values are omitted.
-    Max 300 chars — drops least-critical fields from bottom up if exceeded.
+    Max 300 chars — drops from the middle (delta pairs first), preserving
+    both anchors (coherence/blocking at top) and signal-quality metadata
+    (loud channels/cycles at bottom).
     """
     coherence = inputs.mesh_result.coherence
 
-    # Build ordered key-value pairs (fixed order per plan)
-    pairs: list[tuple[str, str]] = []
-
-    # 1. coherence (always)
-    pairs.append(("coherence", coherence.state))
-    # 2. channels_run (always)
-    pairs.append(("channels_run", str(inputs.channels_run)))
-    # 3. blocking (only > 0)
+    # ── Tier 1: Always preserved (anchors) ────────────────────────
+    anchor_pairs: list[tuple[str, str]] = []
+    anchor_pairs.append(("coherence", coherence.state))
+    anchor_pairs.append(("channels_run", str(inputs.channels_run)))
     if inputs.blocking_count > 0:
-        pairs.append(("blocking", str(inputs.blocking_count)))
-    # 4. warnings (only > 0)
+        anchor_pairs.append(("blocking", str(inputs.blocking_count)))
     if inputs.warning_count > 0:
-        pairs.append(("warnings", str(inputs.warning_count)))
+        anchor_pairs.append(("warnings", str(inputs.warning_count)))
 
-    # 5-10. Edit-scope and delta pairs
-    _append_delta_pairs(pairs, coherence, inputs.delta, inputs.baseline_delta)
+    # ── Tier 2: Signal-quality metadata (preserve over deltas) ────
+    status_pairs: list[tuple[str, str]] = []
+    _append_status_pairs(status_pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts)
 
-    # 11-13. Status pairs (loud channels, resurface, cycles)
-    _append_status_pairs(pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts)
+    # ── Tier 3: Delta pairs (first to drop under pressure) ────────
+    delta_pairs: list[tuple[str, str]] = []
+    _append_delta_pairs(delta_pairs, coherence, inputs.delta, inputs.baseline_delta)
 
-    # Serialize with max length enforcement (300 chars)
-    return _serialize_pairs(pairs, max_len=300)
+    # Assemble: anchors + deltas + status. Drop deltas first if over budget.
+    all_pairs = anchor_pairs + delta_pairs + status_pairs
+    result = "; ".join(f"{k}={v}" for k, v in all_pairs)
+
+    if len(result) <= 300:
+        return result
+
+    # Over budget: drop delta pairs one at a time (middle tier)
+    while len(result) > 300 and delta_pairs:
+        delta_pairs.pop()
+        all_pairs = anchor_pairs + delta_pairs + status_pairs
+        result = "; ".join(f"{k}={v}" for k, v in all_pairs)
+
+    # Still over: drop status pairs
+    while len(result) > 300 and status_pairs:
+        status_pairs.pop()
+        all_pairs = anchor_pairs + status_pairs
+        result = "; ".join(f"{k}={v}" for k, v in all_pairs)
+
+    # Last resort: drop anchor pairs from bottom
+    while len(result) > 300 and len(anchor_pairs) > 2:
+        anchor_pairs.pop()
+        result = "; ".join(f"{k}={v}" for k, v in anchor_pairs)
+
+    return result
 
 
 def _append_delta_pairs(

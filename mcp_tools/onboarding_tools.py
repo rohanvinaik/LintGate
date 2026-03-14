@@ -172,7 +172,32 @@ def register(mcp, helpers):
         reset: bool = False,
         intent: str | None = None,
     ) -> str:
-        """Start here. Get oriented with LintGate on any project."""
+        """Start here. Get oriented with LintGate on any project.
+
+        WHEN TO USE: First tool call on any new project. Auto-detects IDE,
+        creates venv if missing, installs optional linters (ruff, mypy, bandit,
+        radon, pip-audit), initializes .claude/lintgate.yaml, and returns
+        project-specific guidance with next-action recommendations.
+
+        Workflow after getting_started:
+          controlplane_run(path) → controlplane_get_details(run_id) →
+          lint_fix(path) → bootstrap_context_files(path, write=True)
+
+        For specification-first development:
+          prescriptive_spec_compose(path, target) → prescriptive_spec_compile →
+          [write code] → prescriptive_spec_verify
+
+        For offline batch analysis:
+          offline_analysis_generate(path) → upload notebook to Colab → run
+
+        Args:
+            path: Project root path.
+            auto_setup: Create venv + install linters automatically (default True).
+            auto_install_optional_linters: Install mypy/bandit/radon/pip-audit (default True).
+            reset: Clear cached state and re-initialize (default False).
+            intent: Optional hint like "fix lint", "improve tests", "full audit"
+                to tailor next-action guidance.
+        """
         return _impl_getting_started(
             helpers,
             path,

@@ -313,13 +313,20 @@ class TestSnapshotSerialization:
         snap = SessionSnapshot(
             run_id="catalog_test",
             repair_catalog={
-                "fix_a": {"channel": "lint", "kind": "command", "summary": "Fix A", "safe": "true"},
+                "fix_a": {
+                    "channel": "lint",
+                    "kind": "command",
+                    "summary": "Fix A",
+                    "safe": "true",
+                    "payload": {"command": "ruff check --fix"},
+                },
             },
         )
         d = snap.to_dict()
         restored = SessionSnapshot.from_dict(d)
         assert "fix_a" in restored.repair_catalog
         assert restored.repair_catalog["fix_a"]["channel"] == "lint"
+        assert restored.repair_catalog["fix_a"]["payload"] == {"command": "ruff check --fix"}
 
 
 # ── Finding Index in record_mesh_run ─────────────────────────────────
@@ -792,6 +799,7 @@ class TestRecordMeshRun:
         assert "fix_c" in snap.repair_catalog
         assert snap.repair_catalog["fix_c"]["channel"] == "lint"
         assert snap.repair_catalog["fix_c"]["safe"] == "true"
+        assert snap.repair_catalog["fix_c"]["payload"] == {}
 
     def test_pattern_alerts_from_lint_channel(self):
         """Pattern alerts are extracted from the lint channel metrics."""

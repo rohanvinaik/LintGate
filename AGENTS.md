@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 111 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 118 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -69,7 +69,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 111 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 118 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
@@ -94,8 +94,8 @@ LintGate provides 111 MCP tools backed by 18 linters. Source of truth: `grep -Rh
 | `lint_get_details` | Drill into a previous lint run by run_id. Filter by severity. |
 | `lint_fix` | Auto-fix safe lint issues (ruff --fix/format). Default: dry_run=True. |
 | `controlplane_run` | Full supervision mesh: lint + tests + deps + git + behavior + structure in parallel. |
-| `controlplane_get_details` | Drill into a previous ControlPlane run. Filter by channel/severity. |
-| `controlplane_apply_repairs` | Execute proposed repair actions (command-type, safe-only by default). |
+| `controlplane_get_details` | Drill into a previous ControlPlane run. Filter by channel/severity/domain, with code-vs-environment summary. |
+| `controlplane_apply_repairs` | Execute proposed repair actions (command-type, safe-only by default), optionally pinned to a `run_id`. |
 | `analyze_test_strength` | Test assertion quality: vulnerability scores, semantic ratios, upgrade suggestions. |
 | `inspect_test_assertions` | Drill into a single test file: every assertion classified by kind and strength. |
 | `run_property_tests` | Execute generated property tests for a function and capture counterexamples. |
@@ -115,6 +115,7 @@ LintGate provides 111 MCP tools backed by 18 linters. Source of truth: `grep -Rh
 | `mutation_prescribe` | Deterministic prescriptions from mutation survival profiles. |
 | `mutation_decompose` | Find entangled functions from mutation data (mode: auto/static/dynamic). |
 | `mutation_refactor_loop` | Re-profile after test improvement — compute survival rate delta. |
+| `refactor_move` | Move a Python module with automatic import rewriting (libcst-based, dry-run default). |
 | `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles. |
 | `mutation_validate_tests` | Re-profile and compute per-category survival deltas after writing tests. |
 | `mutation_clear_state` | Clear stale mutation state when code has drifted significantly. |
@@ -192,14 +193,14 @@ LintGate provides 111 MCP tools backed by 18 linters. Source of truth: `grep -Rh
 |------|---------|
 | `compass_status` | Show compass axes, depths, gap report, staleness, and cognitive mode. |
 | `compass_check` | Check an action against toward/away/forbidden directives. |
-| `compass_update` | Re-extract compass from project docs, run code inference, optionally render context files for AI tools. |
+| `compass_update` | Re-extract compass from project docs, merge interviewed claims, run code inference, optionally render context files for AI tools. |
 | `compass_interview` | Gap-filling interview — returns prioritized questions or applies answers to fill sparse axes. |
 | `compass_reset` | Scoped state reset (compass/session/project/global) with dry-run default. |
 | `theory_mode_enter` | Enter theory exploration mode. Provides write-advisories and tracks exploration claims. |
 | `theory_mode_freeze` | Freeze compass and exit theory mode to normal. Validates required axes. |
 | `setup_hooks` | Generate .claude/settings.json hook configuration for compass-aware hooks. |
 
-**Compass workflow**: `compass_update(path, write=True)` extracts theory from markdown docs, maps 7 facets to 4 axes (problem, solution, implementation, world), runs code inference, detects gaps. If gaps exist, `compass_interview` provides prioritized questions. Use `theory_mode_enter` → explore → `theory_mode_freeze` for deep investigation. Frozen compass constrains execution via toward/away/forbidden directives checked by `compass_check`. Multi-model context files generated via `compass_update(targets=["all"])`.
+**Compass workflow**: `compass_update(path, write=True)` extracts theory from markdown docs, maps 7 facets to 4 axes (problem, solution, implementation, world), merges previously interviewed claims, runs code inference, and detects gaps. If gaps exist, `compass_interview` provides prioritized questions; those answers now survive later `compass_update` calls. Use `theory_mode_enter` → explore → `theory_mode_freeze` for deep investigation. Frozen compass constrains execution via toward/away/forbidden directives checked by `compass_check`. Multi-model context files generated via `compass_update(targets=["all"])`.
 
 ### NSIL — behavioral enforcement and training data
 
@@ -240,6 +241,8 @@ All findings are informational unless corroborated by other channels. The struct
 
 **Spec → Mutation → Convergence pipeline**: `spec_file_analyze` (diagnose σ, regime, phase) → `mutation_run_sampling` (fast per-category kill/survive) → `mutation_run_full` (exhaustive profiling + convergence + symmetry analysis) → `mutation_prescribe` (category → action) → `mutation_prescribe_tests` (pytest skeletons) → [write tests] → `mutation_validate_tests` (survival deltas) → `spec_gate_check` (stop criteria). Each tool's `next_actions` suggests the next step. The ledger accumulates ΔK across cycles for trajectory-aware phase detection. Purity-aware: pure functions skip STATE mutations. Tests loaded via AST-based test-impact mapping.
 
+**Prescriptive spec pipeline**: `prescriptive_spec_compose` (theory + compass → behavioral contract) → `prescriptive_spec_compile` (contract → test skeletons + generation constraints) → [write code] → `prescriptive_spec_verify` (refinement check against cached state) → `prescriptive_spec_status` (project-wide coverage). Integrates with hooks: PostToolUse advisory on Write/Edit, PreToolUse obligation guidance, UserPromptSubmit coverage in primer. Config: `controlplane.prescriptive_spec_enabled`.
+
 **Prediction loop**: `prediction_register` (register prediction) → Bash command → `_check_predictions` (automatic on next tool event) → accuracy computed → modulates signal confidence after 5+ checked predictions. Accuracy > 70% softens signals; accuracy < 30% amplifies them.
 
 **Constraint loop**: Recurring pattern detected → `constraint_proposer` generates rule → `controlplane_agent_feedback` (accept/reject) → accepted constraints flow to `generate_context_patch` → `context_patch_review` → `context_patch_apply`.
@@ -272,4 +275,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 111). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 116). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

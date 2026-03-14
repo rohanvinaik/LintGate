@@ -159,6 +159,7 @@ class TestBuildCpNextActions:
         actions = _build_cp_next_actions("run1", counts)
         repair_actions = [a for a in actions if a.tool == "controlplane_apply_repairs"]
         assert len(repair_actions) == 1
+        assert repair_actions[0].args["run_id"] == "run1"
         assert "3" in repair_actions[0].reason
 
     def test_symbol_blockers_produce_priority_actions(self) -> None:

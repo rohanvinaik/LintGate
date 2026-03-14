@@ -228,7 +228,21 @@ def _impl_extraction_plan(
     plan.post_extraction_opportunities = opportunities
 
     result = plan.to_dict()
-    result["next_actions"] = serialize_next_actions(
+
+    # Build next_actions — include refactor_move when plan recommends extraction
+    na: list[NextAction] = []
+    if plan.steps and any("extract" in s.action.lower() for s in plan.steps if hasattr(s, "action")):
+        na.append(
+            NextAction(
+                tool="refactor_move",
+                args={"path": path, "source": source_file, "destination": "<target_module>"},
+                reason="Safe module move with automatic import rewriting (dry-run first).",
+                priority=1,
+                safe=False,
+                condition="extraction plan recommends moving code to a new module",
+            )
+        )
+    na.extend(
         [
             NextAction(
                 tool="optimization_landscape",
@@ -246,6 +260,7 @@ def _impl_extraction_plan(
             ),
         ]
     )
+    result["next_actions"] = serialize_next_actions(na)
     return result
 
 

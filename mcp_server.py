@@ -91,8 +91,15 @@ _MCP_INSTRUCTIONS = (
     "  Step 5: Repeat from Step 1 for the next file — each run picks the next best target\n"
     "  Alternative: platonic_converge(path, file) — if you already know which file to improve\n"
     "For a full codebase sweep: loop platonic_project → follow actions → platonic_apply → repeat.\n"
+    "Decomposition workflow: mutation_decompose → extraction_plan → refactor_move (safe module move with import rewriting, dry-run default).\n"
+    "Prescriptive spec workflow (specification-first code generation):\n"
+    "  prescriptive_spec_compose(path, target) — compose behavioral contract from theory + compass\n"
+    "  prescriptive_spec_compile(path, target) — compile contract into test skeletons + generation constraints\n"
+    "  [write code guided by generation_prompt in compile output]\n"
+    "  prescriptive_spec_verify(path, file) — verify refinement (structural AST checks + behavioral mutation checks)\n"
+    "  prescriptive_spec_status(path) — project-wide prescriptive coverage\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "111 tools total — use getting_started or lint_status to explore."
+    "118 tools total — use getting_started or lint_status to explore."
 )
 
 
@@ -815,7 +822,14 @@ lint_status = _tool_funcs["lint_status"]
 model_profile_probe_start = _tool_funcs["model_profile_probe_start"]
 model_profile_probe_submit = _tool_funcs["model_profile_probe_submit"]
 model_profile_status = _tool_funcs["model_profile_status"]
+offline_analysis_generate = _tool_funcs["offline_analysis_generate"]
+offline_analysis_run = _tool_funcs["offline_analysis_run"]
 prediction_register = _tool_funcs["prediction_register"]
+prescriptive_spec_compile = _tool_funcs["prescriptive_spec_compile"]
+prescriptive_spec_compose = _tool_funcs["prescriptive_spec_compose"]
+prescriptive_spec_status = _tool_funcs["prescriptive_spec_status"]
+prescriptive_spec_verify = _tool_funcs["prescriptive_spec_verify"]
+refactor_move = _tool_funcs["refactor_move"]
 scaffold_config = _tool_funcs["scaffold_config"]
 setup_github_quality = _tool_funcs["setup_github_quality"]
 setup_hooks = _tool_funcs["setup_hooks"]
@@ -881,7 +895,14 @@ __all__ = [
     "model_profile_probe_start",
     "model_profile_probe_submit",
     "model_profile_status",
+    "offline_analysis_generate",
+    "offline_analysis_run",
     "prediction_register",
+    "prescriptive_spec_compile",
+    "prescriptive_spec_compose",
+    "prescriptive_spec_status",
+    "prescriptive_spec_verify",
+    "refactor_move",
     "scaffold_config",
     "setup_github_quality",
     "setup_hooks",

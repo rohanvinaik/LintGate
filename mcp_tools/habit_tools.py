@@ -165,20 +165,33 @@ def _impl_habit_status(project_root: str) -> str:
         log_feature_usage("habit_mode", project_root, {"tool": "habit_status"})
         log_feature_usage("token_tracking", project_root, {"tool": "habit_status"})
 
-    return json.dumps(
-        {
-            "active": state.active,
-            "habit_score": round(state.habit_score, 3),
-            "declared": state.declared,
-            "signals": state.signals.to_dict(),
-            "active_files": state.active_files[:5],
-            "last_test_status": state.last_test_status,
-            "compaction_count": state.compaction_count,
-            "events_in_habit": state.total_events_in_habit,
-            "token_economics": get_usage_summary(tracker),
-        },
-        indent=2,
-    )
+    result = {
+        "active": state.active,
+        "habit_score": round(state.habit_score, 3),
+        "declared": state.declared,
+        "signals": state.signals.to_dict(),
+        "active_files": state.active_files[:5],
+        "last_test_status": state.last_test_status,
+        "compaction_count": state.compaction_count,
+        "events_in_habit": state.total_events_in_habit,
+        "token_economics": get_usage_summary(tracker),
+    }
+
+    # Add prescriptive spec coverage if specs exist
+    with contextlib.suppress(Exception):
+        from lintgate.specification.prescriptive_spec import load_all_specs
+
+        all_specs = load_all_specs(project_root)
+        if all_specs:
+            result["prescriptive_specs"] = {
+                "total": len(all_specs),
+                "problem_classes": {
+                    pc: sum(1 for s in all_specs.values() if s.problem_class == pc)
+                    for pc in ("pure", "stateful", "distributed")
+                },
+            }
+
+    return json.dumps(result, indent=2)
 
 
 def _impl_habit_compact(project_root: str) -> str:
@@ -222,6 +235,24 @@ def _impl_habit_compact(project_root: str) -> str:
         issue_memory=issue_memory,
         token_estimate=get_usage_summary(tracker),
     )
+
+    # Inject prescriptive spec state into snapshot
+    with contextlib.suppress(Exception):
+        from lintgate.specification.prescriptive_spec import load_all_specs
+
+        all_specs = load_all_specs(project_root)
+        if all_specs:
+            total_sigma = sum(s.prescriptive_sigma for s in all_specs.values())
+            n = len(all_specs)
+            snapshot["prescriptive_specs"] = {
+                "total_specs": n,
+                "problem_classes": {
+                    pc: sum(1 for s in all_specs.values() if s.problem_class == pc)
+                    for pc in ("pure", "stateful", "distributed")
+                },
+                "mean_prescriptive_sigma": round(total_sigma / n, 2) if n else 0.0,
+                "targets": [s.target_key for s in list(all_specs.values())[:10]],
+            }
 
     # Update state
     estimated_before = tracker.estimated_tokens_used

@@ -64,22 +64,17 @@ def _build_primer(project_root: str) -> str | None:
 
     parts: list[str] = []
 
-    # 1. Mode line (always, ~10 tokens)
-    mode_str = f"Mode: {runtime.mode}"
-    if runtime.mode == "habit" and runtime.habit_score > 0:
-        mode_str += f" ({runtime.habit_score:.0%})"
-    parts.append(mode_str)
+    # ── Tier 1: Actionable state (highest attention) ──────────────
 
-    # 2. Focus context (if files active, ~30 tokens)
-    if runtime.active_files:
-        basenames = [f.rsplit("/", 1)[-1] for f in runtime.active_files[:3]]
-        parts.append(f"Focus: [{', '.join(basenames)}]")
-
-    # 3. Blocking issues alert (~20 tokens)
+    # 1. Blocking issues (must-address signal)
     if runtime.blocking_issues > 0:
         parts.append(f"BLOCKING: {runtime.blocking_issues} issues")
 
-    # 4. Behavioral warning (~30 tokens)
+    # 2. Coherence alert (cross-channel diagnosis)
+    if runtime.coherence_state in ("coupled", "systemic"):
+        parts.append(f"Coherence: {runtime.coherence_state}")
+
+    # 3. Behavioral warning (approaching stuck state)
     if runtime.approach_failures >= 2:
         parts.append(
             f"WARNING: {runtime.approach_failures} failed approaches \u2014 run constraint_check"
@@ -87,9 +82,24 @@ def _build_primer(project_root: str) -> str | None:
     elif runtime.prediction_accuracy >= 0 and runtime.prediction_accuracy < 0.5:
         parts.append(f"Prediction accuracy: {runtime.prediction_accuracy:.0%}")
 
-    # 5. Coherence alert (~20 tokens)
-    if runtime.coherence_state in ("coupled", "systemic"):
-        parts.append(f"Coherence: {runtime.coherence_state}")
+    # ── Tier 2: Context (orientation signals) ─────────────────────
+
+    # 4. Mode line
+    mode_str = f"Mode: {runtime.mode}"
+    if runtime.mode == "habit" and runtime.habit_score > 0:
+        mode_str += f" ({runtime.habit_score:.0%})"
+    parts.append(mode_str)
+
+    # 5. Focus context
+    if runtime.active_files:
+        basenames = [f.rsplit("/", 1)[-1] for f in runtime.active_files[:3]]
+        parts.append(f"Focus: [{', '.join(basenames)}]")
+
+    # 6. PrescriptiveSpec coverage
+    if getattr(runtime, "prescriptive_spec_count", 0) > 0:
+        pspec_count = runtime.prescriptive_spec_count
+        pspec_ratio = getattr(runtime, "prescriptive_coverage_ratio", 0.0)
+        parts.append(f"PSpec: {pspec_count} specs ({pspec_ratio:.0%} covered)")
 
     primer = " | ".join(parts)
 

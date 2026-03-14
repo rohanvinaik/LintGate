@@ -22,7 +22,7 @@ _MANAGED_END_RE = re.compile(
     r"<!--\s*LINTGATE:END\s+(\w+)\s*-->",
 )
 
-MANAGED_SECTION_IDS = ("machine_rules", "do_dont", "theory_alignment", "context_map")
+MANAGED_SECTION_IDS = ("machine_rules", "do_dont", "theory_alignment", "context_map", "prescriptive_rules")
 
 
 @dataclass
@@ -233,11 +233,34 @@ def _patch_theory_coherence(
     return "theory_alignment", section.content.rstrip() + f"\n- {update_text}\n"
 
 
+def _patch_prescriptive_rules(
+    sections: dict[str, ManagedSection],
+    evidence: dict[str, Any],
+) -> tuple[str, str] | None:
+    """Handle prescriptive_spec_composed trigger — update prescriptive_rules section."""
+    target_key = evidence.get("target_key", "")
+    problem_class = evidence.get("problem_class", "pure")
+    summary = evidence.get("summary", "")
+    if not target_key:
+        return None
+    section = sections.get("prescriptive_rules")
+    if section is None:
+        # Bootstrap fresh section
+        return "prescriptive_rules", (
+            "## Prescriptive Specifications\n\n"
+            f"- `{target_key}` ({problem_class}): {summary}\n"
+        )
+    if target_key in section.content:
+        return None  # Already listed
+    return "prescriptive_rules", section.content.rstrip() + f"\n- `{target_key}` ({problem_class}): {summary}\n"
+
+
 _TRIGGER_HANDLERS: dict[str, Any] = {
     "constraint_accepted": _patch_constraint_accepted,
     "prediction_confirmed": _patch_do_dont,
     "recurring_behavioral_signal": _patch_do_dont,
     "theory_coherence_update": _patch_theory_coherence,
+    "prescriptive_spec_composed": _patch_prescriptive_rules,
 }
 
 
