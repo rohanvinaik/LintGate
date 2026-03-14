@@ -221,9 +221,10 @@ def save_cached_state(cache_dir: Path, func_key: str, data: dict) -> None:
     cache_file = cache_dir / f"{safe_key}.json"
     try:
         with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
+            json.dump(data, f, default=str)
+    except (OSError, TypeError):
+        # Remove truncated file if write failed mid-stream
+        cache_file.unlink(missing_ok=True)
 
 
 def iter_cached_states(

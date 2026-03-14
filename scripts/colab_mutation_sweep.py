@@ -180,7 +180,8 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
 
             # Add discovery diagnostics to cached output
             if discovery_diag:
-                result_dict["discovery_diagnostics"] = discovery_diag
+                from dataclasses import asdict
+                result_dict["discovery_diagnostics"] = asdict(discovery_diag)
 
             # Determine discovery state
             if not ctx.test_files:
