@@ -812,8 +812,10 @@ def _scan_pspec_stubs(project_root: str) -> list[tuple[str, str]]:
                 # Find the function def on the next few lines
                 func_name = _find_function_at(source, i + 1)
                 if func_name:
-                    module = os.path.relpath(fpath, project_root).replace(os.sep, ".").removesuffix(".py")
-                    target_key = f"{module}::{func_name}"
+                    from lintgate.keys import canonical_function_key
+
+                    relpath = os.path.relpath(fpath, project_root).replace(os.sep, "/")
+                    target_key = canonical_function_key(relpath, func_name)
                     stubs.append((target_key, annotation))
 
     return stubs
@@ -930,11 +932,13 @@ def _build_func_index(project_root: str) -> set[str]:
                     tree = _ast.parse(f.read())
             except (OSError, SyntaxError):
                 continue
-            module = os.path.relpath(fpath, project_root).replace(os.sep, ".").removesuffix(".py")
+            relpath = os.path.relpath(fpath, project_root).replace(os.sep, "/")
             for node in _ast.walk(tree):
                 if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
                     if not node.name.startswith("_"):
-                        func_keys.add(f"{module}::{node.name}")
+                        from lintgate.keys import canonical_function_key
+
+                        func_keys.add(canonical_function_key(relpath, node.name))
     return func_keys
 
 
