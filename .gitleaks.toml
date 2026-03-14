@@ -10,6 +10,7 @@ paths = [
     '''tests/test_behavior_compass_core\.py''',
     '''tests/test_git_channel_helpers\.py''',
     '''tests/test_git_secrets\.py''',
+    '''tests/test_secret_checker\.py''',
     '''\.githooks/pre-push''',
     '''mcp_tools/onboarding_tools\.py''',
     '''worker/src/auth/github-app\.ts''',
