@@ -18,9 +18,11 @@ class Strategy(str, Enum):
     """Regeneration strategy for a function's tests."""
 
     EXCLUDE_MUTATION = "exclude_mutation"
-    PRESERVE_SYSTEM = "preserve_system"
+    ALREADY_GOOD = "already_good"
     MANUAL_CONTRACT = "manual_contract"
     AUTO_GENERATE_UNIT = "auto_generate_unit"
+    NEEDS_DECOMPOSITION = "needs_decomposition"
+    PRESERVE_SYSTEM = "already_good"
 
 
 class ExistingTestAction(str, Enum):
@@ -44,6 +46,7 @@ class SpecEvidence:
     is_stateful: bool = False
     has_side_effects: bool = False
     testability_score: float = 1.0
+    composition_gamma: float = 0.0
 
 
 @dataclass
@@ -55,6 +58,8 @@ class MutationEvidence:
     survival_interpretation: str = ""
     survival_rate: float = 1.0
     tests_loaded: int = 0
+    surviving_categories: list[str] = field(default_factory=list)
+    mutation_truth_label: str = ""
 
 
 @dataclass
@@ -121,6 +126,10 @@ class FunctionEvidence:
     def tests_loaded(self) -> int:
         return self.mutation.tests_loaded
 
+    @property
+    def mutation_truth_label(self) -> str:
+        return self.mutation.mutation_truth_label
+
     def to_dict(self) -> dict:
         return {
             "function_key": self.function_key,
@@ -133,11 +142,14 @@ class FunctionEvidence:
             "is_stateful": self.spec.is_stateful,
             "has_side_effects": self.spec.has_side_effects,
             "testability_score": round(self.spec.testability_score, 3),
+            "composition_gamma": round(self.spec.composition_gamma, 3),
             "discovery_state": self.mutation.discovery_state,
             "topology_state": self.mutation.topology_state,
             "survival_interpretation": self.mutation.survival_interpretation,
             "survival_rate": round(self.mutation.survival_rate, 3),
             "tests_loaded": self.mutation.tests_loaded,
+            "surviving_categories": self.mutation.surviving_categories,
+            "mutation_truth_label": self.mutation.mutation_truth_label,
             "covering_tests": self.covering_tests,
             "assertion_count": self.assertion_count,
         }
@@ -257,6 +269,7 @@ def load_manifest(project_root: str) -> RebuildManifest | None:
                 is_stateful=ev_data.get("is_stateful", False),
                 has_side_effects=ev_data.get("has_side_effects", False),
                 testability_score=ev_data.get("testability_score", 1.0),
+                composition_gamma=ev_data.get("composition_gamma", 0.0),
             ),
             mutation=MutationEvidence(
                 discovery_state=ev_data.get("discovery_state", ""),
@@ -267,6 +280,8 @@ def load_manifest(project_root: str) -> RebuildManifest | None:
                 ),
                 survival_rate=ev_data.get("survival_rate", 1.0),
                 tests_loaded=ev_data.get("tests_loaded", 0),
+                surviving_categories=ev_data.get("surviving_categories", []),
+                mutation_truth_label=ev_data.get("mutation_truth_label", ""),
             ),
             covering_tests=ev_data.get("covering_tests", []),
             assertion_count=ev_data.get("assertion_count", 0),

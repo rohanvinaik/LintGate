@@ -158,9 +158,13 @@ def _do_analyze(
 
     # Build per-function output
     total_spec = 0.0
+    overlays: dict[str, Any] = {}
     for key, fs in ledger.functions.items():
         # Build empirical overlay from mutation cache
-        from lintgate.specification.static_empirical_reconciliation import build_overlay
+        from lintgate.specification.static_empirical_reconciliation import (
+            build_overlay,
+            reconcile_spec_level,
+        )
 
         overlay = build_overlay(
             function_key=key,
@@ -169,6 +173,10 @@ def _do_analyze(
             static_phase=fs.core.phase,
             mutation_cache=mutation_cache,
         )
+        reconciled, recon_source = reconcile_spec_level(fs.core.specification_level, overlay)
+        overlay.reconciled_spec_level = reconciled
+        overlay.reconciled_data_source = recon_source
+        overlays[key] = overlay
 
         result.functions[key] = {
             "sigma": fs.core.estimated_sigma,
@@ -176,9 +184,13 @@ def _do_analyze(
             "regime": fs.core.regime,
             "regime_rationale": fs.core.regime_rationale,
             "specification_level": round(fs.core.specification_level, 3),
+            "reconciled_spec_level": round(reconciled, 3),
+            "reconciled_data_source": recon_source,
             "data_source": fs.core.data_source,
             "phase": fs.core.phase,
             "is_pure": fs.core.is_pure,
+            "is_stateful": fs.testability.is_stateful,
+            "has_side_effects": fs.testability.has_side_effects,
             "risk_score": round(fs.risk.risk_score, 3),
             "priority_band": fs.risk.priority_band,
             "testability_score": round(fs.testability.testability_score, 3),
@@ -192,6 +204,12 @@ def _do_analyze(
             "optimization_hints": fs.optimization_hints,
             "stop_criteria_met": fs.stop_criteria_met,
         }
+        # Gap classification (must run after dict is built)
+        result.functions[key]["gap_class"] = _classify_function_gap(
+            result.functions[key],
+            mutation_cache.get(key) if mutation_cache else None,
+            qualname=key.rsplit("::", 1)[-1] if "::" in key else key,
+        )
         result.total_sigma += fs.core.estimated_sigma
         total_spec += fs.core.specification_level
 
@@ -208,7 +226,11 @@ def _do_analyze(
         from lintgate.specification.prescriptions import prescribe
 
         for _key, fs in ledger.functions.items():
-            rxs = prescribe(fs, max_prescriptions=max_prescriptions)
+            rxs = prescribe(
+                fs,
+                max_prescriptions=max_prescriptions,
+                overlay=overlays.get(_key),
+            )
             for rx in rxs:
                 result.prescriptions.append(
                     {
@@ -283,6 +305,12 @@ def _do_analyze_symbolic(
             "optimization_hints": [],
             "stop_criteria_met": False,
         }
+        # Symbolic path has no empirical data → always unprofiled
+        result.functions[func_key]["gap_class"] = _classify_function_gap(
+            result.functions[func_key],
+            None,
+            qualname=qualname,
+        )
         result.total_sigma += pred.sigma
         total_spec += pred.spec_level
 
@@ -414,3 +442,20 @@ def _walk_scope(scope: Any, prefix: str, out: list[tuple[str, Any]]) -> None:
         elif isinstance(node, ast.ClassDef):
             class_prefix = f"{prefix}{node.name}." if prefix else f"{node.name}."
             _walk_scope(node, class_prefix, out)
+
+
+def _classify_function_gap(
+    func_data: dict,
+    mutation_entry: dict | None,
+    qualname: str = "",
+) -> str:
+    """Classify a function's specification gap for the per-function output.
+
+    Thin wrapper around gap_classifier.classify_from_func_data that also
+    passes the function name for serialization heuristics.
+    """
+    from .gap_classifier import classify_from_func_data
+
+    if qualname:
+        func_data = {**func_data, "function_name": qualname}
+    return classify_from_func_data(func_data, mutation_entry).value

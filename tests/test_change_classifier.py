@@ -71,7 +71,7 @@ def test_build_pip_install():
 
 
 def test_build_not_string():
-    assert _is_build_command(None) is False
+    assert _is_build_command(None) is False  # type: ignore[arg-type]  # intentional wrong-type test
 
 
 def test_build_normal():
@@ -128,9 +128,9 @@ def test_extract_files_bash_unknown_command(tmp_path):
 def test_resolve_path_invalid_input():
     from lintgate.change_classifier import _resolve_path
 
-    assert _resolve_path(None, "/tmp") == ""
+    assert _resolve_path(None, "/tmp") == ""  # type: ignore[arg-type]
     assert _resolve_path("", "/tmp") == ""
-    assert _resolve_path("foo.py", None) == os.path.normpath(os.path.join(os.getcwd(), "foo.py"))
+    assert _resolve_path("foo.py", None) == os.path.normpath(os.path.join(os.getcwd(), "foo.py"))  # type: ignore[arg-type]
 
 
 # ── _matches_pipeline_path ───────────────────────────────────────────

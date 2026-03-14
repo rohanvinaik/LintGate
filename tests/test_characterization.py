@@ -44,6 +44,34 @@ class TestEvalCallSite:
         assert result is not None
         assert result[0] == [[1, 2, 3], {"a": 1}]
 
+    # ── Integration: _find_call_sites key convention ─────────────
+
+    def test_positional_args_key(self):
+        """_find_call_sites produces 'positional_args'/'keyword_args' keys."""
+        site = {"positional_args": ["1", "'hello'"], "keyword_args": {"x": "True"}}
+        result = _eval_call_site(site)
+        assert result is not None
+        args, kwargs = result
+        assert args == [1, "hello"]
+        assert kwargs == {"x": True}
+
+    def test_positional_args_key_variable_rejected(self):
+        site = {"positional_args": ["some_var"], "keyword_args": {}}
+        assert _eval_call_site(site) is None
+
+    def test_mixed_keys_positional_preferred(self):
+        """When both key conventions present, positional_args takes precedence."""
+        site = {
+            "positional_args": ["42"],
+            "args": ["99"],  # should be ignored
+            "keyword_args": {"k": "'v'"},
+            "kwargs": {"k": "'other'"},
+        }
+        result = _eval_call_site(site)
+        assert result is not None
+        assert result[0] == [42]
+        assert result[1] == {"k": "v"}
+
 
 # ── Golden capture ────────────────────────────────────────────────
 
@@ -96,8 +124,11 @@ class TestCaptureGolden:
 class TestCorroborateCaptures:
     def _provisional(self, **kwargs):
         return GoldenCapture(
-            inputs=[1, 2], output="3", deterministic=True,
-            provenance=Provenance.PROVISIONAL, **kwargs,
+            inputs=[1, 2],
+            output="3",
+            deterministic=True,
+            provenance=Provenance.PROVISIONAL,
+            **kwargs,
         )
 
     def test_pure_deterministic_corroborates(self):
@@ -117,7 +148,9 @@ class TestCorroborateCaptures:
 
     def test_non_deterministic_not_pure_corroborated(self):
         cap = GoldenCapture(
-            inputs=[1], output="1", deterministic=False,
+            inputs=[1],
+            output="1",
+            deterministic=False,
             provenance=Provenance.PROVISIONAL,
         )
         caps = corroborate_captures([cap], None, is_pure=True)
@@ -126,7 +159,9 @@ class TestCorroborateCaptures:
 
     def test_already_corroborated_preserved(self):
         cap = GoldenCapture(
-            inputs=[], output="1", deterministic=True,
+            inputs=[],
+            output="1",
+            deterministic=True,
             provenance=Provenance.CORROBORATED,
             corroborating_lens="manual",
         )
@@ -149,7 +184,9 @@ class TestCorroborateCaptures:
 class TestGenerateGoldenTest:
     def test_deterministic_assertion(self):
         cap = GoldenCapture(
-            inputs=[1, 2], output="3", deterministic=True,
+            inputs=[1, 2],
+            output="3",
+            deterministic=True,
             provenance=Provenance.CORROBORATED,
             corroborating_lens="pure_deterministic",
         )
@@ -161,7 +198,9 @@ class TestGenerateGoldenTest:
 
     def test_provisional_tag(self):
         cap = GoldenCapture(
-            inputs=[1], output="'hello'", deterministic=True,
+            inputs=[1],
+            output="'hello'",
+            deterministic=True,
             provenance=Provenance.PROVISIONAL,
         )
         code = generate_golden_test("mod::f", [cap])
@@ -170,7 +209,9 @@ class TestGenerateGoldenTest:
 
     def test_nondeterministic_assertion(self):
         cap = GoldenCapture(
-            inputs=[], output="0.5", deterministic=False,
+            inputs=[],
+            output="0.5",
+            deterministic=False,
             provenance=Provenance.PROVISIONAL,
         )
         code = generate_golden_test("mod::f", [cap])
@@ -188,8 +229,11 @@ class TestGenerateGoldenTest:
 
     def test_kwargs_in_call(self):
         cap = GoldenCapture(
-            inputs=[1], kwargs={"key": "val"}, output="ok",
-            deterministic=True, provenance=Provenance.CORROBORATED,
+            inputs=[1],
+            kwargs={"key": "val"},
+            output="ok",
+            deterministic=True,
+            provenance=Provenance.CORROBORATED,
         )
         code = generate_golden_test("mod::f", [cap])
         assert "key='val'" in code

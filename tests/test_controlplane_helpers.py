@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest import mock
 
+import pytest
+
 from lintgate.hooks.controlplane import (
     _SESSION_TELEMETRY_COUNTER_KEY,
     _SESSION_TELEMETRY_UPDATE_CAP,
@@ -22,6 +24,7 @@ from lintgate.hooks.controlplane import (
     session_telemetry_updates_used,
     setup_session_and_gate,
 )
+from mcp_tools.controlplane_tools import _resolve_scope_files
 
 # ── Lightweight stubs ────────────────────────────────────────────────
 
@@ -147,9 +150,7 @@ class TestCanApplySessionTelemetry:
         assert can_apply_session_telemetry(session) is True
 
     def test_returns_true_when_under_cap(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 5}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 5})
         assert can_apply_session_telemetry(session) is True
 
     def test_returns_false_at_cap(self):
@@ -159,9 +160,7 @@ class TestCanApplySessionTelemetry:
         assert can_apply_session_telemetry(session) is False
 
     def test_returns_false_above_cap(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 99}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 99})
         assert can_apply_session_telemetry(session) is False
 
     def test_returns_true_for_none_session(self):
@@ -184,7 +183,7 @@ class TestSessionTelemetryUpdatesUsed:
 
     def test_returns_zero_for_non_dict_behavior_compass(self):
         session = StubSession()
-        session.behavior_compass = "not a dict"
+        session.behavior_compass = "not a dict"  # type: ignore[assignment]  # intentional wrong-type test
         assert session_telemetry_updates_used(session) == 0
 
     def test_returns_zero_when_key_missing(self):
@@ -192,27 +191,19 @@ class TestSessionTelemetryUpdatesUsed:
         assert session_telemetry_updates_used(session) == 0
 
     def test_returns_stored_value(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 7}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 7})
         assert session_telemetry_updates_used(session) == 7
 
     def test_returns_zero_for_negative_value(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: -3}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: -3})
         assert session_telemetry_updates_used(session) == 0
 
     def test_returns_zero_for_non_int_value(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: "five"}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: "five"})
         assert session_telemetry_updates_used(session) == 0
 
     def test_returns_zero_for_float_value(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 3.5}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 3.5})
         assert session_telemetry_updates_used(session) == 0
 
 
@@ -226,9 +217,7 @@ class TestMarkSessionTelemetryApplied:
         assert session.behavior_compass[_SESSION_TELEMETRY_COUNTER_KEY] == 1
 
     def test_increments_existing_value(self):
-        session = StubSession(
-            behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 4}
-        )
+        session = StubSession(behavior_compass={_SESSION_TELEMETRY_COUNTER_KEY: 4})
         mark_session_telemetry_applied(session)
         assert session.behavior_compass[_SESSION_TELEMETRY_COUNTER_KEY] == 5
 
@@ -240,7 +229,7 @@ class TestMarkSessionTelemetryApplied:
 
     def test_noop_for_non_dict_behavior_compass(self):
         session = StubSession()
-        session.behavior_compass = "not a dict"
+        session.behavior_compass = "not a dict"  # type: ignore[assignment]  # intentional wrong-type test
         mark_session_telemetry_applied(session)
         assert session.behavior_compass == "not a dict"
 
@@ -257,9 +246,7 @@ class TestMarkSessionTelemetryApplied:
 class TestApplyGlobalProfileDelta:
     def test_noop_when_global_memory_disabled(self):
         session = StubSession()
-        cr = StubChannelResult(
-            metrics={"global_profile_delta": {"some": "data"}}
-        )
+        cr = StubChannelResult(metrics={"global_profile_delta": {"some": "data"}})
         config = StubCpConfig(global_memory_enabled=False)
         _apply_global_profile_delta(session, cr, config)
 
@@ -387,9 +374,7 @@ class TestLoadGlobalPriors:
                 "lintgate.controlplane.global_behavior_profile.load_global_profile",
                 return_value=mock_gp,
             ),
-            mock.patch(
-                "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3
-            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
         ):
             assert load_global_priors(config) is None
 
@@ -408,9 +393,7 @@ class TestLoadGlobalPriors:
                 "lintgate.controlplane.global_behavior_profile.load_global_profile",
                 return_value=mock_gp,
             ),
-            mock.patch(
-                "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3
-            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 3),
         ):
             result = load_global_priors(config)
             assert result == {
@@ -422,7 +405,9 @@ class TestLoadGlobalPriors:
 
     def test_returns_none_on_import_error(self):
         config = StubCpConfig(global_memory_enabled=True)
-        with mock.patch.dict("sys.modules", {"lintgate.controlplane.global_behavior_profile": None}):
+        with mock.patch.dict(
+            "sys.modules", {"lintgate.controlplane.global_behavior_profile": None}
+        ):
             assert load_global_priors(config) is None
 
 
@@ -451,9 +436,7 @@ class TestAccumulateSessionTelemetry:
     def test_accumulates_new_counters(self):
         session = StubSession(behavior_compass={})
         report = {"_telemetry": {"lint_runs": 3, "test_runs": 1}}
-        with mock.patch(
-            "lintgate.controlplane.session_memory.save_session"
-        ):
+        with mock.patch("lintgate.controlplane.session_memory.save_session"):
             accumulate_session_telemetry(report, session)
         assert session.behavior_compass["telemetry_counters"] == {
             "lint_runs": 3,
@@ -461,13 +444,9 @@ class TestAccumulateSessionTelemetry:
         }
 
     def test_accumulates_to_existing_counters(self):
-        session = StubSession(
-            behavior_compass={"telemetry_counters": {"lint_runs": 2}}
-        )
+        session = StubSession(behavior_compass={"telemetry_counters": {"lint_runs": 2}})
         report = {"_telemetry": {"lint_runs": 3, "test_runs": 1}}
-        with mock.patch(
-            "lintgate.controlplane.session_memory.save_session"
-        ):
+        with mock.patch("lintgate.controlplane.session_memory.save_session"):
             accumulate_session_telemetry(report, session)
         assert session.behavior_compass["telemetry_counters"] == {
             "lint_runs": 5,
@@ -475,13 +454,9 @@ class TestAccumulateSessionTelemetry:
         }
 
     def test_replaces_non_dict_existing_counters(self):
-        session = StubSession(
-            behavior_compass={"telemetry_counters": "corrupted"}
-        )
+        session = StubSession(behavior_compass={"telemetry_counters": "corrupted"})
         report = {"_telemetry": {"runs": 1}}
-        with mock.patch(
-            "lintgate.controlplane.session_memory.save_session"
-        ):
+        with mock.patch("lintgate.controlplane.session_memory.save_session"):
             accumulate_session_telemetry(report, session)
         assert session.behavior_compass["telemetry_counters"] == {"runs": 1}
 
@@ -598,9 +573,7 @@ class TestSetupSessionAndGate:
     def test_returns_none_session_when_memory_disabled(self):
         config = StubCpConfig(session_memory=False)
         event = StubEvent()
-        session, advisory = setup_session_and_gate(
-            config, "/tmp", "Bash", event, [], None
-        )
+        session, advisory = setup_session_and_gate(config, "/tmp", "Bash", event, [], None)
         assert session is None
         assert advisory is None
 
@@ -612,9 +585,7 @@ class TestSetupSessionAndGate:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=mock_session,
         ):
-            session, advisory = setup_session_and_gate(
-                config, "/tmp", "Bash", event, [], None
-            )
+            session, advisory = setup_session_and_gate(config, "/tmp", "Bash", event, [], None)
         assert session is mock_session
 
     def test_injects_behavior_compass(self):
@@ -625,18 +596,14 @@ class TestSetupSessionAndGate:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=mock_session,
         ):
-            session, advisory = setup_session_and_gate(
-                config, "/tmp", "Bash", event, [], None
-            )
+            session, advisory = setup_session_and_gate(config, "/tmp", "Bash", event, [], None)
         assert event.raw_input.get("behavior_compass") == {"key": "val"}
 
     def test_injects_global_priors(self):
         config = StubCpConfig(session_memory=False)
         event = StubEvent(raw_input={})
         priors = {"enabled": True, "alpha": 0.6}
-        session, advisory = setup_session_and_gate(
-            config, "/tmp", "Bash", event, [], priors
-        )
+        session, advisory = setup_session_and_gate(config, "/tmp", "Bash", event, [], priors)
         assert event.raw_input["behavior_global_priors"] == priors
 
 
@@ -656,82 +623,60 @@ class TestRecordSnapshotBehavior:
 
     def test_bash_extracts_command_signature(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "git status"}, "on branch main"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "git status"}, "on branch main")
         assert snapshot.behavior.action_type == "bash"
         assert snapshot.behavior.command_signature != ""
 
     def test_bash_extracts_exit_code_from_output(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "ls"}, "exit_code: 0"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "ls"}, "exit_code: 0")
         assert snapshot.behavior.exit_code == 0
 
     def test_bash_extracts_nonzero_exit_code(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "false"}, "exit code: 1"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "false"}, "exit code: 1")
         assert snapshot.behavior.exit_code == 1
 
     def test_bash_infers_error_exit_code(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "ls"}, "error: file not found"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "ls"}, "error: file not found")
         assert snapshot.behavior.exit_code == 1
 
     def test_bash_infers_failed_exit_code(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "make"}, "build failed"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "make"}, "build failed")
         assert snapshot.behavior.exit_code == 1
 
     def test_bash_defaults_to_zero_exit_code(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "echo hello"}, "hello"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "echo hello"}, "hello")
         assert snapshot.behavior.exit_code == 0
 
     def test_bash_handles_string_tool_input(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", "git status", "on branch main"
-        )
+        record_snapshot_behavior(snapshot, "Bash", "git status", "on branch main")
         assert snapshot.behavior.action_type == "bash"
         assert snapshot.behavior.command_signature != ""
 
     def test_bash_handles_non_string_non_dict_input(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", 12345, "output"
-        )
+        record_snapshot_behavior(snapshot, "Bash", 12345, "output")
         assert snapshot.behavior.action_type == "bash"
         assert snapshot.behavior.command_signature != ""
 
     def test_bash_handles_non_string_output(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "ls"}, None
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "ls"}, None)
         assert snapshot.behavior.exit_code == 0
 
     def test_bash_exit_status_variant(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "ls"}, "exitstatus: 2"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "ls"}, "exitstatus: 2")
         assert snapshot.behavior.exit_code == 2
 
     def test_bash_exit_code_case_insensitive(self):
         snapshot = StubRecordSnapshot()
-        record_snapshot_behavior(
-            snapshot, "Bash", {"command": "ls"}, "EXIT_CODE=42"
-        )
+        record_snapshot_behavior(snapshot, "Bash", {"command": "ls"}, "EXIT_CODE=42")
         assert snapshot.behavior.exit_code == 42
 
 
@@ -748,7 +693,7 @@ class TestSaveRunDetails:
     def test_noop_when_finding_index_none(self):
         mesh = StubMeshResult()
         with mock.patch("lintgate.state.save_controlplane_run") as mock_save:
-            save_run_details(mesh, None)
+            save_run_details(mesh, None)  # type: ignore[arg-type]  # intentional: test None guard
         mock_save.assert_not_called()
 
     def test_saves_with_valid_finding_index(self):
@@ -827,7 +772,7 @@ class TestSaveRunDetails:
 
     def test_noop_when_event_is_none(self):
         mesh = StubMeshResult()
-        mesh.event = None
+        mesh.event = None  # type: ignore[assignment]  # intentional wrong-type test
         fi = {"fp1": {"code": "ok"}}
 
         with mock.patch("lintgate.state.save_controlplane_run") as mock_save:
@@ -927,3 +872,33 @@ class TestCollectModelCandidates:
         assert "sess" in result
         assert "tool" in result
         assert "env-claude" in result
+
+
+# ── _resolve_scope_files ─────────────────────────────────────────────────
+
+
+class TestResolveScopeFiles:
+    def test_files_scope_valid_and_invalid(self):
+        helpers = {"_collect_python_files": lambda p: ["/app/a.py", "/app/b.py", "/app/c.py"]}
+
+        resolved = _resolve_scope_files("/app", "files", ["a.py", "b.py"], helpers)
+        assert set(resolved) == {"/app/a.py", "/app/b.py"}
+
+        with pytest.raises(ValueError, match="requires a non-empty files list"):
+            _resolve_scope_files("/app", "files", [], helpers)
+
+        with pytest.raises(ValueError, match="requires a non-empty files list"):
+            _resolve_scope_files("/app", "files", None, helpers)
+
+    def test_unknown_scope(self):
+        helpers: dict[str, Any] = {"_collect_python_files": lambda p: []}
+        with pytest.raises(ValueError, match="Unknown scope: magic"):
+            _resolve_scope_files("/app", "magic", None, helpers)
+
+    def test_project_scope(self):
+        all_files = [f"/app/f{i}.py" for i in range(100)]
+        helpers = {"_collect_python_files": lambda p: all_files}
+        resolved = _resolve_scope_files("/app", "project", None, helpers)
+
+        assert len(resolved) == 50
+        assert resolved == all_files[:50]

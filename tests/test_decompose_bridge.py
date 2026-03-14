@@ -1,6 +1,5 @@
 """Tests for mutation_decompose performance bridge (#312)."""
 
-
 from mcp_tools._mutation_tools_impl import (
     _CATEGORY_PERFORMANCE_MAP,
     _build_performance_unlocks,

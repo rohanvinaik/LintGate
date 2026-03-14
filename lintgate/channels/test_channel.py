@@ -14,7 +14,12 @@ Implementation split across sub-modules:
 - _test_types.py: pure value containers (TestFailure, TestRunResult)
 - _test_channel_runner.py: pytest execution and output parsing
 - _test_channel_impact.py: impact detection (find test files for changed source)
-- _test_channel_checks.py: check functions, drift detection, coverage, result builder
+- _test_channel_models.py: shared value objects and channel context
+- _test_channel_execution.py: test execution and coverage context
+- _test_channel_drift.py: drift classification, stale symbols, contract drift
+- _test_channel_selection.py: fallback selection and source/test discovery
+- _test_channel_result.py: result assembly and severity computation
+- _test_channel_checks.py: compatibility re-exports for the split helpers
 - _test_channel_symbol_gate.py: symbol coverage gate and finding emission
 """
 

@@ -49,11 +49,18 @@ def run_fresh_kill_rates(
     budget_per_func_ms: float = 500,
     max_per_category: int = 3,
     per_mutant_timeout_ms: float = 500,
+    *,
+    generated_dir: str | None = None,
+    test_file_overrides: dict[str, str] | None = None,
 ) -> tuple[list[float], int, list[dict[str, Any]]]:
     """Run fresh mutation sampling for auto_generate_unit targets.
 
     Instead of reading stale mutation cache, imports the generated test
     files and runs real mutation sampling against each target function.
+
+    When *generated_dir* is provided, resolves test files relative to that
+    directory instead of ``project_root``.  When *test_file_overrides* is
+    provided, uses the override path for matching function keys.
 
     Returns:
         (kill_rates, zero_kill_count, per_function_details)
@@ -82,8 +89,13 @@ def run_fresh_kill_rates(
         source_file = func.evidence.source_file
         target_test = func.target_test_file
 
-        # Resolve generated test file
-        gen_path = os.path.join(project_root, target_test)
+        # Resolve generated test file — use overrides or generated_dir if provided
+        if test_file_overrides and func_key in test_file_overrides:
+            gen_path = test_file_overrides[func_key]
+        elif generated_dir:
+            gen_path = os.path.join(generated_dir, os.path.basename(target_test))
+        else:
+            gen_path = os.path.join(project_root, target_test)
         if not os.path.isfile(gen_path):
             detail = {
                 "function_key": func_key,
@@ -123,7 +135,8 @@ def run_fresh_kill_rates(
             continue
 
         # Determine mutation categories (purity-aware)
-        is_pure = detect_purity(full_path, func_name)
+        qualname = getattr(func_node, "_lintgate_qualname", func_name)
+        is_pure = detect_purity(full_path, qualname)
         categories = {
             MutationCategory.VALUE,
             MutationCategory.SWAP,
@@ -138,11 +151,13 @@ def run_fresh_kill_rates(
         import ast as _ast
 
         if not isinstance(func_node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-            raise ValueError(f"Expected FunctionDef or AsyncFunctionDef, got {type(func_node).__name__}")
+            raise ValueError(
+                f"Expected FunctionDef or AsyncFunctionDef, got {type(func_node).__name__}"
+            )
         try:
             result = run_function_sampling(
                 func_node,  # type: ignore[arg-type]
-                func_key,
+                func_key.rsplit("::", 1)[0] + "::" + qualname if "::" in func_key else qualname,
                 categories,
                 test_callables,
                 lambda *_a: None,  # dummy original_func

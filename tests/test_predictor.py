@@ -319,7 +319,7 @@ class TestMutationSpecLevelOverride:
             mutation_spec_level=0.7,  # 1.0 - 0.3 survival
             mutation_data_source="mutation_profiled",
         )
-        result = predict(func, signals)
+        result = predict(func, signals)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result.spec_level == 0.7
         assert result.data_source == "mutation_profiled"
 
@@ -334,7 +334,7 @@ class TestMutationSpecLevelOverride:
             is_pure=True,
             assertion_count=5,
         )
-        result = predict(func, signals)
+        result = predict(func, signals)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result.data_source == "static"
 
     def test_mutation_none_is_noop(self):
@@ -349,7 +349,7 @@ class TestMutationSpecLevelOverride:
             assertion_count=3,
             mutation_spec_level=None,
         )
-        result = predict(func, signals)
+        result = predict(func, signals)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result.data_source == "static"
 
     def test_mutation_affects_phase(self):
@@ -364,7 +364,7 @@ class TestMutationSpecLevelOverride:
             mutation_spec_level=0.96,
             mutation_data_source="mutation_profiled",
         )
-        result = predict(func, signals)
+        result = predict(func, signals)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result.phase == "complete"
 
 
@@ -404,22 +404,22 @@ class TestCountBranches:
     def test_no_branches(self):
         func = ast.parse("def f(x): return x + 1").body[0]
 
-        assert count_branches(func) == 0
+        assert count_branches(func) == 0  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
     def test_single_if(self):
         func = ast.parse("def f(x):\n  if x: return 1\n  return 0").body[0]
 
-        assert count_branches(func) == 1
+        assert count_branches(func) == 1  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
     def test_nested_if_for(self):
         func = ast.parse("def f(x):\n  for i in x:\n    if i: pass").body[0]
 
-        assert count_branches(func) == 2
+        assert count_branches(func) == 2  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
     def test_try_counts(self):
         func = ast.parse("def f():\n  try:\n    pass\n  except:\n    pass").body[0]
 
-        assert count_branches(func) == 1
+        assert count_branches(func) == 1  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
 
 class TestCountAstCategories:
@@ -427,13 +427,13 @@ class TestCountAstCategories:
 
     def test_minimal_function(self):
         func = ast.parse("def f(): pass").body[0]
-        result = count_ast_categories(func)
+        result = count_ast_categories(func)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result >= 2  # At least FunctionDef + arguments
 
     def test_complex_function_more_categories(self):
         func = ast.parse("def f(x):\n  if x > 0:\n    return x + 1\n  return 0").body[0]
         simple_func = ast.parse("def f(): pass").body[0]
-        assert count_ast_categories(func) > count_ast_categories(simple_func)
+        assert count_ast_categories(func) > count_ast_categories(simple_func)  # type: ignore[arg-type]  # stmt, actually FunctionDef
 
 
 class TestComputeSpecLevel:
@@ -460,14 +460,14 @@ class TestComputeDftScore:
 
     def test_pure_simple_function_high_score(self):
         func = ast.parse("def f(x): return x + 1").body[0]
-        result = compute_dft_score(func)
+        result = compute_dft_score(func)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result.testability_score >= 0.8
         assert not result.is_stateful
         assert not result.has_side_effects
 
     def test_stateful_function_lower_score(self):
         func = ast.parse("def f(self, x):\n  self.value = x").body[0]
-        result = compute_dft_score(func)
+        result = compute_dft_score(func)  # type: ignore[arg-type]  # stmt, actually FunctionDef
         assert result.is_stateful
         assert result.testability_score < 1.0
 

@@ -1715,7 +1715,7 @@ class TestLoadExecuteConfig:
     def test_theory_profile_gated_by_config(self):
         """theory_profile only loaded when inquiry.theory_grounded_signals is True."""
         compass = new_compass()
-        raw_input = {"theory_profile": {"claims": []}}
+        raw_input: dict[str, Any] = {"theory_profile": {"claims": []}}
         raw_input["behavior_compass"] = compass.to_dict()
         event = SupervisionEvent(
             surface="hook",
@@ -2138,3 +2138,107 @@ class TestSignalCoordinatorMutantKilling:
         assert next_actions == [nudge]
         assert nudge_signals == ["approach_cycling"]
         assert suppressed == 0
+
+
+# ── Disposition enforcement config ────────────────────────────────────
+
+
+def test_load_disposition_enforcement_config(tmp_path):
+    import yaml
+
+    from lintgate.config import load_controlplane_config
+
+    config_dir = tmp_path / ".claude"
+    config_dir.mkdir()
+
+    yaml_content = {
+        "controlplane": {
+            "enabled": True,
+            "disposition_enforcement": {
+                "enabled": False,
+                "max_ignores_before_blocking": 5,
+                "enforce_on_channels": ["behavior", "security"],
+            },
+        }
+    }
+
+    config_file = config_dir / "lintgate.yaml"
+    with open(config_file, "w") as f:
+        yaml.dump(yaml_content, f)
+
+    cp_config = load_controlplane_config(str(tmp_path))
+    assert cp_config is not None
+    assert cp_config.disposition_enforcement.enabled is False
+    assert cp_config.disposition_enforcement.max_ignores_before_blocking == 5
+    assert cp_config.disposition_enforcement.enforce_on_channels == [
+        "behavior",
+        "security",
+    ]
+
+
+def test_load_disposition_enforcement_default(tmp_path):
+    import yaml
+
+    from lintgate.config import load_controlplane_config
+
+    config_dir = tmp_path / ".claude"
+    config_dir.mkdir()
+
+    yaml_content = {"controlplane": {"enabled": True}}
+
+    config_file = config_dir / "lintgate.yaml"
+    with open(config_file, "w") as f:
+        yaml.dump(yaml_content, f)
+
+    cp_config = load_controlplane_config(str(tmp_path))
+    assert cp_config is not None
+    assert cp_config.disposition_enforcement.enabled is True
+    assert cp_config.disposition_enforcement.max_ignores_before_blocking == 3
+    assert cp_config.disposition_enforcement.enforce_on_channels == ["behavior", "lint"]
+
+
+# ── Resolution repertoire ─────────────────────────────────────────────
+
+
+def test_repertoire_manager_capture():
+    from lintgate.controlplane.session_memory import SessionMemory
+    from lintgate.orchestration.repertoire import RepertoireManager
+
+    session = SessionMemory()
+    session.action_history = [
+        {"intent": "fix", "tool": "replace_file_content"},
+        {"intent": "verify", "tool": "run_command"},
+        {"intent": "commit", "tool": "run_command"},
+    ]
+
+    manager = RepertoireManager(session)
+
+    manager.track_findings({"foo_error"}, 1, 0)
+    assert "foo_error" in session.active_finding_history
+
+    manager.track_findings(set(), 2, 3)
+    assert "foo_error" not in session.active_finding_history
+    assert len(session.resolution_repertoire) == 1
+    record = session.resolution_repertoire[0]
+    assert record["finding_kind"] == "foo_error"
+    assert len(record["resolution_steps"]) == 3
+
+    hint = manager.query_repertoire("foo_error")
+    assert hint is not None
+    assert "Previously resolved via" in hint
+
+
+def test_repertoire_bounded_lru():
+    from lintgate.controlplane.session_memory import SessionMemory
+    from lintgate.orchestration.repertoire import RepertoireManager
+
+    session = SessionMemory()
+    manager = RepertoireManager(session)
+
+    for i in range(60):
+        session.action_history.append({"intent": f"step_{i}", "tool": "test"})
+        manager.track_findings({f"error_{i}"}, i, i)
+        manager.track_findings(set(), i + 1, i + 1)
+
+    assert len(session.resolution_repertoire) == 50
+    assert session.resolution_repertoire[-1]["finding_kind"] == "error_59"

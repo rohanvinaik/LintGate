@@ -35,13 +35,15 @@ def _compute_same_file_ratio(window: list[dict[str, Any]]) -> float:
     repeat_ops = 0
     for e in window:
         tool = e.get("tool", "")
-        if tool in _INSPECT_TOOLS or tool in _MODIFY_TOOLS:
-            file_ops += 1
-            sig_str = e.get("sig", "")
-            if sig_str:
-                if sig_str in seen_files:
-                    repeat_ops += 1
-                seen_files.add(sig_str)
+        if tool not in _INSPECT_TOOLS and tool not in _MODIFY_TOOLS:
+            continue
+        file_ops += 1
+        sig_str = e.get("sig", "")
+        if not sig_str:
+            continue
+        if sig_str in seen_files:
+            repeat_ops += 1
+        seen_files.add(sig_str)
     return repeat_ops / max(file_ops, 1)
 
 
@@ -114,6 +116,17 @@ def update_signals(state: HabitModeState, action_history: list[dict[str, Any]]) 
     sig.test_in_last_n = _detect_test_in_window(window)
 
 
+def _extract_file_paths(tool_input: dict[str, Any]) -> list[str]:
+    """Extract file paths from a tool input dict."""
+    file_path = tool_input.get("file_path") or tool_input.get("path") or ""
+    if file_path and isinstance(file_path, str):
+        return [file_path]
+    files = tool_input.get("files", [])
+    if isinstance(files, list):
+        return [fp for fp in files[:5] if isinstance(fp, str) and fp]
+    return []
+
+
 def track_active_files(
     state: HabitModeState,
     tool_name: str,
@@ -125,18 +138,8 @@ def track_active_files(
     """
     if isinstance(tool_input, str):
         return
-
-    file_path = tool_input.get("file_path") or tool_input.get("path") or ""
-    if not file_path or not isinstance(file_path, str):
-        # Also check for 'files' list (lint_files tool)
-        files = tool_input.get("files", [])
-        if isinstance(files, list):
-            for fp in files[:5]:  # Cap extraction at 5
-                if isinstance(fp, str) and fp:
-                    _add_to_mru(state.active_files, fp)
-        return
-
-    _add_to_mru(state.active_files, file_path)
+    for fp in _extract_file_paths(tool_input):
+        _add_to_mru(state.active_files, fp)
 
 
 def _add_to_mru(files: list[str], path: str) -> None:
@@ -146,6 +149,23 @@ def _add_to_mru(files: list[str], path: str) -> None:
     files.insert(0, path)
     while len(files) > MAX_ACTIVE_FILES:
         files.pop()
+
+
+def _classify_test_output(out_lower: str) -> str | None:
+    """Classify pytest output as 'pass', 'fail', or None (indeterminate).
+
+    Excludes "0 failed" / "0 errors" patterns to avoid misclassifying
+    passing runs that print "0 failed" in the summary.
+    """
+    zero_fail = bool(re.search(r"\b0\s+failed", out_lower))
+    zero_error = bool(re.search(r"\b0\s+error", out_lower))
+    has_fail = "failed" in out_lower and not zero_fail
+    has_error = "error" in out_lower and not zero_error
+    if "passed" in out_lower and not has_fail and not has_error:
+        return "pass"
+    if has_fail or has_error:
+        return "fail"
+    return None
 
 
 def detect_test_result(
@@ -162,23 +182,31 @@ def detect_test_result(
     sig_lower = command_sig.lower()
     if "pytest" not in sig_lower and "test" not in sig_lower:
         return
-
     out_lower = tool_output.lower() if tool_output else ""
     if not out_lower:
         return
+    result = _classify_test_output(out_lower)
+    if result:
+        state.last_test_status = result
 
-    # Check for pass/fail keywords.
-    # pytest outputs "N passed, 0 failed" — naive substring match on "failed"
-    # would misclassify passing runs.  Exclude "0 failed" / "0 errors" patterns
-    # but still match standalone "ERROR" messages (e.g. "ERROR collecting tests").
-    zero_fail = bool(re.search(r"\b0\s+failed", out_lower))
-    zero_error = bool(re.search(r"\b0\s+error", out_lower))
-    has_fail = "failed" in out_lower and not zero_fail
-    has_error = "error" in out_lower and not zero_error
-    if "passed" in out_lower and not has_fail and not has_error:
-        state.last_test_status = "pass"
-    elif has_fail or has_error:
-        state.last_test_status = "fail"
+
+def _score_component(value: float, full: float, half: float, *, op: str = "lt") -> float:
+    """Score a signal: 1.0 at full threshold, 0.5 at half, 0.0 otherwise.
+
+    op: "lt" (lower-is-better, <), "gt" (strict >, for floats), "gte" (>=, for ints).
+    """
+    if op == "lt":
+        if value < full:
+            return 1.0
+        return 0.5 if value < half else 0.0
+    if op == "gte":
+        if value >= full:
+            return 1.0
+        return 0.5 if value >= half else 0.0
+    # op == "gt"
+    if value > full:
+        return 1.0
+    return 0.5 if value > half else 0.0
 
 
 def compute_habit_score(state: HabitModeState) -> float:
@@ -188,49 +216,22 @@ def compute_habit_score(state: HabitModeState) -> float:
     Thresholds define "full" (1.0) and "half" (0.5) contribution.
     """
     sig = state.signals
-    score = 0.0
-
-    # read_edit_ratio < 2.0 -> full, < 3.0 -> half
-    if sig.read_edit_ratio < 2.0:
-        score += _SCORE_WEIGHTS["read_edit_ratio"] * 1.0
-    elif sig.read_edit_ratio < 3.0:
-        score += _SCORE_WEIGHTS["read_edit_ratio"] * 0.5
-
-    # execute_pct > 0.5 -> full, > 0.3 -> half
-    if sig.execute_pct > 0.5:
-        score += _SCORE_WEIGHTS["execute_pct"] * 1.0
-    elif sig.execute_pct > 0.3:
-        score += _SCORE_WEIGHTS["execute_pct"] * 0.5
-
-    # edit_streak >= 3 -> full, >= 2 -> half
-    if sig.edit_streak >= 3:
-        score += _SCORE_WEIGHTS["edit_streak"] * 1.0
-    elif sig.edit_streak >= 2:
-        score += _SCORE_WEIGHTS["edit_streak"] * 0.5
-
-    # sub_agent_freq < 0.05 -> full, < 0.15 -> half
-    if sig.sub_agent_freq < 0.05:
-        score += _SCORE_WEIGHTS["sub_agent_freq"] * 1.0
-    elif sig.sub_agent_freq < 0.15:
-        score += _SCORE_WEIGHTS["sub_agent_freq"] * 0.5
-
-    # inter_tool_gap_median < 3s -> full, < 5s -> half
-    if sig.inter_tool_gap_median > 0:
-        if sig.inter_tool_gap_median < 3.0:
-            score += _SCORE_WEIGHTS["inter_tool_gap"] * 1.0
-        elif sig.inter_tool_gap_median < 5.0:
-            score += _SCORE_WEIGHTS["inter_tool_gap"] * 0.5
-
-    # same_file_ratio > 0.6 -> full, > 0.4 -> half
-    if sig.same_file_ratio > 0.6:
-        score += _SCORE_WEIGHTS["same_file_ratio"] * 1.0
-    elif sig.same_file_ratio > 0.4:
-        score += _SCORE_WEIGHTS["same_file_ratio"] * 0.5
-
-    # declared -> binary full
-    if state.declared:
-        score += _SCORE_WEIGHTS["declared"] * 1.0
-
+    score = (
+        _SCORE_WEIGHTS["read_edit_ratio"] * _score_component(sig.read_edit_ratio, 2.0, 3.0, op="lt")
+        + _SCORE_WEIGHTS["execute_pct"] * _score_component(sig.execute_pct, 0.5, 0.3, op="gt")
+        + _SCORE_WEIGHTS["edit_streak"] * _score_component(sig.edit_streak, 3, 2, op="gte")
+        + _SCORE_WEIGHTS["sub_agent_freq"]
+        * _score_component(sig.sub_agent_freq, 0.05, 0.15, op="lt")
+        + _SCORE_WEIGHTS["same_file_ratio"]
+        * _score_component(sig.same_file_ratio, 0.6, 0.4, op="gt")
+        + (
+            _SCORE_WEIGHTS["inter_tool_gap"]
+            * _score_component(sig.inter_tool_gap_median, 3.0, 5.0, op="lt")
+            if sig.inter_tool_gap_median > 0
+            else 0.0
+        )
+        + (_SCORE_WEIGHTS["declared"] if state.declared else 0.0)
+    )
     return min(score, 1.0)
 
 

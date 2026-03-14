@@ -410,6 +410,7 @@ class TestLintGetDetailsContract:
             loaded = load_run_details(run_id)
 
         # Simulate the filtering logic from lint_get_details
+        assert loaded is not None
         blocking = loaded.get("blocking_issues", [])
         assert len(blocking) == 1
         assert blocking[0]["kind"] == "F821"

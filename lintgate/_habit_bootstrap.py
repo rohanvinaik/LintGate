@@ -64,6 +64,50 @@ def _tool_call_to_action(tc) -> dict[str, Any]:
     return entry
 
 
+def _accumulate_error_memory(error_memory: dict[str, dict[str, Any]], tc) -> None:
+    """Record error signature from a failed Bash tool call."""
+    if tc.tool_name != "Bash":
+        return
+    if not ((tc.exit_code is not None and tc.exit_code != 0) or tc.error_text):
+        return
+    err_sig = (tc.error_text or "").split("\n")[0].strip()[:120]
+    if not err_sig:
+        return
+    if err_sig not in error_memory:
+        error_memory[err_sig] = {
+            "count": 0,
+            "first_seen": tc.timestamp,
+            "last_seen": tc.timestamp,
+        }
+    error_memory[err_sig]["count"] += 1
+    error_memory[err_sig]["last_seen"] = max(error_memory[err_sig]["last_seen"], tc.timestamp)
+
+
+def _collect_actions(
+    sessions: list,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], int, int]:
+    """Collect actions, error memory, and token/char counts from sessions.
+
+    Returns (all_actions, error_memory, total_tokens, total_chars).
+    """
+    all_actions: list[dict[str, Any]] = []
+    error_memory: dict[str, dict[str, Any]] = {}
+    total_tokens = 0
+    total_chars = 0
+
+    for session in sessions:
+        for exchange in session.exchanges:
+            for tc in exchange.tool_calls:
+                all_actions.append(_tool_call_to_action(tc))
+                _accumulate_error_memory(error_memory, tc)
+            if exchange.user_text:
+                total_chars += len(exchange.user_text)
+        usage = session.total_token_usage
+        total_tokens += usage.get("input", 0) + usage.get("output", 0)
+
+    return all_actions, error_memory, total_tokens, total_chars
+
+
 class HabitBootstrapper:
     """Bootstrap habit state from historical Claude Code sessions."""
 
@@ -83,42 +127,7 @@ class HabitBootstrapper:
         if not project_path:
             return {"error": "no project path"}
 
-        # Collect all actions across sessions
-        all_actions: list[dict[str, Any]] = []
-        error_memory: dict[str, dict[str, Any]] = {}
-        total_tokens = 0
-        total_chars = 0
-
-        for session in sessions:
-            for exchange in session.exchanges:
-                for tc in exchange.tool_calls:
-                    action = _tool_call_to_action(tc)
-                    all_actions.append(action)
-
-                    # Error memory from failed Bash calls
-                    if tc.tool_name == "Bash" and (
-                        (tc.exit_code is not None and tc.exit_code != 0) or tc.error_text
-                    ):
-                        err_sig = (tc.error_text or "").split("\n")[0].strip()[:120]
-                        if err_sig:
-                            if err_sig not in error_memory:
-                                error_memory[err_sig] = {
-                                    "count": 0,
-                                    "first_seen": tc.timestamp,
-                                    "last_seen": tc.timestamp,
-                                }
-                            error_memory[err_sig]["count"] += 1
-                            error_memory[err_sig]["last_seen"] = max(
-                                error_memory[err_sig]["last_seen"], tc.timestamp
-                            )
-
-                # Accumulate text length for token calibration
-                if exchange.user_text:
-                    total_chars += len(exchange.user_text)
-
-            # Token usage
-            usage = session.total_token_usage
-            total_tokens += usage.get("input", 0) + usage.get("output", 0)
+        all_actions, error_memory, total_tokens, total_chars = _collect_actions(sessions)
 
         # Sort by timestamp, take last 30 as action ring
         all_actions.sort(key=lambda a: a.get("ts", 0))

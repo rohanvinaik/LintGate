@@ -79,16 +79,24 @@ def _scan_test_file(filepath: str) -> dict[str, list[str]]:
         return {}
 
     result: dict[str, list[str]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
-            calls = _extract_calls(node)
-            # Always include the test function, even if it has no extracted calls.
-            # This ensures total_test_functions counts ALL test functions found.
-            result[node.name] = calls
+    _collect_tests(tree.body, result)
     return result
 
 
-def _extract_calls(test_func: ast.FunctionDef) -> list[str]:
+def _collect_tests(body: list[ast.stmt], result: dict[str, list[str]], prefix: str = "") -> None:
+    """Collect test functions and methods with qualified class context."""
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+            "test_"
+        ):
+            qualified = f"{prefix}{node.name}" if prefix else node.name
+            result[qualified] = _extract_calls(node)
+        elif isinstance(node, ast.ClassDef):
+            class_prefix = f"{prefix}{node.name}."
+            _collect_tests(node.body, result, class_prefix)
+
+
+def _extract_calls(test_func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     """Extract function call names from a test function body."""
     names: list[str] = []
     for node in ast.walk(test_func):

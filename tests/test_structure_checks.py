@@ -59,8 +59,10 @@ def _parse(source: str) -> ast.Module:
 def _parse_func(source: str) -> ast.FunctionDef:
     tree = _parse(source)
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.FunctionDef):
             return node
+        if isinstance(node, ast.AsyncFunctionDef):
+            return node  # type: ignore[return-value]  # test helper treats AsyncFunctionDef as FunctionDef
     msg = "No function found in source"
     raise ValueError(msg)
 

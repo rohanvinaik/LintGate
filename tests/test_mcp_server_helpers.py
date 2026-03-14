@@ -8,6 +8,7 @@ _build_onboarding_status.
 
 from __future__ import annotations
 
+import json
 import os
 from types import SimpleNamespace
 from unittest import mock
@@ -180,17 +181,13 @@ class TestCollectPythonFiles:
         assert len(result) == 1
 
     def test_empty_project(self, tmp_path):
-        with mock.patch(
-            "lintgate.discovery.discover_project_files", return_value=[]
-        ):
+        with mock.patch("lintgate.discovery.discover_project_files", return_value=[]):
             result = _collect_python_files(str(tmp_path))
         assert result == []
 
     def test_delegates_to_discover(self, tmp_path):
         expected = [str(tmp_path / "mod.py"), str(tmp_path / "pkg/init.py")]
-        with mock.patch(
-            "lintgate.discovery.discover_project_files", return_value=expected
-        ) as m:
+        with mock.patch("lintgate.discovery.discover_project_files", return_value=expected) as m:
             result = _collect_python_files(str(tmp_path))
         m.assert_called_once_with(str(tmp_path))
         assert result == expected
@@ -469,9 +466,7 @@ class TestBuildCpFullDetails:
         assert coh["loud_channels"] == ["lint"]
 
     def test_partial_and_incomplete(self):
-        mesh = self._make_mesh_result(
-            partial=True, incomplete_channels=["tests", "deps"]
-        )
+        mesh = self._make_mesh_result(partial=True, incomplete_channels=["tests", "deps"])
         result = _build_cp_full_details(mesh, {})
         assert result["partial"] is True
         assert result["incomplete_channels"] == ["tests", "deps"]
@@ -528,11 +523,14 @@ class TestComputeLintMetadata:
         files = [str(tmp_path / "a.py")]
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
@@ -540,10 +538,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="test-run-123"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, linter_results, lint_tier, project_root, files, 150.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, linter_results, lint_tier, project_root, files, 150.0, "compact"
             )
 
         assert run_id == "test-run-123"
@@ -573,11 +569,14 @@ class TestComputeLintMetadata:
         )
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
@@ -585,10 +584,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="empty-run"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
             )
 
         assert run_id == "empty-run"
@@ -619,10 +616,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-fallback"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
             )
 
         assert recurrence["repeated_issue_count"] == 0
@@ -633,9 +628,7 @@ class TestComputeLintMetadata:
         from mcp_server import _compute_lint_metadata
 
         agg = AggregatedResult(metrics={}, linter_statuses={})
-        lint_tier = LintTier(
-            name="tier_0_manual", linters=[], files=[], reason="test"
-        )
+        lint_tier = LintTier(name="tier_0_manual", linters=[], files=[], reason="test")
         prev_run = {"finding_index": {"f1": {"channel": "lint"}}}
         delta_result = {
             "resolved_count": 1,
@@ -645,25 +638,24 @@ class TestComputeLintMetadata:
         }
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=prev_run),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
             mock.patch("mcp_server.save_run_details"),
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-delta"),
-            mock.patch(
-                "lintgate.lint_delta.compute_lint_delta", return_value=delta_result
-            ),
+            mock.patch("lintgate.lint_delta.compute_lint_delta", return_value=delta_result),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "compact"
             )
 
         assert lint_delta == delta_result
@@ -672,16 +664,17 @@ class TestComputeLintMetadata:
         from mcp_server import _compute_lint_metadata
 
         agg = AggregatedResult(metrics={}, linter_statuses={})
-        lint_tier = LintTier(
-            name="tier_0_manual", linters=[], files=[], reason="test"
-        )
+        lint_tier = LintTier(name="tier_0_manual", linters=[], files=[], reason="test")
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch(
                 "mcp_server.format_report",
@@ -692,10 +685,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-report"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, [], lint_tier, str(tmp_path), [], 0.0, "full"
             )
 
         assert full_details["report"] == "2 issues found"
@@ -709,16 +700,21 @@ class TestComputeLintMetadata:
             _make_linter_result(linter_name="ruff_check", duration_ms=5.3),
         ]
         lint_tier = LintTier(
-            name="tier_2_manual", linters=["ruff_check", "bandit"],
-            files=[], reason="test",
+            name="tier_2_manual",
+            linters=["ruff_check", "bandit"],
+            files=[],
+            reason="test",
         )
 
         with (
-            mock.patch("mcp_server.update_issue_memory", return_value={
-                "repeated_issue_count": 0,
-                "unique_signatures_tracked": 0,
-                "top_repeated": [],
-            }),
+            mock.patch(
+                "mcp_server.update_issue_memory",
+                return_value={
+                    "repeated_issue_count": 0,
+                    "unique_signatures_tracked": 0,
+                    "top_repeated": [],
+                },
+            ),
             mock.patch("mcp_server.load_last_run", return_value=None),
             mock.patch("mcp_server.format_report", return_value=None),
             mock.patch("mcp_server.save_run"),
@@ -726,10 +722,8 @@ class TestComputeLintMetadata:
             mock.patch("mcp_server.log_metric"),
             mock.patch("mcp_server.generate_run_id", return_value="r-diag"),
         ):
-            run_id, full_details, recurrence, report, lint_delta = (
-                _compute_lint_metadata(
-                    agg, linter_results, lint_tier, str(tmp_path), [], 0.0, "compact"
-                )
+            run_id, full_details, recurrence, report, lint_delta = _compute_lint_metadata(
+                agg, linter_results, lint_tier, str(tmp_path), [], 0.0, "compact"
             )
 
         diags = full_details["linter_diagnostics"]
@@ -782,13 +776,15 @@ class TestBuildNextActions:
         assert result == []
 
     def test_all_conditions_met_returns_multiple_ordered(self):
-        result = _build_next_actions({
-            "fixable": 2,
-            "blocking": 3,
-            "warnings": 8,
-            "run_id": "run-99",
-            "project": "/proj",
-        })
+        result = _build_next_actions(
+            {
+                "fixable": 2,
+                "blocking": 3,
+                "warnings": 8,
+                "run_id": "run-99",
+                "project": "/proj",
+            }
+        )
         assert len(result) == 3
         priorities = [a["priority"] for a in result]
         assert priorities == [1, 2, 3]
@@ -847,9 +843,7 @@ class TestBuildOnboardingStatus:
     def test_config_with_controlplane_disabled(self, tmp_path):
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: false\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         result = _build_onboarding_status(str(tmp_path))
         assert result["config_found"] is True
         assert result["controlplane_enabled"] is False
@@ -859,9 +853,7 @@ class TestBuildOnboardingStatus:
     def test_config_with_controlplane_enabled(self, tmp_path):
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "lintgate.yaml").write_text(
-            "controlplane:\n  enabled: true\n"
-        )
+        (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         result = _build_onboarding_status(str(tmp_path))
         assert result["config_found"] is True
         assert result["controlplane_enabled"] is True
@@ -911,8 +903,13 @@ class TestBuildCompactOutput:
     def test_basic_fields(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r1", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py", "b.py"],
-            elapsed_ms=123.456, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r1",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py", "b.py"],
+            elapsed_ms=123.456,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert result["run_id"] == "r1"
         assert result["tier"] == "BASIC"
@@ -930,8 +927,13 @@ class TestBuildCompactOutput:
         ]
         agg = _make_aggregated(blocking=issues)
         result = _build_compact_output(
-            run_id="r2", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["x.py"],
-            elapsed_ms=50.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r2",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["x.py"],
+            elapsed_ms=50.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert result["blocking"] == 2
         assert len(result["blocking_issues"]) == 2
@@ -941,8 +943,13 @@ class TestBuildCompactOutput:
         issues = [_make_issue(severity="error", file=f"f{i}.py") for i in range(10)]
         agg = _make_aggregated(blocking=issues)
         result = _build_compact_output(
-            run_id="r3", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=3,
+            run_id="r3",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=3,
         )
         assert len(result["blocking_issues"]) == 3
         assert result["blocking_truncated"] == 7
@@ -951,28 +958,45 @@ class TestBuildCompactOutput:
         issues = [_make_issue(severity="error", file="a.py")]
         agg = _make_aggregated(blocking=issues)
         result = _build_compact_output(
-            run_id="r4", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r4",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "blocking_truncated" not in result
 
     def test_no_blocking_issues_key_when_empty(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r5", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r5",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "blocking_issues" not in result
 
     def test_delta_included(self):
         agg = _make_aggregated()
         delta = {
-            "resolved_count": 3, "new": [{"id": "W001"}],
-            "still_active_count": 5, "summary": "improved",
+            "resolved_count": 3,
+            "new": [{"id": "W001"}],
+            "still_active_count": 5,
+            "summary": "improved",
         }
         result = _build_compact_output(
-            run_id="r6", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=delta, max_findings=5,
+            run_id="r6",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=delta,
+            max_findings=5,
         )
         assert result["delta"]["resolved"] == 3
         assert result["delta"]["new"] == 1
@@ -982,16 +1006,26 @@ class TestBuildCompactOutput:
     def test_no_delta_key_when_none(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r7", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r7",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "delta" not in result
 
     def test_returns_dict(self):
         agg = _make_aggregated()
         result = _build_compact_output(
-            run_id="r8", lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=0.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="r8",
+            lint_tier=LintTier(name="BASIC", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=0.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert isinstance(result, dict)
 
@@ -1003,8 +1037,13 @@ class TestBuildStandardOutput:
     def test_basic_fields(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s1", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=200.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s1",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=200.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert result["run_id"] == "s1"
         assert result["tier"] == "STANDARD"
@@ -1016,8 +1055,13 @@ class TestBuildStandardOutput:
         issues = [_make_issue(severity="error", file="x.py", line=5)]
         agg = _make_aggregated(blocking=issues)
         result = _build_standard_output(
-            run_id="s2", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["x.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s2",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["x.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert len(result["blocking_issues"]) == 1
         # to_dict() returns full dict
@@ -1032,8 +1076,13 @@ class TestBuildStandardOutput:
         ]
         agg = _make_aggregated(blocking=blocking, warnings=warnings)
         result = _build_standard_output(
-            run_id="s3", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["b.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=3,
+            run_id="s3",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["b.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=3,
         )
         # max_findings=3, 1 blocking → 2 remaining for warnings
         assert len(result["warning_issues"]) == 2
@@ -1044,16 +1093,26 @@ class TestBuildStandardOutput:
         warnings = [_make_issue(severity="warning")]
         agg = _make_aggregated(blocking=blocking, warnings=warnings)
         result = _build_standard_output(
-            run_id="s4", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=["a.py"],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="s4",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=["a.py"],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert "warning_issues" not in result
 
     def test_no_warnings_key_when_empty(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s5", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s5",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert "warning_issues" not in result
 
@@ -1061,23 +1120,466 @@ class TestBuildStandardOutput:
         agg = _make_aggregated()
         delta = {"resolved_count": 1, "new": [], "still_active_count": 0}
         result = _build_standard_output(
-            run_id="s6", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=delta, max_findings=10,
+            run_id="s6",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=delta,
+            max_findings=10,
         )
         assert result["delta"] is delta
 
     def test_no_delta_when_none(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s7", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=10.0, aggregated=agg, lint_delta=None, max_findings=10,
+            run_id="s7",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=10.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=10,
         )
         assert "delta" not in result
 
     def test_returns_dict(self):
         agg = _make_aggregated()
         result = _build_standard_output(
-            run_id="s8", lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"), files=[],
-            elapsed_ms=0.0, aggregated=agg, lint_delta=None, max_findings=5,
+            run_id="s8",
+            lint_tier=LintTier(name="STANDARD", linters=[], files=[], reason="test"),
+            files=[],
+            elapsed_ms=0.0,
+            aggregated=agg,
+            lint_delta=None,
+            max_findings=5,
         )
         assert isinstance(result, dict)
+
+
+# ── get_workflow_for_intent ──────────────────────────────────────────────
+
+
+class TestGetWorkflowForIntent:
+    def test_valid_intent(self):
+        from lintgate.orchestration.workflows import get_workflow_for_intent
+
+        wf = get_workflow_for_intent("implement_issue")
+        assert len(wf) > 0
+        assert "step" in wf[0]
+        assert "tool" in wf[0]
+        assert "when" in wf[0]
+        assert "args_hint" in wf[0]
+        assert "do_not" in wf[0]
+
+    def test_invalid_intent(self):
+        from lintgate.orchestration.workflows import get_workflow_for_intent
+
+        wf = get_workflow_for_intent("magic")
+        assert wf == []
+
+    def test_none_intent(self):
+        from lintgate.orchestration.workflows import get_workflow_for_intent
+
+        wf = get_workflow_for_intent(None)
+        assert wf == []
+
+
+# ── VersionChecker ───────────────────────────────────────────────────────
+
+
+class TestVersionCheckerPassesProjectRoot:
+    def test_passes_project_root(self, tmp_path):
+        from lintgate.linters.version_checker import VersionChecker
+        from lintgate.types import LinterContext
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nrequires-python = ">=3.10"\ndependencies = ["ruff>=0.4"]\n'
+        )
+
+        with (
+            mock.patch(
+                "lintgate.linters.version_checker.collect_required_version_specs"
+            ) as mock_collect,
+            mock.patch("lintgate.linters.version_checker.inspect_tool_versions") as mock_inspect,
+        ):
+            mock_collect.return_value = {
+                "ruff": {"specifiers": [">=0.4"], "sources": ["pyproject.toml"]}
+            }
+            mock_inspect.return_value = []
+
+            linter = VersionChecker()
+            ctx = LinterContext(project_root=str(tmp_path), files=[], config=mock.MagicMock())
+
+            list(linter.run(ctx))
+
+            mock_inspect.assert_called_once()
+            args, kwargs = mock_inspect.call_args
+            assert kwargs.get("project_root") == str(tmp_path)
+
+    def test_detects_mismatch(self, tmp_path):
+        from lintgate.linters.version_checker import VersionChecker
+        from lintgate.types import LinterContext
+
+        (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["ruff>=0.4"]\n')
+
+        with (
+            mock.patch(
+                "lintgate.linters.version_checker.collect_required_version_specs"
+            ) as mock_collect,
+            mock.patch("lintgate.linters.version_checker.inspect_tool_versions") as mock_inspect,
+        ):
+            mock_collect.return_value = {
+                "ruff": {"specifiers": [">=0.4"], "sources": ["pyproject.toml"]}
+            }
+            mock_inspect.return_value = [
+                {
+                    "tool": "ruff",
+                    "status": "mismatch",
+                    "message": "ruff version 0.1.0 does not satisfy required specifier >=0.4",
+                    "installed_version": "0.1.0",
+                    "required_specifier": ">=0.4",
+                    "requirement_sources": ["pyproject.toml:project.dependencies"],
+                    "is_optional": False,
+                }
+            ]
+
+            linter = VersionChecker()
+            ctx = LinterContext(project_root=str(tmp_path), files=[], config=mock.MagicMock())
+
+            issues = list(linter.run(ctx))
+            assert len(issues) == 1
+            assert issues[0].kind == "version-mismatch"
+            assert "ruff version 0.1.0" in issues[0].message
+            assert issues[0].severity == "blocking"
+
+    def test_handles_optional(self, tmp_path):
+        from lintgate.linters.version_checker import VersionChecker
+        from lintgate.types import LinterContext
+
+        with (
+            mock.patch(
+                "lintgate.linters.version_checker.collect_required_version_specs"
+            ) as mock_collect,
+            mock.patch("lintgate.linters.version_checker.inspect_tool_versions") as mock_inspect,
+        ):
+            mock_collect.return_value = {}
+            mock_inspect.return_value = [
+                {
+                    "tool": "pip-audit",
+                    "status": "missing",
+                    "message": "pip-audit is not installed but required",
+                    "installed_version": None,
+                    "required_specifier": ">=2.0",
+                    "requirement_sources": ["pyproject.toml:project.optional-dependencies.dev"],
+                    "is_optional": True,
+                }
+            ]
+
+            linter = VersionChecker()
+            ctx = LinterContext(project_root=str(tmp_path), files=[], config=mock.MagicMock())
+
+            issues = list(linter.run(ctx))
+            assert len(issues) == 1
+            assert issues[0].kind == "version-optional-missing"
+            assert issues[0].severity == "warning"
+
+
+# ── specification_tools register ─────────────────────────────────────────
+
+
+class TestSpecToolsRegister:
+    def test_returns_seven_tools(self):
+        from mcp_tools.specification_tools import register
+
+        mcp = mock.MagicMock()
+        mcp.tool.return_value = lambda fn: fn
+        helpers = {
+            "_validate_project_root": lambda p: p,
+            "_json_dumps": lambda obj, **kw: str(obj),
+        }
+        result = register(mcp, helpers)
+        assert isinstance(result, dict)
+        assert len(result) == 7
+
+    def test_expected_tool_names(self):
+        from mcp_tools.specification_tools import register
+
+        mcp = mock.MagicMock()
+        mcp.tool.return_value = lambda fn: fn
+        helpers = {
+            "_validate_project_root": lambda p: p,
+            "_json_dumps": lambda obj, **kw: str(obj),
+        }
+        result = register(mcp, helpers)
+        expected_names = {
+            "spec_analyze",
+            "spec_prescribe",
+            "spec_composition",
+            "spec_gate_check",
+            "spec_file_analyze",
+            "spec_file_prescribe",
+            "spec_project_rollup",
+        }
+        assert set(result.keys()) == expected_names
+
+    def test_tools_are_callable(self):
+        from mcp_tools.specification_tools import register
+
+        mcp = mock.MagicMock()
+        mcp.tool.return_value = lambda fn: fn
+        helpers = {
+            "_validate_project_root": lambda p: p,
+            "_json_dumps": lambda obj, **kw: str(obj),
+        }
+        result = register(mcp, helpers)
+        for name, tool in result.items():
+            assert callable(tool), f"{name} is not callable"
+
+    def test_mcp_tool_decorator_called(self):
+        from mcp_tools.specification_tools import register
+
+        mcp = mock.MagicMock()
+        mcp.tool.return_value = lambda fn: fn
+        helpers = {
+            "_validate_project_root": lambda p: p,
+            "_json_dumps": lambda obj, **kw: str(obj),
+        }
+        register(mcp, helpers)
+        assert mcp.tool.call_count == 7
+
+
+# ── model_profile MCP ───────────────────────────────────────────────────
+
+
+class TestModelProfileMcp:
+    @staticmethod
+    def _load_mcp_funcs():
+        import importlib.util
+        from pathlib import Path
+
+        mcp_server_path = Path(__file__).resolve().parent.parent / "mcp_server.py"
+        spec = importlib.util.spec_from_file_location("lintgate_local_mcp_server", mcp_server_path)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return (
+            mod.model_profile_probe_start,
+            mod.model_profile_probe_submit,
+            mod.model_profile_status,
+        )
+
+    _V2_ANSWERS = {
+        "t1_error_reading": {
+            "text": "First I would read the source file to understand the bug, "
+            "then examine the test output. The real issue is variable shadowing.",
+            "tool_calls": ["Read", "Read", "Edit", "Bash"],
+            "actions": [
+                "Read utils.py to understand function",
+                "Read test output carefully",
+                "Fix the shadowed variable on line 5",
+                "Run pytest to verify",
+            ],
+            "verify_points": [3],
+            "constraint_refs": ["variable shadowing in loop"],
+        },
+        "t2_retry_behavior": {
+            "text": "I would not retry the same command. Instead I would install "
+            "the missing dependency first.",
+            "tool_calls": ["Read", "Bash", "Bash"],
+            "actions": [
+                "Read pyproject.toml for dependencies",
+                "Install requests into venv",
+                "Re-run pytest",
+            ],
+        },
+        "t3_verification_cadence": {
+            "text": "Fix each bug one at a time and run tests after each fix.",
+            "tool_calls": ["Read", "Edit", "Bash", "Edit", "Bash", "Edit", "Bash"],
+            "verify_points": [2, 4, 6],
+        },
+        "t4_constraint_discovery": {
+            "text": "Read CONTRIBUTING.md first, then pyproject.toml, then existing commands.",
+            "tool_calls": ["Read", "Read", "Read", "Read", "Grep"],
+            "actions": [
+                "Read CONTRIBUTING.md for conventions",
+                "Read pyproject.toml for entry points",
+                "Read existing command in src/cli/commands/list_cmd.py",
+                "Read main.py for command registration",
+                "Search for patterns in existing commands",
+            ],
+        },
+        "t5_model_updating": {
+            "text": "Based on attempt 1 (ALTER TABLE fails in SQLite) and attempt 2 "
+            "(foreign key on old table name), I would use a migration approach "
+            "that handles both constraints.",
+            "constraint_refs": ["SQLite ALTER TABLE", "foreign key constraint"],
+        },
+    }
+
+    def test_probe_submit_increments_probe_runs(self, monkeypatch, tmp_path):
+        import json
+
+        probe_start, probe_submit, profile_status = self._load_mcp_funcs()
+        lintgate_home = tmp_path / "lintgate_home"
+        monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
+
+        first = json.loads(
+            probe_submit(
+                path=str(tmp_path),
+                model_id="claude-opus-4",
+                answers=self._V2_ANSWERS,
+            )
+        )
+        second = json.loads(
+            probe_submit(
+                path=str(tmp_path),
+                model_id="claude-opus-4",
+                answers=self._V2_ANSWERS,
+            )
+        )
+        status = json.loads(profile_status(path=str(tmp_path), model_id="claude-opus-4"))
+
+        assert first["probe_runs"] == 1
+        assert second["probe_runs"] == 2
+        assert status["probe_runs"] == 2
+
+    def test_probe_start_returns_tasks(self, monkeypatch, tmp_path):
+        import json
+
+        probe_start, _, _ = self._load_mcp_funcs()
+        lintgate_home = tmp_path / "lintgate_home"
+        monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
+
+        result = json.loads(
+            probe_start(
+                path=str(tmp_path),
+                model_id="claude-opus-4",
+            )
+        )
+        assert result["task_count"] == 5
+        assert "tasks" in result
+        assert "response_schema" in result
+        for task in result["tasks"]:
+            assert "id" in task
+            assert "context" in task
+            assert "instruction" in task
+
+    def test_probe_start_rejects_unsupported_probe_set(self, monkeypatch, tmp_path):
+        import json
+
+        probe_start, _, _ = self._load_mcp_funcs()
+        lintgate_home = tmp_path / "lintgate_home"
+        monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
+
+        result = json.loads(
+            probe_start(
+                path=str(tmp_path),
+                model_id="claude-opus-4",
+                probe_set="full",
+            )
+        )
+        assert "error" in result
+        assert "Unsupported probe_set" in result["error"]
+        assert result["supported_probe_sets"] == ["quick"]
+
+    def test_probe_submit_v1_compat(self, monkeypatch, tmp_path):
+        import json
+
+        _, probe_submit, _ = self._load_mcp_funcs()
+        lintgate_home = tmp_path / "lintgate_home"
+        monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
+
+        v1_style = {
+            "t1_error_reading": "I would read the file first then fix the bug",
+            "t2_retry_behavior": "Install the missing dependency first",
+            "t3_verification_cadence": "Fix each bug and test after each",
+        }
+        result = json.loads(
+            probe_submit(
+                path=str(tmp_path),
+                model_id="claude-opus-4",
+                answers=v1_style,
+                probe_version="v2",
+            )
+        )
+        assert "error" not in result
+        assert result["tasks_scored"] == 3
+
+    def test_probe_submit_rejects_too_few_answers(self, monkeypatch, tmp_path):
+        import json
+
+        _, probe_submit, _ = self._load_mcp_funcs()
+        lintgate_home = tmp_path / "lintgate_home"
+        monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
+
+        result = json.loads(
+            probe_submit(
+                path=str(tmp_path),
+                model_id="claude-opus-4",
+                answers={"t1_error_reading": {"text": "fix the bug"}},
+            )
+        )
+        assert "error" in result
+        assert "Minimum 3" in result["error"]
+
+
+# ── Tool applicability guide ──────────────────────────────────────────
+
+
+class _MockOnboardingMCP:
+    def __init__(self):
+        self.tools = {}
+
+    def tool(self):
+        def decorator(func):
+            self.tools[func.__name__] = func
+            return func
+
+        return decorator
+
+
+def test_tool_applicability_guide_schema():
+    from mcp_tools.onboarding_tools import register
+
+    mcp = _MockOnboardingMCP()
+    helpers = {"_json_dumps": None}
+    tools = register(mcp, helpers)
+    guide_func = tools["tool_applicability_guide"]
+
+    result_str = guide_func()
+    guide = json.loads(result_str)
+
+    core_tools = [
+        "controlplane_run",
+        "lint_files",
+        "lint_project",
+        "lint_fix",
+        "scaffold_config",
+        "getting_started",
+    ]
+
+    for tool in core_tools:
+        assert tool in guide
+        assert "cadence" in guide[tool]
+        assert "triggers" in guide[tool]
+        assert "anti_patterns" in guide[tool]
+        assert "purpose" in guide[tool]
+        assert isinstance(guide[tool]["triggers"], list)
+        assert isinstance(guide[tool]["anti_patterns"], list)
+
+
+def test_tool_applicability_guide_content():
+    from mcp_tools.onboarding_tools import register
+
+    mcp = _MockOnboardingMCP()
+    helpers = {"_json_dumps": None}
+    tools = register(mcp, helpers)
+    guide_func = tools["tool_applicability_guide"]
+
+    result_str = guide_func()
+    guide = json.loads(result_str)
+
+    assert "Every 3-5 tool uses" in guide["controlplane_run"]["cadence"]
+    assert "After every edit" in guide["lint_files"]["cadence"]
+    assert "Onboarding only" in guide["getting_started"]["cadence"]

@@ -1,264 +1,232 @@
-"""Tests for lintgate.discovery — canonical file discovery module."""
+"""Tests for PR1 discovery fixes — fail-closed guardrails, scoped prepass, canonical discovery.
+
+Covers:
+- specification_tools._resolve_py_files fail-closed behavior
+- convergence_tools._discover_python_files canonical discovery
+- runtime._scoped_discover prepass scoping with path sanitization
+"""
 
 from __future__ import annotations
 
 import os
-import subprocess
-from typing import TYPE_CHECKING
-from unittest.mock import patch
 
-import pytest
-
-from lintgate.discovery import (
-    CANONICAL_EXCLUDE_DIRS,
-    _git_discover,
-    _walk_discover,
-    discover_project_files,
-    should_skip_dir,
-)
-
-if TYPE_CHECKING:
-    from pathlib import Path
+# ── _resolve_py_files guardrails ─────────────────────────────────────
 
 
-# ── should_skip_dir ──────────────────────────────────────────────────────
+class TestResolvePyFiles:
+    """Fail-closed guardrails for specification tool file discovery."""
 
+    def test_single_file_shortcircuit(self, tmp_path):
+        from mcp_tools.specification_tools import _resolve_py_files
 
-class TestShouldSkipDir:
-    """Test should_skip_dir covers CANONICAL_EXCLUDE_DIRS + hidden + backup."""
+        src = tmp_path / "mod.py"
+        src.write_text("x = 1\n")
 
-    @pytest.mark.parametrize("dirname", sorted(CANONICAL_EXCLUDE_DIRS))
-    def test_canonical_dirs_skipped(self, dirname: str) -> None:
-        assert should_skip_dir(dirname) is True
+        result = _resolve_py_files(str(tmp_path), "mod.py")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].endswith("mod.py")
 
-    @pytest.mark.parametrize("dirname", [".hidden", ".secret", ".cache"])
-    def test_hidden_dirs_skipped(self, dirname: str) -> None:
-        assert should_skip_dir(dirname) is True
+    def test_single_file_not_found(self, tmp_path):
+        from mcp_tools.specification_tools import _resolve_py_files
 
-    @pytest.mark.parametrize("dirname", ["backup", "bak", "archive", "old_versions"])
-    def test_backup_dirs_skipped(self, dirname: str) -> None:
-        assert should_skip_dir(dirname) is True
+        result = _resolve_py_files(str(tmp_path), "nonexistent.py")
+        assert isinstance(result, dict)
+        assert "error" in result
 
-    @pytest.mark.parametrize("dirname", ["src", "lib", "lintgate", "tests", "mcp_tools"])
-    def test_normal_dirs_not_skipped(self, dirname: str) -> None:
-        assert should_skip_dir(dirname) is False
+    def test_canonical_discovery_excludes_hidden(self, tmp_path):
+        from mcp_tools.specification_tools import _resolve_py_files
 
-    def test_empty_string(self) -> None:
-        assert should_skip_dir("") is False
-
-
-# ── _walk_discover (fallback path) ───────────────────────────────────────
-
-
-class TestWalkDiscover:
-    """Test os.walk fallback discovery."""
-
-    def test_excludes_canonical_dirs(self, tmp_path: Path) -> None:
-        """Dirs in CANONICAL_EXCLUDE_DIRS are skipped."""
-        # Create canonical dirs with .py files
-        for dirname in (".venv", "mutants", "__pycache__", "node_modules"):
-            d = tmp_path / dirname
-            d.mkdir()
-            (d / "fake.py").write_text("x = 1")
-
-        # Create a real source file
-        (tmp_path / "real.py").write_text("x = 1")
-
-        files = _walk_discover(str(tmp_path), ".py")
-        basenames = [os.path.basename(f) for f in files]
-        assert "real.py" in basenames
-        assert "fake.py" not in basenames
-
-    def test_excludes_hidden_dirs(self, tmp_path: Path) -> None:
-        """Directories starting with '.' are skipped."""
-        hidden = tmp_path / ".secret"
+        (tmp_path / "visible.py").write_text("x = 1\n")
+        hidden = tmp_path / ".hidden"
         hidden.mkdir()
-        (hidden / "leak.py").write_text("x = 1")
-        (tmp_path / "visible.py").write_text("x = 1")
+        (hidden / "secret.py").write_text("x = 1\n")
 
-        files = _walk_discover(str(tmp_path), ".py")
-        basenames = [os.path.basename(f) for f in files]
-        assert "visible.py" in basenames
-        assert "leak.py" not in basenames
+        result = _resolve_py_files(str(tmp_path), None)
+        assert isinstance(result, list)
+        assert any("visible.py" in f for f in result)
+        assert not any(".hidden" in f for f in result)
 
-    def test_excludes_backup_dirs(self, tmp_path: Path) -> None:
-        """Backup-like directories are skipped."""
-        bak = tmp_path / "backup"
-        bak.mkdir()
-        (bak / "old.py").write_text("x = 1")
-        (tmp_path / "current.py").write_text("x = 1")
+    def test_file_budget_exceeded(self, tmp_path, monkeypatch):
+        from mcp_tools import _specification_helpers
+        from mcp_tools.specification_tools import _resolve_py_files
 
-        files = _walk_discover(str(tmp_path), ".py")
-        basenames = [os.path.basename(f) for f in files]
-        assert "current.py" in basenames
-        assert "old.py" not in basenames
+        monkeypatch.setattr(_specification_helpers, "_MAX_FILES_PER_RUN", 2)
 
-    def test_extra_exclude_dirs(self, tmp_path: Path) -> None:
-        """Extra exclude dirs extend the canonical set."""
-        deploy = tmp_path / "deploy"
-        deploy.mkdir()
-        (deploy / "script.py").write_text("x = 1")
-        (tmp_path / "app.py").write_text("x = 1")
+        for i in range(5):
+            (tmp_path / f"mod{i}.py").write_text(f"x = {i}\n")
 
-        files = _walk_discover(str(tmp_path), ".py", extra_exclude_dirs=frozenset({"deploy"}))
-        basenames = [os.path.basename(f) for f in files]
-        assert "app.py" in basenames
-        assert "script.py" not in basenames
+        result = _resolve_py_files(str(tmp_path), None)
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "File budget exceeded" in result["error"]
+        assert "file_budget" in result
 
-    def test_suffix_filtering(self, tmp_path: Path) -> None:
-        """Only files with the requested suffix are returned."""
-        (tmp_path / "code.py").write_text("x = 1")
-        (tmp_path / "readme.md").write_text("# hi")
+    def test_line_budget_exceeded(self, tmp_path, monkeypatch):
+        from mcp_tools import _specification_helpers
+        from mcp_tools.specification_tools import _resolve_py_files
 
-        py_files = _walk_discover(str(tmp_path), ".py")
-        md_files = _walk_discover(str(tmp_path), ".md")
-        assert len(py_files) == 1
-        assert len(md_files) == 1
-        assert py_files[0].endswith(".py")
-        assert md_files[0].endswith(".md")
+        monkeypatch.setattr(_specification_helpers, "_MAX_TOTAL_LINES", 5)
 
+        (tmp_path / "big.py").write_text("\n".join(f"x{i} = {i}" for i in range(20)) + "\n")
 
-# ── _git_discover ────────────────────────────────────────────────────────
+        result = _resolve_py_files(str(tmp_path), None)
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "Line budget exceeded" in result["error"]
+        assert "line_budget" in result
 
+    def test_absolute_file_path(self, tmp_path):
+        from mcp_tools.specification_tools import _resolve_py_files
 
-class TestGitDiscover:
-    """Test git ls-files primary path."""
+        src = tmp_path / "mod.py"
+        src.write_text("x = 1\n")
 
-    def test_returns_tracked_files(self, tmp_path: Path) -> None:
-        """Git-based discovery returns tracked files."""
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="src/app.py\nlib/util.py\n", stderr=""
-        )
-        # Create the files so os.path.isfile passes
-        (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "app.py").write_text("x = 1")
-        (tmp_path / "lib").mkdir()
-        (tmp_path / "lib" / "util.py").write_text("x = 1")
-
-        with patch("lintgate.discovery.subprocess.run", return_value=mock_result):
-            files = _git_discover(str(tmp_path), ".py")
-
-        assert files is not None
-        assert len(files) == 2
-        assert all(f.endswith(".py") for f in files)
-
-    def test_excludes_nonexistent_files(self, tmp_path: Path) -> None:
-        """Files listed by git but not on disk are excluded."""
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="deleted.py\n", stderr=""
-        )
-        with patch("lintgate.discovery.subprocess.run", return_value=mock_result):
-            files = _git_discover(str(tmp_path), ".py")
-
-        assert files is not None
-        assert len(files) == 0
-
-    def test_returns_none_on_git_failure(self, tmp_path: Path) -> None:
-        """Returns None when git command fails."""
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=128, stdout="", stderr="not a git repo"
-        )
-        with patch("lintgate.discovery.subprocess.run", return_value=mock_result):
-            result = _git_discover(str(tmp_path), ".py")
-
-        assert result is None
-
-    def test_returns_none_when_git_not_found(self, tmp_path: Path) -> None:
-        """Returns None when git is not installed."""
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            result = _git_discover(str(tmp_path), ".py")
-
-        assert result is None
+        result = _resolve_py_files(str(tmp_path), str(src))
+        assert isinstance(result, list)
+        assert len(result) == 1
 
 
-# ── discover_project_files (integration) ─────────────────────────────────
+# ── convergence_tools canonical discovery ────────────────────────────
 
 
-class TestDiscoverProjectFiles:
-    """Test the main discover_project_files entry point."""
+class TestConvergenceCanonicalDiscovery:
+    """Verify convergence_tools uses canonical discovery (no raw os.walk)."""
 
-    def test_fallback_on_non_git_repo(self, tmp_path: Path) -> None:
-        """Falls back to os.walk when git fails."""
-        (tmp_path / "main.py").write_text("x = 1")
-        venv = tmp_path / ".venv"
-        venv.mkdir()
-        (venv / "pkg.py").write_text("x = 1")
+    def test_excludes_archive_dir(self, tmp_path):
+        from mcp_tools.convergence_tools import _discover_python_files
 
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            files = discover_project_files(str(tmp_path))
+        (tmp_path / "main.py").write_text("x = 1\n")
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        (archive / "old.py").write_text("x = 1\n")
 
+        files = _discover_python_files(str(tmp_path))
         basenames = [os.path.basename(f) for f in files]
         assert "main.py" in basenames
-        assert "pkg.py" not in basenames
+        assert "old.py" not in basenames
 
-    def test_respects_limit(self, tmp_path: Path) -> None:
-        """Limit parameter caps the number of returned files."""
-        for i in range(5):
-            (tmp_path / f"file_{i}.py").write_text("x = 1")
+    def test_excludes_pycache(self, tmp_path):
+        from mcp_tools.convergence_tools import _discover_python_files
 
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            files = discover_project_files(str(tmp_path), limit=3)
+        (tmp_path / "main.py").write_text("x = 1\n")
+        cache = tmp_path / "__pycache__"
+        cache.mkdir()
+        # Create a .py file inside __pycache__/ so that discovery must
+        # actually exclude the directory (a .pyc file would be ignored
+        # by suffix filtering alone, not testing directory exclusion).
+        (cache / "cached_mod.py").write_text("x = 1\n")
 
-        assert len(files) == 3
+        files = _discover_python_files(str(tmp_path))
+        assert not any("__pycache__" in f for f in files)
 
-    def test_source_paths_constrains_scope(self, tmp_path: Path) -> None:
-        """source_paths restricts to specific subdirectories."""
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "app.py").write_text("x = 1")
-        scripts = tmp_path / "scripts"
-        scripts.mkdir()
-        (scripts / "deploy.py").write_text("x = 1")
 
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            files = discover_project_files(str(tmp_path), source_paths=["src"])
+# ── _scoped_discover prepass scoping ─────────────────────────────────
 
-        basenames = [os.path.basename(f) for f in files]
-        assert "app.py" in basenames
-        assert "deploy.py" not in basenames
 
-    def test_site_packages_filtered(self, tmp_path: Path) -> None:
-        """Symlinks into site-packages are excluded."""
-        real_pkg = tmp_path / "real_site_packages" / "site-packages" / "pkg"
-        real_pkg.mkdir(parents=True)
-        (real_pkg / "mod.py").write_text("x = 1")
+class TestScopedDiscover:
+    """Prepass scoping honors files_changed and sanitizes paths."""
 
-        link = tmp_path / "linked_pkg"
-        link.symlink_to(real_pkg)
+    def test_scopes_to_changed_files(self, tmp_path):
+        from lintgate.controlplane.runtime import _scoped_discover
+        from lintgate.controlplane.types import SupervisionEvent
 
-        (tmp_path / "app.py").write_text("x = 1")
+        (tmp_path / "a.py").write_text("x = 1\n")
+        (tmp_path / "b.py").write_text("y = 2\n")
+        (tmp_path / "c.py").write_text("z = 3\n")
 
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            files = discover_project_files(str(tmp_path))
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            files_changed=[str(tmp_path / "a.py")],
+        )
+        result = _scoped_discover(event)
+        assert len(result) == 1
+        assert result[0].endswith("a.py")
 
-        basenames = [os.path.basename(f) for f in files]
-        assert "app.py" in basenames
-        assert "mod.py" not in basenames
+    def test_falls_back_to_full_for_many_files(self, tmp_path):
+        from lintgate.controlplane.runtime import _scoped_discover
+        from lintgate.controlplane.types import SupervisionEvent
 
-    def test_returns_sorted(self, tmp_path: Path) -> None:
-        """Results are sorted."""
-        for name in ("z.py", "a.py", "m.py"):
-            (tmp_path / name).write_text("x = 1")
+        for i in range(10):
+            (tmp_path / f"mod{i}.py").write_text(f"x = {i}\n")
 
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            files = discover_project_files(str(tmp_path))
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            files_changed=[str(tmp_path / f"mod{i}.py") for i in range(10)],
+        )
+        result = _scoped_discover(event)
+        # More than 5 changed files → falls back to full discovery
+        assert len(result) >= 10
 
-        assert files == sorted(files)
+    def test_falls_back_when_no_files_changed(self, tmp_path):
+        from lintgate.controlplane.runtime import _scoped_discover
+        from lintgate.controlplane.types import SupervisionEvent
 
-    def test_empty_for_invalid_root(self) -> None:
-        """Returns empty list for non-existent directory."""
-        assert discover_project_files("/nonexistent/path") == []
+        (tmp_path / "a.py").write_text("x = 1\n")
 
-    def test_mutants_excluded(self, tmp_path: Path) -> None:
-        """The mutants directory is excluded — the smoking gun for #245."""
-        mutants = tmp_path / "mutants"
-        mutants.mkdir()
-        (mutants / "generated.py").write_text("x = 1")
-        (tmp_path / "real.py").write_text("x = 1")
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            files_changed=[],
+        )
+        result = _scoped_discover(event)
+        assert len(result) >= 1
 
-        with patch("lintgate.discovery.subprocess.run", side_effect=FileNotFoundError):
-            files = discover_project_files(str(tmp_path))
+    def test_rejects_paths_outside_project(self, tmp_path, monkeypatch):
+        from lintgate.controlplane.runtime import _scoped_discover
+        from lintgate.controlplane.types import SupervisionEvent
 
-        basenames = [os.path.basename(f) for f in files]
-        assert "real.py" in basenames
-        assert "generated.py" not in basenames
+        (tmp_path / "a.py").write_text("x = 1\n")
+
+        # Mock isfile so the external path passes the existence check —
+        # this forces the test to exercise the path-boundary rejection
+        # rather than falling back because isfile returns False.
+        _real_isfile = os.path.isfile
+
+        def _patched_isfile(p):
+            if p == "/etc/passwd.py" or p == os.path.abspath("/etc/passwd.py"):
+                return True
+            return _real_isfile(p)
+
+        monkeypatch.setattr(os.path, "isfile", _patched_isfile)
+
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            files_changed=["/etc/passwd.py"],
+        )
+        result = _scoped_discover(event)
+        # Path outside project root → rejected by boundary check, falls back
+        assert not any("/etc/passwd" in f for f in result)
+
+    def test_ignores_non_python_files(self, tmp_path):
+        from lintgate.controlplane.runtime import _scoped_discover
+        from lintgate.controlplane.types import SupervisionEvent
+
+        (tmp_path / "a.py").write_text("x = 1\n")
+        (tmp_path / "readme.md").write_text("# readme\n")
+
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            files_changed=[
+                str(tmp_path / "a.py"),
+                str(tmp_path / "readme.md"),
+            ],
+        )
+        result = _scoped_discover(event)
+        # Only the .py file should be in the scoped result
+        assert len(result) == 1
+        assert result[0].endswith("a.py")
+
+    def test_relative_paths_resolved(self, tmp_path):
+        from lintgate.controlplane.runtime import _scoped_discover
+        from lintgate.controlplane.types import SupervisionEvent
+
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "mod.py").write_text("x = 1\n")
+
+        event = SupervisionEvent(
+            project_root=str(tmp_path),
+            files_changed=["sub/mod.py"],
+        )
+        result = _scoped_discover(event)
+        assert len(result) == 1
+        assert result[0].endswith("mod.py")

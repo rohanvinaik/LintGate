@@ -10,6 +10,7 @@ STATE, and TYPE mutations.
 from __future__ import annotations
 
 import ast
+from typing import Any
 
 from lintgate.linters.performance_checks.purity import (
     _check_called_impurity,
@@ -126,7 +127,7 @@ class TestComputePureConfidence:
         code = "def helper(x): return x\ndef f(x): return helper(x)"
         tree = ast.parse(code)
         # Build function dict as analyze_purity would
-        functions = {}
+        functions: dict[str, tuple[ast.FunctionDef | ast.AsyncFunctionDef, Any]] = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
                 v = _PureFunctionVisitor(node)

@@ -1,7 +1,7 @@
 # LintGate — Agent Tool Reference
 
 > **If you are an LLM coding agent reading this file**: this is your integration point.
-> LintGate is a real-time quality supervision system with 105 MCP tools. It fires on
+> LintGate is a real-time quality supervision system with 110 MCP tools. It fires on
 > every Write, Edit, and Bash via PostToolUse hooks and provides on-demand analysis
 > through MCP.
 
@@ -14,6 +14,15 @@ If you are discovering LintGate for the first time:
 1. **Install**: Run `bash setup.sh` from the LintGate project root. This creates the venv, installs dependencies, configures the PostToolUse hook, and registers the MCP server.
 2. **Integrate**: Run `bash integrate.sh` to auto-detect your agent type and generate config files. If your agent type is not detected, this file (AGENTS.md) is still your reference.
 3. **Orient**: Once MCP tools are available, call `build_theory_pack` to load the project's theory digest, then `controlplane_run` for full supervision. Optionally, run `model_profile_probe_start` → answer → `model_profile_probe_submit` → `bootstrap_context_files(model_id='...')` for model-specific calibration.
+
+## Golden Path
+
+When the goal is to move a codebase toward the platonic ideal, do not start by manually chaining raw mutation tools unless you need drill-down. The default path is:
+
+1. `platonic_project(path)` for repo-wide target selection.
+2. `platonic_converge(path, file)` when the file is already known.
+3. Follow `primary_next_action` and `primary_next_args` until the workflow reaches a terminal state.
+4. Use `platonic_apply(path, workflow_id, dry_run=True)` when the workflow reports `READY_TO_APPLY` or `READY_TO_APPLY_WITH_REVIEW`.
 
 ### Tiered Integration
 
@@ -60,7 +69,7 @@ To add support for a new agent format, add a detect/generate/clean triplet to `i
 
 ## Tools by Cognitive Mode
 
-LintGate provides 105 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
+LintGate provides 110 MCP tools backed by 18 linters. Source of truth: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches).
 
 ### Orient — understand before acting
 
@@ -109,6 +118,13 @@ LintGate provides 105 MCP tools backed by 18 linters. Source of truth: `grep -Rh
 | `mutation_prescribe_tests` | Generate targeted test skeletons from mutation profiles. |
 | `mutation_validate_tests` | Re-profile and compute per-category survival deltas after writing tests. |
 | `mutation_clear_state` | Clear stale mutation state when code has drifted significantly. |
+| `platonic_project` | Golden-path entrypoint: choose the first deterministic high-value target in a project. |
+| `platonic_converge` | File-scoped platonic workflow: profile, route, generate, validate, and persist workflow state. |
+| `platonic_continue` | Resume a persisted platonic workflow by `workflow_id`, with validate-only and profiling-snapshot resume when available. |
+| `platonic_apply` | The only destructive platonic step: apply validated staged tests to the live suite. Accepts `READY_TO_APPLY` and review-ready workflows. |
+| `convergence_analyze` | Multi-lens convergence aggregation for decomposition and extraction evidence. |
+| `extraction_plan` | Stepwise extraction plan for a specific convergent function. |
+| `optimization_landscape` | Project-wide optimization and extraction opportunity map. |
 
 ### Reflect — check yourself before acting
 
@@ -256,4 +272,4 @@ Total supervision overhead for a 500 LoC session: ~21-32% of token budget. This 
 - **Change theory facets or behavioral signals** → update counts and lists in docs/design.md and .claude/rules/inquiry.md.
 - **Change habit mode config or compaction sections** → update YAML defaults in docs/design.md and docs/reference.md. Verify section names match `COMPACTION_SECTIONS` in `habit_mode.py`.
 
-Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 105). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.
+Source of truth for tool count: `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (currently 110). Stale documentation has compounding negative effects — one wrong count propagates through every session that reads it.

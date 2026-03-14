@@ -252,7 +252,10 @@ def test_map_tests_call_name_direct_match_in_source_index():
 
     try:
         # "mymodule.do_work" is in the source index directly
-        index = {"mymodule.do_work": "/src/mymodule.py", "do_work": "/src/mymodule.py"}
+        index: dict[str, str | list[str]] = {
+            "mymodule.do_work": "/src/mymodule.py",
+            "do_work": "/src/mymodule.py",
+        }
         mapping = map_tests_to_source(test_path, index)
         # "mymodule.do_work" should be matched via the elif branch (line 198-199):
         # call_name "mymodule.do_work" is in source_function_index
@@ -299,7 +302,7 @@ def test_map_tests_class_prefix_non_test_class_no_strip():
         test_path = test.name
 
     try:
-        index = {"Foo.bar": "/src/foo.py", "bar": "/src/foo.py"}
+        index: dict[str, str | list[str]] = {"Foo.bar": "/src/foo.py", "bar": "/src/foo.py"}
         mapping = map_tests_to_source(test_path, index)
         # SuiteFoo does not start with "Test", so Foo.bar should NOT be matched
         # via the class prefix stripping logic
@@ -514,13 +517,7 @@ def test_map_tests_to_source_module_alias_call_stays_module_level():
         test_path = os.path.join(tmpdir, "test_alias.py")
 
         with open(src_path, "w", encoding="utf-8") as f:
-            f.write(
-                "def foo():\n"
-                "    return 1\n\n"
-                "class X:\n"
-                "    def foo(self):\n"
-                "        return 2\n"
-            )
+            f.write("def foo():\n    return 1\n\nclass X:\n    def foo(self):\n        return 2\n")
         with open(test_path, "w", encoding="utf-8") as f:
             f.write("import a as mod\n\ndef test_module_function():\n    assert mod.foo() == 1\n")
 

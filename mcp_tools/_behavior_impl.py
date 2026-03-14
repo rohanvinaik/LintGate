@@ -2,7 +2,7 @@
 
 Extracted to keep the register() module under the 400-line structural limit.
 Each ``_impl_*`` function receives ``helpers`` as its first argument; the thin
-``@mcp.tool()`` wrappers in ``behavior_tools.register()`` simply forward.
+The ``mcp.tool`` wrappers in ``behavior_tools.register()`` simply forward.
 """
 
 from __future__ import annotations

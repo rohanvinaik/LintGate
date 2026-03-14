@@ -56,6 +56,35 @@ def test_build_mutation_context_no_tests(mock_cache, mock_purity, mock_tests):
     assert ctx.purity_map == {}
 
 
+@patch(
+    "mcp_tools._mutation_tools_impl.discover_test_files",
+    return_value=["/tmp/proj/tests/test_foo.py"],
+)
+@patch("mcp_tools._mutation_tools_impl.detect_purity_map", return_value={})
+@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/cache"))
+def test_build_mutation_context_merges_generated_tests(
+    mock_cache, mock_purity, mock_tests, tmp_path
+):
+    project_root = str(tmp_path)
+    source_file = tmp_path / "src" / "foo.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("def foo():\n    return 1\n")
+
+    generated = tmp_path / "tests" / "generated" / "test_src_foo.py"
+    generated.parent.mkdir(parents=True)
+    generated.write_text("def test_generated():\n    assert True\n")
+
+    ctx = _build_mutation_context(
+        project_root,
+        str(source_file),
+        extra_test_files=["tests/generated/test_src_foo.py", "tests/generated/missing.py"],
+    )
+    assert ctx.test_files == [
+        "/tmp/proj/tests/test_foo.py",
+        str(generated),
+    ]
+
+
 # ── impl_run_sampling ──────────────────────────────────────────────
 
 
@@ -122,6 +151,54 @@ def test_run_full_success(mock_resolve, mock_run, mock_ctx, mock_analysis):
     assert result["functions_profiled"] == 1
     assert result["analysis"] == {"ok": True}
     assert "next_actions" in result
+
+
+def test_run_full_bare_method_uses_qualified_owner_and_kills_mutants(tmp_path):
+    src = tmp_path / "widget.py"
+    src.write_text(
+        "\n".join(
+            [
+                "class Widget:",
+                "    def __init__(self, count=1):",
+                "        self.count = count",
+                "",
+                "    def to_dict(self):",
+                "        return {'count': self.count}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    test_file = tmp_path / "tests" / "test_widget.py"
+    test_file.parent.mkdir()
+    test_file.write_text(
+        "\n".join(
+            [
+                "from widget import Widget",
+                "",
+                "class TestWidgetMutationKillers:",
+                "    def test_to_dict_exact(self):",
+                "        assert Widget(count=2).to_dict() == {'count': 2}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    helpers = _make_helpers(
+        _validate_project_root=lambda _path: str(tmp_path),
+        _json_dumps=lambda d, **kw: json.dumps(d),
+    )
+
+    result_raw = impl_run_full(helpers, str(tmp_path), "widget.py", "to_dict")
+    result = json.loads(result_raw)
+    entry = result["results"][0]
+
+    assert entry["function_key"] == "widget.py::Widget.to_dict"
+    assert entry["tests_loaded"] >= 1
+    assert entry["total_killed"] >= 1
+    assert entry["survival_rate"] < 1.0
 
 
 # ── impl_get_state ─────────────────────────────────────────────────
@@ -354,6 +431,111 @@ def test_prescribe_tests_with_survivors(mock_cache, mock_iter, mock_skel):
     assert len(result["skeletons"]) == 1
     assert result["skeletons"][0]["category"] == "VALUE"
     assert "next_actions" in result
+
+
+@patch("mcp_tools._mutation_tools_impl._load_golden_captures")
+@patch("mcp_tools._mutation_tools_impl._resolve_func_node", return_value=None)
+@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
+@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_fills_value_from_golden(mock_cache, mock_iter, mock_resolve, mock_golden):
+    del mock_cache, mock_resolve
+    mock_iter.return_value = [
+        {
+            "function_key": "pkg/mod.py::fn",
+            "survivor_records": [
+                {
+                    "category": "VALUE",
+                    "mutant_id": "VALUE_0",
+                }
+            ],
+            "call_site_inputs": [],
+            "per_category": [],
+        }
+    ]
+    mock_golden.return_value = {
+        "pkg/mod.py::fn": {
+            "inputs": [1],
+            "kwargs": {"flag": True},
+            "output": "42",
+            "provenance": "corroborated",
+            "corroborating_lens": "pure_deterministic",
+        }
+    }
+
+    helpers = _make_helpers()
+    result_raw = impl_prescribe_tests(helpers, "/test", "pkg/mod.py", None)
+    result = json.loads(result_raw)
+
+    assert len(result["skeletons"]) == 1
+    skeleton = result["skeletons"][0]
+    assert skeleton["source"] == "golden_capture"
+    assert skeleton["needs_oracle"] is False
+    assert "repr(result)" in skeleton["test_code"]
+    assert "fn(1, flag=True)" in skeleton["test_code"]
+    assert "== '42'" in skeleton["test_code"]
+
+
+@patch("mcp_tools._mutation_tools_impl._load_golden_captures")
+@patch("mcp_tools._mutation_tools_impl._resolve_func_node", return_value=None)
+@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
+@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_golden_capture_flag(mock_cache, mock_iter, mock_resolve, mock_golden):
+    """Verify golden_capture_used is True when golden capture is used, False otherwise."""
+    del mock_cache, mock_resolve
+    mock_iter.return_value = [
+        {
+            "function_key": "pkg/mod.py::fn",
+            "survivor_records": [
+                {"category": "VALUE", "mutant_id": "VALUE_0"},
+                {"category": "SWAP", "mutant_id": "SWAP_0"},
+            ],
+            "call_site_inputs": [],
+            "per_category": [],
+        }
+    ]
+    mock_golden.return_value = {
+        "pkg/mod.py::fn": {
+            "inputs": [1],
+            "kwargs": {},
+            "output": "42",
+            "provenance": "corroborated",
+            "corroborating_lens": "pure_deterministic",
+        }
+    }
+
+    helpers = _make_helpers()
+    result_raw = impl_prescribe_tests(helpers, "/test", "pkg/mod.py", None)
+    result = json.loads(result_raw)
+
+    by_cat = {s["category"]: s for s in result["skeletons"]}
+    # VALUE skeleton should have golden_capture_used=True
+    assert by_cat["VALUE"]["golden_capture_used"] is True
+    # SWAP skeleton should have golden_capture_used=False
+    assert by_cat["SWAP"]["golden_capture_used"] is False
+
+
+@patch("mcp_tools._mutation_tools_impl.generate_test_skeleton")
+@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
+@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_generic_skeleton_golden_flag(mock_cache, mock_iter, mock_skel):
+    """Verify golden_capture_used=False on generic (non-survivor) skeletons."""
+    mock_iter.return_value = [
+        {
+            "function_key": "m.py::fn",
+            "per_category": [{"category": "BOUNDARY", "survived": 1}],
+        },
+    ]
+    mock_skel.return_value = {
+        "function": "m.py::fn",
+        "category": "BOUNDARY",
+        "test_name": "test_fn_boundary",
+        "skeleton": "def test_fn_boundary(): ...",
+    }
+    helpers = _make_helpers()
+    result_raw = impl_prescribe_tests(helpers, "/test", "m.py", None)
+    result = json.loads(result_raw)
+    assert len(result["skeletons"]) == 1
+    assert result["skeletons"][0]["golden_capture_used"] is False
 
 
 # ── impl_clear_state ───────────────────────────────────────────────

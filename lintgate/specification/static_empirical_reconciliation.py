@@ -6,6 +6,9 @@ empirical overlay that makes the relationship explicit rather than silently
 collapsing discovery failures into low spec coverage.
 
 The overlay is additive — it annotates the static estimate, it does not replace it.
+Reconciled values are authoritative for control decisions (health vector,
+convergence loop, hotspot ranking) when confidence is high. The static estimate
+is always preserved as a separate field for provenance.
 """
 
 from __future__ import annotations
@@ -35,6 +38,8 @@ class EmpiricalOverlay:
     empirical_tail: bool = False
     overlay_confidence: float = 0.0
     overlay_rationale: str = ""
+    reconciled_spec_level: float | None = None
+    reconciled_data_source: str = ""
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -48,6 +53,9 @@ class EmpiricalOverlay:
             d["empirical_survival_rate"] = round(self.empirical_survival_rate, 3)
         if self.empirical_tail:
             d["empirical_tail"] = True
+        if self.reconciled_spec_level is not None:
+            d["reconciled_spec_level"] = round(self.reconciled_spec_level, 3)
+            d["reconciled_data_source"] = self.reconciled_data_source
         return d
 
 
@@ -80,6 +88,45 @@ def build_overlay(
     return _reconcile(static_sigma, static_regime, static_phase, entry)
 
 
+def reconcile_spec_level(
+    static_spec_level: float,
+    overlay: EmpiricalOverlay,
+    confidence_threshold: float = 0.7,
+) -> tuple[float, str]:
+    """Produce reconciled spec_level for control decisions.
+
+    Returns (value, data_source). Static value preserved separately.
+    data_source: "static" | "empirical_override"
+
+    Logic:
+    - NO_EMPIRICAL_DATA or confidence < threshold → static
+    - AGREES → static (no disagreement to resolve)
+    - CONTRADICTS + confidence >= threshold:
+        empirical_spec = 1.0 - survival_rate
+        If empirical > static → override (conservative: don't downgrade)
+    - DISCOVERY_FAILURE / TOPOLOGY_LIMITED → static
+    """
+    if overlay.status in (
+        OverlayStatus.NO_EMPIRICAL_DATA,
+        OverlayStatus.DISCOVERY_FAILURE,
+        OverlayStatus.TOPOLOGY_LIMITED,
+    ):
+        return (static_spec_level, "static")
+
+    if overlay.overlay_confidence < confidence_threshold:
+        return (static_spec_level, "static")
+
+    if overlay.status == OverlayStatus.AGREES:
+        return (static_spec_level, "static")
+
+    # CONTRADICTS with sufficient confidence
+    empirical_spec = 1.0 - overlay.empirical_survival_rate
+    if empirical_spec > static_spec_level:
+        return (empirical_spec, "empirical_override")
+
+    return (static_spec_level, "static")
+
+
 def _reconcile(
     static_sigma: int,
     static_regime: str,
@@ -95,10 +142,15 @@ def _reconcile(
     survival_rate = entry.get("survival_rate", 0.0)
 
     # Discovery failure — empirical data exists but is unreliable
-    if discovery_state in (
-        "NO_TEST_FILES",
-        "TEST_FILES_FOUND_NONE_LINKED",
-        "DISCOVERY_IMPORT_FAILED",
+    if (
+        discovery_state
+        in (
+            "NO_TEST_FILES",
+            "TEST_FILES_FOUND_NONE_LINKED",
+            "DISCOVERY_WEAK_LINKAGE",
+            "DISCOVERY_IMPORT_FAILED",
+        )
+        or survival_interpretation == "DISCOVERY_ARTIFACT"
     ):
         return EmpiricalOverlay(
             status=OverlayStatus.DISCOVERY_FAILURE,

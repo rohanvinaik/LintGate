@@ -98,7 +98,7 @@ def _validate_channel_wiring(active_channel_names: list[str]) -> list:
         register_all_schemas()
         issues = validate_wiring(active_channel_names)
         if issues:
-            from lintgate.linters.lint_types import LintIssue
+            from lintgate.types import LintIssue
 
             for issue in issues:
                 code = "WIRE001" if issue.issue_type == "missing_publisher" else "WIRE002"
@@ -106,7 +106,7 @@ def _validate_channel_wiring(active_channel_names: list[str]) -> list:
                     LintIssue(
                         file="<schema>",
                         line=0,
-                        col=0,
+                        column=0,
                         linter="metric_schema",
                         kind=code,
                         message=(
@@ -128,7 +128,7 @@ def _append_schema_findings(mesh_result, wiring_findings: list) -> None:
 
     try:
         from lintgate.controlplane.metric_schema import validate_result
-        from lintgate.linters.lint_types import LintIssue
+        from lintgate.types import LintIssue
 
         # Per-channel output validation (skip-aware)
         for cr in mesh_result.channel_results:
@@ -138,7 +138,7 @@ def _append_schema_findings(mesh_result, wiring_findings: list) -> None:
                     LintIssue(
                         file="<schema>",
                         line=0,
-                        col=0,
+                        column=0,
                         linter="metric_schema",
                         kind="WIRE002",
                         message=(

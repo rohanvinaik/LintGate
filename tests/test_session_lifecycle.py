@@ -23,6 +23,7 @@ class TestSessionStartInitialization:
         handle({"cwd": str(tmp_path)})
 
         state = load_runtime_state(str(tmp_path))
+        assert state is not None
         assert state.mode == "normal"
 
     def test_creates_dynamic_files_for_claude(self, tmp_path):

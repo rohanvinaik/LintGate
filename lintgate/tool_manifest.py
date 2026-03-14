@@ -231,7 +231,7 @@ def _find_executable(name: str, project_root: str | None = None) -> str | None:
     return shutil.which(name)
 
 
-def _get_version(executable_path: str, tool_id: str) -> str | None:
+def _get_version(executable_path: str, tool_id: str) -> str | None:  # noqa: ARG001
     """Try to get version string from a tool."""
     try:
         result = subprocess.run(

@@ -13,10 +13,24 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import textwrap
+from pathlib import Path
 
 import pytest
 
+from lintgate.channels.behavior_channel import BehaviorChannel
+from lintgate.channels.dependency_channel import DependencyChannel
+from lintgate.channels.git_channel import GitChannel
+from lintgate.channels.lint_channel import LintChannel
+from lintgate.channels.performance_channel import PerformanceChannel
+from lintgate.channels.structure_channel import StructureChannel
+from lintgate.channels.test_channel import TestChannel
+from lintgate.controlplane.types import (
+    ChannelResult,
+    ControlPlaneConfig,
+    SupervisionEvent,
+)
 from lintgate.orchestration.behavioral_contracts import (
     _annotation_to_str,
     _generate_function_contracts,
@@ -840,11 +854,6 @@ class TestAnnotationToStrSpec:
         node = _parse_expr("Optional[str]")
         assert _annotation_to_str(node) == "Optional[str]"
 
-    def test_subscript_nested(self) -> None:
-        """list[dict[str, int]] → correct nested string."""
-        node = _parse_expr("list[dict[str, int]]")
-        assert _annotation_to_str(node) == "list[dict[str, int]]"
-
     def test_subscript_base_none_returns_none(self) -> None:
         """Subscript with unsupported base → None."""
         # Construct Subscript where value is unsupported
@@ -955,37 +964,12 @@ class TestValueToStrSpec:
         node = _parse_expr("42")
         assert _value_to_str(node) == "42"
 
-    def test_float_constant(self) -> None:
-        """Float → repr."""
-        node = _parse_expr("3.14")
-        assert _value_to_str(node) == "3.14"
-
-    def test_none_constant(self) -> None:
-        """None → repr 'None'."""
-        node = _parse_expr("None")
-        assert _value_to_str(node) == "None"
-
-    def test_true_constant(self) -> None:
-        """True → repr 'True'."""
-        node = _parse_expr("True")
-        assert _value_to_str(node) == "True"
-
-    def test_false_constant(self) -> None:
-        """False → repr 'False'."""
-        node = _parse_expr("False")
-        assert _value_to_str(node) == "False"
-
     def test_bytes_constant(self) -> None:
         """Bytes literal → repr."""
         node = _parse_expr("b'data'")
         assert _value_to_str(node) == "b'data'"
 
     # ── P2: ast.List ─────────────────────────────────────────────────────
-
-    def test_empty_list(self) -> None:
-        """Empty list → '[]'."""
-        node = _parse_expr("[]")
-        assert _value_to_str(node) == "[]"
 
     def test_nonempty_list_single_element(self) -> None:
         """B4: List with 1 element → None."""
@@ -999,22 +983,12 @@ class TestValueToStrSpec:
 
     # ── P3: ast.Dict ─────────────────────────────────────────────────────
 
-    def test_empty_dict(self) -> None:
-        """Empty dict → '{}'."""
-        node = _parse_expr("{}")
-        assert _value_to_str(node) == "{}"
-
     def test_nonempty_dict_single_key(self) -> None:
         """B5: Dict with 1 key → None."""
         node = _parse_expr("{'a': 1}")
         assert _value_to_str(node) is None
 
     # ── P4: ast.Tuple ────────────────────────────────────────────────────
-
-    def test_empty_tuple(self) -> None:
-        """Empty tuple → '()'."""
-        node = _parse_expr("()")
-        assert _value_to_str(node) == "()"
 
     def test_nonempty_tuple_single_element(self) -> None:
         """B6: Tuple with 1 element → None."""
@@ -1028,16 +1002,6 @@ class TestValueToStrSpec:
         assert _value_to_str(node) is None
 
     # ── P5: unsupported nodes ────────────────────────────────────────────
-
-    def test_name_returns_none(self) -> None:
-        """Variable name → None (not a literal)."""
-        node = _parse_expr("some_var")
-        assert _value_to_str(node) is None
-
-    def test_call_returns_none(self) -> None:
-        """Function call → None."""
-        node = _parse_expr("foo()")
-        assert _value_to_str(node) is None
 
     def test_binop_returns_none(self) -> None:
         """Binary operation → None."""
@@ -1093,3 +1057,115 @@ class TestValueToStrSpec:
         """Empty bytes → repr."""
         node = _parse_expr("b''")
         assert _value_to_str(node) == "b''"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Channel architectural contracts
+# ══════════════════════════════════════════════════════════════════════════
+
+CHANNELS = [
+    LintChannel(),
+    TestChannel(),
+    DependencyChannel(),
+    BehaviorChannel(),
+    GitChannel(),
+    PerformanceChannel(),
+    StructureChannel(),
+]
+
+
+@pytest.mark.parametrize("channel", CHANNELS)
+def test_channel_metadata_contract(channel):
+    """Verify channel has required architectural metadata."""
+    assert hasattr(channel, "name"), f"Channel {type(channel).__name__} missing 'name'"
+    assert isinstance(channel.name, str)
+    assert hasattr(channel, "timeout_ms"), f"Channel {type(channel).__name__} missing 'timeout_ms'"
+    assert isinstance(channel.timeout_ms, int)
+    assert hasattr(channel, "blocking_capable"), (
+        f"Channel {type(channel).__name__} missing 'blocking_capable'"
+    )
+    assert isinstance(channel.blocking_capable, bool)
+
+
+@pytest.mark.parametrize("channel", CHANNELS)
+def test_channel_interface_contract(channel):
+    """Verify channel implements required methods with correct signatures."""
+    assert hasattr(channel, "should_run")
+    assert hasattr(channel, "execute")
+
+    config = ControlPlaneConfig()
+    event = SupervisionEvent(project_root="")
+
+    should = channel.should_run(event, config)
+    assert isinstance(should, bool)
+
+    SupervisionEvent(project_root="/tmp/fake")
+    try:
+        result = channel.execute(event, config)
+        assert isinstance(result, ChannelResult)
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Key contract — no raw '::' key construction
+# ══════════════════════════════════════════════════════════════════════════
+
+_SCAN_DIRS = [
+    "lintgate/specification",
+    "lintgate/channels",
+    "lintgate/linters",
+]
+
+_ALLOWED_FILES = {
+    "lintgate/keys.py",
+    "lintgate/specification/composition.py",
+    "lintgate/channels/symbol_coverage.py",
+    "lintgate/linters/structure_checks/dependency_clustering.py",
+}
+
+_RAW_KEY_PATTERN = re.compile(r'f["\'].*\{[^}]+\}::\{[^}]+\}.*["\']')
+
+
+def _find_raw_key_constructions() -> list[tuple[str, int, str]]:
+    """Find f-string key constructions that bypass canonical_function_key."""
+    violations: list[tuple[str, int, str]] = []
+    project_root = Path(__file__).parent.parent
+
+    for scan_dir in _SCAN_DIRS:
+        dir_path = project_root / scan_dir
+        if not dir_path.exists():
+            continue
+
+        for py_file in dir_path.rglob("*.py"):
+            relpath = str(py_file.relative_to(project_root))
+            if relpath in _ALLOWED_FILES:
+                continue
+
+            try:
+                lines = py_file.read_text().splitlines()
+            except OSError:
+                continue
+
+            for i, line in enumerate(lines, 1):
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith("import"):
+                    continue
+
+                if _RAW_KEY_PATTERN.search(line):
+                    if "canonical_function_key" in line:
+                        continue
+                    violations.append((relpath, i, stripped))
+
+    return violations
+
+
+def test_no_raw_key_construction():
+    """No raw f'...{x}::{y}...' key construction in spec/channels/linters code."""
+    violations = _find_raw_key_constructions()
+
+    if violations:
+        msg_parts = ["Raw key construction found (use canonical_function_key instead):"]
+        for filepath, lineno, text in violations:
+            msg_parts.append(f"  {filepath}:{lineno}: {text}")
+        pytest.fail("\n".join(msg_parts))

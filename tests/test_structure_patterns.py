@@ -64,7 +64,7 @@ class TestPackageCandidateNoImports:
         (d / "data_transform.py").write_text("pass\n")
 
         py_files = [str(d / f) for f in ["data_clean.py", "data_load.py", "data_transform.py"]]
-        import_graph = {
+        import_graph: dict[str, set[str]] = {
             "data_clean": set(),
             "data_load": set(),
             "data_transform": set(),
@@ -452,7 +452,7 @@ class TestGetCallNameSimple:
         from typing import cast
 
         node = cast("ast.Expr", ast.parse("foo()").body[0]).value
-        assert _get_call_name_simple(node) == "foo"
+        assert _get_call_name_simple(node) == "foo"  # type: ignore[arg-type]  # .value is expr, not Call
 
     def test_attribute_name(self) -> None:
         import ast
@@ -460,11 +460,11 @@ class TestGetCallNameSimple:
 
         node = cast("ast.Expr", ast.parse("os.path.expanduser('~')").body[0]).value
         # os.path is not a simple Name, so returns just the attr
-        assert _get_call_name_simple(node) == "expanduser"
+        assert _get_call_name_simple(node) == "expanduser"  # type: ignore[arg-type]  # .value is expr, not Call
 
     def test_dotted_name(self) -> None:
         import ast
         from typing import cast
 
         node = cast("ast.Expr", ast.parse("subprocess.run(cmd)").body[0]).value
-        assert _get_call_name_simple(node) == "subprocess.run"
+        assert _get_call_name_simple(node) == "subprocess.run"  # type: ignore[arg-type]  # .value is expr, not Call

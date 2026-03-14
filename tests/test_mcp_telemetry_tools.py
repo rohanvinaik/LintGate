@@ -30,7 +30,7 @@ def _register_tools(tmp_path: Path) -> dict:
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
     helpers = _make_helpers(tmp_path)
-    return register(mcp, helpers)
+    return register(mcp, helpers)  # type: ignore[no-any-return]
 
 
 # ── register() ───────────────────────────────────────────────────────────

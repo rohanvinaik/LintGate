@@ -71,7 +71,7 @@ def _call_hotness(call_graph: dict[str, Any] | None) -> float:
     if call_graph is None:
         return 0.5
     fan_in = call_graph.get("fan_in", 0)
-    return min(fan_in / _FAN_IN_CAP, 1.0)
+    return float(min(fan_in / _FAN_IN_CAP, 1.0))
 
 
 def _get_annotation_name(annotation: ast.expr) -> str | None:

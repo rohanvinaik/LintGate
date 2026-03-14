@@ -190,7 +190,7 @@ class _SourceFunctionVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._handle_def(node, is_async=True)
 
-    def _handle_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:
+    def _handle_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:  # noqa: ARG002
         self._record_function(node.name)
         self.generic_visit(node)
 

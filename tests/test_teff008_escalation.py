@@ -56,7 +56,7 @@ class TestEscalatePersistentFailures:
         initial = {
             "fp_test_001": {"kind": "test_failure", "message": "test_foo failed"},
         }
-        latest = {}
+        latest: dict[str, dict[str, str]] = {}
         session = _make_session_with_snapshots(initial, latest)
 
         result = escalate_persistent_failures(session)
@@ -64,7 +64,7 @@ class TestEscalatePersistentFailures:
 
     def test_new_failure_not_escalated(self):
         """A failure only in latest (not initial) should not escalate."""
-        initial = {}
+        initial: dict[str, dict[str, str]] = {}
         latest = {
             "fp_test_002": {"kind": "test_failure", "message": "test_bar failed"},
         }
@@ -149,7 +149,7 @@ class TestCheckSessionExitGate:
     def test_no_advisory_when_all_resolved(self):
         """Exit gate should be clean when failures are resolved."""
         initial = {"fp_test_001": {"kind": "test_failure", "message": "fail"}}
-        latest = {}
+        latest: dict[str, dict[str, str]] = {}
         session = _make_session_with_snapshots(initial, latest)
 
         advisories = check_session_exit_gate(session)

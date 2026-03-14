@@ -81,6 +81,7 @@ class TestPersistence:
             state = RefactorState(session_id="x")
             save_state(tmpdir, state)
             loaded = load_state(tmpdir)
+            assert loaded is not None
             assert loaded.updated_at != ""
 
 
@@ -240,6 +241,7 @@ class TestUpdateFindingCounts:
             checkpoint(tmpdir, "mod.py", "in_progress")
             update_finding_counts(tmpdir, "run_123", {"blocking": 5, "warning": 10})
             state = load_state(tmpdir)
+            assert state is not None
             assert state.last_controlplane_run == "run_123"
             assert state.last_finding_counts["blocking"] == 5
 
@@ -259,6 +261,7 @@ class TestUpdateFileFindings:
             checkpoint(tmpdir, "mod.py", "in_progress", remaining_findings=10)
             update_file_findings(tmpdir, "mod.py", 3)
             state = load_state(tmpdir)
+            assert state is not None
             assert state.files["mod.py"].remaining_findings == 3
 
     def test_untracked_file_ignored(self):
@@ -266,6 +269,7 @@ class TestUpdateFileFindings:
             checkpoint(tmpdir, "mod.py", "in_progress")
             update_file_findings(tmpdir, "other.py", 5)
             state = load_state(tmpdir)
+            assert state is not None
             assert "other.py" not in state.files
 
     def test_no_session_noop(self):

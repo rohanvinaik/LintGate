@@ -208,7 +208,7 @@ def impl_spec_analyze(
             msg += f" matching '{function}'"
         return {"note": msg}
 
-    functions_out = _format_functions(matching)
+    functions_out = _format_functions(matching, mutation_cache=_mc)
 
     next_actions = [
         NextAction(
@@ -235,10 +235,22 @@ def impl_spec_analyze(
     }
 
 
-def _format_functions(matching: dict[str, Any]) -> dict[str, Any]:
+def _format_functions(
+    matching: dict[str, Any],
+    mutation_cache: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Format ledger function specs into output dicts."""
+    from lintgate.specification.static_empirical_reconciliation import (
+        build_overlay,
+        reconcile_spec_level,
+    )
+
     functions_out: dict[str, Any] = {}
     for key, fs in matching.items():
+        overlay = build_overlay(
+            key, fs.core.estimated_sigma, fs.core.regime, fs.core.phase, mutation_cache
+        )
+        reconciled, recon_source = reconcile_spec_level(fs.core.specification_level, overlay)
         functions_out[key] = {
             "sigma": fs.core.estimated_sigma,
             "sigma_confidence": round(fs.core.sigma_confidence, 3),
@@ -255,6 +267,9 @@ def _format_functions(matching: dict[str, Any]) -> dict[str, Any]:
                 "decision_rule_count": fs.design_signals.decision_rule_count,
                 "predicate_effect_links": fs.design_signals.predicate_effect_links,
             },
+            "reconciled_spec_level": round(reconciled, 3),
+            "reconciled_data_source": recon_source,
+            "test_mapped": bool(mutation_cache and key in mutation_cache),
             "optimization_hints": fs.optimization_hints,
             "stop_criteria_met": fs.stop_criteria_met,
         }
@@ -274,7 +289,7 @@ def impl_spec_prescribe(
     setup = resolve_and_build_ledger(helpers, path, None)
     if isinstance(setup, dict):
         return setup
-    project_root, _py_files, ledger, _mc = setup
+    project_root, _py_files, ledger, mutation_cache = setup
 
     matching = filter_by_function(ledger, function)
     if not matching:
@@ -284,7 +299,11 @@ def impl_spec_prescribe(
         return {"note": msg}
 
     all_prescriptions = _collect_prescriptions(
-        matching, max_prescriptions, regression_mode, prescribe
+        matching,
+        max_prescriptions,
+        regression_mode,
+        prescribe,
+        mutation_cache=mutation_cache,
     )
 
     next_actions = [
@@ -320,11 +339,26 @@ def _collect_prescriptions(
     max_prescriptions: int,
     regression_mode: bool,
     prescribe_fn: Any,
+    mutation_cache: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Collect and sort prescriptions from matching functions."""
+    from lintgate.specification.static_empirical_reconciliation import build_overlay
+
     all_prescriptions: list[dict[str, Any]] = []
     for _key, fs in matching.items():
-        rxs = prescribe_fn(fs, max_prescriptions=max_prescriptions, regression_mode=regression_mode)
+        overlay = build_overlay(
+            fs.function_key,
+            fs.core.estimated_sigma,
+            fs.core.regime,
+            fs.core.phase,
+            mutation_cache,
+        )
+        rxs = prescribe_fn(
+            fs,
+            max_prescriptions=max_prescriptions,
+            regression_mode=regression_mode,
+            overlay=overlay,
+        )
         for rx in rxs:
             all_prescriptions.append(
                 {

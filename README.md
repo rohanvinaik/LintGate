@@ -20,7 +20,7 @@
 
 AI writes code fast but breaks things. A senior engineer's instincts — check imports after refactoring, notice when complexity creeps, feel when a function does too much — are pattern recognition over structural invariants. Pattern recognition over structural invariants is what symbolic systems do.
 
-105 MCP tools. 18 linters. 6 parallel analysis channels. No LLM inference in the supervision path — symbolic checks on a CPU, at the speed your agent writes code.
+110 MCP tools. 18 linters. 6 parallel analysis channels. No LLM inference in the supervision path — symbolic checks on a CPU, at the speed your agent writes code.
 
 | | Without LintGate | With LintGate |
 |---|---|---|
@@ -89,6 +89,51 @@ Auto-detects Claude Code, Cursor, Copilot, Windsurf, Gemini CLI, Cline, Roo Code
 4. `lint_fix(path)` — auto-fix safe issues
 5. `bootstrap_context_files(path, write=True)` — generate persistent project context
 
+## Golden path for agents
+
+The platonic golden path is the primary workflow for auto-improving any Python codebase. It selects targets, profiles mutation survival, generates tests, validates them, and applies — all deterministically.
+
+### Single-file improvement
+
+```
+platonic_converge(path, file)  →  follow primary_next_action  →  platonic_apply(path, workflow_id)
+```
+
+### Full codebase sweep
+
+```
+loop:
+  platonic_project(path)           # picks the next highest-value target
+  ↓
+  follow primary_next_action       # profiles, generates, validates automatically
+  ↓
+  platonic_continue(path, wf_id)   # step-aware resume (validate-only or snapshot resume)
+  ↓
+  platonic_apply(path, wf_id)      # apply when state = READY_TO_APPLY or READY_TO_APPLY_WITH_REVIEW
+  ↓
+  repeat                           # each run picks the next best file
+```
+
+### Decision tree
+
+| Situation | Tool | What it does |
+|-----------|------|-------------|
+| "Improve this codebase" | `platonic_project(path)` | Auto-selects highest-value untested file |
+| "Improve this file" | `platonic_converge(path, file)` | Profiles mutations, generates tests, validates |
+| Workflow interrupted | `platonic_continue(path, workflow_id)` | Resumes from persisted state, including validate-only and profiling snapshot resume |
+| State = `READY_TO_APPLY` or `READY_TO_APPLY_WITH_REVIEW` | `platonic_apply(path, workflow_id)` | Previews or applies validated staged tests to the live suite |
+| "Sweep the whole project" | `platonic_sweep(path)` | Scheduler-driven multi-file sweep with budget + cross-session persistence |
+| Want manual control | `mutation_run_sampling` → `mutation_prescribe_tests` → `mutation_validate_tests` | Low-level mutation pipeline |
+
+### What happens inside
+
+Each `platonic_converge` run:
+1. **Profiles** the file with mutation sampling (VALUE, SWAP, BOUNDARY, STATE, TYPE categories)
+2. **Routes** functions by survival profile — high survival → generate tests, low → skip
+3. **Generates** tests using typed input synthesis, field-enumeration assertions, round-trip pair detection, and oracle-light properties
+4. **Validates** generated tests by re-profiling — confirms new tests actually kill targeted mutants
+5. **Persists** workflow state so it can be resumed or applied later
+
 ## Bootstrap progression
 
 Works from zero state. Gets better as it accumulates signal.
@@ -118,6 +163,6 @@ The savings come from what doesn't happen. Every uncaught discipline failure deg
 
 Part of a research program on structured navigation through constrained semantic spaces — the same paradigm applied to [ML model discovery](https://github.com/rohanvinaik/ModelAtlas) and [theorem proving](https://github.com/rohanvinaik/Wayfinder).
 
-*105 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
+*110 MCP tools, configuration reference, and setup details: [docs/reference.md](docs/reference.md)*
 
 MIT — Rohan Vinaik

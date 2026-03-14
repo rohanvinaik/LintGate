@@ -60,7 +60,7 @@ class TestMCPInstructions:
     def test_mentions_tool_count(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
 
-        assert "105" in _MCP_INSTRUCTIONS
+        assert "109" in _MCP_INSTRUCTIONS
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────
@@ -240,7 +240,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         fake_python = str(tmp_path / ".venv" / "bin" / "python")
 
         with (
@@ -275,7 +275,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         with (
             mock.patch(
                 "mcp_tools.onboarding_tools._ensure_project_venv",
@@ -345,7 +345,7 @@ class TestGettingStarted:
         from mcp_server import getting_started
 
         (tmp_path / "README.md").write_text("# Demo\n")
-        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         fake_python = str(tmp_path / ".venv" / "bin" / "python")
 
         with (
@@ -388,7 +388,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        fake_gaps = {"tool_status": [], "missing_tools": []}
+        fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         fake_python = str(tmp_path / ".venv" / "bin" / "python")
         settings_path = tmp_path / "settings.json"
         settings_path.write_text(

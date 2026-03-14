@@ -15,11 +15,19 @@ from mcp_tools._test_regeneration_gates import (
     _check_artifact_gate,
     _check_generated_gate,
     _check_quality_gates,
+    _is_review_ready_to_apply,
 )
 
 
-def _mock_func(strategy_name, function_key="m::f", discovery_state="",
-               source_file="m.py", target_test_file="tests/generated/test_m.py"):
+def _mock_func(
+    strategy_name,
+    function_key="m::f",
+    discovery_state="",
+    survival_interpretation="",
+    mutation_truth_label="",
+    source_file="m.py",
+    target_test_file="tests/generated/test_m.py",
+):
     from lintgate.specification.test_regeneration_strategy import Strategy
 
     strategy_map = {s.name: s for s in Strategy}
@@ -28,6 +36,8 @@ def _mock_func(strategy_name, function_key="m::f", discovery_state="",
     func.evidence.function_key = function_key
     func.evidence.source_file = source_file
     func.evidence.discovery_state = discovery_state
+    func.evidence.survival_interpretation = survival_interpretation
+    func.evidence.mutation_truth_label = mutation_truth_label
     func.target_test_file = target_test_file
     return func
 
@@ -51,8 +61,14 @@ class TestCheckArtifactGate:
         assert gates["no_artifact_auto_targets"] is True
 
     def test_artifact_auto_target_fails(self):
+        plan = _mock_plan([_mock_func("AUTO_GENERATE_UNIT", discovery_state="DISCOVERY_ARTIFACT")])
+        gate_pass, gates = _check_artifact_gate(plan, {}, True)
+        assert gates["no_artifact_auto_targets"] is False
+        assert gate_pass is False
+
+    def test_truth_label_artifact_fails(self):
         plan = _mock_plan(
-            [_mock_func("AUTO_GENERATE_UNIT", discovery_state="DISCOVERY_ARTIFACT")]
+            [_mock_func("AUTO_GENERATE_UNIT", mutation_truth_label="DISCOVERY_ARTIFACT")]
         )
         gate_pass, gates = _check_artifact_gate(plan, {}, True)
         assert gates["no_artifact_auto_targets"] is False
@@ -86,32 +102,38 @@ class TestCountAssertions:
 
     def test_real_assertions_counted(self, tmp_path):
         f = tmp_path / "test_real.py"
-        f.write_text(textwrap.dedent("""\
+        f.write_text(
+            textwrap.dedent("""\
             def test_a():
                 assert 1 == 1
             def test_b():
                 assert foo() is not None
-        """))
+        """)
+        )
         assert count_test_assertions([str(f)]) == 2
 
     def test_mixed_trivial_and_real(self, tmp_path):
         f = tmp_path / "test_mix.py"
-        f.write_text(textwrap.dedent("""\
+        f.write_text(
+            textwrap.dedent("""\
             def test_a():
                 assert True
                 assert 1 + 1 == 2
-        """))
+        """)
+        )
         assert count_test_assertions([str(f)]) == 1
 
     def test_pass_stub_gate2_fails(self, tmp_path):
         """Gate 2 should fail when generated tests are all pass stubs."""
         gen_dir = tmp_path / "tests" / "generated"
         gen_dir.mkdir(parents=True)
-        (gen_dir / "test_stub.py").write_text(textwrap.dedent("""\
+        (gen_dir / "test_stub.py").write_text(
+            textwrap.dedent("""\
             def test_foo_value_mutation():
                 # TODO: fill in
                 pass
-        """))
+        """)
+        )
         plan = _mock_plan([_mock_func("AUTO_GENERATE_UNIT")])
         # Patch subprocess to simulate pytest passing (stubs pass)
         with patch("mcp_tools._test_regeneration_gates.subprocess.run") as mock_run:
@@ -131,10 +153,14 @@ class TestFreshKillRates:
         assert details == []
 
     def test_missing_generated_file(self, tmp_path):
-        plan = _mock_plan([_mock_func(
-            "AUTO_GENERATE_UNIT",
-            target_test_file="tests/generated/test_missing.py",
-        )])
+        plan = _mock_plan(
+            [
+                _mock_func(
+                    "AUTO_GENERATE_UNIT",
+                    target_test_file="tests/generated/test_missing.py",
+                )
+            ]
+        )
         rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
         assert len(rates) == 1
         assert rates[0] == 0.0
@@ -158,10 +184,14 @@ class TestFreshKillRates:
         gen_dir.mkdir(parents=True)
         (gen_dir / "test_m.py").write_text("def test_f(): assert True\n")
 
-        plan = _mock_plan([_mock_func(
-            "AUTO_GENERATE_UNIT",
-            source_file="nonexistent.py",
-        )])
+        plan = _mock_plan(
+            [
+                _mock_func(
+                    "AUTO_GENERATE_UNIT",
+                    source_file="nonexistent.py",
+                )
+            ]
+        )
         rates, zero, details = run_fresh_kill_rates(plan, str(tmp_path))
         assert details[0]["status"] == "source_unresolved"
 
@@ -177,7 +207,11 @@ class TestCheckQualityGates:
     def test_no_auto_no_data_passes(self, _mock):
         plan = _mock_plan([])
         gate_pass, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["kill_rate_ok"] is True
         assert gates["zero_kill_ok"] is True
@@ -190,7 +224,11 @@ class TestCheckQualityGates:
     def test_auto_targets_no_data_fails(self, _mock):
         plan = _mock_plan([_mock_func("AUTO_GENERATE_UNIT")])
         gate_pass, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["kill_rate_ok"] is False
         assert gates["zero_kill_ok"] is False
@@ -203,7 +241,11 @@ class TestCheckQualityGates:
     def test_high_kill_rate_passes(self, _mock):
         plan = _mock_plan([])
         _, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["kill_rate_ok"] is True
         assert gates["kill_rate"] == pytest.approx(0.8, abs=0.01)
@@ -215,7 +257,11 @@ class TestCheckQualityGates:
     def test_low_kill_rate_fails(self, _mock):
         plan = _mock_plan([])
         gate_pass, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["kill_rate_ok"] is False
         assert gate_pass is False
@@ -227,7 +273,11 @@ class TestCheckQualityGates:
     def test_zero_kill_ceiling_fails(self, _mock):
         plan = _mock_plan([])
         gate_pass, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["zero_kill_ok"] is False
         assert gate_pass is False
@@ -239,7 +289,11 @@ class TestCheckQualityGates:
     def test_effectiveness_advisory(self, _mock):
         plan = _mock_plan([])
         gate_pass, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["effectiveness_ok"] is True
         assert gate_pass is True
@@ -251,7 +305,11 @@ class TestCheckQualityGates:
     def test_redundancy_advisory(self, _mock):
         plan = _mock_plan([])
         _, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert gates["redundancy_ok"] is True
 
@@ -263,7 +321,11 @@ class TestCheckQualityGates:
         """Fresh sampling details should be visible in gate output."""
         plan = _mock_plan([])
         _, gates = _check_quality_gates(
-            plan, "/tmp/proj", self._helpers(), {}, True,
+            plan,
+            "/tmp/proj",
+            self._helpers(),
+            {},
+            True,
         )
         assert "fresh_sampling_details" in gates
         assert gates["fresh_sampling_details"][0]["status"] == "sampled"
@@ -292,6 +354,36 @@ class TestBuildScorecard:
         assert _build_scorecard({}) == []
 
 
+class TestReviewReadyToApply:
+    def test_true_when_review_ceiling_is_only_failure(self):
+        gates = {
+            "preserve_tests_pass": True,
+            "generated_tests_run": True,
+            "review_share_ok": False,
+            "no_artifact_auto_targets": True,
+            "kill_rate_ok": True,
+            "zero_kill_ok": True,
+            "effectiveness_ok": True,
+            "hygiene_ok": True,
+            "redundancy_ok": True,
+        }
+        assert _is_review_ready_to_apply(gates, gate_pass=False) is True
+
+    def test_false_when_other_blocking_gate_fails(self):
+        gates = {
+            "preserve_tests_pass": True,
+            "generated_tests_run": True,
+            "review_share_ok": False,
+            "no_artifact_auto_targets": True,
+            "kill_rate_ok": True,
+            "zero_kill_ok": False,
+            "effectiveness_ok": True,
+            "hygiene_ok": True,
+            "redundancy_ok": True,
+        }
+        assert _is_review_ready_to_apply(gates, gate_pass=False) is False
+
+
 class TestValidationPersistence:
     def test_persist_and_load(self, tmp_path):
         from mcp_tools._test_regeneration_apply import _load_validation, persist_validation
@@ -300,6 +392,7 @@ class TestValidationPersistence:
         result = _load_validation(str(tmp_path))
         assert result is not None
         assert result["ready_to_apply"] is True
+        assert result["review_ready_to_apply"] is False
         assert result["gates"]["kill_rate_ok"] is True
 
     def test_load_missing(self, tmp_path):
@@ -338,24 +431,36 @@ class TestManifestRoundTrip:
         )
 
         ev = FunctionEvidence(
-            function_key="mod::func", source_file="mod/func.py",
+            function_key="mod::func",
+            source_file="mod/func.py",
             spec=SpecEvidence(
-                specification_level=0.75, sigma_upper_bound=5, regime="A",
-                phase="transition", is_pure=True, is_stateful=False,
-                has_side_effects=True, testability_score=0.9,
+                specification_level=0.75,
+                sigma_upper_bound=5,
+                regime="A",
+                phase="transition",
+                is_pure=True,
+                is_stateful=False,
+                has_side_effects=True,
+                testability_score=0.9,
             ),
             mutation=MutationEvidence(
-                discovery_state="GROUNDED", topology_state="LOCAL",
-                survival_interpretation="partial", survival_rate=0.3,
+                discovery_state="GROUNDED",
+                topology_state="LOCAL",
+                survival_interpretation="partial",
+                survival_rate=0.3,
                 tests_loaded=4,
             ),
-            covering_tests=["tests/test_mod.py"], assertion_count=7,
+            covering_tests=["tests/test_mod.py"],
+            assertion_count=7,
         )
         cr = ClassificationResult(
-            function_key="mod::func", strategy=Strategy.AUTO_GENERATE_UNIT,
+            function_key="mod::func",
+            strategy=Strategy.AUTO_GENERATE_UNIT,
             existing_test_action=ExistingTestAction.QUARANTINE_REPLACE,
             target_test_file="tests/generated/test_mod_func.py",
-            confidence=0.85, reason_codes=["auto_ok"], evidence=ev,
+            confidence=0.85,
+            reason_codes=["auto_ok"],
+            evidence=ev,
         )
         manifest = RebuildManifest(project_root=str(tmp_path), functions=[cr])
         write_manifest(manifest, str(tmp_path))

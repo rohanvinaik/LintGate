@@ -5,6 +5,7 @@ source =
     scripts
 omit =
     */pytest-*/*/repo/lintgate/*
+dynamic_context = test_function
 
 [report]
 fail_under = 80

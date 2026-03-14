@@ -549,6 +549,8 @@ class MappingDiagnostics:
 class TestEffectivenessManifest:
     """Project-wide test effectiveness inventory."""
 
+    __test__ = False  # Not a pytest test class
+
     functions: dict[str, FunctionEffectiveness] = field(default_factory=dict)
     project_score: float = 0.0
     file_scores: dict[str, float] = field(default_factory=dict)

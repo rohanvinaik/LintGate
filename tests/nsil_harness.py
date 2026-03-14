@@ -111,7 +111,7 @@ def run_harness():
     for scenario in SCENARIOS:
         print(f"Scenario: {scenario['name']}")
         res = verify_action(
-            scenario["proposal"],
+            cast("ActionProposal", scenario["proposal"]),
             gate_contract=cast("dict[str, Any] | None", scenario.get("gate_contract")),
             active_constraints=cast("list[str] | None", scenario.get("active_constraints")),
         )

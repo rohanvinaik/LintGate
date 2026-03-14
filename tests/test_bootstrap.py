@@ -13,7 +13,7 @@ import ast
 import json
 import os
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from lintgate.orchestration.bootstrap_state import (
     PHASES,
@@ -279,7 +279,7 @@ class TestBehavioralContracts:
 
         code = "def compute(x: int) -> int:\n    return x * 2\n"
         tree = ast.parse(code)
-        func = tree.body[0]
+        func = cast("ast.FunctionDef", tree.body[0])
         result = _generate_return_type_contract(func, "module")
         assert result is not None
         assert "returns" in result
@@ -293,7 +293,7 @@ class TestBehavioralContracts:
 
         code = "def compute(x):\n    return x * 2\n"
         tree = ast.parse(code)
-        func = tree.body[0]
+        func = cast("ast.FunctionDef", tree.body[0])
         result = _generate_return_type_contract(func, "module")
         assert result is None
 
@@ -311,7 +311,7 @@ class TestBehavioralContracts:
             "    return result\n"
         )
         tree = ast.parse(code)
-        func = tree.body[0]
+        func = cast("ast.FunctionDef", tree.body[0])
         result = _generate_shape_contract(func, "module")
         assert result is not None
         assert "preserves_length" in result
@@ -324,7 +324,7 @@ class TestBehavioralContracts:
 
         code = "def compute(x):\n    return x * 2\n"
         tree = ast.parse(code)
-        func = tree.body[0]
+        func = cast("ast.FunctionDef", tree.body[0])
         result = _generate_shape_contract(func, "module")
         assert result is None
 
@@ -342,7 +342,7 @@ class TestBehavioralContracts:
             "        return []\n"
         )
         tree = ast.parse(code)
-        func = tree.body[0]
+        func = cast("ast.FunctionDef", tree.body[0])
         result = _generate_error_boundary_contract(func, "module")
         assert result is not None
         assert "returns_default" in result
@@ -356,7 +356,7 @@ class TestBehavioralContracts:
 
         code = "import subprocess\ndef run_cmd(cmd):\n    return subprocess.run(cmd)\n"
         tree = ast.parse(code)
-        func = tree.body[1]
+        func = cast("ast.FunctionDef", tree.body[1])
         result = _generate_io_stub(func, "module")
         assert result is not None
         assert "TODO" in result
@@ -370,7 +370,7 @@ class TestBehavioralContracts:
 
         code = "def add(a, b):\n    return a + b\n"
         tree = ast.parse(code)
-        func = tree.body[0]
+        func = cast("ast.FunctionDef", tree.body[0])
         result = _generate_io_stub(func, "module")
         assert result is None
 

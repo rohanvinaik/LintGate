@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
 
 from lintgate.channels.behavior_scoring import (
@@ -753,7 +754,7 @@ class TestSignalCoordinatorInit:
 
     def test_with_theory_profile_and_recent_codas(self) -> None:
         compass = _make_compass(event_counter=0)
-        theory = {"facets": {"core_theory": {"claims": []}}}
+        theory: dict[str, Any] = {"facets": {"core_theory": {"claims": []}}}
         codas = {"approach_cycling": " Theory: 'test'."}
         coord = SignalCoordinator(
             compass=compass,
@@ -951,7 +952,7 @@ class TestApplyTheoryCodaMutantKilling:
         """When _ground_finding_in_theory returns empty coda, theory_score still returned."""
         compass = _make_compass(event_counter=0)
         # Empty facet list → no claims found, no coda produced
-        theory_profile = {"unrelated_facet": []}
+        theory_profile: dict[str, Any] = {"unrelated_facet": []}
         coord = SignalCoordinator(
             compass=compass,
             thresholds={"signal_cooldown": 10},
@@ -994,3 +995,103 @@ class TestApplyTheoryCodaMutantKilling:
         assert len(coord.findings) == 1
         # The finding should have been processed (authority severity applied)
         assert finding.severity in ("blocking", "warning", "informational")
+
+
+# ── SignalSourceDecomposition (moved from test_attribution.py) ─────────
+
+
+class TestSignalSourceDecomposition:
+    def test_decomposition_confidence(self) -> None:
+        from lintgate.orchestration.attribution import SignalSourceDecomposition
+
+        decomp = SignalSourceDecomposition(
+            signal_name="approach_cycling",
+            pattern_score=1.0,  # 1.0 * 0.4 = 0.4
+            theory_score=0.5,  # 0.5 * 0.2 = 0.1
+            outcome_score=0.8,  # 0.8 * 0.3 = 0.24
+            coherence_score=0.0,  # 0.0 * 0.1 = 0
+        )
+        # Total = 0.74 / 0.5 = 1.48 -> cap at 1.0
+        assert decomp.total_confidence == 1.0
+
+    def test_decomposition_message_attribution(self) -> None:
+        from unittest.mock import MagicMock
+
+        from lintgate.orchestration.attribution import SignalSourceDecomposition
+
+        compass = MagicMock()
+        compass.event_counter = 1
+        compass.last_fired = {}
+        compass.signal_fire_counts = {}
+        compass.compliance_rate = 1.0
+
+        coord = SignalCoordinator(compass, thresholds={"escalation_threshold": 3})
+
+        decomp = SignalSourceDecomposition(
+            signal_name="approach_cycling", pattern_score=0.8, outcome_score=0.9
+        )
+
+        finding = LintIssue(
+            linter="behavior_channel",
+            kind="approach_cycling",
+            message="Stuck in loop",
+            severity="warning",
+        )
+
+        coord.add_finding("approach_cycling", finding, is_hard=True, decomposition=decomp)
+
+        assert "(Triggered by: pattern match, outcome evidence)" in finding.message
+        assert finding.confidence > 0.5
+        assert finding.evidence["attribution"]["pattern"] == 0.8
+
+    def test_decomposition_summary_empty(self) -> None:
+        from lintgate.orchestration.attribution import SignalSourceDecomposition
+
+        decomp = SignalSourceDecomposition(signal_name="test")
+        assert decomp.to_summary() == "Triggered by mixed signals"
+
+
+# ── Signal extraction (SignalExtractor) ───────────────────────────────────
+
+
+class TestSignalExtractor:
+    def test_extract_json(self) -> None:
+        from lintgate.orchestration.signals import SignalExtractor
+
+        extractor = SignalExtractor()
+        raw = {
+            "code": "F401",
+            "message": "imported but unused",
+            "severity": "WARNING",
+            "file": "foo.py",
+            "line": 10,
+        }
+        signals = extractor.extract(raw, "lint")
+        assert len(signals) == 1
+        assert signals[0].kind == "F401"
+        assert signals[0].severity == "warning"
+        assert signals[0].message == "imported but unused"
+        assert signals[0].evidence_map["file"] == "foo.py"
+
+    def test_extract_text_errors(self) -> None:
+        from lintgate.orchestration.signals import SignalExtractor
+
+        extractor = SignalExtractor()
+        text = "Error: Something went wrong\nWarning: Be careful"
+        signals = extractor.extract(text, "build")
+        assert len(signals) == 2
+        assert signals[0].severity == "blocking"
+        assert signals[0].message == "Something went wrong"
+        assert signals[1].severity == "warning"
+        assert signals[1].message == "Be careful"
+
+    def test_extract_file_lines(self) -> None:
+        from lintgate.orchestration.signals import SignalExtractor
+
+        extractor = SignalExtractor()
+        text = "src/main.py:42: Missing docstring"
+        signals = extractor.extract(text, "test")
+        assert len(signals) == 1
+        assert signals[0].kind == "test_file_issue"
+        assert signals[0].evidence_map["file"] == "src/main.py"
+        assert signals[0].evidence_map["line"] == "42"

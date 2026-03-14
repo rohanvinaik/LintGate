@@ -8,6 +8,7 @@ Targets:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 # ── register — VALUE assertions on returned tool dict ────────────────────
@@ -115,7 +116,7 @@ def test_constraint_check_none_constraints(mock_impl: MagicMock) -> None:
 
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = {}
+    helpers: dict[str, Any] = {}
 
     tools = register(mcp, helpers)
     mock_impl.return_value = "{}"
@@ -137,7 +138,7 @@ def test_prediction_register_delegates_to_impl(mock_impl: MagicMock) -> None:
 
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = {}
+    helpers: dict[str, Any] = {}
 
     tools = register(mcp, helpers)
     mock_impl.return_value = '{"registered": true}'
@@ -161,7 +162,7 @@ def test_prediction_register_string_value(mock_impl: MagicMock) -> None:
 
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = {}
+    helpers: dict[str, Any] = {}
 
     tools = register(mcp, helpers)
     mock_impl.return_value = "{}"
@@ -192,7 +193,7 @@ def test_global_memory_status_delegates_to_impl(mock_impl: MagicMock) -> None:
 
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = {}
+    helpers: dict[str, Any] = {}
 
     tools = register(mcp, helpers)
     mock_impl.return_value = '{"sessions": 5}'
@@ -211,7 +212,7 @@ def test_global_memory_reset_delegates_to_impl(mock_impl: MagicMock) -> None:
 
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = {}
+    helpers: dict[str, Any] = {}
 
     tools = register(mcp, helpers)
     mock_impl.return_value = '{"reset": true}'
@@ -230,7 +231,7 @@ def test_behavior_precheck_delegates_to_impl(mock_impl: MagicMock) -> None:
 
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = {}
+    helpers: dict[str, Any] = {}
 
     tools = register(mcp, helpers)
     mock_impl.return_value = '{"deprecated": true}'

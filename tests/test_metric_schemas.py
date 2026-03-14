@@ -7,6 +7,8 @@ output matches its declared schema.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from lintgate.controlplane.metric_schema import (
@@ -118,7 +120,7 @@ def test_validate_result_optional_keys_not_required():
     """Optional keys should not appear as missing."""
     register_all_schemas()
     # Structure channel has optional keys like _file_cohesion
-    metrics = {
+    metrics: dict[str, Any] = {
         "_module_fan_in": {},
         # _file_cohesion, _import_tracing, _cochange are optional
     }

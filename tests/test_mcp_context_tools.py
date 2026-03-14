@@ -9,7 +9,7 @@ extract_project_theory, build_theory_pack, get_theory_context.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,7 +35,7 @@ def _register_tools(tmp_path: Path) -> dict:
     # Make @mcp.tool() a no-op decorator: mcp.tool() returns identity.
     mcp.tool.return_value = lambda fn: fn
     helpers = _make_helpers(tmp_path)
-    return register(mcp, helpers)
+    return register(mcp, helpers)  # type: ignore[no-any-return]
 
 
 # ── register() ───────────────────────────────────────────────────────────
@@ -500,7 +500,7 @@ class TestExtractProjectTheory:
 
     def test_telemetry_logged(self, tmp_path: Path) -> None:
         tools = _register_tools(tmp_path)
-        mock_result = {"profile": {}, "enforceable_rules": []}
+        mock_result: dict[str, Any] = {"profile": {}, "enforceable_rules": []}
         with (
             patch(
                 "lintgate.theory_extractor.extract_theory",

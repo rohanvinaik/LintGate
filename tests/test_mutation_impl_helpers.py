@@ -24,13 +24,39 @@ def test_discover_test_files_recurses_nested_dirs(tmp_path):
     assert str(test_file) in found
 
 
+def test_discover_test_files_finds_generated_path_safe_name(tmp_path):
+    src = tmp_path / "lintgate" / "foo" / "bar.py"
+    src.parent.mkdir(parents=True)
+    src.write_text("def check(x):\n    return x > 0\n")
+
+    gen_dir = tmp_path / "tests" / "generated"
+    gen_dir.mkdir(parents=True)
+    gen_file = gen_dir / "test_lintgate_foo_bar.py"
+    gen_file.write_text("def test_check():\n    assert True\n")
+
+    found = discover_test_files(str(tmp_path), str(src))
+    assert str(gen_file) in found
+
+
+def test_discover_test_files_strips_leading_underscore_from_private_module_names(tmp_path):
+    src = tmp_path / "lintgate" / "_dep_health_checks.py"
+    src.parent.mkdir(parents=True)
+    src.write_text("def check(x):\n    return x > 0\n")
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir(parents=True)
+    test_file = tests_dir / "test_dep_health_checks.py"
+    test_file.write_text("def test_check():\n    assert True\n")
+
+    found = discover_test_files(str(tmp_path), str(src))
+    assert str(test_file) in found
+
+
 def test_load_all_tests_from_files_accepts_non_test_prefix_classes(tmp_path):
     test_file = tmp_path / "tests" / "test_proof_auditor.py"
     test_file.parent.mkdir(parents=True)
     test_file.write_text(
-        "class ValidationSuite:\n"
-        "    def test_accepts_valid_input(self):\n"
-        "        assert True\n"
+        "class ValidationSuite:\n    def test_accepts_valid_input(self):\n        assert True\n"
     )
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n")
 
@@ -59,3 +85,31 @@ def test_load_test_callables_falls_back_when_ref_imports_resolve_to_empty():
 
     assert loaded == fallback
     assert diag.fallback_used is True
+
+
+def test_load_test_callables_flags_weak_linkage_when_fallback_loads_too_few(tmp_path):
+    test_file = tmp_path / "tests" / "test_dep_health_checks.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        "\n".join(
+            [
+                "class TestHealth:",
+                "    def test_one(self):",
+                "        assert True",
+                "    def test_two(self):",
+                "        assert True",
+                "    def test_three(self):",
+                "        assert True",
+            ]
+        )
+    )
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n")
+
+    with patch("mcp_tools._mutation_impl._load_all_tests_from_files", return_value=[lambda: None]):
+        loaded, diag = load_test_callables([str(test_file)], "target_func")
+
+    assert len(loaded) == 1
+    assert diag.fallback_used is True
+    assert diag.ast_test_callables == 3
+    assert diag.weak_linkage_suspected is True
+    assert diag.to_dict()["sanity_warning"]

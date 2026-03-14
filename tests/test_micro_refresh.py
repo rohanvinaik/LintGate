@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from lintgate.runtime_state import RuntimeState, save_runtime_state
 from mcp_tools.micro_refresh import attach_session_context
 
@@ -58,7 +60,7 @@ class TestAttachSessionContext:
         state = RuntimeState(active_files=[f"/src/{i}.py" for i in range(10)])
         save_runtime_state(str(tmp_path), state)
 
-        result = {}
+        result: dict[str, Any] = {}
         augmented = attach_session_context(result, str(tmp_path))
         assert len(augmented["session_context"]["focus"]) == 3
 
@@ -66,7 +68,7 @@ class TestAttachSessionContext:
         state = RuntimeState(active_files=["/very/deep/path/to/file.py"])
         save_runtime_state(str(tmp_path), state)
 
-        result = {}
+        result: dict[str, Any] = {}
         augmented = attach_session_context(result, str(tmp_path))
         assert augmented["session_context"]["focus"] == ["file.py"]
 
@@ -74,7 +76,7 @@ class TestAttachSessionContext:
         state = RuntimeState(active_files=[])
         save_runtime_state(str(tmp_path), state)
 
-        result = {}
+        result: dict[str, Any] = {}
         augmented = attach_session_context(result, str(tmp_path))
         assert augmented["session_context"]["focus"] == []
 
@@ -91,7 +93,7 @@ class TestAttachSessionContext:
         )
         save_runtime_state(str(tmp_path), state)
 
-        result = {}
+        result: dict[str, Any] = {}
         augmented = attach_session_context(result, str(tmp_path))
         import json
 

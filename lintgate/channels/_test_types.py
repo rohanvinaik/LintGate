@@ -23,6 +23,8 @@ class TestFailure:
 class TestRunResult:
     """Result from running pytest on impacted test files."""
 
+    __test__ = False  # Not a pytest test class
+
     passed: int = 0
     failed: int = 0
     errors: int = 0

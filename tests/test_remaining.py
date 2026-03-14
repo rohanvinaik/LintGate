@@ -315,7 +315,7 @@ class TestFilterToSourcePackages:
         from lintgate.channels.test_channel import _filter_to_source_packages
 
         files = ["/proj/tests/test_foo.py"]
-        assert _filter_to_source_packages(files, None, "/proj") == files
+        assert _filter_to_source_packages(files, None, "/proj") == files  # type: ignore[arg-type]  # intentional: test None handling
 
     def test_filters_to_matching_packages(self):
         from lintgate.channels.test_channel import _filter_to_source_packages

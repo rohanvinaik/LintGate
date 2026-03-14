@@ -13,7 +13,7 @@ from lintgate.linters.performance_checks.cache_scoring import (
 )
 
 
-def _parse_func(source: str) -> ast.FunctionDef:
+def _parse_func(source: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
     """Parse a single function from source and return its AST node."""
     tree = ast.parse(textwrap.dedent(source))
     for node in ast.walk(tree):

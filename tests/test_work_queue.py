@@ -24,14 +24,14 @@ class TestComputeDependencyTiers:
         assert tiers == {}
 
     def test_leaf_modules(self):
-        graph = {"a": [], "b": []}
+        graph: dict[str, list[str] | set[str]] = {"a": [], "b": []}
         tiers = _compute_dependency_tiers(graph, {"a", "b"})
         assert tiers["a"] == 0
         assert tiers["b"] == 0
 
     def test_linear_chain(self):
         # main imports engine, engine imports helpers
-        graph = {
+        graph: dict[str, list[str] | set[str]] = {
             "main": ["engine"],
             "engine": ["helpers"],
             "helpers": [],
@@ -44,7 +44,7 @@ class TestComputeDependencyTiers:
 
     def test_diamond_dependency(self):
         # app imports both utils and parsers; both import base
-        graph = {
+        graph: dict[str, list[str] | set[str]] = {
             "app": ["utils", "parsers"],
             "utils": ["base"],
             "parsers": ["base"],
@@ -59,14 +59,14 @@ class TestComputeDependencyTiers:
 
     def test_external_imports_ignored(self):
         # "requests" is not in project_modules
-        graph = {"app": ["requests", "utils"], "utils": []}
+        graph: dict[str, list[str] | set[str]] = {"app": ["requests", "utils"], "utils": []}
         modules = {"app", "utils"}
         tiers = _compute_dependency_tiers(graph, modules)
         assert tiers["utils"] == 0
         assert tiers["app"] == 1
 
     def test_cycle_gets_max_tier_plus_one(self):
-        graph = {"a": ["b"], "b": ["a"], "c": []}
+        graph: dict[str, list[str] | set[str]] = {"a": ["b"], "b": ["a"], "c": []}
         modules = {"a", "b", "c"}
         tiers = _compute_dependency_tiers(graph, modules)
         assert tiers["c"] == 0
@@ -114,7 +114,7 @@ class TestBuildWorkQueue:
         assert wq.items[2].file == "a.py"  # informational last
 
     def test_tier_ordering_with_graph(self):
-        graph = {
+        graph: dict[str, list[str] | set[str]] = {
             "main": ["engine"],
             "engine": ["helpers"],
             "helpers": [],
@@ -135,7 +135,7 @@ class TestBuildWorkQueue:
         assert wq.items[2].file == "main.py"  # tier 2
 
     def test_depends_on_populated(self):
-        graph = {"app": ["utils"], "utils": []}
+        graph: dict[str, list[str] | set[str]] = {"app": ["utils"], "utils": []}
         file_map = {"app": "app.py", "utils": "utils.py"}
         findings = [_finding("app.py"), _finding("utils.py")]
         wq = build_work_queue(findings, graph, file_map)
@@ -143,7 +143,7 @@ class TestBuildWorkQueue:
         assert "utils.py" in app_item.depends_on
 
     def test_cross_file_locality(self):
-        graph = {"app": ["utils"], "utils": []}
+        graph: dict[str, list[str] | set[str]] = {"app": ["utils"], "utils": []}
         file_map = {"app": "app.py", "utils": "utils.py"}
         findings = [_finding("app.py"), _finding("utils.py")]
         wq = build_work_queue(findings, graph, file_map)
@@ -153,7 +153,7 @@ class TestBuildWorkQueue:
         assert utils_item.locality == "single_file"
 
     def test_delegation_safe(self):
-        graph = {"app": ["utils"], "utils": []}
+        graph: dict[str, list[str] | set[str]] = {"app": ["utils"], "utils": []}
         file_map = {"app": "app.py", "utils": "utils.py"}
         findings = [
             _finding("app.py", severity="warning"),

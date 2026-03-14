@@ -120,10 +120,14 @@ class BootstrapPipeline:
 
         try:
             if self.state.status != "running":
+                # Fresh run — reset all progress counters
                 self.state.run_id = uuid.uuid4().hex[:12]
                 self.state.status = "running"
+                self.state.phase = "not_started"
                 self.state.started_at = time.time()
                 self.state.error = None
+                self.state.tests_generated = 0
+                self.state.files_processed = {}
                 self.state.save()
 
             skeletons: dict[str, str] = {}

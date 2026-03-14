@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import textwrap
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from lintgate.config import (
     _auto_detect,
@@ -42,58 +46,58 @@ class TestCoerceInt:
 
 
 class TestDetectLanguages:
-    def test_python_pyproject(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_python_pyproject(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "pyproject.toml").write_text("[tool.pytest]")
         assert "python" in _detect_languages(str(p))
 
-    def test_python_setup_py(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_python_setup_py(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "setup.py").write_text("from setuptools import setup")
         assert "python" in _detect_languages(str(p))
 
-    def test_python_requirements(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_python_requirements(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "requirements.txt").write_text("flask==2.0")
         assert "python" in _detect_languages(str(p))
 
-    def test_python_py_file(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_python_py_file(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "main.py").write_text("print('hello')")
         assert "python" in _detect_languages(str(p))
 
-    def test_typescript(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_typescript(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "tsconfig.json").write_text("{}")
         langs = _detect_languages(str(p))
         assert "typescript" in langs
 
-    def test_javascript_package_json(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_javascript_package_json(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "package.json").write_text("{}")
         assert "typescript" in _detect_languages(str(p))
 
-    def test_rust(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_rust(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "Cargo.toml").write_text("[package]")
         assert "rust" in _detect_languages(str(p))
 
-    def test_go(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_go(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "go.mod").write_text("module example.com/m")
         assert "go" in _detect_languages(str(p))
 
-    def test_swift(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_swift(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "Package.swift").write_text("// swift-tools-version:5.0")
         assert "swift" in _detect_languages(str(p))
 
-    def test_empty_dir(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_empty_dir(self, tmp_path: Path) -> None:
+        p = tmp_path
         assert _detect_languages(str(p)) == []
 
-    def test_multiple_languages(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_multiple_languages(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "pyproject.toml").write_text("[tool]")
         (p / "Cargo.toml").write_text("[package]")
         langs = _detect_languages(str(p))
@@ -138,7 +142,7 @@ class TestParseQualityPolicy:
         assert policy.coverage.source_packages == ["single_pkg"]
 
     def test_source_packages_empty_list_uses_default(self) -> None:
-        raw = {"coverage": {"source_packages": []}}
+        raw: dict[str, dict[str, list[str]]] = {"coverage": {"source_packages": []}}
         policy = _parse_quality_policy(raw)
         assert policy.coverage.source_packages == ["lintgate", "mcp_tools"]
 
@@ -176,16 +180,16 @@ class TestParseQualityPolicy:
 
 
 class TestLoadYamlConfig:
-    def _write_config(self, tmp_path: object, content: str) -> str:
-        p = tmp_path  # type: ignore[assignment]
+    def _write_config(self, tmp_path: Path, content: str) -> str:
+        p = tmp_path
         claude_dir = p / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
         config_path = claude_dir / "lintgate.yaml"
         config_path.write_text(content)
         return str(config_path)
 
-    def test_basic_linters(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_basic_linters(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -201,8 +205,8 @@ class TestLoadYamlConfig:
         assert config.enabled_linters["ruff_check"] is True
         assert config.enabled_linters["mypy"] is False
 
-    def test_linter_bool_shorthand(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_linter_bool_shorthand(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -215,8 +219,8 @@ class TestLoadYamlConfig:
         assert config.enabled_linters["ruff_check"] is True
         assert config.enabled_linters["bandit"] is False
 
-    def test_pipeline_critical_paths(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_pipeline_critical_paths(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -228,8 +232,8 @@ class TestLoadYamlConfig:
         config = _load_yaml_config(config_path, str(p))
         assert config.pipeline_critical_paths == ["src/core.py", "src/api.py"]
 
-    def test_severity_overrides(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_severity_overrides(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -240,8 +244,8 @@ class TestLoadYamlConfig:
         config = _load_yaml_config(config_path, str(p))
         assert config.severity_overrides == {"E501": "informational"}
 
-    def test_tool_versions(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_tool_versions(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -253,8 +257,8 @@ class TestLoadYamlConfig:
         config = _load_yaml_config(config_path, str(p))
         assert config.tool_version_requirements == {"ruff": "0.4.0", "mypy": "1.10"}
 
-    def test_path_policies(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_path_policies(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -271,8 +275,8 @@ class TestLoadYamlConfig:
         assert config.path_policies[0]["tier"] == 1
         assert config.path_policies[0]["strictness"] == "relaxed"
 
-    def test_debounce(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_debounce(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -285,8 +289,8 @@ class TestLoadYamlConfig:
         assert config.debounce["tier_0"] == 1.5
         assert config.debounce["tier_2"] == 4.0
 
-    def test_total_timeout(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_total_timeout(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -296,8 +300,8 @@ class TestLoadYamlConfig:
         config = _load_yaml_config(config_path, str(p))
         assert config.total_timeout_ms == 12000
 
-    def test_quality_policy_section(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_quality_policy_section(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -309,15 +313,15 @@ class TestLoadYamlConfig:
         config = _load_yaml_config(config_path, str(p))
         assert config.quality_policy.coverage.global_threshold == 95
 
-    def test_language_detection_fallback(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_language_detection_fallback(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "Cargo.toml").write_text("[package]")
         config_path = self._write_config(p, "linters: {}")
         config = _load_yaml_config(config_path, str(p))
         assert "rust" in config.languages
 
-    def test_explicit_languages(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_explicit_languages(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -329,8 +333,8 @@ class TestLoadYamlConfig:
         config = _load_yaml_config(config_path, str(p))
         assert config.languages == ["python", "go"]
 
-    def test_exemptions_and_extra_tier3(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_exemptions_and_extra_tier3(self, tmp_path: Path) -> None:
+        p = tmp_path
         config_path = self._write_config(
             p,
             textwrap.dedent("""\
@@ -350,14 +354,14 @@ class TestLoadYamlConfig:
 
 
 class TestLoadConfig:
-    def test_autodetect_no_yaml(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_autodetect_no_yaml(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "pyproject.toml").write_text("")
         config = load_config(str(p))
         assert "python" in config.languages
 
-    def test_uses_yaml_when_present(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_uses_yaml_when_present(self, tmp_path: Path) -> None:
+        p = tmp_path
         claude_dir = p / ".claude"
         claude_dir.mkdir()
         (claude_dir / "lintgate.yaml").write_text("total_timeout_ms: 5000\n")
@@ -369,14 +373,14 @@ class TestLoadConfig:
 
 
 class TestAutoDetect:
-    def test_empty_project(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_empty_project(self, tmp_path: Path) -> None:
+        p = tmp_path
         config = _auto_detect(str(p))
         assert config.languages == []
         assert config.enabled_linters == {}
 
-    def test_detects_python(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_detects_python(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "setup.cfg").write_text("[metadata]")
         config = _auto_detect(str(p))
         assert "python" in config.languages
@@ -386,29 +390,29 @@ class TestAutoDetect:
 
 
 class TestLoadControlplaneConfig:
-    def _write_cp_config(self, tmp_path: object, content: str) -> str:
-        p = tmp_path  # type: ignore[assignment]
+    def _write_cp_config(self, tmp_path: Path, content: str) -> str:
+        p = tmp_path
         claude_dir = p / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
         (claude_dir / "lintgate.yaml").write_text(content)
         return str(p)
 
-    def test_no_yaml_returns_none(self, tmp_path: object) -> None:
+    def test_no_yaml_returns_none(self, tmp_path: Path) -> None:
         assert load_controlplane_config(str(tmp_path)) is None
 
-    def test_empty_yaml_returns_none(self, tmp_path: object) -> None:
+    def test_empty_yaml_returns_none(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(tmp_path, "")
         assert load_controlplane_config(cwd) is None
 
-    def test_no_controlplane_section_returns_none(self, tmp_path: object) -> None:
+    def test_no_controlplane_section_returns_none(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(tmp_path, "linters: {}")
         assert load_controlplane_config(cwd) is None
 
-    def test_controlplane_not_dict_returns_none(self, tmp_path: object) -> None:
+    def test_controlplane_not_dict_returns_none(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(tmp_path, "controlplane: true")
         assert load_controlplane_config(cwd) is None
 
-    def test_basic_controlplane(self, tmp_path: object) -> None:
+    def test_basic_controlplane(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -424,7 +428,7 @@ class TestLoadControlplaneConfig:
         assert cp.latency_budget_ms == 10000
         assert cp.advisory_default is False
 
-    def test_inquiry_config(self, tmp_path: object) -> None:
+    def test_inquiry_config(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -443,7 +447,7 @@ class TestLoadControlplaneConfig:
         assert cp.inquiry.session_gate is True
         assert cp.inquiry.living_context is False
 
-    def test_global_memory_config(self, tmp_path: object) -> None:
+    def test_global_memory_config(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -463,7 +467,7 @@ class TestLoadControlplaneConfig:
         assert cp.global_memory_decay_horizon == 100
         assert cp.global_memory_ttl_days == 30
 
-    def test_token_policy(self, tmp_path: object) -> None:
+    def test_token_policy(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -479,7 +483,7 @@ class TestLoadControlplaneConfig:
         assert cp.token_policy.hook_max_tokens == 500
         assert cp.token_policy.include_pass_details is True
 
-    def test_habit_mode_config(self, tmp_path: object) -> None:
+    def test_habit_mode_config(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -497,7 +501,7 @@ class TestLoadControlplaneConfig:
         assert cp.habit_mode_compact_threshold == 0.5
         assert cp.habit_mode_enter_score == 0.80
 
-    def test_quality_gate_config(self, tmp_path: object) -> None:
+    def test_quality_gate_config(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -515,7 +519,7 @@ class TestLoadControlplaneConfig:
         assert cp.quality_gate.block_push is False
         assert cp.quality_gate.staleness_threshold_s == 900.0
 
-    def test_channels_dict_config(self, tmp_path: object) -> None:
+    def test_channels_dict_config(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -539,7 +543,7 @@ class TestLoadControlplaneConfig:
         assert cp.channels["lint"].max_findings_shown == 3
         assert cp.channels["test"].enabled is False
 
-    def test_channels_bool_shorthand(self, tmp_path: object) -> None:
+    def test_channels_bool_shorthand(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -553,7 +557,7 @@ class TestLoadControlplaneConfig:
         assert cp is not None
         assert cp.channels["behavior"].enabled is False
 
-    def test_coherence_channel_weights(self, tmp_path: object) -> None:
+    def test_coherence_channel_weights(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -569,7 +573,7 @@ class TestLoadControlplaneConfig:
         assert cp is not None
         assert cp.coherence_channel_weights == {"structure": 0.4, "behavior": 0.3}
 
-    def test_hook_verbosity_and_compass(self, tmp_path: object) -> None:
+    def test_hook_verbosity_and_compass(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -591,7 +595,7 @@ class TestLoadControlplaneConfig:
         assert cp.compass_enabled is True
         assert cp.compass_staleness_hours == 48.0
 
-    def test_session_memory_and_constraint_threshold(self, tmp_path: object) -> None:
+    def test_session_memory_and_constraint_threshold(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\
@@ -608,15 +612,15 @@ class TestLoadControlplaneConfig:
         assert cp.constraint_proposal_threshold == 10
         assert cp.severity_weighted_coherence is True
 
-    def test_malformed_yaml_returns_none(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_malformed_yaml_returns_none(self, tmp_path: Path) -> None:
+        p = tmp_path
         claude_dir = p / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
         (claude_dir / "lintgate.yaml").write_text("{{invalid yaml::")
         result = load_controlplane_config(str(p))
         assert result is None
 
-    def test_channel_extra_settings(self, tmp_path: object) -> None:
+    def test_channel_extra_settings(self, tmp_path: Path) -> None:
         cwd = self._write_cp_config(
             tmp_path,
             textwrap.dedent("""\

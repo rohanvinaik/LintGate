@@ -209,7 +209,7 @@ class TestHabitModeStateFromDictExactValues:
         assert st.user_message_detected is False
 
     def test_none_returns_fresh_state(self):
-        st = HabitModeState.from_dict(None)
+        st = HabitModeState.from_dict(None)  # type: ignore[arg-type]  # intentional: test None handling
         assert st.active is False
         assert st.habit_score == 0.0
         assert st.sustain_counter == 0
@@ -317,7 +317,7 @@ class TestDetectTestResultExact:
 
     def test_no_change_when_output_none(self):
         state = HabitModeState()
-        detect_test_result(state, None, "pytest:tests/")
+        detect_test_result(state, None, "pytest:tests/")  # type: ignore[arg-type]
         assert state.last_test_status == ""
 
     def test_fail_takes_priority_over_pass(self):

@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 105 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 110 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (93)
+## MCP Tools (110)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -173,6 +173,11 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `convergence_analyze`     | Multi-lens convergence aggregation on functions and files            |
 | `extraction_plan`         | Build stepwise extraction plan for a specific function               |
 | `optimization_landscape`  | Project-wide optimization opportunity map                            |
+| `platonic_project`        | Golden-path entrypoint: choose the first deterministic high-value target |
+| `platonic_converge`       | Iterative spec convergence loop: profile, generate, validate to target |
+| `platonic_continue`       | Resume a persisted platonic workflow by workflow ID, using validate-only or profiling snapshot resume when available |
+| `platonic_apply`          | Apply a validated platonic workflow to the live suite (dry-run default; accepts review-ready workflows) |
+| `platonic_sweep`          | Scheduler-driven multi-file specification sweep with budget controls |
 
 ### Specification Complexity
 

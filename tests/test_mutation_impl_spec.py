@@ -180,6 +180,22 @@ class TestResolveFunctionBareName:
         assert node is not None
         assert node.name == "process"
 
+    def test_bare_method_preserves_qualified_name(self, tmp_path):
+        src = tmp_path / "overlay.py"
+        src.write_text(
+            textwrap.dedent("""\
+                class EmpiricalOverlay:
+                    def to_dict(self):
+                        return {"status": "ok"}
+            """),
+            encoding="utf-8",
+        )
+        full, node, err = resolve_function(str(tmp_path), "overlay.py", "to_dict")
+        assert err is None
+        assert node is not None
+        assert node.name == "to_dict"
+        assert getattr(node, "_lintgate_qualname", "") == "EmpiricalOverlay.to_dict"
+
 
 class TestResolveFunctionQualifiedName:
     """EP5: function contains a dot — Class.method resolution."""
@@ -202,6 +218,7 @@ class TestResolveFunctionQualifiedName:
         assert node is not None
         assert node.name == "parse"
         assert isinstance(node, ast.FunctionDef)
+        assert getattr(node, "_lintgate_qualname", "") == "Parser.parse"
 
     def test_async_class_method(self, tmp_path):
         src = tmp_path / "cls_async.py"

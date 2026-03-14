@@ -24,7 +24,6 @@ from mcp_tools.quality_helpers import (
     _generate_codeclimate_yml,
     _generate_coveragerc,
     _generate_gitleaks_toml,
-    _generate_pre_push_hook,
     _generate_pypi_publish_workflow,
     _generate_qlty_toml,
     _generate_qlty_workflow,
@@ -33,6 +32,7 @@ from mcp_tools.quality_helpers import (
     _generate_sonar_workflow,
     _generate_tests_workflow,
     _inject_badges_into_readme,
+    _write_pre_push_hook,
 )
 
 # ── GitHub Remote Detection ──────────────────────────────────────────────
@@ -445,13 +445,13 @@ class TestGeneratePypiPublishWorkflow:
 
 
 class TestGeneratePrePushHook:
-    """Tests for _generate_pre_push_hook (facade for _write_pre_push_hook)."""
+    """Tests for _write_pre_push_hook."""
 
     def test_creates_hook_with_qlty(self, tmp_path: Path) -> None:
         """Pre-push hook includes qlty check --all."""
         hooks_dir = tmp_path / ".git" / "hooks"
         hooks_dir.mkdir(parents=True)
-        result = _generate_pre_push_hook(str(tmp_path), write=True)
+        result = _write_pre_push_hook(str(tmp_path), write=True)
         assert result["status"] == "created"
         assert "qlty check" in result["content_snippet"]
 
@@ -459,13 +459,13 @@ class TestGeneratePrePushHook:
         """Preview mode returns preview status without creating the file."""
         hooks_dir = tmp_path / ".git" / "hooks"
         hooks_dir.mkdir(parents=True)
-        result = _generate_pre_push_hook(str(tmp_path), write=False)
+        result = _write_pre_push_hook(str(tmp_path), write=False)
         assert result["status"] == "preview"
         assert not (hooks_dir / "pre-push").exists()
 
     def test_no_git_dir_returns_error(self, tmp_path: Path) -> None:
         """Returns error when .git/hooks does not exist."""
-        result = _generate_pre_push_hook(str(tmp_path), write=False)
+        result = _write_pre_push_hook(str(tmp_path), write=False)
         assert result["status"] == "error"
 
 
