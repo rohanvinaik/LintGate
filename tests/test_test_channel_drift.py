@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from unittest.mock import MagicMock, patch
 
 from lintgate.channels._test_channel_drift import (
@@ -16,8 +15,7 @@ from lintgate.channels._test_channel_drift import (
     _emit_drift_summary,
 )
 from lintgate.channels._test_types import TestFailure, TestRunResult
-from lintgate.types import LintIssue
-
+from lintgate.types import LintIssue  # noqa: TC001
 
 # ---------------------------------------------------------------------------
 # _classify_test_failure

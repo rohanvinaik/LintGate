@@ -5,17 +5,13 @@ from __future__ import annotations
 import ast
 import textwrap
 
-import pytest
-
 from lintgate.linters.redefinition_checker import (
-    RedefinitionChecker,
     _check_file,
     _check_scope,
     _has_overload_decorator,
     _has_property_decorator,
     _is_type_checking_block,
 )
-
 
 # ── _has_overload_decorator ───────────────────────────────────────────
 

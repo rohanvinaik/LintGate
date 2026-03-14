@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from lintgate.testing.platonic_mutation import (
     find_mutation_result,
@@ -10,7 +10,6 @@ from lintgate.testing.platonic_mutation import (
     persist_mutation_cache_entries,
     run_mutation_sampling,
 )
-
 
 # --- find_mutation_result ---
 

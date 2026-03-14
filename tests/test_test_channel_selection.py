@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from lintgate.channels._test_channel_selection import (
     _check_missing_tests,
     _discover_fallback_test_targets,
-    _has_test,
     _is_source_file,
     _no_test_files_exist,
     _select_tests_to_run,
 )
-from lintgate.types import LintIssue
-
+from lintgate.types import LintIssue  # noqa: TC001
 
 # ── _is_source_file ──────────────────────────────────────────────────
 

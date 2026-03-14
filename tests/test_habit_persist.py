@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 from typing import Any
 
 from lintgate._habit_persist import (
@@ -18,8 +18,7 @@ from lintgate._habit_persist import (
     save_habit_state,
     save_habit_state_standalone,
 )
-from lintgate._habit_types import HabitModeState, MAX_ACTION_RING
-
+from lintgate._habit_types import MAX_ACTION_RING, HabitModeState
 
 # ── _project_hash ───────────────────────────────────────────────────
 

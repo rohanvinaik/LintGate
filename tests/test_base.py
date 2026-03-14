@@ -10,8 +10,7 @@ from lintgate.linters.base import (
     _find_venv_bin,
     _resolve_executable,
 )
-from lintgate.types import LinterContext, LinterResult, LintIssue
-
+from lintgate.types import LinterContext, LintIssue
 
 # ── _find_venv_bin ──────────────────────────────────────────────────────
 

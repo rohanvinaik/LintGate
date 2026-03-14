@@ -9,7 +9,6 @@ from lintgate.testing.platonic_outcomes import (
     workflow_state_from_outputs,
 )
 
-
 # --- platonic_config_dict ---
 
 
@@ -301,7 +300,8 @@ def test_reroute_manual_contract_no_crash():
 
 def test_reroute_manual_contract_updates_matching_functions():
     """Matching functions get strategy/fields updated and manifest is written."""
-    from unittest.mock import MagicMock, patch as _patch
+    from unittest.mock import MagicMock
+    from unittest.mock import patch as _patch
 
     from lintgate.specification._regeneration_types import ExistingTestAction, Strategy
 

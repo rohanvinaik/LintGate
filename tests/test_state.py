@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -12,15 +10,6 @@ from unittest.mock import patch
 import pytest
 
 from lintgate.state import (
-    ISSUE_MEMORY_DIR,
-    METRICS_DIR,
-    PERF_CACHE_DIR,
-    RUNS_DIR,
-    SPEC_CACHE_DIR,
-    STATE_DIR,
-    VERSION_AUDIT_DIR,
-    VERSION_DIR,
-    VERSION_EVENTS_DIR,
     _issue_signature,
     _load_json_file,
     _project_hash,
@@ -40,7 +29,6 @@ from lintgate.state import (
     update_issue_memory,
 )
 from lintgate.types import AggregatedResult, LintIssue
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -633,6 +621,7 @@ class TestDirectoryConstants:
     def _fresh(self, name: str) -> Path:
         """Re-import to get unpatched value."""
         import importlib
+
         import lintgate.state as _mod
         importlib.reload(_mod)
         return getattr(_mod, name)

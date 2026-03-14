@@ -9,7 +9,6 @@ from lintgate.channels._test_channel_runner import (
 )
 from lintgate.channels._test_types import TestRunResult
 
-
 # ── _parse_pytest_output ─────────────────────────────────────────────
 
 

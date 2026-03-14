@@ -303,7 +303,7 @@ def main() -> None:
     print(f"  Skipped (trivial):  {total_trivial}")
     print(f"  Errors:             {total_errors}")
     print(f"\n  Kill rate: {total_killed}/{total_mutants} ({kill_rate})")
-    print(f"  Discovery states:")
+    print("  Discovery states:")
     for ds, count in sorted(discovery_states.items()):
         print(f"    {ds}: {count}")
     print(f"\n  Results in: {cache_dir}")

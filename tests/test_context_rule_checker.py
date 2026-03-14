@@ -2,13 +2,7 @@
 
 from __future__ import annotations
 
-import os
-import textwrap
-
-import pytest
-
 from lintgate.linters.context_rule_checker import (
-    ContextRuleChecker,
     _build_issue,
     _line_number,
     _read_text,
@@ -16,8 +10,6 @@ from lintgate.linters.context_rule_checker import (
     _run_require_rule,
     _safe_relpath,
 )
-from lintgate.types import LintIssue
-
 
 # ── _line_number ─────────────────────────────────────────────────────
 

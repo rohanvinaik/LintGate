@@ -13,8 +13,7 @@ from lintgate.channels._test_channel_symbol_gate import (
     _filter_to_source_packages,
     _run_symbol_gate_if_enabled,
 )
-from lintgate.types import LintIssue
-
+from lintgate.types import LintIssue  # noqa: TC001
 
 # ── _filter_to_source_packages ───────────────────────────────────────
 

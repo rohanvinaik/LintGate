@@ -9,7 +9,6 @@ Targets 4 functions with VALUE, SWAP, and BOUNDARY mutant coverage:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
 from lintgate.controlplane.reporter.hook import (
@@ -24,7 +23,6 @@ from lintgate.controlplane.types import (
     CoherenceResult,
     MeshResult,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 

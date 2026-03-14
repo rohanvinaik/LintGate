@@ -10,7 +10,6 @@ from lintgate.change_classifiers._change_diff_analysis import (
 )
 from lintgate.types import DiffAnalysis
 
-
 # ── _as_text ────────────────────────────────────────────────────────────
 
 

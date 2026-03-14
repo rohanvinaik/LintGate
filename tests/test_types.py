@@ -12,17 +12,12 @@ from lintgate.types import (
     ChangeClassification,
     CoveragePolicy,
     DiffAnalysis,
-    LinterContext,
     LinterResult,
     LintIssue,
     LintTier,
     Prescription,
     ProjectConfig,
-    QualityPolicy,
-    SecurityPolicy,
-    ToleratedFalsePositive,
 )
-
 
 # ── LintIssue ───────────────────────────────────────────────────────────
 

@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from lintgate.hooks.session_start import handle
 
-
 # -- handle ---------------------------------------------------------------
 
 

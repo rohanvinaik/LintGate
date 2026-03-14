@@ -12,7 +12,6 @@ from lintgate.channels._waiver_logic import (
     parse_waivers,
 )
 
-
 # ── parse_waivers ─────────────────────────────────────────────────
 
 

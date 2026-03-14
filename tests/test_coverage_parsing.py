@@ -13,7 +13,6 @@ from lintgate.channels._coverage_parsing import (
 )
 from lintgate.channels._symbol_types import FileCoverage, SymbolSpan
 
-
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
 

@@ -20,7 +20,6 @@ from lintgate.linters.cognitive_complexity import (
     count_statements,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 

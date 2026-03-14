@@ -12,7 +12,6 @@ from lintgate.lint_runner import (
 )
 from lintgate.types import LinterContext, LinterResult, LintIssue, LintTier, ProjectConfig
 
-
 # ── _is_external_package ────────────────────────────────────────────────
 
 

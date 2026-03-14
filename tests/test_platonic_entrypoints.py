@@ -13,18 +13,14 @@ import os
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from lintgate.testing.platonic_entrypoints import (
     _apply_staged_artifacts,
-    _build_staged_apply_actions,
     _load_validation_from_path,
     run_platonic_apply,
     run_platonic_continue,
     run_platonic_project,
 )
 from lintgate.testing.platonic_workflow import PlatonicWorkflowRecord
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -48,14 +44,14 @@ def _make_workflow(
     step: str = "assess",
     **overrides: Any,
 ) -> PlatonicWorkflowRecord:
-    defaults: dict[str, Any] = dict(
-        workflow_id=workflow_id,
-        scope="file",
-        target="src/foo.py",
-        state=state,
-        step=step,
-        rel_file="src/foo.py",
-        config={
+    defaults: dict[str, Any] = {
+        "workflow_id": workflow_id,
+        "scope": "file",
+        "target": "src/foo.py",
+        "state": state,
+        "step": step,
+        "rel_file": "src/foo.py",
+        "config": {
             "max_iterations": 5,
             "target_spec_level": 0.80,
             "target_kill_rate": 0.70,
@@ -63,7 +59,7 @@ def _make_workflow(
             "reconciliation_threshold": 0.7,
             "workflow_dir": ".lintgate/platonic_workflows",
         },
-    )
+    }
     defaults.update(overrides)
     return PlatonicWorkflowRecord(**defaults)  # type: ignore[arg-type]
 
@@ -123,7 +119,7 @@ class TestApplyStagedArtifacts:
         staging = tmp_path / "staged" / "gen.py"
         staging.parent.mkdir(parents=True)
         staging.write_text("content", encoding="utf-8")
-        content_hash = hashlib.sha256("content".encode()).hexdigest()
+        content_hash = hashlib.sha256(b"content").hexdigest()
 
         artifacts = [
             {
@@ -144,7 +140,7 @@ class TestApplyStagedArtifacts:
         staging = tmp_path / "staged" / "gen.py"
         staging.parent.mkdir(parents=True)
         staging.write_text("promoted_content", encoding="utf-8")
-        content_hash = hashlib.sha256("promoted_content".encode()).hexdigest()
+        content_hash = hashlib.sha256(b"promoted_content").hexdigest()
 
         artifacts = [
             {

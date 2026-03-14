@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
+import ast
 import textwrap
 
 from lintgate.channels.contract_drift_detector import (
     AffectedTestSite,
-    ContractDriftResult,
     SignatureChange,
     _arity_from_annotation,
     _build_advisory,
@@ -21,11 +20,7 @@ from lintgate.channels.contract_drift_detector import (
     analyze_contract_drift,
     detect_param_changes,
     detect_return_arity_change,
-    find_affected_test_sites,
 )
-
-import ast
-
 
 # ── _arity_from_annotation ─────────────────────────────────────────────
 

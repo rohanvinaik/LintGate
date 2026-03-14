@@ -956,8 +956,7 @@ def impl_colab_sweep_generate(
         # Fallback: use top-level .py-containing dirs
         for entry in os.listdir(project_root):
             full = os.path.join(project_root, entry)
-            if os.path.isdir(full) and not entry.startswith(".") and entry != "tests":
-                if any(f.endswith(".py") for f in os.listdir(full)):
+            if os.path.isdir(full) and not entry.startswith(".") and entry != "tests" and any(f.endswith(".py") for f in os.listdir(full)):
                     src_dirs.append(entry)
 
     if mode == "golden_path":

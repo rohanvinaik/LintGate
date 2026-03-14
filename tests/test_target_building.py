@@ -6,9 +6,9 @@ mutation categories: VALUE, SWAP, BOUNDARY, STATE, TYPE.
 
 from __future__ import annotations
 
-import subprocess
 from unittest.mock import MagicMock, patch
 
+from lintgate.channels._symbol_types import SymbolSpan
 from lintgate.channels._target_building import (
     _add_overlapping_spans,
     _add_spans,
@@ -19,8 +19,6 @@ from lintgate.channels._target_building import (
     build_target_set,
     get_changed_line_ranges,
 )
-from lintgate.channels._symbol_types import SymbolSpan
-
 
 # ---------------------------------------------------------------------------
 # Helpers

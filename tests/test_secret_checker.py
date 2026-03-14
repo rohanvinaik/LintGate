@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from lintgate.linters.secret_checker import (
+    _LIKELY_PLACEHOLDER_RE,
     SecretChecker,
     _redact,
     _scan_line,
-    _LIKELY_PLACEHOLDER_RE,
 )
-from lintgate.types import LintIssue
-
 
 # ── _redact ──────────────────────────────────────────────────────────
 

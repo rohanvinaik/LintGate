@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import textwrap
 
 from lintgate.channels._test_hygiene_duplicates import (
@@ -11,8 +10,7 @@ from lintgate.channels._test_hygiene_duplicates import (
     _find_cross_file_duplicates,
     _thygiene003_duplicates,
 )
-from lintgate.types import LintIssue
-
+from lintgate.types import LintIssue  # noqa: TC001
 
 # ── _build_test_fingerprints ─────────────────────────────────────────
 

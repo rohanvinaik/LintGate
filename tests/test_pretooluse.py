@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from lintgate.hooks.pretooluse import _is_mutation
 
-
 # ── _is_mutation ──────────────────────────────────────────────────
 
 

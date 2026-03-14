@@ -14,7 +14,6 @@ import math
 import hypothesis.strategies as st
 from hypothesis import given, settings
 
-
 # ═══════════════════════════════════════════════════════════════════
 # BOUNDED property tests
 # ═══════════════════════════════════════════════════════════════════

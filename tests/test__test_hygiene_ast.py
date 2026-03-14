@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import os
 import textwrap
 
 from lintgate.channels._test_hygiene_ast import (
@@ -16,7 +15,6 @@ from lintgate.channels._test_hygiene_ast import (
     _parse_file,
     _read_source,
 )
-
 
 # ── _parse_file ──────────────────────────────────────────────────────────
 

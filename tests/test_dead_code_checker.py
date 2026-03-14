@@ -11,8 +11,8 @@ import ast
 import textwrap
 
 from lintgate.linters.dead_code_checker import (
-    DeadCodeChecker,
     _VULTURE_RE,
+    DeadCodeChecker,
     _ast_dead_code_check,
     _classify_vulture_finding,
     _collect_definitions,
@@ -25,7 +25,6 @@ from lintgate.linters.dead_code_checker import (
     _should_skip_definition,
     _suggestions_for_kind,
 )
-
 
 # ── helpers ──────────────────────────────────────────────────────────
 

@@ -10,8 +10,7 @@ Focuses on exact value assertions and branch coverage to kill mutants.
 from __future__ import annotations
 
 import json
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -25,7 +24,6 @@ from mcp_tools.habit_tools import (
     _load_state,
     register,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -184,7 +182,6 @@ class TestLoadState:
     def test_standalone_save_fn_calls_save_standalone(self, tmp_path, monkeypatch):
         """Standalone save_fn passes tracker_dict and config_overrides correctly."""
         from lintgate.habit_mode import HabitModeState
-        from lintgate.token_tracker import TokenTrackerState
 
         monkeypatch.setattr(
             "lintgate.controlplane.session_memory.get_or_create_session",
@@ -252,8 +249,6 @@ class TestImplDeclareMode:
         assert result["error"] == "mode must be 'habit' or 'standard'"
 
     def test_habit_mode_returns_status_ok(self, tmp_path, monkeypatch):
-        from lintgate.habit_mode import HabitModeState
-        from lintgate.token_tracker import TokenTrackerState
 
         monkeypatch.setattr(
             "lintgate.controlplane.session_memory.get_or_create_session",

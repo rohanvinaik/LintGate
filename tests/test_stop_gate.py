@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from lintgate.hooks.stop_gate import handle
 
-
 # -- handle ---------------------------------------------------------------
 
 

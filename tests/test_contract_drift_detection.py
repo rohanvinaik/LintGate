@@ -8,10 +8,7 @@ and _get_call_name.
 from __future__ import annotations
 
 import ast
-import os
 import textwrap
-
-import pytest
 
 from lintgate.channels._contract_drift_detection import (
     _find_call_sites,
@@ -22,10 +19,8 @@ from lintgate.channels._contract_drift_detection import (
     find_affected_test_sites,
 )
 from lintgate.channels._contract_drift_types import (
-    AffectedTestSite,
     SignatureChange,
 )
-
 
 # ── _get_call_name ──────────────────────────────────────────────────
 

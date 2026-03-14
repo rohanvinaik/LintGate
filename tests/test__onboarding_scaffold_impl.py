@@ -7,8 +7,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from mcp_tools._onboarding_scaffold_impl import (
-    _CONTROLPLANE_YAML_BLOCK,
-    _SCAFFOLD_EXCLUDED_SEGMENTS,
     _collect_python_files,
     _find_critical_paths,
     _has_subprocess_usage,
@@ -16,7 +14,6 @@ from mcp_tools._onboarding_scaffold_impl import (
     _reset_project_state,
     _scaffold_config_yaml,
 )
-
 
 # ---------------------------------------------------------------------------
 # _collect_python_files

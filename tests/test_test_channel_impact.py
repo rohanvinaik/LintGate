@@ -10,7 +10,6 @@ from lintgate.channels._test_channel_impact import (
     find_impacted_tests,
 )
 
-
 # ── _build_search_dirs ───────────────────────────────────────────────
 
 

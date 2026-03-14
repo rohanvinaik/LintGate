@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from mcp_tools._test_regeneration_apply import (
     _VALIDATION_FILE,
@@ -16,7 +15,6 @@ from mcp_tools._test_regeneration_apply import (
     impl_rebuild_apply,
     persist_validation,
 )
-
 
 # ---------------------------------------------------------------------------
 # persist_validation

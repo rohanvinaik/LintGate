@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from lintgate.compass import CompassAxis, CompassClaim, CompassDirective, CompassState
+from lintgate.compass import CompassAxis, CompassDirective, CompassState
 from lintgate.renderers._helpers import (
     axis_summary,
     format_directives,
     project_name,
     truncate_lines,
 )
-
 
 # ── format_directives ─────────────────────────────────────────────
 
