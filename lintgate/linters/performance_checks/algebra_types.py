@@ -111,6 +111,20 @@ class AlgebraicProperty:
         )
 
 
+class PurityTier(str, Enum):
+    """Three-tier purity classification for optimization safety.
+
+    PURE: Mathematically pure — no side effects, deterministic, safe to cache/parallelize.
+    STABLE_READ: Impure but read-only/stable — reads external state but doesn't mutate.
+        Safe for disk caches, preload strategies, memoized DB snapshots.
+    STATEFUL: Mutates state or non-deterministic. Requires careful handling.
+    """
+
+    PURE = "pure"
+    STABLE_READ = "stable_read"
+    STATEFUL = "stateful"
+
+
 @dataclass(frozen=True)
 class FunctionProperties:
     """Complete algebraic classification for a single function."""
@@ -120,6 +134,7 @@ class FunctionProperties:
     optimization_hints: tuple[str, ...]  # e.g., "cacheable", "parallelizable", "foldable"
     source_file: str | None = None  # File path where this function was found
     extraction_safety: str = "safe"  # "safe" | "needs_module_state" | "unsafe"
+    purity_tier: PurityTier = PurityTier.STATEFUL  # Defaults to most conservative
 
     def to_dict(self) -> dict[str, Any]:
         d = {
@@ -127,6 +142,7 @@ class FunctionProperties:
             "properties": [p.to_dict() for p in self.properties],
             "optimization_hints": list(self.optimization_hints),
             "extraction_safety": self.extraction_safety,
+            "purity_tier": self.purity_tier.value,
         }
         if self.source_file is not None:
             d["source_file"] = self.source_file
@@ -136,10 +152,58 @@ class FunctionProperties:
     def from_dict(cls, data: dict[str, Any]) -> FunctionProperties:
         purity = PurityResult.from_dict(data["purity"])
         properties = tuple(AlgebraicProperty.from_dict(p) for p in data.get("properties", []))
+        tier_str = data.get("purity_tier", "stateful")
+        try:
+            tier = PurityTier(tier_str)
+        except ValueError:
+            tier = PurityTier.STATEFUL
         return cls(
             purity=purity,
             properties=properties,
             optimization_hints=tuple(data.get("optimization_hints", [])),
             source_file=data.get("source_file"),
             extraction_safety=data.get("extraction_safety", "safe"),
+            purity_tier=tier,
         )
+
+
+# ── Purity tier classification ────────────────────────────────────────
+
+# Side-effect kinds that indicate read-only access (not mutation)
+_READ_ONLY_SIDE_EFFECTS = frozenset({
+    "impure_call",  # calls an impure function (may be read-only like db.query)
+    "attribute_read",  # reads an attribute (not mutation)
+})
+
+# Side-effect kinds that indicate true mutation
+_MUTATION_SIDE_EFFECTS = frozenset({
+    "global_write",
+    "io_call",
+    "mutation",
+    "nonlocal_write",
+})
+
+
+def classify_purity_tier(purity: PurityResult) -> PurityTier:
+    """Classify a function into the three-tier purity model.
+
+    PURE: is_pure=True (no side effects detected).
+    STABLE_READ: Not pure, but all detected side effects are read-only
+        (impure_call, attribute_read). No mutation evidence.
+    STATEFUL: Has mutation side effects (global_write, io_call, mutation).
+    """
+    if purity.is_pure:
+        return PurityTier.PURE
+
+    if not purity.side_effects:
+        # No side effects but not marked pure — conservative default
+        return PurityTier.STATEFUL
+
+    effect_kinds = {se.kind for se in purity.side_effects}
+
+    # If ALL side effects are read-only, classify as STABLE_READ
+    has_mutation = bool(effect_kinds & _MUTATION_SIDE_EFFECTS)
+    if not has_mutation:
+        return PurityTier.STABLE_READ
+
+    return PurityTier.STATEFUL
