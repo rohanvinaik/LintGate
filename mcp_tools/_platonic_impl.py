@@ -1036,7 +1036,7 @@ def impl_platonic_sweep(
             file_summary[fp] = {"functions_swept": 0, "avg_survival": 0.0, "total_survival": 0.0}
         file_summary[fp]["functions_swept"] += 1
         file_summary[fp]["total_survival"] += r["survival_rate"]
-    for fp, summary in file_summary.items():
+    for summary in file_summary.values():
         n = summary["functions_swept"]
         summary["avg_survival"] = round(summary["total_survival"] / n, 3) if n > 0 else 0.0
         del summary["total_survival"]

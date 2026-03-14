@@ -122,9 +122,13 @@ def _effective_body(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.st
     stmts: list[ast.stmt] = []
     for i, stmt in enumerate(node.body):
         # Skip leading docstring
-        if i == 0 and isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
-            if isinstance(stmt.value.value, str):
-                continue
+        if (
+            i == 0
+            and isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str)
+        ):
+            continue
         # Skip bare pass
         if isinstance(stmt, ast.Pass):
             continue
@@ -162,13 +166,9 @@ def _is_simple_accessor(
     if not isinstance(stmt, ast.Return) or stmt.value is None:
         return False
     val = stmt.value
-    # Direct self.attr
-    if _is_self_attr(val):
-        return True
-    # Chained: self.attr.subattr
-    if isinstance(val, ast.Attribute) and _is_self_attr(val.value):
-        return True
-    return False
+    return _is_self_attr(val) or (
+        isinstance(val, ast.Attribute) and _is_self_attr(val.value)
+    )
 
 
 def _is_identity_return(

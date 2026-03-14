@@ -73,7 +73,9 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
     # Re-import inside subprocess to avoid pickling issues
     sys.path.insert(0, project_root)
 
+    from lintgate.keys import canonical_function_key
     from lintgate.specification.mutation_engine import run_function_sampling
+    from lintgate.specification.mutation_filter import filter_categories
     from mcp_tools._mutation_impl import (
         MutationContext,
         detect_purity_map,
@@ -85,9 +87,6 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
         save_cached_state,
         walk_functions,
     )
-
-    from lintgate.keys import canonical_function_key
-    from lintgate.specification.mutation_filter import filter_categories
 
     full_path = os.path.join(project_root, rel_path)
     cache_dir = get_cache_dir(project_root)
@@ -140,7 +139,7 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
         if len(body) <= 1:
             # Single-statement body — likely trivial
             stmt = body[0] if body else None
-            if isinstance(stmt, ast.Return) or isinstance(stmt, ast.Expr):
+            if isinstance(stmt, (ast.Return, ast.Expr)):
                 result["functions_skipped_trivial"] += 1
                 continue
 
@@ -239,7 +238,7 @@ def main() -> None:
     print(f"  Skipped (trivial):  {total_trivial}")
     print(f"  Errors:             {total_errors}")
     print(f"  Results in:         {cache_dir}")
-    print(f"\nTo sync back to local: scp -r <colab>:.lintgate/mutation/ .lintgate/mutation/")
+    print("\nTo sync back to local: scp -r <colab>:.lintgate/mutation/ .lintgate/mutation/")
 
 
 if __name__ == "__main__":

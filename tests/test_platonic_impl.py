@@ -814,13 +814,14 @@ class TestStagedGeneration:
             manual_contract_candidates = []
 
         class FakeTarget:
-            class evidence:
+            class Evidence:
                 function_key = "mod.py::func"
 
+            evidence = Evidence()
             target_test_file = "tests/generated/test_mod.py"
 
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockRegen:
-            MockRegen.return_value.generate_for_file.return_value = FakeResult()
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_regen:
+            mock_regen.return_value.generate_for_file.return_value = FakeResult()
             result = generate_tests(
                 str(tmp_path),
                 str(tmp_path / "mod.py"),
@@ -849,13 +850,14 @@ class TestStagedGeneration:
             manual_contract_candidates = []
 
         class FakeTarget:
-            class evidence:
+            class Evidence:
                 function_key = "mod.py::func"
 
+            evidence = Evidence()
             target_test_file = "tests/generated/test_mod.py"
 
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockRegen:
-            MockRegen.return_value.generate_for_file.return_value = FakeResult()
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_regen:
+            mock_regen.return_value.generate_for_file.return_value = FakeResult()
             result = generate_tests(
                 str(tmp_path),
                 str(tmp_path / "mod.py"),
@@ -939,13 +941,14 @@ class TestExistingFilePolicy:
             manual_contract_candidates = []
 
         class FakeTarget:
-            class evidence:
+            class Evidence:
                 function_key = "mod.py::func"
 
+            evidence = Evidence()
             target_test_file = "tests/generated/test_mod.py"
 
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockRegen:
-            MockRegen.return_value.generate_for_file.return_value = FakeResult()
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_regen:
+            mock_regen.return_value.generate_for_file.return_value = FakeResult()
             result = generate_tests(
                 str(tmp_path),
                 str(tmp_path / "mod.py"),
@@ -973,13 +976,14 @@ class TestExistingFilePolicy:
             manual_contract_candidates = []
 
         class FakeTarget:
-            class evidence:
+            class Evidence:
                 function_key = "mod.py::func"
 
+            evidence = Evidence()
             target_test_file = "tests/generated/test_mod.py"
 
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockRegen:
-            MockRegen.return_value.generate_for_file.return_value = FakeResult()
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_regen:
+            mock_regen.return_value.generate_for_file.return_value = FakeResult()
             result = generate_tests(
                 str(tmp_path),
                 str(tmp_path / "mod.py"),
@@ -1459,14 +1463,6 @@ class TestProfilingResumeFromSnapshot:
             "start_ms": 0.0,
             "elapsed_ms": 200.0,
         }
-
-        iteration_numbers_seen: list[int] = []
-
-        original_run_sampling = (
-            _run_mutation_sampling.__wrapped__
-            if hasattr(_run_mutation_sampling, "__wrapped__")
-            else None
-        )
 
         def tracking_mutation_sampling(*args, **kwargs):
             return [{"function_key": "mod.py::func", "survival_rate": 0.0}]

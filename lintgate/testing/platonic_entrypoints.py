@@ -261,13 +261,12 @@ def run_platonic_apply(
 
     # READY_TO_APPLY_WITH_REVIEW is allowed when validation says review-only gap remains.
     validation_ok = False
-    if persisted_validation:
-        if (
-            persisted_validation.get("ready_to_apply")
-            or workflow.state == "READY_TO_APPLY_WITH_REVIEW"
-            and persisted_validation.get("review_ready_to_apply")
-        ):
-            validation_ok = True
+    if persisted_validation and (
+        persisted_validation.get("ready_to_apply")
+        or workflow.state == "READY_TO_APPLY_WITH_REVIEW"
+        and persisted_validation.get("review_ready_to_apply")
+    ):
+        validation_ok = True
 
     if not validation_ok or (
         saved_validation

@@ -1072,8 +1072,8 @@ class TestBuildTestFuncIndexDirect:
         (tmp_path / "tests" / "__init__.py").touch()
 
         index = _build_test_func_index(str(tmp_path), {})
-        assert f"tests.a.test_api.test_foo" in index
-        assert f"tests.b.test_api.test_bar" in index
+        assert "tests.a.test_api.test_foo" in index
+        assert "tests.b.test_api.test_bar" in index
 
 
 # ── Direct tests for _find_file_contexts ─────────────────────────

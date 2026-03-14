@@ -320,33 +320,39 @@ class TestBootstrapProject:
 
 class TestLoadErrorBootstrap:
     def test_missing_file_returns_empty(self, tmp_path):
-        with patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path):
-            with patch("lintgate._habit_bootstrap._project_hash", return_value="abc"):
-                result = load_error_bootstrap("/proj")
-                assert result == {}
+        with (
+            patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path),
+            patch("lintgate._habit_bootstrap._project_hash", return_value="abc"),
+        ):
+            result = load_error_bootstrap("/proj")
+            assert result == {}
 
     def test_valid_file_loaded(self, tmp_path):
-        with patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path):
-            with patch("lintgate._habit_bootstrap._project_hash", return_value="abc"):
-                (tmp_path / "abc_errors.json").write_text(
-                    json.dumps({"err1": {"count": 2}})
-                )
-                result = load_error_bootstrap("/proj")
-                assert result == {"err1": {"count": 2}}
+        with (
+            patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path),
+            patch("lintgate._habit_bootstrap._project_hash", return_value="abc"),
+        ):
+            (tmp_path / "abc_errors.json").write_text(json.dumps({"err1": {"count": 2}}))
+            result = load_error_bootstrap("/proj")
+            assert result == {"err1": {"count": 2}}
 
     def test_corrupted_json_returns_empty(self, tmp_path):
-        with patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path):
-            with patch("lintgate._habit_bootstrap._project_hash", return_value="abc"):
-                (tmp_path / "abc_errors.json").write_text("{broken json")
-                result = load_error_bootstrap("/proj")
-                assert result == {}
+        with (
+            patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path),
+            patch("lintgate._habit_bootstrap._project_hash", return_value="abc"),
+        ):
+            (tmp_path / "abc_errors.json").write_text("{broken json")
+            result = load_error_bootstrap("/proj")
+            assert result == {}
 
     def test_non_dict_returns_empty(self, tmp_path):
-        with patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path):
-            with patch("lintgate._habit_bootstrap._project_hash", return_value="abc"):
-                (tmp_path / "abc_errors.json").write_text("[1,2,3]")
-                result = load_error_bootstrap("/proj")
-                assert result == {}
+        with (
+            patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path),
+            patch("lintgate._habit_bootstrap._project_hash", return_value="abc"),
+        ):
+            (tmp_path / "abc_errors.json").write_text("[1,2,3]")
+            result = load_error_bootstrap("/proj")
+            assert result == {}
 
 
 # ── HabitBootstrapper._save_error_memory ──────────────────────────
@@ -354,15 +360,19 @@ class TestLoadErrorBootstrap:
 
 class TestSaveErrorMemory:
     def test_saves_error_file(self, tmp_path):
-        with patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path):
-            with patch("lintgate._habit_bootstrap._project_hash", return_value="xyz"):
-                HabitBootstrapper._save_error_memory("/proj", {"err": {"count": 1}})
-                saved = json.loads((tmp_path / "xyz_errors.json").read_text())
-                assert saved == {"err": {"count": 1}}
+        with (
+            patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path),
+            patch("lintgate._habit_bootstrap._project_hash", return_value="xyz"),
+        ):
+            HabitBootstrapper._save_error_memory("/proj", {"err": {"count": 1}})
+            saved = json.loads((tmp_path / "xyz_errors.json").read_text())
+            assert saved == {"err": {"count": 1}}
 
     def test_os_error_silenced(self, tmp_path):
-        with patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path / "no" / "such"):
-            with patch("lintgate._habit_bootstrap._project_hash", return_value="abc"):
-                # _HABIT_STATE_DIR.mkdir should handle this, but if parent is
-                # unwritable, OSError is silenced
-                HabitBootstrapper._save_error_memory("/proj", {"e": {"c": 1}})
+        with (
+            patch("lintgate._habit_bootstrap._HABIT_STATE_DIR", tmp_path / "no" / "such"),
+            patch("lintgate._habit_bootstrap._project_hash", return_value="abc"),
+        ):
+            # _HABIT_STATE_DIR.mkdir should handle this, but if parent is
+            # unwritable, OSError is silenced
+            HabitBootstrapper._save_error_memory("/proj", {"e": {"c": 1}})

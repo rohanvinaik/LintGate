@@ -27,8 +27,8 @@ class TestGenerateTests:
         mock_result.functions_covered = ["func"]
         mock_result.enrichment_sources = ["source"]
         mock_result.manual_contract_candidates = []
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockReg:
-            MockReg.return_value.generate_for_file.return_value = mock_result
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_reg:
+            mock_reg.return_value.generate_for_file.return_value = mock_result
             result = generate_tests(str(tmp_path), "mod.py", [target])
         assert result["files_written"] == 1
         assert result["target"] == "tests/test_mod.py"
@@ -36,8 +36,8 @@ class TestGenerateTests:
 
     def test_none_result_returns_zero(self, tmp_path):
         target = _make_target()
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockReg:
-            MockReg.return_value.generate_for_file.return_value = None
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_reg:
+            mock_reg.return_value.generate_for_file.return_value = None
             result = generate_tests(str(tmp_path), "mod.py", [target])
         assert result["files_written"] == 0
 
@@ -56,8 +56,8 @@ class TestGenerateTests:
         mock_result = MagicMock()
         mock_result.target_test_file = "tests/test_mod.py"
         mock_result.content = "# test"
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockReg:
-            MockReg.return_value.generate_for_file.return_value = mock_result
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_reg:
+            mock_reg.return_value.generate_for_file.return_value = mock_result
             with patch("builtins.open", side_effect=OSError("disk full")):
                 result = generate_tests(str(tmp_path), "mod.py", [target])
         assert result["files_written"] == 0
@@ -71,9 +71,9 @@ class TestGenerateTests:
         mock_result.functions_covered = ["func"]
         mock_result.enrichment_sources = []
         mock_result.manual_contract_candidates = []
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockReg:
-            MockReg.return_value.generate_for_file.return_value = mock_result
-            result = generate_tests(str(tmp_path), "mod.py", [target])
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_reg:
+            mock_reg.return_value.generate_for_file.return_value = mock_result
+            generate_tests(str(tmp_path), "mod.py", [target])
         expected = tmp_path / "tests" / "test_mod.py"
         assert expected.exists()
         assert expected.read_text() == "# test content"
@@ -89,8 +89,8 @@ class TestGenerateTests:
         (test_dir / "test_mod.py").write_text("def test_real():\n    assert 1 + 1 == 2\n")
         staging = tmp_path / "staging"
         staging.mkdir()
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockReg:
-            MockReg.return_value.generate_for_file.return_value = mock_result
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_reg:
+            mock_reg.return_value.generate_for_file.return_value = mock_result
             result = generate_tests(str(tmp_path), "mod.py", [target], staging_dir=str(staging))
         assert result["files_written"] == 0
         assert result["skipped_reason"] == "existing_tests_adequate"
@@ -107,8 +107,8 @@ class TestGenerateTests:
         mock_result.manual_contract_candidates = []
         staging = tmp_path / "staging"
         staging.mkdir()
-        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as MockReg:
-            MockReg.return_value.generate_for_file.return_value = mock_result
+        with patch("lintgate.testing.batch_regenerator.BatchRegenerator") as mock_reg:
+            mock_reg.return_value.generate_for_file.return_value = mock_result
             result = generate_tests(str(tmp_path), "mod.py", [target], staging_dir=str(staging))
         assert result["files_written"] == 1
         assert result["staging_path"].startswith(str(staging))

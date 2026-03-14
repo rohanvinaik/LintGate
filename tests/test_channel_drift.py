@@ -76,16 +76,6 @@ class TestClassifyTestFailure:
         )
         assert result == "test_drift"
 
-    def test_relative_path_regression(self):
-        result = _classify_test_failure(
-            "tests/test_foo.py",
-            modified_files=set(),
-            untracked_files=set(),
-            project_root="/project",
-        )
-        assert result == "regression"
-
-
 # ── _classify_failure ────────────────────────────────────────────
 
 

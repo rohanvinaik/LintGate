@@ -118,7 +118,7 @@ def compute_health(
         measured[2] = False  # CONVERGENCE index
 
     scalar = _geometric_mean(canonical, measured) if not vetoed else 0.0
-    axes_measured = {a.value: m for a, m in zip(HealthAxis, measured)}
+    axes_measured = {a.value: m for a, m in zip(HealthAxis, measured, strict=False)}
 
     return SpecificationHealth(
         axes=axes,
@@ -134,7 +134,7 @@ def _geometric_mean(values: list[float], measured: list[bool] | None = None) -> 
     """Geometric mean of non-negative values, skipping unmeasured axes."""
     if measured is None:
         measured = [True] * len(values)
-    active = [v for v, m in zip(values, measured) if m]
+    active = [v for v, m in zip(values, measured, strict=False) if m]
     if not active or any(v <= 0.0 for v in active):
         return 0.0
     return math.exp(sum(math.log(v) for v in active) / len(active))

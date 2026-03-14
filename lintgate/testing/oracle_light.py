@@ -276,22 +276,12 @@ def _state_property(
         method_name = _bare_name(fname)
         if class_name:
             class_import = _import_line(mod, class_name)
-            if rhs_kind == "param":
-                # self.attr = param → assert obj.attr == param_value
-                call_args = _call_args_from_sites(call_site_inputs) or "..."
-                assertion = (
-                    f"obj = {class_name}({call_args})\n"
-                    f"obj.{method_name}({call_args})\n"
-                    f"assert obj.{attr} == {rhs_value}"
-                )
-            else:
-                # self.attr = literal → assert obj.attr == literal
-                call_args = _call_args_from_sites(call_site_inputs) or "..."
-                assertion = (
-                    f"obj = {class_name}({call_args})\n"
-                    f"obj.{method_name}({call_args})\n"
-                    f"assert obj.{attr} == {rhs_value}"
-                )
+            call_args = _call_args_from_sites(call_site_inputs) or "..."
+            assertion = (
+                f"obj = {class_name}({call_args})\n"
+                f"obj.{method_name}({call_args})\n"
+                f"assert obj.{attr} == {rhs_value}"
+            )
             return ExecutableProperty(
                 category="STATE",
                 inputs={},
@@ -785,19 +775,14 @@ def generate_round_trip_test(
     if cls is None:
         return _round_trip_fallback(class_name, serialize_method, deserialize_func, module_path)
 
-    from dataclasses import MISSING
     from dataclasses import fields as dc_fields
 
     fields = dc_fields(cls)
     # Build constructor with non-default values that differ from defaults
     ctor_args: list[str] = []
     for f in fields:
-        if f.default is not MISSING or f.default_factory is not MISSING:
-            synth = synthesize_value(str(f.type) if f.type else "", f.name, mod_path)
-            ctor_args.append(f"{f.name}={synth.code}")
-        else:
-            synth = synthesize_value(str(f.type) if f.type else "", f.name, mod_path)
-            ctor_args.append(f"{f.name}={synth.code}")
+        synth = synthesize_value(str(f.type) if f.type else "", f.name, mod_path)
+        ctor_args.append(f"{f.name}={synth.code}")
 
     is_classmethod = "." in deserialize_func
     deser_name = deserialize_func.split(".")[-1] if is_classmethod else deserialize_func

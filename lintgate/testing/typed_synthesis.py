@@ -649,7 +649,7 @@ def _find_undefined_names(func_node: ast.FunctionDef, module_names: set[str]) ->
                     for elt in target.elts:
                         if isinstance(elt, ast.Name):
                             local_names.add(elt.id)
-        elif isinstance(child, ast.For):
+        elif isinstance(child, (ast.For, ast.comprehension)):
             if isinstance(child.target, ast.Name):
                 local_names.add(child.target.id)
             elif isinstance(child.target, ast.Tuple):
@@ -660,13 +660,6 @@ def _find_undefined_names(func_node: ast.FunctionDef, module_names: set[str]) ->
             for item in child.items:
                 if item.optional_vars and isinstance(item.optional_vars, ast.Name):
                     local_names.add(item.optional_vars.id)
-        elif isinstance(child, ast.comprehension):
-            if isinstance(child.target, ast.Name):
-                local_names.add(child.target.id)
-            elif isinstance(child.target, ast.Tuple):
-                for elt in child.target.elts:
-                    if isinstance(elt, ast.Name):
-                        local_names.add(elt.id)
         elif isinstance(child, ast.NamedExpr) and isinstance(child.target, ast.Name):
             local_names.add(child.target.id)
 

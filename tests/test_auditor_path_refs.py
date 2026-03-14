@@ -158,8 +158,11 @@ class TestFindDeadPaths:
         assert dead == []
 
     def test_bare_name_not_found(self, tmp_path):
-        dead = find_dead_paths(["nonexistent.py"], str(tmp_path))
-        assert dead == ["nonexistent.py"]
+        sub = tmp_path / "src"
+        sub.mkdir()
+        (sub / "other.py").write_text("pass")
+        dead = find_dead_paths(["utils.py"], str(tmp_path))
+        assert dead == ["utils.py"]
 
     def test_dotslash_prefix(self, tmp_path):
         (tmp_path / "config.yaml").write_text("key: val")
