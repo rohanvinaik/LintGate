@@ -71,7 +71,6 @@ def _count_source_files(project_root: str) -> int:
 
 def _build_notebook(
     repo_url: str,
-    branch: str,
     workers: int,
     budget_ms: int,
     cached_count: int,
@@ -252,7 +251,7 @@ def _build_notebook(
         _md(
             "# LintGate Mutation Sweep\n"
             "\n"
-            f"**Auto-generated** for `{branch}` branch. Fully self-contained.\n"
+            "**Auto-generated** for `main` branch. Fully self-contained.\n"
             "\n"
             f"- Source files to profile: **{source_count}**\n"
             f"- Already cached locally: **{cached_count}**\n"
@@ -263,10 +262,10 @@ def _build_notebook(
         ),
         _md("## Step 1: Clone & install"),
         _code(
-            "import os, shutil, subprocess, sys\n"
+            "import importlib, os, shutil, subprocess, sys\n"
             "\n"
             f'REPO_URL = "{repo_url}"\n'
-            f'BRANCH = "{branch}"\n'
+            'BRANCH = "main"\n'
             'PROJECT_DIR = "/content/lintgate"\n'
             "\n"
             "# Uncomment if repo is private:\n"
@@ -288,29 +287,38 @@ def _build_notebook(
             "    capture_output=True, text=True\n"
             ")\n"
             "if result.returncode != 0:\n"
-            "    print(f'ERROR: git clone failed!\\n{result.stderr}')\n"
-            "    print(f'Common fixes:')\n"
-            "    print(f'  - Branch not on remote? Try BRANCH = \"main\"')\n"
-            "    print(f'  - Private repo? Set GITHUB_TOKEN above')\n"
-            "    raise RuntimeError('Clone failed')\n"
-            "print(f'Cloned {BRANCH} to {PROJECT_DIR}')\n"
+            "    print(f'Branch {BRANCH} failed, trying default branch...')\n"
+            "    result = subprocess.run(\n"
+            "        ['git', 'clone', '--depth', '1', clone_url, PROJECT_DIR],\n"
+            "        capture_output=True, text=True\n"
+            "    )\n"
+            "    if result.returncode != 0:\n"
+            "        print(f'Clone failed: {result.stderr}')\n"
+            "        raise RuntimeError('Clone failed')\n"
+            "print(f'Cloned to {PROJECT_DIR}')\n"
             "\n"
-            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'pyyaml', 'packaging'], check=True)\n"
-            "r = subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR],\n"
-            "                   capture_output=True, text=True)\n"
-            "if r.returncode != 0:\n"
-            "    print(f'pip install -e failed, using sys.path fallback')\n"
-            "    sys.path.insert(0, PROJECT_DIR)\n"
-            "else:\n"
-            "    for m in list(sys.modules):\n"
-            "        if m.startswith('lintgate'):\n"
-            "            del sys.modules[m]\n"
+            "# Install deps\n"
+            "subprocess.run(\n"
+            "    [sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'],\n"
+            "    check=True\n"
+            ")\n"
+            "# Try editable install but don't rely on it\n"
+            "subprocess.run(\n"
+            "    [sys.executable, '-m', 'pip', 'install', '-q', '-e', PROJECT_DIR],\n"
+            "    capture_output=True, text=True\n"
+            ")\n"
             "\n"
-            "try:\n"
-            "    from lintgate.specification.mutation_engine import MutationCategory\n"
-            "except ImportError:\n"
+            "# Always ensure PROJECT_DIR is on sys.path (belt and suspenders)\n"
+            "if PROJECT_DIR not in sys.path:\n"
             "    sys.path.insert(0, PROJECT_DIR)\n"
-            "    from lintgate.specification.mutation_engine import MutationCategory\n"
+            "\n"
+            "# Purge any stale module cache entries, then invalidate import caches\n"
+            "for m in list(sys.modules):\n"
+            "    if m.startswith('lintgate') or m.startswith('mcp_tools'):\n"
+            "        del sys.modules[m]\n"
+            "importlib.invalidate_caches()\n"
+            "\n"
+            "from lintgate.specification.mutation_engine import MutationCategory\n"
             "print(f'Import OK. Categories: {[c.value for c in MutationCategory]}')\n"
             "print('Ready for Step 2!')"
         ),
@@ -541,7 +549,6 @@ def impl_colab_sweep_generate(
 
     notebook = _build_notebook(
         repo_url=git_info["repo_url"],
-        branch=git_info["branch"],
         workers=workers,
         budget_ms=budget_ms,
         cached_count=cached_count,
