@@ -3,23 +3,21 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 
-import pytest
-
+from lintgate.specification.prescriptive_sigma import (
+    compute_convergence_signal,
+    estimate_prescriptive_sigma,
+)
 from lintgate.specification.prescriptive_spec import (
     ForbiddenBehavior,
-    GenerationConstraint,
     Invariant,
     Predicate,
     PredicateOp,
     PrescriptiveSpec,
     PrescriptiveSpecComposer,
-    ResolvedTarget,
     StateTransition,
     StateVariable,
-    TestObligation,
     load_all_specs,
     load_spec,
     load_spec_index,
@@ -36,11 +34,6 @@ from lintgate.specification.prescriptive_spec import (
     save_spec,
     spec_coverage,
 )
-from lintgate.specification.prescriptive_sigma import (
-    compute_convergence_signal,
-    estimate_prescriptive_sigma,
-)
-
 
 # ── Predicate IR tests ────────────────────────────────────────────────
 

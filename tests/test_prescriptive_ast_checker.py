@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from lintgate.specification.prescriptive_ast_checker import (
-    CheckResult,
     check_invariants_against_ast,
 )
 from lintgate.specification.prescriptive_spec import (
@@ -12,7 +11,6 @@ from lintgate.specification.prescriptive_spec import (
     PredicateOp,
     pred_and,
     pred_custom,
-    pred_eq,
     pred_gt,
     pred_not,
     pred_true,

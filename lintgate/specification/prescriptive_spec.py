@@ -831,10 +831,8 @@ def _find_function_at(source: str, annotation_line: int) -> str | None:
         return None
 
     for node in _ast.walk(tree):
-        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-            # Function def within 3 lines of annotation
-            if abs(node.lineno - (annotation_line + 1)) <= 3:
-                return node.name
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and abs(node.lineno - (annotation_line + 1)) <= 3:
+            return node.name
     return None
 
 
@@ -933,12 +931,11 @@ def _build_func_index(project_root: str) -> set[str]:
             except (OSError, SyntaxError):
                 continue
             relpath = os.path.relpath(fpath, project_root).replace(os.sep, "/")
-            for node in _ast.walk(tree):
-                if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-                    if not node.name.startswith("_"):
-                        from lintgate.keys import canonical_function_key
+            from lintgate.keys import canonical_function_key
 
-                        func_keys.add(canonical_function_key(relpath, node.name))
+            for node in _ast.walk(tree):
+                if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and not node.name.startswith("_"):
+                    func_keys.add(canonical_function_key(relpath, node.name))
     return func_keys
 
 

@@ -6,8 +6,6 @@ import json
 import os
 import tempfile
 
-import pytest
-
 from lintgate.specification.prescriptive_backends import (
     CompilationTargets,
     DistributedBackend,
@@ -29,33 +27,32 @@ from lintgate.specification.prescriptive_spec import (
     pred_true,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
 def _make_pure_spec(**overrides) -> PrescriptiveSpec:
-    defaults = dict(
-        spec_id="test_pure",
-        target_key="mod::compute",
-        problem_class="pure",
-        mode="prospective",
-        parameters=[{"name": "x", "type": "int", "description": "input"}],
-        return_type="int",
-        invariants=[
+    defaults = {
+        "spec_id": "test_pure",
+        "target_key": "mod::compute",
+        "problem_class": "pure",
+        "mode": "prospective",
+        "parameters": [{"name": "x", "type": "int", "description": "input"}],
+        "return_type": "int",
+        "invariants": [
             Invariant("bounded", pred_gt("result", 0, "positive"), "positive result", "src", 0.8, "safety"),
         ],
-        forbidden_behaviors=[
+        "forbidden_behaviors": [
             ForbiddenBehavior(pred_custom("no mutation"), "no mutation", "src", "hard"),
         ],
-        algebraic_laws=[{"name": "idempotent", "property_name": "idempotent"}],
-        refinement_obligations=[
+        "algebraic_laws": [{"name": "idempotent", "property_name": "idempotent"}],
+        "refinement_obligations": [
             RefinementObligation("VALUE", True, "value mutants survived"),
             RefinementObligation("BOUNDARY", True, "boundary mutants survived"),
         ],
-        generation_constraints=[],
-        prescriptive_sigma=5,
-        created_at=1000.0,
-    )
+        "generation_constraints": [],
+        "prescriptive_sigma": 5,
+        "created_at": 1000.0,
+    }
     defaults.update(overrides)
     return PrescriptiveSpec(**defaults)
 
@@ -267,7 +264,8 @@ class TestPrescriptiveAdapter:
             result = adapter.materialize_test_file(targets, spec, out_path)
 
             assert os.path.isfile(result)
-            content = open(result).read()
+            with open(result) as f:
+                content = f.read()
             assert "import pytest" in content
             assert "def test_" in content
             # File starts with test_ so discover_test_files finds it

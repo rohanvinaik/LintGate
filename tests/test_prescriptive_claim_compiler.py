@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 
 from lintgate.specification.prescriptive_spec import (
-    Predicate,
     PredicateOp,
     compile_claim,
     pred_no_raise,
@@ -16,7 +14,6 @@ from lintgate.specification.prescriptive_spec import (
     pred_raises,
     pred_returns_non_null,
 )
-
 
 # ── Claim compiler ────────────────────────────────────────────────────
 
@@ -277,7 +274,8 @@ class TestEvidenceSplit:
 
         with tempfile.TemporaryDirectory() as tmp:
             # Write source file with matching return type
-            (open(os.path.join(tmp, "mod.py"), "w")).write("def compute(x: int) -> int:\n    return x + 1\n")
+            with open(os.path.join(tmp, "mod.py"), "w") as f:
+                f.write("def compute(x: int) -> int:\n    return x + 1\n")
 
             targets = PureBackend().compile(spec)
             adapter = PrescriptiveAdapter()
@@ -313,7 +311,8 @@ class TestEvidenceSplit:
         )
 
         with tempfile.TemporaryDirectory() as tmp:
-            (open(os.path.join(tmp, "mod.py"), "w")).write("def compute(x: int) -> int:\n    return x + 1\n")
+            with open(os.path.join(tmp, "mod.py"), "w") as f:
+                f.write("def compute(x: int) -> int:\n    return x + 1\n")
 
             targets = PureBackend().compile(spec)
             adapter = PrescriptiveAdapter()
@@ -377,7 +376,6 @@ class TestClaimToAST:
 class TestGraphProjection:
     def test_build_and_save_load(self):
         from lintgate.specification.prescriptive_projection import (
-            FunctionProjection,
             build_projection_from_ledger,
             load_projection,
             save_projection,

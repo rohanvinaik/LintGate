@@ -18,7 +18,7 @@ provides strong negative evidence. Absence of evidence is NOT a violation.
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from .prescriptive_spec import Invariant, Predicate, PredicateOp
@@ -234,11 +234,11 @@ def _check_pure(
         if isinstance(node, ast.Nonlocal):
             return CheckResult(inv_name, "fail", f"uses 'nonlocal {', '.join(node.names)}'")
     # Check for print/open/write calls (common I/O side effects)
-    _IO_CALLS = {"print", "open", "write", "sys.stdout.write", "sys.stderr.write"}
+    _io_calls = {"print", "open", "write", "sys.stdout.write", "sys.stderr.write"}
     for node in ast.walk(func):
         if isinstance(node, ast.Call):
             name = _call_to_str(node)
-            if name in _IO_CALLS:
+            if name in _io_calls:
                 return CheckResult(inv_name, "fail", f"calls I/O function '{name}'")
     return CheckResult(inv_name, "pass", "no global/nonlocal/IO side effects detected")
 
@@ -291,10 +291,10 @@ def _check_no_raise(
         if isinstance(node, ast.Raise):
             exc_desc = ""
             if node.exc:
-                try:
+                import contextlib
+
+                with contextlib.suppress(Exception):
                     exc_desc = ast.unparse(node.exc)[:40]
-                except Exception:
-                    pass
             return CheckResult(inv_name, "fail", f"raises {exc_desc}" if exc_desc else "contains raise")
     return CheckResult(inv_name, "pass", "no raise statements")
 

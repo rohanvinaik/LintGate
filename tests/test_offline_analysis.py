@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 
 from lintgate.offline_analysis import (
-    ActionItem,
     _analyze_project_structure,
     _analyze_test_coverage,
     _build_action_plan,
     _detect_src_dirs,
-    _load_prescriptive_state,
     run_full_analysis,
 )
 

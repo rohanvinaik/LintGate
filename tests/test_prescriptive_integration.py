@@ -2,43 +2,36 @@
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from unittest import mock
-
-import pytest
 
 from lintgate.specification.prescriptive_spec import (
     ForbiddenBehavior,
     Invariant,
     PrescriptiveSpec,
     pred_custom,
-    pred_eq,
     pred_gt,
     save_spec,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
 def _make_spec(target_key="mod::func", **overrides):
-    defaults = dict(
-        spec_id="test123",
-        target_key=target_key,
-        problem_class="pure",
-        mode="prospective",
-        invariants=[
+    defaults = {
+        "spec_id": "test123",
+        "target_key": target_key,
+        "problem_class": "pure",
+        "mode": "prospective",
+        "invariants": [
             Invariant("bounded", pred_gt("result", 0), "Result must be positive", "src", 0.8, "safety"),
             Invariant("typed", pred_custom("Must return int"), "Must return int", "src", 0.7, "alignment"),
         ],
-        forbidden_behaviors=[
+        "forbidden_behaviors": [
             ForbiddenBehavior(pred_custom("no mutation"), "Must not mutate input", "src", "hard"),
         ],
-        prescriptive_sigma=5,
-        created_at=1000.0,
-    )
+        "prescriptive_sigma": 5,
+        "created_at": 1000.0,
+    }
     defaults.update(overrides)
     return PrescriptiveSpec(**defaults)
 
@@ -415,7 +408,7 @@ class TestLivingContextRenderer:
 
     def test_living_context_trigger_handler(self):
         """prescriptive_spec_composed trigger produces patch content."""
-        from lintgate.context.bootstrap_patches import _patch_prescriptive_rules, ManagedSection
+        from lintgate.context.bootstrap_patches import _patch_prescriptive_rules
 
         # With no existing section — bootstraps fresh
         result = _patch_prescriptive_rules(
@@ -430,7 +423,7 @@ class TestLivingContextRenderer:
 
     def test_living_context_dedup(self):
         """Same target_key is not duplicated."""
-        from lintgate.context.bootstrap_patches import _patch_prescriptive_rules, ManagedSection
+        from lintgate.context.bootstrap_patches import ManagedSection, _patch_prescriptive_rules
 
         existing = ManagedSection(
             section_id="prescriptive_rules",

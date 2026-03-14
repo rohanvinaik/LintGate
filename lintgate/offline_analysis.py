@@ -25,7 +25,6 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-
 # ── Result types ──────────────────────────────────────────────────────
 
 
@@ -165,10 +164,7 @@ def _analyze_project_structure(
                     continue
                 full = os.path.join(dirpath, fn)
                 rel = os.path.relpath(full, project_root)
-                try:
-                    loc = sum(1 for _ in open(full, encoding="utf-8", errors="ignore"))
-                except OSError:
-                    loc = 0
+                loc = _count_lines(full)
                 total_loc += loc
                 if fn.startswith("test_") or fn.endswith("_test.py"):
                     test_files.append(rel)
@@ -508,9 +504,7 @@ def _analyze_test_coverage(
                 test_path = full_candidate
                 break
 
-        if test_path is None:
-            # Fuzzy: any test file containing the base name
-            if os.path.isdir(test_dir):
+        if test_path is None and os.path.isdir(test_dir):
                 for fn in os.listdir(test_dir):
                     if fn.startswith("test_") and clean in fn and fn.endswith(".py"):
                         test_path = os.path.join(test_dir, fn)

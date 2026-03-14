@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .prescriptive_spec import GenerationConstraint, PrescriptiveSpec
+    from .prescriptive_spec import PrescriptiveSpec
 
 
 # ── CompilationTargets ────────────────────────────────────────────────
