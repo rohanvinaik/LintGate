@@ -630,29 +630,38 @@ class TestLogVersionEvent:
 class TestDirectoryConstants:
     """Verify module-level Path constants point to expected locations (kills VALUE)."""
 
+    def _fresh(self, name: str) -> Path:
+        """Re-import to get unpatched value."""
+        import importlib
+        import lintgate.state as _mod
+        importlib.reload(_mod)
+        return getattr(_mod, name)
+
     def test_state_dir(self):
-        assert STATE_DIR == Path.home() / ".claude" / "lintgate" / "state"
+        assert self._fresh("STATE_DIR") == Path.home() / ".claude" / "lintgate" / "state"
 
     def test_metrics_dir(self):
-        assert METRICS_DIR == Path.home() / ".claude" / "lintgate" / "metrics"
+        assert self._fresh("METRICS_DIR") == Path.home() / ".claude" / "lintgate" / "metrics"
 
     def test_issue_memory_dir(self):
-        assert ISSUE_MEMORY_DIR == Path.home() / ".claude" / "lintgate" / "issue_memory"
+        assert self._fresh("ISSUE_MEMORY_DIR") == Path.home() / ".claude" / "lintgate" / "issue_memory"
 
     def test_version_dir(self):
-        assert VERSION_DIR == Path.home() / ".claude" / "lintgate" / "versioning"
+        assert self._fresh("VERSION_DIR") == Path.home() / ".claude" / "lintgate" / "versioning"
 
     def test_version_audit_dir(self):
-        assert VERSION_AUDIT_DIR == VERSION_DIR / "audits"
+        vdir = self._fresh("VERSION_DIR")
+        assert self._fresh("VERSION_AUDIT_DIR") == vdir / "audits"
 
     def test_version_events_dir(self):
-        assert VERSION_EVENTS_DIR == VERSION_DIR / "events"
+        vdir = self._fresh("VERSION_DIR")
+        assert self._fresh("VERSION_EVENTS_DIR") == vdir / "events"
 
     def test_runs_dir(self):
-        assert RUNS_DIR == Path.home() / ".claude" / "lintgate" / "runs"
+        assert self._fresh("RUNS_DIR") == Path.home() / ".claude" / "lintgate" / "runs"
 
     def test_perf_cache_dir(self):
-        assert PERF_CACHE_DIR == Path.home() / ".claude" / "lintgate" / "perf_cache"
+        assert self._fresh("PERF_CACHE_DIR") == Path.home() / ".claude" / "lintgate" / "perf_cache"
 
     def test_spec_cache_dir(self):
-        assert SPEC_CACHE_DIR == Path.home() / ".claude" / "lintgate" / "spec_cache"
+        assert self._fresh("SPEC_CACHE_DIR") == Path.home() / ".claude" / "lintgate" / "spec_cache"

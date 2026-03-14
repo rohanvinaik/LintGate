@@ -126,6 +126,54 @@ jobs:
           print(f"  Mean testability: {round(ledger.mean_testability, 2)}")
           print(f"  Stop criteria met: {ledger.stop_criteria_met_count}")
 
+          # ── Test count ──────────────────────────────────────────────
+          import subprocess
+          count_result = subprocess.run(
+              ["python", "-m", "pytest", "--co", "-q"],
+              capture_output=True, text=True, timeout=120,
+          )
+          test_count = sum(
+              1 for line in count_result.stdout.splitlines()
+              if "::" in line
+          )
+          print(f"\nTest count: {test_count}")
+
+          # ── Mutation kill rate (sampled, fast) ───────────────────────
+          killed, survived = 0, 0
+          import json as _json
+          from pathlib import Path as _Path
+          cache_dir = _Path(".lintgate/mutation")
+          if cache_dir.exists():
+              for mf in cache_dir.glob("*.json"):
+                  if mf.name in ("sweep_summary.json", "scheduler_state.json"):
+                      continue
+                  try:
+                      md = _json.loads(mf.read_text())
+                      killed += md.get("total_killed", 0)
+                      survived += md.get("total_survived", 0)
+                  except Exception:
+                      pass
+          if killed + survived == 0:
+              # Run fast sampled sweep if no cached data
+              print("No cached mutation data — running fast sweep...")
+              sweep_result = subprocess.run(
+                  ["python", "scripts/colab_mutation_sweep.py", "."],
+                  capture_output=True, text=True, timeout=600,
+                  env={**os.environ, "MUTATION_WORKERS": "2", "MUTATION_BUDGET_MS": "300"},
+              )
+              for mf in cache_dir.glob("*.json"):
+                  if mf.name in ("sweep_summary.json", "scheduler_state.json"):
+                      continue
+                  try:
+                      md = _json.loads(mf.read_text())
+                      killed += md.get("total_killed", 0)
+                      survived += md.get("total_survived", 0)
+                  except Exception:
+                      pass
+          total_mutants = killed + survived
+          kill_rate_pct = round(100 * killed / max(total_mutants, 1))
+          print(f"Mutation kill rate: {killed}/{total_mutants} ({kill_rate_pct}%)")
+
           # ── Write to GITHUB_ENV ─────────────────────────────────────
           with open(os.environ["GITHUB_ENV"], "a") as fh:
               fh.write(f"PURE_COUNT={manifest.pure_count}\n")
@@ -141,6 +189,10 @@ jobs:
               fh.write(f"REGIME_B={regime_b}\n")
               fh.write(f"REGIME_SOURCE={regime_source}\n")
               fh.write(f"SPEC_FUNCTIONS={n_funcs}\n")
+              fh.write(f"TEST_COUNT={test_count}\n")
+              fh.write(f"MUTATION_KILLED={killed}\n")
+              fh.write(f"MUTATION_TOTAL={total_mutants}\n")
+              fh.write(f"MUTATION_KILL_PCT={kill_rate_pct}\n")
           PY
 
       # ── Algebra badges ──────────────────────────────────────────────
@@ -186,6 +238,33 @@ jobs:
           status: "${{ env.REGIME_A }}A / ${{ env.REGIME_B }}B (${{ env.REGIME_SOURCE }})"
           color: "f59e0b"
           path: ".github/badges/regime.svg"
+
+      # ── Mutation & test badges ───────────────────────────────────
+
+      - name: Compute mutation badge color
+        id: mutation_color
+        run: |
+          pct=${{ env.MUTATION_KILL_PCT }}
+          if [ "$pct" -ge 80 ]; then echo "color=success" >> "$GITHUB_OUTPUT"
+          elif [ "$pct" -ge 60 ]; then echo "color=yellow" >> "$GITHUB_OUTPUT"
+          else echo "color=critical" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Mutation Kill Rate Badge
+        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        with:
+          label: "Mutation Kill Rate"
+          status: "${{ env.MUTATION_KILL_PCT }}% (${{ env.MUTATION_KILLED }}/${{ env.MUTATION_TOTAL }})"
+          color: "${{ steps.mutation_color.outputs.color }}"
+          path: ".github/badges/mutation-kill-rate.svg"
+
+      - name: Generate Test Count Badge
+        uses: emibcn/badge-action@4209421db54c8764d8932070ffd0f81715a629bf # v2.0.2
+        with:
+          label: "Tests"
+          status: "${{ env.TEST_COUNT }}"
+          color: "success"
+          path: ".github/badges/test-count.svg"
 
       # ── Push all badges to badges branch ────────────────────────────
 
