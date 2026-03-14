@@ -11,11 +11,14 @@ import pytest
 
 from lintgate.testing.fresh_validation import count_test_assertions, run_fresh_kill_rates
 from mcp_tools._test_regeneration_gates import (
+    _GATE_LABELS,
     _build_scorecard,
     _check_artifact_gate,
     _check_generated_gate,
+    _check_preserve_gate,
     _check_quality_gates,
     _is_review_ready_to_apply,
+    impl_rebuild_validate,
 )
 
 
@@ -478,6 +481,189 @@ class TestManifestRoundTrip:
         assert lev.tests_loaded == 4
         assert lev.covering_tests == ["tests/test_mod.py"]
         assert lev.assertion_count == 7
+
+
+class TestGateLabels:
+    def test_nine_gates(self):
+        assert len(_GATE_LABELS) == 9
+
+    def test_gate_keys_unique(self):
+        keys = [k for k, _ in _GATE_LABELS]
+        assert len(keys) == len(set(keys))
+
+    def test_expected_labels_present(self):
+        labels = [lbl for _, lbl in _GATE_LABELS]
+        assert "Preserve pass" in labels
+        assert "Kill rate" in labels
+        assert "Redundancy" in labels
+
+
+class TestCheckPreserveGate:
+    def test_no_preserve_files_passes(self):
+        plan = _mock_plan([])
+        plan.preserve_test_files = []
+        gate_pass, gates = _check_preserve_gate(plan, "/proj", {}, True)
+        assert gate_pass is True
+        assert gates["preserve_tests_pass"] is True
+
+    def test_nonexistent_preserve_files_passes(self, tmp_path):
+        plan = _mock_plan([])
+        plan.preserve_test_files = ["tests/test_gone.py"]
+        gate_pass, gates = _check_preserve_gate(plan, str(tmp_path), {}, True)
+        assert gate_pass is True
+        assert gates["preserve_tests_pass"] is True
+
+    @patch("mcp_tools._test_regeneration_gates.subprocess.run")
+    def test_pytest_pass_sets_true(self, mock_run, tmp_path):
+        test_file = tmp_path / "test_ok.py"
+        test_file.write_text("def test_ok(): pass")
+        plan = _mock_plan([])
+        plan.preserve_test_files = [str(test_file)]
+        mock_run.return_value = MagicMock(returncode=0)
+        gate_pass, gates = _check_preserve_gate(plan, str(tmp_path), {}, True)
+        assert gates["preserve_tests_pass"] is True
+        assert gate_pass is True
+
+    @patch("mcp_tools._test_regeneration_gates.subprocess.run")
+    def test_pytest_fail_sets_false(self, mock_run, tmp_path):
+        test_file = tmp_path / "test_fail.py"
+        test_file.write_text("def test_fail(): assert False")
+        plan = _mock_plan([])
+        plan.preserve_test_files = [str(test_file)]
+        mock_run.return_value = MagicMock(returncode=1)
+        gate_pass, gates = _check_preserve_gate(plan, str(tmp_path), {}, True)
+        assert gates["preserve_tests_pass"] is False
+        assert gate_pass is False
+
+
+class TestImplRebuildValidate:
+    @patch("mcp_tools._test_regeneration_apply.persist_validation")
+    @patch("mcp_tools._test_regeneration_gates._check_quality_gates")
+    @patch("mcp_tools._test_regeneration_gates._check_artifact_gate")
+    @patch("mcp_tools._test_regeneration_gates._check_generated_gate")
+    @patch("mcp_tools._test_regeneration_gates._check_preserve_gate")
+    @patch("mcp_tools._test_regeneration_gates._load_regen_config")
+    def test_no_manifest_returns_error(
+        self, mock_cfg, mock_preserve, mock_gen, mock_artifact, mock_quality, mock_persist
+    ):
+        helpers = {
+            "_validate_project_root": lambda p: "/proj",
+            "_json_dumps": lambda d, **kw: json.dumps(d),
+        }
+        with patch(
+            "lintgate.specification.test_regeneration_strategy.load_manifest",
+            return_value=None,
+        ):
+            result = impl_rebuild_validate(helpers, "/proj")
+            parsed = json.loads(result)
+            assert "error" in parsed
+
+    @patch("mcp_tools._test_regeneration_apply.persist_validation")
+    @patch("mcp_tools._test_regeneration_gates._check_quality_gates")
+    @patch("mcp_tools._test_regeneration_gates._check_artifact_gate")
+    @patch("mcp_tools._test_regeneration_gates._check_generated_gate")
+    @patch("mcp_tools._test_regeneration_gates._check_preserve_gate")
+    @patch("mcp_tools._test_regeneration_gates._load_regen_config")
+    def test_all_gates_pass_ready_to_apply(
+        self, mock_cfg, mock_preserve, mock_gen, mock_artifact, mock_quality, mock_persist
+    ):
+        mock_cfg_obj = MagicMock()
+        mock_cfg_obj.review_ceiling = 0.15
+        mock_cfg_obj.kill_floor = 0.70
+        mock_cfg_obj.zero_kill_ceiling = 0.05
+        mock_cfg.return_value = mock_cfg_obj
+
+        mock_preserve.return_value = (True, {"preserve_tests_pass": True})
+        mock_gen.return_value = (True, {"preserve_tests_pass": True, "generated_tests_run": True})
+        mock_artifact.return_value = (
+            True,
+            {
+                "preserve_tests_pass": True,
+                "generated_tests_run": True,
+                "no_artifact_auto_targets": True,
+            },
+        )
+        all_gates = {
+            "preserve_tests_pass": True,
+            "generated_tests_run": True,
+            "no_artifact_auto_targets": True,
+            "review_share_ok": True,
+            "kill_rate_ok": True,
+            "zero_kill_ok": True,
+            "effectiveness_ok": True,
+            "hygiene_ok": True,
+            "redundancy_ok": True,
+        }
+        mock_quality.return_value = (True, all_gates)
+
+        plan = MagicMock()
+        plan.summary.return_value = {"manual_review_share": 0.05}
+
+        helpers = {
+            "_validate_project_root": lambda p: "/proj",
+            "_json_dumps": lambda d, **kw: json.dumps(d),
+        }
+
+        with patch(
+            "lintgate.specification.test_regeneration_strategy.load_manifest",
+            return_value=plan,
+        ):
+            result = impl_rebuild_validate(helpers, "/proj")
+            parsed = json.loads(result)
+            assert parsed["ready_to_apply"] is True
+            assert "scorecard" in parsed
+            assert "next_actions" in parsed
+
+    @patch("mcp_tools._test_regeneration_apply.persist_validation")
+    @patch("mcp_tools._test_regeneration_gates._check_quality_gates")
+    @patch("mcp_tools._test_regeneration_gates._check_artifact_gate")
+    @patch("mcp_tools._test_regeneration_gates._check_generated_gate")
+    @patch("mcp_tools._test_regeneration_gates._check_preserve_gate")
+    @patch("mcp_tools._test_regeneration_gates._load_regen_config")
+    def test_review_ceiling_only_failure_sets_review_ready(
+        self, mock_cfg, mock_preserve, mock_gen, mock_artifact, mock_quality, mock_persist
+    ):
+        mock_cfg_obj = MagicMock()
+        mock_cfg_obj.review_ceiling = 0.10
+        mock_cfg_obj.kill_floor = 0.70
+        mock_cfg_obj.zero_kill_ceiling = 0.05
+        mock_cfg.return_value = mock_cfg_obj
+
+        mock_preserve.return_value = (True, {"preserve_tests_pass": True})
+        mock_gen.return_value = (True, {"preserve_tests_pass": True, "generated_tests_run": True})
+        def artifact_passthrough(plan, gates, gp):
+            gates["no_artifact_auto_targets"] = True
+            return gp, gates  # preserve incoming gate_pass
+
+        mock_artifact.side_effect = artifact_passthrough
+
+        def quality_passthrough(plan, root, helpers, gates, gp, **kwargs):
+            gates["kill_rate_ok"] = True
+            gates["zero_kill_ok"] = True
+            gates["effectiveness_ok"] = True
+            gates["hygiene_ok"] = True
+            gates["redundancy_ok"] = True
+            return gp, gates  # preserve incoming gate_pass (False from review ceiling)
+
+        mock_quality.side_effect = quality_passthrough
+
+        plan = MagicMock()
+        # review_share exceeds ceiling → only blocking failure
+        plan.summary.return_value = {"manual_review_share": 0.20}
+
+        helpers = {
+            "_validate_project_root": lambda p: "/proj",
+            "_json_dumps": lambda d, **kw: json.dumps(d),
+        }
+
+        with patch(
+            "lintgate.specification.test_regeneration_strategy.load_manifest",
+            return_value=plan,
+        ):
+            result = impl_rebuild_validate(helpers, "/proj")
+            parsed = json.loads(result)
+            assert parsed["ready_to_apply"] is False
+            assert parsed["review_ready_to_apply"] is True
 
 
 class TestQuarantinePathPreservation:
