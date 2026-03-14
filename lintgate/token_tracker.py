@@ -365,7 +365,7 @@ def do_api_calibration(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 — URL is hardcoded to https://api.anthropic.com
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310  # URL is hardcoded to https://api.anthropic.com
             body = json.loads(resp.read())
             input_tokens = body.get("input_tokens", 0)
             if input_tokens > 0:

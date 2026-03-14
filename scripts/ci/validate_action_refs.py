@@ -41,7 +41,7 @@ def main() -> None:
                 headers["Authorization"] = f"Bearer {token}"
             req = request.Request(f"https://api.github.com/repos/{repo}", headers=headers)
             try:
-                with request.urlopen(req, timeout=15) as resp:  # nosec B310 — URL is hardcoded to https://api.github.com
+                with request.urlopen(req, timeout=15) as resp:  # nosec B310  # URL is hardcoded to https://api.github.com
                     checked_repos[repo] = (200 <= resp.status < 300, f"HTTP {resp.status}")
             except error.HTTPError as exc:
                 checked_repos[repo] = (False, f"HTTP {exc.code}")

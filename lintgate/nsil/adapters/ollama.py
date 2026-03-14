@@ -132,7 +132,7 @@ class OllamaAdapter:
 
         try:
             req = self._make_request(url, payload)
-            with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310 — scheme validated in __post_init__
+            with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310  # scheme validated in __post_init__
                 yield from _iter_jsonl_stream(response)
         except urllib.error.URLError as e:
             yield f"[Error: Ollama unavailable - {e.reason}]"

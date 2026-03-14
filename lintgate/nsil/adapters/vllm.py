@@ -231,7 +231,7 @@ class VLLMAdapter:
 
         try:
             req = self._make_request(url, payload)
-            with urllib.request.urlopen(req, timeout=60) as response:  # nosec B310 — scheme validated in __post_init__
+            with urllib.request.urlopen(req, timeout=60) as response:  # nosec B310  # scheme validated in __post_init__
                 yield from _iter_sse_stream(response)
         except urllib.error.URLError as e:
             yield f"[Error: vLLM unavailable - {e.reason}]"

@@ -198,7 +198,7 @@ def _probe_runtime(
     try:
         req = urllib.request.Request(full_url, method="GET")
         req.add_header("Accept", "application/json")
-        with urllib.request.urlopen(req, timeout=timeout_ms / 1000.0) as response:  # nosec B310 — URL is hardcoded to http://localhost
+        with urllib.request.urlopen(req, timeout=timeout_ms / 1000.0) as response:  # nosec B310  # URL is hardcoded to http://localhost
             latency_ms = (time.perf_counter() - start_time) * 1000
             # Read response to ensure connection is valid
             _ = response.read()
