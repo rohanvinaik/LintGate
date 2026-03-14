@@ -373,14 +373,14 @@ def _build_notebook(
             "for f, k, t in file_rates[:15]:\n"
             "    print(f'  {k}/{t} ({k/t:.0%}) {f}')"
         ),
-        _md("## Step 4: Flat test coverage analysis (files > 400 LoC)"),
+        _md("## Step 4: Flat test coverage analysis"),
         _code(
             "import os, re\n"
             "from pathlib import Path\n"
             "\n"
             "SRC_DIRS = ['lintgate', 'mcp_tools']\n"
             "TEST_DIR = os.path.join(PROJECT_DIR, 'tests')\n"
-            "MIN_LOC = 400\n"
+            "MIN_LOC = 0\n"
             "\n"
             "def count_lines(path):\n"
             "    try:\n"
