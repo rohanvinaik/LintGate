@@ -37,6 +37,13 @@ from mcp_tools._controlplane_impl_details import (
     _populate_repairs,
 )
 
+# Lazy imports for finding_domain tests (may not exist in older versions)
+try:
+    from mcp_tools._controlplane_impl_details import _finding_domain, _summarize_findings
+except ImportError:
+    _finding_domain = None  # type: ignore[assignment]
+    _summarize_findings = None  # type: ignore[assignment]
+
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
 
@@ -834,3 +841,58 @@ class TestConstants:
         # next_actions must be last
         assert names[-1] == "next_actions"
         assert len(names) == 7
+
+
+# ── Finding domain tests (VALUE mutation targets) ─────────────────────
+
+
+class TestFindingDomain:
+    def test_deps_channel_is_environment(self):
+        assert _finding_domain({"channel": "deps"}) == "environment"
+
+    def test_pip_audit_linter_is_environment(self):
+        assert _finding_domain({"linter": "pip_audit"}) == "environment"
+
+    def test_version_checker_linter_is_environment(self):
+        assert _finding_domain({"linter": "version_checker"}) == "environment"
+
+    def test_lint_channel_is_code(self):
+        assert _finding_domain({"channel": "lint"}) == "code"
+
+    def test_empty_finding_is_code(self):
+        assert _finding_domain({}) == "code"
+
+    def test_unknown_channel_is_code(self):
+        assert _finding_domain({"channel": "tests", "linter": "ruff"}) == "code"
+
+
+class TestSummarizeFindings:
+    def test_empty_list(self):
+        result = _summarize_findings([])
+        assert result["domains"]["code"]["total"] == 0
+        assert result["domains"]["environment"]["total"] == 0
+        assert result["channels"] == {}
+
+    def test_code_finding_counted(self):
+        findings = [{"channel": "lint", "severity": "blocking"}]
+        result = _summarize_findings(findings)
+        assert result["domains"]["code"]["total"] == 1
+        assert result["domains"]["code"]["blocking"] == 1
+
+    def test_environment_finding_counted(self):
+        findings = [{"channel": "deps", "severity": "warning"}]
+        result = _summarize_findings(findings)
+        assert result["domains"]["environment"]["total"] == 1
+        assert result["domains"]["environment"]["warning"] == 1
+
+    def test_mixed_domains(self):
+        findings = [
+            {"channel": "lint", "severity": "blocking"},
+            {"channel": "deps", "severity": "warning"},
+            {"channel": "tests", "severity": "informational"},
+        ]
+        result = _summarize_findings(findings)
+        assert result["domains"]["code"]["total"] == 2
+        assert result["domains"]["environment"]["total"] == 1
+        assert result["channels"]["lint"] == 1
+        assert result["channels"]["deps"] == 1
