@@ -18,7 +18,7 @@ def _make_func(body_src: str) -> ast.FunctionDef:
     """Parse a function definition and return its AST node."""
     src = textwrap.dedent(f"""\
         def test_example():
-        {textwrap.indent(body_src, '    ')}
+        {textwrap.indent(body_src, "    ")}
     """)
     tree = ast.parse(src)
     return tree.body[0]
@@ -78,13 +78,15 @@ def test_is_stub_body_multiple_stmts_returns_none():
 
 def test_thygiene001_finds_stub(tmp_path: Path):
     test_file = tmp_path / "test_stub.py"
-    test_file.write_text(textwrap.dedent("""\
+    test_file.write_text(
+        textwrap.dedent("""\
         def test_placeholder():
             pass
 
         def test_real():
             assert 1 == 1
-    """))
+    """)
+    )
     findings = _thygiene001_stub_tests([str(test_file)])
     assert len(findings) == 1
     assert findings[0].kind == "THYGIENE001"
@@ -96,21 +98,25 @@ def test_thygiene001_finds_stub(tmp_path: Path):
 
 def test_thygiene001_no_findings_for_real_tests(tmp_path: Path):
     test_file = tmp_path / "test_real.py"
-    test_file.write_text(textwrap.dedent("""\
+    test_file.write_text(
+        textwrap.dedent("""\
         def test_add():
             assert 1 + 1 == 2
-    """))
+    """)
+    )
     findings = _thygiene001_stub_tests([str(test_file)])
     assert len(findings) == 0
 
 
 def test_thygiene001_class_method_stub(tmp_path: Path):
     test_file = tmp_path / "test_cls.py"
-    test_file.write_text(textwrap.dedent("""\
+    test_file.write_text(
+        textwrap.dedent("""\
         class TestMyClass:
             def test_todo(self):
                 ...
-    """))
+    """)
+    )
     findings = _thygiene001_stub_tests([str(test_file)])
     assert len(findings) == 1
     assert findings[0].evidence["function"] == "TestMyClass.test_todo"
@@ -122,11 +128,13 @@ def test_thygiene001_class_method_stub(tmp_path: Path):
 
 def test_thygiene002_returns_list(tmp_path: Path):
     test_file = tmp_path / "test_weak.py"
-    test_file.write_text(textwrap.dedent("""\
+    test_file.write_text(
+        textwrap.dedent("""\
         def test_exists():
             x = get_thing()
             assert x is not None
-    """))
+    """)
+    )
     # The function should not crash regardless of classifier availability
     findings = _thygiene002_weak_only([str(test_file)])
     assert isinstance(findings, list)

@@ -382,7 +382,16 @@ class TestFetchIssues:
 
 class TestPlanMissingLabels:
     def test_all_exist_no_plan(self):
-        existing = ["P0", "P1", "P2", "P3", "type:research", "type:architecture", "type:bug", "type:refactor"]
+        existing = [
+            "P0",
+            "P1",
+            "P2",
+            "P3",
+            "type:research",
+            "type:architecture",
+            "type:bug",
+            "type:refactor",
+        ]
         planned, applied = _plan_missing_labels(existing, "owner/repo", False)
         assert planned == []
         assert applied == []
@@ -416,7 +425,15 @@ class TestPlanMissingLabels:
         """When writing, priority labels should include --description flag."""
         with patch("mcp_tools._gh_organize_impl._run_gh") as mock_run_gh:
             mock_run_gh.return_value = {"ok": True}
-            existing = ["P0", "P1", "P2", "type:research", "type:architecture", "type:bug", "type:refactor"]
+            existing = [
+                "P0",
+                "P1",
+                "P2",
+                "type:research",
+                "type:architecture",
+                "type:bug",
+                "type:refactor",
+            ]
             _plan_missing_labels(existing, "owner/repo", write=True)
             call_args = mock_run_gh.call_args[0][0]
             assert "--description" in call_args
@@ -443,7 +460,10 @@ class TestImplProjectOrganizeAudit:
     @patch("mcp_tools._gh_organize_impl._check_wiki_enabled", return_value=[])
     @patch("mcp_tools._gh_organize_impl._check_milestones", return_value=[])
     @patch("mcp_tools._gh_organize_impl._fetch_issues", return_value=[])
-    @patch("mcp_tools._gh_organize_impl._fetch_labels", return_value=["P0", "P1", "P2", "P3", "type:bug"])
+    @patch(
+        "mcp_tools._gh_organize_impl._fetch_labels",
+        return_value=["P0", "P1", "P2", "P3", "type:bug"],
+    )
     @patch("mcp_tools._gh_organize_impl._repo_full_name", return_value="owner/repo")
     def test_full_audit_clean(self, _rfn, _fl, _fi, _cm, _cw, tmp_path):
         (tmp_path / ".github" / "ISSUE_TEMPLATE").mkdir(parents=True)
@@ -500,7 +520,12 @@ class TestImplProjectOrganizeApply:
     @patch("mcp_tools._gh_organize_impl._fetch_labels", return_value=["P0"])
     @patch("mcp_tools._gh_organize_impl._repo_full_name", return_value="owner/repo")
     def test_write_mode_labels(self, _rfn, _fl, mock_plan):
-        applied_action = {"type": "create_label", "name": "P1", "color": "D93F0B", "result": {"ok": True}}
+        applied_action = {
+            "type": "create_label",
+            "name": "P1",
+            "color": "D93F0B",
+            "result": {"ok": True},
+        }
         mock_plan.return_value = ([applied_action], [applied_action])
         result = impl_project_organize_apply("/tmp/test", ["labels"], True, self._helpers())
         assert result["write"] is True
@@ -510,8 +535,10 @@ class TestImplProjectOrganizeApply:
     @patch("mcp_tools._gh_organize_impl._repo_full_name", return_value="owner/repo")
     def test_default_actions_include_labels(self, _rfn):
         """When actions=None, defaults to ['labels', 'milestones']."""
-        with patch("mcp_tools._gh_organize_impl._fetch_labels", return_value=[]) as fl, \
-             patch("mcp_tools._gh_organize_impl._plan_missing_labels", return_value=([], [])):
+        with (
+            patch("mcp_tools._gh_organize_impl._fetch_labels", return_value=[]) as fl,
+            patch("mcp_tools._gh_organize_impl._plan_missing_labels", return_value=([], [])),
+        ):
             impl_project_organize_apply("/tmp/test", None, False, self._helpers())
             fl.assert_called_once()
 

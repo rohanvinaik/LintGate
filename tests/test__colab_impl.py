@@ -22,21 +22,15 @@ class TestGetGitInfo:
         url_proc = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="https://github.com/org/repo.git\n"
         )
-        branch_proc = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="feature-x\n"
-        )
+        branch_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="feature-x\n")
         with patch("subprocess.run", side_effect=[url_proc, branch_proc]):
             info = _get_git_info("/tmp/proj")
             assert info["repo_url"] == "https://github.com/org/repo.git"
             assert info["branch"] == "feature-x"
 
     def test_defaults_on_git_failure(self):
-        url_proc = subprocess.CompletedProcess(
-            args=[], returncode=1, stdout="", stderr="error"
-        )
-        branch_proc = subprocess.CompletedProcess(
-            args=[], returncode=1, stdout="", stderr="error"
-        )
+        url_proc = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="error")
+        branch_proc = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="error")
         with patch("subprocess.run", side_effect=[url_proc, branch_proc]):
             info = _get_git_info("/tmp/proj")
             assert info["repo_url"] == ""

@@ -43,10 +43,10 @@ class PredicateOp(str, Enum):
     TRUE = "true"
     CUSTOM = "custom"
     # Extended ops — AST-checkable semantic predicates
-    PURE = "pure"                   # function has no side effects (no global/nonlocal writes, no I/O)
+    PURE = "pure"  # function has no side effects (no global/nonlocal writes, no I/O)
     RETURNS_NON_NULL = "returns_non_null"  # no bare `return` or `return None`
-    RAISES = "raises"               # function body contains `raise ExceptionType`
-    NO_RAISE = "no_raise"           # function body contains no `raise` statements
+    RAISES = "raises"  # function body contains `raise ExceptionType`
+    NO_RAISE = "no_raise"  # function body contains no `raise` statements
     PARAM_COUNT_LTE = "param_count_lte"  # parameter count ≤ value
 
 
@@ -61,7 +61,7 @@ class Predicate:
 
     op: PredicateOp
     subject: str = ""
-    object: str = ""
+    target: str = ""  # comparison target (variable name)
     value: Any = None
     operands: list[Predicate] = field(default_factory=list)
     description: str = ""
@@ -70,8 +70,8 @@ class Predicate:
         d: dict[str, Any] = {"op": self.op.value}
         if self.subject:
             d["subject"] = self.subject
-        if self.object:
-            d["object"] = self.object
+        if self.target:
+            d["target"] = self.target
         if self.value is not None:
             d["value"] = self.value
         if self.operands:
@@ -87,7 +87,7 @@ class Predicate:
         return cls(
             op=PredicateOp(data.get("op", "true")),
             subject=str(data.get("subject", "")),
-            object=str(data.get("object", "")),
+            target=str(data.get("target", data.get("object", ""))),
             value=data.get("value"),
             operands=[cls.from_dict(o) for o in data.get("operands", [])],
             description=str(data.get("description", "")),
@@ -151,9 +151,7 @@ def pred_gte(subject: str, value: Any, desc: str = "") -> Predicate:
 
 
 def pred_type(subject: str, type_name: str, desc: str = "") -> Predicate:
-    return Predicate(
-        op=PredicateOp.IS_TYPE, subject=subject, value=type_name, description=desc
-    )
+    return Predicate(op=PredicateOp.IS_TYPE, subject=subject, value=type_name, description=desc)
 
 
 def pred_and(*preds: Predicate, desc: str = "") -> Predicate:
@@ -187,7 +185,8 @@ def pred_returns_non_null(desc: str = "must not return None") -> Predicate:
 
 def pred_raises(exception_type: str, desc: str = "") -> Predicate:
     return Predicate(
-        op=PredicateOp.RAISES, value=exception_type,
+        op=PredicateOp.RAISES,
+        value=exception_type,
         description=desc or f"must raise {exception_type}",
     )
 
@@ -198,7 +197,8 @@ def pred_no_raise(desc: str = "must not raise exceptions") -> Predicate:
 
 def pred_param_count_lte(max_params: int, desc: str = "") -> Predicate:
     return Predicate(
-        op=PredicateOp.PARAM_COUNT_LTE, value=max_params,
+        op=PredicateOp.PARAM_COUNT_LTE,
+        value=max_params,
         description=desc or f"at most {max_params} parameters",
     )
 
@@ -209,11 +209,29 @@ def pred_param_count_lte(max_params: int, desc: str = "") -> Predicate:
 # Each entry: (regex, factory_fn). First match wins.
 # The factory receives the regex match object and returns a Predicate.
 
-_TYPE_WORDS = frozenset({
-    "int", "str", "float", "bool", "list", "dict", "tuple", "set",
-    "bytes", "string", "integer", "number", "array", "sequence",
-    "mapping", "iterator", "generator", "coroutine", "object",
-})
+_TYPE_WORDS = frozenset(
+    {
+        "int",
+        "str",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "tuple",
+        "set",
+        "bytes",
+        "string",
+        "integer",
+        "number",
+        "array",
+        "sequence",
+        "mapping",
+        "iterator",
+        "generator",
+        "coroutine",
+        "object",
+    }
+)
 
 
 def _is_type_word(word: str) -> bool:
@@ -222,53 +240,57 @@ def _is_type_word(word: str) -> bool:
 
 _CLAIM_PATTERNS: list[tuple[re.Pattern, Any]] = [
     # Return type patterns (only match actual type names, not "None", "True", etc.)
-    (re.compile(r"\b(?:must|should|always)\s+return\s+(\w+)", re.I),
-     lambda m: pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None),
-    (re.compile(r"\breturn(?:s|ing)?\s+(?:a\s+)?(\w+)\b", re.I),
-     lambda m: pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None),
-
+    (
+        re.compile(r"\b(?:must|should|always)\s+return\s+(\w+)", re.I),
+        lambda m: (
+            pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None
+        ),
+    ),
+    (
+        re.compile(r"\breturn(?:s|ing)?\s+(?:a\s+)?(\w+)\b", re.I),
+        lambda m: (
+            pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None
+        ),
+    ),
     # Purity
-    (re.compile(r"\b(?:must be|is|keep|prefer)\s+pure\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-    (re.compile(r"\bno\s+side[\s-]?effects?\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-    (re.compile(r"\bside[\s-]?effect[\s-]?free\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-
+    (re.compile(r"\b(?:must be|is|keep|prefer)\s+pure\b", re.I), lambda m: pred_pure(m.group(0))),
+    (re.compile(r"\bno\s+side[\s-]?effects?\b", re.I), lambda m: pred_pure(m.group(0))),
+    (re.compile(r"\bside[\s-]?effect[\s-]?free\b", re.I), lambda m: pred_pure(m.group(0))),
     # Non-null return
-    (re.compile(r"\b(?:must|should)\s+not\s+return\s+None\b", re.I),
-     lambda m: pred_returns_non_null(m.group(0))),
-    (re.compile(r"\bnever\s+return(?:s)?\s+None\b", re.I),
-     lambda m: pred_returns_non_null(m.group(0))),
-    (re.compile(r"\bnon[\s-]?null(?:able)?\s+return\b", re.I),
-     lambda m: pred_returns_non_null(m.group(0))),
-
+    (
+        re.compile(r"\b(?:must|should)\s+not\s+return\s+None\b", re.I),
+        lambda m: pred_returns_non_null(m.group(0)),
+    ),
+    (
+        re.compile(r"\bnever\s+return(?:s)?\s+None\b", re.I),
+        lambda m: pred_returns_non_null(m.group(0)),
+    ),
+    (
+        re.compile(r"\bnon[\s-]?null(?:able)?\s+return\b", re.I),
+        lambda m: pred_returns_non_null(m.group(0)),
+    ),
     # Raises
-    (re.compile(r"\b(?:must|should)\s+raise\s+(\w+(?:Error|Exception)?)\b", re.I),
-     lambda m: pred_raises(m.group(1), m.group(0))),
-    (re.compile(r"\braises?\s+(\w+Error)\b", re.I),
-     lambda m: pred_raises(m.group(1), m.group(0))),
-
+    (
+        re.compile(r"\b(?:must|should)\s+raise\s+(\w+(?:Error|Exception)?)\b", re.I),
+        lambda m: pred_raises(m.group(1), m.group(0)),
+    ),
+    (re.compile(r"\braises?\s+(\w+Error)\b", re.I), lambda m: pred_raises(m.group(1), m.group(0))),
     # No raise / no exceptions
-    (re.compile(r"\b(?:must|should)\s+not\s+raise\b", re.I),
-     lambda m: pred_no_raise(m.group(0))),
-    (re.compile(r"\bno\s+exceptions?\b", re.I),
-     lambda m: pred_no_raise(m.group(0))),
-
+    (re.compile(r"\b(?:must|should)\s+not\s+raise\b", re.I), lambda m: pred_no_raise(m.group(0))),
+    (re.compile(r"\bno\s+exceptions?\b", re.I), lambda m: pred_no_raise(m.group(0))),
     # Must call
-    (re.compile(r"\b(?:must|should|always)\s+call\s+(\w+(?:\.\w+)*)\b", re.I),
-     lambda m: Predicate(op=PredicateOp.CALLS, subject=m.group(1),
-                          description=m.group(0))),
-
+    (
+        re.compile(r"\b(?:must|should|always)\s+call\s+(\w+(?:\.\w+)*)\b", re.I),
+        lambda m: Predicate(op=PredicateOp.CALLS, subject=m.group(1), description=m.group(0)),
+    ),
     # Must not mutate (→ pure as best approximation)
-    (re.compile(r"\b(?:must|should)\s+not\s+mutate\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-    (re.compile(r"\bimmutable\s+input", re.I),
-     lambda m: pred_pure(m.group(0))),
-
+    (re.compile(r"\b(?:must|should)\s+not\s+mutate\b", re.I), lambda m: pred_pure(m.group(0))),
+    (re.compile(r"\bimmutable\s+input", re.I), lambda m: pred_pure(m.group(0))),
     # Parameter count
-    (re.compile(r"\bat\s+most\s+(\d+)\s+param(?:eter)?s?\b", re.I),
-     lambda m: pred_param_count_lte(int(m.group(1)), m.group(0))),
+    (
+        re.compile(r"\bat\s+most\s+(\d+)\s+param(?:eter)?s?\b", re.I),
+        lambda m: pred_param_count_lte(int(m.group(1)), m.group(0)),
+    ),
 ]
 
 
@@ -577,9 +599,7 @@ class PrescriptiveSpec:
             parameters=data.get("parameters", []),
             return_type=str(data.get("return_type", "")),
             return_description=str(data.get("return_description", "")),
-            state_variables=[
-                StateVariable.from_dict(sv) for sv in data.get("state_variables", [])
-            ],
+            state_variables=[StateVariable.from_dict(sv) for sv in data.get("state_variables", [])],
             allowed_transitions=[
                 StateTransition.from_dict(t) for t in data.get("allowed_transitions", [])
             ],
@@ -593,12 +613,10 @@ class PrescriptiveSpec:
                 TestObligation.from_dict(to) for to in data.get("test_obligations", [])
             ],
             refinement_obligations=[
-                RefinementObligation.from_dict(ro)
-                for ro in data.get("refinement_obligations", [])
+                RefinementObligation.from_dict(ro) for ro in data.get("refinement_obligations", [])
             ],
             generation_constraints=[
-                GenerationConstraint.from_dict(gc)
-                for gc in data.get("generation_constraints", [])
+                GenerationConstraint.from_dict(gc) for gc in data.get("generation_constraints", [])
             ],
             prescriptive_sigma=int(data.get("prescriptive_sigma", 0)),
             compass_hash=str(data.get("compass_hash", "")),
@@ -791,7 +809,9 @@ def _scan_pspec_stubs(project_root: str) -> list[tuple[str, str]]:
                 dirs.clear()
                 continue
         # Prune hidden/system subdirs from further traversal
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("node_modules", "__pycache__")]
+        dirs[:] = [
+            d for d in dirs if not d.startswith(".") and d not in ("node_modules", "__pycache__")
+        ]
         for fname in files:
             if not fname.endswith(".py"):
                 continue
@@ -831,7 +851,10 @@ def _find_function_at(source: str, annotation_line: int) -> str | None:
         return None
 
     for node in _ast.walk(tree):
-        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and abs(node.lineno - (annotation_line + 1)) <= 3:
+        if (
+            isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+            and abs(node.lineno - (annotation_line + 1)) <= 3
+        ):
             return node.name
     return None
 
@@ -858,9 +881,7 @@ def _match_claims_to_symbols(
     if hasattr(compass, "axes"):
         for axis_name, axis in compass.axes.items():
             for j, claim in enumerate(axis.claims):
-                claim_items.append(
-                    (claim.text, claim.confidence, f"compass:{axis_name}:{j}")
-                )
+                claim_items.append((claim.text, claim.confidence, f"compass:{axis_name}:{j}"))
 
     # From theory profile claims
     for facet_name, facet_data in theory_profile.items():
@@ -934,21 +955,74 @@ def _build_func_index(project_root: str) -> set[str]:
             from lintgate.keys import canonical_function_key
 
             for node in _ast.walk(tree):
-                if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and not node.name.startswith("_"):
+                if isinstance(
+                    node, (_ast.FunctionDef, _ast.AsyncFunctionDef)
+                ) and not node.name.startswith("_"):
                     func_keys.add(canonical_function_key(relpath, node.name))
     return func_keys
 
 
-_STOPWORDS = frozenset({
-    "the", "and", "for", "that", "this", "with", "from", "are", "not",
-    "but", "has", "have", "was", "were", "been", "being", "will",
-    "should", "would", "could", "when", "where", "which", "what",
-    "than", "then", "each", "every", "other", "some", "most",
-    "more", "also", "just", "only", "both", "such", "very",
-    "true", "false", "none", "self", "return", "class", "import",
-    "def", "pass", "raise", "try", "except", "finally", "while",
-    "else", "elif", "yield", "async", "await",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "that",
+        "this",
+        "with",
+        "from",
+        "are",
+        "not",
+        "but",
+        "has",
+        "have",
+        "was",
+        "were",
+        "been",
+        "being",
+        "will",
+        "should",
+        "would",
+        "could",
+        "when",
+        "where",
+        "which",
+        "what",
+        "than",
+        "then",
+        "each",
+        "every",
+        "other",
+        "some",
+        "most",
+        "more",
+        "also",
+        "just",
+        "only",
+        "both",
+        "such",
+        "very",
+        "true",
+        "false",
+        "none",
+        "self",
+        "return",
+        "class",
+        "import",
+        "def",
+        "pass",
+        "raise",
+        "try",
+        "except",
+        "finally",
+        "while",
+        "else",
+        "elif",
+        "yield",
+        "async",
+        "await",
+    }
+)
 
 
 # ── Composer ──────────────────────────────────────────────────────────
@@ -1104,9 +1178,9 @@ class PrescriptiveSpecComposer:
         covering_tests = getattr(trace, "covering_tests", []) if trace else []
 
         spec = PrescriptiveSpec(
-            spec_id=hashlib.sha256(
-                f"{func_spec.function_key}:{time.time()}".encode()
-            ).hexdigest()[:12],
+            spec_id=hashlib.sha256(f"{func_spec.function_key}:{time.time()}".encode()).hexdigest()[
+                :12
+            ],
             target_key=func_spec.function_key,
             problem_class=problem_class,
             mode="retrospective",

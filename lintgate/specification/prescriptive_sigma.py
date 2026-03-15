@@ -28,7 +28,9 @@ def estimate_prescriptive_sigma(spec: PrescriptiveSpec) -> int:
 
     algebraic_count = len(spec.algebraic_laws)
 
-    sigma = state_factor + invariant_count + forbidden_count + interface_complexity + algebraic_count
+    sigma = (
+        state_factor + invariant_count + forbidden_count + interface_complexity + algebraic_count
+    )
 
     # Minimum sigma of 1 for any non-empty spec
     return max(sigma, 1) if (invariant_count or forbidden_count or spec.parameters) else 0

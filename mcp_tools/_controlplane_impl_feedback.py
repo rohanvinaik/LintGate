@@ -222,20 +222,28 @@ def _select_repair_source(session, run_id):
         if run_details is not None:
             return None, run_details, []
 
-        return None, None, [
-            {
-                "reason": "run_not_found",
-                "detail": f"Run {run_id} is not available in session memory or persisted state.",
-            }
-        ]
+        return (
+            None,
+            None,
+            [
+                {
+                    "reason": "run_not_found",
+                    "detail": f"Run {run_id} is not available in session memory or persisted state.",
+                }
+            ],
+        )
 
     if not session.snapshots:
-        return None, None, [
-            {
-                "reason": "no_snapshots",
-                "detail": "No ControlPlane snapshots in session. Run controlplane_run first.",
-            }
-        ]
+        return (
+            None,
+            None,
+            [
+                {
+                    "reason": "no_snapshots",
+                    "detail": "No ControlPlane snapshots in session. Run controlplane_run first.",
+                }
+            ],
+        )
 
     latest = session.snapshots[-1]
     return latest, load_controlplane_run(latest.run_id) if latest.run_id else None, []

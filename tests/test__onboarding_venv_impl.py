@@ -141,7 +141,10 @@ class TestEnsureProjectVenv:
     def test_returns_error_on_create_failure(self):
         mock_ot = MagicMock()
         mock_ot._project_venv_python.return_value = None
-        mock_ot._venv_create_command.return_value = (["python3", "-m", "venv", ".venv"], "python_venv")
+        mock_ot._venv_create_command.return_value = (
+            ["python3", "-m", "venv", ".venv"],
+            "python_venv",
+        )
         create_result = MagicMock()
         create_result.returncode = 1
         create_result.stderr = "Permission denied"
@@ -173,7 +176,14 @@ class TestInstallCommandsForPackage:
         with patch("mcp_tools._onboarding_venv_impl._ot", return_value=mock_ot):
             cmds = _install_commands_for_package("/proj", "ty")
             assert len(cmds) == 2
-            assert cmds[0] == ["/usr/local/bin/uv", "pip", "install", "--python", "/proj/.venv/bin/python", "ty"]
+            assert cmds[0] == [
+                "/usr/local/bin/uv",
+                "pip",
+                "install",
+                "--python",
+                "/proj/.venv/bin/python",
+                "ty",
+            ]
             assert cmds[1] == ["/proj/.venv/bin/python", "-m", "pip", "install", "ty"]
 
     def test_returns_only_pip_when_no_uv(self):
@@ -287,9 +297,7 @@ class TestAutoInstallOptionalTools:
 
     def test_reports_failure_on_install_error(self):
         mock_ot = MagicMock()
-        mock_ot._install_commands_for_package.return_value = [
-            ["pip", "install", "pip-audit"]
-        ]
+        mock_ot._install_commands_for_package.return_value = [["pip", "install", "pip-audit"]]
         install_result = MagicMock()
         install_result.returncode = 1
         install_result.stderr = "some error"

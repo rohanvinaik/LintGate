@@ -310,30 +310,36 @@ class TestAppendStatusPairs:
     def test_no_loud_channels(self) -> None:
         """VALUE: all passing channels produce no loud pair."""
         pairs: list[tuple[str, str]] = []
-        mesh = _make_mesh(channel_results=[
-            ChannelResult(channel="lint", status="pass"),
-            ChannelResult(channel="test", status="pass"),
-        ])
+        mesh = _make_mesh(
+            channel_results=[
+                ChannelResult(channel="lint", status="pass"),
+                ChannelResult(channel="test", status="pass"),
+            ]
+        )
         _append_status_pairs(pairs, mesh, 0, [])
         assert all(k != "loud" for k, _ in pairs)
 
     def test_loud_channels_fail(self) -> None:
         """VALUE: failing channels appear in loud pair with status."""
         pairs: list[tuple[str, str]] = []
-        mesh = _make_mesh(channel_results=[
-            ChannelResult(channel="lint", status="fail"),
-            ChannelResult(channel="test", status="pass"),
-        ])
+        mesh = _make_mesh(
+            channel_results=[
+                ChannelResult(channel="lint", status="fail"),
+                ChannelResult(channel="test", status="pass"),
+            ]
+        )
         _append_status_pairs(pairs, mesh, 0, [])
         assert ("loud", "lint:fail") in pairs
 
     def test_loud_channels_error_and_timeout(self) -> None:
         """VALUE: error and timeout statuses are included in loud."""
         pairs: list[tuple[str, str]] = []
-        mesh = _make_mesh(channel_results=[
-            ChannelResult(channel="lint", status="error"),
-            ChannelResult(channel="test", status="timeout"),
-        ])
+        mesh = _make_mesh(
+            channel_results=[
+                ChannelResult(channel="lint", status="error"),
+                ChannelResult(channel="test", status="timeout"),
+            ]
+        )
         _append_status_pairs(pairs, mesh, 0, [])
         loud_pairs = [v for k, v in pairs if k == "loud"]
         assert len(loud_pairs) == 1
@@ -344,9 +350,11 @@ class TestAppendStatusPairs:
     def test_loud_channels_skip_not_included(self) -> None:
         """BOUNDARY: skip status is NOT included in loud."""
         pairs: list[tuple[str, str]] = []
-        mesh = _make_mesh(channel_results=[
-            ChannelResult(channel="lint", status="skip"),
-        ])
+        mesh = _make_mesh(
+            channel_results=[
+                ChannelResult(channel="lint", status="skip"),
+            ]
+        )
         _append_status_pairs(pairs, mesh, 0, [])
         assert all(k != "loud" for k, _ in pairs)
 
@@ -381,9 +389,11 @@ class TestAppendStatusPairs:
     def test_ordering_loud_before_resurface_before_cycles(self) -> None:
         """SWAP: loud appears before resurface, which appears before cycles."""
         pairs: list[tuple[str, str]] = []
-        mesh = _make_mesh(channel_results=[
-            ChannelResult(channel="lint", status="fail"),
-        ])
+        mesh = _make_mesh(
+            channel_results=[
+                ChannelResult(channel="lint", status="fail"),
+            ]
+        )
         _append_status_pairs(pairs, mesh, 2, ["a<->b"])
         keys = [k for k, _ in pairs]
         assert keys.index("loud") < keys.index("resurface")
@@ -392,9 +402,11 @@ class TestAppendStatusPairs:
     def test_parameter_order_mesh_vs_resurfaced(self) -> None:
         """SWAP: swapping mesh_result and resurfaced_count args would break results."""
         pairs_correct: list[tuple[str, str]] = []
-        mesh = _make_mesh(channel_results=[
-            ChannelResult(channel="lint", status="fail"),
-        ])
+        mesh = _make_mesh(
+            channel_results=[
+                ChannelResult(channel="lint", status="fail"),
+            ]
+        )
         _append_status_pairs(pairs_correct, mesh, 5, [])
         # Verify resurface has correct value from resurfaced_count, not mesh
         assert ("resurface", "5") in pairs_correct

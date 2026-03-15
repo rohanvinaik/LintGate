@@ -35,6 +35,7 @@ Force re-profile (clear cache first):
     Use this after improving test linkage (e.g., moving local imports to
     top-level) so the profiler picks up the enhanced test discovery.
 """
+
 from __future__ import annotations
 
 import ast
@@ -181,6 +182,7 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
             # Add discovery diagnostics to cached output
             if discovery_diag:
                 from dataclasses import asdict
+
                 result_dict["discovery_diagnostics"] = asdict(discovery_diag)
 
             # Determine discovery state

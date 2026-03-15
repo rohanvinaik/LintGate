@@ -239,9 +239,7 @@ def discover_semantic_test_files(
         List of (test_file_path, score) tuples, sorted by score descending.
     """
     full_source = (
-        os.path.join(project_root, source_file)
-        if not os.path.isabs(source_file)
-        else source_file
+        os.path.join(project_root, source_file) if not os.path.isabs(source_file) else source_file
     )
     if not os.path.isfile(full_source):
         return []
@@ -255,7 +253,9 @@ def discover_semantic_test_files(
         for dirpath, dirnames, filenames in os.walk(test_dir):
             dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"]
             for fname in filenames:
-                if fname.endswith(".py") and (fname.startswith("test_") or fname.endswith("_test.py")):
+                if fname.endswith(".py") and (
+                    fname.startswith("test_") or fname.endswith("_test.py")
+                ):
                     test_files.append(os.path.join(dirpath, fname))
 
     if not test_files:

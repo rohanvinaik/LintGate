@@ -53,7 +53,9 @@ def _gap(interview: bool = False) -> SimpleNamespace:
     )
 
 
-def _axis(name: str, depth: int = 0, claims: list | None = None, summary: str = "") -> SimpleNamespace:
+def _axis(
+    name: str, depth: int = 0, claims: list | None = None, summary: str = ""
+) -> SimpleNamespace:
     return SimpleNamespace(name=name, depth=depth, claims=claims or [], summary=summary)
 
 
@@ -247,10 +249,16 @@ class TestSaveModeExact:
 class TestBuildHooksConfigExact:
     def test_exact_six_hook_keys(self) -> None:
         config = _build_hooks_config()
-        assert sorted(config.keys()) == sorted([
-            "SessionStart", "UserPromptSubmit", "PreToolUse",
-            "PreCompact", "Stop", "SessionEnd",
-        ])
+        assert sorted(config.keys()) == sorted(
+            [
+                "SessionStart",
+                "UserPromptSubmit",
+                "PreToolUse",
+                "PreCompact",
+                "Stop",
+                "SessionEnd",
+            ]
+        )
 
     def test_session_start_exact_structure(self) -> None:
         config = _build_hooks_config()
@@ -503,7 +511,10 @@ class TestImplStatusExact:
 
     def test_directives_count_exact(self) -> None:
         compass = _compass(
-            directives=[SimpleNamespace(kind="toward", text="a"), SimpleNamespace(kind="away", text="b")],
+            directives=[
+                SimpleNamespace(kind="toward", text="a"),
+                SimpleNamespace(kind="away", text="b"),
+            ],
             gap_report=_gap(interview=False),
         )
         with (
@@ -553,9 +564,7 @@ class TestImplCheckExact:
     def test_true_north_truncated_to_120(self) -> None:
         from lintgate.compass import CompassAxis, CompassState
 
-        compass = CompassState(
-            axes={"problem": CompassAxis(name="problem", summary="X" * 200)}
-        )
+        compass = CompassState(axes={"problem": CompassAxis(name="problem", summary="X" * 200)})
         with patch("lintgate.compass_io.load_compass", return_value=compass):
             result = _impl_check("/root", "action")
         assert len(result["true_north"]) == 120
@@ -869,11 +878,15 @@ class TestApplyAnswersExact:
             patch("lintgate.gap_detector.apply_answer", return_value=claim),
             patch("lintgate.compass_io.save_compass"),
         ):
-            result = _apply_answers("/root", compass, {
-                "problem:0": "valid",
-                "bad": "no colon",
-                "also:bad:extra": "not parsed",
-            })
+            result = _apply_answers(
+                "/root",
+                compass,
+                {
+                    "problem:0": "valid",
+                    "bad": "no colon",
+                    "also:bad:extra": "not parsed",
+                },
+            )
         # "bad" has no colon -> skipped
         # "also:bad:extra" splits on first colon -> parts[1] = "bad:extra" which fails int()
         # Only "problem:0" should succeed
@@ -1052,9 +1065,7 @@ class TestImplTheoryFreezeExact:
 
         ms = _mode("theory")
         # problem has depth=0, solution missing entirely
-        compass = CompassState(
-            axes={"problem": CompassAxis(name="problem", depth=0)}
-        )
+        compass = CompassState(axes={"problem": CompassAxis(name="problem", depth=0)})
         with (
             patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=compass),

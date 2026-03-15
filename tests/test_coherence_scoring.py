@@ -16,7 +16,9 @@ from lintgate.controlplane.types import ChannelResult
 from lintgate.types import LintIssue
 
 
-def _make_issue(severity: str = "warning", kind: str = "test-kind", file: str | None = None) -> LintIssue:
+def _make_issue(
+    severity: str = "warning", kind: str = "test-kind", file: str | None = None
+) -> LintIssue:
     return LintIssue(
         linter="test",
         kind=kind,
@@ -45,12 +47,14 @@ def _make_result(
 
 class TestFindingSeverityCounts:
     def test_counts_by_severity(self):
-        result = _make_result(findings=[
-            _make_issue("blocking"),
-            _make_issue("blocking"),
-            _make_issue("warning"),
-            _make_issue("informational"),
-        ])
+        result = _make_result(
+            findings=[
+                _make_issue("blocking"),
+                _make_issue("blocking"),
+                _make_issue("warning"),
+                _make_issue("informational"),
+            ]
+        )
         counts = finding_severity_counts(result)
         assert counts == {"blocking": 2, "warning": 1, "informational": 1}
 
@@ -166,8 +170,12 @@ class TestOrderedFailedChannels:
 class TestFindSharedFiles:
     def test_shared_across_two_channels(self):
         results = [
-            _make_result(channel="lint", findings=[_make_issue(file="a.py"), _make_issue(file="b.py")]),
-            _make_result(channel="tests", findings=[_make_issue(file="b.py"), _make_issue(file="c.py")]),
+            _make_result(
+                channel="lint", findings=[_make_issue(file="a.py"), _make_issue(file="b.py")]
+            ),
+            _make_result(
+                channel="tests", findings=[_make_issue(file="b.py"), _make_issue(file="c.py")]
+            ),
         ]
         shared = find_shared_files(results)
         assert shared == {"b.py"}
@@ -239,11 +247,13 @@ class TestIsCrossDomainFailure:
 
 class TestTopFindingKind:
     def test_most_common_kind(self):
-        result = _make_result(findings=[
-            _make_issue(kind="complexity"),
-            _make_issue(kind="complexity"),
-            _make_issue(kind="import-error"),
-        ])
+        result = _make_result(
+            findings=[
+                _make_issue(kind="complexity"),
+                _make_issue(kind="complexity"),
+                _make_issue(kind="import-error"),
+            ]
+        )
         assert top_finding_kind(result) == "complexity"
 
     def test_no_findings_returns_empty(self):
@@ -269,10 +279,12 @@ class TestChannelFindingSummary:
         assert summary == "1 finding (top: complexity)"
 
     def test_multiple_findings(self):
-        result = _make_result(findings=[
-            _make_issue(kind="complexity"),
-            _make_issue(kind="import-error"),
-            _make_issue(kind="complexity"),
-        ])
+        result = _make_result(
+            findings=[
+                _make_issue(kind="complexity"),
+                _make_issue(kind="import-error"),
+                _make_issue(kind="complexity"),
+            ]
+        )
         summary = channel_finding_summary(result)
         assert summary == "3 findings (top: complexity)"

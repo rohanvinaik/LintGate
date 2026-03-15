@@ -60,9 +60,7 @@ class TestClassifyIsolatedFailure:
     def test_low_confidence_with_one_passing(self):
         failed = [_make_result("lint", [_issue()])]
         passed = [ChannelResult(channel="tests", status="pass")]
-        result = classify_isolated_failure(
-            failed, passed, [], loud=["lint"], silent=["tests"]
-        )
+        result = classify_isolated_failure(failed, passed, [], loud=["lint"], silent=["tests"])
         assert result.state == "isolated"
         # conf = 0.5 + 0.1 * 1 = 0.6
         assert result.confidence == 0.6
@@ -70,9 +68,7 @@ class TestClassifyIsolatedFailure:
 
     def test_low_confidence_no_passes(self):
         failed = [_make_result("lint", [_issue()])]
-        result = classify_isolated_failure(
-            failed, [], [], loud=["lint"], silent=[]
-        )
+        result = classify_isolated_failure(failed, [], [], loud=["lint"], silent=[])
         assert result.state == "isolated"
         assert result.confidence == 0.3
         assert "No channels passed" in result.summary
@@ -100,7 +96,10 @@ class TestClassifySystemicFailure:
             _make_result("tests", [_issue()]),
         ]
         result = classify_systemic_failure(
-            failed, loud=["lint", "tests"], silent=[], demoted_notes=[],
+            failed,
+            loud=["lint", "tests"],
+            silent=[],
+            demoted_notes=[],
             severity_weighted=False,
         )
         # 2 failures < 3.0 and no cross-domain → None
@@ -113,7 +112,10 @@ class TestClassifySystemicFailure:
             _make_result("git", [_issue()]),
         ]
         result = classify_systemic_failure(
-            failed, loud=["lint", "tests", "git"], silent=[], demoted_notes=[],
+            failed,
+            loud=["lint", "tests", "git"],
+            silent=[],
+            demoted_notes=[],
             severity_weighted=False,
         )
         assert result is not None
@@ -127,7 +129,10 @@ class TestClassifySystemicFailure:
             _make_result("lint", [_issue()]),
         ]
         result = classify_systemic_failure(
-            failed, loud=["deps", "lint"], silent=[], demoted_notes=[],
+            failed,
+            loud=["deps", "lint"],
+            silent=[],
+            demoted_notes=[],
             severity_weighted=False,
         )
         assert result is not None

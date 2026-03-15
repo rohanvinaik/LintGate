@@ -78,7 +78,9 @@ def _make_issue(
     line: int | None = 10,
     severity: str = "warning",
 ) -> LintIssue:
-    return LintIssue(linter=linter, kind=kind, message=message, file=file, line=line, severity=severity)
+    return LintIssue(
+        linter=linter, kind=kind, message=message, file=file, line=line, severity=severity
+    )
 
 
 # ===========================================================================
@@ -623,6 +625,7 @@ class TestDirectoryConstants:
         import importlib
 
         import lintgate.state as _mod
+
         importlib.reload(_mod)
         return getattr(_mod, name)
 
@@ -633,7 +636,9 @@ class TestDirectoryConstants:
         assert self._fresh("METRICS_DIR") == Path.home() / ".claude" / "lintgate" / "metrics"
 
     def test_issue_memory_dir(self):
-        assert self._fresh("ISSUE_MEMORY_DIR") == Path.home() / ".claude" / "lintgate" / "issue_memory"
+        assert (
+            self._fresh("ISSUE_MEMORY_DIR") == Path.home() / ".claude" / "lintgate" / "issue_memory"
+        )
 
     def test_version_dir(self):
         assert self._fresh("VERSION_DIR") == Path.home() / ".claude" / "lintgate" / "versioning"

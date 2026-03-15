@@ -26,13 +26,7 @@ from mcp_tools._onboarding_getting_started_impl import (
 
 class TestDetectMutationGuard:
     def test_returns_true_when_hook_present(self, tmp_path):
-        settings = {
-            "hooks": {
-                "PreToolUse": [
-                    {"hooks": [{"command": "lintgate-pre --check"}]}
-                ]
-            }
-        }
+        settings = {"hooks": {"PreToolUse": [{"hooks": [{"command": "lintgate-pre --check"}]}]}}
         with patch("builtins.open", mock_open(read_data=json.dumps(settings))):
             assert _detect_mutation_guard() is True
 
@@ -127,7 +121,9 @@ class TestHandleToolInstalls:
             mock_mod = mock_ot.return_value
             mock_mod._collect_external_tool_gaps.return_value = {"missing_tools": []}
             startup_actions: list = []
-            result = _handle_tool_installs("/proj", auto_install=False, startup_actions=startup_actions)
+            result = _handle_tool_installs(
+                "/proj", auto_install=False, startup_actions=startup_actions
+            )
             assert result == []
 
     @patch("mcp_tools._onboarding_getting_started_impl._ot")
@@ -142,7 +138,9 @@ class TestHandleToolInstalls:
             ]
 
             startup_actions: list = []
-            result = _handle_tool_installs("/proj", auto_install=True, startup_actions=startup_actions)
+            result = _handle_tool_installs(
+                "/proj", auto_install=True, startup_actions=startup_actions
+            )
             assert len(result) == 1
             assert any(a["action"] == "optional_tool_install_attempted" for a in startup_actions)
 
@@ -184,7 +182,9 @@ class TestHandleQualityBootstrap:
         mock_audit.return_value = mock_audit_result
 
         startup_actions: list = []
-        result = _handle_quality_bootstrap("/proj", auto_setup=False, startup_actions=startup_actions)
+        result = _handle_quality_bootstrap(
+            "/proj", auto_setup=False, startup_actions=startup_actions
+        )
         assert result == {"status": "not_requested"}
 
     @patch("mcp_tools._onboarding_getting_started_impl._ot")
@@ -200,7 +200,9 @@ class TestHandleQualityBootstrap:
         mock_setup.return_value = json.dumps({"status": "created"})
 
         startup_actions: list = []
-        result = _handle_quality_bootstrap("/proj", auto_setup=True, startup_actions=startup_actions)
+        result = _handle_quality_bootstrap(
+            "/proj", auto_setup=True, startup_actions=startup_actions
+        )
         assert result["status"] == "created"
         assert any(a["action"] == "github_quality_bootstrapped" for a in startup_actions)
 
@@ -269,9 +271,7 @@ class TestBuildNextActions:
             config_status={"config_state": "config_enabled"},
             venv_python_after="/bin/python",
             tool_gaps_after={
-                "missing_tools": [
-                    {"tool": "ruff", "install_command": "pip install ruff"}
-                ]
+                "missing_tools": [{"tool": "ruff", "install_command": "pip install ruff"}]
             },
         )
         install_actions = [a for a in actions if "ruff" in a.get("reason", "")]
@@ -348,13 +348,23 @@ class TestConstants:
         assert "getting_started" in _DEFAULT_WORKFLOW[0]
 
     def test_essential_tools_keys(self):
-        expected = {"lint_files", "lint_project", "lint_fix", "controlplane_run",
-                    "controlplane_get_details", "bootstrap_context_files"}
+        expected = {
+            "lint_files",
+            "lint_project",
+            "lint_fix",
+            "controlplane_run",
+            "controlplane_get_details",
+            "bootstrap_context_files",
+        }
         assert set(_ESSENTIAL_TOOLS.keys()) == expected
 
     def test_tool_applicability_guide_has_all_tools(self):
         expected_tools = {
-            "controlplane_run", "lint_files", "lint_project",
-            "lint_fix", "scaffold_config", "getting_started",
+            "controlplane_run",
+            "lint_files",
+            "lint_project",
+            "lint_fix",
+            "scaffold_config",
+            "getting_started",
         }
         assert set(_TOOL_APPLICABILITY_GUIDE.keys()) == expected_tools

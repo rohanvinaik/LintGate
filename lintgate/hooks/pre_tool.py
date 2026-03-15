@@ -56,9 +56,7 @@ def _extract_bash_command(data: dict[str, Any]) -> str:
     return ""
 
 
-def _check_bash_alignment(
-    data: dict[str, Any], exec_compass: Any, project_root: str = ""
-) -> str:
+def _check_bash_alignment(data: dict[str, Any], exec_compass: Any, project_root: str = "") -> str:
     """Check Bash command alignment against compass + prescriptive spec directives."""
     command = _extract_bash_command(data)
     if not command:

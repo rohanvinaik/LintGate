@@ -616,15 +616,21 @@ def _run_controlplane(
     with contextlib.suppress(Exception):
         high_priority_addons: list[str] = []
         if proposed_constraints:
-            constraint_texts = [c.get("rule", c.get("text", ""))[:60] for c in proposed_constraints[:2]]
+            constraint_texts = [
+                c.get("rule", c.get("text", ""))[:60] for c in proposed_constraints[:2]
+            ]
             if any(constraint_texts):
-                high_priority_addons.append(f"[Constraint] New: {'; '.join(t for t in constraint_texts if t)}")
+                high_priority_addons.append(
+                    f"[Constraint] New: {'; '.join(t for t in constraint_texts if t)}"
+                )
         if report and report.get("prescriptive_advisory"):
             high_priority_addons.append(report["prescriptive_advisory"])
         if report and report.get("test_generation_hint", {}).get("new_functions"):
             hint = report["test_generation_hint"]
             func_names = [f.get("name", "") for f in hint["new_functions"][:3]]
-            high_priority_addons.append(f"[New] {', '.join(f for f in func_names if f)}: {hint['suggestion'][:80]}")
+            high_priority_addons.append(
+                f"[New] {', '.join(f for f in func_names if f)}: {hint['suggestion'][:80]}"
+            )
         if high_priority_addons and advisory:
             advisory += " | " + " | ".join(high_priority_addons)
         elif high_priority_addons:

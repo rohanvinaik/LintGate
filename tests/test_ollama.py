@@ -20,9 +20,7 @@ from lintgate.nsil.runtime_adapter import RuntimeCapabilities
 # ---------------------------------------------------------------------------
 
 
-def _make_jsonl_body(
-    chunks: list[dict[str, Any]], include_done: bool = True
-) -> bytes:
+def _make_jsonl_body(chunks: list[dict[str, Any]], include_done: bool = True) -> bytes:
     """Build a JSONL byte stream from a list of JSON objects."""
     lines = [json.dumps(c) for c in chunks]
     if include_done and (not chunks or not chunks[-1].get("done", False)):
@@ -52,45 +50,51 @@ class TestIterJsonlStream:
         assert result == ["hello"]
 
     def test_yields_multiple_chunks(self) -> None:
-        body = _make_jsonl_body([
-            {"response": "a"},
-            {"response": "b"},
-            {"response": "c"},
-        ])
+        body = _make_jsonl_body(
+            [
+                {"response": "a"},
+                {"response": "b"},
+                {"response": "c"},
+            ]
+        )
         result = list(_iter_jsonl_stream(FakeResponse(body)))
         assert result == ["a", "b", "c"]
 
     def test_stops_at_done_true(self) -> None:
         body = (
-            json.dumps({"response": "first"}) + "\n"
-            + json.dumps({"response": "last", "done": True}) + "\n"
-            + json.dumps({"response": "after"}) + "\n"
+            json.dumps({"response": "first"})
+            + "\n"
+            + json.dumps({"response": "last", "done": True})
+            + "\n"
+            + json.dumps({"response": "after"})
+            + "\n"
         ).encode("utf-8")
         result = list(_iter_jsonl_stream(FakeResponse(body)))
         assert result == ["first", "last"]
 
     def test_skips_empty_lines(self) -> None:
         raw = (
-            json.dumps({"response": "a"}) + "\n"
+            json.dumps({"response": "a"})
             + "\n"
-            + json.dumps({"response": "b", "done": True}) + "\n"
+            + "\n"
+            + json.dumps({"response": "b", "done": True})
+            + "\n"
         ).encode("utf-8")
         result = list(_iter_jsonl_stream(FakeResponse(raw)))
         assert result == ["a", "b"]
 
     def test_skips_invalid_json(self) -> None:
-        raw = (
-            "{bad-json\n"
-            + json.dumps({"response": "ok", "done": True}) + "\n"
-        ).encode("utf-8")
+        raw = ("{bad-json\n" + json.dumps({"response": "ok", "done": True}) + "\n").encode("utf-8")
         result = list(_iter_jsonl_stream(FakeResponse(raw)))
         assert result == ["ok"]
 
     def test_skips_lines_without_response(self) -> None:
-        body = _make_jsonl_body([
-            {"model": "llama2"},
-            {"response": "text"},
-        ])
+        body = _make_jsonl_body(
+            [
+                {"model": "llama2"},
+                {"response": "text"},
+            ]
+        )
         result = list(_iter_jsonl_stream(FakeResponse(body)))
         assert result == ["text"]
 
@@ -100,8 +104,10 @@ class TestIterJsonlStream:
 
     def test_done_false_continues(self) -> None:
         body = (
-            json.dumps({"response": "a", "done": False}) + "\n"
-            + json.dumps({"response": "b", "done": True}) + "\n"
+            json.dumps({"response": "a", "done": False})
+            + "\n"
+            + json.dumps({"response": "b", "done": True})
+            + "\n"
         ).encode("utf-8")
         result = list(_iter_jsonl_stream(FakeResponse(body)))
         assert result == ["a", "b"]
@@ -245,12 +251,14 @@ class TestMakePromptWithState:
 
     def test_all_state_fields(self) -> None:
         adapter = OllamaAdapter()
-        adapter.inject_state({
-            "gate_status": "yellow",
-            "risk_level": "medium",
-            "blocking_findings": ["X"],
-            "active_constraints": ["Y"],
-        })
+        adapter.inject_state(
+            {
+                "gate_status": "yellow",
+                "risk_level": "medium",
+                "blocking_findings": ["X"],
+                "active_constraints": ["Y"],
+            }
+        )
         result = adapter._make_prompt_with_state("p")
         assert "[NSIL State:" in result
         assert "Gate Status: yellow" in result
@@ -282,9 +290,7 @@ class TestBuildPayload:
 
     def test_override_model_and_params(self) -> None:
         adapter = OllamaAdapter(model="default")
-        payload = adapter._build_payload(
-            "hi", model="custom", temperature=0.1, stream=False
-        )
+        payload = adapter._build_payload("hi", model="custom", temperature=0.1, stream=False)
         assert payload["model"] == "custom"
         assert payload["temperature"] == 0.1
         assert payload["stream"] is False
@@ -344,10 +350,12 @@ class TestMakeRequest:
 class TestGetGenerationStream:
     @patch("urllib.request.urlopen")
     def test_streams_jsonl_chunks(self, mock_urlopen: MagicMock) -> None:
-        body = _make_jsonl_body([
-            {"response": "hello"},
-            {"response": " world"},
-        ])
+        body = _make_jsonl_body(
+            [
+                {"response": "hello"},
+                {"response": " world"},
+            ]
+        )
         mock_response = FakeResponse(body)
         mock_response.close = lambda: None  # type: ignore[attr-defined]
         mock_urlopen.return_value.__enter__ = lambda s: mock_response
@@ -384,8 +392,10 @@ class TestGetGenerationStream:
 
     def test_uses_correct_url(self) -> None:
         adapter = OllamaAdapter(endpoint="http://myhost:5000")
-        with patch.object(adapter, "_make_request") as mock_req, \
-             patch("urllib.request.urlopen", side_effect=TimeoutError()):
+        with (
+            patch.object(adapter, "_make_request") as mock_req,
+            patch("urllib.request.urlopen", side_effect=TimeoutError()),
+        ):
             list(adapter.get_generation_stream("prompt"))
             mock_req.assert_called_once()
             url_arg = mock_req.call_args[0][0]

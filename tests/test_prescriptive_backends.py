@@ -39,7 +39,9 @@ def _make_pure_spec(**overrides) -> PrescriptiveSpec:
         "parameters": [{"name": "x", "type": "int", "description": "input"}],
         "return_type": "int",
         "invariants": [
-            Invariant("bounded", pred_gt("result", 0, "positive"), "positive result", "src", 0.8, "safety"),
+            Invariant(
+                "bounded", pred_gt("result", 0, "positive"), "positive result", "src", 0.8, "safety"
+            ),
         ],
         "forbidden_behaviors": [
             ForbiddenBehavior(pred_custom("no mutation"), "no mutation", "src", "hard"),
@@ -68,11 +70,26 @@ def _make_stateful_spec() -> PrescriptiveSpec:
             StateVariable("size", "int", "0", "current size"),
         ],
         allowed_transitions=[
-            StateTransition("put", pred_true("always"), pred_gt("size", 0, "non-empty"), "insert", "src"),
-            StateTransition("get", pred_gt("size", 0, "has items"), pred_eq("result", "value", "found"), "lookup", "src"),
+            StateTransition(
+                "put", pred_true("always"), pred_gt("size", 0, "non-empty"), "insert", "src"
+            ),
+            StateTransition(
+                "get",
+                pred_gt("size", 0, "has items"),
+                pred_eq("result", "value", "found"),
+                "lookup",
+                "src",
+            ),
         ],
         invariants=[
-            Invariant("non_negative_size", pred_gt("size", -1, "size >= 0"), "size never negative", "src", 0.9, "safety"),
+            Invariant(
+                "non_negative_size",
+                pred_gt("size", -1, "size >= 0"),
+                "size never negative",
+                "src",
+                0.9,
+                "safety",
+            ),
         ],
         generation_constraints=[],
         prescriptive_sigma=8,
@@ -87,10 +104,18 @@ def _make_distributed_spec() -> PrescriptiveSpec:
         problem_class="distributed",
         mode="prospective",
         allowed_transitions=[
-            StateTransition("handshake", pred_true(), pred_eq("state", "connected", "connected"), "connect", "src"),
+            StateTransition(
+                "handshake",
+                pred_true(),
+                pred_eq("state", "connected", "connected"),
+                "connect",
+                "src",
+            ),
         ],
         invariants=[
-            Invariant("ordering", pred_custom("messages delivered in order"), "FIFO", "src", 0.8, "safety"),
+            Invariant(
+                "ordering", pred_custom("messages delivered in order"), "FIFO", "src", 0.8, "safety"
+            ),
         ],
         generation_constraints=[],
         prescriptive_sigma=6,
@@ -313,13 +338,16 @@ class TestPrescriptiveAdapter:
             mut_dir = os.path.join(tmp, ".lintgate", "mutation")
             os.makedirs(mut_dir)
             with open(os.path.join(mut_dir, "abc.json"), "w") as f:
-                json.dump({
-                    "function_key": "mod::compute",
-                    "per_category": [
-                        {"category": "VALUE", "survived": 0, "killed": 5},
-                        {"category": "BOUNDARY", "survived": 2, "killed": 3},
-                    ],
-                }, f)
+                json.dump(
+                    {
+                        "function_key": "mod::compute",
+                        "per_category": [
+                            {"category": "VALUE", "survived": 0, "killed": 5},
+                            {"category": "BOUNDARY", "survived": 2, "killed": 3},
+                        ],
+                    },
+                    f,
+                )
 
             adapter = PrescriptiveAdapter()
             verdict = adapter.verify_refinement(spec, targets, tmp, "mod.py")

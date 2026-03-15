@@ -198,12 +198,14 @@ class TestCheckFileImports:
 
     def test_guarded_import_skipped(self, tmp_path):
         src = tmp_path / "compat.py"
-        src.write_text(textwrap.dedent("""\
+        src.write_text(
+            textwrap.dedent("""\
             try:
                 import nonexistent_module_xyz_999
             except ImportError:
                 pass
-        """))
+        """)
+        )
         ctx = LinterContext(files=[str(src)], project_root=str(tmp_path))
         issues = list(self.checker._check_file_imports(str(src), ctx))
         assert issues == []

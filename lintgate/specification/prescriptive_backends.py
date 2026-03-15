@@ -65,48 +65,54 @@ class PureBackend:
         # Algebraic laws → Hypothesis property skeletons
         for law in spec.algebraic_laws:
             name = law.get("name", law.get("property_name", "unnamed"))
-            targets.property_tests.append({
-                "name": f"test_property_{name}",
-                "type": "hypothesis",
-                "law": law,
-                "skeleton": (
-                    f"@given(st.from_type({spec.return_type or 'Any'}))\n"
-                    f"def test_property_{name}(x):\n"
-                    f"    # Verify algebraic law: {name}\n"
-                    f"    assert ...  # TODO: fill in"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.property_tests.append(
+                {
+                    "name": f"test_property_{name}",
+                    "type": "hypothesis",
+                    "law": law,
+                    "skeleton": (
+                        f"@given(st.from_type({spec.return_type or 'Any'}))\n"
+                        f"def test_property_{name}(x):\n"
+                        f"    # Verify algebraic law: {name}\n"
+                        f"    assert ...  # TODO: fill in"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Invariants → exact-value test skeletons
         for inv in spec.invariants:
-            targets.scenario_tests.append({
-                "name": f"test_invariant_{inv.name}",
-                "type": "exact_value",
-                "invariant": inv.to_dict(),
-                "skeleton": (
-                    f"def test_invariant_{inv.name}():\n"
-                    f"    # Invariant: {inv.description}\n"
-                    f"    result = {_func_call(spec)}\n"
-                    f"    assert ...  # TODO: verify {inv.description}"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_invariant_{inv.name}",
+                    "type": "exact_value",
+                    "invariant": inv.to_dict(),
+                    "skeleton": (
+                        f"def test_invariant_{inv.name}():\n"
+                        f"    # Invariant: {inv.description}\n"
+                        f"    result = {_func_call(spec)}\n"
+                        f"    assert ...  # TODO: verify {inv.description}"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Forbidden behaviors → negative test skeletons
         for i, fb in enumerate(spec.forbidden_behaviors):
-            targets.scenario_tests.append({
-                "name": f"test_forbidden_{i}",
-                "type": "negative",
-                "forbidden": fb.to_dict(),
-                "skeleton": (
-                    f"def test_forbidden_{i}():\n"
-                    f"    # Must NOT: {fb.description}\n"
-                    f"    # Severity: {fb.severity}\n"
-                    f"    ...  # TODO: verify absence of forbidden behavior"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_forbidden_{i}",
+                    "type": "negative",
+                    "forbidden": fb.to_dict(),
+                    "skeleton": (
+                        f"def test_forbidden_{i}():\n"
+                        f"    # Must NOT: {fb.description}\n"
+                        f"    # Severity: {fb.severity}\n"
+                        f"    ...  # TODO: verify absence of forbidden behavior"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Refinement obligations → expected mutation kill set
         for ro in spec.refinement_obligations:
@@ -117,11 +123,13 @@ class PureBackend:
 
         # Compass gate assertions from invariants
         for inv in spec.invariants:
-            targets.compass_gate_assertions.append({
-                "invariant": inv.name,
-                "description": inv.description,
-                "kind": inv.kind,
-            })
+            targets.compass_gate_assertions.append(
+                {
+                    "invariant": inv.name,
+                    "description": inv.description,
+                    "kind": inv.kind,
+                }
+            )
 
         return targets
 
@@ -137,54 +145,60 @@ class StatefulBackend:
 
         # One test per allowed transition verifying postconditions
         for trans in spec.allowed_transitions:
-            targets.scenario_tests.append({
-                "name": f"test_transition_{trans.name}",
-                "type": "state_transition",
-                "transition": trans.to_dict(),
-                "skeleton": (
-                    f"def test_transition_{trans.name}():\n"
-                    f"    # Transition: {trans.description}\n"
-                    f"    # Precondition: {trans.precondition.description}\n"
-                    f"    # Postcondition: {trans.postcondition.description}\n"
-                    f"    obj = create_instance()\n"
-                    f"    # Setup precondition state\n"
-                    f"    obj.{trans.name}()\n"
-                    f"    # Verify postcondition\n"
-                    f"    assert ...  # TODO"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_transition_{trans.name}",
+                    "type": "state_transition",
+                    "transition": trans.to_dict(),
+                    "skeleton": (
+                        f"def test_transition_{trans.name}():\n"
+                        f"    # Transition: {trans.description}\n"
+                        f"    # Precondition: {trans.precondition.description}\n"
+                        f"    # Postcondition: {trans.postcondition.description}\n"
+                        f"    obj = create_instance()\n"
+                        f"    # Setup precondition state\n"
+                        f"    obj.{trans.name}()\n"
+                        f"    # Verify postcondition\n"
+                        f"    assert ...  # TODO"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Invariant-checking wrapper skeletons
         for inv in spec.invariants:
-            targets.scenario_tests.append({
-                "name": f"test_invariant_{inv.name}",
-                "type": "state_invariant",
-                "invariant": inv.to_dict(),
-                "skeleton": (
-                    f"def test_invariant_{inv.name}():\n"
-                    f"    # Invariant must hold across all transitions: {inv.description}\n"
-                    f"    obj = create_instance()\n"
-                    f"    for transition in [{', '.join(repr(t.name) for t in spec.allowed_transitions)}]:\n"
-                    f"        getattr(obj, transition)()\n"
-                    f"        assert ...  # Verify: {inv.description}"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_invariant_{inv.name}",
+                    "type": "state_invariant",
+                    "invariant": inv.to_dict(),
+                    "skeleton": (
+                        f"def test_invariant_{inv.name}():\n"
+                        f"    # Invariant must hold across all transitions: {inv.description}\n"
+                        f"    obj = create_instance()\n"
+                        f"    for transition in [{', '.join(repr(t.name) for t in spec.allowed_transitions)}]:\n"
+                        f"        getattr(obj, transition)()\n"
+                        f"        assert ...  # Verify: {inv.description}"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # State variable initialization tests
         for sv in spec.state_variables:
-            targets.scenario_tests.append({
-                "name": f"test_init_{sv.name}",
-                "type": "state_init",
-                "state_variable": sv.to_dict(),
-                "skeleton": (
-                    f"def test_init_{sv.name}():\n"
-                    f"    obj = create_instance()\n"
-                    f"    assert obj.{sv.name} == {sv.initial_value}  # {sv.description}"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_init_{sv.name}",
+                    "type": "state_init",
+                    "state_variable": sv.to_dict(),
+                    "skeleton": (
+                        f"def test_init_{sv.name}():\n"
+                        f"    obj = create_instance()\n"
+                        f"    assert obj.{sv.name} == {sv.initial_value}  # {sv.description}"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Refinement obligations
         for ro in spec.refinement_obligations:
@@ -195,11 +209,13 @@ class StatefulBackend:
 
         # Compass gate assertions
         for inv in spec.invariants:
-            targets.compass_gate_assertions.append({
-                "invariant": inv.name,
-                "description": inv.description,
-                "kind": inv.kind,
-            })
+            targets.compass_gate_assertions.append(
+                {
+                    "invariant": inv.name,
+                    "description": inv.description,
+                    "kind": inv.kind,
+                }
+            )
 
         return targets
 
@@ -215,33 +231,37 @@ class DistributedBackend:
 
         # Message sequence tests from transitions
         for trans in spec.allowed_transitions:
-            targets.scenario_tests.append({
-                "name": f"test_protocol_{trans.name}",
-                "type": "protocol_conformance",
-                "transition": trans.to_dict(),
-                "skeleton": (
-                    f"def test_protocol_{trans.name}():\n"
-                    f"    # Protocol step: {trans.description}\n"
-                    f"    # Precondition: {trans.precondition.description}\n"
-                    f"    # Postcondition: {trans.postcondition.description}\n"
-                    f"    # Verify message sequence and state agreement"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_protocol_{trans.name}",
+                    "type": "protocol_conformance",
+                    "transition": trans.to_dict(),
+                    "skeleton": (
+                        f"def test_protocol_{trans.name}():\n"
+                        f"    # Protocol step: {trans.description}\n"
+                        f"    # Precondition: {trans.precondition.description}\n"
+                        f"    # Postcondition: {trans.postcondition.description}\n"
+                        f"    # Verify message sequence and state agreement"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Protocol monitor obligations from invariants
         for inv in spec.invariants:
-            targets.scenario_tests.append({
-                "name": f"test_monitor_{inv.name}",
-                "type": "protocol_monitor",
-                "invariant": inv.to_dict(),
-                "skeleton": (
-                    f"def test_monitor_{inv.name}():\n"
-                    f"    # Monitor: {inv.description}\n"
-                    f"    # Verify invariant holds across all protocol states"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_monitor_{inv.name}",
+                    "type": "protocol_monitor",
+                    "invariant": inv.to_dict(),
+                    "skeleton": (
+                        f"def test_monitor_{inv.name}():\n"
+                        f"    # Monitor: {inv.description}\n"
+                        f"    # Verify invariant holds across all protocol states"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Refinement obligations
         for ro in spec.refinement_obligations:
@@ -286,7 +306,7 @@ class PrescriptiveAdapter:
             '"""Auto-generated prescriptive spec tests.',
             f"Target: {spec.target_key}",
             f"Problem class: {spec.problem_class}",
-            f'Generated at: {time.strftime("%Y-%m-%d %H:%M:%S")}',
+            f"Generated at: {time.strftime('%Y-%m-%d %H:%M:%S')}",
             '"""',
             "",
             "import pytest",
@@ -442,8 +462,16 @@ class PrescriptiveAdapter:
             verdict["overall"] = "pass"
 
         verdict["summary"] = {
-            "structural": {"pass": structural_pass, "fail": structural_fail, "skip": structural_skip},
-            "behavioral": {"pass": behavioral_pass, "fail": behavioral_fail, "unknown": behavioral_unknown},
+            "structural": {
+                "pass": structural_pass,
+                "fail": structural_fail,
+                "skip": structural_skip,
+            },
+            "behavioral": {
+                "pass": behavioral_pass,
+                "fail": behavioral_fail,
+                "unknown": behavioral_unknown,
+            },
         }
 
         return verdict
@@ -475,7 +503,7 @@ class PrescriptiveAdapter:
                     data = json.load(f)
                 funcs = data.get("functions", {})
                 if target_key in funcs:
-                    return funcs[target_key].get("estimated_sigma", 0)
+                    return int(funcs[target_key].get("estimated_sigma", 0))
             except (OSError, ValueError, KeyError):
                 continue
         return None
@@ -494,7 +522,8 @@ class PrescriptiveAdapter:
                 with open(fpath, encoding="utf-8") as f:
                     data = json.load(f)
                 if data.get("function_key") == target_key:
-                    return data
+                    result: dict[str, Any] = data
+                    return result
             except (OSError, ValueError):
                 continue
         return None
@@ -503,7 +532,7 @@ class PrescriptiveAdapter:
         """Check if a mutation category was killed in the mutation state."""
         for cat_data in mutation_state.get("per_category", []):
             if cat_data.get("category") == category:
-                survived = cat_data.get("survived", 0)
+                survived = int(cat_data.get("survived", 0))
                 return survived == 0
         return None
 

@@ -329,9 +329,7 @@ class TestDetectGithubRemote:
 
     def test_parses_https_remote(self) -> None:
         mock_result = MagicMock()
-        mock_result.stdout = (
-            "origin\thttps://github.com/bob/cool-repo.git (fetch)\n"
-        )
+        mock_result.stdout = "origin\thttps://github.com/bob/cool-repo.git (fetch)\n"
         with patch("mcp_tools.quality_helpers.subprocess.run", return_value=mock_result):
             result = _detect_github_remote("/some/path")
         assert result == {"owner": "bob", "repo": "cool-repo"}
@@ -776,9 +774,7 @@ class TestApplyManagedArtifact:
 
     def test_preview_new_file(self, tmp_path: Path) -> None:
         path = str(tmp_path / "new_file.txt")
-        result = _apply_managed_artifact(
-            path, "content here", exists=False, write=False
-        )
+        result = _apply_managed_artifact(path, "content here", exists=False, write=False)
         assert result["status"] == "preview"
         assert result["content"] == "content here"
         assert not os.path.exists(path)
@@ -786,17 +782,13 @@ class TestApplyManagedArtifact:
     def test_already_exists_same_content(self, tmp_path: Path) -> None:
         path = tmp_path / "existing.txt"
         path.write_text("same content")
-        result = _apply_managed_artifact(
-            str(path), "same content", exists=True, write=True
-        )
+        result = _apply_managed_artifact(str(path), "same content", exists=True, write=True)
         assert result["status"] == "already_exists"
 
     def test_drift_repaired(self, tmp_path: Path) -> None:
         path = tmp_path / "existing.txt"
         path.write_text("old content")
-        result = _apply_managed_artifact(
-            str(path), "new content", exists=True, write=True
-        )
+        result = _apply_managed_artifact(str(path), "new content", exists=True, write=True)
         assert result["status"] == "drift_repaired"
         assert "previous_hash" in result
         assert "new_hash" in result
@@ -808,9 +800,7 @@ class TestApplyManagedArtifact:
     def test_outdated_no_write(self, tmp_path: Path) -> None:
         path = tmp_path / "existing.txt"
         path.write_text("old content")
-        result = _apply_managed_artifact(
-            str(path), "new content", exists=True, write=False
-        )
+        result = _apply_managed_artifact(str(path), "new content", exists=True, write=False)
         assert result["status"] == "outdated"
         assert "current_hash" in result
         assert "expected_hash" in result

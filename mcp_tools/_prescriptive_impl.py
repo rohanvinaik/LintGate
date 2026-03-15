@@ -81,13 +81,15 @@ def impl_prescriptive_spec_compose(
         pass
 
     result = spec.to_dict()
-    result["next_actions"] = serialize_next_actions([
-        NextAction(
-            tool="prescriptive_spec_compile",
-            args={"path": path, "target": target},
-            reason="Compile spec into test skeletons + generation constraints",
-        ),
-    ])
+    result["next_actions"] = serialize_next_actions(
+        [
+            NextAction(
+                tool="prescriptive_spec_compile",
+                args={"path": path, "target": target},
+                reason="Compile spec into test skeletons + generation constraints",
+            ),
+        ]
+    )
     return result
 
 
@@ -106,13 +108,15 @@ def impl_prescriptive_spec_compile(
     if spec is None:
         return {
             "error": f"No prescriptive spec found for '{target}'. Run prescriptive_spec_compose first.",
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="prescriptive_spec_compose",
-                    args={"path": path, "target": target},
-                    reason="Compose a spec before compiling",
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="prescriptive_spec_compose",
+                        args={"path": path, "target": target},
+                        reason="Compose a spec before compiling",
+                    ),
+                ]
+            ),
         }
 
     backend = select_backend(spec)
@@ -128,13 +132,19 @@ def impl_prescriptive_spec_compile(
         result["generation_prompt"] = _render_generation_prompt(
             spec.target_key, targets.generation_constraints
         )
-    result["next_actions"] = serialize_next_actions([
-        NextAction(
-            tool="prescriptive_spec_verify",
-            args={"path": path, "file": _target_to_file(target), "function": _target_to_func(target)},
-            reason="Verify code refinement against prescriptive spec after writing code",
-        ),
-    ])
+    result["next_actions"] = serialize_next_actions(
+        [
+            NextAction(
+                tool="prescriptive_spec_verify",
+                args={
+                    "path": path,
+                    "file": _target_to_file(target),
+                    "function": _target_to_func(target),
+                },
+                reason="Verify code refinement against prescriptive spec after writing code",
+            ),
+        ]
+    )
     return result
 
 
@@ -178,13 +188,15 @@ def impl_prescriptive_spec_verify(
             return {
                 "status": "no_specs",
                 "message": f"No prescriptive specs found for file '{file}'",
-                "next_actions": serialize_next_actions([
-                    NextAction(
-                        tool="prescriptive_spec_compose",
-                        args={"path": path, "target": f"{file_module}::*"},
-                        reason="Compose specs for functions in this file",
-                    ),
-                ]),
+                "next_actions": serialize_next_actions(
+                    [
+                        NextAction(
+                            tool="prescriptive_spec_compose",
+                            args={"path": path, "target": f"{file_module}::*"},
+                            reason="Compose specs for functions in this file",
+                        ),
+                    ]
+                ),
             }
         # Verify first match (could extend to multi-verify)
         spec = matching[0]
@@ -193,13 +205,15 @@ def impl_prescriptive_spec_verify(
         return {
             "status": "no_spec",
             "message": f"No prescriptive spec found for function '{function}'",
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="prescriptive_spec_compose",
-                    args={"path": path, "target": function or ""},
-                    reason="Compose a spec first",
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="prescriptive_spec_compose",
+                        args={"path": path, "target": function or ""},
+                        reason="Compose a spec first",
+                    ),
+                ]
+            ),
         }
 
     backend = select_backend(spec)
@@ -210,16 +224,20 @@ def impl_prescriptive_spec_verify(
     # Add next actions based on verdict
     next_actions = []
     if verdict["overall"] in ("fail", "partial", "unknown"):
-        next_actions.append(NextAction(
-            tool="mutation_run_sampling",
-            args={"path": path, "file": file},
-            reason="Run mutation sampling to get fresh kill data",
-        ))
-        next_actions.append(NextAction(
-            tool="spec_file_analyze",
-            args={"path": path, "file": file},
-            reason="Analyze specification state of this file",
-        ))
+        next_actions.append(
+            NextAction(
+                tool="mutation_run_sampling",
+                args={"path": path, "file": file},
+                reason="Run mutation sampling to get fresh kill data",
+            )
+        )
+        next_actions.append(
+            NextAction(
+                tool="spec_file_analyze",
+                args={"path": path, "file": file},
+                reason="Analyze specification state of this file",
+            )
+        )
 
     verdict["next_actions"] = serialize_next_actions(next_actions)
     return verdict
@@ -239,13 +257,15 @@ def impl_prescriptive_spec_status(
         return {
             "total_specs": 0,
             "message": "No prescriptive specs found. Use prescriptive_spec_compose to create specs.",
-            "next_actions": serialize_next_actions([
-                NextAction(
-                    tool="prescriptive_spec_compose",
-                    args={"path": path, "target": "<function_key>"},
-                    reason="Compose a prescriptive spec",
-                ),
-            ]),
+            "next_actions": serialize_next_actions(
+                [
+                    NextAction(
+                        tool="prescriptive_spec_compose",
+                        args={"path": path, "target": "<function_key>"},
+                        reason="Compose a prescriptive spec",
+                    ),
+                ]
+            ),
         }
 
     # Problem class distribution
@@ -275,13 +295,15 @@ def impl_prescriptive_spec_status(
             }
             for s in all_specs.values()
         ],
-        "next_actions": serialize_next_actions([
-            NextAction(
-                tool="prescriptive_spec_compose",
-                args={"path": path, "target": "<uncovered_function>"},
-                reason="Add specs for uncovered functions",
-            ),
-        ]),
+        "next_actions": serialize_next_actions(
+            [
+                NextAction(
+                    tool="prescriptive_spec_compose",
+                    args={"path": path, "target": "<uncovered_function>"},
+                    reason="Add specs for uncovered functions",
+                ),
+            ]
+        ),
     }
     return result
 

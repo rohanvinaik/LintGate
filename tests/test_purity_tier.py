@@ -13,63 +13,89 @@ from lintgate.linters.performance_checks.algebra_types import (
 class TestClassifyPurityTier:
     def test_pure_function(self):
         purity = PurityResult(
-            function_name="f", qualified_name="f", line=1,
-            is_pure=True, confidence=1.0, side_effects=(), parameter_count=1,
+            function_name="f",
+            qualified_name="f",
+            line=1,
+            is_pure=True,
+            confidence=1.0,
+            side_effects=(),
+            parameter_count=1,
             return_annotation=None,
         )
         assert classify_purity_tier(purity) == PurityTier.PURE
 
     def test_impure_with_mutation(self):
         purity = PurityResult(
-            function_name="f", qualified_name="f", line=1,
-            is_pure=False, confidence=0.8,
+            function_name="f",
+            qualified_name="f",
+            line=1,
+            is_pure=False,
+            confidence=0.8,
             side_effects=(
                 SideEffect(kind="global_write", node_type="Name", line=5, detail="writes global"),
             ),
-            parameter_count=1, return_annotation=None,
+            parameter_count=1,
+            return_annotation=None,
         )
         assert classify_purity_tier(purity) == PurityTier.STATEFUL
 
     def test_impure_with_io(self):
         purity = PurityResult(
-            function_name="f", qualified_name="f", line=1,
-            is_pure=False, confidence=0.8,
+            function_name="f",
+            qualified_name="f",
+            line=1,
+            is_pure=False,
+            confidence=0.8,
             side_effects=(
                 SideEffect(kind="io_call", node_type="Call", line=5, detail="calls print"),
             ),
-            parameter_count=1, return_annotation=None,
+            parameter_count=1,
+            return_annotation=None,
         )
         assert classify_purity_tier(purity) == PurityTier.STATEFUL
 
     def test_impure_call_only_is_stable_read(self):
         purity = PurityResult(
-            function_name="f", qualified_name="f", line=1,
-            is_pure=False, confidence=0.7,
+            function_name="f",
+            qualified_name="f",
+            line=1,
+            is_pure=False,
+            confidence=0.7,
             side_effects=(
                 SideEffect(kind="impure_call", node_type="Call", line=5, detail="calls db.query"),
             ),
-            parameter_count=1, return_annotation=None,
+            parameter_count=1,
+            return_annotation=None,
         )
         assert classify_purity_tier(purity) == PurityTier.STABLE_READ
 
     def test_mixed_read_and_mutation_is_stateful(self):
         purity = PurityResult(
-            function_name="f", qualified_name="f", line=1,
-            is_pure=False, confidence=0.7,
+            function_name="f",
+            qualified_name="f",
+            line=1,
+            is_pure=False,
+            confidence=0.7,
             side_effects=(
                 SideEffect(kind="impure_call", node_type="Call", line=5, detail="calls db.query"),
                 SideEffect(kind="global_write", node_type="Name", line=6, detail="writes global"),
             ),
-            parameter_count=1, return_annotation=None,
+            parameter_count=1,
+            return_annotation=None,
         )
         assert classify_purity_tier(purity) == PurityTier.STATEFUL
 
     def test_no_side_effects_but_not_pure_is_stateful(self):
         """Conservative: no side effects detected but not marked pure."""
         purity = PurityResult(
-            function_name="f", qualified_name="f", line=1,
-            is_pure=False, confidence=0.5, side_effects=(),
-            parameter_count=1, return_annotation=None,
+            function_name="f",
+            qualified_name="f",
+            line=1,
+            is_pure=False,
+            confidence=0.5,
+            side_effects=(),
+            parameter_count=1,
+            return_annotation=None,
         )
         assert classify_purity_tier(purity) == PurityTier.STATEFUL
 
@@ -85,9 +111,14 @@ class TestFunctionPropertiesRoundTrip:
 
         props = FunctionProperties(
             purity=PurityResult(
-                function_name="f", qualified_name="f", line=1,
-                is_pure=True, confidence=1.0, side_effects=(),
-                parameter_count=0, return_annotation=None,
+                function_name="f",
+                qualified_name="f",
+                line=1,
+                is_pure=True,
+                confidence=1.0,
+                side_effects=(),
+                parameter_count=0,
+                return_annotation=None,
             ),
             properties=(),
             optimization_hints=("cacheable",),
@@ -104,9 +135,14 @@ class TestFunctionPropertiesRoundTrip:
 
         d = {
             "purity": {
-                "function_name": "f", "qualified_name": "f", "line": 1,
-                "is_pure": False, "confidence": 0.5, "side_effects": [],
-                "parameter_count": 0, "return_annotation": None,
+                "function_name": "f",
+                "qualified_name": "f",
+                "line": 1,
+                "is_pure": False,
+                "confidence": 0.5,
+                "side_effects": [],
+                "parameter_count": 0,
+                "return_annotation": None,
             },
             "properties": [],
             "optimization_hints": [],

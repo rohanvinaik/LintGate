@@ -22,40 +22,41 @@ def _inv(name: str, predicate: Predicate, kind: str = "safety") -> Invariant:
     return Invariant(name, predicate, predicate.description or name, "test", 0.8, kind)
 
 
-SOURCE_TYPED = '''\
+SOURCE_TYPED = """\
 def compute(x: int) -> int:
     return x + 1
-'''
+"""
 
-SOURCE_UNTYPED = '''\
+SOURCE_UNTYPED = """\
 def compute(x):
     return x + 1
-'''
+"""
 
-SOURCE_WITH_CALL = '''\
+SOURCE_WITH_CALL = """\
 def process(data):
     validate(data)
     return transform(data)
-'''
+"""
 
-SOURCE_WITH_ASSERT = '''\
+SOURCE_WITH_ASSERT = """\
 def bounded(x: int) -> int:
     result = x * 2
     assert result > 0
     return result
-'''
+"""
 
-SOURCE_WITH_ATTR = '''\
+SOURCE_WITH_ATTR = """\
 def setup(self):
     self.initialized = True
     self.count = 0
-'''
+"""
 
 
 class TestISType:
     def test_return_type_matches(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [_inv("typed_return", pred_type("result", "int", "returns int"))],
         )
         assert len(results) == 1
@@ -63,7 +64,8 @@ class TestISType:
 
     def test_return_type_mismatch(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [_inv("typed_return", pred_type("result", "str", "returns str"))],
         )
         assert results[0].status == "fail"
@@ -71,7 +73,8 @@ class TestISType:
 
     def test_missing_return_annotation(self):
         results = check_invariants_against_ast(
-            SOURCE_UNTYPED, "compute",
+            SOURCE_UNTYPED,
+            "compute",
             [_inv("typed_return", pred_type("result", "int", "returns int"))],
         )
         assert results[0].status == "fail"
@@ -81,15 +84,31 @@ class TestISType:
 class TestCalls:
     def test_call_found(self):
         results = check_invariants_against_ast(
-            SOURCE_WITH_CALL, "process",
-            [_inv("calls_validate", Predicate(op=PredicateOp.CALLS, subject="validate", description="calls validate"))],
+            SOURCE_WITH_CALL,
+            "process",
+            [
+                _inv(
+                    "calls_validate",
+                    Predicate(
+                        op=PredicateOp.CALLS, subject="validate", description="calls validate"
+                    ),
+                )
+            ],
         )
         assert results[0].status == "pass"
 
     def test_call_not_found(self):
         results = check_invariants_against_ast(
-            SOURCE_WITH_CALL, "process",
-            [_inv("calls_check", Predicate(op=PredicateOp.CALLS, subject="check_input", description="calls check_input"))],
+            SOURCE_WITH_CALL,
+            "process",
+            [
+                _inv(
+                    "calls_check",
+                    Predicate(
+                        op=PredicateOp.CALLS, subject="check_input", description="calls check_input"
+                    ),
+                )
+            ],
         )
         assert results[0].status == "fail"
 
@@ -97,16 +116,28 @@ class TestCalls:
 class TestHasAttr:
     def test_attr_found(self):
         results = check_invariants_against_ast(
-            SOURCE_WITH_ATTR, "setup",
-            [_inv("has_count", Predicate(op=PredicateOp.HAS_ATTR, value="count", description="has count"))],
+            SOURCE_WITH_ATTR,
+            "setup",
+            [
+                _inv(
+                    "has_count",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="count", description="has count"),
+                )
+            ],
         )
         assert results[0].status == "pass"
 
     def test_attr_not_found_is_skip(self):
         """Missing attr is skip (not fail) — could be dynamic."""
         results = check_invariants_against_ast(
-            SOURCE_WITH_ATTR, "setup",
-            [_inv("has_missing", Predicate(op=PredicateOp.HAS_ATTR, value="missing", description="has missing"))],
+            SOURCE_WITH_ATTR,
+            "setup",
+            [
+                _inv(
+                    "has_missing",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="missing", description="has missing"),
+                )
+            ],
         )
         assert results[0].status == "skip"
 
@@ -114,7 +145,8 @@ class TestHasAttr:
 class TestComparisonGuard:
     def test_assert_guard_found(self):
         results = check_invariants_against_ast(
-            SOURCE_WITH_ASSERT, "bounded",
+            SOURCE_WITH_ASSERT,
+            "bounded",
             [_inv("positive", pred_gt("result", 0, "result positive"))],
         )
         assert results[0].status == "pass"
@@ -122,7 +154,8 @@ class TestComparisonGuard:
     def test_no_guard_is_skip(self):
         """No guard is skip, not fail — may be enforced elsewhere."""
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [_inv("positive", pred_gt("result", 0, "result positive"))],
         )
         assert results[0].status == "skip"
@@ -131,30 +164,43 @@ class TestComparisonGuard:
 class TestCompound:
     def test_and_all_pass(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
-            [_inv("both", pred_and(
-                pred_type("result", "int", "int"),
-                pred_true("ok"),
-                desc="both hold",
-            ))],
+            SOURCE_TYPED,
+            "compute",
+            [
+                _inv(
+                    "both",
+                    pred_and(
+                        pred_type("result", "int", "int"),
+                        pred_true("ok"),
+                        desc="both hold",
+                    ),
+                )
+            ],
         )
         assert results[0].status == "pass"
 
     def test_and_one_fail(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
-            [_inv("one_fails", pred_and(
-                pred_type("result", "int", "int"),
-                pred_type("result", "str", "str"),
-                desc="one fails",
-            ))],
+            SOURCE_TYPED,
+            "compute",
+            [
+                _inv(
+                    "one_fails",
+                    pred_and(
+                        pred_type("result", "int", "int"),
+                        pred_type("result", "str", "str"),
+                        desc="one fails",
+                    ),
+                )
+            ],
         )
         assert results[0].status == "fail"
 
     def test_not_inverts(self):
         """NOT(pass) → fail."""
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [_inv("not_int", pred_not(pred_type("result", "int", "int"), desc="not int"))],
         )
         assert results[0].status == "fail"
@@ -163,7 +209,8 @@ class TestCompound:
 class TestCustomAndEdgeCases:
     def test_custom_skipped(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [_inv("custom", pred_custom("Must be efficient"))],
         )
         assert results[0].status == "skip"
@@ -171,7 +218,8 @@ class TestCustomAndEdgeCases:
 
     def test_function_not_found(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "nonexistent",
+            SOURCE_TYPED,
+            "nonexistent",
             [_inv("typed", pred_type("result", "int"))],
         )
         assert results[0].status == "skip"
@@ -179,21 +227,24 @@ class TestCustomAndEdgeCases:
 
     def test_syntax_error(self):
         results = check_invariants_against_ast(
-            "def broken(:\n", "broken",
+            "def broken(:\n",
+            "broken",
             [_inv("typed", pred_type("result", "int"))],
         )
         assert results[0].status == "skip"
 
     def test_true_always_passes(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [_inv("tautology", pred_true("always"))],
         )
         assert results[0].status == "pass"
 
     def test_multiple_invariants(self):
         results = check_invariants_against_ast(
-            SOURCE_TYPED, "compute",
+            SOURCE_TYPED,
+            "compute",
             [
                 _inv("typed", pred_type("result", "int", "int")),
                 _inv("custom", pred_custom("semantic")),

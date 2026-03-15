@@ -154,7 +154,12 @@ class TestFindingRoi:
         assert _finding_roi(f) == 1.0
 
     def test_roi_with_fixable(self):
-        f = {"severity": "warning", "confidence": 1.0, "estimated_effort_minutes": 30, "fixable": True}
+        f = {
+            "severity": "warning",
+            "confidence": 1.0,
+            "estimated_effort_minutes": 30,
+            "fixable": True,
+        }
         # weight=2.0, conf=1.0, effort=min(30,2)=2.0 -> 2/2=1.0
         assert _finding_roi(f) == 1.0
 
@@ -588,10 +593,13 @@ class TestImplControlplaneGetDetails:
     @patch("mcp_tools._controlplane_impl_details.load_controlplane_run", create=True)
     def test_run_not_found_raises(self, _mock_load):
         # Patch the actual import inside the function
-        with patch("lintgate.state.load_controlplane_run", return_value=None), pytest.raises(ValueError, match="No ControlPlane run found"):
-                _impl_controlplane_get_details(
-                    "bad-id", None, None, 10, None, {"_json_dumps": json.dumps}
-                )
+        with (
+            patch("lintgate.state.load_controlplane_run", return_value=None),
+            pytest.raises(ValueError, match="No ControlPlane run found"),
+        ):
+            _impl_controlplane_get_details(
+                "bad-id", None, None, 10, None, {"_json_dumps": json.dumps}
+            )
 
     def test_basic_details(self):
         details = _make_details()
@@ -625,7 +633,12 @@ class TestImplControlplaneGetDetails:
         details = _make_details()
         with patch("lintgate.state.load_controlplane_run", return_value=details):
             raw = _impl_controlplane_get_details(
-                "run-1", None, None, 100, ["findings"], {"_json_dumps": json.dumps},
+                "run-1",
+                None,
+                None,
+                100,
+                ["findings"],
+                {"_json_dumps": json.dumps},
                 top_n=1,
             )
         result = json.loads(raw)
@@ -821,7 +834,12 @@ class TestImplControlplaneStatus:
 class TestConstants:
     def test_effort_defaults_keys(self):
         assert set(_EFFORT_DEFAULTS.keys()) == {
-            "ruff", "mypy", "radon", "bandit", "vulture", "structure"
+            "ruff",
+            "mypy",
+            "radon",
+            "bandit",
+            "vulture",
+            "structure",
         }
 
     def test_sev_weight_keys(self):
@@ -831,10 +849,20 @@ class TestConstants:
         assert _SEV_WEIGHT["informational"] == 1.0
 
     def test_default_sections_content(self):
-        assert frozenset([
-            "findings", "channel_details", "evidence",
-            "repairs", "coherence", "next_actions", "proven_resolutions",
-        ]) == _DEFAULT_SECTIONS
+        assert (
+            frozenset(
+                [
+                    "findings",
+                    "channel_details",
+                    "evidence",
+                    "repairs",
+                    "coherence",
+                    "next_actions",
+                    "proven_resolutions",
+                ]
+            )
+            == _DEFAULT_SECTIONS
+        )
 
     def test_section_populators_order(self):
         names = [name for name, _ in _SECTION_POPULATORS]

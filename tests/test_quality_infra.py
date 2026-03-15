@@ -939,8 +939,14 @@ def test_parity_map_valid_passes() -> None:
             {"id": "quality_infra", "command": "bash scripts/ci/run_quality_infra_gate.sh"},
             {"id": "qlty", "command": "bash scripts/ci/run_qlty_gate.sh"},
             {"id": "security_lite", "command": "bash scripts/ci/run_security_lite_gate.sh"},
-            {"id": "tests_311", "command": "bash scripts/ci/run_tests_gate.sh --python-version 3.11"},
-            {"id": "tests_312", "command": "bash scripts/ci/run_tests_gate.sh --python-version 3.12"},
+            {
+                "id": "tests_311",
+                "command": "bash scripts/ci/run_tests_gate.sh --python-version 3.11",
+            },
+            {
+                "id": "tests_312",
+                "command": "bash scripts/ci/run_tests_gate.sh --python-version 3.12",
+            },
             {"id": "sonar", "command": "bash scripts/ci/run_sonar_gate.sh"},
         ],
         "parity_map": {

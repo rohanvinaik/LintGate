@@ -22,7 +22,13 @@ _MANAGED_END_RE = re.compile(
     r"<!--\s*LINTGATE:END\s+(\w+)\s*-->",
 )
 
-MANAGED_SECTION_IDS = ("machine_rules", "do_dont", "theory_alignment", "context_map", "prescriptive_rules")
+MANAGED_SECTION_IDS = (
+    "machine_rules",
+    "do_dont",
+    "theory_alignment",
+    "context_map",
+    "prescriptive_rules",
+)
 
 
 @dataclass
@@ -247,12 +253,14 @@ def _patch_prescriptive_rules(
     if section is None:
         # Bootstrap fresh section
         return "prescriptive_rules", (
-            "## Prescriptive Specifications\n\n"
-            f"- `{target_key}` ({problem_class}): {summary}\n"
+            f"## Prescriptive Specifications\n\n- `{target_key}` ({problem_class}): {summary}\n"
         )
     if target_key in section.content:
         return None  # Already listed
-    return "prescriptive_rules", section.content.rstrip() + f"\n- `{target_key}` ({problem_class}): {summary}\n"
+    return (
+        "prescriptive_rules",
+        section.content.rstrip() + f"\n- `{target_key}` ({problem_class}): {summary}\n",
+    )
 
 
 _TRIGGER_HANDLERS: dict[str, Any] = {

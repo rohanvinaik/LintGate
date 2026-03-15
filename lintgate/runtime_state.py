@@ -392,9 +392,7 @@ def build_runtime_state(
                         except (OSError, ValueError):
                             pass
             if total_funcs > 0:
-                state.prescriptive_coverage_ratio = round(
-                    min(1.0, len(index) / total_funcs), 3
-                )
+                state.prescriptive_coverage_ratio = round(min(1.0, len(index) / total_funcs), 3)
     except Exception:
         pass
 

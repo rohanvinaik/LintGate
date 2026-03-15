@@ -23,8 +23,12 @@ def _make_spec(target_key="mod::func", **overrides):
         "problem_class": "pure",
         "mode": "prospective",
         "invariants": [
-            Invariant("bounded", pred_gt("result", 0), "Result must be positive", "src", 0.8, "safety"),
-            Invariant("typed", pred_custom("Must return int"), "Must return int", "src", 0.7, "alignment"),
+            Invariant(
+                "bounded", pred_gt("result", 0), "Result must be positive", "src", 0.8, "safety"
+            ),
+            Invariant(
+                "typed", pred_custom("Must return int"), "Must return int", "src", 0.7, "alignment"
+            ),
         ],
         "forbidden_behaviors": [
             ForbiddenBehavior(pred_custom("no mutation"), "Must not mutate input", "src", "hard"),
@@ -357,16 +361,20 @@ class TestConfig:
 
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
-        (claude_dir / "lintgate.yaml").write_text(yaml.dump({
-            "controlplane": {
-                "enabled": True,
-                "prescriptive_spec": {
-                    "enabled": True,
-                    "auto_compose_on_freeze": False,
-                    "sigma_divergence_threshold": 3.5,
-                },
-            }
-        }))
+        (claude_dir / "lintgate.yaml").write_text(
+            yaml.dump(
+                {
+                    "controlplane": {
+                        "enabled": True,
+                        "prescriptive_spec": {
+                            "enabled": True,
+                            "auto_compose_on_freeze": False,
+                            "sigma_divergence_threshold": 3.5,
+                        },
+                    }
+                }
+            )
+        )
 
         from lintgate.config import load_controlplane_config
 
@@ -448,9 +456,21 @@ class TestGenerationPrompt:
         from mcp_tools._prescriptive_impl import _render_generation_prompt
 
         constraints = [
-            {"constraint_type": "must_not_use", "description": "Forbidden: no mutation", "priority": 1},
-            {"constraint_type": "must_use", "description": "Invariant: bounded output", "priority": 3},
-            {"constraint_type": "pattern", "description": "Algebraic law: idempotent", "priority": 4},
+            {
+                "constraint_type": "must_not_use",
+                "description": "Forbidden: no mutation",
+                "priority": 1,
+            },
+            {
+                "constraint_type": "must_use",
+                "description": "Invariant: bounded output",
+                "priority": 3,
+            },
+            {
+                "constraint_type": "pattern",
+                "description": "Algebraic law: idempotent",
+                "priority": 4,
+            },
         ]
         prompt = _render_generation_prompt("mod::func", constraints)
 
@@ -498,7 +518,14 @@ class TestPSPEC001Channel:
             problem_class="pure",
             mode="prospective",
             invariants=[
-                Invariant("typed", pred_type("result", "str", "must return str"), "must return str", "src", 0.8, "safety"),
+                Invariant(
+                    "typed",
+                    pred_type("result", "str", "must return str"),
+                    "must return str",
+                    "src",
+                    0.8,
+                    "safety",
+                ),
             ],
             prescriptive_sigma=2,
             created_at=1000.0,
@@ -545,7 +572,14 @@ class TestPSPEC001Channel:
             problem_class="pure",
             mode="prospective",
             invariants=[
-                Invariant("typed", pred_type("result", "int", "must return int"), "returns int", "src", 0.8, "safety"),
+                Invariant(
+                    "typed",
+                    pred_type("result", "int", "must return int"),
+                    "returns int",
+                    "src",
+                    0.8,
+                    "safety",
+                ),
             ],
             prescriptive_sigma=2,
             created_at=1000.0,

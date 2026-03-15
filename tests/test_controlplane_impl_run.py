@@ -275,12 +275,8 @@ class TestResolveExplicitFiles:
 class TestResolveGitChangedFiles:
     def test_staged_uses_cached_diff(self, tmp_path):
         with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = SimpleNamespace(
-                stdout="changed.py\n", returncode=0
-            )
-            _resolve_git_changed_files(
-                str(tmp_path), "staged", [str(tmp_path / "changed.py")]
-            )
+            mock_run.return_value = SimpleNamespace(stdout="changed.py\n", returncode=0)
+            _resolve_git_changed_files(str(tmp_path), "staged", [str(tmp_path / "changed.py")])
             # Check the git command used for staged
             call_args = mock_run.call_args_list[0]
             cmd = call_args[0][0]
@@ -304,9 +300,7 @@ class TestResolveGitChangedFiles:
 
     def test_filters_non_py_files(self, tmp_path):
         with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = SimpleNamespace(
-                stdout="readme.md\nscript.sh\n", returncode=0
-            )
+            mock_run.return_value = SimpleNamespace(stdout="readme.md\nscript.sh\n", returncode=0)
             result = _resolve_git_changed_files(str(tmp_path), "staged", [])
             # No .py files in output, no existing_py match => None
             assert result is None
@@ -324,9 +318,7 @@ class TestResolveGitChangedFiles:
 
 class TestResolveScopeFiles:
     def test_files_scope_delegates_to_resolve_explicit(self, tmp_path):
-        result = _resolve_scope_files(
-            str(tmp_path), "files", ["x.py"], _stub_helpers()
-        )
+        result = _resolve_scope_files(str(tmp_path), "files", ["x.py"], _stub_helpers())
         assert len(result) == 1
 
     def test_unknown_scope_raises_value_error(self):
@@ -516,11 +508,12 @@ class TestInjectBehaviorPriors:
             session_count=10,
             computed_bias_adjustments={"adj": 0.1},
         )
-        with mock.patch(
-            "lintgate.controlplane.global_behavior_profile.load_global_profile",
-            return_value=mock_profile,
-        ), mock.patch(
-            "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=mock_profile,
+            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5),
         ):
             _inject_behavior_priors(event, session, config)
             priors = event.raw_input["behavior_global_priors"]
@@ -540,11 +533,12 @@ class TestInjectBehaviorPriors:
         )
         event = SimpleNamespace(raw_input={})
         mock_profile = SimpleNamespace(session_count=1, computed_bias_adjustments={})
-        with mock.patch(
-            "lintgate.controlplane.global_behavior_profile.load_global_profile",
-            return_value=mock_profile,
-        ), mock.patch(
-            "lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=mock_profile,
+            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5),
         ):
             _inject_behavior_priors(event, session, config)
             assert "behavior_global_priors" not in event.raw_input
@@ -558,9 +552,7 @@ class TestPersistBehaviorCompassDelta:
         cr = _make_channel_result(channel="behavior", metrics={})
         session = _make_session()
         config = SimpleNamespace(global_memory_enabled=False)
-        with mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass"
-        ) as mock_load:
+        with mock.patch("lintgate.controlplane.session_memory.load_behavior_compass") as mock_load:
             _persist_behavior_compass_delta(cr, session, config)
             mock_load.assert_not_called()
 
@@ -570,9 +562,7 @@ class TestPersistBehaviorCompassDelta:
         )
         session = _make_session()
         config = SimpleNamespace(global_memory_enabled=False)
-        with mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass"
-        ) as mock_load:
+        with mock.patch("lintgate.controlplane.session_memory.load_behavior_compass") as mock_load:
             _persist_behavior_compass_delta(cr, session, config)
             mock_load.assert_not_called()
 
@@ -585,9 +575,7 @@ class TestPersistBehaviorCompassDelta:
             "pending_nudge_constraint_check_count": 2,
             "nudge_outcomes": [{"outcome": "accepted"}],
         }
-        cr = _make_channel_result(
-            channel="behavior", metrics={"behavior_compass_delta": delta}
-        )
+        cr = _make_channel_result(channel="behavior", metrics={"behavior_compass_delta": delta})
         session = _make_session()
         config = SimpleNamespace(global_memory_enabled=False)
         compass_obj = SimpleNamespace(
@@ -598,12 +586,13 @@ class TestPersistBehaviorCompassDelta:
             pending_nudge_constraint_check_count=0,
             nudge_outcomes=[],
         )
-        with mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass",
-            return_value=compass_obj,
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.save_behavior_compass"
-        ) as mock_save:
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.load_behavior_compass",
+                return_value=compass_obj,
+            ),
+            mock.patch("lintgate.controlplane.session_memory.save_behavior_compass") as mock_save,
+        ):
             _persist_behavior_compass_delta(cr, session, config)
             mock_save.assert_called_once_with(session, compass_obj)
             assert compass_obj.last_fired == "signal_x"
@@ -639,14 +628,18 @@ class TestPersistGlobalProfileDelta:
         session = _make_session()
         config = SimpleNamespace(global_memory_enabled=True, global_memory_ttl_days=90)
         mock_profile = SimpleNamespace()
-        with mock.patch(
-            "lintgate.controlplane.global_behavior_profile.load_global_profile",
-            return_value=mock_profile,
-        ) as mock_load, mock.patch(
-            "lintgate.controlplane.global_behavior_profile.apply_session_delta"
-        ) as mock_apply, mock.patch(
-            "lintgate.controlplane.global_behavior_profile.save_global_profile"
-        ) as mock_save:
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=mock_profile,
+            ) as mock_load,
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.apply_session_delta"
+            ) as mock_apply,
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.save_global_profile"
+            ) as mock_save,
+        ):
             _persist_global_profile_delta(cr, session, config)
             mock_load.assert_called_once_with(ttl_days=90)
             mock_apply.assert_called_once_with(mock_profile, {"key": "val"}, session_id="test123")
@@ -668,13 +661,13 @@ class TestPersistSessionAfterMesh:
         config = SimpleNamespace(global_memory_enabled=False)
         finding_index = {"fp1": {"kind": "K"}}
 
-        with mock.patch(
-            "lintgate.controlplane.session_memory.record_mesh_run"
-        ) as mock_record, mock.patch(
-            "lintgate.controlplane.session_memory.save_session"
-        ) as mock_save, mock.patch(
-            "mcp_tools._controlplane_impl_run._persist_behavior_compass_delta"
-        ) as mock_persist:
+        with (
+            mock.patch("lintgate.controlplane.session_memory.record_mesh_run") as mock_record,
+            mock.patch("lintgate.controlplane.session_memory.save_session") as mock_save,
+            mock.patch(
+                "mcp_tools._controlplane_impl_run._persist_behavior_compass_delta"
+            ) as mock_persist,
+        ):
             _persist_session_after_mesh(session, mesh, finding_index, config)
             mock_record.assert_called_once_with(session, mesh, finding_index=finding_index)
             mock_persist.assert_called_once()
@@ -687,13 +680,13 @@ class TestPersistSessionAfterMesh:
         mesh = _make_mesh_result(channel_results=[cr_lint, cr_tests])
         config = SimpleNamespace(global_memory_enabled=False)
 
-        with mock.patch(
-            "lintgate.controlplane.session_memory.record_mesh_run"
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.save_session"
-        ), mock.patch(
-            "mcp_tools._controlplane_impl_run._persist_behavior_compass_delta"
-        ) as mock_persist:
+        with (
+            mock.patch("lintgate.controlplane.session_memory.record_mesh_run"),
+            mock.patch("lintgate.controlplane.session_memory.save_session"),
+            mock.patch(
+                "mcp_tools._controlplane_impl_run._persist_behavior_compass_delta"
+            ) as mock_persist,
+        ):
             _persist_session_after_mesh(session, mesh, {}, config)
             mock_persist.assert_not_called()
 
@@ -709,11 +702,10 @@ class TestPersistRuntimeState:
         cr = _make_channel_result(findings=[f_block, f_warn, f_info])
         mesh = _make_mesh_result(channel_results=[cr], coherence_state="stable")
 
-        with mock.patch(
-            "lintgate.runtime_state.build_runtime_state"
-        ) as mock_build, mock.patch(
-            "lintgate.runtime_state.save_runtime_state"
-        ) as mock_save:
+        with (
+            mock.patch("lintgate.runtime_state.build_runtime_state") as mock_build,
+            mock.patch("lintgate.runtime_state.save_runtime_state") as mock_save,
+        ):
             rt = SimpleNamespace(symbol_coverage_blockers=0)
             mock_build.return_value = rt
             _persist_runtime_state(mesh, "/root", None)
@@ -727,16 +719,20 @@ class TestPersistRuntimeState:
         from lintgate.types import LintIssue
 
         f_symbol = LintIssue(
-            linter="test", kind="symbol_uncovered", message="x",
-            severity="blocking", file="t.py", line=1, column=0,
+            linter="test",
+            kind="symbol_uncovered",
+            message="x",
+            severity="blocking",
+            file="t.py",
+            line=1,
+            column=0,
         )
         cr = _make_channel_result(channel="tests", findings=[f_symbol])
         mesh = _make_mesh_result(channel_results=[cr], coherence_state="stable")
 
-        with mock.patch(
-            "lintgate.runtime_state.build_runtime_state"
-        ) as mock_build, mock.patch(
-            "lintgate.runtime_state.save_runtime_state"
+        with (
+            mock.patch("lintgate.runtime_state.build_runtime_state") as mock_build,
+            mock.patch("lintgate.runtime_state.save_runtime_state"),
         ):
             rt = SimpleNamespace(symbol_coverage_blockers=0)
             mock_build.return_value = rt
@@ -816,9 +812,7 @@ class TestRecordToolEventForBehavior:
     def test_behavior_disabled_is_noop(self):
         session = _make_session()
         config = SimpleNamespace(channel_enabled=lambda ch: False)
-        with mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass"
-        ) as mock_load:
+        with mock.patch("lintgate.controlplane.session_memory.load_behavior_compass") as mock_load:
             _record_tool_event_for_behavior(session, config)
             mock_load.assert_not_called()
 
@@ -826,14 +820,14 @@ class TestRecordToolEventForBehavior:
         session = _make_session()
         config = SimpleNamespace(channel_enabled=lambda ch: ch == "behavior")
         compass_obj = SimpleNamespace()
-        with mock.patch(
-            "lintgate.controlplane.session_memory.load_behavior_compass",
-            return_value=compass_obj,
-        ), mock.patch(
-            "lintgate.controlplane.behavior_compass.record_tool_event"
-        ) as mock_record, mock.patch(
-            "lintgate.controlplane.session_memory.save_behavior_compass"
-        ) as mock_save:
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.load_behavior_compass",
+                return_value=compass_obj,
+            ),
+            mock.patch("lintgate.controlplane.behavior_compass.record_tool_event") as mock_record,
+            mock.patch("lintgate.controlplane.session_memory.save_behavior_compass") as mock_save,
+        ):
             _record_tool_event_for_behavior(session, config)
             mock_record.assert_called_once_with(compass_obj, "controlplane_run", {}, "")
             mock_save.assert_called_once_with(session, compass_obj)
@@ -889,12 +883,15 @@ class TestDetectEditCycles:
     def test_no_cycles_returns_none(self):
         session = _make_session()
         state = self._make_edit_cycle_state()
-        with mock.patch(
-            "lintgate.orchestration.cycle_detector.track_event",
-            return_value=state,
-        ), mock.patch(
-            "lintgate.orchestration.cycle_detector.detect_cycles",
-            return_value=[],
+        with (
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.track_event",
+                return_value=state,
+            ),
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.detect_cycles",
+                return_value=[],
+            ),
         ):
             result = _detect_edit_cycles(session, {})
             assert result is None
@@ -907,12 +904,15 @@ class TestDetectEditCycles:
             diagnostics={"file": "foo.py"},
         )
         state = self._make_edit_cycle_state()
-        with mock.patch(
-            "lintgate.orchestration.cycle_detector.track_event",
-            return_value=state,
-        ), mock.patch(
-            "lintgate.orchestration.cycle_detector.detect_cycles",
-            return_value=[cycle_info],
+        with (
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.track_event",
+                return_value=state,
+            ),
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.detect_cycles",
+                return_value=[cycle_info],
+            ),
         ):
             result = _detect_edit_cycles(session, {"fp1": {}})
             assert result is not None
@@ -923,12 +923,15 @@ class TestDetectEditCycles:
         session = _make_session()
         no_cycle = SimpleNamespace(cycle_detected=False, reason=None, diagnostics={})
         state = self._make_edit_cycle_state()
-        with mock.patch(
-            "lintgate.orchestration.cycle_detector.track_event",
-            return_value=state,
-        ), mock.patch(
-            "lintgate.orchestration.cycle_detector.detect_cycles",
-            return_value=[no_cycle],
+        with (
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.track_event",
+                return_value=state,
+            ),
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.detect_cycles",
+                return_value=[no_cycle],
+            ),
         ):
             result = _detect_edit_cycles(session, {})
             assert result is None
@@ -941,12 +944,15 @@ class TestDetectEditCycles:
             diagnostics={},
         )
         state = self._make_edit_cycle_state()
-        with mock.patch(
-            "lintgate.orchestration.cycle_detector.track_event",
-            return_value=state,
-        ), mock.patch(
-            "lintgate.orchestration.cycle_detector.detect_cycles",
-            return_value=[cycle_info],
+        with (
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.track_event",
+                return_value=state,
+            ),
+            mock.patch(
+                "lintgate.orchestration.cycle_detector.detect_cycles",
+                return_value=[cycle_info],
+            ),
         ):
             result = _detect_edit_cycles(session, {})
             # No matching template, so alert list is empty -> None
@@ -1067,12 +1073,15 @@ class TestCheckExitGate:
 
     def test_exactly_two_snapshots_runs_gate(self):
         session = _make_session(snapshots=[SimpleNamespace(), SimpleNamespace()])
-        with mock.patch(
-            "lintgate.controlplane.session_memory.check_session_exit_gate",
-            return_value=["advisory1"],
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.escalate_persistent_failures",
-            return_value=["fail1"],
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.check_session_exit_gate",
+                return_value=["advisory1"],
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.escalate_persistent_failures",
+                return_value=["fail1"],
+            ),
         ):
             advisories, failures = _check_exit_gate(session)
             assert advisories == ["advisory1"]
@@ -1080,12 +1089,15 @@ class TestCheckExitGate:
 
     def test_empty_results_become_none(self):
         session = _make_session(snapshots=[SimpleNamespace(), SimpleNamespace()])
-        with mock.patch(
-            "lintgate.controlplane.session_memory.check_session_exit_gate",
-            return_value=[],
-        ), mock.patch(
-            "lintgate.controlplane.session_memory.escalate_persistent_failures",
-            return_value=[],
+        with (
+            mock.patch(
+                "lintgate.controlplane.session_memory.check_session_exit_gate",
+                return_value=[],
+            ),
+            mock.patch(
+                "lintgate.controlplane.session_memory.escalate_persistent_failures",
+                return_value=[],
+            ),
         ):
             advisories, failures = _check_exit_gate(session)
             assert advisories is None
@@ -1101,9 +1113,7 @@ class TestUpdateRefactorState:
             "run_id": "run1",
             "counts": {"blocking": 2, "warning": 3, "informational": 1},
         }
-        with mock.patch(
-            "lintgate.refactor_state.update_finding_counts"
-        ) as mock_update:
+        with mock.patch("lintgate.refactor_state.update_finding_counts") as mock_update:
             _update_refactor_state(compact, "/root")
             mock_update.assert_called_once_with(
                 "/root", "run1", {"blocking": 2, "warning": 3, "informational": 1}
@@ -1111,25 +1121,19 @@ class TestUpdateRefactorState:
 
     def test_empty_run_id_skips(self):
         compact = {"run_id": "", "counts": {"blocking": 0}}
-        with mock.patch(
-            "lintgate.refactor_state.update_finding_counts"
-        ) as mock_update:
+        with mock.patch("lintgate.refactor_state.update_finding_counts") as mock_update:
             _update_refactor_state(compact, "/root")
             mock_update.assert_not_called()
 
     def test_missing_run_id_skips(self):
         compact = {"counts": {"blocking": 0}}
-        with mock.patch(
-            "lintgate.refactor_state.update_finding_counts"
-        ) as mock_update:
+        with mock.patch("lintgate.refactor_state.update_finding_counts") as mock_update:
             _update_refactor_state(compact, "/root")
             mock_update.assert_not_called()
 
     def test_missing_counts_defaults_to_zero(self):
         compact = {"run_id": "run1"}
-        with mock.patch(
-            "lintgate.refactor_state.update_finding_counts"
-        ) as mock_update:
+        with mock.patch("lintgate.refactor_state.update_finding_counts") as mock_update:
             _update_refactor_state(compact, "/root")
             mock_update.assert_called_once_with(
                 "/root", "run1", {"blocking": 0, "warning": 0, "informational": 0}
@@ -1220,11 +1224,12 @@ class TestCheckTheoryStalenessForCompact:
 
 class TestValidateChannelWiring:
     def test_no_issues_returns_empty(self):
-        with mock.patch(
-            "lintgate.controlplane.metric_schema.register_all_schemas"
-        ), mock.patch(
-            "lintgate.controlplane.metric_schema.validate_wiring",
-            return_value=[],
+        with (
+            mock.patch("lintgate.controlplane.metric_schema.register_all_schemas"),
+            mock.patch(
+                "lintgate.controlplane.metric_schema.validate_wiring",
+                return_value=[],
+            ),
         ):
             result = _validate_channel_wiring(["lint"])
             assert result == []
@@ -1236,11 +1241,12 @@ class TestValidateChannelWiring:
             key="coverage",
             missing_publisher="no publisher for 'coverage'",
         )
-        with mock.patch(
-            "lintgate.controlplane.metric_schema.register_all_schemas"
-        ), mock.patch(
-            "lintgate.controlplane.metric_schema.validate_wiring",
-            return_value=[issue],
+        with (
+            mock.patch("lintgate.controlplane.metric_schema.register_all_schemas"),
+            mock.patch(
+                "lintgate.controlplane.metric_schema.validate_wiring",
+                return_value=[issue],
+            ),
         ):
             result = _validate_channel_wiring(["lint", "tests"])
             assert len(result) == 1
@@ -1257,11 +1263,12 @@ class TestValidateChannelWiring:
             key="metric_x",
             missing_publisher="channel Y",
         )
-        with mock.patch(
-            "lintgate.controlplane.metric_schema.register_all_schemas"
-        ), mock.patch(
-            "lintgate.controlplane.metric_schema.validate_wiring",
-            return_value=[issue],
+        with (
+            mock.patch("lintgate.controlplane.metric_schema.register_all_schemas"),
+            mock.patch(
+                "lintgate.controlplane.metric_schema.validate_wiring",
+                return_value=[issue],
+            ),
         ):
             result = _validate_channel_wiring(["lint"])
             assert len(result) == 1
@@ -1356,12 +1363,20 @@ class TestRunContext:
 
     def test_finding_index_default_is_empty_dict(self):
         ctx1 = _RunContext(
-            project_root="", cp_config=None, session=None,
-            strictness="", unknown=[], helpers={},
+            project_root="",
+            cp_config=None,
+            session=None,
+            strictness="",
+            unknown=[],
+            helpers={},
         )
         ctx2 = _RunContext(
-            project_root="", cp_config=None, session=None,
-            strictness="", unknown=[], helpers={},
+            project_root="",
+            cp_config=None,
+            session=None,
+            strictness="",
+            unknown=[],
+            helpers={},
         )
         # Default factory should give independent dicts
         assert ctx1.finding_index is not ctx2.finding_index

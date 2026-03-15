@@ -76,7 +76,13 @@ class TestActionPlan:
                 "total_findings": 5,
                 "auto_fixable": 3,
                 "findings": [
-                    {"severity": "blocking", "kind": "F821", "message": "undefined name", "file": "a.py", "line": 1},
+                    {
+                        "severity": "blocking",
+                        "kind": "F821",
+                        "message": "undefined name",
+                        "file": "a.py",
+                        "line": 1,
+                    },
                 ],
                 "auto_fixable_summary": [],
             },
@@ -84,10 +90,20 @@ class TestActionPlan:
                 "total_functions": 10,
                 "under_specified_count": 2,
                 "hotspot_functions": [
-                    {"function_key": "mod::f", "estimated_sigma": 8, "assertion_count": 1, "source_file": "mod.py"},
+                    {
+                        "function_key": "mod::f",
+                        "estimated_sigma": 8,
+                        "assertion_count": 1,
+                        "source_file": "mod.py",
+                    },
                 ],
                 "under_specified_top": [
-                    {"function_key": "mod::f", "estimated_sigma": 8, "assertion_count": 1, "source_file": "mod.py"},
+                    {
+                        "function_key": "mod::f",
+                        "estimated_sigma": 8,
+                        "assertion_count": 1,
+                        "source_file": "mod.py",
+                    },
                 ],
             },
             "mutation": {"cached": False},
@@ -107,17 +123,34 @@ class TestActionPlan:
         p0_p1 = [p for p in priorities if p.startswith("P0") or p.startswith("P1")]
         p2_p3 = [p for p in priorities if p.startswith("P2") or p.startswith("P3")]
         if p0_p1 and p2_p3:
-            last_p1_idx = max(i for i, p in enumerate(priorities) if p.startswith("P0") or p.startswith("P1"))
-            first_p2_idx = min(i for i, p in enumerate(priorities) if p.startswith("P2") or p.startswith("P3"))
+            last_p1_idx = max(
+                i for i, p in enumerate(priorities) if p.startswith("P0") or p.startswith("P1")
+            )
+            first_p2_idx = min(
+                i for i, p in enumerate(priorities) if p.startswith("P2") or p.startswith("P3")
+            )
             assert last_p1_idx < first_p2_idx
 
     def test_plan_has_dependencies(self):
         """Actions that depend on lint fixes have depends_on set."""
         analysis = {
-            "lint": {"total_findings": 1, "auto_fixable": 1, "findings": [], "auto_fixable_summary": []},
-            "specification": {"total_functions": 0, "under_specified_count": 0, "hotspot_functions": [], "under_specified_top": []},
+            "lint": {
+                "total_findings": 1,
+                "auto_fixable": 1,
+                "findings": [],
+                "auto_fixable_summary": [],
+            },
+            "specification": {
+                "total_functions": 0,
+                "under_specified_count": 0,
+                "hotspot_functions": [],
+                "under_specified_top": [],
+            },
             "mutation": {"cached": False},
-            "test_coverage": {"no_test_files": [{"file": "a.py", "src_loc": 100}], "low_coverage_files": []},
+            "test_coverage": {
+                "no_test_files": [{"file": "a.py", "src_loc": 100}],
+                "low_coverage_files": [],
+            },
             "performance": {"pure_count": 0, "pure_ratio": 0},
             "prescriptive": {"total_specs": 0},
         }
@@ -261,8 +294,10 @@ class TestCompleteAnalysis:
 class TestMCPToolImports:
     def test_generate_import(self):
         from mcp_server import offline_analysis_generate
+
         assert callable(offline_analysis_generate)
 
     def test_run_import(self):
         from mcp_server import offline_analysis_run
+
         assert callable(offline_analysis_run)

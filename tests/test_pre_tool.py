@@ -1599,8 +1599,11 @@ class TestCheckQualityGateBranches:
         from lintgate.hooks.pre_tool import _check_quality_gate
 
         qg = SimpleNamespace(
-            enabled=True, block_push=True, advise_commit=True,
-            staleness_threshold_s=1800, check_secrets=False,
+            enabled=True,
+            block_push=True,
+            advise_commit=True,
+            staleness_threshold_s=1800,
+            check_secrets=False,
         )
         cp_config = SimpleNamespace(quality_gate=qg)
         with (
@@ -1616,8 +1619,11 @@ class TestCheckQualityGateBranches:
         from lintgate.hooks.pre_tool import _check_quality_gate
 
         qg = SimpleNamespace(
-            enabled=True, block_push=True, advise_commit=True,
-            staleness_threshold_s=1800, check_secrets=False,
+            enabled=True,
+            block_push=True,
+            advise_commit=True,
+            staleness_threshold_s=1800,
+            check_secrets=False,
         )
         cp_config = SimpleNamespace(quality_gate=qg)
         with (
@@ -1677,12 +1683,17 @@ class TestCheckQualityGateBranches:
         from lintgate.hooks.pre_tool import _check_quality_gate
 
         qg = SimpleNamespace(
-            enabled=True, block_push=True, advise_commit=True,
-            staleness_threshold_s=1800.0, check_secrets=False,
+            enabled=True,
+            block_push=True,
+            advise_commit=True,
+            staleness_threshold_s=1800.0,
+            check_secrets=False,
         )
         cp_config = SimpleNamespace(quality_gate=qg)
         state = SimpleNamespace(
-            timestamp=time.time(), blocking_issues=0, last_test_status="fail",
+            timestamp=time.time(),
+            blocking_issues=0,
+            last_test_status="fail",
         )
         with (
             patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
@@ -1697,12 +1708,17 @@ class TestCheckQualityGateBranches:
         from lintgate.hooks.pre_tool import _check_quality_gate
 
         qg = SimpleNamespace(
-            enabled=True, block_push=True, advise_commit=True,
-            staleness_threshold_s=1800.0, check_secrets=False,
+            enabled=True,
+            block_push=True,
+            advise_commit=True,
+            staleness_threshold_s=1800.0,
+            check_secrets=False,
         )
         cp_config = SimpleNamespace(quality_gate=qg)
         state = SimpleNamespace(
-            timestamp=time.time(), blocking_issues=0, last_test_status="fail",
+            timestamp=time.time(),
+            blocking_issues=0,
+            last_test_status="fail",
         )
         with (
             patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
@@ -1717,12 +1733,17 @@ class TestCheckQualityGateBranches:
         from lintgate.hooks.pre_tool import _check_quality_gate
 
         qg = SimpleNamespace(
-            enabled=True, block_push=True, advise_commit=True,
-            staleness_threshold_s=1800.0, check_secrets=False,
+            enabled=True,
+            block_push=True,
+            advise_commit=True,
+            staleness_threshold_s=1800.0,
+            check_secrets=False,
         )
         cp_config = SimpleNamespace(quality_gate=qg)
         state = SimpleNamespace(
-            timestamp=time.time(), blocking_issues=0, last_test_status="pass",
+            timestamp=time.time(),
+            blocking_issues=0,
+            last_test_status="pass",
         )
         with (
             patch("lintgate.hooks.pre_tool.load_controlplane_config", return_value=cp_config),
@@ -1737,8 +1758,11 @@ class TestCheckQualityGateBranches:
         from lintgate.hooks.pre_tool import _check_quality_gate
 
         qg = SimpleNamespace(
-            enabled=True, block_push=True, advise_commit=True,
-            staleness_threshold_s=1800.0, check_secrets=False,
+            enabled=True,
+            block_push=True,
+            advise_commit=True,
+            staleness_threshold_s=1800.0,
+            check_secrets=False,
         )
         cp_config = SimpleNamespace(quality_gate=qg)
         with (

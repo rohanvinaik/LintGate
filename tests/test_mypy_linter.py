@@ -55,7 +55,7 @@ class TestMypyLineRegex:
     """Tests for the mypy output line regex."""
 
     def test_full_match_with_column_and_code(self) -> None:
-        line = 'foo.py:10: 5: error: Incompatible types [assignment]'
+        line = "foo.py:10: 5: error: Incompatible types [assignment]"
         m = _MYPY_LINE_RE.match(line)
         assert m is not None
         assert m.group(1) == "foo.py"
@@ -66,7 +66,7 @@ class TestMypyLineRegex:
         assert m.group(6) == "assignment"
 
     def test_match_without_column(self) -> None:
-        line = 'bar.py:20: error: Name not defined [name-defined]'
+        line = "bar.py:20: error: Name not defined [name-defined]"
         m = _MYPY_LINE_RE.match(line)
         assert m is not None
         assert m.group(1) == "bar.py"
@@ -76,7 +76,7 @@ class TestMypyLineRegex:
         assert m.group(6) == "name-defined"
 
     def test_match_without_error_code(self) -> None:
-        line = 'baz.py:1: 1: note: Some note message'
+        line = "baz.py:1: 1: note: Some note message"
         m = _MYPY_LINE_RE.match(line)
         assert m is not None
         assert m.group(4) == "note"
@@ -167,9 +167,7 @@ class TestDetectHeavyDeps:
         assert result == ["pandas"]
 
     def test_finds_from_pyproject(self, tmp_path) -> None:
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\ndependencies = ["scipy"]\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["scipy"]\n')
         result = _detect_heavy_deps(str(tmp_path))
         assert result == ["scipy"]
 

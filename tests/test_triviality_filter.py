@@ -367,12 +367,12 @@ class TestEffectiveBody:
 
     def test_string_expr_not_at_position_zero_kept(self):
         """A string expression NOT at index 0 is not a docstring."""
-        node = _parse_func('''
+        node = _parse_func("""
             def f():
                 x = 1
                 "not a docstring"
                 return x
-        ''')
+        """)
         body = _effective_body(node)
         assert len(body) == 3  # assign, string expr, return
 

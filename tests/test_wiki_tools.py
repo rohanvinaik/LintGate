@@ -53,16 +53,19 @@ class TestDetectSiteTitle:
 class TestLoadTheory:
     def test_returns_theory_profile_on_success(self):
         fake_profile = {"core_theory": ["claim1"]}
-        with patch(
-            "mcp_tools.wiki_tools.extract_theory",
-            return_value={"theory_profile": fake_profile},
-            create=True,
-        ), patch(
-            "lintgate.theory_extractor.extract_theory",
-            return_value={"theory_profile": fake_profile},
+        with (
+            patch(
+                "mcp_tools.wiki_tools.extract_theory",
+                return_value={"theory_profile": fake_profile},
+                create=True,
+            ),
+            patch(
+                "lintgate.theory_extractor.extract_theory",
+                return_value={"theory_profile": fake_profile},
+            ),
         ):
-                result = _load_theory("/tmp/proj")
-                assert result == fake_profile
+            result = _load_theory("/tmp/proj")
+            assert result == fake_profile
 
     def test_returns_none_on_import_error(self):
         with patch(
@@ -186,7 +189,9 @@ class TestWritePages:
         mock_freshness_state.pages = {}
 
         with (
-            patch("lintgate.wiki.freshness.load_freshness_state", return_value=mock_freshness_state),
+            patch(
+                "lintgate.wiki.freshness.load_freshness_state", return_value=mock_freshness_state
+            ),
             patch("lintgate.wiki.freshness.save_freshness_state"),
             patch("lintgate.wiki.freshness._section_contents_for_page", return_value={}),
             patch(

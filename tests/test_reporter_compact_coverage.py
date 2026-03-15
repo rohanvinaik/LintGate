@@ -27,7 +27,8 @@ class TestBuildCoherenceDict:
 
     def test_with_action(self):
         coherence = CoherenceResult(
-            state="isolated", summary="lint fails",
+            state="isolated",
+            summary="lint fails",
             recommended_action="run lint_fix",
         )
         result = _build_coherence_dict(coherence)
@@ -45,7 +46,8 @@ class TestBuildCoherenceDict:
 
     def test_classification_notes(self):
         coherence = CoherenceResult(
-            state="systemic", summary="x",
+            state="systemic",
+            summary="x",
             classification_notes=["ambiguous boundary"],
         )
         result = _build_coherence_dict(coherence)
@@ -76,7 +78,9 @@ class TestBuildCounts:
 
     def test_symbol_blockers_counted(self):
         mesh = MeshResult(channel_results=[])
-        result = _build_counts(mesh, {"blocking": 0, "warning": 0, "informational": 0}, [{"kind": "a"}])
+        result = _build_counts(
+            mesh, {"blocking": 0, "warning": 0, "informational": 0}, [{"kind": "a"}]
+        )
         assert result["symbol_blocking"] == 1
 
 
@@ -95,7 +99,8 @@ class FakeFinding:
 class TestFormatFailStatus:
     def test_single_blocking(self):
         cr = ChannelResult(
-            channel="lint", status="fail",
+            channel="lint",
+            status="fail",
             findings=[FakeFinding(severity="blocking")],
         )
         result = _format_fail_status(cr)
@@ -103,7 +108,8 @@ class TestFormatFailStatus:
 
     def test_mixed_severities(self):
         cr = ChannelResult(
-            channel="lint", status="fail",
+            channel="lint",
+            status="fail",
             findings=[
                 FakeFinding(severity="blocking"),
                 FakeFinding(severity="blocking"),
@@ -133,7 +139,8 @@ class TestFindingToBlocker:
 
     def test_blocking_symcov_returns_dict(self):
         f = FakeFinding(
-            severity="blocking", kind="symbol_uncovered",
+            severity="blocking",
+            kind="symbol_uncovered",
             message="missing test for func",
             file="src/core.py",
             evidence={"symbol_key": "core::func"},
@@ -146,7 +153,8 @@ class TestFindingToBlocker:
 
     def test_falls_back_to_message_when_no_symbol(self):
         f = FakeFinding(
-            severity="blocking", kind="symbol_uncovered",
+            severity="blocking",
+            kind="symbol_uncovered",
             message="missing test coverage",
             evidence={},
         )

@@ -67,7 +67,8 @@ def _analyze_purity_summary(
 
 
 def _analyze_optimization_opportunities(
-    manifest: PropertyManifest, project_root: str,
+    manifest: PropertyManifest,
+    project_root: str,
     call_graph: Any = None,
     mutation_cache: dict[str, dict] | None = None,
 ) -> list[LintIssue]:
@@ -88,7 +89,8 @@ def _analyze_optimization_opportunities(
 
     # Collect all cacheable function names from optimization_potential as fallback
     all_cacheable = [
-        name for name, hints_list in manifest.optimization_potential
+        name
+        for name, hints_list in manifest.optimization_potential
         if "cacheable" in set(hints_list)
     ]
 
@@ -195,7 +197,9 @@ def _analyze_optimization_opportunities(
                             "mutation_gated": mutation_gated,
                         },
                         suggestions=(
-                            ["Run mutation_run_sampling to verify behavioral correctness before caching."]
+                            [
+                                "Run mutation_run_sampling to verify behavioral correctness before caching."
+                            ]
                             if mutation_gated
                             else ["Decorate with @functools.lru_cache or @functools.cache"]
                         ),
@@ -204,7 +208,8 @@ def _analyze_optimization_opportunities(
 
     # ── PERFCH006 — Stable-read functions (new purity tier) ───────
     stable_read_funcs = [
-        name for name, func in manifest.functions.items()
+        name
+        for name, func in manifest.functions.items()
         if func.purity_tier == PurityTier.STABLE_READ
     ]
     if stable_read_funcs:
@@ -236,7 +241,8 @@ def _analyze_optimization_opportunities(
 
 
 def _score_cache_hotspots(
-    manifest: PropertyManifest, project_root: str,
+    manifest: PropertyManifest,
+    project_root: str,
     call_graph: Any = None,
 ) -> list[dict[str, Any]]:
     """Score all cacheable functions by ROI and return ranked list."""
@@ -282,13 +288,15 @@ def _score_cache_hotspots(
 
         score = compute_cache_score(func_node, func_props.purity, cg_data)
         if score.band != "SKIP":
-            hotspots.append({
-                "function": func_name,
-                "source_file": source_file,
-                "score": round(score.score, 3),
-                "band": score.band,
-                "factors": {k: round(v, 3) for k, v in score.factors.items()},
-            })
+            hotspots.append(
+                {
+                    "function": func_name,
+                    "source_file": source_file,
+                    "score": round(score.score, 3),
+                    "band": score.band,
+                    "factors": {k: round(v, 3) for k, v in score.factors.items()},
+                }
+            )
 
     hotspots.sort(key=lambda h: h["score"], reverse=True)
     return hotspots
@@ -430,7 +438,8 @@ class PerformanceChannel:
             from lintgate.specification.call_graph import build_cross_module_call_graph
 
             source_files = [
-                f for f in py_files
+                f
+                for f in py_files
                 if not os.path.basename(f).startswith("test_")
                 and not os.path.basename(f).endswith("_test.py")
             ]
@@ -445,9 +454,14 @@ class PerformanceChannel:
         except Exception:
             pass
 
-        findings.extend(_analyze_optimization_opportunities(
-            manifest, project_root, call_graph=call_graph, mutation_cache=mutation_cache,
-        ))
+        findings.extend(
+            _analyze_optimization_opportunities(
+                manifest,
+                project_root,
+                call_graph=call_graph,
+                mutation_cache=mutation_cache,
+            )
+        )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 

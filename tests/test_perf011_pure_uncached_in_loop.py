@@ -485,37 +485,27 @@ class TestAnalyzeLoopBodyForUncachedCalls:
 
     def test_finds_pure_call_in_body(self):
         tree = ast.parse("x = len(data)")
-        issues = list(
-            _analyze_loop_body_for_uncached_calls(tree.body, set(), "test.py")
-        )
+        issues = list(_analyze_loop_body_for_uncached_calls(tree.body, set(), "test.py"))
         assert len(issues) == 1
         assert issues[0].evidence["func"] == "len"
 
     def test_skips_impure_call(self):
         tree = ast.parse("x = unknown(data)")
-        issues = list(
-            _analyze_loop_body_for_uncached_calls(tree.body, set(), "test.py")
-        )
+        issues = list(_analyze_loop_body_for_uncached_calls(tree.body, set(), "test.py"))
         assert len(issues) == 0
 
     def test_multiple_calls_in_body(self):
         tree = ast.parse("x = len(a)\ny = sorted(b)")
-        issues = list(
-            _analyze_loop_body_for_uncached_calls(tree.body, set(), "test.py")
-        )
+        issues = list(_analyze_loop_body_for_uncached_calls(tree.body, set(), "test.py"))
         funcs = {i.evidence["func"] for i in issues}
         assert "len" in funcs
         assert "sorted" in funcs
 
     def test_variant_call_skipped(self):
         tree = ast.parse("x = len(i)")
-        issues = list(
-            _analyze_loop_body_for_uncached_calls(tree.body, {"i"}, "test.py")
-        )
+        issues = list(_analyze_loop_body_for_uncached_calls(tree.body, {"i"}, "test.py"))
         assert len(issues) == 0
 
     def test_empty_body(self):
-        issues = list(
-            _analyze_loop_body_for_uncached_calls([], set(), "test.py")
-        )
+        issues = list(_analyze_loop_body_for_uncached_calls([], set(), "test.py"))
         assert len(issues) == 0

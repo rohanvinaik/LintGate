@@ -11,9 +11,7 @@ from lintgate.controlplane.types import ChannelResult, CoherenceResult
 from lintgate.types import LintIssue
 
 
-def _issue(
-    file: str = "a.py", kind: str = "E001", severity: str = "warning"
-) -> LintIssue:
+def _issue(file: str = "a.py", kind: str = "E001", severity: str = "warning") -> LintIssue:
     return LintIssue(linter="test", kind=kind, message="msg", file=file, severity=severity)
 
 
@@ -21,7 +19,10 @@ def _result(
     channel: str, findings: list[LintIssue] | None = None, status: str = "fail"
 ) -> ChannelResult:
     return ChannelResult(
-        channel=channel, status=status, severity="warning", findings=findings or []  # type: ignore[arg-type]
+        channel=channel,
+        status=status,
+        severity="warning",
+        findings=findings or [],  # type: ignore[arg-type]
     )
 
 
@@ -35,9 +36,7 @@ class TestClassifyEditScope:
         findings = [_issue(file=str(target))]
         cr = _result("lint", findings)
 
-        edit_related, ambient, unknown = classify_edit_scope(
-            [cr], [str(target)]
-        )
+        edit_related, ambient, unknown = classify_edit_scope([cr], [str(target)])
         assert edit_related == ["lint"]
         assert ambient == []
         assert unknown == []
@@ -49,9 +48,7 @@ class TestClassifyEditScope:
         finding_file.write_text("")
         cr = _result("lint", [_issue(file=str(finding_file))])
 
-        edit_related, ambient, unknown = classify_edit_scope(
-            [cr], [str(changed)]
-        )
+        edit_related, ambient, unknown = classify_edit_scope([cr], [str(changed)])
         assert edit_related == []
         assert ambient == ["lint"]
 

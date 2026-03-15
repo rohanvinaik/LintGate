@@ -268,9 +268,7 @@ class TestRunPlatonicContinue:
         helpers = _make_helpers("/proj")
         converge_fn = MagicMock()
 
-        result = run_platonic_continue(
-            helpers, "/proj", "missing_wf", converge_fn=converge_fn
-        )
+        result = run_platonic_continue(helpers, "/proj", "missing_wf", converge_fn=converge_fn)
         parsed = json.loads(result)
         assert parsed["error"] == "Workflow not found: missing_wf"
         converge_fn.assert_not_called()
@@ -283,9 +281,7 @@ class TestRunPlatonicContinue:
         helpers = _make_helpers("/proj")
         converge_fn = MagicMock()
 
-        result = run_platonic_continue(
-            helpers, "/proj", "wf001", converge_fn=converge_fn
-        )
+        result = run_platonic_continue(helpers, "/proj", "wf001", converge_fn=converge_fn)
         parsed = json.loads(result)
         assert parsed["status"] == "terminal"
         assert parsed["state"] == "READY_TO_APPLY"
@@ -305,9 +301,7 @@ class TestRunPlatonicContinue:
         helpers = _make_helpers("/proj")
         converge_fn = MagicMock()
 
-        result = run_platonic_continue(
-            helpers, "/proj", "wf001", converge_fn=converge_fn
-        )
+        result = run_platonic_continue(helpers, "/proj", "wf001", converge_fn=converge_fn)
         parsed = json.loads(result)
         assert parsed["status"] == "terminal"
         assert len(parsed["next_actions"]) == 1
@@ -323,7 +317,9 @@ class TestRunPlatonicContinue:
         validate_fn = MagicMock(return_value="validate_result")
 
         result = run_platonic_continue(
-            helpers, "/proj", "wf001",
+            helpers,
+            "/proj",
+            "wf001",
             converge_fn=converge_fn,
             validate_only_fn=validate_fn,
         )
@@ -345,9 +341,7 @@ class TestRunPlatonicContinue:
         helpers = _make_helpers("/proj")
         converge_fn = MagicMock(return_value="resumed")
 
-        result = run_platonic_continue(
-            helpers, "/proj", "wf001", converge_fn=converge_fn
-        )
+        result = run_platonic_continue(helpers, "/proj", "wf001", converge_fn=converge_fn)
         assert result == "resumed"
         call_kwargs = converge_fn.call_args[1]
         assert call_kwargs["orch_state_snapshot"] == {"iteration": 2}
@@ -404,9 +398,7 @@ class TestRunPlatonicApply:
         "mcp_tools._test_regeneration_apply.impl_rebuild_apply",
         return_value='{"dry_run": true, "actions": []}',
     )
-    def test_dry_run_apply_succeeds(
-        self, mock_impl, mock_load_val, mock_load_wf, mock_config
-    ):
+    def test_dry_run_apply_succeeds(self, mock_impl, mock_load_val, mock_load_wf, mock_config):
         wf = _make_workflow(state="READY_TO_APPLY", step="validate")
         mock_load_wf.return_value = wf
         helpers = _make_helpers("/proj")

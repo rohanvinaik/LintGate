@@ -231,7 +231,9 @@ def _impl_extraction_plan(
 
     # Build next_actions — include refactor_move when plan recommends extraction
     na: list[NextAction] = []
-    if plan.steps and any("extract" in s.action.lower() for s in plan.steps if hasattr(s, "action")):
+    if plan.steps and any(
+        "extract" in s.action.lower() for s in plan.steps if hasattr(s, "action")
+    ):
         na.append(
             NextAction(
                 tool="refactor_move",

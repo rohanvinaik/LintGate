@@ -43,7 +43,10 @@ def _get_lintgate_repo_url() -> str:
 def _is_self_analysis(repo_url: str) -> bool:
     """Check if the target repo IS lintgate itself."""
     lintgate_url = _get_lintgate_repo_url()
-    return repo_url.rstrip("/").rstrip(".git").lower() == lintgate_url.rstrip("/").rstrip(".git").lower()
+    return (
+        repo_url.rstrip("/").rstrip(".git").lower()
+        == lintgate_url.rstrip("/").rstrip(".git").lower()
+    )
 
 
 def _build_install_cell(
@@ -213,7 +216,11 @@ def _count_source_files(project_root: str) -> int:
             continue
         for _dirpath, _, filenames in os.walk(base):
             for fn in filenames:
-                if fn.endswith(".py") and not fn.startswith("test_") and not fn.endswith("_test.py"):
+                if (
+                    fn.endswith(".py")
+                    and not fn.startswith("test_")
+                    and not fn.endswith("_test.py")
+                ):
                     count += 1
     return count
 
@@ -376,7 +383,7 @@ def _build_notebook(
         "            for ds, n in r.get('discovery', {}).items():\n"
         "                disc[ds] = disc.get(ds, 0) + n\n"
         "            print(f'[{i}/{len(files)}] {rel}: {r.get(\"profiled\",0)} profiled, '\n"
-        "                  f'{r.get(\"cached\",0)} cached, {r.get(\"elapsed_s\",\"?\")}s')\n"
+        '                  f\'{r.get("cached",0)} cached, {r.get("elapsed_s","?")}s\')\n'
         "        except Exception as e:\n"
         "            print(f'[{i}/{len(files)}] {rel}: FAILED - {e}')\n"
         "            totals['errors'] += 1\n"
@@ -417,7 +424,15 @@ def _build_notebook(
             f"Then: `cd {local_project_path} && unzip ~/Downloads/mutation_results.zip`"
         ),
         _md("## Step 1: Install LintGate + Clone Target"),
-        _code(_build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis, lintgate_branch=lg_branch)),
+        _code(
+            _build_install_cell(
+                repo_url,
+                "main",
+                src_dirs_str,
+                self_analysis=self_analysis,
+                lintgate_branch=lg_branch,
+            )
+        ),
         _md("## Step 2: Run sweep"),
         _code(sweep_code),
         _md("## Step 3: Review & download"),
@@ -484,7 +499,7 @@ def _build_notebook(
             "        return 0\n"
             "\n"
             "def find_test_file(base_name, test_dir):\n"
-            "    \"\"\"Find a matching test file for a production module.\"\"\"\n"
+            '    """Find a matching test file for a production module."""\n'
             "    # Strip leading underscore for matching\n"
             "    clean = base_name.lstrip('_')\n"
             "    candidates = [\n"
@@ -541,7 +556,7 @@ def _build_notebook(
             "# Print report\n"
             "print(f'Test Coverage Analysis: {len(rows)} production files >= {MIN_LOC} LoC')\n"
             "print(f'{\"=\"*90}')\n"
-            "print(f'{\"Source File\":<55} {\"Src\":>5} {\"Test\":>5} {\"Ratio\":>6} {\"Test File\"}')\n"
+            'print(f\'{"Source File":<55} {"Src":>5} {"Test":>5} {"Ratio":>6} {"Test File"}\')\n'
             "print(f'{\"-\"*90}')\n"
             "\n"
             "no_test = [r for r in rows if r[4] == 'NONE']\n"
@@ -652,7 +667,9 @@ def _build_golden_path_notebook(
             "source": [line + "\n" for line in source.split("\n")],
         }
 
-    install_cell = _build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis, lintgate_branch=lg_branch)
+    install_cell = _build_install_cell(
+        repo_url, "main", src_dirs_str, self_analysis=self_analysis, lintgate_branch=lg_branch
+    )
 
     # Step 2: Mutation sweep (same proven logic)
     sweep_cell = (
@@ -768,7 +785,7 @@ def _build_golden_path_notebook(
         "            for k in totals:\n"
         "                totals[k] += r.get(k, 0)\n"
         "            if i % 50 == 0 or i == len(files):\n"
-        "                print(f'[{i}/{len(files)}] {totals[\"profiled\"]} profiled, {totals[\"killed\"]}k/{totals[\"survived\"]}s')\n"
+        '                print(f\'[{i}/{len(files)}] {totals["profiled"]} profiled, {totals["killed"]}k/{totals["survived"]}s\')\n'
         "        except Exception as e:\n"
         "            print(f'[{i}/{len(files)}] {rel}: FAILED - {e}')\n"
         "            totals['errors'] += 1\n"
@@ -777,7 +794,7 @@ def _build_golden_path_notebook(
         "kr = f'{totals[\"killed\"]}/{t} ({totals[\"killed\"]/t:.1%})' if t else 'N/A'\n"
         "print(f'\\n{\"=\"*60}')\n"
         "print(f'Sweep done in {elapsed}s | Kill rate: {kr}')\n"
-        "print(f'Profiled: {totals[\"profiled\"]} | Trivial: {totals[\"trivial\"]} | Errors: {totals[\"errors\"]}')"
+        'print(f\'Profiled: {totals["profiled"]} | Trivial: {totals["trivial"]} | Errors: {totals["errors"]}\')'
     )
 
     # Step 3: Spec analysis + reconciliation
@@ -985,10 +1002,12 @@ def impl_colab_sweep_generate(
     source_count = _count_source_files(project_root)
 
     if not git_info["repo_url"]:
-        return json.dumps({
-            "error": "No git remote found. The Colab notebook needs a cloneable repo URL.",
-            "hint": "Run: git remote add origin <your-repo-url>",
-        })
+        return json.dumps(
+            {
+                "error": "No git remote found. The Colab notebook needs a cloneable repo URL.",
+                "hint": "Run: git remote add origin <your-repo-url>",
+            }
+        )
 
     # Detect source directories for the target project
     skip = {"tests", "test", "docs", "scripts", "node_modules", "venv", ".venv", "__pycache__"}
@@ -999,7 +1018,9 @@ def impl_colab_sweep_generate(
         full = os.path.join(project_root, entry)
         if not os.path.isdir(full):
             continue
-        has_py = any(f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f)))
+        has_py = any(
+            f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f))
+        )
         has_init = os.path.isfile(os.path.join(full, "__init__.py"))
         if has_py or has_init:
             src_dirs.append(entry)
@@ -1044,21 +1065,23 @@ def impl_colab_sweep_generate(
         ),
     ]
 
-    return json.dumps({
-        "notebook_path": output,
-        "mode": mode,
-        "repo_url": git_info["repo_url"],
-        "branch": git_info["branch"],
-        "source_files": source_count,
-        "cached_profiles": cached_count,
-        "estimated_new": max(0, source_count - cached_count),
-        "workers": workers,
-        "budget_ms": budget_ms,
-        "src_dirs": src_dirs,
-        "instructions": (
-            f"Upload {os.path.basename(output)} to https://colab.research.google.com/ "
-            "then Runtime > Run all. Download the zip when done and unzip into the project root."
-        ),
-        "sync_command": f"cd {project_root} && unzip ~/Downloads/golden_path_results.zip",
-        "next_actions": serialize_next_actions(next_actions),
-    })
+    return json.dumps(
+        {
+            "notebook_path": output,
+            "mode": mode,
+            "repo_url": git_info["repo_url"],
+            "branch": git_info["branch"],
+            "source_files": source_count,
+            "cached_profiles": cached_count,
+            "estimated_new": max(0, source_count - cached_count),
+            "workers": workers,
+            "budget_ms": budget_ms,
+            "src_dirs": src_dirs,
+            "instructions": (
+                f"Upload {os.path.basename(output)} to https://colab.research.google.com/ "
+                "then Runtime > Run all. Download the zip when done and unzip into the project root."
+            ),
+            "sync_command": f"cd {project_root} && unzip ~/Downloads/golden_path_results.zip",
+            "next_actions": serialize_next_actions(next_actions),
+        }
+    )

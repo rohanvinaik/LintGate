@@ -242,7 +242,9 @@ class TestExtractClampBounds:
 
     def test_negative_bounds(self):
         """max(-10, min(x, -1)) -> lo=-10, hi=-1."""
-        expr = cast("ast.Return", _parse_func("def f(x): return max(-10, min(x, -1))").body[0]).value
+        expr = cast(
+            "ast.Return", _parse_func("def f(x): return max(-10, min(x, -1))").body[0]
+        ).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo == -10.0
@@ -535,11 +537,13 @@ class TestReadFloat:
     def test_object_read(self):
         class Obj:
             k = 2.5
+
         assert _read_float(Obj(), "k", 0.0) == 2.5
 
     def test_object_missing_attr(self):
         class Obj:
             pass
+
         assert _read_float(Obj(), "k", -1.0) == -1.0
 
     def test_unconvertible_value(self):
@@ -563,11 +567,13 @@ class TestReadInt:
     def test_object_read(self):
         class Obj:
             k = 10
+
         assert _read_int(Obj(), "k", 0) == 10
 
     def test_object_missing_attr(self):
         class Obj:
             pass
+
         assert _read_int(Obj(), "k", -1) == -1
 
     def test_unconvertible_value(self):
@@ -584,11 +590,13 @@ class TestReadStr:
     def test_object_read(self):
         class Obj:
             k = "world"
+
         assert _read_str(Obj(), "k", "") == "world"
 
     def test_object_missing_attr(self):
         class Obj:
             pass
+
         assert _read_str(Obj(), "k", "def") == "def"
 
     def test_numeric_converts_to_str(self):

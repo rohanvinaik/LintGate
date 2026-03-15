@@ -170,18 +170,22 @@ class FunctionProperties:
 # ── Purity tier classification ────────────────────────────────────────
 
 # Side-effect kinds that indicate read-only access (not mutation)
-_READ_ONLY_SIDE_EFFECTS = frozenset({
-    "impure_call",  # calls an impure function (may be read-only like db.query)
-    "attribute_read",  # reads an attribute (not mutation)
-})
+_READ_ONLY_SIDE_EFFECTS = frozenset(
+    {
+        "impure_call",  # calls an impure function (may be read-only like db.query)
+        "attribute_read",  # reads an attribute (not mutation)
+    }
+)
 
 # Side-effect kinds that indicate true mutation
-_MUTATION_SIDE_EFFECTS = frozenset({
-    "global_write",
-    "io_call",
-    "mutation",
-    "nonlocal_write",
-})
+_MUTATION_SIDE_EFFECTS = frozenset(
+    {
+        "global_write",
+        "io_call",
+        "mutation",
+        "nonlocal_write",
+    }
+)
 
 
 def classify_purity_tier(purity: PurityResult) -> PurityTier:
