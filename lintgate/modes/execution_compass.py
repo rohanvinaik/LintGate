@@ -112,6 +112,33 @@ class ExecutionCompass:
             "warnings": warnings,
         }
 
+    def check_alignment_with_specs(
+        self, action_sig: str, specs: list | None = None
+    ) -> dict[str, Any]:
+        """Enhanced alignment: base compass check + PrescriptiveSpec forbidden behaviors."""
+        result = self.check_alignment(action_sig)
+
+        if not specs:
+            return result
+
+        action_lower = action_sig.lower()
+        prescriptive_violations: list[str] = []
+        for spec in specs:
+            for fb in getattr(spec, "forbidden_behaviors", []):
+                desc_lower = fb.description.lower()
+                words = [w for w in desc_lower.split() if len(w) > 3]
+                for word in words:
+                    if word in action_lower:
+                        prescriptive_violations.append(fb.description)
+                        break
+
+        if prescriptive_violations:
+            result["aligned"] = False
+            result.setdefault("violations", []).extend(prescriptive_violations)
+            result["prescriptive_violations"] = prescriptive_violations
+
+        return result
+
     def to_compact_json(self) -> str:
         """Serialize to a compact JSON string (~800 tokens).
 

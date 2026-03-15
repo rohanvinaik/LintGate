@@ -209,15 +209,28 @@ def _impl_controlplane_agent_feedback(
 # ── controlplane_apply_repairs helpers ──────────────────────────────────
 
 
-def _collect_pending_repairs(session, action_ids, safe_only):
-    """Collect pending repairs from the latest session snapshot.
+def _select_repair_source(session, run_id):
+    """Resolve the repair source snapshot and persisted run details."""
+    from lintgate.state import load_controlplane_run
 
-    Returns (pending_repairs, skipped_diagnostics) where skipped_diagnostics
-    is a list of per-repair status dicts explaining why each repair was not
-    included in the pending set.
-    """
+    if run_id:
+        for snapshot in reversed(session.snapshots):
+            if snapshot.run_id == run_id:
+                return snapshot, load_controlplane_run(run_id), []
+
+        run_details = load_controlplane_run(run_id)
+        if run_details is not None:
+            return None, run_details, []
+
+        return None, None, [
+            {
+                "reason": "run_not_found",
+                "detail": f"Run {run_id} is not available in session memory or persisted state.",
+            }
+        ]
+
     if not session.snapshots:
-        return [], [
+        return None, None, [
             {
                 "reason": "no_snapshots",
                 "detail": "No ControlPlane snapshots in session. Run controlplane_run first.",
@@ -225,14 +238,33 @@ def _collect_pending_repairs(session, action_ids, safe_only):
         ]
 
     latest = session.snapshots[-1]
-    all_repairs = _load_all_repairs(latest)
-    proposed_ids = set(latest.repairs_proposed)
+    return latest, load_controlplane_run(latest.run_id) if latest.run_id else None, []
+
+
+def _collect_pending_repairs(session, action_ids, safe_only, run_id=None):
+    """Collect pending repairs from a specific run or the latest session snapshot.
+
+    Returns (pending_repairs, skipped_diagnostics) where skipped_diagnostics
+    is a list of per-repair status dicts explaining why each repair was not
+    included in the pending set.
+    """
+    snapshot, run_details, diagnostics = _select_repair_source(session, run_id)
+    if diagnostics:
+        return [], diagnostics
+
+    all_repairs = _load_all_repairs(snapshot, run_details=run_details)
+    proposed_ids = (
+        set(snapshot.repairs_proposed)
+        if snapshot is not None
+        else {repair.get("action_id", "") for repair in all_repairs if repair.get("action_id")}
+    )
+    source_run_id = run_id or (snapshot.run_id if snapshot is not None else "")
 
     if not all_repairs:
         return [], [
             {
                 "reason": "no_repairs_in_run",
-                "detail": f"Run {latest.run_id} contains no repair actions.",
+                "detail": f"Run {source_run_id or 'latest'} contains no repair actions.",
             }
         ]
 
@@ -240,7 +272,7 @@ def _collect_pending_repairs(session, action_ids, safe_only):
         return [], [
             {
                 "reason": "no_proposed_repairs",
-                "detail": f"Run {latest.run_id} has no proposed repairs.",
+                "detail": f"Run {source_run_id or 'latest'} has no proposed repairs.",
             }
         ]
 
@@ -280,16 +312,21 @@ def _collect_pending_repairs(session, action_ids, safe_only):
     return pending, skipped
 
 
-def _load_all_repairs(snapshot):
+def _load_all_repairs(snapshot, *, run_details=None):
     """Load repair details from persisted run or fallback to snapshot catalog."""
-    from lintgate.state import load_controlplane_run
+    if run_details is None and snapshot is not None and getattr(snapshot, "run_id", ""):
+        from lintgate.state import load_controlplane_run
+
+        run_details = load_controlplane_run(snapshot.run_id)
 
     all_repairs: list[dict[str, Any]] = []
-    run_details = load_controlplane_run(snapshot.run_id) if snapshot.run_id else None
 
     if run_details:
         for ch_data in run_details.get("channels", {}).values():
             all_repairs.extend(ch_data.get("repairs", []))
+        return all_repairs
+
+    if snapshot is None:
         return all_repairs
 
     # Fallback: reconstruct from snapshot's compact repair catalog
@@ -301,7 +338,7 @@ def _load_all_repairs(snapshot):
                 "summary": meta.get("summary", ""),
                 "safe": meta.get("safe", "true") == "true",
                 "channel": meta.get("channel", ""),
-                "payload": {},
+                "payload": dict(meta.get("payload", {})),
             }
         )
     return all_repairs
@@ -396,14 +433,19 @@ def _execute_safe_delete(repair, project_root, session):
         return {"action_id": action_id, "status": "error", "error": str(e)}
 
 
-def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
+def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers, *, run_id=None):
     """Core implementation of controlplane_apply_repairs."""
     from lintgate.controlplane.session_memory import get_or_create_session, save_session
 
     project_root = helpers["_validate_project_root"](path)
     session = get_or_create_session(project_root)
 
-    pending_repairs, skip_diagnostics = _collect_pending_repairs(session, action_ids, safe_only)
+    pending_repairs, skip_diagnostics = _collect_pending_repairs(
+        session,
+        action_ids,
+        safe_only,
+        run_id=run_id,
+    )
 
     results = [_execute_single_repair(repair, project_root, session) for repair in pending_repairs]
 
@@ -427,6 +469,7 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers):
     pending_remaining = sum(1 for v in session.repair_outcomes.values() if v == "pending")
 
     response: dict[str, Any] = {
+        "run_id": run_id,
         "summary": {
             "total_proposed": len(pending_repairs) + len(skip_diagnostics),
             "collected": len(pending_repairs),

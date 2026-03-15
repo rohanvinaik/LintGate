@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from mcp_tools.wiki_tools import (
@@ -15,7 +14,6 @@ from mcp_tools.wiki_tools import (
     _load_theory,
     _write_pages,
 )
-
 
 # ---------------------------------------------------------------------------
 # _detect_site_title
@@ -59,12 +57,10 @@ class TestLoadTheory:
             "mcp_tools.wiki_tools.extract_theory",
             return_value={"theory_profile": fake_profile},
             create=True,
+        ), patch(
+            "lintgate.theory_extractor.extract_theory",
+            return_value={"theory_profile": fake_profile},
         ):
-            # Import inline to allow the lazy import to work
-            with patch(
-                "lintgate.theory_extractor.extract_theory",
-                return_value={"theory_profile": fake_profile},
-            ):
                 result = _load_theory("/tmp/proj")
                 assert result == fake_profile
 

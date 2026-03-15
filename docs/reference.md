@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 111 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 118 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (111)
+## MCP Tools (118)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -34,9 +34,9 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | Tool                          | Purpose                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------ |
 | `controlplane_run`            | Full supervision mesh (lint + tests + deps + git + behavior + structure) |
-| `controlplane_get_details`    | Drill into a ControlPlane run by run_id                                  |
+| `controlplane_get_details`    | Drill into a ControlPlane run by run_id, with code-vs-environment summary/filtering |
 | `controlplane_status`         | Config and channel status                                                |
-| `controlplane_apply_repairs`  | Execute proposed repair actions                                          |
+| `controlplane_apply_repairs`  | Execute proposed repair actions, optionally pinned to a `run_id`         |
 | `controlplane_report_repair`  | Report repair outcome                                                    |
 | `controlplane_agent_feedback` | Accept/reject findings and constraint proposals                          |
 | `controlplane_test_skeleton`  | Generate pytest skeleton from AST analysis                               |
@@ -128,8 +128,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | -------------------- | ------------------------------------------------------------------------- |
 | `compass_status`     | Show compass axes, depths, gap report, staleness, and cognitive mode      |
 | `compass_check`      | Check an action against toward/away/forbidden directives                  |
-| `compass_update`     | Re-extract compass from project docs, optionally render context files     |
-| `compass_interview`  | Gap-filling interview — returns prioritized questions or applies answers  |
+| `compass_update`     | Re-extract compass from project docs, merge interviewed claims, optionally render context files |
+| `compass_interview`  | Gap-filling interview — returns prioritized questions or applies answers that persist across updates |
 | `compass_reset`      | Scoped state reset (compass/session/project/global), dry-run default      |
 | `theory_mode_enter`  | Enter theory exploration mode                                             |
 | `theory_mode_freeze` | Freeze compass and exit theory mode to normal                             |
@@ -192,6 +192,22 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `spec_composition`  | Composition gap (γ) and sheaf condition analysis with callee-uncertainty-weighted interface mutation points |
 | `spec_gate_check`   | Optimization gate validation with stop criteria                          |
 
+### Prescriptive Specifications
+
+| Tool                        | Purpose                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `prescriptive_spec_compose` | Compose a PrescriptiveSpec from theory + compass (prospective or retrospective mode) |
+| `prescriptive_spec_compile` | Compile PrescriptiveSpec into test skeletons + generation constraints    |
+| `prescriptive_spec_verify`  | Verify code refinement against its PrescriptiveSpec (reads cached state) |
+| `prescriptive_spec_status`  | Show prescriptive coverage, sigma convergence, problem class distribution |
+
+### Offline Analysis
+
+| Tool                        | Purpose                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `offline_analysis_generate` | Generate a Colab/Jupyter notebook for comprehensive offline analysis with prioritized action plan |
+| `offline_analysis_run`      | Run the full analysis locally and save a portable JSON artifact         |
+
 ### Refactor Checkpointing
 
 | Tool                  | Purpose                                                                |
@@ -199,6 +215,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `refactor_checkpoint` | Record progress on a file during a refactoring session                 |
 | `refactor_resume`     | Load refactor state and provide structured summary for session resumption |
 | `refactor_thesis`     | Record or update the agent's structural thesis about the codebase      |
+| `refactor_move`       | Move a Python module with automatic import rewriting (libcst-based, dry-run default) |
 
 ### GitHub Project Organization
 

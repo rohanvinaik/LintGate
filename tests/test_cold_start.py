@@ -58,9 +58,14 @@ class TestMCPInstructions:
         assert "next_actions" in _MCP_INSTRUCTIONS
 
     def test_mentions_tool_count(self) -> None:
+        from pathlib import Path
+
         from mcp_server import _MCP_INSTRUCTIONS
 
-        assert "109" in _MCP_INSTRUCTIONS
+        root = Path(__file__).resolve().parent.parent
+        tool_count = (root / "mcp_server.py").read_text().count("@mcp.tool()")
+        tool_count += sum(path.read_text().count("@mcp.tool()") for path in (root / "mcp_tools").glob("*.py"))
+        assert str(tool_count) in _MCP_INSTRUCTIONS
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────

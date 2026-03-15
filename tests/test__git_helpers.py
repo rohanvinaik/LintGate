@@ -14,7 +14,6 @@ from lintgate.channels._git_helpers import (
     collect_working_tree_context,
 )
 
-
 # ── _parse_diff_stat_totals ─────────────────────────────────────────────
 
 

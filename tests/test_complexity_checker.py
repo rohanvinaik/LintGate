@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from lintgate.linters.complexity_checker import (
-    ComplexityChecker,
     _CC_THRESHOLDS,
     _MI_THRESHOLDS,
+    ComplexityChecker,
     _cc_suggestions,
 )
-
 
 # ── _CC_THRESHOLDS / _MI_THRESHOLDS ─────────────────────────────────
 

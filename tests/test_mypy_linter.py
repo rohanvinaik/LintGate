@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import textwrap
-
 from lintgate.linters.mypy_linter import (
     _BLOCKING_CODES,
     _HEAVY_DEPS,
@@ -16,7 +13,6 @@ from lintgate.linters.mypy_linter import (
     _scan_pyproject_toml,
     _scan_requirements_file,
 )
-
 
 # ── _classify_severity ───────────────────────────────────────────────
 

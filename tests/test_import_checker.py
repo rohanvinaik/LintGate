@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import ast
-import os
 import textwrap
-
-import pytest
 
 from lintgate.linters.import_checker import (
     ImportChecker,
@@ -15,7 +12,6 @@ from lintgate.linters.import_checker import (
     _handler_catches_import_error,
 )
 from lintgate.types import LinterContext
-
 
 # ── _handler_catches_import_error ─────────────────────────────────────
 

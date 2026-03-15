@@ -475,8 +475,11 @@ def classify_properties(
     # SpecificationLevel hint suppression (checked before numeric gate)
     hints = _apply_spec_level_hint_suppression(mutation_state, hints)
 
+    from .algebra_types import classify_purity_tier
+
     return FunctionProperties(
         purity=purity,
         properties=tuple(properties),
         optimization_hints=tuple(set(hints)),  # deduplicate hints
+        purity_tier=classify_purity_tier(purity),
     )

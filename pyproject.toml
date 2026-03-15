@@ -52,9 +52,13 @@ algebra = [
     "hypothesis>=6.0",
     "icontract>=2.6"
 ]
+# Refactoring (safe module moves)
+refactor = [
+    "libcst>=1.0",
+]
 # Development
 dev = [
-    "lintgate[full,mcp,algebra]",
+    "lintgate[full,mcp,algebra,refactor]",
     "pytest>=8.0",
     "pytest-benchmark>=5.0",
 ]

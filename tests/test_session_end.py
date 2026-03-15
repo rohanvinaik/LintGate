@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 from lintgate.hooks.session_end import _cleanup_session_state, handle
 
-
 # -- handle ---------------------------------------------------------------
 
 

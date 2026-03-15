@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 
 from lintgate.channels._test_hygiene_finders import (
     _TOP_N_FINDINGS,

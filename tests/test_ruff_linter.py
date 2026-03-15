@@ -9,23 +9,19 @@ Focuses on exact value assertions and branch coverage to kill mutants.
 from __future__ import annotations
 
 import json
-import textwrap
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from lintgate.linters.ruff_linter import (
-    RuffFormatLinter,
-    RuffLinter,
     _BLOCKING_CODES,
     _INFORMATIONAL_CODES,
+    RuffFormatLinter,
+    RuffLinter,
     _build_e402_evidence_safe,
     _classify_severity,
     _extract_e402_module,
     _maybe_escalate_e402,
 )
-from lintgate.types import LinterContext, LintIssue
-
+from lintgate.types import LinterContext
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -207,12 +203,11 @@ class TestBuildE402EvidenceSafe:
         with patch(
             "lintgate.linters.ruff_linter._extract_e402_module",
             return_value="os",
+        ), patch.dict(
+            "sys.modules",
+            {"lintgate.linters.structure_checks.import_tracing": None},
         ):
-            with patch.dict(
-                "sys.modules",
-                {"lintgate.linters.structure_checks.import_tracing": None},
-            ):
-                result = _build_e402_evidence_safe(item, location, "/tmp")
+            result = _build_e402_evidence_safe(item, location, "/tmp")
         # Graceful degradation: returns {} on import failure
         assert isinstance(result, dict)
 
@@ -388,11 +383,10 @@ class TestRuffLinter:
             }
         ])
         mock_result = MagicMock(stdout=data)
-        with patch.object(linter, "run_command", return_value=mock_result):
-            with patch(
-                "lintgate.linters.ruff_linter._build_e402_evidence_safe",
-                return_value={"code": "E402", "transitive_imports": {"non_stdlib": [], "has_lazy": False}},
-            ):
+        with patch.object(linter, "run_command", return_value=mock_result), patch(
+            "lintgate.linters.ruff_linter._build_e402_evidence_safe",
+            return_value={"code": "E402", "transitive_imports": {"non_stdlib": [], "has_lazy": False}},
+        ):
                 issues = list(linter.run(ctx))
 
         assert len(issues) == 1
@@ -413,17 +407,16 @@ class TestRuffLinter:
             }
         ])
         mock_result = MagicMock(stdout=data)
-        with patch.object(linter, "run_command", return_value=mock_result):
-            with patch(
-                "lintgate.linters.ruff_linter._build_e402_evidence_safe",
-                return_value={
-                    "transitive_imports": {
-                        "non_stdlib": ["requests"],
-                        "has_lazy": True,
-                    }
-                },
-            ):
-                issues = list(linter.run(ctx))
+        with patch.object(linter, "run_command", return_value=mock_result), patch(
+            "lintgate.linters.ruff_linter._build_e402_evidence_safe",
+            return_value={
+                "transitive_imports": {
+                    "non_stdlib": ["requests"],
+                    "has_lazy": True,
+                }
+            },
+        ):
+            issues = list(linter.run(ctx))
 
         assert len(issues) == 1
         assert issues[0].confidence == 0.85
@@ -603,12 +596,12 @@ class TestCodeSets:
         assert isinstance(_INFORMATIONAL_CODES, frozenset)
 
     def test_blocking_codes_exact_contents(self):
-        assert _BLOCKING_CODES == frozenset({"F821", "F811", "F841", "E999"})
+        assert frozenset({"F821", "F811", "F841", "E999"}) == _BLOCKING_CODES
 
     def test_informational_codes_exact_contents(self):
-        assert _INFORMATIONAL_CODES == frozenset(
+        assert frozenset(
             {"E501", "W291", "W292", "W293", "D100", "D101", "D102", "D103"}
-        )
+        ) == _INFORMATIONAL_CODES
 
     def test_no_overlap_between_blocking_and_informational(self):
-        assert _BLOCKING_CODES & _INFORMATIONAL_CODES == frozenset()
+        assert frozenset() == _BLOCKING_CODES & _INFORMATIONAL_CODES

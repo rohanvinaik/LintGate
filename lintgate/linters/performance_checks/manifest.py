@@ -214,13 +214,17 @@ def _scan_file(
                 properties=props.properties,
                 optimization_hints=props.optimization_hints,
                 source_file=filepath,
+                purity_tier=props.purity_tier,
             )
         else:
+            from .algebra_types import classify_purity_tier
+
             func_props = FunctionProperties(
                 purity=purity,
                 properties=(),
                 optimization_hints=(),
                 source_file=filepath,
+                purity_tier=classify_purity_tier(purity),
             )
         # Compute extraction safety from side-effect classification
         safety = _classify_extraction_safety(func_props)
@@ -232,6 +236,7 @@ def _scan_file(
                 optimization_hints=func_props.optimization_hints,
                 source_file=func_props.source_file,
                 extraction_safety=safety,
+                purity_tier=func_props.purity_tier,
             )
         manifest.functions[unique_key] = func_props
 

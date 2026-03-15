@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import socket
-from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +16,6 @@ from lintgate.nsil.adapters.vllm import (
 )
 from lintgate.nsil.grammar_compiler import PolicyGrammar
 from lintgate.nsil.runtime_adapter import RuntimeCapabilities
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -195,15 +192,15 @@ class TestInjectState:
 class TestRegisterActionHook:
     def test_appends_callback(self) -> None:
         adapter = VLLMAdapter()
-        cb = lambda action, data: None
+        cb = lambda action, data: None  # noqa: E731
         adapter.register_action_hook(cb)
         assert len(adapter._action_hooks) == 1
         assert adapter._action_hooks[0] is cb
 
     def test_multiple_hooks(self) -> None:
         adapter = VLLMAdapter()
-        cb1 = lambda a, d: None
-        cb2 = lambda a, d: None
+        cb1 = lambda a, d: None  # noqa: E731
+        cb2 = lambda a, d: None  # noqa: E731
         adapter.register_action_hook(cb1)
         adapter.register_action_hook(cb2)
         assert len(adapter._action_hooks) == 2
@@ -701,7 +698,6 @@ class TestIsAvailable:
         assert adapter.is_available() is False
 
     def test_invalid_endpoint_rejected(self) -> None:
-        import pytest
         with pytest.raises(ValueError, match="http"):
             VLLMAdapter(endpoint="no-port-here")
 

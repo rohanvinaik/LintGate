@@ -10,10 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mcp_tools._controlplane_impl_details import (
-    _build_config_status,
-    _build_details_next_actions,
     _DEFAULT_SECTIONS,
     _EFFORT_DEFAULTS,
+    _SECTION_POPULATORS,
+    _SEV_WEIGHT,
+    _build_config_status,
+    _build_details_next_actions,
     _extract_channel_details,
     _extract_evidence,
     _extract_findings,
@@ -33,10 +35,7 @@ from mcp_tools._controlplane_impl_details import (
     _populate_next_actions,
     _populate_proven_resolutions,
     _populate_repairs,
-    _SECTION_POPULATORS,
-    _SEV_WEIGHT,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -172,6 +171,8 @@ class TestExtractFindings:
         result = _extract_findings(details, None, None, 100)
         assert result["total_matching"] == 2
         assert len(result["findings"]) == 2
+        assert result["finding_summary"]["domains"]["code"]["total"] == 2
+        assert result["finding_summary"]["domains"]["environment"]["total"] == 0
         assert "truncated" not in result
 
     def test_channel_filter(self):
@@ -212,6 +213,37 @@ class TestExtractFindings:
         # Only fixable finding fits in budget of 3
         assert all(f["fixable"] for f in result["findings"] if "fixable" in f)
 
+    def test_finding_domain_filter(self):
+        details = _make_details(
+            channels={
+                "lint": {
+                    "findings": [
+                        {
+                            "kind": "ruff",
+                            "linter": "ruff",
+                            "severity": "warning",
+                            "message": "unused import",
+                        }
+                    ]
+                },
+                "deps": {
+                    "findings": [
+                        {
+                            "kind": "dependency_vulnerability",
+                            "linter": "pip_audit",
+                            "severity": "warning",
+                            "message": "CVE-123",
+                        }
+                    ]
+                },
+            }
+        )
+        result = _extract_findings(details, None, None, 100, finding_domain="code")
+        assert result["total_matching"] == 1
+        assert result["findings"][0]["channel"] == "lint"
+        assert result["finding_summary"]["domains"]["code"]["total"] == 1
+        assert result["finding_summary"]["domains"]["environment"]["total"] == 0
+
 
 # ── _build_details_next_actions ───────────────────────────────────────────
 
@@ -227,6 +259,7 @@ class TestBuildDetailsNextActions:
         repair_action = [a for a in actions if a["tool"] == "controlplane_apply_repairs"]
         assert len(repair_action) == 1
         assert repair_action[0]["priority"] == 1
+        assert repair_action[0]["args"]["run_id"] == "run-1"
         assert "1 safe" in repair_action[0]["reason"]
 
     def test_findings_action(self):
@@ -242,6 +275,30 @@ class TestBuildDetailsNextActions:
         assert len(trunc_action) == 1
         assert trunc_action[0]["args"]["max_issues"] == 6  # 1 finding + 5 truncated
         assert "5" in trunc_action[0]["reason"]
+
+    def test_code_only_follow_up_when_environment_present(self):
+        output = {
+            "finding_summary": {
+                "domains": {
+                    "code": {"total": 2, "blocking": 0, "warning": 2, "informational": 0},
+                    "environment": {
+                        "total": 5,
+                        "blocking": 0,
+                        "warning": 5,
+                        "informational": 0,
+                    },
+                }
+            }
+        }
+        actions = _build_details_next_actions("run-1", output)
+        code_only = [
+            a
+            for a in actions
+            if a["tool"] == "controlplane_get_details"
+            and a.get("args", {}).get("finding_domain") == "code"
+        ]
+        assert len(code_only) == 1
+        assert code_only[0]["args"]["run_id"] == "run-1"
 
 
 # ── _extract_channel_details ──────────────────────────────────────────────
@@ -524,8 +581,7 @@ class TestImplControlplaneGetDetails:
     @patch("mcp_tools._controlplane_impl_details.load_controlplane_run", create=True)
     def test_run_not_found_raises(self, _mock_load):
         # Patch the actual import inside the function
-        with patch("lintgate.state.load_controlplane_run", return_value=None):
-            with pytest.raises(ValueError, match="No ControlPlane run found"):
+        with patch("lintgate.state.load_controlplane_run", return_value=None), pytest.raises(ValueError, match="No ControlPlane run found"):
                 _impl_controlplane_get_details(
                     "bad-id", None, None, 10, None, {"_json_dumps": json.dumps}
                 )
@@ -556,6 +612,7 @@ class TestImplControlplaneGetDetails:
         assert "channel_details" in result
         assert "repairs" in result
         assert "next_actions" in result
+        assert "finding_summary" in result
 
     def test_with_top_n(self):
         details = _make_details()
@@ -567,6 +624,36 @@ class TestImplControlplaneGetDetails:
         result = json.loads(raw)
         assert result.get("sorted_by") == "roi"
         assert len(result["findings"]) == 1
+
+    def test_with_finding_domain_filter(self):
+        details = {
+            "duration_ms": 100,
+            "channels": {
+                "lint": {
+                    "findings": [{"severity": "warning", "linter": "ruff"}],
+                    "repairs": [],
+                },
+                "deps": {
+                    "findings": [{"severity": "warning", "linter": "pip_audit"}],
+                    "repairs": [],
+                },
+            },
+            "coherence": {"score": 0.85},
+        }
+        with patch("lintgate.state.load_controlplane_run", return_value=details):
+            raw = _impl_controlplane_get_details(
+                "run-1",
+                None,
+                None,
+                100,
+                ["findings"],
+                {"_json_dumps": json.dumps},
+                finding_domain="code",
+            )
+        result = json.loads(raw)
+        assert result["total_matching"] == 1
+        assert result["findings"][0]["channel"] == "lint"
+        assert result["finding_summary"]["domains"]["code"]["total"] == 1
 
 
 # ── _build_config_status ─────────────────────────────────────────────────
@@ -737,10 +824,10 @@ class TestConstants:
         assert _SEV_WEIGHT["informational"] == 1.0
 
     def test_default_sections_content(self):
-        assert _DEFAULT_SECTIONS == frozenset([
+        assert frozenset([
             "findings", "channel_details", "evidence",
             "repairs", "coherence", "next_actions", "proven_resolutions",
-        ])
+        ]) == _DEFAULT_SECTIONS
 
     def test_section_populators_order(self):
         names = [name for name, _ in _SECTION_POPULATORS]

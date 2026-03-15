@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from lintgate.next_action import NextAction
@@ -17,7 +16,6 @@ from lintgate.testing.platonic_workflow import (
     workflow_envelope,
     workflow_path,
 )
-
 
 # --- create_workflow_id ---
 

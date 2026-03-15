@@ -9,7 +9,6 @@ from lintgate.linters.version_checker import (
     _source_file_path,
 )
 
-
 # ── _source_file_path ────────────────────────────────────────────────
 
 

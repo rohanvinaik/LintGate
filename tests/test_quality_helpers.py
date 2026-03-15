@@ -8,13 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import warnings
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 from typing import Any
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from mcp_tools.quality_helpers import (
     _BADGE_BLOCK_END,
@@ -62,7 +59,6 @@ from mcp_tools.quality_helpers import (
     _warn_deprecation,
     _write_pre_push_hook,
 )
-
 
 # ── Constants verification ───────────────────────────────────────────
 

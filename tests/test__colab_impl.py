@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
-from pathlib import Path
 from unittest.mock import patch
 
 from mcp_tools._colab_impl import (
@@ -13,7 +11,6 @@ from mcp_tools._colab_impl import (
     _count_source_files,
     _get_git_info,
 )
-
 
 # ---------------------------------------------------------------------------
 # _get_git_info

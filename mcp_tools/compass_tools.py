@@ -120,6 +120,45 @@ def _refresh_axis_scores(state: Any) -> None:
             axis.summary = ""
 
 
+def _merge_interviewed_claims(state: Any, existing: Any) -> int:
+    """Preserve interviewed claims across re-extraction."""
+    from lintgate.compass import CompassAxis, CompassClaim
+
+    if existing is None:
+        return 0
+
+    merged = 0
+    for axis_name, existing_axis in existing.axes.items():
+        interviewed = [claim for claim in existing_axis.claims if claim.provenance == "interviewed"]
+        if not interviewed:
+            continue
+        if axis_name not in state.axes:
+            state.axes[axis_name] = CompassAxis(name=axis_name)
+        target_axis = state.axes[axis_name]
+        signatures = {
+            (
+                claim.text.strip(),
+                claim.heading.strip(),
+                claim.provenance,
+                claim.origin_facet,
+            )
+            for claim in target_axis.claims
+        }
+        for claim in interviewed:
+            signature = (
+                claim.text.strip(),
+                claim.heading.strip(),
+                claim.provenance,
+                claim.origin_facet,
+            )
+            if signature in signatures:
+                continue
+            target_axis.claims.append(CompassClaim.from_dict(claim.to_dict()))
+            signatures.add(signature)
+            merged += 1
+    return merged
+
+
 # ── Tool implementations ─────────────────────────────────────────────
 
 
@@ -195,10 +234,12 @@ def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> d
         CompassAxis,
         compute_compass_hash,
     )
-    from lintgate.compass_io import save_compass
+    from lintgate.compass_io import load_compass, save_compass
     from lintgate.gap_detector import detect_gaps
 
+    existing = load_compass(project_root)
     state = extract_compass(project_root)
+    retained_interview_claims = _merge_interviewed_claims(state, existing)
     inferred = infer_from_code(project_root)
     for claim in inferred:
         axis_name = FACET_TO_AXIS.get(claim.origin_facet, "world")
@@ -220,6 +261,7 @@ def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> d
         },
         "gap_report": state.gap_report.to_dict(),
         "inferred_claims": len(inferred),
+        "retained_interview_claims": retained_interview_claims,
     }
     if write:
         save_compass(project_root, state)
@@ -381,7 +423,54 @@ def _impl_theory_freeze(project_root: str) -> dict[str, Any]:
     compass.frozen, compass.frozen_hash = True, ch
     save_compass(project_root, compass)
     _save_mode(project_root, ms)
-    return {"status": "frozen", "compass_hash": ch, "warnings": warnings}
+
+    # PrescriptiveSpec skeleton emission on theory freeze
+    prescriptive_result: dict[str, Any] = {}
+    try:
+        from lintgate.config import load_controlplane_config
+        cp_config = load_controlplane_config(project_root)
+        auto_compose = (
+            cp_config is not None
+            and cp_config.prescriptive_spec_enabled
+            and cp_config.prescriptive_spec_auto_compose_on_freeze
+        )
+        if auto_compose:
+            from lintgate.specification.prescriptive_spec import (
+                PrescriptiveSpecComposer,
+                resolve_targets,
+                save_spec,
+            )
+            from lintgate.theory_extractor import extract_theory
+
+            theory_profile = extract_theory(project_root).get("theory_profile", {})
+            resolved = resolve_targets(compass, theory_profile, project_root)
+            composer = PrescriptiveSpecComposer()
+
+            auto_composed: list[str] = []
+            candidate_targets: list[dict[str, Any]] = []
+            for rt in resolved:
+                if rt.confidence >= 0.8:
+                    spec = composer.compose_prospective(
+                        target_key=rt.target_key,
+                        compass=compass,
+                        theory_profile=theory_profile,
+                    )
+                    save_spec(project_root, spec)
+                    auto_composed.append(rt.target_key)
+                else:
+                    candidate_targets.append(rt.to_dict())
+
+            prescriptive_result = {
+                "auto_composed": auto_composed,
+                "candidate_targets": candidate_targets,
+            }
+    except Exception:
+        pass
+
+    result: dict[str, Any] = {"status": "frozen", "compass_hash": ch, "warnings": warnings}
+    if prescriptive_result:
+        result["prescriptive_specs"] = prescriptive_result
+    return result
 
 
 def _impl_setup_hooks(project_root: str, write: bool) -> dict[str, Any]:

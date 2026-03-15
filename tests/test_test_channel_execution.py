@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 from lintgate.channels._test_channel_execution import (
     _check_coverage_threshold,
     _evaluate_coverage_context,
     _parse_coverage_settings,
 )
-from lintgate.channels._test_channel_models import CoverageEvaluation
 from lintgate.channels._test_types import TestRunResult
-from lintgate.types import LintIssue
-
+from lintgate.types import LintIssue  # noqa: TC001
 
 # ── _parse_coverage_settings ─────────────────────────────────────────
 

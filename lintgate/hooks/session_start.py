@@ -103,23 +103,62 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
 
     compass = load_compass(project_root)
     if compass is None:
-        return {
-            "continue": True,
-            "systemMessage": (
-                "[Compass] No compass found. Run `compass_update` to extract project understanding."
-            ),
-        }
+        # No compass — provide actionable routing
+        no_compass_msg = (
+            "[Session] No compass found. "
+            "Start with `getting_started(path)` for auto-setup, "
+            "or `controlplane_run(path)` for immediate health check, "
+            "or `compass_update(path, write=True)` for theory extraction."
+        )
+        # Still surface blocking/prescriptive state if available
+        try:
+            from lintgate.runtime_state import load_runtime_state
+
+            state = load_runtime_state(project_root)
+            if state and state.blocking_issues > 0:
+                no_compass_msg += f" | BLOCKING: {state.blocking_issues} issues"
+        except Exception:
+            pass
+        return {"continue": True, "systemMessage": no_compass_msg}
 
     staleness = compute_staleness(compass)
     axes_summary = {name: axis.depth for name, axis in compass.axes.items()}
 
-    msg_parts = [f"[Compass] Loaded — staleness={staleness:.0%}"]
+    import time as _time
+
+    age_hours = (_time.time() - compass.forged_at) / 3600 if compass.forged_at else 0
+    if age_hours < 1:
+        age_str = f"{age_hours * 60:.0f}m"
+    elif age_hours < 24:
+        age_str = f"{age_hours:.0f}h"
+    else:
+        age_str = f"{age_hours / 24:.1f}d"
+
+    msg_parts = [f"[Compass] Loaded ({age_str} old, staleness={staleness:.0%})"]
     if staleness > 0.8:
-        msg_parts.append("(stale — consider re-extracting with `compass_update`)")
+        msg_parts.append("STALE — run `compass_update` to re-extract")
     msg_parts.append(f"axes={axes_summary}")
 
     if compass.gap_report.interview_recommended:
         msg_parts.append("gaps detected — run `compass_interview`")
+
+    # Surface highest-priority state signals from RuntimeState
+    try:
+        from lintgate.runtime_state import load_runtime_state
+
+        state = load_runtime_state(project_root)
+        if state is not None:
+            if state.blocking_issues > 0:
+                msg_parts.append(f"BLOCKING: {state.blocking_issues} issues")
+            if state.coherence_state in ("coupled", "systemic"):
+                msg_parts.append(f"Coherence: {state.coherence_state}")
+            if state.prescriptive_spec_count > 0:
+                msg_parts.append(
+                    f"PSpec: {state.prescriptive_spec_count} specs"
+                    f" ({state.prescriptive_coverage_ratio:.0%} covered)"
+                )
+    except Exception:
+        pass
 
     return {
         "continue": True,

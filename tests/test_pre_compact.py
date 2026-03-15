@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from lintgate.hooks.pre_compact import (
     _build_capsule_from_runtime,
     _build_legacy_capsule,
@@ -13,7 +15,6 @@ from lintgate.hooks.pre_compact import (
     handle,
     main,
 )
-
 
 # --- handle ---
 
@@ -155,11 +156,7 @@ def test_capture_refactor_checkpoint_with_state():
             # Direct approach: import and call
             pass
 
-    # Use a more direct mock approach
-    with patch.dict("sys.modules", {}):
-        pass
-
-    # Simplest approach: just verify the function handles missing module gracefully
+    # Verify the function handles missing module gracefully
     result = _capture_refactor_checkpoint("/nonexistent")
     assert result is None
 
@@ -203,5 +200,3 @@ def test_main_reads_stdin_writes_stdout(capsys, monkeypatch):
     assert result["continue"] is True
 
 
-# Need pytest for the raises context manager
-import pytest

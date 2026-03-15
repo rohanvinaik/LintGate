@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import os
-import textwrap
 import tempfile
+import textwrap
 
 from lintgate.channels._symbol_extraction import (
     _canonicalize_symbol_key,
-    _visit_node,
     extract_symbol_spans,
 )
-
 
 # ─── _canonicalize_symbol_key ─────────────────────────────────────────────
 

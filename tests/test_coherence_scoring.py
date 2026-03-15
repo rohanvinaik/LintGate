@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from lintgate.controlplane.coherence.scoring import (
     channel_failure_weight,
     channel_finding_summary,

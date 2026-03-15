@@ -9,11 +9,9 @@ from lintgate.pattern_bank import (
     _RECENT_WINDOW,
     _load_bank,
     _project_hash,
-    PatternAlert,
     update_pattern_bank,
 )
 from lintgate.types import LintIssue
-
 
 # ── _project_hash ─────────────────────────────────────────────────
 

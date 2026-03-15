@@ -10,6 +10,12 @@ from dataclasses import dataclass, field
 import pytest
 
 from lintgate.controlplane.model.profiles import ModelProfile, ModelProfileStore
+from lintgate.controlplane.types import (
+    ChannelResult,
+    CoherenceResult,
+    MeshResult,
+    SupervisionEvent,
+)
 from lintgate.hook_posttooluse import (
     _can_apply_session_telemetry,
     _fallback_config,
@@ -21,12 +27,6 @@ from lintgate.hook_posttooluse import (
     _select_telemetry_profile,
     _session_telemetry_updates_used,
     main,
-)
-from lintgate.controlplane.types import (
-    ChannelResult,
-    CoherenceResult,
-    MeshResult,
-    SupervisionEvent,
 )
 from lintgate.renderers.dynamic import read_generation_from_file
 from lintgate.runtime_state import load_runtime_state

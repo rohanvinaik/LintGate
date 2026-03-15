@@ -189,7 +189,7 @@ class TestManagedSectionIds:
         assert "context_map" in MANAGED_SECTION_IDS
 
     def test_count(self):
-        assert len(MANAGED_SECTION_IDS) == 4
+        assert len(MANAGED_SECTION_IDS) == 5
 
 
 # ── parse_managed_sections ───────────────────────────────────────────────

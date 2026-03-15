@@ -11,9 +11,7 @@ import json
 import os
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from mcp_tools.compass_tools import (
     _apply_answers,
@@ -34,7 +32,6 @@ from mcp_tools.compass_tools import (
     _save_mode,
     register,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -619,25 +616,26 @@ class TestImplUpdateExact:
             patch("lintgate.gap_detector.detect_gaps"),
             patch("mcp_tools.compass_tools._refresh_axis_scores"),
             patch("mcp_tools.compass_tools._render_targets", return_value=render_result),
+            patch("lintgate.compass_io.load_compass", return_value=None),
         )
 
     def test_no_write_no_written_key(self) -> None:
         p = self._patches()
-        with p[0], p[1], p[2], p[3] as save, p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3] as save, p[4], p[5], p[6], p[7]:
             result = _impl_update("/root", None, write=False)
         assert "written" not in result
         save.assert_not_called()
 
     def test_write_sets_written_true(self) -> None:
         p = self._patches()
-        with p[0], p[1], p[2], p[3] as save, p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3] as save, p[4], p[5], p[6], p[7]:
             result = _impl_update("/root", None, write=True)
         assert result["written"] is True
         save.assert_called_once()
 
     def test_compass_hash_exact(self) -> None:
         p = self._patches(compass_hash="deadbeef12345678")
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
             result = _impl_update("/root", None, write=False)
         assert result["compass_hash"] == "deadbeef12345678"
 
@@ -650,18 +648,18 @@ class TestImplUpdateExact:
             CompassClaim(text="c", origin_facet="architecture"),
         ]
         p = self._patches(inferred=inferred)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
             result = _impl_update("/root", None, write=False)
         assert result["inferred_claims"] == 3
 
     def test_inferred_claim_unknown_facet_routes_to_world(self) -> None:
-        from lintgate.compass import CompassAxis, CompassClaim, CompassState, GapReport
+        from lintgate.compass import CompassClaim, CompassState, GapReport
 
         state = CompassState()
         state.gap_report = GapReport()
         inferred = [CompassClaim(text="unknown", origin_facet="nonexistent_facet")]
         p = self._patches(state=state, inferred=inferred)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
             _impl_update("/root", None, write=False)
         assert "world" in state.axes
         assert len(state.axes["world"].claims) == 1
@@ -670,15 +668,50 @@ class TestImplUpdateExact:
     def test_rendered_field_present_when_render_returns_value(self) -> None:
         render = {"targets": ["cursor"], "files": ["out.md"], "written": False}
         p = self._patches(render_result=render)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
             result = _impl_update("/root", ["cursor"], write=False)
         assert result["rendered"] == render
 
     def test_no_rendered_field_when_render_returns_none(self) -> None:
         p = self._patches(render_result=None)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
             result = _impl_update("/root", None, write=False)
         assert "rendered" not in result
+
+    def test_preserves_interviewed_claims_from_existing_compass(self) -> None:
+        from lintgate.compass import CompassAxis, CompassClaim, CompassState, GapReport
+
+        state = CompassState(axes={"solution": CompassAxis(name="solution")})
+        state.gap_report = GapReport()
+        existing = CompassState(
+            axes={
+                "solution": CompassAxis(
+                    name="solution",
+                    claims=[
+                        CompassClaim(
+                            text="Why this approach over alternatives?",
+                            heading="Why this approach over alternatives?",
+                            source="interview:solution",
+                            provenance="interviewed",
+                        )
+                    ],
+                )
+            }
+        )
+        p = self._patches(state=state)
+        with (
+            patch("lintgate.compass_io.load_compass", return_value=existing),
+            p[0],
+            p[1],
+            p[2],
+            p[3],
+            p[4],
+            p[5],
+            p[6],
+        ):
+            result = _impl_update("/root", None, write=False)
+        assert result["retained_interview_claims"] == 1
+        assert any(c.provenance == "interviewed" for c in state.axes["solution"].claims)
 
 
 # ===================================================================

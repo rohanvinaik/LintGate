@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import subprocess
-from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 from mcp_tools._onboarding_venv_impl import (
     _auto_install_optional_tools,
     _collect_external_tool_gaps,
+    _ensure_project_venv,
     _format_cmd,
     _install_command_for_package,
     _install_commands_for_package,
@@ -16,9 +16,7 @@ from mcp_tools._onboarding_venv_impl import (
     _project_venv_python,
     _tool_package_name,
     _venv_create_command,
-    _ensure_project_venv,
 )
-
 
 # ---------------------------------------------------------------------------
 # _tool_package_name

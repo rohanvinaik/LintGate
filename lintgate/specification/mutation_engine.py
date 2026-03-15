@@ -949,9 +949,9 @@ def _run_test_with_timeout(
             result_box[0] = "assertion"
         except Exception:
             result_box[0] = "crash"
-        except BaseException:
-            # Catches pytest.raises failures (_pytest.outcomes.Failed inherits
-            # BaseException, not Exception) and other non-standard exceptions.
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:  # pragma: no cover — pytest.outcomes.Failed etc.
             result_box[0] = "crash"
 
     thread = threading.Thread(target=_target, daemon=True)

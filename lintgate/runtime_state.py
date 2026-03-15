@@ -99,6 +99,10 @@ class RuntimeState:
     top_constraint: str = ""  # Most relevant active constraint
     approach_failures: int = 0  # Recent failed approaches count
 
+    # PrescriptiveSpec state
+    prescriptive_spec_count: int = 0
+    prescriptive_coverage_ratio: float = 0.0
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict."""
         return asdict(self)
@@ -364,6 +368,35 @@ def build_runtime_state(
 
     if tracker is not None:
         _project_tracker(state, tracker)
+
+    # Populate prescriptive spec counters from disk cache
+    try:
+        from lintgate.specification.prescriptive_spec import load_spec_index
+
+        index = load_spec_index(project_root)
+        state.prescriptive_spec_count = len(index)
+
+        # Compute coverage ratio against known function keys from spec cache
+        if index:
+            spec_cache_dir = os.path.join(project_root, ".lintgate", "spec_cache")
+            total_funcs = 0
+            if os.path.isdir(spec_cache_dir):
+                for fname in os.listdir(spec_cache_dir):
+                    if fname.endswith(".json") and fname != "prescriptive_projection.json":
+                        try:
+                            with open(os.path.join(spec_cache_dir, fname), encoding="utf-8") as f:
+                                import json as _json
+
+                                data = _json.load(f)
+                            total_funcs = max(total_funcs, len(data.get("functions", {})))
+                        except (OSError, ValueError):
+                            pass
+            if total_funcs > 0:
+                state.prescriptive_coverage_ratio = round(
+                    min(1.0, len(index) / total_funcs), 3
+                )
+    except Exception:
+        pass
 
     return state
 

@@ -13,8 +13,6 @@ from typing import cast
 import pytest
 
 from lintgate.linters.performance_checks.algebra_types import (
-    AlgebraicProperty,
-    BoundSpec,
     FunctionProperties,
     PropertyKind,
     PurityResult,
@@ -36,7 +34,6 @@ from lintgate.linters.performance_checks.properties import (
     _read_str,
     classify_properties,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -201,7 +198,7 @@ class TestGetConstVal:
 class TestExtractClampBounds:
     def test_max_min_clamp(self):
         """max(0, min(x, 1)) -> lo=0, hi=1."""
-        expr = cast(ast.Return, _parse_func("def f(x): return max(0, min(x, 1))").body[0]).value
+        expr = cast("ast.Return", _parse_func("def f(x): return max(0, min(x, 1))").body[0]).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo == 0.0
@@ -209,7 +206,7 @@ class TestExtractClampBounds:
 
     def test_min_max_clamp(self):
         """min(1, max(x, 0)) -> lo=0, hi=1."""
-        expr = cast(ast.Return, _parse_func("def f(x): return min(1, max(x, 0))").body[0]).value
+        expr = cast("ast.Return", _parse_func("def f(x): return min(1, max(x, 0))").body[0]).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo == 0.0
@@ -217,7 +214,7 @@ class TestExtractClampBounds:
 
     def test_only_max(self):
         """max(0, x) -> lo=0, hi=None."""
-        expr = cast(ast.Return, _parse_func("def f(x): return max(0, x)").body[0]).value
+        expr = cast("ast.Return", _parse_func("def f(x): return max(0, x)").body[0]).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo == 0.0
@@ -225,7 +222,7 @@ class TestExtractClampBounds:
 
     def test_only_min(self):
         """min(100, x) -> lo=None, hi=100."""
-        expr = cast(ast.Return, _parse_func("def f(x): return min(100, x)").body[0]).value
+        expr = cast("ast.Return", _parse_func("def f(x): return min(100, x)").body[0]).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo is None
@@ -237,7 +234,7 @@ class TestExtractClampBounds:
         assert hi is None
 
     def test_non_max_min_call_returns_none_none(self):
-        expr = cast(ast.Return, _parse_func("def f(x): return abs(x)").body[0]).value
+        expr = cast("ast.Return", _parse_func("def f(x): return abs(x)").body[0]).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo is None
@@ -245,7 +242,7 @@ class TestExtractClampBounds:
 
     def test_negative_bounds(self):
         """max(-10, min(x, -1)) -> lo=-10, hi=-1."""
-        expr = cast(ast.Return, _parse_func("def f(x): return max(-10, min(x, -1))").body[0]).value
+        expr = cast("ast.Return", _parse_func("def f(x): return max(-10, min(x, -1))").body[0]).value
         assert expr is not None
         lo, hi = _extract_clamp_bounds(expr)
         assert lo == -10.0

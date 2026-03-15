@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from mcp_tools._gh_organize_impl import (
     _check_issue_templates,
@@ -25,7 +22,6 @@ from mcp_tools._gh_organize_impl import (
     impl_project_organize_apply,
     impl_project_organize_audit,
 )
-
 
 # ── _parse_label_names ─────────────────────────────────────────────────
 
@@ -201,9 +197,9 @@ class TestCheckUnlabeledIssues:
 
     def test_some_unlabeled(self):
         issues: list[dict[str, Any]] = [
-            dict(number=1, labels=[{"name": "bug"}]),
-            dict(number=2, labels=[]),
-            dict(number=3, labels=None),
+            {"number": 1, "labels": [{"name": "bug"}]},
+            {"number": 2, "labels": []},
+            {"number": 3, "labels": None},
         ]
         gaps = _check_unlabeled_issues(issues)
         assert len(gaps) == 1

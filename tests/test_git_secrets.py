@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from lintgate.channels._git_secrets import (
     _check_diff_secrets,
     _iter_diff_additions,
     _match_secret_pattern,
 )
-
 
 # ─── _match_secret_pattern ────────────────────────────────────────────────
 

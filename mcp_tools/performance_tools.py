@@ -22,6 +22,7 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "name": name,
             "is_pure": func.purity.is_pure,
+            "purity_tier": func.purity_tier.value,
             "confidence": effective_conf,
             "extraction_safety": func.extraction_safety,
         }
@@ -44,6 +45,11 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
     for func in manifest.functions.values():
         safety_dist[func.extraction_safety] = safety_dist.get(func.extraction_safety, 0) + 1
 
+    # Purity tier distribution
+    tier_dist: dict[str, int] = {"pure": 0, "stable_read": 0, "stateful": 0}
+    for func in manifest.functions.values():
+        tier_dist[func.purity_tier.value] = tier_dist.get(func.purity_tier.value, 0) + 1
+
     return {
         "project": project_root,
         "summary": {
@@ -54,6 +60,7 @@ def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
                 manifest.pure_count / max(manifest.pure_count + manifest.impure_count, 1),
                 3,
             ),
+            "purity_tiers": tier_dist,
             "property_distribution": {
                 k.value: v for k, v in manifest.property_distribution.items()
             },

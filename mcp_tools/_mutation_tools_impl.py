@@ -46,6 +46,7 @@ def _build_mutation_context(
                 continue
             test_files.append(full_tf)
             seen.add(full_tf)
+
     return MutationContext(
         full_path=full,
         rel_path=os.path.relpath(full, project_root),

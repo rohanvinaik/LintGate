@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from mcp_tools.lint_tools import (
     _format_cmd,
@@ -13,7 +11,6 @@ from mcp_tools.lint_tools import (
     _project_venv_python,
     _tool_package_name,
 )
-
 
 # ---------------------------------------------------------------------------
 # _tool_package_name

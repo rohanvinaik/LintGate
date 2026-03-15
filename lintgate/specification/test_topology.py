@@ -39,6 +39,7 @@ class DiscoveryState(str, Enum):
     DISCOVERY_WEAK_LINKAGE = "DISCOVERY_WEAK_LINKAGE"
     TESTS_LINKED_ZERO_KILLS = "TESTS_LINKED_ZERO_KILLS"
     DISCOVERY_IMPORT_FAILED = "DISCOVERY_IMPORT_FAILED"
+    SEMANTIC_LINKAGE = "SEMANTIC_LINKAGE"
     DISCOVERY_OK = "DISCOVERY_OK"
 
 
@@ -130,6 +131,8 @@ def classify_discovery_state(
     fallback_used: bool,
     weak_linkage_suspected: bool,
     total_killed: int,
+    *,
+    linkage_source: str = "",
 ) -> DiscoveryState:
     """Classify the discovery outcome from diagnostics."""
     # If callables were loaded (e.g. via dynamic coverage linkage),
@@ -143,6 +146,8 @@ def classify_discovery_state(
         return DiscoveryState.TEST_FILES_FOUND_NONE_LINKED
     if weak_linkage_suspected and fallback_used:
         return DiscoveryState.DISCOVERY_WEAK_LINKAGE
+    if linkage_source == "semantic":
+        return DiscoveryState.SEMANTIC_LINKAGE
     if callables_loaded > 0 and total_killed == 0:
         return DiscoveryState.TESTS_LINKED_ZERO_KILLS
     return DiscoveryState.DISCOVERY_OK
@@ -163,6 +168,8 @@ def interpret_survival(
         DiscoveryState.DISCOVERY_WEAK_LINKAGE,
     ):
         return SurvivalInterpretation.DISCOVERY_ARTIFACT
+    if discovery_state == DiscoveryState.SEMANTIC_LINKAGE:
+        return SurvivalInterpretation.LOW_CONFIDENCE
     if weak_linkage_suspected:
         return SurvivalInterpretation.DISCOVERY_ARTIFACT
 

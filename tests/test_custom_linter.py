@@ -6,8 +6,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 from lintgate.linters.custom_linter import CustomLinter
-from lintgate.types import LintIssue
-
 
 # --- __init__ ---
 

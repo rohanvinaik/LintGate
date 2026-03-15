@@ -1348,7 +1348,7 @@ Also includes `dep_sync` — a status/action tool that can create venvs and refr
 
 ## MCP Server & Tool Interface
 
-LintGate exposes 111 MCP tools. The default workflows are: **lint → drill-down → fix → verify** for raw supervision, and **platonic_project/platonic_converge → primary_next_action → platonic_apply** for closed-loop specification improvement toward the platonic ideal. The platonic path is step-aware: `platonic_continue` resumes validation-only or profiling-from-snapshot when possible, and `platonic_apply` can advance both fully-ready and review-ready workflows into the live suite.
+LintGate exposes 118 MCP tools. The default workflows are: **lint → drill-down → fix → verify** for raw supervision, and **platonic_project/platonic_converge → primary_next_action → platonic_apply** for closed-loop specification improvement toward the platonic ideal. The platonic path is step-aware: `platonic_continue` resumes validation-only or profiling-from-snapshot when possible, and `platonic_apply` can advance both fully-ready and review-ready workflows into the live suite.
 
 ### Core Lint Workflow
 
@@ -1403,11 +1403,11 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | Tool | Purpose |
 |---|---|
 | `controlplane_run(path, channels)` | Run the multi-channel supervision mesh (compact delta-first output) |
-| `controlplane_get_details(run_id, channel, severity, max_issues, sections)` | Drill into a ControlPlane run by run_id (full findings, repairs, evidence, and channel metrics) |
+| `controlplane_get_details(run_id, channel, severity, max_issues, sections, finding_domain)` | Drill into a ControlPlane run by run_id (full findings, code-vs-environment summary, repairs, evidence, and channel metrics) |
 | `controlplane_status(path)` | Show ControlPlane configuration and session state |
 | `controlplane_test_skeleton(path, target_file)` | Generate test skeleton for a source file |
 | `controlplane_report_repair(path, action_id)` | Report repair action outcome |
-| `controlplane_apply_repairs(path, safe_only)` | Execute proposed command-type repairs |
+| `controlplane_apply_repairs(path, safe_only, run_id)` | Execute proposed command-type repairs, optionally pinned to a persisted run |
 | `controlplane_agent_feedback(path, ...)` | Agent feedback on findings/constraints |
 | `hygiene_check(path, planned_action)` | Command-class precondition safety checks (venv/lockfile/secrets/git hygiene) |
 | `constraint_check(path, planned_action, known_constraints)` | Constraint co-construction: agent states model, tool computes gaps |
@@ -1437,8 +1437,8 @@ All lint responses include a `next_actions` array with prioritized suggestions: 
 | Tool | Purpose |
 |---|---|
 | `compass_status(path)` | Show axis depths, gap report, staleness, cognitive mode, and next actions |
-| `compass_update(path, targets, write)` | Re-extract compass from project docs. Optionally render context files for specified targets. |
-| `compass_interview(path, answers, skip)` | Gap-filling interview — returns prioritized questions or applies answers to fill sparse axes |
+| `compass_update(path, targets, write)` | Re-extract compass from project docs, merge interviewed claims, and optionally render context files for specified targets. |
+| `compass_interview(path, answers, skip)` | Gap-filling interview — returns prioritized questions or applies answers to fill sparse axes that persist through later updates |
 | `compass_check(path, action)` | Check a planned action against toward/away/forbidden directives |
 | `compass_reset(path, scope, confirm)` | Scoped state reset with dry-run default. Scopes: compass, session, project, global. |
 | `theory_mode_enter(path)` | Enter theory exploration mode (Normal→Theory). Runs extraction and gap detection. |

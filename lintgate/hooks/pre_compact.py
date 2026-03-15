@@ -66,6 +66,11 @@ def _build_capsule_from_runtime(project_root: str) -> dict[str, Any] | None:
         if refactor_progress:
             capsule["refactor_progress"] = refactor_progress
 
+        # Auto-checkpoint: capture prescriptive spec state before compaction
+        prescriptive_state = _capture_prescriptive_state(project_root)
+        if prescriptive_state:
+            capsule["prescriptive_specs"] = prescriptive_state
+
         return capsule
     except Exception:
         return None
@@ -109,6 +114,31 @@ def _capture_refactor_checkpoint(project_root: str) -> dict[str, Any] | None:
             progress["next_suggested"] = next_pending[0]
 
         return progress
+    except Exception:
+        return None
+
+
+def _capture_prescriptive_state(project_root: str) -> dict[str, Any] | None:
+    """Capture prescriptive spec state before compaction."""
+    try:
+        from lintgate.specification.prescriptive_spec import load_all_specs
+
+        all_specs = load_all_specs(project_root)
+        if not all_specs:
+            return None
+
+        class_dist: dict[str, int] = {"pure": 0, "stateful": 0, "distributed": 0}
+        total_sigma = 0
+        for spec in all_specs.values():
+            class_dist[spec.problem_class] = class_dist.get(spec.problem_class, 0) + 1
+            total_sigma += spec.prescriptive_sigma
+
+        n = len(all_specs)
+        return {
+            "total_specs": n,
+            "problem_classes": class_dist,
+            "mean_prescriptive_sigma": round(total_sigma / n, 2) if n else 0.0,
+        }
     except Exception:
         return None
 

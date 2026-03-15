@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from mcp_tools._gh_helpers import (
     _GITHUB_REMOTE_RE,
@@ -14,7 +14,6 @@ from mcp_tools._gh_helpers import (
     _repo_full_name,
     _run_gh,
 )
-
 
 # ---------------------------------------------------------------------------
 # _GITHUB_REMOTE_RE

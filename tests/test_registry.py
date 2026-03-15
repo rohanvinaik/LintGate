@@ -5,7 +5,6 @@ from __future__ import annotations
 from lintgate.registry import _register, _register_custom_linters, build_registry
 from lintgate.types import ProjectConfig
 
-
 # -- build_registry -------------------------------------------------------
 
 

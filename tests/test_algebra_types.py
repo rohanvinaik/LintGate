@@ -11,7 +11,6 @@ from lintgate.linters.performance_checks.algebra_types import (
     SideEffect,
 )
 
-
 # --- PropertyKind ---
 
 

@@ -33,6 +33,8 @@ _EFFORT_DEFAULTS: dict[str, float] = {
     "structure": 15.0,
 }
 _SEV_WEIGHT: dict[str, float] = {"blocking": 3.0, "warning": 2.0, "informational": 1.0}
+_ENVIRONMENT_CHANNELS = frozenset({"deps"})
+_ENVIRONMENT_LINTERS = frozenset({"pip_audit", "version_checker"})
 
 
 def _finding_effort(f: dict) -> float:
@@ -51,12 +53,46 @@ def _finding_roi(f: dict) -> float:
     return float(round(weight * confidence / max(effort, 0.1), 3))
 
 
+def _finding_domain(finding: dict[str, Any]) -> str:
+    """Classify a finding into the code or environment bucket."""
+    if finding.get("channel") in _ENVIRONMENT_CHANNELS:
+        return "environment"
+    if finding.get("linter") in _ENVIRONMENT_LINTERS:
+        return "environment"
+    return "code"
+
+
+def _summarize_findings(findings: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a code-vs-environment summary for a finding set."""
+    domains = {
+        "code": {"total": 0, "blocking": 0, "warning": 0, "informational": 0},
+        "environment": {"total": 0, "blocking": 0, "warning": 0, "informational": 0},
+    }
+    channels: dict[str, int] = {}
+
+    for finding in findings:
+        domain = _finding_domain(finding)
+        domains[domain]["total"] += 1
+        severity = str(finding.get("severity", "informational"))
+        if severity in domains[domain]:
+            domains[domain][severity] += 1
+        channel = str(finding.get("channel", ""))
+        if channel:
+            channels[channel] = channels.get(channel, 0) + 1
+
+    return {
+        "domains": domains,
+        "channels": channels,
+    }
+
+
 def _extract_findings(
     details,
     channel,
     severity,
     max_issues,
     *,
+    finding_domain=None,
     top_n=None,
     time_budget_minutes=None,
 ):
@@ -71,6 +107,9 @@ def _extract_findings(
             if severity and f.get("severity") != severity:
                 continue
             all_findings.append({**f, "channel": ch_name})
+
+    if finding_domain and finding_domain != "all":
+        all_findings = [f for f in all_findings if _finding_domain(f) == finding_domain]
 
     # ROI-based sorting when prioritization is requested
     roi_mode = top_n is not None or time_budget_minutes is not None
@@ -91,10 +130,13 @@ def _extract_findings(
                 remaining -= effort
         all_findings = budget_findings
 
+    finding_summary = _summarize_findings(all_findings)
+
     limit = max(top_n, 0) if top_n is not None else max_issues
     result: dict[str, Any] = {
         "total_matching": len(all_findings),
         "findings": all_findings[:limit],
+        "finding_summary": finding_summary,
     }
     if len(all_findings) > limit:
         result["truncated"] = len(all_findings) - limit
@@ -119,11 +161,28 @@ def _build_details_next_actions(run_id: str, output: dict[str, Any]) -> list[dic
             actions.append(
                 {
                     "tool": "controlplane_apply_repairs",
-                    "args": {"path": ".", "safe_only": True},
+                    "args": {"path": ".", "run_id": run_id, "safe_only": True},
                     "reason": f"Apply {safe_count} safe auto-repairs found in these details.",
                     "priority": 1,
                 }
             )
+
+    summary = output.get("finding_summary", {})
+    domain_counts = summary.get("domains", {})
+    code_total = domain_counts.get("code", {}).get("total", 0)
+    environment_total = domain_counts.get("environment", {}).get("total", 0)
+    if code_total > 0 and environment_total > 0:
+        actions.append(
+            {
+                "tool": "controlplane_get_details",
+                "args": {
+                    "run_id": run_id,
+                    "finding_domain": "code",
+                },
+                "reason": "View code findings only without dependency and environment noise.",
+                "priority": 4,
+            }
+        )
 
     findings = output.get("findings", [])
     if findings:
@@ -285,6 +344,7 @@ def _impl_controlplane_get_details(
     sections,
     helpers,
     *,
+    finding_domain=None,
     top_n=None,
     time_budget_minutes=None,
 ):
@@ -302,8 +362,12 @@ def _impl_controlplane_get_details(
     }
 
     extra_kwargs = {}
-    if top_n is not None or time_budget_minutes is not None:
-        extra_kwargs = {"top_n": top_n, "time_budget_minutes": time_budget_minutes}
+    if top_n is not None or time_budget_minutes is not None or finding_domain is not None:
+        extra_kwargs = {
+            "finding_domain": finding_domain,
+            "top_n": top_n,
+            "time_budget_minutes": time_budget_minutes,
+        }
 
     for section_name, populator in _SECTION_POPULATORS:
         if section_name in sections_set:

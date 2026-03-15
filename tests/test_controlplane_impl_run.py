@@ -8,9 +8,7 @@ Every assertion pins exact values (kills VALUE), tests parameter sensitivity
 
 from __future__ import annotations
 
-import dataclasses
 import json
-import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -23,11 +21,9 @@ from mcp_tools._controlplane_impl_run import (
     _AVAILABLE_CHANNEL_DESCRIPTIONS,
     _CYCLE_REASON_TEMPLATES,
     _KNOWN_SCOPES,
-    _RunContext,
     _accumulate_delivery_metrics,
     _append_schema_findings,
     _apply_exit_gate_to_compact,
-    _build_run_result,
     _build_supervision_event,
     _check_exit_gate,
     _check_ship_gate_parity,
@@ -47,13 +43,13 @@ from mcp_tools._controlplane_impl_run import (
     _resolve_explicit_files,
     _resolve_git_changed_files,
     _resolve_scope_files,
+    _RunContext,
     _save_run_details_for_drilldown,
     _select_channels,
     _setup_session,
     _update_refactor_state,
     _validate_channel_wiring,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -140,7 +136,7 @@ class TestConstants:
         assert set(_AVAILABLE_CHANNEL_DESCRIPTIONS.keys()) == names
 
     def test_known_scopes_exact(self):
-        assert _KNOWN_SCOPES == {"project", "changed", "staged", "full_sweep"}
+        assert {"project", "changed", "staged", "full_sweep"} == _KNOWN_SCOPES
 
     def test_cycle_reason_templates_keys(self):
         assert set(_CYCLE_REASON_TEMPLATES.keys()) == {

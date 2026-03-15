@@ -131,12 +131,14 @@ def register(mcp, helpers):
         sections: list[str] | None = None,
         top_n: int | None = None,
         time_budget_minutes: float | None = None,
+        finding_domain: Literal["all", "code", "environment"] | None = None,
     ) -> str:
         """Drill into a previous ControlPlane run by run_id.
 
         WHEN TO USE: After controlplane_run returns findings. The compact output
         shows counts and summaries — use this to see full issue details, evidence,
-        and suggested repairs.
+        and suggested repairs. Includes a code-vs-environment summary so dependency
+        CVEs do not drown out code findings.
 
         Example: controlplane_get_details(run_id="cp_abc123")
         ROI example: controlplane_get_details(run_id="cp_abc123", time_budget_minutes=30)
@@ -151,6 +153,8 @@ def register(mcp, helpers):
             top_n: Return the N highest-ROI findings (sorted by value-per-effort).
             time_budget_minutes: Return findings that fit within this time budget,
                 sorted by ROI. E.g., 30 = "best fixes in 30 minutes."
+            finding_domain: Optional bucket filter. Use "code" to exclude environment
+                findings such as dependency CVEs; use "environment" for the inverse.
         """
         return str(
             _impl_controlplane_get_details(
@@ -160,6 +164,7 @@ def register(mcp, helpers):
                 max_issues,
                 sections,
                 helpers,
+                finding_domain=finding_domain,
                 top_n=top_n,
                 time_budget_minutes=time_budget_minutes,
             )
@@ -332,17 +337,29 @@ def register(mcp, helpers):
         path: str,
         action_ids: list[str] | None = None,
         safe_only: bool = True,
+        run_id: str | None = None,
     ) -> str:
         """Execute proposed repair actions from a ControlPlane run.
 
         Only executes command-type repairs. Requires explicit invocation.
+        Pass ``run_id`` from ``controlplane_run`` or ``controlplane_get_details``
+        to replay persisted repairs even if the session snapshot has rolled forward.
 
         Args:
             path: Project root path.
             action_ids: Specific action IDs to execute. If None, executes all safe pending repairs.
             safe_only: Only execute repairs marked as safe (default True).
+            run_id: Optional originating ControlPlane run ID.
         """
-        return str(_impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers))
+        return str(
+            _impl_controlplane_apply_repairs(
+                path,
+                action_ids,
+                safe_only,
+                helpers,
+                run_id=run_id,
+            )
+        )
 
     @mcp.tool()
     def controlplane_get_work_queue(

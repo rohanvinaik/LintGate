@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from mcp_tools._gh_wiki_impl import (
     _collect_compass_pages,
@@ -25,7 +21,6 @@ from mcp_tools._gh_wiki_impl import (
     impl_project_wiki_read,
     impl_project_wiki_sync,
 )
-
 
 # ── _render_theory_wiki_page ─────────────────────────────────────────
 

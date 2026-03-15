@@ -15,11 +15,9 @@ from mcp_tools._onboarding_getting_started_impl import (
     _handle_config_and_venv,
     _handle_quality_bootstrap,
     _handle_tool_installs,
-    _impl_getting_started,
     _impl_scaffold_config,
     _impl_tool_applicability_guide,
 )
-
 
 # ---------------------------------------------------------------------------
 # _detect_mutation_guard
