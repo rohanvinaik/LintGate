@@ -205,6 +205,7 @@ def _run_lint_analysis(project_root: str, py_files: list[str]) -> dict[str, Any]
 
     try:
         from lintgate.linters.ruff_linter import RuffLinter
+        from lintgate.types import LinterContext
 
         ruff = RuffLinter()
         try:
@@ -213,7 +214,8 @@ def _run_lint_analysis(project_root: str, py_files: list[str]) -> dict[str, Any]
             avail = ruff.available()
         if avail:
             full_paths = [os.path.join(project_root, f) for f in py_files]
-            issues = ruff.run(full_paths, project_root=project_root)
+            ctx = LinterContext(files=full_paths, project_root=project_root)
+            issues = ruff.run(ctx)
             for issue in issues:
                 entry = {
                     "linter": "ruff",
@@ -543,6 +545,8 @@ def _analyze_test_coverage(
     }
 
 
+_PROJECT_SENTINEL = "<project>"
+
 # ── Action plan builder ──────────────────────────────────────────────
 
 
@@ -579,7 +583,7 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
             rank=rank,
             priority="P1_critical",
             category="lint_auto_fix",
-            file="<project>",
+            file=_PROJECT_SENTINEL,
             action=f"Run `lint_fix(path)` to auto-fix {lint['auto_fixable']} issues. This is a zero-effort first step.",
             rationale="Auto-fixable issues are mechanical — fix them immediately to reduce noise.",
             estimated_effort="trivial",
@@ -699,7 +703,7 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
             rank=rank,
             priority="P3_improve",
             category="prescriptive_opportunity",
-            file="<project>",
+            file=_PROJECT_SENTINEL,
             action=f"Create prescriptive specs for top hotspot functions: "
                    f"{', '.join(top_hotspots)}. "
                    f"Use `prescriptive_spec_compose(path, target)` to create behavioral contracts "
@@ -717,7 +721,7 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
             rank=rank,
             priority="P3_improve",
             category="purity_optimization",
-            file="<project>",
+            file=_PROJECT_SENTINEL,
             action=f"{pure_count} pure functions detected. "
                    f"Use `inspect_algebra(path)` to extract algebraic properties "
                    f"and `generate_property_tests(path)` for Hypothesis-based verification.",
@@ -937,7 +941,6 @@ def run_platonic_analysis(
     *,
     src_dirs: list[str] | None = None,
     include_mutation: bool = True,
-    mutation_budget_ms: int = 500,
     max_files: int = 200,
 ) -> dict[str, Any]:
     """Run platonic convergence analysis offline.
@@ -1126,7 +1129,7 @@ def run_complete_analysis(
     try:
         platonic = run_platonic_analysis(
             project_root, src_dirs=src_dirs, include_mutation=include_mutation,
-            mutation_budget_ms=mutation_budget_ms, max_files=max_files,
+            max_files=max_files,
         )
         result["convergence_roadmap"] = platonic.get("convergence_roadmap", [])
     except Exception as e:
