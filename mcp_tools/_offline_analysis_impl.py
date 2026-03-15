@@ -74,6 +74,31 @@ def _code(source: str) -> dict[str, Any]:
     }
 
 
+_MODE_NAMES = {
+    "full": "lintgate_full_analysis",
+    "controlplane": "lintgate_controlplane",
+    "decomposition": "lintgate_decomposition",
+    "platonic": "lintgate_platonic",
+    "complete": "lintgate_complete_suite",
+}
+
+_MODE_DESCRIPTIONS = {
+    "full": "Full analysis: lint + spec + mutation + composition + performance + coverage",
+    "controlplane": "ControlPlane: 6-channel supervision mesh",
+    "decomposition": "Decomposition: extraction guidance + composition gaps + refactor targets",
+    "platonic": "Platonic: convergence roadmap — distance from ideal per file",
+    "complete": "Complete suite: ALL analyses combined",
+}
+
+_MODE_FUNCTIONS = {
+    "full": "run_full_analysis",
+    "controlplane": "run_controlplane_analysis",
+    "decomposition": "run_decomposition_analysis",
+    "platonic": "run_platonic_analysis",
+    "complete": "run_complete_analysis",
+}
+
+
 def impl_offline_analysis_generate(
     helpers: dict[str, Any],
     path: str,
@@ -81,13 +106,20 @@ def impl_offline_analysis_generate(
     mutation_budget_ms: int,
     output: str,
     include_mutation: bool,
+    *,
+    mode: str = "full",
 ) -> str:
-    """Generate a comprehensive offline analysis notebook."""
+    """Generate an offline analysis notebook for the specified mode."""
     project_root = helpers["_validate_project_root"](path)
     git_info = _get_git_info(project_root)
     repo_url = git_info["repo_url"]
     branch = git_info["branch"]
     src_dirs = _detect_src_dirs(project_root)
+
+    if mode not in _MODE_NAMES:
+        return json.dumps({
+            "error": f"Unknown mode '{mode}'. Valid: {', '.join(_MODE_NAMES)}",
+        })
 
     if not repo_url:
         return json.dumps({
@@ -103,13 +135,14 @@ def impl_offline_analysis_generate(
         include_mutation=include_mutation,
         src_dirs=src_dirs,
         local_project_path=project_root,
+        mode=mode,
     )
 
     # Write notebook
     if not output:
         scripts_dir = os.path.join(project_root, "scripts")
         os.makedirs(scripts_dir, exist_ok=True)
-        output = os.path.join(scripts_dir, "lintgate_full_analysis.ipynb")
+        output = os.path.join(scripts_dir, f"{_MODE_NAMES[mode]}.ipynb")
 
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
     with open(output, "w", encoding="utf-8") as f:
@@ -117,14 +150,16 @@ def impl_offline_analysis_generate(
 
     result = {
         "notebook_path": output,
+        "mode": mode,
+        "description": _MODE_DESCRIPTIONS[mode],
         "repo_url": repo_url,
         "branch": branch,
         "src_dirs": src_dirs,
         "include_mutation": include_mutation,
         "instructions": (
             "Upload the notebook to Google Colab (or run locally with Jupyter). "
-            "Runtime > Run all. The final cell downloads a comprehensive "
-            "analysis.json that an LLM agent can consume for systematic fixes."
+            "Runtime > Run all. The final cell downloads the analysis JSON "
+            "that an LLM agent can consume for systematic fixes."
         ),
         "next_actions": serialize_next_actions([
             NextAction(
@@ -142,22 +177,32 @@ def impl_offline_analysis_run(
     path: str,
     include_mutation: bool,
     output: str,
+    *,
+    mode: str = "full",
 ) -> str:
-    """Run the full offline analysis locally and save the result."""
+    """Run offline analysis locally and save the result."""
     project_root = helpers["_validate_project_root"](path)
 
-    from lintgate.offline_analysis import run_full_analysis
+    if mode not in _MODE_FUNCTIONS:
+        return json.dumps({"error": f"Unknown mode '{mode}'. Valid: {', '.join(_MODE_FUNCTIONS)}"})
 
-    result = run_full_analysis(
-        project_root,
-        include_mutation=include_mutation,
-    )
+    import lintgate.offline_analysis as _oa
+
+    run_fn = getattr(_oa, _MODE_FUNCTIONS[mode])
+    # Not all modes accept include_mutation — pass it only to those that do
+    import inspect
+
+    sig = inspect.signature(run_fn)
+    kwargs: dict[str, Any] = {}
+    if "include_mutation" in sig.parameters:
+        kwargs["include_mutation"] = include_mutation
+    result = run_fn(project_root, **kwargs)
 
     # Save to file
     if not output:
         out_dir = os.path.join(project_root, ".lintgate")
         os.makedirs(out_dir, exist_ok=True)
-        output = os.path.join(out_dir, "full_analysis.json")
+        output = os.path.join(out_dir, f"{_MODE_NAMES[mode]}.json")
 
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
     with open(output, "w", encoding="utf-8") as f:
@@ -235,9 +280,11 @@ def _build_full_analysis_notebook(
     include_mutation: bool,
     src_dirs: list[str],
     local_project_path: str,
+    mode: str = "full",
 ) -> dict[str, Any]:
-    """Build a self-contained .ipynb for comprehensive offline analysis.
+    """Build a self-contained .ipynb for offline analysis.
 
+    Supports 5 modes: full, controlplane, decomposition, platonic, complete.
     Architecture: TWO clones on Colab —
     1. LintGate (the tool) → installed as a pip package
     2. Target project → cloned as PROJECT_DIR, analyzed by LintGate
@@ -356,36 +403,39 @@ def _build_full_analysis_notebook(
             "print(f'Source dirs to analyze: {SRC_DIRS}')"
         )
 
-    # ── Cell 2: Run full analysis ─────────────────────────────────
+    # ── Cell 2: Run analysis (mode-aware) ────────────────────────
+    run_fn = _MODE_FUNCTIONS[mode]
+    mode_desc = _MODE_DESCRIPTIONS[mode]
     analysis_cell = (
         "import json, os, time\n"
         "\n"
         f"INCLUDE_MUTATION = {mutation_flag}\n"
         f"MUTATION_BUDGET_MS = {mutation_budget_ms}\n"
         "\n"
-        "from lintgate.offline_analysis import run_full_analysis\n"
+        f"from lintgate.offline_analysis import {run_fn}\n"
         "\n"
-        "print('Starting comprehensive analysis...')\n"
-        "print('This runs: lint + specification + composition + performance + test coverage')\n"
-        "if INCLUDE_MUTATION:\n"
-        "    print('+ mutation profiling (this is the slow part)')\n"
+        f"print('Running: {mode_desc}')\n"
         "print()\n"
         "\n"
-        "result = run_full_analysis(\n"
+        f"result = {run_fn}(\n"
         "    PROJECT_DIR,\n"
         f"    src_dirs={src_dirs_str},\n"
         "    include_mutation=INCLUDE_MUTATION,\n"
-        "    mutation_budget_ms=MUTATION_BUDGET_MS,\n"
         ")\n"
         "\n"
         "print(f'Analysis complete in {result[\"elapsed_s\"]}s')\n"
         "print(f'Source files: {result[\"project\"][\"total_source_files\"]}')\n"
         "print(f'Test files: {result[\"project\"][\"total_test_files\"]}')\n"
         "print(f'Total LoC: {result[\"project\"][\"total_loc\"]}')\n"
-        "print(f'Lint findings: {result[\"lint\"][\"total_findings\"]} ({result[\"lint\"][\"auto_fixable\"]} auto-fixable)')\n"
-        "print(f'Functions analyzed: {result[\"specification\"][\"total_functions\"]}')\n"
-        "print(f'Under-specified: {result[\"specification\"][\"under_specified_count\"]}')\n"
-        "print(f'Action items: {len(result[\"action_plan\"])}')"
+        "print(f'Action items: {len(result[\"action_plan\"])}')\n"
+        "if 'lint' in result:\n"
+        "    print(f'Lint findings: {result[\"lint\"][\"total_findings\"]}')\n"
+        "if 'specification' in result:\n"
+        "    print(f'Functions analyzed: {result[\"specification\"][\"total_functions\"]}')\n"
+        "if 'coherence' in result:\n"
+        "    print(f'Coherence: {result[\"coherence\"][\"state\"]}')\n"
+        "if 'convergence_roadmap' in result and isinstance(result['convergence_roadmap'], list):\n"
+        "    print(f'Convergence targets: {len(result[\"convergence_roadmap\"])}')"
     )
 
     # ── Cell 3: Display action plan ───────────────────────────────
@@ -469,25 +519,25 @@ def _build_full_analysis_notebook(
         f"print(f'  \"Apply results to: {local_project_path}\"')"
     )
 
-    mode_note = (
-        "**Mode**: Self-analysis (LintGate analyzing itself)"
+    clone_note = (
+        "Self-analysis (LintGate analyzing itself)"
         if is_self_analysis
-        else f"**Mode**: External project analysis\n- **Tool**: LintGate (`{lintgate_url}`)\n- **Target**: `{repo_url}`"
+        else f"External project\n- **Tool**: LintGate (`{lintgate_url}`)\n- **Target**: `{repo_url}`"
     )
+
+    title = _MODE_NAMES.get(mode, "lintgate_analysis").replace("lintgate_", "LintGate ").replace("_", " ").title()
 
     cells = [
         _md(
-            "# LintGate Full Analysis\n"
+            f"# {title}\n"
             "\n"
-            "**Auto-generated** comprehensive project analysis notebook.\n"
-            "Runs the entire LintGate analysis pipeline offline and produces\n"
-            "a portable JSON artifact with a prioritized action plan.\n"
+            f"**Auto-generated** — {mode_desc}\n"
             "\n"
             f"- **Target repo**: `{repo_url}`\n"
             f"- **Branch**: `{branch}`\n"
             f"- **Source dirs**: `{src_dirs_str}`\n"
             f"- **Mutation profiling**: `{mutation_flag}`\n"
-            f"- {mode_note}\n"
+            f"- **Architecture**: {clone_note}\n"
             "\n"
             "**How to use:** Runtime > Run all. Download the zip at the end.\n"
             "Pass the `action_plan.json` to any LLM coding agent.\n"
@@ -510,7 +560,7 @@ def _build_full_analysis_notebook(
     return {
         "cells": cells,
         "metadata": {
-            "colab": {"provenance": [], "name": "LintGate Full Analysis"},
+            "colab": {"provenance": [], "name": title},
             "kernelspec": {"display_name": "Python 3", "name": "python3"},
             "language_info": {"name": "python", "version": "3.11.0"},
         },
