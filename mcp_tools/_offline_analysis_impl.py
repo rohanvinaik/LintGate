@@ -385,28 +385,67 @@ def _build_full_analysis_notebook(
             "print('Installing LintGate...')\n"
             "_clone(LINTGATE_REPO_URL, 'main', LINTGATE_DIR)\n"
             "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
-            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', LINTGATE_DIR], capture_output=True, text=True)\n"
+            "\n"
+            "# Try pip install first (best), fall back to sys.path (always works)\n"
+            "pip_result = subprocess.run(\n"
+            "    [sys.executable, '-m', 'pip', 'install', '-q', '-e', LINTGATE_DIR],\n"
+            "    capture_output=True, text=True\n"
+            ")\n"
+            "if pip_result.returncode != 0:\n"
+            "    print(f'pip install -e failed (expected on some Colab runtimes): {pip_result.stderr[:200]}')\n"
+            "    print('Falling back to sys.path injection...')\n"
+            "\n"
+            "# Always ensure LINTGATE_DIR is on sys.path (belt and suspenders)\n"
             "if LINTGATE_DIR not in sys.path:\n"
             "    sys.path.insert(0, LINTGATE_DIR)\n"
             "\n"
             "# Step 2: Clone the target project\n"
-            "print(f'Cloning target project...')\n"
+            "print('Cloning target project...')\n"
             f"_clone(TARGET_REPO_URL, TARGET_BRANCH, PROJECT_DIR)\n"
             "\n"
-            "# Verify LintGate is importable\n"
+            "# Purge stale module cache and verify import\n"
             "for m in list(sys.modules):\n"
-            "    if m.startswith('lintgate'):\n"
+            "    if m.startswith('lintgate') or m.startswith('mcp_tools'):\n"
             "        del sys.modules[m]\n"
             "importlib.invalidate_caches()\n"
-            "from lintgate.offline_analysis import run_full_analysis\n"
-            "print(f'LintGate installed. Target project at {PROJECT_DIR}')\n"
-            "print(f'Source dirs to analyze: {SRC_DIRS}')"
+            "\n"
+            "# Verify LintGate is importable\n"
+            "try:\n"
+            "    import lintgate\n"
+            "    print(f'LintGate package at: {lintgate.__file__}')\n"
+            "except ImportError as e:\n"
+            "    print(f'ERROR: Cannot import lintgate: {e}')\n"
+            "    print(f'sys.path: {sys.path[:5]}')\n"
+            "    print(f'LINTGATE_DIR contents: {os.listdir(LINTGATE_DIR)[:10]}')\n"
+            "    raise\n"
+            "\n"
+            "print(f'Target project at {PROJECT_DIR}')\n"
+            f"print(f'Source dirs to analyze: {src_dirs_str}')"
         )
 
     # ── Cell 2: Run analysis (mode-aware) ────────────────────────
     run_fn = _MODE_FUNCTIONS[mode]
     mode_desc = _MODE_DESCRIPTIONS[mode]
-    analysis_cell = (
+
+    # Only pass include_mutation to modes that accept it
+    _modes_with_mutation = {"full", "platonic", "complete"}
+    if mode in _modes_with_mutation:
+        run_call = (
+            f"result = {run_fn}(\n"
+            "    PROJECT_DIR,\n"
+            f"    src_dirs={src_dirs_str},\n"
+            "    include_mutation=INCLUDE_MUTATION,\n"
+            ")\n"
+        )
+    else:
+        run_call = (
+            f"result = {run_fn}(\n"
+            "    PROJECT_DIR,\n"
+            f"    src_dirs={src_dirs_str},\n"
+            ")\n"
+        )
+
+    analysis_preamble = (
         "import json, os, time\n"
         "\n"
         f"INCLUDE_MUTATION = {mutation_flag}\n"
@@ -417,11 +456,8 @@ def _build_full_analysis_notebook(
         f"print('Running: {mode_desc}')\n"
         "print()\n"
         "\n"
-        f"result = {run_fn}(\n"
-        "    PROJECT_DIR,\n"
-        f"    src_dirs={src_dirs_str},\n"
-        "    include_mutation=INCLUDE_MUTATION,\n"
-        ")\n"
+    )
+    analysis_postamble = (
         "\n"
         "print(f'Analysis complete in {result[\"elapsed_s\"]}s')\n"
         "print(f'Source files: {result[\"project\"][\"total_source_files\"]}')\n"
@@ -437,6 +473,7 @@ def _build_full_analysis_notebook(
         "if 'convergence_roadmap' in result and isinstance(result['convergence_roadmap'], list):\n"
         "    print(f'Convergence targets: {len(result[\"convergence_roadmap\"])}')"
     )
+    analysis_cell = analysis_preamble + run_call + analysis_postamble
 
     # ── Cell 3: Display action plan ───────────────────────────────
     plan_cell = (
