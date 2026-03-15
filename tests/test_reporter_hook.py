@@ -47,7 +47,7 @@ def _make_mesh(
     )
 
 
-def _make_inputs(
+def _make_inputs(  # noqa: PLR0913
     coherence_state: str = "stable",
     blocking_count: int = 0,
     warning_count: int = 0,

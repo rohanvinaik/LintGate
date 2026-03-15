@@ -389,14 +389,19 @@ class TestResolveRequiredSymbols:
     def test_span_not_found_is_unresolved(
         self, _isfile: MagicMock, _canon: MagicMock, _find: MagicMock
     ) -> None:
+        # Distinct from test_missing_file_is_unresolved: file exists (isfile=True)
+        # but _find_span_by_key returns None (symbol not in AST).
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
 
-        result = _resolve_required_symbols(
+        unresolved = _resolve_required_symbols(
             ["src/mod.py::foo"], "/repo", targets, seen
         )
 
-        assert result == ["src/mod.py::foo"]
+        assert unresolved == ["src/mod.py::foo"]
+        # Verify file lookup was attempted (distinguishes from missing-file path)
+        _isfile.assert_called()
+        _find.assert_called()
 
     @patch("lintgate.channels._target_building._find_span_by_key")
     @patch("lintgate.channels._target_building._canonicalize_symbol_key", return_value="src/mod.py::foo")

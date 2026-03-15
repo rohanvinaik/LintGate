@@ -156,11 +156,7 @@ def test_capture_refactor_checkpoint_with_state():
             # Direct approach: import and call
             pass
 
-    # Use a more direct mock approach
-    with patch.dict("sys.modules", {}):
-        pass
-
-    # Simplest approach: just verify the function handles missing module gracefully
+    # Verify the function handles missing module gracefully
     result = _capture_refactor_checkpoint("/nonexistent")
     assert result is None
 
