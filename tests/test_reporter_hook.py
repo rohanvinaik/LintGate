@@ -47,7 +47,7 @@ def _make_mesh(
     )
 
 
-def _make_inputs(  # noqa: PLR0913
+def _make_inputs(
     coherence_state: str = "stable",
     blocking_count: int = 0,
     warning_count: int = 0,
@@ -59,17 +59,17 @@ def _make_inputs(  # noqa: PLR0913
     resurfaced_count: int = 0,
     cycle_alerts: list[str] | None = None,
     channel_results: list[ChannelResult] | None = None,
-    edit_scoped: bool = False,
-    edit_related_channels: list[str] | None = None,
-    ambient_channels: list[str] | None = None,
+    **mesh_kwargs: Any,
 ) -> PostToolUseInputs:
-    """Build PostToolUseInputs with sensible defaults."""
+    """Build PostToolUseInputs with sensible defaults.
+
+    Extra kwargs (edit_scoped, edit_related_channels, ambient_channels)
+    are forwarded to _make_mesh().
+    """
     mesh = _make_mesh(
         coherence_state=coherence_state,
         channel_results=channel_results or [],
-        edit_scoped=edit_scoped,
-        edit_related_channels=edit_related_channels,
-        ambient_channels=ambient_channels,
+        **mesh_kwargs,
     )
     return PostToolUseInputs(
         mesh_result=mesh,
