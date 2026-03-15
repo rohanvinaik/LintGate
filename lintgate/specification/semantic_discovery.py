@@ -137,7 +137,7 @@ def _tfidf_cosine(query_tokens: list[str], corpus: list[list[str]]) -> list[floa
         dot = sum(v1[k] * v2[k] for k in shared)
         norm1 = math.sqrt(sum(v * v for v in v1.values()))
         norm2 = math.sqrt(sum(v * v for v in v2.values()))
-        if norm1 == 0.0 or norm2 == 0.0:
+        if norm1 < 1e-12 or norm2 < 1e-12:
             return 0.0
         return dot / (norm1 * norm2)
 

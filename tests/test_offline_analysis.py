@@ -160,6 +160,104 @@ class TestFullAnalysis:
         assert isinstance(result["action_plan"], list)
 
 
+class TestControlPlaneAnalysis:
+    def test_runs_on_minimal_project(self, tmp_path):
+        from lintgate.offline_analysis import run_controlplane_analysis
+
+        pkg = tmp_path / "mymod"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("def add(a, b):\n    return a + b\n")
+
+        result = run_controlplane_analysis(str(tmp_path))
+        assert result["mode"] == "controlplane"
+        assert "lint" in result
+        assert "action_plan" in result
+
+    def test_empty_project(self, tmp_path):
+        from lintgate.offline_analysis import run_controlplane_analysis
+
+        result = run_controlplane_analysis(str(tmp_path))
+        assert result["project"]["total_source_files"] == 0
+
+
+class TestDecompositionAnalysis:
+    def test_runs_on_minimal_project(self, tmp_path):
+        from lintgate.offline_analysis import run_decomposition_analysis
+
+        pkg = tmp_path / "mymod"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("def add(a, b):\n    return a + b\n")
+
+        result = run_decomposition_analysis(str(tmp_path))
+        assert result["mode"] == "decomposition"
+        assert "composition" in result
+        assert "action_plan" in result
+
+    def test_empty_project(self, tmp_path):
+        from lintgate.offline_analysis import run_decomposition_analysis
+
+        result = run_decomposition_analysis(str(tmp_path))
+        assert isinstance(result["action_plan"], list)
+
+
+class TestPlatonicAnalysis:
+    def test_runs_on_minimal_project(self, tmp_path):
+        from lintgate.offline_analysis import run_platonic_analysis
+
+        pkg = tmp_path / "mymod"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("def add(a, b):\n    return a + b\n")
+
+        result = run_platonic_analysis(str(tmp_path), include_mutation=False)
+        assert result["mode"] == "platonic"
+        assert "convergence_roadmap" in result
+        assert "action_plan" in result
+
+    def test_roadmap_ranking(self, tmp_path):
+        from lintgate.offline_analysis import run_platonic_analysis
+
+        pkg = tmp_path / "mymod"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("def f():\n    return 1\n" * 5)
+        (pkg / "utils.py").write_text("def g():\n    return 2\n")
+
+        result = run_platonic_analysis(str(tmp_path), include_mutation=False)
+        roadmap = result.get("convergence_roadmap", [])
+        assert isinstance(roadmap, list)
+
+
+class TestCompleteAnalysis:
+    def test_runs_on_minimal_project(self, tmp_path):
+        from lintgate.offline_analysis import run_complete_analysis
+
+        pkg = tmp_path / "mymod"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("def add(a, b):\n    return a + b\n")
+
+        result = run_complete_analysis(str(tmp_path), include_mutation=False)
+        assert result["mode"] == "complete"
+        assert "lint" in result
+        assert "specification" in result
+        assert "action_plan" in result
+
+    def test_json_serializable(self, tmp_path):
+        from lintgate.offline_analysis import run_complete_analysis
+
+        pkg = tmp_path / "mymod"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "core.py").write_text("x = 1\n")
+
+        result = run_complete_analysis(str(tmp_path), include_mutation=False)
+        serialized = json.dumps(result)
+        assert len(serialized) > 0
+
+
 class TestMCPToolImports:
     def test_generate_import(self):
         from mcp_server import offline_analysis_generate
