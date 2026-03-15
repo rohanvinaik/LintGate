@@ -1,0 +1,582 @@
+version: 1
+axes:
+  problem:
+    name: problem
+    claims:
+    - text: 'Project purpose: Proactive professional cognition stack for LLM coding
+        agents'
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'README: **Deterministic code quality supervision for AI-assisted development.**'
+      source: README.md
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'fuzz_yaml_parse.py: Fuzz target for YAML config parsing — exercises lintgate
+        config loading paths.'
+      source: docstring:fuzz_yaml_parse.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '__init__.py: LintGate: Intelligent change-aware linting for Claude Code.'
+      source: docstring:__init__.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_dep_health_checks.py: Individual dependency health check functions.'
+      source: docstring:_dep_health_checks.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_dep_health_helpers.py: Dependency health helpers and constants.'
+      source: docstring:_dep_health_helpers.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_habit_bootstrap.py: Habit Mode bootstrap — seed habit state from historical
+        session data.'
+      source: docstring:_habit_bootstrap.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_habit_compact.py: Habit Mode compaction — structured snapshot building.'
+      source: docstring:_habit_compact.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_habit_persist.py: Habit Mode persistence — session-backed and file-backed
+        state I/O.'
+      source: docstring:_habit_persist.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_habit_signals.py: Habit Mode signal computation, scoring, and mode management.'
+      source: docstring:_habit_signals.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_habit_types.py: Habit Mode types and constants.'
+      source: docstring:_habit_types.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'agent_profiles.py: Agent Profile Registry for LintGate integrations.'
+      source: docstring:agent_profiles.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'agent_reporter.py: Phase 5: Format lint results for LLM agent consumption.'
+      source: docstring:agent_reporter.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'axis_extractor.py: Axis extractor — thin wrapper mapping 7 theory facets
+        to 4 compass axes.'
+      source: docstring:axis_extractor.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'bootstrap_defaults.py: Battle-tested zero-state bootstrap defaults.'
+      source: docstring:bootstrap_defaults.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'change_classifier.py: Phase 1: Classify what changed.'
+      source: docstring:change_classifier.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '__init__.py: Change classification sub-modules.'
+      source: docstring:__init__.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_change_diff_analysis.py: Diff analysis helpers for the change classifier.'
+      source: docstring:_change_diff_analysis.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'file_type_utils.py: Helper functions for classifying file types and change
+        characteristics.'
+      source: docstring:file_type_utils.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '__init__.py: Channel implementations for ControlPlane supervision mesh.'
+      source: docstring:__init__.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_contract_drift_detection.py: Contract drift detector — detection functions.'
+      source: docstring:_contract_drift_detection.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_contract_drift_types.py: Contract drift detector — data types and small
+        AST helpers.'
+      source: docstring:_contract_drift_types.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_coverage_parsing.py: Coverage JSON parsing and per-symbol coverage checking.'
+      source: docstring:_coverage_parsing.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_git_checks.py: Individual git hygiene check functions.'
+      source: docstring:_git_checks.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_git_helpers.py: Git subprocess helpers and working tree context collection.'
+      source: docstring:_git_helpers.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_git_secrets.py: Secrets detection patterns and staged diff scanning.'
+      source: docstring:_git_secrets.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_symbol_extraction.py: AST-based symbol span extraction for the symbol
+        coverage gate.'
+      source: docstring:_symbol_extraction.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_symbol_types.py: Data structures for the symbol coverage gate.'
+      source: docstring:_symbol_types.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_target_building.py: Target set building for the symbol coverage gate.'
+      source: docstring:_target_building.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_checks.py: Compatibility re-exports for test channel checks.'
+      source: docstring:_test_channel_checks.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_drift.py: Drift, failure classification, and contract checks
+        for the test channel.'
+      source: docstring:_test_channel_drift.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_execution.py: Execution and coverage helpers for the test
+        channel.'
+      source: docstring:_test_channel_execution.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_impact.py: Impact detection — find test files affected
+        by source changes.'
+      source: docstring:_test_channel_impact.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_models.py: Shared value objects for the test channel.'
+      source: docstring:_test_channel_models.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_result.py: Result assembly helpers for the test channel.'
+      source: docstring:_test_channel_result.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_runner.py: Test runner — pytest execution and output parsing.'
+      source: docstring:_test_channel_runner.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_selection.py: Selection and simple filesystem helpers for
+        the test channel.'
+      source: docstring:_test_channel_selection.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_channel_symbol_gate.py: Symbol coverage gate — per-symbol coverage
+        checking and finding emission.'
+      source: docstring:_test_channel_symbol_gate.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_hygiene_ast.py: AST helpers for test hygiene analysis.'
+      source: docstring:_test_hygiene_ast.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_hygiene_duplicates.py: Duplicate and subsumption detection for
+        test hygiene (THYGIENE003, THYGIENE005).'
+      source: docstring:_test_hygiene_duplicates.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_hygiene_finders.py: Finding generators for test hygiene (THYGIENE001,
+        THYGIENE002).'
+      source: docstring:_test_hygiene_finders.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_test_types.py: Test channel data types — pure value containers.'
+      source: docstring:_test_types.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_waiver_logic.py: Waiver parsing and application for the symbol coverage
+        gate.'
+      source: docstring:_waiver_logic.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '__init__.py: Behavior subpackage — behavioral drift detection for the
+        supervision mesh.'
+      source: docstring:__init__.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_error_utils.py: Error matching helpers for the behavior channel.'
+      source: docstring:_error_utils.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_intent_scorer.py: Intent bias scorer for the behavior channel.'
+      source: docstring:_intent_scorer.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_soft_action.py: Soft behavioral detectors — action/execution pattern
+        signals.'
+      source: docstring:_soft_action.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_soft_verification.py: Soft behavioral detectors — verification debt
+        signals.'
+      source: docstring:_soft_verification.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '_soft_workflow.py: Soft behavioral detectors — workflow anti-pattern
+        signals.'
+      source: docstring:_soft_workflow.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'channel.py: Behavior channel — supervision for agent behavioral drift.'
+      source: docstring:channel.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'detection.py: Behavioral drift detection rules — 12 signal detectors.'
+      source: docstring:detection.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'detection_hard.py: Hard behavioral signal detectors — high-confidence
+        drift indicators.'
+      source: docstring:detection_hard.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    summary: 'README: **Deterministic code quality supervision for AI-assisted development.**'
+    depth: 3
+  solution:
+    name: solution
+    claims: []
+    summary: ''
+    depth: 0
+  implementation:
+    name: implementation
+    claims:
+    - text: Ruff linter configured
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: mypy type checking configured
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: pytest configured in pyproject.toml
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: Tests in tests/
+      source: directory_structure
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: Uses pytest
+      source: test_patterns
+      heading: ''
+      confidence: 0.55
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: Uses conftest.py for shared fixtures
+      source: test_patterns
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: Uses pytest fixtures
+      source: test_patterns
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: '_dep_health_helpers.py:HealthCheck: A single dependency health check
+        result.'
+      source: docstring:_dep_health_helpers.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_habit_bootstrap.py:HabitBootstrapper: Bootstrap habit state from historical
+        Claude Code sessions.'
+      source: docstring:_habit_bootstrap.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_habit_types.py:HabitSignals: Raw signals computed from the tool event
+        stream.'
+      source: docstring:_habit_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_habit_types.py:HabitModeState: Top-level habit mode state.'
+      source: docstring:_habit_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_contract_drift_types.py:SignatureChange: A detected change in a function''s
+        observable contract.'
+      source: docstring:_contract_drift_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_contract_drift_types.py:AffectedTestSite: A test call site that will
+        break due to a signature change.'
+      source: docstring:_contract_drift_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_contract_drift_types.py:ContractDriftResult: Result of contract drift
+        analysis for a single function.'
+      source: docstring:_contract_drift_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_symbol_types.py:SymbolSpan: A function or method span in a source file.'
+      source: docstring:_symbol_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_symbol_types.py:FileCoverage: Coverage data for a single file.'
+      source: docstring:_symbol_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_symbol_types.py:SymbolCoverageResult: Coverage verdict for a single
+        symbol.'
+      source: docstring:_symbol_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_symbol_types.py:SymbolCoverageWaiver: Explicit per-symbol exemption
+        from coverage gate.'
+      source: docstring:_symbol_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_symbol_types.py:SymbolCoverageGateResult: Aggregate result from the
+        symbol coverage gate.'
+      source: docstring:_symbol_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_test_channel_models.py:CoverageEvaluation: Result of evaluating coverage
+        context for downstream gates.'
+      source: docstring:_test_channel_models.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_test_channel_models.py:TestChannelContext: Context for building test
+        channel results with many metrics.'
+      source: docstring:_test_channel_models.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_test_channel_symbol_gate.py:SymbolGateContext: Runtime context for symbol
+        coverage gate execution.'
+      source: docstring:_test_channel_symbol_gate.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_test_types.py:TestFailure: A single test failure from pytest output.'
+      source: docstring:_test_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_test_types.py:TestRunResult: Result from running pytest on impacted
+        test files.'
+      source: docstring:_test_types.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: '_intent_scorer.py:IntentBiasScorer: Compute intent-based bias terms for
+        detection rules.'
+      source: docstring:_intent_scorer.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'channel.py:BehaviorChannel: Supervision channel for agent behavioral
+        drift detection.'
+      source: docstring:channel.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    summary: Uses pytest
+    depth: 3
+  world:
+    name: world
+    claims:
+    - text: 'Python version: >=3.10'
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: ''
+    - text: CI pipeline detected
+      source: README.md
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: ''
+    - text: Code coverage tracking
+      source: README.md
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: ''
+    - text: Has docs/ directory
+      source: directory_structure
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: ''
+    - text: 'Test suite: 384 test file(s)'
+      source: test_patterns
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: ''
+    summary: 'Test suite: 384 test file(s)'
+    depth: 2
+directives:
+- kind: forbidden
+  text: proposed_rules
+  source: enforceable_rules
+- kind: forbidden
+  text: existing_rule_count
+  source: enforceable_rules
+- kind: forbidden
+  text: directives_analyzed
+  source: enforceable_rules
+- kind: forbidden
+  text: already_covered
+  source: enforceable_rules
+gap_report:
+  axis_depths:
+    problem: 3
+    solution: 0
+    implementation: 3
+    world: 2
+  spikiness: 0.5
+  sparse_axes:
+  - solution
+  interview_recommended: true
+forged_at: 1773607102.895506
+frozen: false
+frozen_hash: ''
