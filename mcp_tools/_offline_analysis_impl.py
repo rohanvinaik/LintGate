@@ -258,17 +258,20 @@ def impl_offline_analysis_run(
 # ── Notebook builder ──────────────────────────────────────────────────
 
 
-def _get_lintgate_repo_url() -> str:
-    """Get the LintGate repo URL for notebook installation."""
-    # Try to get from the lintgate package itself
+def _get_lintgate_repo_info() -> tuple[str, str]:
+    """Get the LintGate repo URL and current branch for notebook installation."""
+    url = "https://github.com/rohanvinaik/LintGate.git"
+    branch = "main"
     try:
         lintgate_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         info = _get_git_info(lintgate_dir)
         if info["repo_url"]:
-            return info["repo_url"]
+            url = info["repo_url"]
+        if info["branch"]:
+            branch = info["branch"]
     except Exception:
         pass
-    return "https://github.com/rohanvinaik/LintGate.git"
+    return url, branch
 
 
 def _build_full_analysis_notebook(
@@ -289,7 +292,7 @@ def _build_full_analysis_notebook(
     1. LintGate (the tool) → installed as a pip package
     2. Target project → cloned as PROJECT_DIR, analyzed by LintGate
     """
-    lintgate_url = _get_lintgate_repo_url()
+    lintgate_url, lintgate_branch = _get_lintgate_repo_info()
     src_dirs_str = repr(src_dirs)
     mutation_flag = "True" if include_mutation else "False"
 
@@ -383,7 +386,7 @@ def _build_full_analysis_notebook(
             "\n"
             "# Step 1: Clone and install LintGate (the analysis tool)\n"
             "print('Installing LintGate...')\n"
-            "_clone(LINTGATE_REPO_URL, 'main', LINTGATE_DIR)\n"
+            f"_clone(LINTGATE_REPO_URL, '{lintgate_branch}', LINTGATE_DIR)\n"
             "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
             "\n"
             "# Try pip install first (best), fall back to sys.path (always works)\n"

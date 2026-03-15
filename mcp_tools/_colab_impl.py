@@ -19,16 +19,25 @@ from typing import Any
 _LINTGATE_REPO_URL = "https://github.com/rohanvinaik/LintGate.git"
 
 
-def _get_lintgate_repo_url() -> str:
-    """Get the LintGate repo URL for notebook installation."""
+def _get_lintgate_repo_info() -> tuple[str, str]:
+    """Get the LintGate repo URL and current branch."""
+    url = _LINTGATE_REPO_URL
+    branch = "main"
     try:
         lintgate_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         info = _get_git_info(lintgate_dir)
         if info["repo_url"]:
-            return info["repo_url"]
+            url = info["repo_url"]
+        if info["branch"]:
+            branch = info["branch"]
     except Exception:
         pass
-    return _LINTGATE_REPO_URL
+    return url, branch
+
+
+def _get_lintgate_repo_url() -> str:
+    """Get the LintGate repo URL (backward compat wrapper)."""
+    return _get_lintgate_repo_info()[0]
 
 
 def _is_self_analysis(repo_url: str) -> bool:
@@ -43,6 +52,7 @@ def _build_install_cell(
     src_dirs_str: str,
     *,
     self_analysis: bool,
+    lintgate_branch: str = "main",
 ) -> str:
     """Build the install cell for either self-analysis or external project mode.
 
@@ -134,7 +144,7 @@ def _build_install_cell(
         "\n"
         "# Step 1: Install LintGate (the analysis tool)\n"
         "print('Installing LintGate...')\n"
-        "_clone(LINTGATE_REPO_URL, 'main', LINTGATE_DIR)\n"
+        f"_clone(LINTGATE_REPO_URL, '{lintgate_branch}', LINTGATE_DIR)\n"
         "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'hatchling', 'pyyaml', 'packaging'], check=True)\n"
         "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', LINTGATE_DIR], capture_output=True, text=True)\n"
         "if LINTGATE_DIR not in sys.path:\n"
@@ -222,6 +232,7 @@ def _build_notebook(
         src_dirs = ["lintgate", "mcp_tools"]
     src_dirs_str = repr(src_dirs)
     self_analysis = _is_self_analysis(repo_url)
+    _, lg_branch = _get_lintgate_repo_info()
 
     def _md(source: str) -> dict[str, Any]:
         return {
@@ -406,7 +417,7 @@ def _build_notebook(
             f"Then: `cd {local_project_path} && unzip ~/Downloads/mutation_results.zip`"
         ),
         _md("## Step 1: Install LintGate + Clone Target"),
-        _code(_build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis)),
+        _code(_build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis, lintgate_branch=lg_branch)),
         _md("## Step 2: Run sweep"),
         _code(sweep_code),
         _md("## Step 3: Review & download"),
@@ -623,6 +634,7 @@ def _build_golden_path_notebook(
         src_dirs = ["lintgate", "mcp_tools"]
     src_dirs_str = repr(src_dirs)
     self_analysis = _is_self_analysis(repo_url)
+    _, lg_branch = _get_lintgate_repo_info()
 
     def _md(source: str) -> dict[str, Any]:
         return {
@@ -640,7 +652,7 @@ def _build_golden_path_notebook(
             "source": [line + "\n" for line in source.split("\n")],
         }
 
-    install_cell = _build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis)
+    install_cell = _build_install_cell(repo_url, "main", src_dirs_str, self_analysis=self_analysis, lintgate_branch=lg_branch)
 
     # Step 2: Mutation sweep (same proven logic)
     sweep_cell = (
