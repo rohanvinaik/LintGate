@@ -105,42 +105,8 @@ def validate_test_file(
     errors.extend(_find_duplicate_test_names(tree))
 
     for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef):
-            continue
-        if not node.name.startswith("test_"):
-            continue
-
-        # Check for empty/pass-only test body
-        body_stmts = [
-            s
-            for s in node.body
-            if not isinstance(s, ast.Expr) or not isinstance(s.value, ast.Constant)
-        ]
-        if not body_stmts or (len(body_stmts) == 1 and isinstance(body_stmts[0], ast.Pass)):
-            errors.append(f"{node.name} (line {node.lineno}): empty body (pass-only)")
-
-        # Check for at least one assert or pytest.raises
-        has_assert = False
-        for child in ast.walk(node):
-            if isinstance(child, ast.Assert):
-                has_assert = True
-                break
-            # pytest.raises(...) counts as an assertion
-            if isinstance(child, ast.With):
-                for item in child.items:
-                    ctx = item.context_expr
-                    if isinstance(ctx, ast.Call) and _is_pytest_raises(ctx):
-                        has_assert = True
-                        break
-            if has_assert:
-                break
-        if not has_assert:
-            errors.append(f"{node.name} (line {node.lineno}): no assert statement")
-
-        # Check for undefined names in the test body
-        undef = _find_undefined_names(node, module_names)
-        for name in undef:
-            errors.append(f"{node.name} (line {node.lineno}): undefined name '{name}'")
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            errors.extend(_validate_single_test(node, module_names))
 
     if errors:
         return False, errors
@@ -149,6 +115,40 @@ def validate_test_file(
         errors.extend(_runtime_validate_with_pytest(test_content, project_root, test_file_name))
 
     return len(errors) == 0, errors
+
+
+def _validate_single_test(node: ast.FunctionDef, module_names: set[str]) -> list[str]:
+    """Validate a single test function for body, assertions, and undefined names."""
+    errors: list[str] = []
+
+    # Check for empty/pass-only test body
+    body_stmts = [
+        s for s in node.body if not isinstance(s, ast.Expr) or not isinstance(s.value, ast.Constant)
+    ]
+    if not body_stmts or (len(body_stmts) == 1 and isinstance(body_stmts[0], ast.Pass)):
+        errors.append(f"{node.name} (line {node.lineno}): empty body (pass-only)")
+
+    # Check for at least one assert or pytest.raises
+    if not _has_assertion(node):
+        errors.append(f"{node.name} (line {node.lineno}): no assert statement")
+
+    # Check for undefined names
+    for name in _find_undefined_names(node, module_names):
+        errors.append(f"{node.name} (line {node.lineno}): undefined name '{name}'")
+
+    return errors
+
+
+def _has_assertion(node: ast.FunctionDef) -> bool:
+    """Check if a test function contains at least one assert or pytest.raises."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Assert):
+            return True
+        if isinstance(child, ast.With):
+            for item in child.items:
+                if isinstance(item.context_expr, ast.Call) and _is_pytest_raises(item.context_expr):
+                    return True
+    return False
 
 
 def _collect_module_names(tree: ast.Module) -> set[str]:
@@ -269,13 +269,8 @@ _BUILTINS = {
 }
 
 
-def _find_undefined_names(func_node: ast.FunctionDef, module_names: set[str]) -> list[str]:
-    """Find names used in a test function body that aren't defined anywhere visible.
-
-    Checks load-context Name nodes against: module-level names, function params,
-    local assignments, builtins, and comprehension targets.
-    """
-    # Collect function-local names: params + local assignments + for targets + with targets
+def _collect_local_names(func_node: ast.FunctionDef) -> set[str]:
+    """Collect all locally defined names in a function (params, assigns, targets)."""
     local_names: set[str] = set()
     for arg in func_node.args.args:
         local_names.add(arg.arg)
@@ -283,19 +278,9 @@ def _find_undefined_names(func_node: ast.FunctionDef, module_names: set[str]) ->
     for child in ast.walk(func_node):
         if isinstance(child, ast.Assign):
             for target in child.targets:
-                if isinstance(target, ast.Name):
-                    local_names.add(target.id)
-                elif isinstance(target, ast.Tuple):
-                    for elt in target.elts:
-                        if isinstance(elt, ast.Name):
-                            local_names.add(elt.id)
+                _collect_names_from_target(target, local_names)
         elif isinstance(child, (ast.For, ast.comprehension)):
-            if isinstance(child.target, ast.Name):
-                local_names.add(child.target.id)
-            elif isinstance(child.target, ast.Tuple):
-                for elt in child.target.elts:
-                    if isinstance(elt, ast.Name):
-                        local_names.add(elt.id)
+            _collect_names_from_target(child.target, local_names)
         elif isinstance(child, (ast.With, ast.AsyncWith)):
             for item in child.items:
                 if item.optional_vars and isinstance(item.optional_vars, ast.Name):
@@ -303,17 +288,29 @@ def _find_undefined_names(func_node: ast.FunctionDef, module_names: set[str]) ->
         elif isinstance(child, ast.NamedExpr) and isinstance(child.target, ast.Name):
             local_names.add(child.target.id)
 
-    all_defined = module_names | local_names | _BUILTINS
+    return local_names
 
-    # Find Name nodes in Load context that aren't defined
+
+def _collect_names_from_target(target: ast.expr, names: set[str]) -> None:
+    """Extract names from an assignment target (Name or Tuple)."""
+    if isinstance(target, ast.Name):
+        names.add(target.id)
+    elif isinstance(target, ast.Tuple):
+        for elt in target.elts:
+            if isinstance(elt, ast.Name):
+                names.add(elt.id)
+
+
+def _find_undefined_names(func_node: ast.FunctionDef, module_names: set[str]) -> list[str]:
+    """Find names used in a test function body that aren't defined anywhere visible."""
+    all_defined = module_names | _collect_local_names(func_node) | _BUILTINS
+
     undefined: list[str] = []
     seen: set[str] = set()
     for child in ast.walk(func_node):
         if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
             name = child.id
             if name not in all_defined and name not in seen:
-                # Skip names used as attributes (e.g. `x.foo` — we only check `x`)
-                # and names that look like they come from a dotted import
                 seen.add(name)
                 undefined.append(name)
 

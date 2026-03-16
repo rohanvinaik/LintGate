@@ -307,6 +307,47 @@ def _annotation_base_name(node: ast.expr) -> str:
     return ""
 
 
+def _extract_broken_test_names(errors: list[str]) -> set[str]:
+    """Extract test function names from validation error messages."""
+    broken: set[str] = set()
+    for err in errors:
+        if " (line " in err:
+            broken.add(err.split(" (line ")[0])
+        elif ":" in err:
+            name = err.split(":", 1)[0].strip()
+            if name.startswith("test_"):
+                broken.add(name)
+    return broken
+
+
+def _strip_broken_functions(content: str, broken_names: set[str]) -> str:
+    """Remove named test functions from content and collapse blank lines."""
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return content
+
+    lines = content.splitlines()
+    keep = [True] * len(lines)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in broken_names:
+            start = max(node.lineno - 1, 0)
+            end = min(getattr(node, "end_lineno", node.lineno), len(lines))
+            for idx in range(start, end):
+                keep[idx] = False
+
+    cleaned = [line for idx, line in enumerate(lines) if keep[idx]]
+    result: list[str] = []
+    last_blank = False
+    for line in cleaned:
+        is_blank = not line.strip()
+        if is_blank and last_blank:
+            continue
+        result.append(line)
+        last_blank = is_blank
+    return "\n".join(result)
+
+
 def _validate_and_strip_broken(
     content: str,
     project_root: str | None = None,
@@ -327,49 +368,11 @@ def _validate_and_strip_broken(
     if valid:
         return content
 
-    # Extract names of broken test functions
-    broken_names: set[str] = set()
-    for err in errors:
-        # Error format: "test_name (line N): description"
-        if " (line " in err:
-            name = err.split(" (line ")[0]
-            broken_names.add(name)
-        elif ":" in err:
-            name = err.split(":", 1)[0].strip()
-            if name.startswith("test_"):
-                broken_names.add(name)
-
+    broken_names = _extract_broken_test_names(errors)
     if not broken_names:
         return content
 
-    # Strip broken test functions from the AST
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return content
-
-    lines = content.splitlines()
-    keep = [True] * len(lines)
-
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name in broken_names:
-            start = max(node.lineno - 1, 0)
-            end = min(getattr(node, "end_lineno", node.lineno), len(lines))
-            for idx in range(start, end):
-                keep[idx] = False
-
-    cleaned = [line for idx, line in enumerate(lines) if keep[idx]]
-    # Remove consecutive blank lines
-    result: list[str] = []
-    last_blank = False
-    for line in cleaned:
-        is_blank = not line.strip()
-        if is_blank and last_blank:
-            continue
-        result.append(line)
-        last_blank = is_blank
-
-    return "\n".join(result)
+    return _strip_broken_functions(content, broken_names)
 
 
 def _walk_qualified_functions(
@@ -515,30 +518,22 @@ def _extract_promotable_assertions(
     return promoted
 
 
-def _build_function_section(enr: FunctionEnrichment) -> str:
-    """Build enrichment section for one function."""
+def _build_promoted_tests(enr: FunctionEnrichment, safe_name: str) -> tuple[list[str], list[str]]:
+    """Build promoted call-site assertions and non-promoted input comments."""
     lines: list[str] = []
-    safe_name = enr.function_name.replace(".", "_")
-    has_executable = False
-
-    # Fix 1: Promote assert-shaped call-site inputs into an executable test
     promoted = _extract_promotable_assertions(enr.inputs, enr.function_name) if enr.inputs else []
     if promoted:
-        has_executable = True
         lines.append(f"def test_{safe_name}_callsite():")
         lines.append('    """VALUE: call-site golden assertions (promoted)."""')
         lines.extend(promoted)
         lines.append("")
 
-    # Non-promoted input examples as comments
     if enr.inputs:
+        promoted_set = {
+            line.strip().removesuffix("# promoted from call-site").strip() for line in promoted
+        }
         non_promoted = [
-            site
-            for site in enr.inputs[:3]
-            if site.get("context", "").strip()
-            not in {
-                line.strip().removesuffix("# promoted from call-site").strip() for line in promoted
-            }
+            site for site in enr.inputs[:3] if site.get("context", "").strip() not in promoted_set
         ]
         if non_promoted:
             lines.append(f"# Input examples for {enr.function_name}:")
@@ -548,44 +543,54 @@ def _build_function_section(enr: FunctionEnrichment) -> str:
                     lines.append(f"#   {ctx[:80]}")
             lines.append("")
 
-    # Oracle-light executable properties (preferred over text prescriptions)
-    executable_props = [prop for prop in enr.executable_properties if not prop.needs_oracle]
-    if executable_props:
-        has_executable = True
-        for prop in executable_props:
-            mid = prop.mutant_id or prop.category.lower()
-            test_name = f"test_{safe_name}_{mid.lower()}"
-            lines.append(f"def {test_name}():")
-            lines.append(f'    """{prop.category}: mutation property"""')
-            for pc in prop.preconditions:
-                lines.append(f"    # Precondition: {pc}")
-            if prop.setup_code:
-                for sl in prop.setup_code.split("\n"):
-                    lines.append(f"    {sl}")
-            for al in prop.assertion_code.split("\n"):
-                lines.append(f"    {al}")
-            lines.append("")
-    else:
-        # Auto lane policy: never emit placeholder-only TODO tests.
-        # If no executable witness exists, the caller must route this
-        # function to manual-contract review instead of writing dead stubs.
-        pass
+    return lines, promoted
 
-    # Fix 2: Characterization alongside prescriptions/exec_props, tagged provisional
+
+def _build_executable_prop_tests(enr: FunctionEnrichment, safe_name: str) -> list[str]:
+    """Build oracle-light executable property tests."""
+    lines: list[str] = []
+    for prop in enr.executable_properties:
+        if prop.needs_oracle:
+            continue
+        mid = prop.mutant_id or prop.category.lower()
+        test_name = f"test_{safe_name}_{mid.lower()}"
+        lines.append(f"def {test_name}():")
+        lines.append(f'    """{prop.category}: mutation property"""')
+        for pc in prop.preconditions:
+            lines.append(f"    # Precondition: {pc}")
+        if prop.setup_code:
+            for sl in prop.setup_code.split("\n"):
+                lines.append(f"    {sl}")
+        for al in prop.assertion_code.split("\n"):
+            lines.append(f"    {al}")
+        lines.append("")
+    return lines
+
+
+def _build_function_section(enr: FunctionEnrichment) -> str:
+    """Build enrichment section for one function."""
+    lines: list[str] = []
+    safe_name = enr.function_name.replace(".", "_")
+    has_executable = False
+
+    promoted_lines, promoted = _build_promoted_tests(enr, safe_name)
+    if promoted_lines:
+        lines.extend(promoted_lines)
+    if promoted:
+        has_executable = True
+
+    exec_lines = _build_executable_prop_tests(enr, safe_name)
+    if exec_lines:
+        has_executable = True
+        lines.extend(exec_lines)
+
     if enr.characterization:
         has_executable = True
         if not enr.prescriptions and not enr.executable_properties:
-            # Pure fallback — no other evidence
             lines.append(f"# Characterization test for {enr.function_name}")
-            lines.append(enr.characterization)
-            lines.append("")
         else:
-            # Supplementary — tag as provisional
             lines.append(f"# PROVISIONAL: characterization-backed for {enr.function_name}")
-            lines.append(enr.characterization)
-            lines.append("")
+        lines.append(enr.characterization)
+        lines.append("")
 
-    if not has_executable:
-        return ""
-
-    return "\n".join(lines)
+    return "\n".join(lines) if has_executable else ""
