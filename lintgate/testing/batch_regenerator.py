@@ -17,11 +17,18 @@ if TYPE_CHECKING:
     from lintgate.testing.characterization import GoldenCapture
     from lintgate.testing.oracle_light import ExecutableProperty
 
-from .batch_regen_utils import (
+from .batch_regen_utils import (  # noqa: F401
+    _build_function_section,
+    _category_assertion_hint,
+    _extract_promotable_assertions,
+    _generate_shared_factories,
+    _insert_factory_imports,
     _materialize_value_oracles,
     _merge_enrichments,
     _prescriptions_from_categories,
     _prescriptions_from_witnesses,
+    _section_is_valid,
+    _validate_and_strip_broken,
     _walk_qualified_functions,
 )
 
