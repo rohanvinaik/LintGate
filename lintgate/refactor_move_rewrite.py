@@ -69,9 +69,9 @@ def _build_import_rewriter(old_module: str, new_module: str) -> Any:
         def __init__(self) -> None:
             self.changed = False
 
-        def leave_ImportFrom(
+        def leave_ImportFrom(  # noqa: N802
             self, original_node: cst.ImportFrom, updated_node: cst.ImportFrom
-        ) -> cst.ImportFrom:  # noqa: N802
+        ) -> cst.ImportFrom:
             module_str = _cst_module_to_str(updated_node.module)
             if module_str and (module_str == old_module or module_str.startswith(old_module + ".")):
                 new_mod = _str_to_cst_module(module_str.replace(old_module, new_module, 1))

@@ -238,6 +238,9 @@ class TestConstraintCheck:
         monkeypatch.setattr(
             "lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path / "session"
         )
+        monkeypatch.setattr(
+            "lintgate.orchestration.knowledge.KNOWLEDGE_DIR", tmp_path / "knowledge"
+        )
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(exist_ok=True)

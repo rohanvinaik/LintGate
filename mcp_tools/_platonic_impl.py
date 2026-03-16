@@ -427,7 +427,7 @@ def _build_convergence_next_actions(
     autopilot = False
     human_review = False
 
-    _TERMINAL_STATES = frozenset(
+    terminal_states = frozenset(
         {
             "CONVERGED",
             "BLOCKED_DISCOVERY",
@@ -454,7 +454,7 @@ def _build_convergence_next_actions(
     elif workflow_state == "NEEDS_DECOMPOSITION" and decompose_targets:
         primary = "extraction_plan"
         args = {"path": path, "function": decompose_targets[0].function_key}
-    elif workflow_state not in _TERMINAL_STATES:
+    elif workflow_state not in terminal_states:
         primary, args, autopilot = (
             "platonic_continue",
             {"path": path, "workflow_id": workflow_id},
