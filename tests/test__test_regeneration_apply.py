@@ -34,16 +34,12 @@ class TestPersistValidation:
 
     def test_custom_validation_path(self, tmp_path):
         custom = str(tmp_path / "custom" / "val.json")
-        path = persist_validation(
-            str(tmp_path), {"ok": True}, ready=False, validation_path=custom
-        )
+        path = persist_validation(str(tmp_path), {"ok": True}, ready=False, validation_path=custom)
         assert path == custom
         assert os.path.isfile(custom)
 
     def test_review_ready_to_apply_flag(self, tmp_path):
-        path = persist_validation(
-            str(tmp_path), {}, ready=False, review_ready_to_apply=True
-        )
+        path = persist_validation(str(tmp_path), {}, ready=False, review_ready_to_apply=True)
         with open(path) as f:
             data = json.load(f)
         assert data["ready_to_apply"] is False
@@ -205,9 +201,7 @@ class TestImplRebuildApply:
 
     def test_no_validation_returns_error(self, tmp_path):
         helpers = self._make_helpers(str(tmp_path))
-        plan = SimpleNamespace(
-            quarantine_test_files=[], files=[]
-        )
+        plan = SimpleNamespace(quarantine_test_files=[], files=[])
         with patch(
             "lintgate.specification.test_regeneration_strategy.load_manifest",
             return_value=plan,

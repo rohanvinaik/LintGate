@@ -43,10 +43,10 @@ class PredicateOp(str, Enum):
     TRUE = "true"
     CUSTOM = "custom"
     # Extended ops — AST-checkable semantic predicates
-    PURE = "pure"                   # function has no side effects (no global/nonlocal writes, no I/O)
+    PURE = "pure"  # function has no side effects (no global/nonlocal writes, no I/O)
     RETURNS_NON_NULL = "returns_non_null"  # no bare `return` or `return None`
-    RAISES = "raises"               # function body contains `raise ExceptionType`
-    NO_RAISE = "no_raise"           # function body contains no `raise` statements
+    RAISES = "raises"  # function body contains `raise ExceptionType`
+    NO_RAISE = "no_raise"  # function body contains no `raise` statements
     PARAM_COUNT_LTE = "param_count_lte"  # parameter count ≤ value
 
 
@@ -61,7 +61,7 @@ class Predicate:
 
     op: PredicateOp
     subject: str = ""
-    object: str = ""
+    target: str = ""  # comparison target (variable name)
     value: Any = None
     operands: list[Predicate] = field(default_factory=list)
     description: str = ""
@@ -70,8 +70,8 @@ class Predicate:
         d: dict[str, Any] = {"op": self.op.value}
         if self.subject:
             d["subject"] = self.subject
-        if self.object:
-            d["object"] = self.object
+        if self.target:
+            d["target"] = self.target
         if self.value is not None:
             d["value"] = self.value
         if self.operands:
@@ -87,7 +87,7 @@ class Predicate:
         return cls(
             op=PredicateOp(data.get("op", "true")),
             subject=str(data.get("subject", "")),
-            object=str(data.get("object", "")),
+            target=str(data.get("target", data.get("object", ""))),
             value=data.get("value"),
             operands=[cls.from_dict(o) for o in data.get("operands", [])],
             description=str(data.get("description", "")),
@@ -151,9 +151,7 @@ def pred_gte(subject: str, value: Any, desc: str = "") -> Predicate:
 
 
 def pred_type(subject: str, type_name: str, desc: str = "") -> Predicate:
-    return Predicate(
-        op=PredicateOp.IS_TYPE, subject=subject, value=type_name, description=desc
-    )
+    return Predicate(op=PredicateOp.IS_TYPE, subject=subject, value=type_name, description=desc)
 
 
 def pred_and(*preds: Predicate, desc: str = "") -> Predicate:
@@ -187,7 +185,8 @@ def pred_returns_non_null(desc: str = "must not return None") -> Predicate:
 
 def pred_raises(exception_type: str, desc: str = "") -> Predicate:
     return Predicate(
-        op=PredicateOp.RAISES, value=exception_type,
+        op=PredicateOp.RAISES,
+        value=exception_type,
         description=desc or f"must raise {exception_type}",
     )
 
@@ -198,7 +197,8 @@ def pred_no_raise(desc: str = "must not raise exceptions") -> Predicate:
 
 def pred_param_count_lte(max_params: int, desc: str = "") -> Predicate:
     return Predicate(
-        op=PredicateOp.PARAM_COUNT_LTE, value=max_params,
+        op=PredicateOp.PARAM_COUNT_LTE,
+        value=max_params,
         description=desc or f"at most {max_params} parameters",
     )
 
@@ -209,11 +209,29 @@ def pred_param_count_lte(max_params: int, desc: str = "") -> Predicate:
 # Each entry: (regex, factory_fn). First match wins.
 # The factory receives the regex match object and returns a Predicate.
 
-_TYPE_WORDS = frozenset({
-    "int", "str", "float", "bool", "list", "dict", "tuple", "set",
-    "bytes", "string", "integer", "number", "array", "sequence",
-    "mapping", "iterator", "generator", "coroutine", "object",
-})
+_TYPE_WORDS = frozenset(
+    {
+        "int",
+        "str",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "tuple",
+        "set",
+        "bytes",
+        "string",
+        "integer",
+        "number",
+        "array",
+        "sequence",
+        "mapping",
+        "iterator",
+        "generator",
+        "coroutine",
+        "object",
+    }
+)
 
 
 def _is_type_word(word: str) -> bool:
@@ -222,53 +240,57 @@ def _is_type_word(word: str) -> bool:
 
 _CLAIM_PATTERNS: list[tuple[re.Pattern, Any]] = [
     # Return type patterns (only match actual type names, not "None", "True", etc.)
-    (re.compile(r"\b(?:must|should|always)\s+return\s+(\w+)", re.I),
-     lambda m: pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None),
-    (re.compile(r"\breturn(?:s|ing)?\s+(?:a\s+)?(\w+)\b", re.I),
-     lambda m: pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None),
-
+    (
+        re.compile(r"\b(?:must|should|always)\s+return\s+(\w+)", re.I),
+        lambda m: (
+            pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None
+        ),
+    ),
+    (
+        re.compile(r"\breturn(?:s|ing)?\s+(?:a\s+)?(\w+)\b", re.I),
+        lambda m: (
+            pred_type("result", m.group(1), m.group(0)) if _is_type_word(m.group(1)) else None
+        ),
+    ),
     # Purity
-    (re.compile(r"\b(?:must be|is|keep|prefer)\s+pure\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-    (re.compile(r"\bno\s+side[\s-]?effects?\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-    (re.compile(r"\bside[\s-]?effect[\s-]?free\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-
+    (re.compile(r"\b(?:must be|is|keep|prefer)\s+pure\b", re.I), lambda m: pred_pure(m.group(0))),
+    (re.compile(r"\bno\s+side[\s-]?effects?\b", re.I), lambda m: pred_pure(m.group(0))),
+    (re.compile(r"\bside[\s-]?effect[\s-]?free\b", re.I), lambda m: pred_pure(m.group(0))),
     # Non-null return
-    (re.compile(r"\b(?:must|should)\s+not\s+return\s+None\b", re.I),
-     lambda m: pred_returns_non_null(m.group(0))),
-    (re.compile(r"\bnever\s+return(?:s)?\s+None\b", re.I),
-     lambda m: pred_returns_non_null(m.group(0))),
-    (re.compile(r"\bnon[\s-]?null(?:able)?\s+return\b", re.I),
-     lambda m: pred_returns_non_null(m.group(0))),
-
+    (
+        re.compile(r"\b(?:must|should)\s+not\s+return\s+None\b", re.I),
+        lambda m: pred_returns_non_null(m.group(0)),
+    ),
+    (
+        re.compile(r"\bnever\s+return(?:s)?\s+None\b", re.I),
+        lambda m: pred_returns_non_null(m.group(0)),
+    ),
+    (
+        re.compile(r"\bnon[\s-]?null(?:able)?\s+return\b", re.I),
+        lambda m: pred_returns_non_null(m.group(0)),
+    ),
     # Raises
-    (re.compile(r"\b(?:must|should)\s+raise\s+(\w+(?:Error|Exception)?)\b", re.I),
-     lambda m: pred_raises(m.group(1), m.group(0))),
-    (re.compile(r"\braises?\s+(\w+Error)\b", re.I),
-     lambda m: pred_raises(m.group(1), m.group(0))),
-
+    (
+        re.compile(r"\b(?:must|should)\s+raise\s+(\w+(?:Error|Exception)?)\b", re.I),
+        lambda m: pred_raises(m.group(1), m.group(0)),
+    ),
+    (re.compile(r"\braises?\s+(\w+Error)\b", re.I), lambda m: pred_raises(m.group(1), m.group(0))),
     # No raise / no exceptions
-    (re.compile(r"\b(?:must|should)\s+not\s+raise\b", re.I),
-     lambda m: pred_no_raise(m.group(0))),
-    (re.compile(r"\bno\s+exceptions?\b", re.I),
-     lambda m: pred_no_raise(m.group(0))),
-
+    (re.compile(r"\b(?:must|should)\s+not\s+raise\b", re.I), lambda m: pred_no_raise(m.group(0))),
+    (re.compile(r"\bno\s+exceptions?\b", re.I), lambda m: pred_no_raise(m.group(0))),
     # Must call
-    (re.compile(r"\b(?:must|should|always)\s+call\s+(\w+(?:\.\w+)*)\b", re.I),
-     lambda m: Predicate(op=PredicateOp.CALLS, subject=m.group(1),
-                          description=m.group(0))),
-
+    (
+        re.compile(r"\b(?:must|should|always)\s+call\s+(\w+(?:\.\w+)*)\b", re.I),
+        lambda m: Predicate(op=PredicateOp.CALLS, subject=m.group(1), description=m.group(0)),
+    ),
     # Must not mutate (→ pure as best approximation)
-    (re.compile(r"\b(?:must|should)\s+not\s+mutate\b", re.I),
-     lambda m: pred_pure(m.group(0))),
-    (re.compile(r"\bimmutable\s+input", re.I),
-     lambda m: pred_pure(m.group(0))),
-
+    (re.compile(r"\b(?:must|should)\s+not\s+mutate\b", re.I), lambda m: pred_pure(m.group(0))),
+    (re.compile(r"\bimmutable\s+input", re.I), lambda m: pred_pure(m.group(0))),
     # Parameter count
-    (re.compile(r"\bat\s+most\s+(\d+)\s+param(?:eter)?s?\b", re.I),
-     lambda m: pred_param_count_lte(int(m.group(1)), m.group(0))),
+    (
+        re.compile(r"\bat\s+most\s+(\d+)\s+param(?:eter)?s?\b", re.I),
+        lambda m: pred_param_count_lte(int(m.group(1)), m.group(0)),
+    ),
 ]
 
 
@@ -300,6 +322,188 @@ def compile_claim(text: str) -> Predicate:
     if len(matched) == 1:
         return matched[0]
     return pred_and(*matched, desc=text)
+
+
+# ── Target-scoped claim projection ──────────────────────────────────
+
+
+def project_claims(
+    target_key: str,
+    compass: Any,
+    theory_profile: dict[str, Any],
+    interface_hint: dict[str, Any] | None = None,
+    func_spec: Any | None = None,
+) -> tuple[list[Invariant], list[ForbiddenBehavior], list[dict]]:
+    """Project compass + theory claims onto a specific target.
+
+    Returns (applicable_invariants, applicable_forbidden, projection_log).
+
+    Projection logic:
+    1. Claims whose text mentions the target function name → high confidence
+    2. Claims whose compiled predicate op matches target context
+       (e.g., PURE claim + pure function → relevant) → medium
+    3. Generic project-level claims → low confidence (demoted by 0.15)
+    4. Claims contradicted by func_spec evidence → rejected with log entry
+    """
+    func_name = target_key.split("::")[-1] if "::" in target_key else target_key
+    projection_log: list[dict] = []
+    invariants: list[Invariant] = []
+    forbidden: list[ForbiddenBehavior] = []
+
+    # Determine target context for relevance matching
+    is_pure = False
+    if func_spec is not None:
+        is_pure = getattr(getattr(func_spec, "core", None), "is_pure", False)
+    if interface_hint and interface_hint.get("problem_class") == "pure":
+        is_pure = True
+
+    # ── Compass directives ────────────────────────────────────────
+    if hasattr(compass, "directives"):
+        for i, directive in enumerate(getattr(compass, "directives", [])):
+            text = getattr(directive, "text", "")
+            kind = getattr(directive, "kind", "")
+            confidence, relevance = _score_claim_relevance(text, func_name, is_pure)
+
+            if kind == "toward":
+                invariants.append(
+                    Invariant(
+                        name=f"toward_{i}",
+                        predicate=compile_claim(text),
+                        description=text,
+                        source=f"compass:toward:{i}",
+                        confidence=confidence,
+                        kind="alignment",
+                    )
+                )
+            elif kind in ("forbidden", "away"):
+                severity = "hard" if kind == "forbidden" else "soft"
+                forbidden.append(
+                    ForbiddenBehavior(
+                        predicate=compile_claim(text),
+                        description=text,
+                        source=f"compass:{kind}:{i}",
+                        severity=severity,
+                    )
+                )
+
+            projection_log.append(
+                {
+                    "source": f"compass:{kind}:{i}",
+                    "text": text[:80],
+                    "relevance": relevance,
+                    "confidence": round(confidence, 3),
+                    "action": "included",
+                }
+            )
+
+    # ── Theory claims ─────────────────────────────────────────────
+    for facet_name, facet_data in theory_profile.items():
+        if not isinstance(facet_data, dict):
+            continue
+        claims = facet_data.get("claims", [])
+        for k, claim in enumerate(claims):
+            text = claim.get("text", "") if isinstance(claim, dict) else str(claim)
+            base_conf = claim.get("confidence", 0.7) if isinstance(claim, dict) else 0.7
+
+            if base_conf < 0.6:
+                projection_log.append(
+                    {
+                        "source": f"theory:{facet_name}:{k}",
+                        "text": text[:80],
+                        "relevance": "rejected",
+                        "confidence": round(base_conf, 3),
+                        "action": "rejected_low_confidence",
+                    }
+                )
+                continue
+
+            # Check for contradiction with func_spec evidence
+            pred = compile_claim(text)
+            if _claim_contradicted_by_spec(pred, func_spec):
+                projection_log.append(
+                    {
+                        "source": f"theory:{facet_name}:{k}",
+                        "text": text[:80],
+                        "relevance": "contradicted",
+                        "confidence": round(base_conf, 3),
+                        "action": "rejected_contradicted",
+                    }
+                )
+                continue
+
+            confidence, relevance = _score_claim_relevance(text, func_name, is_pure)
+            # Apply base confidence as floor
+            confidence = max(confidence, base_conf)
+            # Boost for causal/contrastive markers
+            if _CAUSAL_MARKERS.search(text) or _CONTRASTIVE_MARKERS.search(text):
+                confidence = min(1.0, confidence + 0.1)
+
+            inv_kind = "safety"
+            if facet_name in ("alignment", "core_theory"):
+                inv_kind = "alignment"
+
+            invariants.append(
+                Invariant(
+                    name=f"theory_{facet_name}_{k}",
+                    predicate=pred,
+                    description=text,
+                    source=f"theory:{facet_name}:{k}",
+                    confidence=confidence,
+                    kind=inv_kind,
+                )
+            )
+            projection_log.append(
+                {
+                    "source": f"theory:{facet_name}:{k}",
+                    "text": text[:80],
+                    "relevance": relevance,
+                    "confidence": round(confidence, 3),
+                    "action": "included",
+                }
+            )
+
+    return invariants, forbidden, projection_log
+
+
+def _score_claim_relevance(text: str, func_name: str, is_pure: bool) -> tuple[float, str]:
+    """Score how relevant a claim is to a specific function target.
+
+    Returns (confidence, relevance_level).
+    """
+    text_lower = text.lower()
+    func_lower = func_name.lower()
+
+    # Level 1: claim text mentions the function name → high
+    if func_lower in text_lower and len(func_name) > 3:
+        return 0.9, "high"
+
+    # Level 2: predicate op matches target context → medium
+    pred = compile_claim(text)
+    if pred.op == PredicateOp.PURE and is_pure:
+        return 0.75, "medium"
+    if pred.op in (PredicateOp.RETURNS_NON_NULL, PredicateOp.IS_TYPE, PredicateOp.PARAM_COUNT_LTE):
+        return 0.75, "medium"
+
+    # Level 3: generic project-level claim → low (demoted)
+    return 0.55, "low"
+
+
+def _claim_contradicted_by_spec(pred: Predicate, func_spec: Any) -> bool:
+    """Check if a claim predicate is contradicted by func_spec evidence."""
+    if func_spec is None:
+        return False
+
+    core = getattr(func_spec, "core", None)
+    if core is None:
+        return False
+
+    # PURE claim contradicted by non-pure function
+    if pred.op == PredicateOp.PURE and not getattr(core, "is_pure", False):
+        testability = getattr(func_spec, "testability", None)
+        if testability and getattr(testability, "is_stateful", False):
+            return True
+
+    return False
 
 
 # ── Domain dataclasses ────────────────────────────────────────────────
@@ -577,9 +781,7 @@ class PrescriptiveSpec:
             parameters=data.get("parameters", []),
             return_type=str(data.get("return_type", "")),
             return_description=str(data.get("return_description", "")),
-            state_variables=[
-                StateVariable.from_dict(sv) for sv in data.get("state_variables", [])
-            ],
+            state_variables=[StateVariable.from_dict(sv) for sv in data.get("state_variables", [])],
             allowed_transitions=[
                 StateTransition.from_dict(t) for t in data.get("allowed_transitions", [])
             ],
@@ -593,12 +795,10 @@ class PrescriptiveSpec:
                 TestObligation.from_dict(to) for to in data.get("test_obligations", [])
             ],
             refinement_obligations=[
-                RefinementObligation.from_dict(ro)
-                for ro in data.get("refinement_obligations", [])
+                RefinementObligation.from_dict(ro) for ro in data.get("refinement_obligations", [])
             ],
             generation_constraints=[
-                GenerationConstraint.from_dict(gc)
-                for gc in data.get("generation_constraints", [])
+                GenerationConstraint.from_dict(gc) for gc in data.get("generation_constraints", [])
             ],
             prescriptive_sigma=int(data.get("prescriptive_sigma", 0)),
             compass_hash=str(data.get("compass_hash", "")),
@@ -614,6 +814,110 @@ _SPEC_DIR = ".lintgate/prescriptive_specs"
 
 def _target_hash(target_key: str) -> str:
     return hashlib.sha256(target_key.encode()).hexdigest()[:16]
+
+
+# ── Workflow Record ───────────────────────────────────────────────────
+
+
+@dataclass
+class PrescriptiveWorkflowRecord:
+    """Stable handle for a prescriptive spec workflow across tool calls.
+
+    Persisted alongside the spec so every tool in the chain reads/writes
+    the same record using target_key as the primary identity.
+    """
+
+    spec_id: str
+    target_key: str
+    state: str = (
+        "composed"  # composed|compiled|materialized|implementing|verifying|converging|complete
+    )
+
+    # Accumulated artifacts
+    projected_claims: list[dict] = field(default_factory=list)
+    compiled_targets_path: str = ""
+    materialized_test_path: str = ""
+    expected_kill_set: dict[str, bool] = field(default_factory=dict)
+
+    # Evidence state
+    structural_evidence: list[dict] = field(default_factory=list)
+    behavioral_evidence: list[dict] = field(default_factory=list)
+    convergence_signal: dict = field(default_factory=dict)
+
+    # Generation tracking
+    generation_mode: str = ""  # symbolic_only|symbolic_then_verify|symbolic_then_llm_repair|llm_direct|manual_contract
+
+    # Routing
+    recommended_next_action: str = ""
+    recommended_next_args: dict = field(default_factory=dict)
+
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "spec_id": self.spec_id,
+            "target_key": self.target_key,
+            "state": self.state,
+            "projected_claims": self.projected_claims,
+            "compiled_targets_path": self.compiled_targets_path,
+            "materialized_test_path": self.materialized_test_path,
+            "expected_kill_set": self.expected_kill_set,
+            "structural_evidence": self.structural_evidence,
+            "behavioral_evidence": self.behavioral_evidence,
+            "convergence_signal": self.convergence_signal,
+            "generation_mode": self.generation_mode,
+            "recommended_next_action": self.recommended_next_action,
+            "recommended_next_args": self.recommended_next_args,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PrescriptiveWorkflowRecord:
+        return cls(
+            spec_id=str(data.get("spec_id", "")),
+            target_key=str(data.get("target_key", "")),
+            state=str(data.get("state", "composed")),
+            projected_claims=data.get("projected_claims", []),
+            compiled_targets_path=str(data.get("compiled_targets_path", "")),
+            materialized_test_path=str(data.get("materialized_test_path", "")),
+            expected_kill_set=data.get("expected_kill_set", {}),
+            structural_evidence=data.get("structural_evidence", []),
+            behavioral_evidence=data.get("behavioral_evidence", []),
+            convergence_signal=data.get("convergence_signal", {}),
+            generation_mode=str(data.get("generation_mode", "")),
+            recommended_next_action=str(data.get("recommended_next_action", "")),
+            recommended_next_args=data.get("recommended_next_args", {}),
+            created_at=float(data.get("created_at", 0.0)),
+            updated_at=float(data.get("updated_at", 0.0)),
+        )
+
+
+def save_workflow_record(project_root: str, record: PrescriptiveWorkflowRecord) -> None:
+    """Save a PrescriptiveWorkflowRecord alongside its spec."""
+    spec_dir = os.path.join(project_root, _SPEC_DIR)
+    os.makedirs(spec_dir, exist_ok=True)
+    h = _target_hash(record.target_key)
+    record.updated_at = time.time()
+    path = os.path.join(spec_dir, f"{h}_workflow.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(record.to_dict(), f, indent=2)
+
+
+def load_workflow_record(project_root: str, target_key: str) -> PrescriptiveWorkflowRecord | None:
+    """Load a PrescriptiveWorkflowRecord by target_key."""
+    spec_dir = os.path.join(project_root, _SPEC_DIR)
+    h = _target_hash(target_key)
+    path = os.path.join(spec_dir, f"{h}_workflow.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return PrescriptiveWorkflowRecord.from_dict(data)
+    except (OSError, ValueError):
+        return None
 
 
 def save_spec(project_root: str, spec: PrescriptiveSpec) -> None:
@@ -791,7 +1095,9 @@ def _scan_pspec_stubs(project_root: str) -> list[tuple[str, str]]:
                 dirs.clear()
                 continue
         # Prune hidden/system subdirs from further traversal
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("node_modules", "__pycache__")]
+        dirs[:] = [
+            d for d in dirs if not d.startswith(".") and d not in ("node_modules", "__pycache__")
+        ]
         for fname in files:
             if not fname.endswith(".py"):
                 continue
@@ -831,7 +1137,10 @@ def _find_function_at(source: str, annotation_line: int) -> str | None:
         return None
 
     for node in _ast.walk(tree):
-        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and abs(node.lineno - (annotation_line + 1)) <= 3:
+        if (
+            isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+            and abs(node.lineno - (annotation_line + 1)) <= 3
+        ):
             return node.name
     return None
 
@@ -858,9 +1167,7 @@ def _match_claims_to_symbols(
     if hasattr(compass, "axes"):
         for axis_name, axis in compass.axes.items():
             for j, claim in enumerate(axis.claims):
-                claim_items.append(
-                    (claim.text, claim.confidence, f"compass:{axis_name}:{j}")
-                )
+                claim_items.append((claim.text, claim.confidence, f"compass:{axis_name}:{j}"))
 
     # From theory profile claims
     for facet_name, facet_data in theory_profile.items():
@@ -934,21 +1241,74 @@ def _build_func_index(project_root: str) -> set[str]:
             from lintgate.keys import canonical_function_key
 
             for node in _ast.walk(tree):
-                if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and not node.name.startswith("_"):
+                if isinstance(
+                    node, (_ast.FunctionDef, _ast.AsyncFunctionDef)
+                ) and not node.name.startswith("_"):
                     func_keys.add(canonical_function_key(relpath, node.name))
     return func_keys
 
 
-_STOPWORDS = frozenset({
-    "the", "and", "for", "that", "this", "with", "from", "are", "not",
-    "but", "has", "have", "was", "were", "been", "being", "will",
-    "should", "would", "could", "when", "where", "which", "what",
-    "than", "then", "each", "every", "other", "some", "most",
-    "more", "also", "just", "only", "both", "such", "very",
-    "true", "false", "none", "self", "return", "class", "import",
-    "def", "pass", "raise", "try", "except", "finally", "while",
-    "else", "elif", "yield", "async", "await",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "that",
+        "this",
+        "with",
+        "from",
+        "are",
+        "not",
+        "but",
+        "has",
+        "have",
+        "was",
+        "were",
+        "been",
+        "being",
+        "will",
+        "should",
+        "would",
+        "could",
+        "when",
+        "where",
+        "which",
+        "what",
+        "than",
+        "then",
+        "each",
+        "every",
+        "other",
+        "some",
+        "most",
+        "more",
+        "also",
+        "just",
+        "only",
+        "both",
+        "such",
+        "very",
+        "true",
+        "false",
+        "none",
+        "self",
+        "return",
+        "class",
+        "import",
+        "def",
+        "pass",
+        "raise",
+        "try",
+        "except",
+        "finally",
+        "while",
+        "else",
+        "elif",
+        "yield",
+        "async",
+        "await",
+    }
+)
 
 
 # ── Composer ──────────────────────────────────────────────────────────
@@ -1104,9 +1464,9 @@ class PrescriptiveSpecComposer:
         covering_tests = getattr(trace, "covering_tests", []) if trace else []
 
         spec = PrescriptiveSpec(
-            spec_id=hashlib.sha256(
-                f"{func_spec.function_key}:{time.time()}".encode()
-            ).hexdigest()[:12],
+            spec_id=hashlib.sha256(f"{func_spec.function_key}:{time.time()}".encode()).hexdigest()[
+                :12
+            ],
             target_key=func_spec.function_key,
             problem_class=problem_class,
             mode="retrospective",

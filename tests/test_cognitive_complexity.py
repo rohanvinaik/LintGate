@@ -609,21 +609,25 @@ class TestNestingDepth:
         assert _nesting_depth(tree.body, 0) == 1
 
     def test_two_levels(self):
-        tree = ast.parse(textwrap.dedent("""\
+        tree = ast.parse(
+            textwrap.dedent("""\
             if True:
                 for i in range(10):
                     pass
-        """))
+        """)
+        )
         assert _nesting_depth(tree.body, 0) == 2
 
     def test_sibling_blocks(self):
-        tree = ast.parse(textwrap.dedent("""\
+        tree = ast.parse(
+            textwrap.dedent("""\
             if True:
                 pass
             for i in range(10):
                 if True:
                     pass
-        """))
+        """)
+        )
         # if: depth 1, for->if: depth 2 => max 2
         assert _nesting_depth(tree.body, 0) == 2
 

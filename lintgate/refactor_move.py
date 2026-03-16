@@ -107,11 +107,9 @@ def scan_all_imports(
 
     for dirpath, dirnames, filenames in os.walk(project_root):
         dirnames[:] = [
-            d for d in dirnames
-            if not d.startswith(".")
-            and d != "__pycache__"
-            and d != "node_modules"
-            and d != ".git"
+            d
+            for d in dirnames
+            if not d.startswith(".") and d != "__pycache__" and d != "node_modules" and d != ".git"
         ]
         for fname in filenames:
             if not fname.endswith(".py"):
@@ -147,27 +145,30 @@ def _scan_file_imports(
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == old_module or alias.name.startswith(old_module + "."):
-                    refs.append(ImportReference(
-                        file=rel_path,
-                        line=node.lineno,
-                        kind="import",
-                        old_text=f"import {alias.name}",
-                        new_text="",  # Filled in by _compute_rewrites
-                    ))
+                    refs.append(
+                        ImportReference(
+                            file=rel_path,
+                            line=node.lineno,
+                            kind="import",
+                            old_text=f"import {alias.name}",
+                            new_text="",  # Filled in by _compute_rewrites
+                        )
+                    )
 
         elif isinstance(node, ast.ImportFrom):
             if node.module and (
-                node.module == old_module
-                or node.module.startswith(old_module + ".")
+                node.module == old_module or node.module.startswith(old_module + ".")
             ):
                 names = ", ".join(a.name for a in node.names)
-                refs.append(ImportReference(
-                    file=rel_path,
-                    line=node.lineno,
-                    kind="from_import",
-                    old_text=f"from {node.module} import {names}",
-                    new_text="",
-                ))
+                refs.append(
+                    ImportReference(
+                        file=rel_path,
+                        line=node.lineno,
+                        kind="from_import",
+                        old_text=f"from {node.module} import {names}",
+                        new_text="",
+                    )
+                )
 
         # String references in import-bearing call sites
         elif isinstance(node, ast.Call):
@@ -177,6 +178,7 @@ def _scan_file_imports(
 
 
 # ── Known import-bearing call site patterns ──────────────────────
+
 
 def _scan_string_refs(
     node: ast.Call,
@@ -209,14 +211,16 @@ def _scan_string_refs(
             continue
         val = arg.value
         if old_module in val:
-            refs.append(ImportReference(
-                file=rel_path,
-                line=node.lineno,
-                kind="string_ref",
-                old_text=val,
-                new_text="",  # Filled in by _compute_rewrites
-                context=context,
-            ))
+            refs.append(
+                ImportReference(
+                    file=rel_path,
+                    line=node.lineno,
+                    kind="string_ref",
+                    old_text=val,
+                    new_text="",  # Filled in by _compute_rewrites
+                    context=context,
+                )
+            )
 
 
 def _get_call_name(node: ast.Call) -> str | None:
@@ -275,6 +279,7 @@ def _has_libcst() -> bool:
     """Check if libcst is available."""
     try:
         import libcst as _libcst  # noqa: F401
+
         del _libcst
         return True
     except ImportError:
@@ -317,10 +322,7 @@ def _rewrite_file_with_libcst(
         ) -> cst.ImportFrom:
             # Get the module string
             module_str = _cst_module_to_str(updated_node.module)
-            if module_str and (
-                module_str == old_module
-                or module_str.startswith(old_module + ".")
-            ):
+            if module_str and (module_str == old_module or module_str.startswith(old_module + ".")):
                 new_mod_str = module_str.replace(old_module, new_module, 1)
                 new_mod = _str_to_cst_module(new_mod_str)
                 if new_mod is not None:
@@ -339,8 +341,7 @@ def _rewrite_file_with_libcst(
                 for alias in updated_node.names:
                     name_str = _cst_module_to_str(alias.name)
                     if name_str and (
-                        name_str == old_module
-                        or name_str.startswith(old_module + ".")
+                        name_str == old_module or name_str.startswith(old_module + ".")
                     ):
                         new_name_str = name_str.replace(old_module, new_module, 1)
                         new_name = _str_to_cst_module(new_name_str)
@@ -518,12 +519,16 @@ def _extract_public_names(filepath: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(node.value, (ast.List, ast.Tuple)):
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == "__all__"
+                    and isinstance(node.value, (ast.List, ast.Tuple))
+                ):
                     return [
-                            elt.value
-                            for elt in node.value.elts
-                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
-                        ]
+                        elt.value
+                        for elt in node.value.elts
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+                    ]
 
     # Fallback: all non-underscore top-level names
     names: list[str] = []
@@ -596,9 +601,7 @@ def refactor_move(
     result = MoveResult(source=source, destination=destination, dry_run=dry_run)
 
     # Validate source exists
-    source_path = os.path.join(
-        project_root, source.replace(".", os.sep) + ".py"
-    )
+    source_path = os.path.join(project_root, source.replace(".", os.sep) + ".py")
     if not os.path.isfile(source_path):
         result.errors.append(f"Source module not found: {source_path}")
         return result
@@ -631,9 +634,7 @@ def refactor_move(
         )
         return result
 
-    dest_path = os.path.join(
-        project_root, destination.replace(".", os.sep) + ".py"
-    )
+    dest_path = os.path.join(project_root, destination.replace(".", os.sep) + ".py")
 
     # Move the file
     if source_path != dest_path:

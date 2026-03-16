@@ -455,6 +455,7 @@ def impl_behavior_precheck(
             get_or_create_session,
             load_behavior_compass,
         )
+
         _session = get_or_create_session(project_root, 4.0)
         _compass = load_behavior_compass(_session)
         if _compass.constraint_check_count_session > 0:

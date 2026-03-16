@@ -33,15 +33,11 @@ class TestParseCoverageSettings:
         assert result["threshold"] is None
 
     def test_source_packages_from_list(self) -> None:
-        result = _parse_coverage_settings(
-            {"source_packages": ["myapp", "mylib"]}, "hook"
-        )
+        result = _parse_coverage_settings({"source_packages": ["myapp", "mylib"]}, "hook")
         assert result["source_packages"] == ["myapp", "mylib"]
 
     def test_source_packages_from_string(self) -> None:
-        result = _parse_coverage_settings(
-            {"source_packages": "myapp"}, "hook"
-        )
+        result = _parse_coverage_settings({"source_packages": "myapp"}, "hook")
         assert result["source_packages"] == ["myapp"]
 
     def test_source_packages_empty_list_gets_defaults(self) -> None:
@@ -49,16 +45,12 @@ class TestParseCoverageSettings:
         assert result["source_packages"] == ["lintgate", "mcp_tools"]
 
     def test_symbol_enabled_from_dict(self) -> None:
-        result = _parse_coverage_settings(
-            {"symbol_coverage": {"enabled": True}}, "mcp"
-        )
+        result = _parse_coverage_settings({"symbol_coverage": {"enabled": True}}, "mcp")
         assert result["symbol_enabled"] is True
         assert result["measure"] is True
 
     def test_measure_false_on_hook_surface(self) -> None:
-        result = _parse_coverage_settings(
-            {"coverage_threshold": "80"}, "hook"
-        )
+        result = _parse_coverage_settings({"coverage_threshold": "80"}, "hook")
         assert result["measure"] is False
 
 

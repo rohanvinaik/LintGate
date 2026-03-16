@@ -65,7 +65,13 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             include_mutation: Include mutation profiling (default True, slower).
         """
         return impl_offline_analysis_generate(
-            helpers, path, workers, mutation_budget_ms, output, include_mutation, mode=mode,
+            helpers,
+            path,
+            workers,
+            mutation_budget_ms,
+            output,
+            include_mutation,
+            mode=mode,
         )
 
     @mcp.tool()

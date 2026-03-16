@@ -197,11 +197,7 @@ class TestParseVultureOutput:
         assert list(_parse_vulture_output(output, "warning")) == []
 
     def test_mixed_valid_and_invalid_lines(self):
-        output = (
-            "garbage line\n"
-            "foo.py:3: unused variable 'x' (70% confidence)\n"
-            "another garbage\n"
-        )
+        output = "garbage line\nfoo.py:3: unused variable 'x' (70% confidence)\nanother garbage\n"
         issues = list(_parse_vulture_output(output, "informational"))
         assert len(issues) == 1
         assert issues[0].kind == "unused-variable"

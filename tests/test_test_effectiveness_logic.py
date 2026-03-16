@@ -344,10 +344,23 @@ class TestHandleNoMappedFunctions:
         parsed = json.loads(raw)
         assert parsed["note"] == "No mapped functions analyzed."
         assert parsed["state"] == AnalysisState.UNMAPPED_TESTS.value
-        assert parsed["hint"] == "Check if source functions are public and tests follow naming conventions."
-        assert parsed["details"] == "Scanned 0 source files and 0 test files. (Mapped: 0 / Attempted: 0)"
+        assert (
+            parsed["hint"]
+            == "Check if source functions are public and tests follow naming conventions."
+        )
+        assert (
+            parsed["details"]
+            == "Scanned 0 source files and 0 test files. (Mapped: 0 / Attempted: 0)"
+        )
         assert parsed["schema_version"] == TEFF_SCHEMA_VERSION
-        assert set(parsed.keys()) == {"note", "details", "hint", "state", "diagnostics", "schema_version"}
+        assert set(parsed.keys()) == {
+            "note",
+            "details",
+            "hint",
+            "state",
+            "diagnostics",
+            "schema_version",
+        }
 
     def test_no_dominant_reason_with_attempted(self):
         """When attempted > 0 but no dominant_drop_reason, fallback hint is used."""

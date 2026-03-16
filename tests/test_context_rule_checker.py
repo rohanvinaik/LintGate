@@ -172,7 +172,9 @@ class TestRunForbidRule:
 class TestRunRequireRule:
     def test_pattern_present_returns_none(self):
         rule = {"pattern": r"from __future__ import annotations"}
-        result = _run_require_rule(rule, "/test.py", "test.py", "from __future__ import annotations\n")
+        result = _run_require_rule(
+            rule, "/test.py", "test.py", "from __future__ import annotations\n"
+        )
         assert result is None
 
     def test_pattern_missing_returns_issue(self):

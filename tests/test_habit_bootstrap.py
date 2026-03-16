@@ -291,7 +291,10 @@ class TestBootstrapProject:
     @patch("lintgate._habit_bootstrap.save_habit_state_standalone")
     def test_action_ring_capped_at_30(self, _mock_save):
         b = HabitBootstrapper()
-        tcs = [_tc(tool_name="Read", input_data={"file_path": "f.py"}, timestamp=float(i)) for i in range(50)]
+        tcs = [
+            _tc(tool_name="Read", input_data={"file_path": "f.py"}, timestamp=float(i))
+            for i in range(50)
+        ]
         s = _session(exchanges=[_exchange(tool_calls=tcs)])
         result = b.bootstrap_project([s])
         assert result["total_actions"] == 50

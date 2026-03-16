@@ -64,20 +64,24 @@ class TestDetectPersistentLoud:
         assert detect_persistent_loud(session, ["lint"]) == []
 
     def test_streak_of_three(self):
-        session = _session([
-            _snapshot(loud=["lint"]),
-            _snapshot(loud=["lint"]),
-        ])
+        session = _session(
+            [
+                _snapshot(loud=["lint"]),
+                _snapshot(loud=["lint"]),
+            ]
+        )
         result = detect_persistent_loud(session, ["lint"])
         # 2 snapshots + 1 current = 3
         assert result == [("lint", 3)]
 
     def test_broken_streak(self):
-        session = _session([
-            _snapshot(loud=["lint"]),
-            _snapshot(loud=[]),       # break
-            _snapshot(loud=["lint"]),
-        ])
+        session = _session(
+            [
+                _snapshot(loud=["lint"]),
+                _snapshot(loud=[]),  # break
+                _snapshot(loud=["lint"]),
+            ]
+        )
         result = detect_persistent_loud(session, ["lint"])
         # Last snapshot has lint, + current = 2 (not >=3)
         assert result == []
@@ -149,8 +153,8 @@ class TestDetectRefactoringTradeoffs:
         assert tradeoffs[0]["type"] == "refactor_tradeoff_detected"
         assert tradeoffs[0]["improved"] == "cyclomatic_complexity"
         assert tradeoffs[0]["regressed"] == "too_many_args"
-        assert tradeoffs[0]["improved_delta"] == -2   # 3 - 5
-        assert tradeoffs[0]["regressed_delta"] == 2   # 3 - 1
+        assert tradeoffs[0]["improved_delta"] == -2  # 3 - 5
+        assert tradeoffs[0]["regressed_delta"] == 2  # 3 - 1
 
     def test_no_tradeoff_when_both_decrease(self):
         prev_index = {

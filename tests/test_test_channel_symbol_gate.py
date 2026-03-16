@@ -162,9 +162,7 @@ class TestEmitSymbolFindings:
     def test_covered_symbol_no_finding(self) -> None:
         findings: list[LintIssue] = []
         ctx = SymbolGateContext(surface="ci", findings=findings)
-        gate = self._make_gate_result(
-            symbol_results=[SimpleNamespace(covered=True)]
-        )
+        gate = self._make_gate_result(symbol_results=[SimpleNamespace(covered=True)])
         _emit_symbol_findings(gate, ctx)
         assert findings == []
 
@@ -173,9 +171,7 @@ class TestEmitSymbolFindings:
         ctx = SymbolGateContext(surface="ci", findings=findings)
         sr = SimpleNamespace(
             covered=False,
-            symbol=SimpleNamespace(
-                name="my_fn", file="a.py", start_line=10, symbol_key="a::my_fn"
-            ),
+            symbol=SimpleNamespace(name="my_fn", file="a.py", start_line=10, symbol_key="a::my_fn"),
             missing_lines=[10],
             missing_branches=[],
             total_lines_in_span=20,
@@ -191,14 +187,14 @@ class TestEmitSymbolFindings:
     def test_partial_run_downgrades_severity(self) -> None:
         findings: list[LintIssue] = []
         ctx = SymbolGateContext(
-            surface="ci", findings=findings,
-            is_partial_run=True, coverage_ok=True,
+            surface="ci",
+            findings=findings,
+            is_partial_run=True,
+            coverage_ok=True,
         )
         sr = SimpleNamespace(
             covered=False,
-            symbol=SimpleNamespace(
-                name="fn", file="b.py", start_line=5, symbol_key="b::fn"
-            ),
+            symbol=SimpleNamespace(name="fn", file="b.py", start_line=5, symbol_key="b::fn"),
             missing_lines=[5],
             missing_branches=[],
             total_lines_in_span=10,
@@ -246,7 +242,10 @@ class TestRunSymbolGateIfEnabled:
     def test_returns_none_when_disabled(self) -> None:
         cov_cfg = {"symbol_enabled": False, "source_packages": ["lintgate"]}
         result = _run_symbol_gate_if_enabled(
-            cov_cfg, None, [], "/project",
+            cov_cfg,
+            None,
+            [],
+            "/project",
             SymbolGateContext(surface="ci", findings=[]),
         )
         assert result is None

@@ -159,9 +159,7 @@ class TestCollectTestFindings:
 
     @patch("lintgate.channels._test_channel_drift._build_drift_context")
     @patch("lintgate.channels._test_channel_drift._check_stale_test_symbols")
-    def test_failure_with_project_root_classifies_and_summarizes(
-        self, mock_stale, mock_drift_ctx
-    ):
+    def test_failure_with_project_root_classifies_and_summarizes(self, mock_stale, mock_drift_ctx):
         mock_drift_ctx.return_value = {
             "modified": {"tests/a.py"},
             "untracked": set(),
@@ -334,9 +332,7 @@ class TestCheckSingleFileContractDrift:
         src.write_text("def f(): pass")
         mock_run.return_value = MagicMock(stdout="")
         findings: list[LintIssue] = []
-        _check_single_file_contract_drift(
-            str(src), str(tmp_path), [], MagicMock(), findings
-        )
+        _check_single_file_contract_drift(str(src), str(tmp_path), [], MagicMock(), findings)
         assert findings == []
 
     @patch("subprocess.run")
@@ -375,7 +371,5 @@ class TestCheckSingleFileContractDrift:
         src = tmp_path / "core.py"
         src.write_text("def f(): pass")
         findings: list[LintIssue] = []
-        _check_single_file_contract_drift(
-            str(src), str(tmp_path), [], MagicMock(), findings
-        )
+        _check_single_file_contract_drift(str(src), str(tmp_path), [], MagicMock(), findings)
         assert findings == []

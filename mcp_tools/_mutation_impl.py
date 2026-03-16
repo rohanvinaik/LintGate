@@ -401,9 +401,7 @@ def load_test_callables(
     # files via TF-IDF fingerprint similarity, loads their callables,
     # and tags the linkage as low-confidence "semantic".
     if project_root and source_file:
-        semantic_files = _discover_semantic_fallback(
-            project_root, source_file, test_files, diag
-        )
+        semantic_files = _discover_semantic_fallback(project_root, source_file, test_files, diag)
         if semantic_files:
             diag.linkage_source = "semantic"
             sem_callables = _load_all_tests_from_files(semantic_files, diag)

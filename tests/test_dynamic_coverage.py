@@ -810,9 +810,7 @@ class TestExtractContextsDirect:
         db = str(tmp_path / "partial.db")
         conn = sqlite3.connect(db)
         conn.execute("CREATE TABLE context (id INTEGER PRIMARY KEY, context TEXT)")
-        conn.execute(
-            "CREATE TABLE line_bits (file_id INTEGER, context_id INTEGER, numbits BLOB)"
-        )
+        conn.execute("CREATE TABLE line_bits (file_id INTEGER, context_id INTEGER, numbits BLOB)")
         conn.row_factory = sqlite3.Row
         result = _extract_contexts(conn)
         conn.close()
@@ -823,9 +821,7 @@ class TestExtractContextsDirect:
         db = str(tmp_path / "partial.db")
         conn = sqlite3.connect(db)
         conn.execute("CREATE TABLE file (id INTEGER PRIMARY KEY, path TEXT)")
-        conn.execute(
-            "CREATE TABLE line_bits (file_id INTEGER, context_id INTEGER, numbits BLOB)"
-        )
+        conn.execute("CREATE TABLE line_bits (file_id INTEGER, context_id INTEGER, numbits BLOB)")
         conn.row_factory = sqlite3.Row
         result = _extract_contexts(conn)
         conn.close()
@@ -1107,9 +1103,7 @@ class TestFindFileContextsDirect:
         key_with_extra = "src//module.py"
         contexts = {key_with_extra: {3: ["test_y"]}}
 
-        result = _find_file_contexts(
-            str(tmp_path / "src" / "module.py"), contexts, project
-        )
+        result = _find_file_contexts(str(tmp_path / "src" / "module.py"), contexts, project)
         assert result is not None
         assert result[3] == ["test_y"]
 
@@ -1182,10 +1176,13 @@ class TestTestFuncMatchesDirect:
         assert _test_func_matches("test_add", {"test_add", "test_sub"}) is True
 
     def test_suffix_match_with_dot(self):
-        assert _test_func_matches(
-            "test_module.TestCalc.test_add",
-            {"TestCalc.test_add"},
-        ) is True
+        assert (
+            _test_func_matches(
+                "test_module.TestCalc.test_add",
+                {"TestCalc.test_add"},
+            )
+            is True
+        )
 
     def test_no_match(self):
         assert _test_func_matches("test_other", {"test_add", "test_sub"}) is False
@@ -1205,10 +1202,13 @@ class TestTestFuncMatchesDirect:
 
     def test_module_class_method_suffix(self):
         """Module-qualified name should match class-qualified static name."""
-        assert _test_func_matches(
-            "tests.test_svc.TestService.test_process",
-            {"TestService.test_process"},
-        ) is True
+        assert (
+            _test_func_matches(
+                "tests.test_svc.TestService.test_process",
+                {"TestService.test_process"},
+            )
+            is True
+        )
 
     def test_single_element_set(self):
         assert _test_func_matches("x.test_one", {"test_one"}) is True

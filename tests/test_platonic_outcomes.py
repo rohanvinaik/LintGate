@@ -273,9 +273,7 @@ def test_reroute_manual_contract_empty_keys():
     """Empty function_keys should be a no-op — load_manifest never called."""
     from unittest.mock import patch as _patch
 
-    with _patch(
-        "lintgate.specification.test_regeneration_strategy.load_manifest"
-    ) as mock_load:
+    with _patch("lintgate.specification.test_regeneration_strategy.load_manifest") as mock_load:
         reroute_manual_contract_candidates("/tmp", [])
         mock_load.assert_not_called()
 
@@ -289,9 +287,7 @@ def test_reroute_manual_contract_no_crash():
             "lintgate.specification.test_regeneration_strategy.load_manifest",
             return_value=None,
         ) as mock_load,
-        _patch(
-            "lintgate.specification.test_regeneration_strategy.write_manifest"
-        ) as mock_write,
+        _patch("lintgate.specification.test_regeneration_strategy.write_manifest") as mock_write,
     ):
         reroute_manual_contract_candidates("/nonexistent/project", ["mod.func"])
         mock_load.assert_called_once_with("/nonexistent/project")
@@ -320,9 +316,7 @@ def test_reroute_manual_contract_updates_matching_functions():
             "lintgate.specification.test_regeneration_strategy.load_manifest",
             return_value=manifest,
         ),
-        _patch(
-            "lintgate.specification.test_regeneration_strategy.write_manifest"
-        ) as mock_write,
+        _patch("lintgate.specification.test_regeneration_strategy.write_manifest") as mock_write,
     ):
         reroute_manual_contract_candidates("/proj", ["mod.func_a"])
         # Verify the matched function was updated with exact enum values

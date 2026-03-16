@@ -56,10 +56,7 @@ def check_invariants_against_ast(
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return [
-            CheckResult(inv.name, "skip", "source parse error")
-            for inv in invariants
-        ]
+        return [CheckResult(inv.name, "skip", "source parse error") for inv in invariants]
 
     func_node = _find_function(tree, function_name)
     if func_node is None:
@@ -153,13 +150,19 @@ def _check_is_type(
 
     ret_annotation = func.returns
     if ret_annotation is None:
-        return CheckResult(inv_name, "fail", f"no return type annotation, expected '{expected_type}'")
+        return CheckResult(
+            inv_name, "fail", f"no return type annotation, expected '{expected_type}'"
+        )
 
     actual_type = _annotation_to_str(ret_annotation)
     if expected_type.lower() in actual_type.lower():
-        return CheckResult(inv_name, "pass", f"return type '{actual_type}' matches '{expected_type}'")
+        return CheckResult(
+            inv_name, "pass", f"return type '{actual_type}' matches '{expected_type}'"
+        )
 
-    return CheckResult(inv_name, "fail", f"return type '{actual_type}' does not match expected '{expected_type}'")
+    return CheckResult(
+        inv_name, "fail", f"return type '{actual_type}' does not match expected '{expected_type}'"
+    )
 
 
 def _check_has_attr(
@@ -168,7 +171,7 @@ def _check_has_attr(
     inv_name: str,
 ) -> CheckResult:
     """Check HAS_ATTR: verify the function body accesses the expected attribute."""
-    attr_name = str(pred.value) if pred.value else pred.object
+    attr_name = str(pred.value) if pred.value else pred.target
     if not attr_name:
         return CheckResult(inv_name, "skip", "no attribute name specified")
 
@@ -295,7 +298,9 @@ def _check_no_raise(
 
                 with contextlib.suppress(Exception):
                     exc_desc = ast.unparse(node.exc)[:40]
-            return CheckResult(inv_name, "fail", f"raises {exc_desc}" if exc_desc else "contains raise")
+            return CheckResult(
+                inv_name, "fail", f"raises {exc_desc}" if exc_desc else "contains raise"
+            )
     return CheckResult(inv_name, "pass", "no raise statements")
 
 

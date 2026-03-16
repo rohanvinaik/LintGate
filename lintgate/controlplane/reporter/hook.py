@@ -54,7 +54,9 @@ def _build_posttooluse_context(inputs: PostToolUseInputs) -> str:
 
     # ── Tier 2: Signal-quality metadata (preserve over deltas) ────
     status_pairs: list[tuple[str, str]] = []
-    _append_status_pairs(status_pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts)
+    _append_status_pairs(
+        status_pairs, inputs.mesh_result, inputs.resurfaced_count, inputs.cycle_alerts
+    )
 
     # ── Tier 3: Delta pairs (first to drop under pressure) ────────
     delta_pairs: list[tuple[str, str]] = []

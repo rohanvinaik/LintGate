@@ -390,7 +390,10 @@ class TestImplProjectWikiSync:
         assert result["page_sizes"] == {"Theory": 7}
         assert "next_actions" in result
 
-    @patch("mcp_tools._gh_wiki_impl._write_and_push_pages", return_value={"write": True, "pages_written": 1})
+    @patch(
+        "mcp_tools._gh_wiki_impl._write_and_push_pages",
+        return_value={"write": True, "pages_written": 1},
+    )
     @patch("mcp_tools._gh_wiki_impl._collect_pages", return_value={"Theory": "content"})
     @patch("mcp_tools._gh_wiki_impl._repo_full_name", return_value="owner/repo")
     def test_write_mode(self, _rfn, _cp, mock_wpp):

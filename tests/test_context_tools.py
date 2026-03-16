@@ -279,9 +279,7 @@ class TestDoBootstrap:
             patch("lintgate.state.log_feature_usage"),
         ):
             _do_bootstrap("/tmp/proj", max_machine_rules=5, model_id="test-model")
-            mock_bs.assert_called_once_with(
-                "/tmp/proj", max_machine_rules=5, model_id="test-model"
-            )
+            mock_bs.assert_called_once_with("/tmp/proj", max_machine_rules=5, model_id="test-model")
 
 
 # ---------------------------------------------------------------------------
@@ -328,9 +326,7 @@ class TestDoBuildTheoryPack:
 
     def test_passes_include_full_profile(self):
         with (
-            patch(
-                "lintgate.theory_extractor.build_theory_pack", return_value={}
-            ) as mock_build,
+            patch("lintgate.theory_extractor.build_theory_pack", return_value={}) as mock_build,
             patch("lintgate.state.log_feature_usage"),
         ):
             _do_build_theory_pack("/tmp/proj", include_full_profile=True)

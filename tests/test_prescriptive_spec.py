@@ -182,7 +182,9 @@ class TestPrescriptiveSpec:
         spec = self._make_spec(
             problem_class="stateful",
             state_variables=[
-                StateVariable(name="count", type_hint="int", initial_value="0", description="counter")
+                StateVariable(
+                    name="count", type_hint="int", initial_value="0", description="counter"
+                )
             ],
             allowed_transitions=[
                 StateTransition(
@@ -257,7 +259,9 @@ class _FakeTraceability:
 
 
 class _FakeFuncSpec:
-    def __init__(self, function_key="mod::func", is_pure=True, is_stateful=False, sigma=5, assertions=2):
+    def __init__(
+        self, function_key="mod::func", is_pure=True, is_stateful=False, sigma=5, assertions=2
+    ):
         self.function_key = function_key
         self.core = _FakeCore(is_pure=is_pure, estimated_sigma=sigma)
         self.testability = _FakeTestability(is_stateful=is_stateful)
@@ -302,13 +306,23 @@ class TestComposer:
                 "parameters": [{"name": "key", "type": "str", "description": "cache key"}],
                 "return_type": "Any",
                 "state_variables": [
-                    {"name": "store", "type_hint": "dict", "initial_value": "{}", "description": "backing store"}
+                    {
+                        "name": "store",
+                        "type_hint": "dict",
+                        "initial_value": "{}",
+                        "description": "backing store",
+                    }
                 ],
                 "transitions": [
                     {
                         "name": "put",
                         "precondition": {"op": "true", "description": "always"},
-                        "postcondition": {"op": "has_attr", "subject": "store", "value": "key", "description": "key present after put"},
+                        "postcondition": {
+                            "op": "has_attr",
+                            "subject": "store",
+                            "value": "key",
+                            "description": "key present after put",
+                        },
                         "description": "Insert key",
                         "source_claim": "compass:toward:0",
                     }
@@ -324,13 +338,14 @@ class TestComposer:
 
     def test_compose_retrospective_enrichment(self):
         """FunctionSpec + theory → enriched PrescriptiveSpec."""
-        compass = _FakeCompass(
-            directives=[_FakeDirective("toward", "Keep functions pure")]
-        )
+        compass = _FakeCompass(directives=[_FakeDirective("toward", "Keep functions pure")])
         theory = {
             "core_theory": {
                 "claims": [
-                    {"text": "Because purity enables caching, prefer pure functions", "confidence": 0.9}
+                    {
+                        "text": "Because purity enables caching, prefer pure functions",
+                        "confidence": 0.9,
+                    }
                 ]
             }
         }
@@ -400,7 +415,10 @@ class TestComposer:
         theory = {
             "core_theory": {
                 "claims": [
-                    {"text": "Because caching reduces latency, we use memoization", "confidence": 0.7}
+                    {
+                        "text": "Because caching reduces latency, we use memoization",
+                        "confidence": 0.7,
+                    }
                 ]
             }
         }
@@ -433,7 +451,10 @@ class TestComposer:
         composer = PrescriptiveSpecComposer()
 
         # From interface hint
-        assert composer._classify_problem_class(None, {"problem_class": "distributed"}) == "distributed"
+        assert (
+            composer._classify_problem_class(None, {"problem_class": "distributed"})
+            == "distributed"
+        )
 
         # From func_spec pure
         fs_pure = _FakeFuncSpec(is_pure=True)
@@ -494,7 +515,9 @@ class TestPrescriptiveSigma:
 
     def test_prescriptive_sigma_empty(self):
         """Empty spec returns 0."""
-        spec = PrescriptiveSpec(spec_id="test", target_key="mod::f", problem_class="pure", mode="prospective")
+        spec = PrescriptiveSpec(
+            spec_id="test", target_key="mod::f", problem_class="pure", mode="prospective"
+        )
         assert estimate_prescriptive_sigma(spec) == 0
 
     def test_sigma_convergence_signal_converged(self):
@@ -567,15 +590,21 @@ class TestPersistence:
             save_spec(
                 tmp,
                 PrescriptiveSpec(
-                    spec_id="s1", target_key="mod::a", problem_class="pure",
-                    mode="prospective", created_at=1000.0,
+                    spec_id="s1",
+                    target_key="mod::a",
+                    problem_class="pure",
+                    mode="prospective",
+                    created_at=1000.0,
                 ),
             )
             save_spec(
                 tmp,
                 PrescriptiveSpec(
-                    spec_id="s2", target_key="mod::b", problem_class="pure",
-                    mode="prospective", created_at=1000.0,
+                    spec_id="s2",
+                    target_key="mod::b",
+                    problem_class="pure",
+                    mode="prospective",
+                    created_at=1000.0,
                 ),
             )
 
@@ -584,6 +613,92 @@ class TestPersistence:
             assert cov["covered"] == 2
             assert abs(cov["coverage_ratio"] - 2 / 3) < 0.01
             assert cov["uncovered"] == ["mod::c"]
+
+
+# ── Workflow Record tests ─────────────────────────────────────────────
+
+
+class TestPrescriptiveWorkflowRecord:
+    def test_round_trip(self):
+        """to_dict/from_dict cycle preserves all fields."""
+        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+
+        record = PrescriptiveWorkflowRecord(
+            spec_id="spec123",
+            target_key="mod::func",
+            state="compiled",
+            projected_claims=[{"source": "compass:toward:0", "action": "included"}],
+            compiled_targets_path="/tmp/targets.json",
+            materialized_test_path="/tmp/test.py",
+            expected_kill_set={"VALUE": True, "SWAP": True},
+            structural_evidence=[{"status": "pass"}],
+            behavioral_evidence=[{"status": "unknown"}],
+            convergence_signal={"assessment": "converged"},
+            recommended_next_action="prescriptive_spec_verify",
+            recommended_next_args={"path": "/proj", "target": "mod::func"},
+            created_at=1000.0,
+            updated_at=2000.0,
+        )
+        d = record.to_dict()
+        restored = PrescriptiveWorkflowRecord.from_dict(d)
+
+        assert restored.spec_id == "spec123"
+        assert restored.target_key == "mod::func"
+        assert restored.state == "compiled"
+        assert len(restored.projected_claims) == 1
+        assert restored.compiled_targets_path == "/tmp/targets.json"
+        assert restored.expected_kill_set == {"VALUE": True, "SWAP": True}
+        assert restored.recommended_next_action == "prescriptive_spec_verify"
+        assert restored.created_at == 1000.0
+
+    def test_json_serializable(self):
+        """to_dict output is JSON-serializable."""
+        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+
+        record = PrescriptiveWorkflowRecord(spec_id="s1", target_key="m::f")
+        serialized = json.dumps(record.to_dict())
+        assert isinstance(serialized, str)
+        parsed = json.loads(serialized)
+        assert parsed["spec_id"] == "s1"
+
+    def test_persistence_save_load(self):
+        """Save/load cycle on temp dir."""
+        from lintgate.specification.prescriptive_spec import (
+            PrescriptiveWorkflowRecord,
+            load_workflow_record,
+            save_workflow_record,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record = PrescriptiveWorkflowRecord(
+                spec_id="abc",
+                target_key="mod::func_a",
+                state="composed",
+            )
+            save_workflow_record(tmp, record)
+            loaded = load_workflow_record(tmp, "mod::func_a")
+            assert loaded is not None
+            assert loaded.spec_id == "abc"
+            assert loaded.state == "composed"
+            assert loaded.updated_at > 0
+
+    def test_persistence_missing_returns_none(self):
+        """Loading nonexistent workflow returns None."""
+        from lintgate.specification.prescriptive_spec import load_workflow_record
+
+        with tempfile.TemporaryDirectory() as tmp:
+            assert load_workflow_record(tmp, "nonexistent::func") is None
+
+    def test_defaults(self):
+        """Default values are sensible."""
+        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+
+        record = PrescriptiveWorkflowRecord(spec_id="s", target_key="t")
+        assert record.state == "composed"
+        assert record.projected_claims == []
+        assert record.expected_kill_set == {}
+        assert record.recommended_next_action == ""
+        assert record.created_at > 0
 
 
 # ── Target resolution tests ──────────────────────────────────────────
@@ -623,16 +738,18 @@ class TestResolveTargets:
         pkg = tmp_path / "mymod"
         pkg.mkdir()
         (pkg / "__init__.py").write_text("")
-        (pkg / "utils.py").write_text(
-            "def compute_metrics(data):\n"
-            "    return len(data)\n"
-        )
+        (pkg / "utils.py").write_text("def compute_metrics(data):\n    return len(data)\n")
 
         compass = _FakeCompass(
             axes={
-                "problem": _FakeAxis("problem", [
-                    _FakeClaim("We need compute_metrics to handle large datasets", confidence=0.8)
-                ])
+                "problem": _FakeAxis(
+                    "problem",
+                    [
+                        _FakeClaim(
+                            "We need compute_metrics to handle large datasets", confidence=0.8
+                        )
+                    ],
+                )
             }
         )
         results = resolve_targets(compass, {}, str(tmp_path))
@@ -644,7 +761,9 @@ class TestResolveTargets:
         """Same target from multiple strategies is not duplicated."""
         compass = _FakeCompass()
         results = resolve_targets(
-            compass, {}, "/tmp/fake",
+            compass,
+            {},
+            "/tmp/fake",
             explicit_targets=["mod::func", "mod::func"],
         )
         assert len(results) == 1

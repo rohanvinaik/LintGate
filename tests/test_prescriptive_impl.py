@@ -37,7 +37,10 @@ class TestImplCompose:
         helpers = {"_validate_project_root": lambda _: str(tmp_path)}
 
         result = impl_prescriptive_spec_compose(
-            str(tmp_path), "mod::func", "prospective", helpers,
+            str(tmp_path),
+            "mod::func",
+            "prospective",
+            helpers,
         )
         data = json.loads(result) if isinstance(result, str) else result
         assert data.get("target_key") == "mod::func" or "spec_id" in data
@@ -49,7 +52,10 @@ class TestImplCompose:
         helpers = {"_validate_project_root": lambda _: str(tmp_path)}
 
         result = impl_prescriptive_spec_compose(
-            str(tmp_path), "mod::func", "auto", helpers,
+            str(tmp_path),
+            "mod::func",
+            "auto",
+            helpers,
         )
         data = json.loads(result) if isinstance(result, str) else result
         assert "mode" in data or "spec_id" in data

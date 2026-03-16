@@ -107,13 +107,7 @@ def test_match_no_file_context():
 
 def test_iter_simple_diff():
     """Parse a minimal unified diff into additions."""
-    diff = (
-        "diff --git a/f.py b/f.py\n"
-        "+++ b/f.py\n"
-        "@@ -0,0 +1,2 @@\n"
-        "+line_one\n"
-        "+line_two\n"
-    )
+    diff = "diff --git a/f.py b/f.py\n+++ b/f.py\n@@ -0,0 +1,2 @@\n+line_one\n+line_two\n"
     adds = _iter_diff_additions(diff)
     assert len(adds) == 2
     assert adds[0] == ("f.py", "line_one", 1)
@@ -122,12 +116,7 @@ def test_iter_simple_diff():
 
 def test_iter_skips_removals():
     """Removal lines (starting with -) are not included in additions."""
-    diff = (
-        "+++ b/a.py\n"
-        "@@ -1,2 +1,2 @@\n"
-        "-old_line\n"
-        "+new_line\n"
-    )
+    diff = "+++ b/a.py\n@@ -1,2 +1,2 @@\n-old_line\n+new_line\n"
     adds = _iter_diff_additions(diff)
     assert len(adds) == 1
     assert adds[0][1] == "new_line"
@@ -135,14 +124,7 @@ def test_iter_skips_removals():
 
 def test_iter_multiple_files():
     """Additions from multiple files are tracked with correct file context."""
-    diff = (
-        "+++ b/alpha.py\n"
-        "@@ -0,0 +1 @@\n"
-        "+a_line\n"
-        "+++ b/beta.py\n"
-        "@@ -0,0 +5 @@\n"
-        "+b_line\n"
-    )
+    diff = "+++ b/alpha.py\n@@ -0,0 +1 @@\n+a_line\n+++ b/beta.py\n@@ -0,0 +5 @@\n+b_line\n"
     adds = _iter_diff_additions(diff)
     assert len(adds) == 2
     assert adds[0][0] == "alpha.py"
@@ -157,10 +139,7 @@ def test_iter_empty_diff():
 
 def test_iter_dev_null_file():
     """'+++ ' without 'b/' prefix sets current_file to None."""
-    diff = (
-        "+++ /dev/null\n"
-        "@@ -1 +0,0 @@\n"
-    )
+    diff = "+++ /dev/null\n@@ -1 +0,0 @@\n"
     adds = _iter_diff_additions(diff)
     assert adds == []
 
@@ -171,11 +150,7 @@ def test_iter_dev_null_file():
 def test_check_diff_secrets_finds_secret():
     """Integration: staged diff containing a secret produces a finding."""
     mock_result = MagicMock()
-    mock_result.stdout = (
-        "+++ b/config.py\n"
-        "@@ -0,0 +1 @@\n"
-        "+TOKEN = AKIAIOSFODNN7EXAMPLE\n"
-    )
+    mock_result.stdout = "+++ b/config.py\n@@ -0,0 +1 @@\n+TOKEN = AKIAIOSFODNN7EXAMPLE\n"
     with patch("lintgate.channels._git_secrets.run_cmd", return_value=mock_result):
         findings = _check_diff_secrets("/proj")
     assert len(findings) == 1
@@ -185,11 +160,7 @@ def test_check_diff_secrets_finds_secret():
 def test_check_diff_secrets_clean():
     """Clean diff produces no findings."""
     mock_result = MagicMock()
-    mock_result.stdout = (
-        "+++ b/app.py\n"
-        "@@ -0,0 +1 @@\n"
-        "+x = 42\n"
-    )
+    mock_result.stdout = "+++ b/app.py\n@@ -0,0 +1 @@\n+x = 42\n"
     with patch("lintgate.channels._git_secrets.run_cmd", return_value=mock_result):
         findings = _check_diff_secrets("/proj")
     assert findings == []

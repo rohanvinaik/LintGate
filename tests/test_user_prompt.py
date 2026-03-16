@@ -112,28 +112,40 @@ def test_build_primer_approach_failure_warning():
 
 
 def test_handle_returns_continue():
-    with patch("lintgate.hooks.user_prompt._build_primer", return_value=None), patch("lintgate.hooks.user_prompt._load_mode", return_value="normal"):
-            result = handle({"cwd": "/tmp", "userMessage": "hello"})
+    with (
+        patch("lintgate.hooks.user_prompt._build_primer", return_value=None),
+        patch("lintgate.hooks.user_prompt._load_mode", return_value="normal"),
+    ):
+        result = handle({"cwd": "/tmp", "userMessage": "hello"})
     assert result["continue"] is True
 
 
 def test_handle_normal_mode_no_theory():
-    with patch("lintgate.hooks.user_prompt._build_primer", return_value=None), patch("lintgate.hooks.user_prompt._load_mode", return_value="normal"):
-            result = handle({"cwd": "/tmp", "userMessage": "fix the bug"})
+    with (
+        patch("lintgate.hooks.user_prompt._build_primer", return_value=None),
+        patch("lintgate.hooks.user_prompt._load_mode", return_value="normal"),
+    ):
+        result = handle({"cwd": "/tmp", "userMessage": "fix the bug"})
     # normal mode + no theory keywords => empty system message
     assert result["systemMessage"] == ""
 
 
 def test_handle_theory_keyword_legacy():
-    with patch("lintgate.hooks.user_prompt._build_primer", return_value=None), patch("lintgate.hooks.user_prompt._load_mode", return_value="theory"):
-            result = handle({"cwd": "/tmp", "userMessage": "why does this happen?"})
+    with (
+        patch("lintgate.hooks.user_prompt._build_primer", return_value=None),
+        patch("lintgate.hooks.user_prompt._load_mode", return_value="theory"),
+    ):
+        result = handle({"cwd": "/tmp", "userMessage": "why does this happen?"})
     assert "theory-relevant" in result["systemMessage"]
     assert "Mode: theory" in result["systemMessage"]
 
 
 def test_handle_nonstandard_mode_legacy():
-    with patch("lintgate.hooks.user_prompt._build_primer", return_value=None), patch("lintgate.hooks.user_prompt._load_mode", return_value="habit"):
-            result = handle({"cwd": "/tmp", "userMessage": "do the thing"})
+    with (
+        patch("lintgate.hooks.user_prompt._build_primer", return_value=None),
+        patch("lintgate.hooks.user_prompt._load_mode", return_value="habit"),
+    ):
+        result = handle({"cwd": "/tmp", "userMessage": "do the thing"})
     assert "Mode: habit" in result["systemMessage"]
 
 
@@ -150,7 +162,10 @@ def test_handle_enhanced_primer_with_theory():
 
 
 def test_handle_dict_user_message():
-    with patch("lintgate.hooks.user_prompt._build_primer", return_value=None), patch("lintgate.hooks.user_prompt._load_mode", return_value="normal"):
-            result = handle({"cwd": "/tmp", "userMessage": {"content": "why this?"}})
+    with (
+        patch("lintgate.hooks.user_prompt._build_primer", return_value=None),
+        patch("lintgate.hooks.user_prompt._load_mode", return_value="normal"),
+    ):
+        result = handle({"cwd": "/tmp", "userMessage": {"content": "why this?"}})
     # dict message is handled — "why" is a theory keyword
     assert result["continue"] is True

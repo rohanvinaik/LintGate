@@ -460,7 +460,6 @@ class TestSetupSessionAndGate:
         event = MagicMock()
         event.raw_input = {}
 
-
         not_ready = SessionReadiness(
             ready=False,
             missing=["core_theory", "enforceable_rules"],
@@ -511,7 +510,6 @@ class TestSetupSessionAndGate:
         fake_session.theory_profile_cache = None
         event = MagicMock()
         event.raw_input = {}
-
 
         ready = SessionReadiness(ready=True, missing=[], recommendation="")
         behavior_ch = MagicMock()
@@ -616,7 +614,6 @@ class TestSetupSessionAndGate:
         fake_session.theory_profile_cache = None
         event = MagicMock()
         event.raw_input = {}
-
 
         not_ready = SessionReadiness(ready=False, missing=["alignment"], recommendation="Fix it")
 

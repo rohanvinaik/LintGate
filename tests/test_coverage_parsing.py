@@ -46,16 +46,18 @@ def _write_coverage_json(data: dict) -> str:
 
 def test_parse_basic_coverage():
     """Parses executed and missing lines from coverage.py JSON."""
-    path = _write_coverage_json({
-        "files": {
-            "/proj/mod.py": {
-                "executed_lines": [1, 2, 3],
-                "missing_lines": [4, 5],
-                "excluded_lines": [],
-                "missing_branches": [],
+    path = _write_coverage_json(
+        {
+            "files": {
+                "/proj/mod.py": {
+                    "executed_lines": [1, 2, 3],
+                    "missing_lines": [4, 5],
+                    "excluded_lines": [],
+                    "missing_branches": [],
+                }
             }
         }
-    })
+    )
     result = parse_coverage_json(path)
     assert "/proj/mod.py" in result
     cov = result["/proj/mod.py"]
@@ -67,16 +69,18 @@ def test_parse_basic_coverage():
 
 def test_parse_filters_synthetic_branches():
     """Synthetic branch arcs (to_line < 0) are filtered out."""
-    path = _write_coverage_json({
-        "files": {
-            "a.py": {
-                "executed_lines": [1],
-                "missing_lines": [],
-                "excluded_lines": [],
-                "missing_branches": [[5, 10], [7, -1]],
+    path = _write_coverage_json(
+        {
+            "files": {
+                "a.py": {
+                    "executed_lines": [1],
+                    "missing_lines": [],
+                    "excluded_lines": [],
+                    "missing_branches": [[5, 10], [7, -1]],
+                }
             }
         }
-    })
+    )
     result = parse_coverage_json(path)
     assert result["a.py"].missing_branches == [(5, 10)]
 

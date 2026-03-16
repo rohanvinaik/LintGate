@@ -88,8 +88,7 @@ class VLLMAdapter:
         parsed = urlparse(self.endpoint)
         if parsed.scheme not in ("http", "https"):
             raise ValueError(
-                f"vLLM endpoint must use http:// or https:// scheme, "
-                f"got: {parsed.scheme!r}"
+                f"vLLM endpoint must use http:// or https:// scheme, got: {parsed.scheme!r}"
             )
 
     def get_capabilities(self) -> RuntimeCapabilities:

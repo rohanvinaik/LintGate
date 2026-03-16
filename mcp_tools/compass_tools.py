@@ -428,6 +428,7 @@ def _impl_theory_freeze(project_root: str) -> dict[str, Any]:
     prescriptive_result: dict[str, Any] = {}
     try:
         from lintgate.config import load_controlplane_config
+
         cp_config = load_controlplane_config(project_root)
         auto_compose = (
             cp_config is not None

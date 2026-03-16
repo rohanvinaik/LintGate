@@ -201,7 +201,6 @@ class TestRunControlplane:
         """risk_level='none' triggers _exit_clean (line 282)."""
         from unittest.mock import MagicMock, patch
 
-
         classification = ChangeClassification(
             change_kind="none",
             risk_level="none",
@@ -232,7 +231,6 @@ class TestRunControlplane:
         """Full orchestration path with all heavy deps mocked."""
         import io
         from unittest.mock import MagicMock, patch
-
 
         classification = ChangeClassification(
             change_kind="code",
@@ -297,7 +295,6 @@ class TestRunControlplane:
         """When setup_session_and_gate returns an advisory, it is prepended."""
         import io
         from unittest.mock import MagicMock, patch
-
 
         classification = ChangeClassification(
             change_kind="code",

@@ -166,9 +166,7 @@ def _is_simple_accessor(
     if not isinstance(stmt, ast.Return) or stmt.value is None:
         return False
     val = stmt.value
-    return _is_self_attr(val) or (
-        isinstance(val, ast.Attribute) and _is_self_attr(val.value)
-    )
+    return _is_self_attr(val) or (isinstance(val, ast.Attribute) and _is_self_attr(val.value))
 
 
 def _is_identity_return(

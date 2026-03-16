@@ -6,12 +6,15 @@ Three backends compile PrescriptiveSpec into test skeletons + generation constra
 - DistributedBackend: communicating state machines (protocol conformance)
 
 Plus PrescriptiveAdapter: bridges CompilationTargets into existing mutation/spec APIs.
+Plus SynthesisGateResult / WitnessRecord / executable-witness generation.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -33,6 +36,12 @@ class CompilationTargets:
     compass_gate_assertions: list[dict[str, Any]] = field(default_factory=list)
     generation_constraints: list[dict[str, Any]] = field(default_factory=list)
 
+    # Implementation stub artifacts (populated by PureBackend)
+    implementation_stub: str = ""
+    docstring_stub: str = ""
+    body_slot: str = ""
+    synthesis_profile: dict[str, Any] = field(default_factory=dict)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "property_tests": self.property_tests,
@@ -40,6 +49,10 @@ class CompilationTargets:
             "expected_kill_set": self.expected_kill_set,
             "compass_gate_assertions": self.compass_gate_assertions,
             "generation_constraints": self.generation_constraints,
+            "implementation_stub": self.implementation_stub,
+            "docstring_stub": self.docstring_stub,
+            "body_slot": self.body_slot,
+            "synthesis_profile": self.synthesis_profile,
         }
 
     @classmethod
@@ -50,6 +63,10 @@ class CompilationTargets:
             expected_kill_set=data.get("expected_kill_set", {}),
             compass_gate_assertions=data.get("compass_gate_assertions", []),
             generation_constraints=data.get("generation_constraints", []),
+            implementation_stub=data.get("implementation_stub", ""),
+            docstring_stub=data.get("docstring_stub", ""),
+            body_slot=data.get("body_slot", ""),
+            synthesis_profile=data.get("synthesis_profile", {}),
         )
 
 
@@ -65,48 +82,54 @@ class PureBackend:
         # Algebraic laws → Hypothesis property skeletons
         for law in spec.algebraic_laws:
             name = law.get("name", law.get("property_name", "unnamed"))
-            targets.property_tests.append({
-                "name": f"test_property_{name}",
-                "type": "hypothesis",
-                "law": law,
-                "skeleton": (
-                    f"@given(st.from_type({spec.return_type or 'Any'}))\n"
-                    f"def test_property_{name}(x):\n"
-                    f"    # Verify algebraic law: {name}\n"
-                    f"    assert ...  # TODO: fill in"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.property_tests.append(
+                {
+                    "name": f"test_property_{name}",
+                    "type": "hypothesis",
+                    "law": law,
+                    "skeleton": (
+                        f"@given(st.from_type({spec.return_type or 'Any'}))\n"
+                        f"def test_property_{name}(x):\n"
+                        f"    # Verify algebraic law: {name}\n"
+                        f"    assert ...  # TODO: fill in"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Invariants → exact-value test skeletons
         for inv in spec.invariants:
-            targets.scenario_tests.append({
-                "name": f"test_invariant_{inv.name}",
-                "type": "exact_value",
-                "invariant": inv.to_dict(),
-                "skeleton": (
-                    f"def test_invariant_{inv.name}():\n"
-                    f"    # Invariant: {inv.description}\n"
-                    f"    result = {_func_call(spec)}\n"
-                    f"    assert ...  # TODO: verify {inv.description}"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_invariant_{inv.name}",
+                    "type": "exact_value",
+                    "invariant": inv.to_dict(),
+                    "skeleton": (
+                        f"def test_invariant_{inv.name}():\n"
+                        f"    # Invariant: {inv.description}\n"
+                        f"    result = {_func_call(spec)}\n"
+                        f"    assert ...  # TODO: verify {inv.description}"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Forbidden behaviors → negative test skeletons
         for i, fb in enumerate(spec.forbidden_behaviors):
-            targets.scenario_tests.append({
-                "name": f"test_forbidden_{i}",
-                "type": "negative",
-                "forbidden": fb.to_dict(),
-                "skeleton": (
-                    f"def test_forbidden_{i}():\n"
-                    f"    # Must NOT: {fb.description}\n"
-                    f"    # Severity: {fb.severity}\n"
-                    f"    ...  # TODO: verify absence of forbidden behavior"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_forbidden_{i}",
+                    "type": "negative",
+                    "forbidden": fb.to_dict(),
+                    "skeleton": (
+                        f"def test_forbidden_{i}():\n"
+                        f"    # Must NOT: {fb.description}\n"
+                        f"    # Severity: {fb.severity}\n"
+                        f"    ...  # TODO: verify absence of forbidden behavior"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Refinement obligations → expected mutation kill set
         for ro in spec.refinement_obligations:
@@ -117,11 +140,19 @@ class PureBackend:
 
         # Compass gate assertions from invariants
         for inv in spec.invariants:
-            targets.compass_gate_assertions.append({
-                "invariant": inv.name,
-                "description": inv.description,
-                "kind": inv.kind,
-            })
+            targets.compass_gate_assertions.append(
+                {
+                    "invariant": inv.name,
+                    "description": inv.description,
+                    "kind": inv.kind,
+                }
+            )
+
+        # Implementation stub artifacts
+        targets.implementation_stub = _build_signature(spec)
+        targets.docstring_stub = _build_docstring(spec)
+        targets.body_slot = "    pass  # TODO: implement"
+        targets.synthesis_profile = _build_synthesis_profile(spec)
 
         return targets
 
@@ -137,54 +168,60 @@ class StatefulBackend:
 
         # One test per allowed transition verifying postconditions
         for trans in spec.allowed_transitions:
-            targets.scenario_tests.append({
-                "name": f"test_transition_{trans.name}",
-                "type": "state_transition",
-                "transition": trans.to_dict(),
-                "skeleton": (
-                    f"def test_transition_{trans.name}():\n"
-                    f"    # Transition: {trans.description}\n"
-                    f"    # Precondition: {trans.precondition.description}\n"
-                    f"    # Postcondition: {trans.postcondition.description}\n"
-                    f"    obj = create_instance()\n"
-                    f"    # Setup precondition state\n"
-                    f"    obj.{trans.name}()\n"
-                    f"    # Verify postcondition\n"
-                    f"    assert ...  # TODO"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_transition_{trans.name}",
+                    "type": "state_transition",
+                    "transition": trans.to_dict(),
+                    "skeleton": (
+                        f"def test_transition_{trans.name}():\n"
+                        f"    # Transition: {trans.description}\n"
+                        f"    # Precondition: {trans.precondition.description}\n"
+                        f"    # Postcondition: {trans.postcondition.description}\n"
+                        f"    obj = create_instance()\n"
+                        f"    # Setup precondition state\n"
+                        f"    obj.{trans.name}()\n"
+                        f"    # Verify postcondition\n"
+                        f"    assert ...  # TODO"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Invariant-checking wrapper skeletons
         for inv in spec.invariants:
-            targets.scenario_tests.append({
-                "name": f"test_invariant_{inv.name}",
-                "type": "state_invariant",
-                "invariant": inv.to_dict(),
-                "skeleton": (
-                    f"def test_invariant_{inv.name}():\n"
-                    f"    # Invariant must hold across all transitions: {inv.description}\n"
-                    f"    obj = create_instance()\n"
-                    f"    for transition in [{', '.join(repr(t.name) for t in spec.allowed_transitions)}]:\n"
-                    f"        getattr(obj, transition)()\n"
-                    f"        assert ...  # Verify: {inv.description}"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_invariant_{inv.name}",
+                    "type": "state_invariant",
+                    "invariant": inv.to_dict(),
+                    "skeleton": (
+                        f"def test_invariant_{inv.name}():\n"
+                        f"    # Invariant must hold across all transitions: {inv.description}\n"
+                        f"    obj = create_instance()\n"
+                        f"    for transition in [{', '.join(repr(t.name) for t in spec.allowed_transitions)}]:\n"
+                        f"        getattr(obj, transition)()\n"
+                        f"        assert ...  # Verify: {inv.description}"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # State variable initialization tests
         for sv in spec.state_variables:
-            targets.scenario_tests.append({
-                "name": f"test_init_{sv.name}",
-                "type": "state_init",
-                "state_variable": sv.to_dict(),
-                "skeleton": (
-                    f"def test_init_{sv.name}():\n"
-                    f"    obj = create_instance()\n"
-                    f"    assert obj.{sv.name} == {sv.initial_value}  # {sv.description}"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_init_{sv.name}",
+                    "type": "state_init",
+                    "state_variable": sv.to_dict(),
+                    "skeleton": (
+                        f"def test_init_{sv.name}():\n"
+                        f"    obj = create_instance()\n"
+                        f"    assert obj.{sv.name} == {sv.initial_value}  # {sv.description}"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Refinement obligations
         for ro in spec.refinement_obligations:
@@ -195,11 +232,13 @@ class StatefulBackend:
 
         # Compass gate assertions
         for inv in spec.invariants:
-            targets.compass_gate_assertions.append({
-                "invariant": inv.name,
-                "description": inv.description,
-                "kind": inv.kind,
-            })
+            targets.compass_gate_assertions.append(
+                {
+                    "invariant": inv.name,
+                    "description": inv.description,
+                    "kind": inv.kind,
+                }
+            )
 
         return targets
 
@@ -215,33 +254,37 @@ class DistributedBackend:
 
         # Message sequence tests from transitions
         for trans in spec.allowed_transitions:
-            targets.scenario_tests.append({
-                "name": f"test_protocol_{trans.name}",
-                "type": "protocol_conformance",
-                "transition": trans.to_dict(),
-                "skeleton": (
-                    f"def test_protocol_{trans.name}():\n"
-                    f"    # Protocol step: {trans.description}\n"
-                    f"    # Precondition: {trans.precondition.description}\n"
-                    f"    # Postcondition: {trans.postcondition.description}\n"
-                    f"    # Verify message sequence and state agreement"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_protocol_{trans.name}",
+                    "type": "protocol_conformance",
+                    "transition": trans.to_dict(),
+                    "skeleton": (
+                        f"def test_protocol_{trans.name}():\n"
+                        f"    # Protocol step: {trans.description}\n"
+                        f"    # Precondition: {trans.precondition.description}\n"
+                        f"    # Postcondition: {trans.postcondition.description}\n"
+                        f"    # Verify message sequence and state agreement"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Protocol monitor obligations from invariants
         for inv in spec.invariants:
-            targets.scenario_tests.append({
-                "name": f"test_monitor_{inv.name}",
-                "type": "protocol_monitor",
-                "invariant": inv.to_dict(),
-                "skeleton": (
-                    f"def test_monitor_{inv.name}():\n"
-                    f"    # Monitor: {inv.description}\n"
-                    f"    # Verify invariant holds across all protocol states"
-                ),
-                "target_function": spec.target_key,
-            })
+            targets.scenario_tests.append(
+                {
+                    "name": f"test_monitor_{inv.name}",
+                    "type": "protocol_monitor",
+                    "invariant": inv.to_dict(),
+                    "skeleton": (
+                        f"def test_monitor_{inv.name}():\n"
+                        f"    # Monitor: {inv.description}\n"
+                        f"    # Verify invariant holds across all protocol states"
+                    ),
+                    "target_function": spec.target_key,
+                }
+            )
 
         # Refinement obligations
         for ro in spec.refinement_obligations:
@@ -286,7 +329,7 @@ class PrescriptiveAdapter:
             '"""Auto-generated prescriptive spec tests.',
             f"Target: {spec.target_key}",
             f"Problem class: {spec.problem_class}",
-            f'Generated at: {time.strftime("%Y-%m-%d %H:%M:%S")}',
+            f"Generated at: {time.strftime('%Y-%m-%d %H:%M:%S')}",
             '"""',
             "",
             "import pytest",
@@ -442,8 +485,16 @@ class PrescriptiveAdapter:
             verdict["overall"] = "pass"
 
         verdict["summary"] = {
-            "structural": {"pass": structural_pass, "fail": structural_fail, "skip": structural_skip},
-            "behavioral": {"pass": behavioral_pass, "fail": behavioral_fail, "unknown": behavioral_unknown},
+            "structural": {
+                "pass": structural_pass,
+                "fail": structural_fail,
+                "skip": structural_skip,
+            },
+            "behavioral": {
+                "pass": behavioral_pass,
+                "fail": behavioral_fail,
+                "unknown": behavioral_unknown,
+            },
         }
 
         return verdict
@@ -475,7 +526,7 @@ class PrescriptiveAdapter:
                     data = json.load(f)
                 funcs = data.get("functions", {})
                 if target_key in funcs:
-                    return funcs[target_key].get("estimated_sigma", 0)
+                    return int(funcs[target_key].get("estimated_sigma", 0))
             except (OSError, ValueError, KeyError):
                 continue
         return None
@@ -494,7 +545,8 @@ class PrescriptiveAdapter:
                 with open(fpath, encoding="utf-8") as f:
                     data = json.load(f)
                 if data.get("function_key") == target_key:
-                    return data
+                    result: dict[str, Any] = data
+                    return result
             except (OSError, ValueError):
                 continue
         return None
@@ -503,7 +555,7 @@ class PrescriptiveAdapter:
         """Check if a mutation category was killed in the mutation state."""
         for cat_data in mutation_state.get("per_category", []):
             if cat_data.get("category") == category:
-                survived = cat_data.get("survived", 0)
+                survived = int(cat_data.get("survived", 0))
                 return survived == 0
         return None
 
@@ -516,3 +568,276 @@ def _func_call(spec: PrescriptiveSpec) -> str:
     func_name = spec.target_key.split("::")[-1] if "::" in spec.target_key else spec.target_key
     params = ", ".join(p.get("name", "arg") for p in spec.parameters)
     return f"{func_name}({params})"
+
+
+def _build_signature(spec: PrescriptiveSpec) -> str:
+    """Build typed function signature from spec parameters + return type."""
+    func_name = spec.target_key.split("::")[-1] if "::" in spec.target_key else spec.target_key
+    params = []
+    for p in spec.parameters:
+        name = p.get("name", "arg")
+        ptype = p.get("type", "")
+        if ptype:
+            params.append(f"{name}: {ptype}")
+        else:
+            params.append(name)
+    param_str = ", ".join(params)
+    ret = f" -> {spec.return_type}" if spec.return_type else ""
+    docstring = _build_docstring(spec)
+    body = "    pass  # TODO: implement"
+    return f"def {func_name}({param_str}){ret}:\n{docstring}\n{body}"
+
+
+def _build_docstring(spec: PrescriptiveSpec) -> str:
+    """Build docstring from invariant descriptions + return_description."""
+    lines = []
+    if spec.return_description:
+        lines.append(spec.return_description)
+    for inv in spec.invariants[:5]:
+        lines.append(f"Invariant: {inv.description}")
+    if not lines:
+        lines.append(f"Implementation for {spec.target_key}.")
+    content = "\n    ".join(lines)
+    return f'    """{content}"""'
+
+
+def _classify_return_type(return_type: str) -> str:
+    """Classify return type into scalar/simple_container/complex/unknown."""
+    if not return_type:
+        return "unknown"
+    rt = return_type.strip()
+    # Scalars
+    if rt in ("int", "float", "bool", "str", "bytes", "None"):
+        return "scalar"
+    # Simple containers: dict[K, V], list[T], set[T], tuple[T, ...]
+    lower = rt.lower()
+    for prefix in ("dict[", "list[", "set[", "tuple["):
+        if lower.startswith(prefix):
+            # Check nesting depth — only one level of generics is "simple"
+            inner = rt[len(prefix) : -1] if rt.endswith("]") else ""
+            # If inner itself contains brackets, it's complex
+            if "[" in inner:
+                return "complex"
+            return "simple_container"
+    # Optional[T] → classify T
+    if lower.startswith("optional[") and rt.endswith("]"):
+        inner = rt[9:-1]
+        return _classify_return_type(inner)
+    # Union, Callable, etc. → complex
+    if "[" in rt:
+        return "complex"
+    # Bare names (custom types) → unknown
+    return "unknown"
+
+
+def _build_synthesis_profile(spec: PrescriptiveSpec) -> dict[str, Any]:
+    """Build gate eligibility metadata for the synthesis gate."""
+    return_type_cat = _classify_return_type(spec.return_type)
+
+    # Check for CUSTOM-only invariants
+    has_only_custom = _has_only_custom_predicates(spec)
+
+    # Check for CALLS predicates or side effects
+    from .prescriptive_spec import PredicateOp
+
+    has_calls = any(
+        inv.predicate.op == PredicateOp.CALLS for inv in spec.invariants
+    )
+
+    gate_reasons: list[str] = []
+    gate_eligible = True
+
+    if spec.problem_class != "pure":
+        gate_eligible = False
+        gate_reasons.append(f"problem_class={spec.problem_class}, not pure")
+    if len(spec.parameters) > 3:
+        gate_eligible = False
+        gate_reasons.append(f"param_count={len(spec.parameters)} > 3")
+    if return_type_cat not in ("scalar", "simple_container"):
+        gate_eligible = False
+        gate_reasons.append(f"return_type_category={return_type_cat}")
+    if has_only_custom:
+        gate_eligible = False
+        gate_reasons.append("all invariants are CUSTOM with no structural predicates")
+    if spec.allowed_side_effects:
+        gate_eligible = False
+        gate_reasons.append("has allowed_side_effects")
+    if spec.state_variables:
+        gate_eligible = False
+        gate_reasons.append("has state_variables")
+    if has_calls:
+        gate_eligible = False
+        gate_reasons.append("has CALLS predicates")
+
+    return {
+        "problem_class": spec.problem_class,
+        "param_count": len(spec.parameters),
+        "return_type": spec.return_type,
+        "return_type_category": return_type_cat,
+        "has_custom_predicates": any(
+            inv.predicate.op == PredicateOp.CUSTOM for inv in spec.invariants
+        ),
+        "has_executable_witnesses": False,  # populated by generate_executable_witnesses
+        "gate_eligible": gate_eligible,
+        "gate_reasons": gate_reasons,
+    }
+
+
+def _has_only_custom_predicates(spec: PrescriptiveSpec) -> bool:
+    """Return True if ALL invariants are CUSTOM with no structural predicates."""
+    from .prescriptive_spec import PredicateOp
+
+    if not spec.invariants:
+        return False
+    return all(inv.predicate.op == PredicateOp.CUSTOM for inv in spec.invariants)
+
+
+# ── Synthesis Gate ───────────────────────────────────────────────────
+
+
+@dataclass
+class SynthesisGateResult:
+    """Result of synthesis gate eligibility check."""
+
+    eligible: bool
+    reasons: list[str]
+    profile: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "eligible": self.eligible,
+            "reasons": self.reasons,
+            "profile": self.profile,
+        }
+
+
+def check_synthesis_gate(spec: PrescriptiveSpec, targets: CompilationTargets) -> SynthesisGateResult:
+    """Strict, fast check before attempting zero-token synthesis.
+
+    ALL conditions must pass:
+    1. problem_class == "pure"
+    2. len(spec.parameters) <= 3
+    3. return_type_category in ("scalar", "simple_container")
+    4. At least one non-CUSTOM typed predicate exists
+    5. Executable witnesses exist (has_oracle_value: True)
+    6. No allowed_side_effects, no state_variables, no CALLS predicates
+    """
+    profile = targets.synthesis_profile
+    if not profile:
+        profile = _build_synthesis_profile(spec)
+
+    reasons: list[str] = list(profile.get("gate_reasons", []))
+
+    # Condition 5: executable witnesses
+    has_witnesses = profile.get("has_executable_witnesses", False)
+    if not has_witnesses:
+        reasons.append("no executable witnesses with oracle values")
+
+    eligible = profile.get("gate_eligible", False) and has_witnesses
+
+    return SynthesisGateResult(
+        eligible=eligible,
+        reasons=reasons if not eligible else [],
+        profile=profile,
+    )
+
+
+# ── Witness Records ──────────────────────────────────────────────────
+
+
+@dataclass
+class WitnessRecord:
+    """Input→output pair with oracle values for synthesis validation."""
+
+    inputs: dict[str, str]  # param_name → Python expression string
+    output: str | None  # Python expression of actual output, or None if no oracle
+    has_oracle_value: bool  # True only if output was captured from real execution
+    imports: list[str] = field(default_factory=list)  # required import lines
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "inputs": self.inputs,
+            "output": self.output,
+            "has_oracle_value": self.has_oracle_value,
+            "imports": self.imports,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WitnessRecord:
+        return cls(
+            inputs=data.get("inputs", {}),
+            output=data.get("output"),
+            has_oracle_value=data.get("has_oracle_value", False),
+            imports=data.get("imports", []),
+        )
+
+
+def generate_executable_witnesses(
+    spec: PrescriptiveSpec,
+    project_root: str,
+) -> list[WitnessRecord]:
+    """Generate input→output witness pairs for synthesis validation.
+
+    Uses typed_synthesis for input generation, then attempts oracle execution
+    if the function already exists on disk (retrospective mode).
+    """
+    from lintgate.testing.typed_synthesis import synthesize_value
+
+    witnesses: list[WitnessRecord] = []
+
+    # Generate concrete inputs for each parameter
+    inputs: dict[str, str] = {}
+    all_imports: list[str] = []
+    for p in spec.parameters:
+        ptype = p.get("type", "")
+        pname = p.get("name", "arg")
+        sv = synthesize_value(ptype, pname)
+        inputs[pname] = sv.code
+        all_imports.extend(sv.imports)
+
+    # Deduplicate imports
+    all_imports = list(dict.fromkeys(all_imports))
+
+    # Try oracle execution if function exists on disk
+    output: str | None = None
+    has_oracle = False
+
+    if spec.mode == "retrospective" and "::" in spec.target_key:
+        module_path, func_name = spec.target_key.rsplit("::", 1)
+        module_dotted = module_path.replace("/", ".")
+        file_path = os.path.join(project_root, module_path.replace(".", "/") + ".py")
+
+        if os.path.isfile(file_path):
+            # Build call expression
+            args_str = ", ".join(f"{k}={v}" for k, v in inputs.items())
+            import_lines = "\n".join(all_imports) if all_imports else ""
+            script = (
+                f"import sys; sys.path.insert(0, {project_root!r})\n"
+                f"{import_lines}\n"
+                f"from {module_dotted} import {func_name}\n"
+                f"result = {func_name}({args_str})\n"
+                f"print(repr(result))"
+            )
+            try:
+                proc = subprocess.run(
+                    [sys.executable, "-c", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    cwd=project_root,
+                )
+                if proc.returncode == 0 and proc.stdout.strip():
+                    output = proc.stdout.strip()
+                    has_oracle = True
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+
+    witnesses.append(
+        WitnessRecord(
+            inputs=inputs,
+            output=output,
+            has_oracle_value=has_oracle,
+            imports=all_imports,
+        )
+    )
+    return witnesses

@@ -12,11 +12,19 @@ from lintgate.specification.prescriptive_backends import (
     PrescriptiveAdapter,
     PureBackend,
     StatefulBackend,
+    SynthesisGateResult,
+    WitnessRecord,
+    _build_synthesis_profile,
+    _classify_return_type,
+    _has_only_custom_predicates,
+    check_synthesis_gate,
     select_backend,
 )
 from lintgate.specification.prescriptive_spec import (
     ForbiddenBehavior,
     Invariant,
+    Predicate,
+    PredicateOp,
     PrescriptiveSpec,
     RefinementObligation,
     StateTransition,
@@ -24,6 +32,7 @@ from lintgate.specification.prescriptive_spec import (
     pred_custom,
     pred_eq,
     pred_gt,
+    pred_pure,
     pred_true,
 )
 
@@ -39,7 +48,9 @@ def _make_pure_spec(**overrides) -> PrescriptiveSpec:
         "parameters": [{"name": "x", "type": "int", "description": "input"}],
         "return_type": "int",
         "invariants": [
-            Invariant("bounded", pred_gt("result", 0, "positive"), "positive result", "src", 0.8, "safety"),
+            Invariant(
+                "bounded", pred_gt("result", 0, "positive"), "positive result", "src", 0.8, "safety"
+            ),
         ],
         "forbidden_behaviors": [
             ForbiddenBehavior(pred_custom("no mutation"), "no mutation", "src", "hard"),
@@ -68,11 +79,26 @@ def _make_stateful_spec() -> PrescriptiveSpec:
             StateVariable("size", "int", "0", "current size"),
         ],
         allowed_transitions=[
-            StateTransition("put", pred_true("always"), pred_gt("size", 0, "non-empty"), "insert", "src"),
-            StateTransition("get", pred_gt("size", 0, "has items"), pred_eq("result", "value", "found"), "lookup", "src"),
+            StateTransition(
+                "put", pred_true("always"), pred_gt("size", 0, "non-empty"), "insert", "src"
+            ),
+            StateTransition(
+                "get",
+                pred_gt("size", 0, "has items"),
+                pred_eq("result", "value", "found"),
+                "lookup",
+                "src",
+            ),
         ],
         invariants=[
-            Invariant("non_negative_size", pred_gt("size", -1, "size >= 0"), "size never negative", "src", 0.9, "safety"),
+            Invariant(
+                "non_negative_size",
+                pred_gt("size", -1, "size >= 0"),
+                "size never negative",
+                "src",
+                0.9,
+                "safety",
+            ),
         ],
         generation_constraints=[],
         prescriptive_sigma=8,
@@ -87,10 +113,18 @@ def _make_distributed_spec() -> PrescriptiveSpec:
         problem_class="distributed",
         mode="prospective",
         allowed_transitions=[
-            StateTransition("handshake", pred_true(), pred_eq("state", "connected", "connected"), "connect", "src"),
+            StateTransition(
+                "handshake",
+                pred_true(),
+                pred_eq("state", "connected", "connected"),
+                "connect",
+                "src",
+            ),
         ],
         invariants=[
-            Invariant("ordering", pred_custom("messages delivered in order"), "FIFO", "src", 0.8, "safety"),
+            Invariant(
+                "ordering", pred_custom("messages delivered in order"), "FIFO", "src", 0.8, "safety"
+            ),
         ],
         generation_constraints=[],
         prescriptive_sigma=6,
@@ -313,13 +347,16 @@ class TestPrescriptiveAdapter:
             mut_dir = os.path.join(tmp, ".lintgate", "mutation")
             os.makedirs(mut_dir)
             with open(os.path.join(mut_dir, "abc.json"), "w") as f:
-                json.dump({
-                    "function_key": "mod::compute",
-                    "per_category": [
-                        {"category": "VALUE", "survived": 0, "killed": 5},
-                        {"category": "BOUNDARY", "survived": 2, "killed": 3},
-                    ],
-                }, f)
+                json.dump(
+                    {
+                        "function_key": "mod::compute",
+                        "per_category": [
+                            {"category": "VALUE", "survived": 0, "killed": 5},
+                            {"category": "BOUNDARY", "survived": 2, "killed": 3},
+                        ],
+                    },
+                    f,
+                )
 
             adapter = PrescriptiveAdapter()
             verdict = adapter.verify_refinement(spec, targets, tmp, "mod.py")
@@ -333,3 +370,264 @@ class TestPrescriptiveAdapter:
             # Evidence-class split: summary has both structural and behavioral
             assert "structural" in verdict["summary"]
             assert "behavioral" in verdict["summary"]
+
+
+# ── Return Type Classification ───────────────────────────────────────
+
+
+class TestClassifyReturnType:
+    def test_scalars(self):
+        for rt in ("int", "float", "bool", "str", "bytes", "None"):
+            assert _classify_return_type(rt) == "scalar", f"Expected scalar for {rt}"
+
+    def test_simple_containers(self):
+        for rt in ("dict[str, int]", "list[str]", "set[int]", "tuple[str, int]"):
+            assert _classify_return_type(rt) == "simple_container", (
+                f"Expected simple_container for {rt}"
+            )
+
+    def test_complex_nested(self):
+        for rt in ("dict[str, list[int]]", "list[dict[str, int]]"):
+            assert _classify_return_type(rt) == "complex", f"Expected complex for {rt}"
+
+    def test_optional_unwrap(self):
+        assert _classify_return_type("Optional[int]") == "scalar"
+        assert _classify_return_type("Optional[dict[str, int]]") == "simple_container"
+
+    def test_unknown(self):
+        assert _classify_return_type("MyClass") == "unknown"
+        assert _classify_return_type("") == "unknown"
+
+    def test_union_complex(self):
+        assert _classify_return_type("Union[int, str]") == "complex"
+
+
+# ── Synthesis Profile ────────────────────────────────────────────────
+
+
+class TestBuildSynthesisProfile:
+    def test_pure_simple_eligible(self):
+        """Pure function with <=3 params and simple return is gate-eligible."""
+        spec = _make_pure_spec(
+            parameters=[{"name": "x", "type": "int"}],
+            return_type="int",
+            invariants=[
+                Invariant("pure", pred_pure(), "must be pure", "src", 0.9, "safety"),
+            ],
+        )
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is True
+        assert profile["return_type_category"] == "scalar"
+        assert profile["problem_class"] == "pure"
+        assert profile["gate_reasons"] == []
+
+    def test_stateful_not_eligible(self):
+        spec = _make_stateful_spec()
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is False
+        assert any("not pure" in r for r in profile["gate_reasons"])
+
+    def test_too_many_params(self):
+        spec = _make_pure_spec(
+            parameters=[
+                {"name": "a", "type": "int"},
+                {"name": "b", "type": "int"},
+                {"name": "c", "type": "int"},
+                {"name": "d", "type": "int"},
+            ],
+        )
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is False
+        assert any("param_count" in r for r in profile["gate_reasons"])
+
+    def test_complex_return_not_eligible(self):
+        spec = _make_pure_spec(return_type="dict[str, list[int]]")
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is False
+        assert profile["return_type_category"] == "complex"
+
+    def test_custom_only_invariants_not_eligible(self):
+        """All CUSTOM predicates with no structural predicates → ineligible."""
+        spec = _make_pure_spec(
+            parameters=[{"name": "x", "type": "int"}],
+            return_type="int",
+            invariants=[
+                Invariant("c1", pred_custom("do something"), "semantic", "src", 0.8, "safety"),
+            ],
+            forbidden_behaviors=[],
+            algebraic_laws=[],
+            refinement_obligations=[],
+        )
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is False
+        assert any("CUSTOM" in r for r in profile["gate_reasons"])
+
+    def test_side_effects_not_eligible(self):
+        spec = _make_pure_spec(
+            parameters=[{"name": "x", "type": "int"}],
+            return_type="int",
+            allowed_side_effects=["writes to disk"],
+        )
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is False
+
+    def test_calls_predicate_not_eligible(self):
+        spec = _make_pure_spec(
+            parameters=[{"name": "x", "type": "int"}],
+            return_type="int",
+            invariants=[
+                Invariant(
+                    "calls_foo",
+                    Predicate(op=PredicateOp.CALLS, value="foo"),
+                    "must call foo",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
+            ],
+        )
+        profile = _build_synthesis_profile(spec)
+        assert profile["gate_eligible"] is False
+        assert any("CALLS" in r for r in profile["gate_reasons"])
+
+
+# ── Has Only Custom Predicates ───────────────────────────────────────
+
+
+class TestHasOnlyCustomPredicates:
+    def test_all_custom(self):
+        spec = _make_pure_spec(
+            invariants=[
+                Invariant("a", pred_custom("foo"), "foo", "src", 0.8, "safety"),
+                Invariant("b", pred_custom("bar"), "bar", "src", 0.8, "safety"),
+            ],
+        )
+        assert _has_only_custom_predicates(spec) is True
+
+    def test_mixed(self):
+        spec = _make_pure_spec(
+            invariants=[
+                Invariant("a", pred_custom("foo"), "foo", "src", 0.8, "safety"),
+                Invariant("b", pred_pure(), "pure", "src", 0.9, "safety"),
+            ],
+        )
+        assert _has_only_custom_predicates(spec) is False
+
+    def test_empty(self):
+        spec = _make_pure_spec(invariants=[])
+        assert _has_only_custom_predicates(spec) is False
+
+
+# ── Synthesis Gate ───────────────────────────────────────────────────
+
+
+class TestSynthesisGate:
+    def test_eligible_with_witnesses(self):
+        """Gate passes when all conditions met including witnesses."""
+        spec = _make_pure_spec(
+            parameters=[{"name": "x", "type": "int"}],
+            return_type="int",
+            invariants=[
+                Invariant("pure", pred_pure(), "must be pure", "src", 0.9, "safety"),
+            ],
+        )
+        targets = PureBackend().compile(spec)
+        # Simulate witnesses existing
+        targets.synthesis_profile["has_executable_witnesses"] = True
+        result = check_synthesis_gate(spec, targets)
+        assert result.eligible is True
+        assert result.reasons == []
+
+    def test_ineligible_no_witnesses(self):
+        """Gate fails without executable witnesses."""
+        spec = _make_pure_spec(
+            parameters=[{"name": "x", "type": "int"}],
+            return_type="int",
+            invariants=[
+                Invariant("pure", pred_pure(), "must be pure", "src", 0.9, "safety"),
+            ],
+        )
+        targets = PureBackend().compile(spec)
+        result = check_synthesis_gate(spec, targets)
+        assert result.eligible is False
+        assert any("witness" in r for r in result.reasons)
+
+    def test_ineligible_stateful(self):
+        spec = _make_stateful_spec()
+        targets = StatefulBackend().compile(spec)
+        result = check_synthesis_gate(spec, targets)
+        assert result.eligible is False
+
+    def test_to_dict(self):
+        result = SynthesisGateResult(eligible=True, reasons=[], profile={"gate_eligible": True})
+        d = result.to_dict()
+        assert d["eligible"] is True
+        assert d["profile"]["gate_eligible"] is True
+
+
+# ── Witness Record ───────────────────────────────────────────────────
+
+
+class TestWitnessRecord:
+    def test_round_trip(self):
+        w = WitnessRecord(
+            inputs={"x": "42", "y": '"hello"'},
+            output="84",
+            has_oracle_value=True,
+            imports=["import os"],
+        )
+        d = w.to_dict()
+        w2 = WitnessRecord.from_dict(d)
+        assert w2.inputs == w.inputs
+        assert w2.output == w.output
+        assert w2.has_oracle_value is True
+        assert w2.imports == ["import os"]
+
+    def test_from_dict_defaults(self):
+        w = WitnessRecord.from_dict({})
+        assert w.inputs == {}
+        assert w.output is None
+        assert w.has_oracle_value is False
+        assert w.imports == []
+
+
+# ── PureBackend Stub Generation ──────────────────────────────────────
+
+
+class TestPureBackendStubs:
+    def test_implementation_stub_populated(self):
+        """PureBackend.compile() populates implementation_stub."""
+        spec = _make_pure_spec()
+        targets = PureBackend().compile(spec)
+        assert targets.implementation_stub != ""
+        assert "def compute(" in targets.implementation_stub
+        assert "pass  # TODO" in targets.implementation_stub
+
+    def test_docstring_stub_from_invariants(self):
+        spec = _make_pure_spec()
+        targets = PureBackend().compile(spec)
+        assert targets.docstring_stub != ""
+        assert '"""' in targets.docstring_stub
+
+    def test_synthesis_profile_populated(self):
+        spec = _make_pure_spec()
+        targets = PureBackend().compile(spec)
+        assert targets.synthesis_profile != {}
+        assert "problem_class" in targets.synthesis_profile
+        assert "return_type_category" in targets.synthesis_profile
+
+    def test_return_type_in_signature(self):
+        spec = _make_pure_spec(return_type="dict[str, int]")
+        targets = PureBackend().compile(spec)
+        assert "-> dict[str, int]" in targets.implementation_stub
+
+    def test_compilation_targets_round_trip_with_stubs(self):
+        """New fields survive to_dict/from_dict round-trip."""
+        spec = _make_pure_spec()
+        targets = PureBackend().compile(spec)
+        d = targets.to_dict()
+        restored = CompilationTargets.from_dict(d)
+        assert restored.implementation_stub == targets.implementation_stub
+        assert restored.docstring_stub == targets.docstring_stub
+        assert restored.body_slot == targets.body_slot
+        assert restored.synthesis_profile == targets.synthesis_profile

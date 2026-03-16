@@ -76,6 +76,7 @@ class TestClassifyTestFailure:
         )
         assert result == "test_drift"
 
+
 # ── _classify_failure ────────────────────────────────────────────
 
 

@@ -249,13 +249,9 @@ class TestRefactorMove:
         pkg.mkdir()
         (pkg / "__init__.py").write_text("")
         (pkg / "old_module.py").write_text(
-            "def hello():\n    return 'world'\n\n"
-            "class MyClass:\n    pass\n"
+            "def hello():\n    return 'world'\n\nclass MyClass:\n    pass\n"
         )
-        (tmp_path / "app.py").write_text(
-            "from mypkg.old_module import hello\n\n"
-            "print(hello())\n"
-        )
+        (tmp_path / "app.py").write_text("from mypkg.old_module import hello\n\nprint(hello())\n")
         return str(tmp_path)
 
     def test_dry_run_finds_references(self, tmp_path):

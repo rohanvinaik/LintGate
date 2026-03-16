@@ -99,9 +99,7 @@ class TestCatchesImportError:
         assert _catches_import_error(try_node) is True
 
     def test_tuple_handler_with_import_error(self) -> None:
-        tree = ast.parse(
-            "try:\n    pass\nexcept (ImportError, ValueError):\n    pass\n"
-        )
+        tree = ast.parse("try:\n    pass\nexcept (ImportError, ValueError):\n    pass\n")
         try_node = cast("ast.Try", tree.body[0])
         assert _catches_import_error(try_node) is True
 

@@ -334,16 +334,12 @@ class TestScoreNumericSignature:
         assert score == 2.0 / 3.0
 
     def test_self_excluded(self):
-        func = _parse_func(
-            "def f(self, a: float, b: float) -> float: return a + b"
-        )
+        func = _parse_func("def f(self, a: float, b: float) -> float: return a + b")
         # self is filtered out, so 3 numeric out of 3 = 1.0
         assert _score_numeric_signature(func) == 1.0
 
     def test_cls_excluded(self):
-        func = _parse_func(
-            "def f(cls, a: int) -> int: return a"
-        )
+        func = _parse_func("def f(cls, a: int) -> int: return a")
         assert _score_numeric_signature(func) == 1.0
 
     def test_only_return_annotation(self):
@@ -373,15 +369,11 @@ class TestCountLoops:
         assert _count_loops(body) == 1
 
     def test_nested_loops(self):
-        body = _parse_body(
-            "def f():\n for i in range(10):\n  for j in range(10): pass"
-        )
+        body = _parse_body("def f():\n for i in range(10):\n  for j in range(10): pass")
         assert _count_loops(body) == 2
 
     def test_mixed_for_while(self):
-        body = _parse_body(
-            "def f():\n for i in range(10): pass\n while True: break"
-        )
+        body = _parse_body("def f():\n for i in range(10): pass\n while True: break")
         assert _count_loops(body) == 2
 
 
@@ -405,9 +397,7 @@ class TestCountStatements:
         assert _count_statements(body) == 3
 
     def test_nested_if_adds_statements(self):
-        body = _parse_body(
-            "def f():\n if True:\n  x = 1\n else:\n  x = 2\n return x"
-        )
+        body = _parse_body("def f():\n if True:\n  x = 1\n else:\n  x = 2\n return x")
         # if + x=1 + x=2 + return = 4
         assert _count_statements(body) == 4
 
@@ -431,9 +421,7 @@ class TestScoreLoopDensity:
 
     def test_capped_at_1(self):
         # Many loops relative to statements should cap at 1.0
-        func = _parse_func(
-            "def f():\n for i in range(10):\n  for j in range(10): pass"
-        )
+        func = _parse_func("def f():\n for i in range(10):\n  for j in range(10): pass")
         score = _score_loop_density(func)
         assert score <= 1.0
 
@@ -600,8 +588,7 @@ class TestScoreLowAllocation:
 
     def test_five_allocations_returns_0(self):
         func = _parse_func(
-            "def f():\n a=dict()\n b=list()\n c=set()\n"
-            " d=frozenset()\n e=bytearray()\n return a"
+            "def f():\n a=dict()\n b=list()\n c=set()\n d=frozenset()\n e=bytearray()\n return a"
         )
         assert _score_low_allocation(func) == 0.0  # 1.0 - 5 * 0.2
 

@@ -23,7 +23,9 @@ from lintgate.types import (
 
 
 def test_lint_issue_compute_issue_id():
-    issue = LintIssue(linter="ruff", kind="F821", message="undefined name 'x'", file="/a.py", line=10)
+    issue = LintIssue(
+        linter="ruff", kind="F821", message="undefined name 'x'", file="/a.py", line=10
+    )
     issue_id = issue.compute_issue_id()
     raw = "ruff|F821|/a.py|10|undefined name 'x'"
     expected = hashlib.sha256(raw.encode()).hexdigest()[:12]

@@ -109,7 +109,9 @@ class TestRebuildPlanBranches:
         """Verify output dict contains manifest_path, errors, and next_actions."""
         test_file = str(tmp_path / "mod.py")
         mock_validate.return_value = test_file
-        mock_analyze.return_value = MagicMock(functions={"mod::func1": MagicMock(to_dict=lambda: {"sigma": 5})})
+        mock_analyze.return_value = MagicMock(
+            functions={"mod::func1": MagicMock(to_dict=lambda: {"sigma": 5})}
+        )
         mock_classify.return_value = MagicMock()
         mock_build.return_value = MagicMock(summary=lambda: {"total": 1, "auto_generate": 1})
         mock_write.return_value = "/tmp/manifest.json"

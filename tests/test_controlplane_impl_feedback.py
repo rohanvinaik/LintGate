@@ -407,8 +407,7 @@ class TestProcessTestFailureClassifications:
         actions: list[str] = []
         valid_types = ["stale_test", "known_regression", "flaky", "out_of_scope"]
         entries = [
-            {"fingerprint": f"fp-{t}", "classification": t, "rationale": ""}
-            for t in valid_types
+            {"fingerprint": f"fp-{t}", "classification": t, "rationale": ""} for t in valid_types
         ]
         _process_test_failure_classifications(entries, session, actions)
         assert mock_record.call_count == 4
@@ -545,9 +544,7 @@ class TestCollectPendingRepairs:
         return_value=[{"action_id": "a1"}, {"action_id": "a2"}],
     )
     def test_action_ids_filter(self, mock_load):
-        session = _FakeSession(
-            snapshots=[_FakeSnapshot(repairs_proposed=["a1", "a2"])]
-        )
+        session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1", "a2"])])
         pending, skipped = _collect_pending_repairs(session, ["a1"], False)
         assert len(pending) == 1
         assert pending[0]["action_id"] == "a1"
@@ -558,9 +555,7 @@ class TestCollectPendingRepairs:
         return_value=[{"action_id": "a1", "safe": False, "kind": "dangerous"}],
     )
     def test_safe_only_filter(self, mock_load):
-        session = _FakeSession(
-            snapshots=[_FakeSnapshot(repairs_proposed=["a1"])]
-        )
+        session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1"])])
         pending, skipped = _collect_pending_repairs(session, None, True)
         assert pending == []
         assert skipped[0]["reason"] == "safe_only_filter"
@@ -571,9 +566,7 @@ class TestCollectPendingRepairs:
         return_value=[{"action_id": "a1", "safe": True}],
     )
     def test_collects_pending_repair(self, mock_load):
-        session = _FakeSession(
-            snapshots=[_FakeSnapshot(repairs_proposed=["a1"])]
-        )
+        session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1"])])
         pending, skipped = _collect_pending_repairs(session, None, False)
         assert len(pending) == 1
         assert pending[0]["action_id"] == "a1"
@@ -774,9 +767,7 @@ class TestImplControlplaneAgentFeedback:
             accepted_constraints=None,
             rejected_constraints=None,
             helpers=helpers,
-            tuned_findings=[
-                {"signature": "SIG1", "action": "suppress", "rationale": "noisy"}
-            ],
+            tuned_findings=[{"signature": "SIG1", "action": "suppress", "rationale": "noisy"}],
         )
         result = json.loads(result_str)
         assert result["tuned"] == ["SIG1"]
@@ -796,9 +787,7 @@ class TestImplControlplaneAgentFeedback:
             accepted_constraints=None,
             rejected_constraints=None,
             helpers=helpers,
-            test_failure_classifications=[
-                {"fingerprint": "fp1", "classification": "flaky"}
-            ],
+            test_failure_classifications=[{"fingerprint": "fp1", "classification": "flaky"}],
         )
         mock_classify.assert_called_once()
 
@@ -813,9 +802,7 @@ class TestImplControlplaneApplyRepairs:
     @patch("mcp_tools._controlplane_impl_feedback._execute_single_repair")
     @patch("mcp_tools._controlplane_impl_feedback._collect_pending_repairs")
     @patch("lintgate.controlplane.session_memory.get_or_create_session")
-    def test_no_pending_repairs(
-        self, mock_get_session, mock_collect, mock_exec, mock_save
-    ):
+    def test_no_pending_repairs(self, mock_get_session, mock_collect, mock_exec, mock_save):
         session = _FakeSession()
         mock_get_session.return_value = session
         mock_collect.return_value = (
@@ -837,9 +824,7 @@ class TestImplControlplaneApplyRepairs:
     @patch("mcp_tools._controlplane_impl_feedback._execute_single_repair")
     @patch("mcp_tools._controlplane_impl_feedback._collect_pending_repairs")
     @patch("lintgate.controlplane.session_memory.get_or_create_session")
-    def test_successful_repair(
-        self, mock_get_session, mock_collect, mock_exec, mock_save
-    ):
+    def test_successful_repair(self, mock_get_session, mock_collect, mock_exec, mock_save):
         session = _FakeSession()
         mock_get_session.return_value = session
         mock_collect.return_value = ([{"action_id": "a1"}], [])
@@ -858,9 +843,7 @@ class TestImplControlplaneApplyRepairs:
     @patch("mcp_tools._controlplane_impl_feedback._execute_single_repair")
     @patch("mcp_tools._controlplane_impl_feedback._collect_pending_repairs")
     @patch("lintgate.controlplane.session_memory.get_or_create_session")
-    def test_mixed_results(
-        self, mock_get_session, mock_collect, mock_exec, mock_save
-    ):
+    def test_mixed_results(self, mock_get_session, mock_collect, mock_exec, mock_save):
         session = _FakeSession()
         mock_get_session.return_value = session
         mock_collect.return_value = (
@@ -888,12 +871,8 @@ class TestImplControlplaneApplyRepairs:
     @patch("mcp_tools._controlplane_impl_feedback._execute_single_repair")
     @patch("mcp_tools._controlplane_impl_feedback._collect_pending_repairs")
     @patch("lintgate.controlplane.session_memory.get_or_create_session")
-    def test_pending_remaining_count(
-        self, mock_get_session, mock_collect, mock_exec, mock_save
-    ):
-        session = _FakeSession(
-            repair_outcomes={"a1": "pending", "a2": "applied", "a3": "pending"}
-        )
+    def test_pending_remaining_count(self, mock_get_session, mock_collect, mock_exec, mock_save):
+        session = _FakeSession(repair_outcomes={"a1": "pending", "a2": "applied", "a3": "pending"})
         mock_get_session.return_value = session
         mock_collect.return_value = ([], [])
         helpers = {"_validate_project_root": lambda p: "/proj"}

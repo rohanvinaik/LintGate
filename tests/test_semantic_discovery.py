@@ -221,16 +221,12 @@ class TestDiscoverSemanticTestFiles:
 
         # Test file that partially matches: uses json but different focus
         (test_dir / "test_utils.py").write_text(
-            "import json\nimport os\n\n"
-            "def test_something():\n"
-            "    pass\n"
+            "import json\nimport os\n\ndef test_something():\n    pass\n"
         )
 
         # Test file that doesn't match: completely different domain
         (test_dir / "test_unrelated.py").write_text(
-            "import numpy\nimport pandas\n\n"
-            "def test_stats():\n"
-            "    pass\n"
+            "import numpy\nimport pandas\n\ndef test_stats():\n    pass\n"
         )
 
         return str(tmp_path)

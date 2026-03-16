@@ -421,9 +421,12 @@ class TestGraphProjection:
         )
 
         with tempfile.TemporaryDirectory() as tmp:
-            save_projection(tmp, {
-                "mod::f": FunctionProjection(function_key="mod::f", fan_in=2, fan_out=1),
-            })
+            save_projection(
+                tmp,
+                {
+                    "mod::f": FunctionProjection(function_key="mod::f", fan_in=2, fan_out=1),
+                },
+            )
             proj = load_single_projection(tmp, "mod::f")
             assert proj is not None
             assert proj.fan_in == 2

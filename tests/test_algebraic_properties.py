@@ -446,9 +446,7 @@ class TestRangesOverlapSymmetric:
         b_len=st.integers(min_value=1, max_value=100),
     )
     @settings(max_examples=50)
-    def test_overlap_is_symmetric(
-        self, a_start: int, a_len: int, b_start: int, b_len: int
-    ) -> None:
+    def test_overlap_is_symmetric(self, a_start: int, a_len: int, b_start: int, b_len: int) -> None:
         from lintgate.channels._target_building import _ranges_overlap
 
         a = range(a_start, a_start + a_len)

@@ -213,9 +213,7 @@ class TestResetProjectState:
     def test_clears_habit_state_for_project(self, tmp_path):
         import hashlib
 
-        project_hash = hashlib.sha256(
-            os.path.abspath(str(tmp_path)).encode()
-        ).hexdigest()[:12]
+        project_hash = hashlib.sha256(os.path.abspath(str(tmp_path)).encode()).hexdigest()[:12]
 
         mock_ot = MagicMock()
         mock_ot.Path = Path

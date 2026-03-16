@@ -36,9 +36,7 @@ def test_format_directives_no_match() -> None:
 
 
 def test_axis_summary_returns_summary() -> None:
-    compass = CompassState(
-        axes={"problem": CompassAxis(name="problem", summary="Quality checks.")}
-    )
+    compass = CompassState(axes={"problem": CompassAxis(name="problem", summary="Quality checks.")})
     assert axis_summary(compass, "problem") == "Quality checks."
 
 
@@ -48,9 +46,7 @@ def test_axis_summary_missing_axis_returns_empty() -> None:
 
 
 def test_axis_summary_empty_summary_returns_empty() -> None:
-    compass = CompassState(
-        axes={"problem": CompassAxis(name="problem", summary="")}
-    )
+    compass = CompassState(axes={"problem": CompassAxis(name="problem", summary="")})
     assert axis_summary(compass, "problem") == ""
 
 

@@ -233,12 +233,14 @@ class TestCheckScope:
 class TestCheckFile:
     def test_file_with_redefinition(self, tmp_path):
         src = tmp_path / "dup.py"
-        src.write_text(textwrap.dedent("""\
+        src.write_text(
+            textwrap.dedent("""\
             def foo():
                 pass
             def foo():
                 pass
-        """))
+        """)
+        )
         issues = list(_check_file(str(src)))
         assert len(issues) == 1
         assert issues[0].file == str(src)
@@ -246,13 +248,15 @@ class TestCheckFile:
 
     def test_class_method_redefinition(self, tmp_path):
         src = tmp_path / "cls.py"
-        src.write_text(textwrap.dedent("""\
+        src.write_text(
+            textwrap.dedent("""\
             class MyClass:
                 def method(self):
                     pass
                 def method(self):
                     pass
-        """))
+        """)
+        )
         issues = list(_check_file(str(src)))
         assert len(issues) == 1
         assert issues[0].evidence["scope"] == "class MyClass"
@@ -269,10 +273,12 @@ class TestCheckFile:
 
     def test_clean_file_no_issues(self, tmp_path):
         src = tmp_path / "clean.py"
-        src.write_text(textwrap.dedent("""\
+        src.write_text(
+            textwrap.dedent("""\
             def alpha(): pass
             def beta(): pass
             class Gamma: pass
-        """))
+        """)
+        )
         issues = list(_check_file(str(src)))
         assert issues == []

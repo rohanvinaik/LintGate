@@ -46,9 +46,7 @@ class TestGithubRemoteRe:
 class TestRunGh:
     def test_success_with_json_output(self):
         data = {"login": "testuser"}
-        proc = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout=json.dumps(data)
-        )
+        proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(data))
         with patch("subprocess.run", return_value=proc):
             result = _run_gh(["auth", "status"])
             assert result == {"login": "testuser"}
@@ -60,9 +58,7 @@ class TestRunGh:
             assert result == {}
 
     def test_success_with_non_json_output(self):
-        proc = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="plain text result\n"
-        )
+        proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="plain text result\n")
         with patch("subprocess.run", return_value=proc):
             result = _run_gh(["pr", "view"])
             assert result == {"raw": "plain text result"}
@@ -76,9 +72,7 @@ class TestRunGh:
             assert result == {"error": "permission denied"}
 
     def test_error_returncode_empty_stderr(self):
-        proc = subprocess.CompletedProcess(
-            args=[], returncode=128, stdout="", stderr=""
-        )
+        proc = subprocess.CompletedProcess(args=[], returncode=128, stdout="", stderr="")
         with patch("subprocess.run", return_value=proc):
             result = _run_gh(["repo", "list"])
             assert result == {"error": "gh exited with 128"}
@@ -158,9 +152,7 @@ class TestCloneWiki:
     def test_clone_failure(self):
         with patch(
             "subprocess.run",
-            side_effect=subprocess.CalledProcessError(
-                128, "git", stderr="repository not found"
-            ),
+            side_effect=subprocess.CalledProcessError(128, "git", stderr="repository not found"),
         ):
             result = _clone_wiki("acme/repo", "/tmp/wiki")
             assert "error" in result
@@ -192,9 +184,7 @@ class TestPushWiki:
 
     def test_success_with_changes(self):
         add_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
-        status_proc = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="M Home.md\n"
-        )
+        status_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="M Home.md\n")
         commit_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
         push_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
 
@@ -207,9 +197,7 @@ class TestPushWiki:
 
     def test_push_failure(self):
         add_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
-        status_proc = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="M file.md\n"
-        )
+        status_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="M file.md\n")
         commit_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
 
         with patch(

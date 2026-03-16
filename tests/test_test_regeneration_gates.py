@@ -633,6 +633,7 @@ class TestImplRebuildValidate:
 
         mock_preserve.return_value = (True, {"preserve_tests_pass": True})
         mock_gen.return_value = (True, {"preserve_tests_pass": True, "generated_tests_run": True})
+
         def artifact_passthrough(plan, gates, gp):
             gates["no_artifact_auto_targets"] = True
             return gp, gates  # preserve incoming gate_pass

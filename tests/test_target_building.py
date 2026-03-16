@@ -216,9 +216,7 @@ class TestAddOverlappingSpans:
         seen: set[str] = set()
 
         # First range doesn't overlap, second does
-        _add_overlapping_spans(
-            [span], [range(100, 200), range(8, 12)], targets, seen
-        )
+        _add_overlapping_spans([span], [range(100, 200), range(8, 12)], targets, seen)
 
         assert len(targets) == 1
 
@@ -377,14 +375,15 @@ class TestResolveRequiredSymbols:
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
 
-        result = _resolve_required_symbols(
-            ["src/mod.py::foo"], "/repo", targets, seen
-        )
+        result = _resolve_required_symbols(["src/mod.py::foo"], "/repo", targets, seen)
 
         assert result == ["src/mod.py::foo"]
 
     @patch("lintgate.channels._target_building._find_span_by_key", return_value=None)
-    @patch("lintgate.channels._target_building._canonicalize_symbol_key", return_value="src/mod.py::foo")
+    @patch(
+        "lintgate.channels._target_building._canonicalize_symbol_key",
+        return_value="src/mod.py::foo",
+    )
     @patch("lintgate.channels._target_building.os.path.isfile", return_value=True)
     def test_span_not_found_is_unresolved(
         self, _isfile: MagicMock, _canon: MagicMock, _find: MagicMock
@@ -394,9 +393,7 @@ class TestResolveRequiredSymbols:
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
 
-        unresolved = _resolve_required_symbols(
-            ["src/mod.py::foo"], "/repo", targets, seen
-        )
+        unresolved = _resolve_required_symbols(["src/mod.py::foo"], "/repo", targets, seen)
 
         assert unresolved == ["src/mod.py::foo"]
         # Verify file lookup was attempted (distinguishes from missing-file path)
@@ -404,7 +401,10 @@ class TestResolveRequiredSymbols:
         _find.assert_called()
 
     @patch("lintgate.channels._target_building._find_span_by_key")
-    @patch("lintgate.channels._target_building._canonicalize_symbol_key", return_value="src/mod.py::foo")
+    @patch(
+        "lintgate.channels._target_building._canonicalize_symbol_key",
+        return_value="src/mod.py::foo",
+    )
     @patch("lintgate.channels._target_building.os.path.isfile", return_value=True)
     def test_resolved_span_added_to_targets(
         self, _isfile: MagicMock, _canon: MagicMock, mock_find: MagicMock
@@ -414,26 +414,23 @@ class TestResolveRequiredSymbols:
         targets: list[SymbolSpan] = []
         seen: set[str] = set()
 
-        result = _resolve_required_symbols(
-            ["src/mod.py::foo"], "/repo", targets, seen
-        )
+        result = _resolve_required_symbols(["src/mod.py::foo"], "/repo", targets, seen)
 
         assert result == []
         assert len(targets) == 1
         assert targets[0] is span
         assert "src/mod.py::foo" in seen
 
-    @patch("lintgate.channels._target_building._canonicalize_symbol_key", return_value="src/mod.py::foo")
+    @patch(
+        "lintgate.channels._target_building._canonicalize_symbol_key",
+        return_value="src/mod.py::foo",
+    )
     @patch("lintgate.channels._target_building.os.path.isfile", return_value=True)
-    def test_already_seen_key_is_skipped(
-        self, _isfile: MagicMock, _canon: MagicMock
-    ) -> None:
+    def test_already_seen_key_is_skipped(self, _isfile: MagicMock, _canon: MagicMock) -> None:
         targets: list[SymbolSpan] = []
         seen: set[str] = {"src/mod.py::foo"}
 
-        result = _resolve_required_symbols(
-            ["src/mod.py::foo"], "/repo", targets, seen
-        )
+        result = _resolve_required_symbols(["src/mod.py::foo"], "/repo", targets, seen)
 
         assert result == []
         assert len(targets) == 0
@@ -544,21 +541,15 @@ class TestCollectChangedSymbols:
 class TestBuildTargetSet:
     @patch("lintgate.channels._target_building._resolve_required_symbols", return_value=[])
     @patch("lintgate.channels._target_building._collect_changed_symbols")
-    def test_changed_mode_calls_collect(
-        self, mock_collect: MagicMock, _resolve: MagicMock
-    ) -> None:
-        targets, unresolved = build_target_set(
-            ["/repo/mod.py"], "/repo", {"mode": "changed"}
-        )
+    def test_changed_mode_calls_collect(self, mock_collect: MagicMock, _resolve: MagicMock) -> None:
+        targets, unresolved = build_target_set(["/repo/mod.py"], "/repo", {"mode": "changed"})
 
         mock_collect.assert_called_once()
         assert unresolved == []
 
     @patch("lintgate.channels._target_building._resolve_required_symbols", return_value=[])
     @patch("lintgate.channels._target_building._collect_changed_symbols")
-    def test_all_mode_calls_collect(
-        self, mock_collect: MagicMock, _resolve: MagicMock
-    ) -> None:
+    def test_all_mode_calls_collect(self, mock_collect: MagicMock, _resolve: MagicMock) -> None:
         build_target_set(["/repo/mod.py"], "/repo", {"mode": "all"})
 
         mock_collect.assert_called_once()
@@ -572,7 +563,10 @@ class TestBuildTargetSet:
 
         mock_collect.assert_not_called()
 
-    @patch("lintgate.channels._target_building._resolve_required_symbols", return_value=["missing::sym"])
+    @patch(
+        "lintgate.channels._target_building._resolve_required_symbols",
+        return_value=["missing::sym"],
+    )
     @patch("lintgate.channels._target_building._collect_changed_symbols")
     def test_returns_unresolved_from_resolve(
         self, _collect: MagicMock, _resolve: MagicMock
@@ -585,9 +579,7 @@ class TestBuildTargetSet:
 
     @patch("lintgate.channels._target_building._resolve_required_symbols", return_value=[])
     @patch("lintgate.channels._target_building._collect_changed_symbols")
-    def test_default_mode_is_changed(
-        self, mock_collect: MagicMock, _resolve: MagicMock
-    ) -> None:
+    def test_default_mode_is_changed(self, mock_collect: MagicMock, _resolve: MagicMock) -> None:
         """When mode is omitted, defaults to 'changed' and calls collect."""
         build_target_set(["/repo/mod.py"], "/repo", {})
 
@@ -595,12 +587,8 @@ class TestBuildTargetSet:
 
     @patch("lintgate.channels._target_building._resolve_required_symbols", return_value=[])
     @patch("lintgate.channels._target_building._collect_changed_symbols")
-    def test_diff_base_passed_through(
-        self, mock_collect: MagicMock, _resolve: MagicMock
-    ) -> None:
-        build_target_set(
-            ["/repo/mod.py"], "/repo", {"mode": "changed", "diff_base": "main"}
-        )
+    def test_diff_base_passed_through(self, mock_collect: MagicMock, _resolve: MagicMock) -> None:
+        build_target_set(["/repo/mod.py"], "/repo", {"mode": "changed", "diff_base": "main"})
 
         # diff_base is the 3rd positional arg to _collect_changed_symbols
         call_args = mock_collect.call_args

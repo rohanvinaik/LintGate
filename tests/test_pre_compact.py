@@ -22,12 +22,8 @@ from lintgate.hooks.pre_compact import (
 def test_handle_no_state_returns_continue():
     """When no runtime state or compass exists, handle returns continue=True."""
     with (
-        patch(
-            "lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None
-        ),
-        patch(
-            "lintgate.hooks.pre_compact._build_legacy_capsule", return_value=None
-        ),
+        patch("lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None),
+        patch("lintgate.hooks.pre_compact._build_legacy_capsule", return_value=None),
     ):
         result = handle({"cwd": "/nonexistent"})
     assert result == {"continue": True}
@@ -71,9 +67,7 @@ def test_handle_with_legacy_capsule():
         "true_north": "test legacy",
     }
     with (
-        patch(
-            "lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None
-        ),
+        patch("lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None),
         patch(
             "lintgate.hooks.pre_compact._build_legacy_capsule",
             return_value=legacy,
@@ -92,9 +86,7 @@ def test_handle_uses_cwd_from_data():
         patch(
             "lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None
         ) as mock_runtime,
-        patch(
-            "lintgate.hooks.pre_compact._build_legacy_capsule", return_value=None
-        ),
+        patch("lintgate.hooks.pre_compact._build_legacy_capsule", return_value=None),
     ):
         handle({})
     mock_runtime.assert_called_once_with(".")
@@ -185,12 +177,8 @@ def test_main_reads_stdin_writes_stdout(capsys, monkeypatch):
     """main reads JSON from stdin, calls handle, writes JSON to stdout."""
     monkeypatch.setattr("sys.stdin", MagicMock(read=MagicMock(return_value='{"cwd": "."}')))
     with (
-        patch(
-            "lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None
-        ),
-        patch(
-            "lintgate.hooks.pre_compact._build_legacy_capsule", return_value=None
-        ),
+        patch("lintgate.hooks.pre_compact._build_capsule_from_runtime", return_value=None),
+        patch("lintgate.hooks.pre_compact._build_legacy_capsule", return_value=None),
         pytest.raises(SystemExit) as exc_info,
     ):
         main()
@@ -198,5 +186,3 @@ def test_main_reads_stdin_writes_stdout(capsys, monkeypatch):
     captured = capsys.readouterr()
     result = json.loads(captured.out)
     assert result["continue"] is True
-
-

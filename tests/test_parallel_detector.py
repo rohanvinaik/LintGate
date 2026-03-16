@@ -339,22 +339,37 @@ class TestToDict:
 
     def test_confidence_rounds_down(self):
         opp = ParallelOpportunity(
-            pattern="PARALLEL_MAP", file="", line=1,
-            callee="f", confidence=0.844, constraints=[], detail="",
+            pattern="PARALLEL_MAP",
+            file="",
+            line=1,
+            callee="f",
+            confidence=0.844,
+            constraints=[],
+            detail="",
         )
         assert opp.to_dict()["confidence"] == 0.84
 
     def test_empty_constraints(self):
         opp = ParallelOpportunity(
-            pattern="PARALLEL_BEAM", file="", line=1,
-            callee="g", confidence=1.0, constraints=[], detail="d",
+            pattern="PARALLEL_BEAM",
+            file="",
+            line=1,
+            callee="g",
+            confidence=1.0,
+            constraints=[],
+            detail="d",
         )
         assert opp.to_dict()["constraints"] == []
 
     def test_file_empty_string(self):
         opp = ParallelOpportunity(
-            pattern="PARALLEL_MAP", file="", line=0,
-            callee="h", confidence=0.0, constraints=[], detail="",
+            pattern="PARALLEL_MAP",
+            file="",
+            line=0,
+            callee="h",
+            confidence=0.0,
+            constraints=[],
+            detail="",
         )
         assert opp.to_dict()["file"] == ""
         assert opp.to_dict()["line"] == 0

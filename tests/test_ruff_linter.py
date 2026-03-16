@@ -48,11 +48,15 @@ class TestClassifySeverity:
     def test_all_blocking_codes_return_blocking(self):
         for code in _BLOCKING_CODES:
             assert _classify_severity(code, "normal") == "blocking", f"{code} should be blocking"
-            assert _classify_severity(code, "strict") == "blocking", f"{code} should be blocking in strict"
+            assert _classify_severity(code, "strict") == "blocking", (
+                f"{code} should be blocking in strict"
+            )
 
     def test_all_informational_codes_return_informational(self):
         for code in _INFORMATIONAL_CODES:
-            assert _classify_severity(code, "normal") == "informational", f"{code} should be informational"
+            assert _classify_severity(code, "normal") == "informational", (
+                f"{code} should be informational"
+            )
 
     def test_unknown_code_returns_warning(self):
         assert _classify_severity("X999", "normal") == "warning"
@@ -200,12 +204,15 @@ class TestBuildE402EvidenceSafe:
         """When import_tracing is unavailable, returns {}."""
         item = {"filename": "test.py", "code": "E402"}
         location = {"row": 5}
-        with patch(
-            "lintgate.linters.ruff_linter._extract_e402_module",
-            return_value="os",
-        ), patch.dict(
-            "sys.modules",
-            {"lintgate.linters.structure_checks.import_tracing": None},
+        with (
+            patch(
+                "lintgate.linters.ruff_linter._extract_e402_module",
+                return_value="os",
+            ),
+            patch.dict(
+                "sys.modules",
+                {"lintgate.linters.structure_checks.import_tracing": None},
+            ),
         ):
             result = _build_e402_evidence_safe(item, location, "/tmp")
         # Graceful degradation: returns {} on import failure
@@ -246,16 +253,18 @@ class TestRuffLinter:
     def test_basic_issue_parsing(self, tmp_path):
         ctx = _make_ctx(tmp_path, files=["a.py"])
         linter = RuffLinter()
-        data = json.dumps([
-            {
-                "code": "F401",
-                "message": "os imported but unused",
-                "filename": "a.py",
-                "location": {"row": 1, "column": 1},
-                "end_location": {"row": 1, "column": 10},
-                "fix": {"message": "Remove unused import"},
-            }
-        ])
+        data = json.dumps(
+            [
+                {
+                    "code": "F401",
+                    "message": "os imported but unused",
+                    "filename": "a.py",
+                    "location": {"row": 1, "column": 1},
+                    "end_location": {"row": 1, "column": 10},
+                    "fix": {"message": "Remove unused import"},
+                }
+            ]
+        )
         mock_result = MagicMock(stdout=data)
         with patch.object(linter, "run_command", return_value=mock_result):
             issues = list(linter.run(ctx))
@@ -278,16 +287,18 @@ class TestRuffLinter:
     def test_no_fix_field(self, tmp_path):
         ctx = _make_ctx(tmp_path, files=["a.py"])
         linter = RuffLinter()
-        data = json.dumps([
-            {
-                "code": "E501",
-                "message": "Line too long",
-                "filename": "a.py",
-                "location": {"row": 5, "column": 80},
-                "end_location": {"row": 5, "column": 120},
-                "fix": None,
-            }
-        ])
+        data = json.dumps(
+            [
+                {
+                    "code": "E501",
+                    "message": "Line too long",
+                    "filename": "a.py",
+                    "location": {"row": 5, "column": 80},
+                    "end_location": {"row": 5, "column": 120},
+                    "fix": None,
+                }
+            ]
+        )
         mock_result = MagicMock(stdout=data)
         with patch.object(linter, "run_command", return_value=mock_result):
             issues = list(linter.run(ctx))
@@ -341,24 +352,26 @@ class TestRuffLinter:
     def test_multiple_issues_parsed(self, tmp_path):
         ctx = _make_ctx(tmp_path, files=["a.py"])
         linter = RuffLinter()
-        data = json.dumps([
-            {
-                "code": "F401",
-                "message": "unused import",
-                "filename": "a.py",
-                "location": {"row": 1, "column": 1},
-                "end_location": {"row": 1, "column": 5},
-                "fix": None,
-            },
-            {
-                "code": "F821",
-                "message": "undefined name",
-                "filename": "a.py",
-                "location": {"row": 10, "column": 5},
-                "end_location": {"row": 10, "column": 15},
-                "fix": None,
-            },
-        ])
+        data = json.dumps(
+            [
+                {
+                    "code": "F401",
+                    "message": "unused import",
+                    "filename": "a.py",
+                    "location": {"row": 1, "column": 1},
+                    "end_location": {"row": 1, "column": 5},
+                    "fix": None,
+                },
+                {
+                    "code": "F821",
+                    "message": "undefined name",
+                    "filename": "a.py",
+                    "location": {"row": 10, "column": 5},
+                    "end_location": {"row": 10, "column": 15},
+                    "fix": None,
+                },
+            ]
+        )
         mock_result = MagicMock(stdout=data)
         with patch.object(linter, "run_command", return_value=mock_result):
             issues = list(linter.run(ctx))
@@ -372,22 +385,30 @@ class TestRuffLinter:
     def test_e402_triggers_evidence_building(self, tmp_path):
         ctx = _make_ctx(tmp_path, files=["a.py"])
         linter = RuffLinter()
-        data = json.dumps([
-            {
-                "code": "E402",
-                "message": "Module level import not at top of file",
-                "filename": "a.py",
-                "location": {"row": 15, "column": 1},
-                "end_location": {"row": 15, "column": 20},
-                "fix": None,
-            }
-        ])
+        data = json.dumps(
+            [
+                {
+                    "code": "E402",
+                    "message": "Module level import not at top of file",
+                    "filename": "a.py",
+                    "location": {"row": 15, "column": 1},
+                    "end_location": {"row": 15, "column": 20},
+                    "fix": None,
+                }
+            ]
+        )
         mock_result = MagicMock(stdout=data)
-        with patch.object(linter, "run_command", return_value=mock_result), patch(
-            "lintgate.linters.ruff_linter._build_e402_evidence_safe",
-            return_value={"code": "E402", "transitive_imports": {"non_stdlib": [], "has_lazy": False}},
+        with (
+            patch.object(linter, "run_command", return_value=mock_result),
+            patch(
+                "lintgate.linters.ruff_linter._build_e402_evidence_safe",
+                return_value={
+                    "code": "E402",
+                    "transitive_imports": {"non_stdlib": [], "has_lazy": False},
+                },
+            ),
         ):
-                issues = list(linter.run(ctx))
+            issues = list(linter.run(ctx))
 
         assert len(issues) == 1
         assert issues[0].kind == "E402"
@@ -396,25 +417,30 @@ class TestRuffLinter:
     def test_e402_with_escalation(self, tmp_path):
         ctx = _make_ctx(tmp_path, files=["a.py"])
         linter = RuffLinter()
-        data = json.dumps([
-            {
-                "code": "E402",
-                "message": "Module level import not at top of file",
-                "filename": "a.py",
-                "location": {"row": 15, "column": 1},
-                "end_location": {"row": 15, "column": 20},
-                "fix": None,
-            }
-        ])
-        mock_result = MagicMock(stdout=data)
-        with patch.object(linter, "run_command", return_value=mock_result), patch(
-            "lintgate.linters.ruff_linter._build_e402_evidence_safe",
-            return_value={
-                "transitive_imports": {
-                    "non_stdlib": ["requests"],
-                    "has_lazy": True,
+        data = json.dumps(
+            [
+                {
+                    "code": "E402",
+                    "message": "Module level import not at top of file",
+                    "filename": "a.py",
+                    "location": {"row": 15, "column": 1},
+                    "end_location": {"row": 15, "column": 20},
+                    "fix": None,
                 }
-            },
+            ]
+        )
+        mock_result = MagicMock(stdout=data)
+        with (
+            patch.object(linter, "run_command", return_value=mock_result),
+            patch(
+                "lintgate.linters.ruff_linter._build_e402_evidence_safe",
+                return_value={
+                    "transitive_imports": {
+                        "non_stdlib": ["requests"],
+                        "has_lazy": True,
+                    }
+                },
+            ),
         ):
             issues = list(linter.run(ctx))
 
@@ -427,15 +453,17 @@ class TestRuffLinter:
         ctx = _make_ctx(tmp_path, files=["a.py"])
         linter = RuffLinter()
         # Keys present with None values: .get returns None (not the default)
-        data = json.dumps([
-            {
-                "code": None,
-                "message": "",
-                "filename": None,
-                "location": {},
-                "end_location": {},
-            }
-        ])
+        data = json.dumps(
+            [
+                {
+                    "code": None,
+                    "message": "",
+                    "filename": None,
+                    "location": {},
+                    "end_location": {},
+                }
+            ]
+        )
         mock_result = MagicMock(stdout=data)
         with patch.object(linter, "run_command", return_value=mock_result):
             issues = list(linter.run(ctx))
@@ -599,9 +627,10 @@ class TestCodeSets:
         assert frozenset({"F821", "F811", "F841", "E999"}) == _BLOCKING_CODES
 
     def test_informational_codes_exact_contents(self):
-        assert frozenset(
-            {"E501", "W291", "W292", "W293", "D100", "D101", "D102", "D103"}
-        ) == _INFORMATIONAL_CODES
+        assert (
+            frozenset({"E501", "W291", "W292", "W293", "D100", "D101", "D102", "D103"})
+            == _INFORMATIONAL_CODES
+        )
 
     def test_no_overlap_between_blocking_and_informational(self):
         assert frozenset() == _BLOCKING_CODES & _INFORMATIONAL_CODES

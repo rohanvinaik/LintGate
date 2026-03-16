@@ -123,16 +123,12 @@ class TestSaveHabitState:
 
 class TestLoadErrorBootstrap:
     def test_missing_file_returns_empty_dict(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         result = load_error_bootstrap("/nonexistent/project")
         assert result == {}
 
     def test_valid_json_returns_data(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/my/project")
         error_file = tmp_path / f"{h}_errors.json"
         error_data = {"sig1": {"count": 3, "first_seen": "2025-01-01"}}
@@ -142,9 +138,7 @@ class TestLoadErrorBootstrap:
         assert result == error_data
 
     def test_non_dict_json_returns_empty(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/my/project")
         error_file = tmp_path / f"{h}_errors.json"
         error_file.write_text(json.dumps([1, 2, 3]))
@@ -153,9 +147,7 @@ class TestLoadErrorBootstrap:
         assert result == {}
 
     def test_corrupt_json_returns_empty(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/my/project")
         error_file = tmp_path / f"{h}_errors.json"
         error_file.write_text("{invalid json")
@@ -169,18 +161,14 @@ class TestLoadErrorBootstrap:
 
 class TestLoadHabitStateStandalone:
     def test_missing_file_returns_fresh_state(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state, ring = load_habit_state_standalone("/no/such/project")
         assert state.active is False
         assert state.habit_score == 0.0
         assert ring == []
 
     def test_valid_file_restores_state(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/test/project")
         state_file = tmp_path / f"{h}.json"
         payload = {
@@ -196,9 +184,7 @@ class TestLoadHabitStateStandalone:
         assert ring[0]["tool"] == "Edit"
 
     def test_non_dict_json_returns_fresh(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/test/project")
         state_file = tmp_path / f"{h}.json"
         state_file.write_text('"just a string"')
@@ -208,9 +194,7 @@ class TestLoadHabitStateStandalone:
         assert ring == []
 
     def test_corrupt_json_returns_fresh(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/test/project")
         state_file = tmp_path / f"{h}.json"
         state_file.write_text("not valid json!!!")
@@ -220,9 +204,7 @@ class TestLoadHabitStateStandalone:
         assert ring == []
 
     def test_non_list_action_ring_becomes_empty(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/test/project")
         state_file = tmp_path / f"{h}.json"
         payload = {
@@ -241,16 +223,12 @@ class TestLoadHabitStateStandalone:
 
 class TestLoadStandaloneExtras:
     def test_missing_file_returns_empty(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         result = load_standalone_extras("/no/project")
         assert result == {}
 
     def test_extracts_known_keys_only(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/proj")
         state_file = tmp_path / f"{h}.json"
         payload = {
@@ -268,9 +246,7 @@ class TestLoadStandaloneExtras:
         assert "unknown_key" not in result
 
     def test_non_dict_json_returns_empty(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/proj")
         state_file = tmp_path / f"{h}.json"
         state_file.write_text(json.dumps([1, 2, 3]))
@@ -279,9 +255,7 @@ class TestLoadStandaloneExtras:
         assert result == {}
 
     def test_corrupt_json_returns_empty(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         h = _project_hash("/proj")
         state_file = tmp_path / f"{h}.json"
         state_file.write_text("{bad")
@@ -358,9 +332,7 @@ class TestMergeOptionalField:
 
 class TestSaveHabitStateStandalone:
     def test_creates_file_and_round_trips(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState(active=True, habit_score=0.8, sustain_counter=5)
         ring = [{"tool": "Read", "ts": 1, "intent": "inspect"}]
         save_habit_state_standalone("/round/trip", state, ring)
@@ -372,9 +344,7 @@ class TestSaveHabitStateStandalone:
         assert loaded_ring == ring
 
     def test_truncates_action_ring_to_max(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState()
         big_ring = [{"tool": f"T{i}", "ts": i, "intent": "x"} for i in range(50)]
         save_habit_state_standalone("/trunc/project", state, big_ring)
@@ -385,9 +355,7 @@ class TestSaveHabitStateStandalone:
         assert loaded_ring[0]["tool"] == f"T{50 - MAX_ACTION_RING}"
 
     def test_optional_tracker_dict_persisted(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState()
         tracker = {"total_tokens": 1000}
         save_habit_state_standalone("/tk/project", state, [], tracker_dict=tracker)
@@ -396,14 +364,10 @@ class TestSaveHabitStateStandalone:
         assert extras["token_tracker"] == {"total_tokens": 1000}
 
     def test_preserves_existing_extras_on_resave(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState()
         # First save with tracker
-        save_habit_state_standalone(
-            "/pres/project", state, [], tracker_dict={"t": 1}
-        )
+        save_habit_state_standalone("/pres/project", state, [], tracker_dict={"t": 1})
         # Second save without tracker — should preserve from existing
         save_habit_state_standalone("/pres/project", state, [])
 
@@ -411,14 +375,10 @@ class TestSaveHabitStateStandalone:
         assert extras.get("token_tracker") == {"t": 1}
 
     def test_signal_fire_counts_persisted(self, tmp_path: Path, monkeypatch: Any) -> None:
-        monkeypatch.setattr(
-            "lintgate._habit_persist._HABIT_STATE_DIR", tmp_path
-        )
+        monkeypatch.setattr("lintgate._habit_persist._HABIT_STATE_DIR", tmp_path)
         state = HabitModeState()
         counts = {"BEH001": 3, "BEH002": 1}
-        save_habit_state_standalone(
-            "/sig/project", state, [], signal_fire_counts=counts
-        )
+        save_habit_state_standalone("/sig/project", state, [], signal_fire_counts=counts)
 
         extras = load_standalone_extras("/sig/project")
         assert extras["signal_fire_counts"] == counts

@@ -67,9 +67,11 @@ class TestIterSseStream:
         assert result == ["a", "b", "c"]
 
     def test_skips_non_data_lines(self) -> None:
-        raw = b"event: ping\ndata: " + json.dumps(
-            {"choices": [{"delta": {"content": "ok"}}]}
-        ).encode() + b"\ndata: [DONE]\n"
+        raw = (
+            b"event: ping\ndata: "
+            + json.dumps({"choices": [{"delta": {"content": "ok"}}]}).encode()
+            + b"\ndata: [DONE]\n"
+        )
         result = list(_iter_sse_stream(FakeResponse(raw)))
         assert result == ["ok"]
 
@@ -95,9 +97,11 @@ class TestIterSseStream:
 
     def test_stops_at_done_marker(self) -> None:
         raw = (
-            b"data: " + json.dumps({"choices": [{"delta": {"content": "first"}}]}).encode()
+            b"data: "
+            + json.dumps({"choices": [{"delta": {"content": "first"}}]}).encode()
             + b"\ndata: [DONE]\n"
-            + b"data: " + json.dumps({"choices": [{"delta": {"content": "after"}}]}).encode()
+            + b"data: "
+            + json.dumps({"choices": [{"delta": {"content": "after"}}]}).encode()
             + b"\n"
         )
         result = list(_iter_sse_stream(FakeResponse(raw)))
@@ -260,12 +264,14 @@ class TestMakeMessagesWithState:
 
     def test_all_state_fields(self) -> None:
         adapter = VLLMAdapter()
-        adapter.inject_state({
-            "gate_status": "yellow",
-            "risk_level": "medium",
-            "blocking_findings": ["X"],
-            "active_constraints": ["Y"],
-        })
+        adapter.inject_state(
+            {
+                "gate_status": "yellow",
+                "risk_level": "medium",
+                "blocking_findings": ["X"],
+                "active_constraints": ["Y"],
+            }
+        )
         msgs = adapter._make_messages_with_state("p")
         system_content = msgs[0]["content"]
         assert "[NSIL State:" in system_content
@@ -300,9 +306,7 @@ class TestBuildPayload:
 
     def test_override_model_and_params(self) -> None:
         adapter = VLLMAdapter(model="default")
-        payload = adapter._build_payload(
-            "hi", model="custom", temperature=0.1, max_tokens=100
-        )
+        payload = adapter._build_payload("hi", model="custom", temperature=0.1, max_tokens=100)
         assert payload["model"] == "custom"
         assert payload["temperature"] == 0.1
         assert payload["max_tokens"] == 100
@@ -429,8 +433,10 @@ class TestGetGenerationStream:
 
     def test_uses_correct_url(self) -> None:
         adapter = VLLMAdapter(endpoint="http://myhost:5000")
-        with patch.object(adapter, "_make_request") as mock_req, \
-             patch("urllib.request.urlopen", side_effect=TimeoutError()):
+        with (
+            patch.object(adapter, "_make_request") as mock_req,
+            patch("urllib.request.urlopen", side_effect=TimeoutError()),
+        ):
             adapter_gen = adapter.get_generation_stream("prompt")
             list(adapter_gen)
             mock_req.assert_called_once()

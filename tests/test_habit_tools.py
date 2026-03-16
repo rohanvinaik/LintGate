@@ -72,7 +72,10 @@ def mock_session(tmp_path):
             "context_window_size": 200000,
         },
     }
-    session.to_dict = lambda: {"project_root": str(tmp_path), "behavior_compass": session.behavior_compass}
+    session.to_dict = lambda: {
+        "project_root": str(tmp_path),
+        "behavior_compass": session.behavior_compass,
+    }
     return session
 
 
@@ -147,7 +150,11 @@ class TestLoadState:
         )
         monkeypatch.setattr(
             "lintgate.habit_mode.load_standalone_extras",
-            lambda pr: {"token_tracker": "invalid", "config_overrides": 42, "habit_last_snapshot": "bad"},
+            lambda pr: {
+                "token_tracker": "invalid",
+                "config_overrides": 42,
+                "habit_last_snapshot": "bad",
+            },
         )
         monkeypatch.setattr(
             "lintgate.habit_mode.save_habit_state_standalone",
@@ -196,7 +203,10 @@ class TestLoadState:
         )
         monkeypatch.setattr(
             "lintgate.habit_mode.load_standalone_extras",
-            lambda pr: {"config_overrides": {"enter_score": 0.8}, "habit_last_snapshot": {"snap": True}},
+            lambda pr: {
+                "config_overrides": {"enter_score": 0.8},
+                "habit_last_snapshot": {"snap": True},
+            },
         )
         monkeypatch.setattr(
             "lintgate.habit_mode.save_habit_state_standalone",
@@ -432,7 +442,9 @@ class TestImplHabitStatus:
 class TestImplHabitCompact:
     """Tests for _impl_habit_compact."""
 
-    def test_increments_compaction_count_and_resets_tracker(self, tmp_path, monkeypatch, mock_session):
+    def test_increments_compaction_count_and_resets_tracker(
+        self, tmp_path, monkeypatch, mock_session
+    ):
         monkeypatch.setattr(
             "lintgate.controlplane.session_memory.get_or_create_session",
             lambda pr, *a, **kw: mock_session,
@@ -567,17 +579,13 @@ class TestImplHabitConfigure:
         assert result["overrides_applied"]["compact_threshold"] == 0.9
 
         # In range
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None))
         assert result["overrides_applied"]["compact_threshold"] == 0.5
 
     def test_enter_score_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, 0.1, None, None, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, 0.1, None, None, None, None))
         assert result["overrides_applied"]["enter_score"] == 0.3
 
         result = json.loads(
@@ -593,43 +601,31 @@ class TestImplHabitConfigure:
         )
         assert result["overrides_applied"]["exit_score"] == 0.1
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, None, 0.9, None, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, 0.9, None, None, None))
         assert result["overrides_applied"]["exit_score"] == 0.8
 
     def test_sustain_calls_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, None, None, 0, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, 0, None, None))
         assert result["overrides_applied"]["sustain_calls"] == 1
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, None, None, 50, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, 50, None, None))
         assert result["overrides_applied"]["sustain_calls"] == 20
 
     def test_token_api_interval_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, None, None, None, 1, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, None, 1, None))
         assert result["overrides_applied"]["token_api_interval"] == 5
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, None, None, None, 200, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, None, 200, None))
         assert result["overrides_applied"]["token_api_interval"] == 100
 
     def test_context_window_size_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, None, None, None, None, 100)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, None, None, 100))
         assert result["overrides_applied"]["context_window_size"] == 10000
 
         result = json.loads(
@@ -640,9 +636,7 @@ class TestImplHabitConfigure:
     def test_all_overrides_at_once(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), 0.6, 0.7, 0.4, 10, 30, 150000)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), 0.6, 0.7, 0.4, 10, 30, 150000))
         overrides = result["overrides_applied"]
         assert overrides["compact_threshold"] == 0.6
         assert overrides["enter_score"] == 0.7
@@ -669,9 +663,7 @@ class TestImplHabitConfigure:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None))
         assert result["status"] == "ok"
         assert len(saved) == 1
         assert session.behavior_compass["habit_config_overrides"]["compact_threshold"] == 0.5
@@ -700,9 +692,7 @@ class TestImplHabitConfigure:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
-            _impl_habit_configure(str(tmp_path), None, 0.8, None, None, None, None)
-        )
+        result = json.loads(_impl_habit_configure(str(tmp_path), None, 0.8, None, None, None, None))
         assert result["status"] == "ok"
         assert len(saved_kw) == 1
         assert saved_kw[0]["config_overrides"]["existing"] == 1
@@ -769,6 +759,7 @@ class TestRegister:
                 def dec(fn):
                     self._tools[fn.__name__] = fn
                     return fn
+
                 return dec
 
         mcp = FakeMCP()
@@ -791,6 +782,7 @@ class TestRegister:
                 def dec(fn):
                     self._tools[fn.__name__] = fn
                     return fn
+
                 return dec
 
         mcp = FakeMCP()
@@ -809,6 +801,7 @@ class TestRegister:
                 def dec(fn):
                     self._tools[fn.__name__] = fn
                     return fn
+
                 return dec
 
         mcp = FakeMCP()

@@ -21,7 +21,10 @@ def _get_git_info(project_root: str) -> dict[str, str]:
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            capture_output=True, text=True, cwd=project_root, timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+            timeout=5,
         )
         if result.returncode == 0:
             info["repo_url"] = result.stdout.strip()
@@ -30,7 +33,10 @@ def _get_git_info(project_root: str) -> dict[str, str]:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=project_root, timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+            timeout=5,
         )
         if result.returncode == 0:
             info["branch"] = result.stdout.strip()
@@ -49,7 +55,9 @@ def _detect_src_dirs(project_root: str) -> list[str]:
         full = os.path.join(project_root, entry)
         if not os.path.isdir(full):
             continue
-        has_py = any(f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f)))
+        has_py = any(
+            f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f))
+        )
         has_init = os.path.isfile(os.path.join(full, "__init__.py"))
         if has_py or has_init:
             dirs.append(entry)
@@ -117,15 +125,19 @@ def impl_offline_analysis_generate(
     src_dirs = _detect_src_dirs(project_root)
 
     if mode not in _MODE_NAMES:
-        return json.dumps({
-            "error": f"Unknown mode '{mode}'. Valid: {', '.join(_MODE_NAMES)}",
-        })
+        return json.dumps(
+            {
+                "error": f"Unknown mode '{mode}'. Valid: {', '.join(_MODE_NAMES)}",
+            }
+        )
 
     if not repo_url:
-        return json.dumps({
-            "error": "No git remote found. The notebook needs a repo URL to clone.",
-            "hint": "Run: git remote add origin <your-repo-url>",
-        })
+        return json.dumps(
+            {
+                "error": "No git remote found. The notebook needs a repo URL to clone.",
+                "hint": "Run: git remote add origin <your-repo-url>",
+            }
+        )
 
     notebook = _build_full_analysis_notebook(
         repo_url=repo_url,
@@ -161,13 +173,15 @@ def impl_offline_analysis_generate(
             "Runtime > Run all. The final cell downloads the analysis JSON "
             "that an LLM agent can consume for systematic fixes."
         ),
-        "next_actions": serialize_next_actions([
-            NextAction(
-                tool="prescriptive_spec_status",
-                args={"path": path},
-                reason="Check existing prescriptive spec coverage",
-            ),
-        ]),
+        "next_actions": serialize_next_actions(
+            [
+                NextAction(
+                    tool="prescriptive_spec_status",
+                    args={"path": path},
+                    reason="Check existing prescriptive spec coverage",
+                ),
+            ]
+        ),
     }
     return json.dumps(result, indent=2)
 
@@ -244,13 +258,15 @@ def impl_offline_analysis_run(
             "Pass this file to an LLM coding agent with: "
             "'Implement the action plan in this analysis, starting from rank 1.'"
         ),
-        "next_actions": serialize_next_actions([
-            NextAction(
-                tool="lint_fix",
-                args={"path": path},
-                reason="Start with auto-fixable lint issues (action plan phase 1)",
-            ),
-        ]),
+        "next_actions": serialize_next_actions(
+            [
+                NextAction(
+                    tool="lint_fix",
+                    args={"path": path},
+                    reason="Start with auto-fixable lint issues (action plan phase 1)",
+                ),
+            ]
+        ),
     }
     return json.dumps(summary, indent=2)
 
@@ -297,7 +313,9 @@ def _build_full_analysis_notebook(
     mutation_flag = "True" if include_mutation else "False"
 
     # Detect if the target IS lintgate (self-analysis mode)
-    is_self_analysis = repo_url.rstrip("/").rstrip(".git") == lintgate_url.rstrip("/").rstrip(".git")
+    is_self_analysis = repo_url.rstrip("/").rstrip(".git") == lintgate_url.rstrip("/").rstrip(
+        ".git"
+    )
 
     # ── Cell 1: Install LintGate + clone target ───────────────────
     if is_self_analysis:
@@ -441,12 +459,7 @@ def _build_full_analysis_notebook(
             ")\n"
         )
     else:
-        run_call = (
-            f"result = {run_fn}(\n"
-            "    PROJECT_DIR,\n"
-            f"    src_dirs={src_dirs_str},\n"
-            ")\n"
-        )
+        run_call = f"result = {run_fn}(\n    PROJECT_DIR,\n    src_dirs={src_dirs_str},\n)\n"
 
     analysis_preamble = (
         "import json, os, time\n"
@@ -463,16 +476,16 @@ def _build_full_analysis_notebook(
     analysis_postamble = (
         "\n"
         "print(f'Analysis complete in {result[\"elapsed_s\"]}s')\n"
-        "print(f'Source files: {result[\"project\"][\"total_source_files\"]}')\n"
-        "print(f'Test files: {result[\"project\"][\"total_test_files\"]}')\n"
-        "print(f'Total LoC: {result[\"project\"][\"total_loc\"]}')\n"
+        'print(f\'Source files: {result["project"]["total_source_files"]}\')\n'
+        'print(f\'Test files: {result["project"]["total_test_files"]}\')\n'
+        'print(f\'Total LoC: {result["project"]["total_loc"]}\')\n'
         "print(f'Action items: {len(result[\"action_plan\"])}')\n"
         "if 'lint' in result:\n"
-        "    print(f'Lint findings: {result[\"lint\"][\"total_findings\"]}')\n"
+        '    print(f\'Lint findings: {result["lint"]["total_findings"]}\')\n'
         "if 'specification' in result:\n"
-        "    print(f'Functions analyzed: {result[\"specification\"][\"total_functions\"]}')\n"
+        '    print(f\'Functions analyzed: {result["specification"]["total_functions"]}\')\n'
         "if 'coherence' in result:\n"
-        "    print(f'Coherence: {result[\"coherence\"][\"state\"]}')\n"
+        '    print(f\'Coherence: {result["coherence"]["state"]}\')\n'
         "if 'convergence_roadmap' in result and isinstance(result['convergence_roadmap'], list):\n"
         "    print(f'Convergence targets: {len(result[\"convergence_roadmap\"])}')"
     )
@@ -565,7 +578,12 @@ def _build_full_analysis_notebook(
         else f"External project\n- **Tool**: LintGate (`{lintgate_url}`)\n- **Target**: `{repo_url}`"
     )
 
-    title = _MODE_NAMES.get(mode, "lintgate_analysis").replace("lintgate_", "LintGate ").replace("_", " ").title()
+    title = (
+        _MODE_NAMES.get(mode, "lintgate_analysis")
+        .replace("lintgate_", "LintGate ")
+        .replace("_", " ")
+        .title()
+    )
 
     cells = [
         _md(
