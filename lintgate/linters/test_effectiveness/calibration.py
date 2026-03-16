@@ -27,6 +27,40 @@ def get_mutation_data_hash(survivors_path: str) -> str:
         return ""
 
 
+def _compute_kind_stats(
+    manifest: Any, vulnerable_functions: set[str]
+) -> dict[AssertionKind, dict[str, int]]:
+    """Count killed/total per AssertionKind, split by present/absent."""
+    stats: dict[AssertionKind, dict[str, int]] = {
+        kind: {"present_killed": 0, "present_total": 0, "absent_killed": 0, "absent_total": 0}
+        for kind in AssertionKind
+    }
+    for func_name, fe in manifest.functions.items():
+        base_name = func_name.split(".")[-1]
+        is_killed = base_name not in vulnerable_functions
+        present_kinds = {a.kind for a in fe.assertions}
+        for kind in AssertionKind:
+            bucket = "present" if kind in present_kinds else "absent"
+            stats[kind][f"{bucket}_total"] += 1
+            if is_killed:
+                stats[kind][f"{bucket}_killed"] += 1
+    return stats
+
+
+def _apply_marginal_contributions(
+    kind_stats: dict[AssertionKind, dict[str, int]],
+) -> dict[AssertionKind, float]:
+    """Compute calibrated weights from marginal kill-rate contributions."""
+    calibrated = STRENGTH_MAP.copy()
+    for kind, stats in kind_stats.items():
+        if stats["present_total"] > 0 and stats["absent_total"] > 0:
+            p_present = stats["present_killed"] / stats["present_total"]
+            p_absent = stats["absent_killed"] / stats["absent_total"]
+            delta = (p_present - p_absent) * 0.4
+            calibrated[kind] = max(0.1, min(0.95, round(calibrated[kind] + delta, 3)))
+    return calibrated
+
+
 def calibrate_weights(
     project_root: str, survivors_path: str, manifest: Any
 ) -> dict[AssertionKind, float]:
@@ -57,49 +91,8 @@ def calibrate_weights(
         if isinstance(s, dict) and s.get("function"):
             vulnerable_functions.add(s["function"])
 
-    kind_stats: dict[AssertionKind, dict[str, int]] = {
-        kind: {
-            "present_killed": 0,
-            "present_total": 0,
-            "absent_killed": 0,
-            "absent_total": 0,
-        }
-        for kind in AssertionKind
-    }
-
-    for func_name, fe in manifest.functions.items():
-        base_name = func_name.split(".")[-1]
-        is_killed = base_name not in vulnerable_functions
-
-        present_kinds = {a.kind for a in fe.assertions}
-
-        for kind in AssertionKind:
-            if kind in present_kinds:
-                kind_stats[kind]["present_total"] += 1
-                if is_killed:
-                    kind_stats[kind]["present_killed"] += 1
-            else:
-                kind_stats[kind]["absent_total"] += 1
-                if is_killed:
-                    kind_stats[kind]["absent_killed"] += 1
-
-    calibrated_map = STRENGTH_MAP.copy()
-
-    for kind, stats in kind_stats.items():
-        if stats["present_total"] > 0 and stats["absent_total"] > 0:
-            p_kill_present = stats["present_killed"] / stats["present_total"]
-            p_kill_absent = stats["absent_killed"] / stats["absent_total"]
-            contribution = p_kill_present - p_kill_absent
-
-            # Map contribution to weight delta
-            # Baseline is current STRENGTH_MAP. Adjust by contribution.
-            # This is a heuristic: if kind presence significantly increases kill probability, boost it.
-            # Clamp result between 0.1 and 0.95.
-            current = calibrated_map[kind]
-            # Contribution ranges from -1.0 to 1.0.
-            # We scale it: a 0.5 contribution (50% better kill rate) boosts weight by 0.2.
-            delta = contribution * 0.4
-            calibrated_map[kind] = max(0.1, min(0.95, round(current + delta, 3)))
+    kind_stats = _compute_kind_stats(manifest, vulnerable_functions)
+    calibrated_map = _apply_marginal_contributions(kind_stats)
 
     return calibrated_map
 

@@ -44,54 +44,43 @@ def _has_libcst() -> bool:
         return False
 
 
-def _rewrite_file_with_libcst(
-    filepath: str,
-    old_module: str,
-    new_module: str,
-) -> tuple[bool, str]:
-    """Rewrite imports in a file using libcst.
-
-    Returns (success, error_message).
-    """
+def _parse_cst_module(filepath: str) -> tuple[Any | None, str]:
+    """Parse a file into a libcst module. Returns (tree, error)."""
     try:
         import libcst as cst
     except ImportError:
-        return False, "libcst not available"
-
+        return None, "libcst not available"
     try:
         with open(filepath, encoding="utf-8") as f:
             source = f.read()
     except OSError as e:
-        return False, str(e)
-
+        return None, str(e)
     try:
-        tree = cst.parse_module(source)
+        return cst.parse_module(source), ""
     except cst.ParserSyntaxError as e:
-        return False, f"Parse error: {e}"
+        return None, f"Parse error: {e}"
+
+
+def _build_import_rewriter(old_module: str, new_module: str) -> Any:
+    """Create a libcst CSTTransformer that rewrites imports from old to new module."""
+    import libcst as cst
 
     class ImportRewriter(cst.CSTTransformer):
         def __init__(self) -> None:
             self.changed = False
 
-        def leave_ImportFrom(  # noqa: N802
-            self,
-            original_node: cst.ImportFrom,
-            updated_node: cst.ImportFrom,
-        ) -> cst.ImportFrom:
+        def leave_ImportFrom(
+            self, original_node: cst.ImportFrom, updated_node: cst.ImportFrom
+        ) -> cst.ImportFrom:  # noqa: N802
             module_str = _cst_module_to_str(updated_node.module)
             if module_str and (module_str == old_module or module_str.startswith(old_module + ".")):
-                new_mod_str = module_str.replace(old_module, new_module, 1)
-                new_mod = _str_to_cst_module(new_mod_str)
+                new_mod = _str_to_cst_module(module_str.replace(old_module, new_module, 1))
                 if new_mod is not None:
                     self.changed = True
                     return updated_node.with_changes(module=new_mod)
             return updated_node
 
-        def leave_Import(  # noqa: N802
-            self,
-            original_node: cst.Import,
-            updated_node: cst.Import,
-        ) -> cst.Import:
+        def leave_Import(self, original_node: cst.Import, updated_node: cst.Import) -> cst.Import:  # noqa: N802
             if not isinstance(updated_node.names, cst.ImportStar):
                 new_names = []
                 changed = False
@@ -100,8 +89,7 @@ def _rewrite_file_with_libcst(
                     if name_str and (
                         name_str == old_module or name_str.startswith(old_module + ".")
                     ):
-                        new_name_str = name_str.replace(old_module, new_module, 1)
-                        new_name = _str_to_cst_module(new_name_str)
+                        new_name = _str_to_cst_module(name_str.replace(old_module, new_module, 1))
                         if new_name is not None:
                             new_names.append(alias.with_changes(name=new_name))
                             changed = True
@@ -112,7 +100,20 @@ def _rewrite_file_with_libcst(
                     return updated_node.with_changes(names=new_names)
             return updated_node
 
-    rewriter = ImportRewriter()
+    return ImportRewriter()
+
+
+def _rewrite_file_with_libcst(
+    filepath: str,
+    old_module: str,
+    new_module: str,
+) -> tuple[bool, str]:
+    """Rewrite imports in a file using libcst. Returns (success, error_message)."""
+    tree, error = _parse_cst_module(filepath)
+    if tree is None:
+        return False, error
+
+    rewriter = _build_import_rewriter(old_module, new_module)
     try:
         new_tree = tree.visit(rewriter)
     except Exception as e:
