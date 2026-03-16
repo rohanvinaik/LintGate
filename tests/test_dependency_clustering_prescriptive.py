@@ -236,7 +236,7 @@ class TestSwapDiscrimination:
         # Same value. The SWAP survives because the bonuses have equal magnitude.
         # This is a legitimate equivalent mutant — swapping inputs/outputs in the len() checks
         # produces the same numerical result when both checks add 0.10.
-        pass
+        # (Verified asymmetry in test_input_output_boundary_asymmetry below.)
 
     def test_input_output_boundary_asymmetry(self):
         """The only way to kill a SWAP(inputs, outputs) is if the conditions differ.
