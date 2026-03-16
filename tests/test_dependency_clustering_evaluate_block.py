@@ -10,14 +10,11 @@ from __future__ import annotations
 import ast
 import textwrap
 
-import pytest
-
 from lintgate.linters.structure_checks.dependency_clustering import (
-    _StmtInfo,
     _analyze_statement,
     _evaluate_block,
+    _StmtInfo,
 )
-
 
 # ── Fixture helpers ──────────────────────────────────────────────────
 

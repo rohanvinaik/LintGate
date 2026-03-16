@@ -12,8 +12,8 @@ import ast
 import pytest
 
 from lintgate.linters.structure_checks.dependency_clustering import (
-    _StmtInfo,
     _compute_confidence,
+    _StmtInfo,
 )
 
 
