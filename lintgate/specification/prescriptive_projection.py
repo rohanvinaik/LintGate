@@ -68,6 +68,42 @@ def load_single_projection(project_root: str, function_key: str) -> FunctionProj
     return all_proj.get(function_key)
 
 
+def _build_reverse_graph(call_graph: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Build a reverse call graph mapping each callee to its callers.
+
+    Pure helper — no I/O, no side effects.
+    """
+    reverse: dict[str, list[str]] = {}
+    for caller, callees in call_graph.items():
+        for callee in callees:
+            reverse.setdefault(callee, []).append(caller)
+    return reverse
+
+
+def _assemble_projection(
+    func_key: str,
+    fd: dict[str, Any],
+    fan_in_keys: list[str],
+    fan_out_keys: list[str],
+) -> FunctionProjection:
+    """Assemble a single FunctionProjection from ledger data and graph context.
+
+    Pure function, no I/O.
+    """
+    neighbors = list(set(fan_in_keys + fan_out_keys))[:20]
+    return FunctionProjection(
+        function_key=func_key,
+        fan_in=len(fan_in_keys),
+        fan_out=len(fan_out_keys),
+        coupling_surface=fd.get("coupling_surface", 0),
+        covering_tests=fd.get("covering_tests", [])[:10],
+        priority_band=fd.get("priority_band", "P2"),
+        neighbor_keys=neighbors,
+        is_pure=fd.get("is_pure", False),
+        estimated_sigma=fd.get("estimated_sigma", 0),
+    )
+
+
 def build_projection_from_ledger(
     ledger_data: dict[str, dict[str, Any]],
     call_graph: dict[str, list[str]] | None = None,
@@ -77,32 +113,12 @@ def build_projection_from_ledger(
     ledger_data: function_key → flat dict (from SpecificationLedger.to_dict()["functions"])
     call_graph: function_key → [callee_keys] (from build_cross_module_call_graph)
     """
+    reverse_graph = _build_reverse_graph(call_graph) if call_graph else {}
+
     projections: dict[str, FunctionProjection] = {}
-
-    # Build reverse graph for fan_in
-    reverse_graph: dict[str, list[str]] = {}
-    if call_graph:
-        for caller, callees in call_graph.items():
-            for callee in callees:
-                reverse_graph.setdefault(callee, []).append(caller)
-
     for func_key, fd in ledger_data.items():
         fan_out_keys = call_graph.get(func_key, []) if call_graph else []
         fan_in_keys = reverse_graph.get(func_key, []) if call_graph else []
-
-        # Neighbor keys: union of fan_in + fan_out (for context)
-        neighbors = list(set(fan_in_keys + fan_out_keys))[:20]
-
-        projections[func_key] = FunctionProjection(
-            function_key=func_key,
-            fan_in=len(fan_in_keys),
-            fan_out=len(fan_out_keys),
-            coupling_surface=fd.get("coupling_surface", 0),
-            covering_tests=fd.get("covering_tests", [])[:10],
-            priority_band=fd.get("priority_band", "P2"),
-            neighbor_keys=neighbors,
-            is_pure=fd.get("is_pure", False),
-            estimated_sigma=fd.get("estimated_sigma", 0),
-        )
+        projections[func_key] = _assemble_projection(func_key, fd, fan_in_keys, fan_out_keys)
 
     return projections

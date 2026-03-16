@@ -615,6 +615,92 @@ class TestPersistence:
             assert cov["uncovered"] == ["mod::c"]
 
 
+# ── Workflow Record tests ─────────────────────────────────────────────
+
+
+class TestPrescriptiveWorkflowRecord:
+    def test_round_trip(self):
+        """to_dict/from_dict cycle preserves all fields."""
+        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+
+        record = PrescriptiveWorkflowRecord(
+            spec_id="spec123",
+            target_key="mod::func",
+            state="compiled",
+            projected_claims=[{"source": "compass:toward:0", "action": "included"}],
+            compiled_targets_path="/tmp/targets.json",
+            materialized_test_path="/tmp/test.py",
+            expected_kill_set={"VALUE": True, "SWAP": True},
+            structural_evidence=[{"status": "pass"}],
+            behavioral_evidence=[{"status": "unknown"}],
+            convergence_signal={"assessment": "converged"},
+            recommended_next_action="prescriptive_spec_verify",
+            recommended_next_args={"path": "/proj", "target": "mod::func"},
+            created_at=1000.0,
+            updated_at=2000.0,
+        )
+        d = record.to_dict()
+        restored = PrescriptiveWorkflowRecord.from_dict(d)
+
+        assert restored.spec_id == "spec123"
+        assert restored.target_key == "mod::func"
+        assert restored.state == "compiled"
+        assert len(restored.projected_claims) == 1
+        assert restored.compiled_targets_path == "/tmp/targets.json"
+        assert restored.expected_kill_set == {"VALUE": True, "SWAP": True}
+        assert restored.recommended_next_action == "prescriptive_spec_verify"
+        assert restored.created_at == 1000.0
+
+    def test_json_serializable(self):
+        """to_dict output is JSON-serializable."""
+        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+
+        record = PrescriptiveWorkflowRecord(spec_id="s1", target_key="m::f")
+        serialized = json.dumps(record.to_dict())
+        assert isinstance(serialized, str)
+        parsed = json.loads(serialized)
+        assert parsed["spec_id"] == "s1"
+
+    def test_persistence_save_load(self):
+        """Save/load cycle on temp dir."""
+        from lintgate.specification.prescriptive_spec import (
+            PrescriptiveWorkflowRecord,
+            load_workflow_record,
+            save_workflow_record,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record = PrescriptiveWorkflowRecord(
+                spec_id="abc",
+                target_key="mod::func_a",
+                state="composed",
+            )
+            save_workflow_record(tmp, record)
+            loaded = load_workflow_record(tmp, "mod::func_a")
+            assert loaded is not None
+            assert loaded.spec_id == "abc"
+            assert loaded.state == "composed"
+            assert loaded.updated_at > 0
+
+    def test_persistence_missing_returns_none(self):
+        """Loading nonexistent workflow returns None."""
+        from lintgate.specification.prescriptive_spec import load_workflow_record
+
+        with tempfile.TemporaryDirectory() as tmp:
+            assert load_workflow_record(tmp, "nonexistent::func") is None
+
+    def test_defaults(self):
+        """Default values are sensible."""
+        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+
+        record = PrescriptiveWorkflowRecord(spec_id="s", target_key="t")
+        assert record.state == "composed"
+        assert record.projected_claims == []
+        assert record.expected_kill_set == {}
+        assert record.recommended_next_action == ""
+        assert record.created_at > 0
+
+
 # ── Target resolution tests ──────────────────────────────────────────
 
 

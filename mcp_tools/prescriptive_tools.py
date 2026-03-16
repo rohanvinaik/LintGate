@@ -23,6 +23,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         path: str,
         target: str,
         mode: str = "auto",
+        description: str = "",
+        claims: list[str] | None = None,
+        interface_hint: str = "",
     ) -> str:
         """Compose a PrescriptiveSpec for a function or module.
 
@@ -40,14 +43,27 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         - "auto": Detect from existing code (default)
 
         Example: prescriptive_spec_compose(path="/my/project", target="module::function")
-        Example: prescriptive_spec_compose(path="/my/project", target="new:validate_input", mode="prospective")
+        Example: prescriptive_spec_compose(path="/my/project", target="new:validate_input", mode="prospective",
+            description="Validate user input against schema",
+            claims=["must be pure", "must return bool"])
 
         Args:
             path: Project root path.
             target: Function key (module::function) or new function name (new:name).
             mode: "prospective" | "retrospective" | "auto" (default).
+            description: NL description of the function — sentences become invariants.
+            claims: Explicit NL claims (e.g. ["must be pure", "at most 2 parameters"]).
+            interface_hint: JSON string of {parameters, return_type, problem_class, ...}.
         """
-        result = impl_prescriptive_spec_compose(path, target, mode, helpers)
+        result = impl_prescriptive_spec_compose(
+            path,
+            target,
+            mode,
+            helpers,
+            description=description,
+            claims=claims,
+            interface_hint=interface_hint,
+        )
         return str(helpers["_json_dumps"](result, output_mode="compact"))
 
     @mcp.tool()
@@ -78,8 +94,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     @mcp.tool()
     def prescriptive_spec_verify(
         path: str,
-        file: str,
+        file: str = "",
         function: str | None = None,
+        target: str = "",
     ) -> str:
         """Verify code against its PrescriptiveSpec (refinement check).
 
@@ -94,15 +111,22 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         COST: Fast (<1s). AST parse + cached state reads.
         FOLLOW-UP: If verdict is fail/partial, use mutation_run_sampling for fresh behavioral data.
 
-        Example: prescriptive_spec_verify(path="/my/project", file="core/utils.py")
+        Example: prescriptive_spec_verify(path="/my/project", target="core.utils::validate")
         Example: prescriptive_spec_verify(path="/my/project", file="core/utils.py", function="validate")
 
         Args:
             path: Project root path.
             file: Relative or absolute path to the Python file.
             function: Optional function name to verify.
+            target: Preferred — module::function key. Derives file/function automatically.
         """
-        result = impl_prescriptive_spec_verify(path, file, function, helpers)
+        # When target is provided, derive file/function from it
+        if target and not file:
+            from mcp_tools._prescriptive_impl import _target_to_file, _target_to_func
+
+            file = _target_to_file(target)
+            function = function or _target_to_func(target)
+        result = impl_prescriptive_spec_verify(path, file, function, helpers, target=target)
         return str(helpers["_json_dumps"](result, output_mode="compact"))
 
     @mcp.tool()

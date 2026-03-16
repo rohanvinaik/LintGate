@@ -346,6 +346,46 @@ def impl_platonic_converge(
     decompose_targets = assessment["decompose_targets"]
     primary_target = assessment.get("primary_target", rel_file)
 
+    # ── Prescriptive spec awareness ───────────────────────────────
+    # If prescriptive specs exist for functions in this file, override
+    # convergence targets with per-category kill expectations from the spec.
+    prescriptive_kill_overrides: dict[str, dict[str, bool]] = {}
+    try:
+        from lintgate.specification.prescriptive_spec import load_all_specs
+
+        all_pspecs = load_all_specs(project_root)
+        for pspec in all_pspecs.values():
+            # Match specs to this file
+            spec_file = (
+                pspec.target_key.split("::")[0].replace(".", "/") + ".py"
+                if "::" in pspec.target_key
+                else ""
+            )
+            if spec_file and (spec_file == rel_file or rel_file.endswith(spec_file)):
+                # Load kill expectations
+                from lintgate.specification.prescriptive_spec import _SPEC_DIR, _target_hash
+
+                exp_path = os.path.join(
+                    project_root,
+                    _SPEC_DIR,
+                    f"{_target_hash(pspec.target_key)}_expectations.json",
+                )
+                if os.path.isfile(exp_path):
+                    with open(exp_path, encoding="utf-8") as _ef:
+                        exp_data = json.load(_ef)
+                    eks = exp_data.get("expected_kill_set", {})
+                    if eks:
+                        prescriptive_kill_overrides[pspec.target_key] = eks
+                        # Override aggregate target_kill_rate with spec expectation
+                        expected_categories = len(eks)
+                        if expected_categories > 0:
+                            target_kill_rate = max(
+                                target_kill_rate,
+                                sum(1 for v in eks.values() if v) / expected_categories,
+                            )
+    except Exception:
+        pass
+
     if not auto_targets:
         state = "NEEDS_DECOMPOSITION" if decompose_targets else "BLOCKED_NO_ELIGIBLE_TARGETS"
         primary_next_action = "extraction_plan" if decompose_targets else ""
@@ -506,16 +546,35 @@ def impl_platonic_converge(
 
             update_target(orch_state, func_key, control_spec_level, kill_rate, phase)
 
-            iter_data["functions"].append(
-                {
-                    "function_key": func_key,
-                    "static_spec_level": round(spec_level, 4),
-                    "reconciled_spec_level": round(control_spec_level, 4),
-                    "reconciled_data_source": recon_source,
-                    "kill_rate": round(kill_rate, 4),
-                    "phase": phase,
-                }
-            )
+            func_entry: dict[str, Any] = {
+                "function_key": func_key,
+                "static_spec_level": round(spec_level, 4),
+                "reconciled_spec_level": round(control_spec_level, 4),
+                "reconciled_data_source": recon_source,
+                "kill_rate": round(kill_rate, 4),
+                "phase": phase,
+            }
+
+            # Check per-category kills against prescriptive expectations
+            if func_key in prescriptive_kill_overrides:
+                expected_kills = prescriptive_kill_overrides[func_key]
+                per_cat = (mut_result or {}).get("per_category", [])
+                cat_status: dict[str, str] = {}
+                for cat, should_kill in expected_kills.items():
+                    actual_killed = None
+                    for cd in per_cat:
+                        if cd.get("category") == cat:
+                            actual_killed = cd.get("survived", 0) == 0
+                            break
+                    if actual_killed is None:
+                        cat_status[cat] = "unknown"
+                    elif actual_killed == should_kill:
+                        cat_status[cat] = "pass"
+                    else:
+                        cat_status[cat] = "fail"
+                func_entry["prescriptive_kill_status"] = cat_status
+
+            iter_data["functions"].append(func_entry)
 
         mutation_cache = runtime_mutation_cache
         _persist_mutation_cache_entries(project_root, mutation_cache)

@@ -12,6 +12,7 @@ from lintgate.specification.prescriptive_spec import (
     _match_claims_to_symbols,
     _scan_pspec_stubs,
     compile_claim,
+    project_claims,
 )
 
 # ── _find_function_at ────────────────────────────────────────────────
@@ -206,9 +207,7 @@ class TestMatchClaimsToSymbols:
             with open(src, "w") as f:
                 f.write("def validate(x):\n    return x > 0\n")
 
-            compass = _FakeCompass(
-                directives=[_FakeDirective("validate must be pure")]
-            )
+            compass = _FakeCompass(directives=[_FakeDirective("validate must be pure")])
             results = _match_claims_to_symbols(compass, {}, tmp, set())
             func_names = [r.target_key.split("::")[-1] for r in results]
             assert "validate" in func_names
@@ -220,11 +219,7 @@ class TestMatchClaimsToSymbols:
                 f.write("def process(data):\n    return data\n")
 
             theory = {
-                "core": {
-                    "claims": [
-                        {"text": "process must handle errors", "confidence": 0.8}
-                    ]
-                }
+                "core": {"claims": [{"text": "process must handle errors", "confidence": 0.8}]}
             }
             results = _match_claims_to_symbols(_FakeCompass(), theory, tmp, set())
             func_names = [r.target_key.split("::")[-1] for r in results]
@@ -237,11 +232,7 @@ class TestMatchClaimsToSymbols:
                 f.write("def transform(x):\n    return x\n")
 
             theory = {
-                "core": {
-                    "claims": [
-                        {"text": "transform might be useful", "confidence": 0.3}
-                    ]
-                }
+                "core": {"claims": [{"text": "transform might be useful", "confidence": 0.3}]}
             }
             results = _match_claims_to_symbols(_FakeCompass(), theory, tmp, set())
             assert len(results) == 0
@@ -252,9 +243,7 @@ class TestMatchClaimsToSymbols:
             with open(src, "w") as f:
                 f.write("def compute(x):\n    return x\n")
 
-            compass = _FakeCompass(
-                directives=[_FakeDirective("compute must be safe")]
-            )
+            compass = _FakeCompass(directives=[_FakeDirective("compute must be safe")])
             seen = {"core.py::compute"}
             results = _match_claims_to_symbols(compass, {}, tmp, seen)
             # Already in seen, should not be added again
@@ -267,9 +256,7 @@ class TestMatchClaimsToSymbols:
             with open(src, "w") as f:
                 f.write("def run(x):\n    return x\n")
 
-            compass = _FakeCompass(
-                directives=[_FakeDirective("run the tests")]
-            )
+            compass = _FakeCompass(directives=[_FakeDirective("run the tests")])
             # "run" is only 3 chars, should be filtered
             results = _match_claims_to_symbols(compass, {}, tmp, set())
             assert len(results) == 0
@@ -315,3 +302,133 @@ class TestCompileClaimDedup:
         p = compile_claim("must return dict")
         assert p.op == PredicateOp.IS_TYPE
         assert p.op != PredicateOp.AND
+
+
+# ── project_claims ───────────────────────────────────────────────────
+
+
+class TestProjectClaims:
+    def test_empty_compass_and_theory(self):
+        """Empty inputs produce empty outputs."""
+
+        class _EmptyCompass:
+            directives = []
+
+        invs, forb, log = project_claims("mod::func", _EmptyCompass(), {})
+        assert invs == []
+        assert forb == []
+        assert log == []
+
+    def test_compass_toward_becomes_invariant(self):
+        compass = _FakeCompass(directives=[_FakeDirective("toward directive text")])
+        invs, forb, log = project_claims("mod::func", compass, {})
+        assert len(invs) == 1
+        assert invs[0].source == "compass:toward:0"
+        assert len(log) == 1
+        assert log[0]["action"] == "included"
+
+    def test_compass_forbidden_becomes_forbidden(self):
+        compass = _FakeCompass(directives=[_FakeDirective("do not mutate", kind="forbidden")])
+        invs, forb, log = project_claims("mod::func", compass, {})
+        assert len(forb) == 1
+        assert forb[0].severity == "hard"
+        assert forb[0].source == "compass:forbidden:0"
+
+    def test_compass_away_becomes_soft_forbidden(self):
+        compass = _FakeCompass(directives=[_FakeDirective("avoid globals", kind="away")])
+        invs, forb, log = project_claims("mod::func", compass, {})
+        assert len(forb) == 1
+        assert forb[0].severity == "soft"
+
+    def test_theory_low_confidence_rejected(self):
+        theory = {"core": {"claims": [{"text": "weak claim", "confidence": 0.4}]}}
+
+        class _EmptyCompass:
+            directives = []
+
+        invs, forb, log = project_claims("mod::func", _EmptyCompass(), theory)
+        assert len(invs) == 0
+        assert any(e["action"] == "rejected_low_confidence" for e in log)
+
+    def test_theory_high_confidence_included(self):
+        theory = {"core_theory": {"claims": [{"text": "strong claim", "confidence": 0.9}]}}
+
+        class _EmptyCompass:
+            directives = []
+
+        invs, forb, log = project_claims("mod::func", _EmptyCompass(), theory)
+        assert len(invs) == 1
+        assert invs[0].kind == "alignment"  # core_theory → alignment
+
+    def test_func_name_mention_high_relevance(self):
+        """Claims mentioning the target function get high confidence."""
+        theory = {
+            "core": {
+                "claims": [{"text": "validate_input must always check bounds", "confidence": 0.7}]
+            }
+        }
+
+        class _EmptyCompass:
+            directives = []
+
+        invs, _forb, log = project_claims("mod::validate_input", _EmptyCompass(), theory)
+        assert len(invs) == 1
+        assert log[0]["relevance"] == "high"
+        assert invs[0].confidence >= 0.9
+
+    def test_generic_claims_get_low_relevance(self):
+        theory = {
+            "core": {
+                "claims": [{"text": "project should have good architecture", "confidence": 0.7}]
+            }
+        }
+
+        class _EmptyCompass:
+            directives = []
+
+        invs, _forb, log = project_claims("mod::func", _EmptyCompass(), theory)
+        assert len(invs) == 1
+        assert log[0]["relevance"] == "low"
+
+    def test_purity_contradiction_rejected(self):
+        """PURE claim contradicted by stateful func_spec → rejected."""
+        theory = {"core": {"claims": [{"text": "must be pure", "confidence": 0.9}]}}
+
+        class _EmptyCompass:
+            directives = []
+
+        class _Core:
+            is_pure = False
+
+        class _Testability:
+            is_stateful = True
+
+        class _FuncSpec:
+            core = _Core()
+            testability = _Testability()
+
+        invs, _forb, log = project_claims(
+            "mod::func", _EmptyCompass(), theory, func_spec=_FuncSpec()
+        )
+        assert len(invs) == 0
+        assert any(e["action"] == "rejected_contradicted" for e in log)
+
+    def test_causal_marker_boost(self):
+        theory = {
+            "core": {
+                "claims": [
+                    {
+                        "text": "Because caching reduces latency, use memoization",
+                        "confidence": 0.7,
+                    }
+                ]
+            }
+        }
+
+        class _EmptyCompass:
+            directives = []
+
+        invs, _forb, _log = project_claims("mod::func", _EmptyCompass(), theory)
+        assert len(invs) == 1
+        # 0.7 base + 0.1 causal boost = 0.8
+        assert invs[0].confidence >= 0.8 - 1e-9
