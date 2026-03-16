@@ -94,6 +94,41 @@ class TestRangesOverlap:
     def test_single_element_disjoint(self) -> None:
         assert _ranges_overlap(range(3, 4), range(4, 5)) is False
 
+    # ── Boundary-specific tests (mutation BOUNDARY category) ──────
+
+    def test_boundary_off_by_one_adjacent_no_overlap(self) -> None:
+        """range(1,5) ends at 5, range(5,8) starts at 5 — no shared element."""
+        assert _ranges_overlap(range(1, 5), range(5, 8)) is False
+
+    def test_boundary_off_by_one_just_overlapping(self) -> None:
+        """range(1,5) ends at 5, range(4,8) starts at 4 — {4} shared."""
+        assert _ranges_overlap(range(1, 5), range(4, 8)) is True
+
+    def test_boundary_a_stop_equals_b_start_no_overlap(self) -> None:
+        """Exact boundary: a.stop == b.start → no overlap (half-open intervals)."""
+        assert _ranges_overlap(range(10, 20), range(20, 30)) is False
+
+    def test_boundary_a_stop_one_past_b_start_overlap(self) -> None:
+        """a.stop == b.start + 1 → overlap at exactly one point."""
+        assert _ranges_overlap(range(10, 21), range(20, 30)) is True
+
+    def test_boundary_symmetric_adjacent(self) -> None:
+        """Symmetric check: b ends where a starts."""
+        assert _ranges_overlap(range(5, 10), range(1, 5)) is False
+
+    def test_boundary_zero_length_at_start(self) -> None:
+        """range(0, 0) is empty — but start/stop comparison matters."""
+        # 0 < 5 and 1 < 0 → False (second condition fails)
+        assert _ranges_overlap(range(0, 0), range(1, 5)) is False
+
+    def test_boundary_single_point_touching(self) -> None:
+        """range(4,5) = {4}, range(5,6) = {5} — adjacent, no overlap."""
+        assert _ranges_overlap(range(4, 5), range(5, 6)) is False
+
+    def test_boundary_single_point_overlapping(self) -> None:
+        """range(4,5) = {4}, range(4,6) = {4,5} — overlap at {4}."""
+        assert _ranges_overlap(range(4, 5), range(4, 6)) is True
+
 
 # ===================================================================
 # _add_spans

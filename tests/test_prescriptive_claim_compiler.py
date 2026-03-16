@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     PredicateOp,
     compile_claim,
     pred_no_raise,
@@ -111,8 +111,8 @@ class TestClaimCompiler:
 
 class TestPureChecker:
     def test_pure_function_passes(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def add(x, y):\n    return x + y\n"
         inv = Invariant("pure", pred_pure(), "must be pure", "src", 0.8, "safety")
@@ -120,8 +120,8 @@ class TestPureChecker:
         assert results[0].status == "pass"
 
     def test_global_fails(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "counter = 0\ndef inc():\n    global counter\n    counter += 1\n"
         inv = Invariant("pure", pred_pure(), "must be pure", "src", 0.8, "safety")
@@ -130,8 +130,8 @@ class TestPureChecker:
         assert "global" in results[0].reason
 
     def test_print_fails(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def noisy(x):\n    print(x)\n    return x\n"
         inv = Invariant("pure", pred_pure(), "must be pure", "src", 0.8, "safety")
@@ -141,8 +141,8 @@ class TestPureChecker:
 
 class TestReturnsNonNull:
     def test_non_null_passes(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def f(x):\n    return x + 1\n"
         inv = Invariant("nn", pred_returns_non_null(), "no None", "src", 0.8, "safety")
@@ -150,8 +150,8 @@ class TestReturnsNonNull:
         assert results[0].status == "pass"
 
     def test_bare_return_fails(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def f(x):\n    if x:\n        return\n    return 1\n"
         inv = Invariant("nn", pred_returns_non_null(), "no None", "src", 0.8, "safety")
@@ -159,8 +159,8 @@ class TestReturnsNonNull:
         assert results[0].status == "fail"
 
     def test_return_none_fails(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def f(x):\n    return None\n"
         inv = Invariant("nn", pred_returns_non_null(), "no None", "src", 0.8, "safety")
@@ -168,8 +168,8 @@ class TestReturnsNonNull:
         assert results[0].status == "fail"
 
     def test_no_return_fails(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def f(x):\n    x + 1\n"
         inv = Invariant("nn", pred_returns_non_null(), "no None", "src", 0.8, "safety")
@@ -179,8 +179,8 @@ class TestReturnsNonNull:
 
 class TestRaisesChecker:
     def test_raises_found(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def validate(x):\n    if not x:\n        raise ValueError('bad')\n"
         inv = Invariant("raises", pred_raises("ValueError"), "raises VE", "src", 0.8, "safety")
@@ -188,8 +188,8 @@ class TestRaisesChecker:
         assert results[0].status == "pass"
 
     def test_raises_wrong_type(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def validate(x):\n    if not x:\n        raise TypeError('bad')\n"
         inv = Invariant("raises", pred_raises("ValueError"), "raises VE", "src", 0.8, "safety")
@@ -197,8 +197,8 @@ class TestRaisesChecker:
         assert results[0].status == "fail"
 
     def test_no_raise_passes(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def safe(x):\n    return x + 1\n"
         inv = Invariant("nr", pred_no_raise(), "no raise", "src", 0.8, "safety")
@@ -206,8 +206,8 @@ class TestRaisesChecker:
         assert results[0].status == "pass"
 
     def test_no_raise_fails(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def unsafe(x):\n    raise RuntimeError('boom')\n"
         inv = Invariant("nr", pred_no_raise(), "no raise", "src", 0.8, "safety")
@@ -217,8 +217,8 @@ class TestRaisesChecker:
 
 class TestParamCount:
     def test_within_limit(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def f(a, b):\n    return a + b\n"
         inv = Invariant("pc", pred_param_count_lte(3), "max 3", "src", 0.8, "safety")
@@ -226,8 +226,8 @@ class TestParamCount:
         assert results[0].status == "pass"
 
     def test_exceeds_limit(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "def f(a, b, c, d):\n    pass\n"
         inv = Invariant("pc", pred_param_count_lte(2), "max 2", "src", 0.8, "safety")
@@ -235,8 +235,8 @@ class TestParamCount:
         assert results[0].status == "fail"
 
     def test_self_excluded(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant
 
         source = "class C:\n    def method(self, a, b):\n        pass\n"
         inv = Invariant("pc", pred_param_count_lte(2), "max 2", "src", 0.8, "safety")
@@ -250,11 +250,11 @@ class TestParamCount:
 class TestEvidenceSplit:
     def test_structural_evidence_included(self):
         """verify_refinement returns structural_evidence from AST checks."""
-        from lintgate.specification.prescriptive_backends import (
+        from lintgate.specification.prescriptive.backends import (
             PrescriptiveAdapter,
             PureBackend,
         )
-        from lintgate.specification.prescriptive_spec import (
+        from lintgate.specification.prescriptive.spec import (
             Invariant,
             PrescriptiveSpec,
             pred_type,
@@ -288,11 +288,11 @@ class TestEvidenceSplit:
 
     def test_structural_fail_reflected(self):
         """Structural failure contributes to overall=fail."""
-        from lintgate.specification.prescriptive_backends import (
+        from lintgate.specification.prescriptive.backends import (
             PrescriptiveAdapter,
             PureBackend,
         )
-        from lintgate.specification.prescriptive_spec import (
+        from lintgate.specification.prescriptive.spec import (
             Invariant,
             PrescriptiveSpec,
             pred_type,
@@ -329,8 +329,8 @@ class TestClaimToAST:
     """End-to-end: natural language claim → compiled predicate → AST check."""
 
     def test_must_return_int_checked(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant, compile_claim
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant, compile_claim
 
         pred = compile_claim("must return int")
         inv = Invariant("typed", pred, "must return int", "src", 0.8, "safety")
@@ -344,8 +344,8 @@ class TestClaimToAST:
         assert results[0].status == "fail"
 
     def test_must_be_pure_checked(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant, compile_claim
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant, compile_claim
 
         pred = compile_claim("no side effects")
         inv = Invariant("pure", pred, "no side effects", "src", 0.8, "safety")
@@ -359,8 +359,8 @@ class TestClaimToAST:
         assert results[0].status == "fail"
 
     def test_custom_claim_still_skips(self):
-        from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
-        from lintgate.specification.prescriptive_spec import Invariant, compile_claim
+        from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
+        from lintgate.specification.prescriptive.spec import Invariant, compile_claim
 
         pred = compile_claim("the algorithm should converge quickly")
         inv = Invariant("perf", pred, "converge", "src", 0.8, "safety")
@@ -375,7 +375,7 @@ class TestClaimToAST:
 
 class TestGraphProjection:
     def test_build_and_save_load(self):
-        from lintgate.specification.prescriptive_projection import (
+        from lintgate.specification.prescriptive.projection import (
             build_projection_from_ledger,
             load_projection,
             save_projection,
@@ -414,7 +414,7 @@ class TestGraphProjection:
             assert loaded["mod::func_a"].priority_band == "P0"
 
     def test_load_single(self):
-        from lintgate.specification.prescriptive_projection import (
+        from lintgate.specification.prescriptive.projection import (
             FunctionProjection,
             load_single_projection,
             save_projection,
@@ -434,7 +434,7 @@ class TestGraphProjection:
             assert load_single_projection(tmp, "mod::missing") is None
 
     def test_empty_project(self):
-        from lintgate.specification.prescriptive_projection import load_projection
+        from lintgate.specification.prescriptive.projection import load_projection
 
         with tempfile.TemporaryDirectory() as tmp:
             assert load_projection(tmp) == {}

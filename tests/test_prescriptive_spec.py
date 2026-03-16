@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import tempfile
 
-from lintgate.specification.prescriptive_sigma import (
+from lintgate.specification.prescriptive.sigma import (
     compute_convergence_signal,
     estimate_prescriptive_sigma,
 )
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     ForbiddenBehavior,
     Invariant,
     Predicate,
@@ -621,7 +621,7 @@ class TestPersistence:
 class TestPrescriptiveWorkflowRecord:
     def test_round_trip(self):
         """to_dict/from_dict cycle preserves all fields."""
-        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+        from lintgate.specification.prescriptive.spec import PrescriptiveWorkflowRecord
 
         record = PrescriptiveWorkflowRecord(
             spec_id="spec123",
@@ -653,7 +653,7 @@ class TestPrescriptiveWorkflowRecord:
 
     def test_json_serializable(self):
         """to_dict output is JSON-serializable."""
-        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+        from lintgate.specification.prescriptive.spec import PrescriptiveWorkflowRecord
 
         record = PrescriptiveWorkflowRecord(spec_id="s1", target_key="m::f")
         serialized = json.dumps(record.to_dict())
@@ -663,7 +663,7 @@ class TestPrescriptiveWorkflowRecord:
 
     def test_persistence_save_load(self):
         """Save/load cycle on temp dir."""
-        from lintgate.specification.prescriptive_spec import (
+        from lintgate.specification.prescriptive.spec import (
             PrescriptiveWorkflowRecord,
             load_workflow_record,
             save_workflow_record,
@@ -684,14 +684,14 @@ class TestPrescriptiveWorkflowRecord:
 
     def test_persistence_missing_returns_none(self):
         """Loading nonexistent workflow returns None."""
-        from lintgate.specification.prescriptive_spec import load_workflow_record
+        from lintgate.specification.prescriptive.spec import load_workflow_record
 
         with tempfile.TemporaryDirectory() as tmp:
             assert load_workflow_record(tmp, "nonexistent::func") is None
 
     def test_defaults(self):
         """Default values are sensible."""
-        from lintgate.specification.prescriptive_spec import PrescriptiveWorkflowRecord
+        from lintgate.specification.prescriptive.spec import PrescriptiveWorkflowRecord
 
         record = PrescriptiveWorkflowRecord(spec_id="s", target_key="t")
         assert record.state == "composed"

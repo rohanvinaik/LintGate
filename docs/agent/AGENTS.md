@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 116 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 118 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Golden Path (Auto-Improve)
 
@@ -131,6 +131,21 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `spec_file_analyze` | Single-file spec analysis. `enrich=True` (default) builds manifests; `enrich=False` runs AST-only symbolic baseline. Returns regime rationale, trajectory state, and empirical overlay (static/empirical reconciliation: AGREES, CONTRADICTS, DISCOVERY_FAILURE, TOPOLOGY_LIMITED, NO_EMPIRICAL_DATA). | Interactive per-file spec analysis |
 | `spec_file_prescribe` | Single-file test prescriptions with risk prioritization | After spec_file_analyze shows under-specified functions |
 | `spec_project_rollup` | Project-wide specification rollup with file-level caching. Defaults to production-only (`include_tests=False`) so hotspots focus on source code; set `include_tests=True` to include test files. Cache mode remains read-only by default; `analyze_uncached=True` for live analysis. | Getting project-wide spec health overview |
+
+### Prescriptive Specifications
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `prescriptive_spec_compose` | Compose a PrescriptiveSpec from theory + compass. Accepts optional `description` (NL), `claims` (explicit NL claims like "must be pure"), and `interface_hint` (JSON string with parameters/return_type/problem_class). Uses `project_claims()` to filter claims by target relevance (high/medium/low). Creates a `PrescriptiveWorkflowRecord` for cross-tool state tracking. | Before writing new code (prospective) or enriching existing code (retrospective) |
+| `prescriptive_spec_compile` | Compile spec into test skeletons + generation constraints. Persists `CompilationTargets`, materializes test file to `tests/generated/`, writes kill expectations. Updates workflow record to state="compiled". | After composing a spec |
+| `prescriptive_spec_verify` | Verify code against its spec. Accepts `target` as primary identity (derives file/function). Returns structural (AST) + behavioral (mutation) evidence. Tightened next_actions: pass→`spec_gate_check`, structural_fail→edit code, behavioral_fail→`platonic_converge`, unknown→`mutation_run_sampling`. | After writing or editing code with a spec |
+| `prescriptive_spec_status` | Show prescriptive coverage, sigma convergence, problem class distribution | Project-wide prescriptive overview |
+
+**Workflow**: `compose(target, description=..., claims=[...])` → `compile(target)` → [write code using `generation_prompt`] → `verify(target=...)` → `platonic_converge` if behavioral gaps remain.
+
+**Interpolation layer**: `project_claims()` projects compass + theory claims onto specific targets with 3-tier relevance scoring (function name mention → high, predicate op match → medium, generic → low). Claims contradicted by `func_spec` evidence are rejected with log entries. `PrescriptiveWorkflowRecord` persists workflow state (composed → compiled → verifying → complete) so every tool reads/writes the same handle via `target_key`.
+
+**Spec-aware convergence**: `platonic_converge` loads prescriptive specs for the convergence file, reads `expected_kill_set` from persisted expectations, and overrides `target_kill_rate` with per-category kill targets. Iteration data includes `prescriptive_kill_status` per function.
 
 ### Mutation Testing
 

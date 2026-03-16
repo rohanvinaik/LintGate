@@ -436,7 +436,7 @@ def _impl_theory_freeze(project_root: str) -> dict[str, Any]:
             and cp_config.prescriptive_spec_auto_compose_on_freeze
         )
         if auto_compose:
-            from lintgate.specification.prescriptive_spec import (
+            from lintgate.specification.prescriptive.spec import (
                 PrescriptiveSpecComposer,
                 resolve_targets,
                 save_spec,

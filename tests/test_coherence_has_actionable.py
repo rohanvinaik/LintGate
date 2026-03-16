@@ -7,16 +7,22 @@ Target: coherence::_has_actionable_findings
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Literal
 
 from lintgate.controlplane.coherence import _has_actionable_findings
 from lintgate.controlplane.types import ChannelResult
+
+_Severity = Literal["blocking", "warning", "informational", "none"]
 
 
 def _finding(severity: str = "informational") -> SimpleNamespace:
     return SimpleNamespace(severity=severity)
 
 
-def _result(findings: list | None = None, severity: str = "none") -> ChannelResult:
+def _result(
+    findings: list | None = None,
+    severity: _Severity = "none",
+) -> ChannelResult:
     r = ChannelResult(channel="test", status="fail", severity=severity)
     r.findings = findings or []
     return r
@@ -27,9 +33,10 @@ class TestBlockingFinding:
         assert _has_actionable_findings(_result([_finding("blocking")])) is True
 
     def test_blocking_among_informational(self):
-        assert _has_actionable_findings(
-            _result([_finding("informational"), _finding("blocking")])
-        ) is True
+        assert (
+            _has_actionable_findings(_result([_finding("informational"), _finding("blocking")]))
+            is True
+        )
 
 
 class TestWarningFinding:
@@ -37,41 +44,50 @@ class TestWarningFinding:
         assert _has_actionable_findings(_result([_finding("warning")])) is True
 
     def test_warning_among_informational(self):
-        assert _has_actionable_findings(
-            _result([_finding("informational"), _finding("warning")])
-        ) is True
+        assert (
+            _has_actionable_findings(_result([_finding("informational"), _finding("warning")]))
+            is True
+        )
 
 
 class TestInformationalOnly:
     def test_all_informational_no_channel_severity(self):
-        assert _has_actionable_findings(
-            _result([_finding("informational"), _finding("informational")], severity="informational")
-        ) is False
+        assert (
+            _has_actionable_findings(
+                _result(
+                    [_finding("informational"), _finding("informational")], severity="informational"
+                )
+            )
+            is False
+        )
 
     def test_all_informational_with_none_severity(self):
-        assert _has_actionable_findings(
-            _result([_finding("informational")], severity="none")
-        ) is False
+        assert (
+            _has_actionable_findings(_result([_finding("informational")], severity="none")) is False
+        )
 
 
 class TestChannelSeverityFallback:
     def test_channel_blocking_no_blocking_findings(self):
         """Channel-level severity=blocking with only informational findings → True."""
-        assert _has_actionable_findings(
-            _result([_finding("informational")], severity="blocking")
-        ) is True
+        assert (
+            _has_actionable_findings(_result([_finding("informational")], severity="blocking"))
+            is True
+        )
 
     def test_channel_warning_no_warning_findings(self):
         """Channel-level severity=warning with only informational findings → True."""
-        assert _has_actionable_findings(
-            _result([_finding("informational")], severity="warning")
-        ) is True
+        assert (
+            _has_actionable_findings(_result([_finding("informational")], severity="warning"))
+            is True
+        )
 
     def test_channel_informational_no_actionable_findings(self):
         """Channel-level severity=informational → False."""
-        assert _has_actionable_findings(
-            _result([_finding("informational")], severity="informational")
-        ) is False
+        assert (
+            _has_actionable_findings(_result([_finding("informational")], severity="informational"))
+            is False
+        )
 
 
 class TestEmptyFindings:

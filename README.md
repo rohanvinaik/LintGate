@@ -143,16 +143,34 @@ LintGate normally operates *retrospectively*: code is written, then analyzed. Th
 ### How it works
 
 ```
-prescriptive_spec_compose(path, target)     # theory + compass → behavioral contract
+prescriptive_spec_compose(path, target,     # theory + compass → behavioral contract
+    description="Evict stale cache entries", #   NL description → invariants
+    claims=["must be pure", "at most 2 params"]) # explicit claims → typed predicates
   ↓
 prescriptive_spec_compile(path, target)     # contract → test skeletons + generation constraints
+                                            #   persists kill expectations + materializes test file
   ↓
 [write code guided by generation_prompt]    # LLM sees MUST/MUST NOT constraints
   ↓
-prescriptive_spec_verify(path, file)        # refinement check: sigma convergence + mutation kill expectations
+prescriptive_spec_verify(path, target=...)  # refinement check: structural (AST) + behavioral (mutation)
+  ↓                                         #   pass → spec_gate_check
+  ↓                                         #   behavioral fail → platonic_converge (spec-aware)
+platonic_converge(path, file)               # loads expected_kill_set, converges toward *that contract*
 ```
 
 Each spec is a **typed Predicate IR** — not strings. Predicates are normalizable, comparable, and checked against the function AST at ControlPlane time (PSPEC001). The `CUSTOM` escape hatch handles predicates that require semantic understanding.
+
+### Interpolation layer
+
+The **claim projection** system (`project_claims()`) filters compass + theory claims by relevance to a specific target function:
+- **High** (0.9): claim text mentions the function name
+- **Medium** (0.75): compiled predicate op matches target context (e.g., PURE claim + pure function)
+- **Low** (0.55): generic project-level claims (demoted by 0.15)
+- **Rejected**: claims contradicted by `func_spec` evidence (e.g., PURE claim on a stateful function)
+
+The **`PrescriptiveWorkflowRecord`** persists workflow state (`composed` → `compiled` → `verifying` → `complete`) alongside each spec. Every tool in the chain reads/writes the same record using `target_key` as the primary identity — no re-threading of `path`, `file`, `function` across tool calls.
+
+**Spec-aware convergence**: `platonic_converge` detects prescriptive specs for the convergence file, loads `expected_kill_set` from persisted expectations, and overrides `target_kill_rate` with per-category kill targets from the spec. Each iteration tracks `prescriptive_kill_status` per function.
 
 ### Three problem-class backends
 

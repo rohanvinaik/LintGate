@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 
-from lintgate.specification.prescriptive_backends import (
+from lintgate.specification.prescriptive.backends import (
     CompilationTargets,
     DistributedBackend,
     PrescriptiveAdapter,
@@ -20,7 +20,7 @@ from lintgate.specification.prescriptive_backends import (
     check_synthesis_gate,
     select_backend,
 )
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     ForbiddenBehavior,
     Invariant,
     Predicate,
@@ -65,7 +65,7 @@ def _make_pure_spec(**overrides) -> PrescriptiveSpec:
         "created_at": 1000.0,
     }
     defaults.update(overrides)
-    return PrescriptiveSpec(**defaults)
+    return PrescriptiveSpec(**defaults)  # type: ignore[arg-type]
 
 
 def _make_stateful_spec() -> PrescriptiveSpec:
@@ -271,7 +271,7 @@ class TestCompilationTargets:
 
     def test_generation_constraints_in_output(self):
         """CompilationTargets includes generation constraints when spec has them."""
-        from lintgate.specification.prescriptive_spec import GenerationConstraint
+        from lintgate.specification.prescriptive.spec import GenerationConstraint
 
         spec = _make_pure_spec(
             generation_constraints=[
@@ -315,7 +315,7 @@ class TestPrescriptiveAdapter:
             adapter.persist_kill_expectations(spec, targets, tmp)
 
             # Check file exists
-            from lintgate.specification.prescriptive_spec import _SPEC_DIR, _target_hash
+            from lintgate.specification.prescriptive.spec import _SPEC_DIR, _target_hash
 
             h = _target_hash(spec.target_key)
             exp_path = os.path.join(tmp, _SPEC_DIR, f"{h}_expectations.json")

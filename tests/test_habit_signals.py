@@ -1225,3 +1225,116 @@ class TestLightweightHookPath:
         assert updated_tracker.tool_calls_since_compact == 0
         assert updated_tracker.last_compact_tokens > 0
         assert isinstance(extras.get("habit_last_snapshot"), dict)
+
+
+# ── Mutation-targeted: _detect_test_in_window (VALUE category) ────────
+
+
+class TestDetectTestInWindowMutation:
+    """Exact-value assertions for _detect_test_in_window (mutation-targeted)."""
+
+    def test_empty_window_returns_false(self):
+        assert _detect_test_in_window([]) is False
+
+    def test_no_bash_events_returns_false(self):
+        window = [{"tool": "Edit", "sig": "pytest"}, {"tool": "Read", "sig": "test"}]
+        assert _detect_test_in_window(window) is False
+
+    def test_bash_with_pytest_returns_true(self):
+        window = [{"tool": "Bash", "sig": "python -m pytest tests/"}]
+        assert _detect_test_in_window(window) is True
+
+    def test_bash_with_test_returns_true(self):
+        window = [{"tool": "Bash", "sig": "python -m test_runner"}]
+        assert _detect_test_in_window(window) is True
+
+    def test_bash_without_test_keyword_returns_false(self):
+        window = [{"tool": "Bash", "sig": "git status"}]
+        assert _detect_test_in_window(window) is False
+
+    def test_case_insensitive_match(self):
+        window = [{"tool": "Bash", "sig": "PYTEST --verbose"}]
+        assert _detect_test_in_window(window) is True
+
+    def test_mixed_events_finds_test(self):
+        window = [
+            {"tool": "Edit", "sig": "edit file"},
+            {"tool": "Bash", "sig": "ruff check ."},
+            {"tool": "Bash", "sig": "pytest -x"},
+        ]
+        assert _detect_test_in_window(window) is True
+
+    def test_missing_sig_key(self):
+        window = [{"tool": "Bash"}]
+        assert _detect_test_in_window(window) is False
+
+    def test_empty_sig(self):
+        window = [{"tool": "Bash", "sig": ""}]
+        assert _detect_test_in_window(window) is False
+
+
+# ── Mutation-targeted: _score_component (VALUE category) ──────────────
+
+
+class TestScoreComponentMutation:
+    """Exact-value assertions for _score_component across all operators (mutation-targeted)."""
+
+    # ── op="lt" (lower is better) ─────────────────────────────────
+
+    def test_lt_below_full_returns_1(self):
+        assert _score_component(1.0, full=5.0, half=10.0, op="lt") == 1.0
+
+    def test_lt_at_full_returns_0_5(self):
+        """Exactly at full threshold — NOT below, so falls to half check."""
+        assert _score_component(5.0, full=5.0, half=10.0, op="lt") == 0.5
+
+    def test_lt_between_full_and_half_returns_0_5(self):
+        assert _score_component(7.0, full=5.0, half=10.0, op="lt") == 0.5
+
+    def test_lt_at_half_returns_0(self):
+        """Exactly at half threshold — NOT below half, so returns 0.0."""
+        assert _score_component(10.0, full=5.0, half=10.0, op="lt") == 0.0
+
+    def test_lt_above_half_returns_0(self):
+        assert _score_component(15.0, full=5.0, half=10.0, op="lt") == 0.0
+
+    # ── op="gte" (higher is better, allows equality) ──────────────
+
+    def test_gte_at_full_returns_1(self):
+        assert _score_component(5.0, full=5.0, half=3.0, op="gte") == 1.0
+
+    def test_gte_above_full_returns_1(self):
+        assert _score_component(10.0, full=5.0, half=3.0, op="gte") == 1.0
+
+    def test_gte_at_half_returns_0_5(self):
+        assert _score_component(3.0, full=5.0, half=3.0, op="gte") == 0.5
+
+    def test_gte_between_half_and_full_returns_0_5(self):
+        assert _score_component(4.0, full=5.0, half=3.0, op="gte") == 0.5
+
+    def test_gte_below_half_returns_0(self):
+        assert _score_component(2.0, full=5.0, half=3.0, op="gte") == 0.0
+
+    # ── op="gt" (higher is better, strict inequality) ─────────────
+
+    def test_gt_above_full_returns_1(self):
+        assert _score_component(6.0, full=5.0, half=3.0, op="gt") == 1.0
+
+    def test_gt_at_full_returns_0_5(self):
+        """Exactly at full — NOT above, falls to half check."""
+        assert _score_component(5.0, full=5.0, half=3.0, op="gt") == 0.5
+
+    def test_gt_at_half_returns_0(self):
+        """Exactly at half — NOT above half, returns 0.0."""
+        assert _score_component(3.0, full=5.0, half=3.0, op="gt") == 0.0
+
+    def test_gt_above_half_returns_0_5(self):
+        assert _score_component(4.0, full=5.0, half=3.0, op="gt") == 0.5
+
+    def test_gt_below_half_returns_0(self):
+        assert _score_component(1.0, full=5.0, half=3.0, op="gt") == 0.0
+
+    # ── Default op ────────────────────────────────────────────────
+
+    def test_default_op_is_lt(self):
+        assert _score_component(1.0, full=5.0, half=10.0) == 1.0

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     Invariant,
     PrescriptiveSpec,
     pred_gt,

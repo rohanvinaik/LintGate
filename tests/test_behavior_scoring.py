@@ -1095,3 +1095,64 @@ class TestSignalExtractor:
         assert signals[0].kind == "test_file_issue"
         assert signals[0].evidence_map["file"] == "src/main.py"
         assert signals[0].evidence_map["line"] == "42"
+
+
+# ── Mutation-targeted: build_evidence_trace VALUE edge cases ──────────
+
+
+class TestBuildEvidenceTraceMutation:
+    """Exact-value assertions targeting surviving VALUE mutants."""
+
+    def test_empty_intent_history(self) -> None:
+        compass = _make_compass(intent_history=[], event_counter=0)
+        scorer = IntentBiasScorer(compass, {})
+        trace = scorer.build_evidence_trace()
+        assert trace["window"] == 0
+        assert trace["intent_counts"] == {}
+        assert "global_alpha" not in trace
+
+    def test_global_alpha_zero_omits_keys(self) -> None:
+        compass = _make_compass(intent_history=["execute"], event_counter=5)
+        # global priors with alpha=0 → no global keys in trace
+        scorer = IntentBiasScorer(compass, {}, {"enabled": True, "alpha": 0.0})
+        trace = scorer.build_evidence_trace()
+        assert "global_alpha" not in trace
+        assert "global_adjustments_applied" not in trace
+
+    def test_global_adjustments_filters_zeros(self) -> None:
+        compass = _make_compass(intent_history=["verify"] * 3, event_counter=10)
+        priors = {
+            "enabled": True,
+            "alpha": 0.5,
+            "decay_horizon": 50,
+            "computed_bias_adjustments": {
+                "verification_debt": 0.0,  # zero → filtered out
+                "approach_cycling": 0.05,  # non-zero → included
+            },
+        }
+        scorer = IntentBiasScorer(compass, {}, priors)
+        trace = scorer.build_evidence_trace()
+        assert trace["global_adjustments_applied"] == {"approach_cycling": 0.05}
+
+    def test_rounding_precision(self) -> None:
+        compass = _make_compass(intent_history=["execute"], event_counter=10)
+        priors = {
+            "enabled": True,
+            "alpha": 0.123456789,
+            "decay_horizon": 50,
+            "computed_bias_adjustments": {"sig": 0.123456789},
+        }
+        scorer = IntentBiasScorer(compass, {}, priors)
+        trace = scorer.build_evidence_trace()
+        # alpha is decayed during init; just verify it's rounded to 3 decimals
+        assert isinstance(trace["global_alpha"], float)
+        assert trace["global_alpha"] == round(trace["global_alpha"], 3)
+        # adjustments are rounded to 3 decimals
+        assert trace["global_adjustments_applied"]["sig"] == round(0.123456789, 3)
+
+    def test_single_intent_exact_counts(self) -> None:
+        compass = _make_compass(intent_history=["modify"] * 5, event_counter=10)
+        scorer = IntentBiasScorer(compass, {})
+        trace = scorer.build_evidence_trace()
+        assert trace["intent_counts"] == {"modify": 5}
+        assert trace["window"] == 5

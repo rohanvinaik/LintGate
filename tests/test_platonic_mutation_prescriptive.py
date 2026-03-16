@@ -298,5 +298,6 @@ class TestGeneratedTestFilesPassthrough:
             mock_ctx.assert_called_once()
             call_kwargs = mock_ctx.call_args
             # extra_test_files should be in the call
-            assert call_kwargs[1].get("extra_test_files") == ["tests/test_extra.py"] or \
-                   (len(call_kwargs[0]) > 2 and call_kwargs[0][2] == ["tests/test_extra.py"])
+            assert call_kwargs[1].get("extra_test_files") == ["tests/test_extra.py"] or (
+                len(call_kwargs[0]) > 2 and call_kwargs[0][2] == ["tests/test_extra.py"]
+            )

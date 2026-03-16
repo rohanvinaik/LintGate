@@ -193,17 +193,19 @@ def find_extraction_candidates(
     return _remove_overlapping(all_candidates, _max_candidates(func_cc))
 
 
-def _evaluate_block(
+def _compute_block_variables(
     infos: list[_StmtInfo],
     start: int,
     end: int,
     param_names: set[str],
-    filepath: str,
-    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
-    max_params: int,
-    max_outputs: int,
-) -> Prescription | None:
-    """Evaluate whether statements [start:end] can be extracted."""
+) -> tuple[set[str], set[str]] | None:
+    """Compute input/output variable sets for a contiguous block.
+
+    Returns (inputs, outputs) if the block has no exit statements,
+    or None if any statement contains return/break/continue.
+
+    Pure function — depends only on the StmtInfo data, not on AST nodes.
+    """
     block = infos[start:end]
 
     # Single-exit: no break/continue/return in the block
@@ -231,6 +233,25 @@ def _evaluate_block(
         post_reads |= s.reads
     outputs = block_writes & post_reads
 
+    return inputs, outputs
+
+
+def _evaluate_block(
+    infos: list[_StmtInfo],
+    start: int,
+    end: int,
+    param_names: set[str],
+    filepath: str,
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    max_params: int,
+    max_outputs: int,
+) -> Prescription | None:
+    """Evaluate whether statements [start:end] can be extracted."""
+    result = _compute_block_variables(infos, start, end, param_names)
+    if result is None:
+        return None
+    inputs, outputs = result
+
     # Check parameter surface constraints
     if len(inputs) > max_params:
         return None
@@ -238,6 +259,7 @@ def _evaluate_block(
         return None
 
     # Compute block CC — skip if too low to be worth extracting
+    block = infos[start:end]
     block_stmts = [s.stmt for s in block]
     block_cc = _compute_block_cc(block_stmts)
     if block_cc < _MIN_BLOCK_CC:

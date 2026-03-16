@@ -121,7 +121,7 @@ def _capture_refactor_checkpoint(project_root: str) -> dict[str, Any] | None:
 def _capture_prescriptive_state(project_root: str) -> dict[str, Any] | None:
     """Capture prescriptive spec state before compaction."""
     try:
-        from lintgate.specification.prescriptive_spec import load_all_specs
+        from lintgate.specification.prescriptive.spec import load_all_specs
 
         all_specs = load_all_specs(project_root)
         if not all_specs:

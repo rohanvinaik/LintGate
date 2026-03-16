@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from lintgate.specification.prescriptive_ast_checker import (
+from lintgate.specification.prescriptive.ast_checker import (
     check_invariants_against_ast,
 )
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     Invariant,
     Predicate,
     PredicateOp,

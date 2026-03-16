@@ -661,7 +661,7 @@ def _check_prescriptive_specs(tool_input: dict, project_root: str) -> str | None
     if not filepath or not filepath.endswith(".py"):
         return None
 
-    from lintgate.specification.prescriptive_spec import load_spec_index
+    from lintgate.specification.prescriptive.spec import load_spec_index
 
     index = load_spec_index(project_root)
     if not index:

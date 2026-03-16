@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     Invariant,
     Predicate,
     PredicateOp,
@@ -12,7 +12,7 @@ from lintgate.specification.prescriptive_spec import (
     pred_custom,
     pred_pure,
 )
-from lintgate.specification.prescriptive_synthesis import (
+from lintgate.specification.prescriptive.synthesis import (
     PatternMatch,
     SynthesisResult,
     _extract_field_from_description,
@@ -425,8 +425,8 @@ class TestSynthesizeBody:
 class TestValidateAgainstWitnesses:
     def test_no_oracle_witnesses_passes(self):
         """No oracle witnesses → can't invalidate → returns True."""
-        from lintgate.specification.prescriptive_backends import WitnessRecord
-        from lintgate.specification.prescriptive_synthesis import _validate_against_witnesses
+        from lintgate.specification.prescriptive.backends import WitnessRecord
+        from lintgate.specification.prescriptive.synthesis import _validate_against_witnesses
 
         spec = _spec(
             params=[{"name": "x", "type": "int"}],
@@ -437,8 +437,8 @@ class TestValidateAgainstWitnesses:
 
     def test_correct_body_passes_witness(self):
         """Correct body matches oracle output."""
-        from lintgate.specification.prescriptive_backends import WitnessRecord
-        from lintgate.specification.prescriptive_synthesis import _validate_against_witnesses
+        from lintgate.specification.prescriptive.backends import WitnessRecord
+        from lintgate.specification.prescriptive.synthesis import _validate_against_witnesses
 
         spec = _spec(
             target="mod::double",
@@ -450,8 +450,8 @@ class TestValidateAgainstWitnesses:
 
     def test_wrong_body_fails_witness(self):
         """Wrong body doesn't match oracle output."""
-        from lintgate.specification.prescriptive_backends import WitnessRecord
-        from lintgate.specification.prescriptive_synthesis import _validate_against_witnesses
+        from lintgate.specification.prescriptive.backends import WitnessRecord
+        from lintgate.specification.prescriptive.synthesis import _validate_against_witnesses
 
         spec = _spec(
             target="mod::double",

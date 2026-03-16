@@ -34,7 +34,9 @@ class ActionItem:
 
     rank: int
     priority: str  # "P0_blocking" | "P1_critical" | "P2_important" | "P3_improve"
-    category: str  # "lint_fix" | "type_error" | "missing_test" | "spec_gap" | "mutation_survival" | ...
+    category: (
+        str  # "lint_fix" | "type_error" | "missing_test" | "spec_gap" | "mutation_survival" | ...
+    )
     file: str
     function: str = ""
     action: str = ""  # Human-readable instruction
@@ -135,7 +137,9 @@ def _detect_src_dirs(project_root: str) -> list[str]:
         if entry in ("tests", "test", "docs", "scripts", "node_modules", "venv", ".venv"):
             continue
         # Check if it contains Python files
-        has_py = any(f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f)))
+        has_py = any(
+            f.endswith(".py") for f in os.listdir(full) if os.path.isfile(os.path.join(full, f))
+        )
         has_init = os.path.isfile(os.path.join(full, "__init__.py"))
         if has_py or has_init or entry in candidates:
             dirs.append(entry)
@@ -288,8 +292,7 @@ def _run_spec_analysis(project_root: str, py_files: list[str]) -> dict[str, Any]
     functions.sort(key=lambda f: f.get("estimated_sigma", 0), reverse=True)
 
     under_specified = [
-        f for f in functions
-        if f.get("estimated_sigma", 0) > f.get("assertion_count", 0)
+        f for f in functions if f.get("estimated_sigma", 0) > f.get("assertion_count", 0)
     ]
 
     return {
@@ -381,7 +384,11 @@ def _run_composition_analysis(project_root: str, py_files: list[str]) -> dict[st
     try:
         from lintgate.specification.call_graph import build_cross_module_call_graph
 
-        source_files = [os.path.join(project_root, f) for f in py_files if os.path.isfile(os.path.join(project_root, f))]
+        source_files = [
+            os.path.join(project_root, f)
+            for f in py_files
+            if os.path.isfile(os.path.join(project_root, f))
+        ]
         if not source_files:
             return {"error": "no source files"}
 
@@ -446,7 +453,9 @@ def _run_performance_analysis(project_root: str, py_files: list[str]) -> dict[st
     return {
         "pure_count": len(pure_functions),
         "impure_count": len(impure_functions),
-        "pure_ratio": round(len(pure_functions) / max(len(pure_functions) + len(impure_functions), 1), 3),
+        "pure_ratio": round(
+            len(pure_functions) / max(len(pure_functions) + len(impure_functions), 1), 3
+        ),
         "pure_functions": pure_functions[:50],
         "anti_patterns": anti_patterns[:20],
     }
@@ -458,7 +467,7 @@ def _run_performance_analysis(project_root: str, py_files: list[str]) -> dict[st
 def _load_prescriptive_state(project_root: str) -> dict[str, Any]:
     """Load existing prescriptive specs."""
     try:
-        from lintgate.specification.prescriptive_spec import load_all_specs
+        from lintgate.specification.prescriptive.spec import load_all_specs
 
         specs = load_all_specs(project_root)
         if not specs:
@@ -486,9 +495,7 @@ def _load_prescriptive_state(project_root: str) -> dict[str, Any]:
 # ── Test coverage ─────────────────────────────────────────────────────
 
 
-def _analyze_test_coverage(
-    project_root: str, py_files: list[str]
-) -> dict[str, Any]:
+def _analyze_test_coverage(project_root: str, py_files: list[str]) -> dict[str, Any]:
     """Map source files to test files and compute coverage ratios."""
     test_dir = os.path.join(project_root, "tests")
     no_test: list[dict[str, Any]] = []
@@ -507,10 +514,10 @@ def _analyze_test_coverage(
                 break
 
         if test_path is None and os.path.isdir(test_dir):
-                for fn in os.listdir(test_dir):
-                    if fn.startswith("test_") and clean in fn and fn.endswith(".py"):
-                        test_path = os.path.join(test_dir, fn)
-                        break
+            for fn in os.listdir(test_dir):
+                if fn.startswith("test_") and clean in fn and fn.endswith(".py"):
+                    test_path = os.path.join(test_dir, fn)
+                    break
 
         full_src = os.path.join(project_root, rel_path)
         src_loc = _count_lines(full_src)
@@ -518,13 +525,15 @@ def _analyze_test_coverage(
         if test_path:
             test_loc = _count_lines(test_path)
             ratio = round(test_loc / max(src_loc, 1), 3)
-            has_test.append({
-                "file": rel_path,
-                "src_loc": src_loc,
-                "test_file": os.path.relpath(test_path, project_root),
-                "test_loc": test_loc,
-                "ratio": ratio,
-            })
+            has_test.append(
+                {
+                    "file": rel_path,
+                    "src_loc": src_loc,
+                    "test_file": os.path.relpath(test_path, project_root),
+                    "test_loc": test_loc,
+                    "ratio": ratio,
+                }
+            )
         else:
             no_test.append({"file": rel_path, "src_loc": src_loc})
 
@@ -579,32 +588,36 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
     if lint.get("auto_fixable", 0) > 0:
         rank += 1
         auto_fix_rank = rank
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P1_critical",
-            category="lint_auto_fix",
-            file=_PROJECT_SENTINEL,
-            action=f"Run `lint_fix(path)` to auto-fix {lint['auto_fixable']} issues. This is a zero-effort first step.",
-            rationale="Auto-fixable issues are mechanical — fix them immediately to reduce noise.",
-            estimated_effort="trivial",
-            evidence={"auto_fixable_count": lint["auto_fixable"]},
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P1_critical",
+                category="lint_auto_fix",
+                file=_PROJECT_SENTINEL,
+                action=f"Run `lint_fix(path)` to auto-fix {lint['auto_fixable']} issues. This is a zero-effort first step.",
+                rationale="Auto-fixable issues are mechanical — fix them immediately to reduce noise.",
+                estimated_effort="trivial",
+                evidence={"auto_fixable_count": lint["auto_fixable"]},
+            )
+        )
 
     # ── Phase 1b: Blocking lint errors (P0, no deps) ─────────────
     for finding in lint.get("findings", [])[:10]:
         if finding.get("severity") != "blocking":
             continue
         rank += 1
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P0_blocking",
-            category="lint_error",
-            file=finding.get("file", ""),
-            action=f"Fix {finding.get('kind', '')}: {finding.get('message', '')}",
-            rationale="Blocking lint errors prevent code from running correctly.",
-            estimated_effort="small",
-            evidence={"kind": finding.get("kind"), "line": finding.get("line")},
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P0_blocking",
+                category="lint_error",
+                file=finding.get("file", ""),
+                action=f"Fix {finding.get('kind', '')}: {finding.get('message', '')}",
+                rationale="Blocking lint errors prevent code from running correctly.",
+                estimated_effort="small",
+                evidence={"kind": finding.get("kind"), "line": finding.get("line")},
+            )
+        )
 
     # ── Phase 2: Create missing test files (P1, depends on lint fix) ──
     test_creation_ranks: list[int] = []
@@ -612,18 +625,20 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
         rank += 1
         test_creation_ranks.append(rank)
         deps = [auto_fix_rank] if auto_fix_rank else []
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P1_critical",
-            category="missing_test_file",
-            file=entry["file"],
-            action=f"Create test file for {entry['file']} ({entry['src_loc']} LoC, no tests). "
-                   f"Use `bootstrap_tests(path, file='{entry['file']}')` or write manually.",
-            rationale="Functions without any test file cannot be mutation-profiled or spec-verified.",
-            depends_on=deps,
-            estimated_effort="medium",
-            evidence={"src_loc": entry["src_loc"]},
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P1_critical",
+                category="missing_test_file",
+                file=entry["file"],
+                action=f"Create test file for {entry['file']} ({entry['src_loc']} LoC, no tests). "
+                f"Use `bootstrap_tests(path, file='{entry['file']}')` or write manually.",
+                rationale="Functions without any test file cannot be mutation-profiled or spec-verified.",
+                depends_on=deps,
+                estimated_effort="medium",
+                evidence={"src_loc": entry["src_loc"]},
+            )
+        )
 
     # ── Phase 3: Close specification gaps (P2, depends on tests) ──
     for func in spec.get("under_specified_top", [])[:15]:
@@ -632,26 +647,28 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
         sigma = func.get("estimated_sigma", 0)
         assertions = func.get("assertion_count", 0)
         deps = test_creation_ranks[:3] if test_creation_ranks else []
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P2_important",
-            category="spec_gap",
-            file=func.get("source_file", ""),
-            function=func_key,
-            action=f"Close specification gap for '{func_key}': sigma={sigma}, assertions={assertions}. "
-                   f"Add {sigma - assertions} targeted assertions. "
-                   f"Use `spec_file_prescribe(path, file)` for specific recommendations.",
-            rationale=f"Under-specified function: {sigma - assertions} specification points missing.",
-            depends_on=deps,
-            estimated_effort="medium" if (sigma - assertions) < 5 else "large",
-            evidence={
-                "sigma": sigma,
-                "assertions": assertions,
-                "gap": sigma - assertions,
-                "regime": func.get("regime", "unknown"),
-                "phase": func.get("phase", "bulk"),
-            },
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P2_important",
+                category="spec_gap",
+                file=func.get("source_file", ""),
+                function=func_key,
+                action=f"Close specification gap for '{func_key}': sigma={sigma}, assertions={assertions}. "
+                f"Add {sigma - assertions} targeted assertions. "
+                f"Use `spec_file_prescribe(path, file)` for specific recommendations.",
+                rationale=f"Under-specified function: {sigma - assertions} specification points missing.",
+                depends_on=deps,
+                estimated_effort="medium" if (sigma - assertions) < 5 else "large",
+                evidence={
+                    "sigma": sigma,
+                    "assertions": assertions,
+                    "gap": sigma - assertions,
+                    "regime": func.get("regime", "unknown"),
+                    "phase": func.get("phase", "bulk"),
+                },
+            )
+        )
 
     # ── Phase 4: Kill surviving mutations (P2, depends on tests) ──
     if isinstance(mutation, dict) and mutation.get("cached"):
@@ -659,76 +676,84 @@ def _build_action_plan(analysis: dict[str, Any]) -> list[dict[str, Any]]:
             rank += 1
             func_key = func_profile.get("function_key", "")
             surviving = func_profile.get("surviving_categories", [])
-            actions.append(ActionItem(
-                rank=rank,
-                priority="P2_important",
-                category="mutation_survival",
-                file=func_key.split("::")[0] if "::" in func_key else "",
-                function=func_key,
-                action=f"Kill surviving mutations in '{func_key}' "
-                       f"(categories: {', '.join(surviving)}). "
-                       f"Use `mutation_prescribe(path, file)` for targeted test templates.",
-                rationale=f"Survival rate {func_profile.get('survival_rate', 0):.0%} — "
-                          f"tests exist but don't verify key behaviors.",
-                depends_on=[],
-                estimated_effort="medium",
-                evidence={
-                    "kill_rate": func_profile.get("kill_rate", 0),
-                    "surviving_categories": surviving,
-                },
-            ))
+            actions.append(
+                ActionItem(
+                    rank=rank,
+                    priority="P2_important",
+                    category="mutation_survival",
+                    file=func_key.split("::")[0] if "::" in func_key else "",
+                    function=func_key,
+                    action=f"Kill surviving mutations in '{func_key}' "
+                    f"(categories: {', '.join(surviving)}). "
+                    f"Use `mutation_prescribe(path, file)` for targeted test templates.",
+                    rationale=f"Survival rate {func_profile.get('survival_rate', 0):.0%} — "
+                    f"tests exist but don't verify key behaviors.",
+                    depends_on=[],
+                    estimated_effort="medium",
+                    evidence={
+                        "kill_rate": func_profile.get("kill_rate", 0),
+                        "surviving_categories": surviving,
+                    },
+                )
+            )
 
     # ── Phase 5: Improve low test coverage (P2) ──────────────────
     for entry in coverage.get("low_coverage_files", [])[:10]:
         rank += 1
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P2_important",
-            category="low_test_coverage",
-            file=entry["file"],
-            action=f"Improve test coverage for {entry['file']} "
-                   f"(ratio: {entry['ratio']:.2f}x, {entry['src_loc']} src LoC, "
-                   f"{entry['test_loc']} test LoC).",
-            rationale="Low test-to-source ratio indicates under-tested code.",
-            estimated_effort="medium",
-            evidence=entry,
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P2_important",
+                category="low_test_coverage",
+                file=entry["file"],
+                action=f"Improve test coverage for {entry['file']} "
+                f"(ratio: {entry['ratio']:.2f}x, {entry['src_loc']} src LoC, "
+                f"{entry['test_loc']} test LoC).",
+                rationale="Low test-to-source ratio indicates under-tested code.",
+                estimated_effort="medium",
+                evidence=entry,
+            )
+        )
 
     # ── Phase 6: Prescriptive spec opportunities (P3) ─────────────
     prescriptive = analysis.get("prescriptive", {})
     if prescriptive.get("total_specs", 0) == 0 and len(spec.get("hotspot_functions", [])) > 0:
         rank += 1
         top_hotspots = [f.get("function_key", "") for f in spec.get("hotspot_functions", [])[:5]]
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P3_improve",
-            category="prescriptive_opportunity",
-            file=_PROJECT_SENTINEL,
-            action=f"Create prescriptive specs for top hotspot functions: "
-                   f"{', '.join(top_hotspots)}. "
-                   f"Use `prescriptive_spec_compose(path, target)` to create behavioral contracts "
-                   f"before writing new code.",
-            rationale="Prescriptive specs shift quality left — behavioral contracts before code, not after.",
-            estimated_effort="small",
-            evidence={"hotspot_count": len(top_hotspots), "hotspots": top_hotspots},
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P3_improve",
+                category="prescriptive_opportunity",
+                file=_PROJECT_SENTINEL,
+                action=f"Create prescriptive specs for top hotspot functions: "
+                f"{', '.join(top_hotspots)}. "
+                f"Use `prescriptive_spec_compose(path, target)` to create behavioral contracts "
+                f"before writing new code.",
+                rationale="Prescriptive specs shift quality left — behavioral contracts before code, not after.",
+                estimated_effort="small",
+                evidence={"hotspot_count": len(top_hotspots), "hotspots": top_hotspots},
+            )
+        )
 
     # ── Phase 7: Pure function optimization (P3) ──────────────────
     pure_count = performance.get("pure_count", 0)
     if pure_count > 0:
         rank += 1
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P3_improve",
-            category="purity_optimization",
-            file=_PROJECT_SENTINEL,
-            action=f"{pure_count} pure functions detected. "
-                   f"Use `inspect_algebra(path)` to extract algebraic properties "
-                   f"and `generate_property_tests(path)` for Hypothesis-based verification.",
-            rationale="Pure functions enable safe caching, parallelization, and property-based testing.",
-            estimated_effort="medium",
-            evidence={"pure_count": pure_count, "pure_ratio": performance.get("pure_ratio", 0)},
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P3_improve",
+                category="purity_optimization",
+                file=_PROJECT_SENTINEL,
+                action=f"{pure_count} pure functions detected. "
+                f"Use `inspect_algebra(path)` to extract algebraic properties "
+                f"and `generate_property_tests(path)` for Hypothesis-based verification.",
+                rationale="Pure functions enable safe caching, parallelization, and property-based testing.",
+                estimated_effort="medium",
+                evidence={"pure_count": pure_count, "pure_ratio": performance.get("pure_ratio", 0)},
+            )
+        )
 
     return [asdict(a) for a in actions]
 
@@ -765,10 +790,7 @@ def run_controlplane_analysis(
         from lintgate.controlplane.runner import run_mesh
         from lintgate.controlplane.types import ControlPlaneConfig, SupervisionEvent
 
-        py_files = [
-            os.path.join(project_root, f)
-            for f in result["project"]["python_files"]
-        ]
+        py_files = [os.path.join(project_root, f) for f in result["project"]["python_files"]]
         event = SupervisionEvent(
             project_root=project_root,
             surface="mcp",
@@ -792,16 +814,18 @@ def run_controlplane_analysis(
             }
             channels.append(channel_data)
             for f in cr.findings:
-                all_findings.append({
-                    "channel": cr.channel,
-                    "kind": f.kind,
-                    "message": f.message,
-                    "file": f.file,
-                    "line": f.line,
-                    "severity": f.severity,
-                    "confidence": f.confidence,
-                    "fixable": f.fixable,
-                })
+                all_findings.append(
+                    {
+                        "channel": cr.channel,
+                        "kind": f.kind,
+                        "message": f.message,
+                        "file": f.file,
+                        "line": f.line,
+                        "severity": f.severity,
+                        "confidence": f.confidence,
+                        "fixable": f.fixable,
+                    }
+                )
 
         result["coherence"] = {
             "state": mesh.coherence.state,
@@ -879,34 +903,38 @@ def run_decomposition_analysis(
     composition = result.get("composition", {})
     for entry in composition.get("high_fan_out", [])[:10]:
         rank += 1
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P1_critical",
-            category="high_fan_out",
-            file="",
-            function=entry.get("function", ""),
-            action=f"Decompose '{entry['function']}' (fan_out={entry['fan_out']}). "
-                   f"Use `extraction_plan(path)` for dependency-ordered extraction guidance.",
-            rationale="High fan-out indicates an orchestrator function that should be split.",
-            estimated_effort="large",
-            evidence=entry,
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P1_critical",
+                category="high_fan_out",
+                file="",
+                function=entry.get("function", ""),
+                action=f"Decompose '{entry['function']}' (fan_out={entry['fan_out']}). "
+                f"Use `extraction_plan(path)` for dependency-ordered extraction guidance.",
+                rationale="High fan-out indicates an orchestrator function that should be split.",
+                estimated_effort="large",
+                evidence=entry,
+            )
+        )
 
     # High fan-in functions → stable API boundaries (don't break)
     for entry in composition.get("high_fan_in", [])[:5]:
         rank += 1
-        actions.append(ActionItem(
-            rank=rank,
-            priority="P2_important",
-            category="stable_api",
-            file="",
-            function=entry.get("function", ""),
-            action=f"'{entry['function']}' has {entry['fan_in']} callers. "
-                   f"Preserve this interface during refactoring.",
-            rationale="High fan-in means many callers depend on this — changes cascade widely.",
-            estimated_effort="small",
-            evidence=entry,
-        ))
+        actions.append(
+            ActionItem(
+                rank=rank,
+                priority="P2_important",
+                category="stable_api",
+                file="",
+                function=entry.get("function", ""),
+                action=f"'{entry['function']}' has {entry['fan_in']} callers. "
+                f"Preserve this interface during refactoring.",
+                rationale="High fan-in means many callers depend on this — changes cascade widely.",
+                estimated_effort="small",
+                evidence=entry,
+            )
+        )
 
     # Under-specified functions with multiple mutation categories → entangled
     mutation = result.get("mutation", {})
@@ -915,18 +943,20 @@ def run_decomposition_analysis(
             cats = profile.get("surviving_categories", [])
             if len(cats) >= 2:
                 rank += 1
-                actions.append(ActionItem(
-                    rank=rank,
-                    priority="P2_important",
-                    category="entangled_behavior",
-                    file=profile.get("function_key", "").split("::")[0],
-                    function=profile.get("function_key", ""),
-                    action=f"'{profile['function_key']}' has {len(cats)} surviving mutation categories "
-                           f"({', '.join(cats)}). Decompose before writing more tests.",
-                    rationale="Multiple surviving categories indicate entangled responsibilities.",
-                    estimated_effort="medium",
-                    evidence=profile,
-                ))
+                actions.append(
+                    ActionItem(
+                        rank=rank,
+                        priority="P2_important",
+                        category="entangled_behavior",
+                        file=profile.get("function_key", "").split("::")[0],
+                        function=profile.get("function_key", ""),
+                        action=f"'{profile['function_key']}' has {len(cats)} surviving mutation categories "
+                        f"({', '.join(cats)}). Decompose before writing more tests.",
+                        rationale="Multiple surviving categories indicate entangled responsibilities.",
+                        estimated_effort="medium",
+                        evidence=profile,
+                    )
+                )
 
     result["action_plan"] = [asdict(a) for a in actions]
     result["elapsed_s"] = round(time.monotonic() - start, 2)
@@ -991,8 +1021,15 @@ def run_platonic_analysis(
     for func in spec.get("hotspot_functions", []):
         source = func.get("source_file", "")
         if source not in file_scores:
-            file_scores[source] = {"file": source, "spec_gap": 0, "mutation_survival": 0, "no_tests": False}
-        file_scores[source]["spec_gap"] += func.get("estimated_sigma", 0) - func.get("assertion_count", 0)
+            file_scores[source] = {
+                "file": source,
+                "spec_gap": 0,
+                "mutation_survival": 0,
+                "no_tests": False,
+            }
+        file_scores[source]["spec_gap"] += func.get("estimated_sigma", 0) - func.get(
+            "assertion_count", 0
+        )
 
     # Score from mutation: surviving categories
     if isinstance(mutation, dict) and mutation.get("cached"):
@@ -1000,7 +1037,12 @@ def run_platonic_analysis(
             fk = profile.get("function_key", "")
             source = fk.split("::")[0] if "::" in fk else ""
             if source and source not in file_scores:
-                file_scores[source] = {"file": source, "spec_gap": 0, "mutation_survival": 0, "no_tests": False}
+                file_scores[source] = {
+                    "file": source,
+                    "spec_gap": 0,
+                    "mutation_survival": 0,
+                    "no_tests": False,
+                }
             if source:
                 file_scores[source]["mutation_survival"] += profile.get("survived", 0)
 
@@ -1008,15 +1050,18 @@ def run_platonic_analysis(
     for entry in coverage.get("no_test_files", []):
         source = entry.get("file", "")
         if source not in file_scores:
-            file_scores[source] = {"file": source, "spec_gap": 0, "mutation_survival": 0, "no_tests": True}
+            file_scores[source] = {
+                "file": source,
+                "spec_gap": 0,
+                "mutation_survival": 0,
+                "no_tests": True,
+            }
         file_scores[source]["no_tests"] = True
 
     # Rank by total distance from ideal
     for fs in file_scores.values():
         fs["distance"] = (
-            fs["spec_gap"] * 2
-            + fs["mutation_survival"] * 3
-            + (100 if fs["no_tests"] else 0)
+            fs["spec_gap"] * 2 + fs["mutation_survival"] * 3 + (100 if fs["no_tests"] else 0)
         )
     roadmap = sorted(file_scores.values(), key=lambda x: -x["distance"])[:20]
 
@@ -1027,41 +1072,47 @@ def run_platonic_analysis(
     for i, entry in enumerate(roadmap[:15], 1):
         file = entry["file"]
         if entry["no_tests"]:
-            actions.append(ActionItem(
-                rank=i,
-                priority="P1_critical",
-                category="no_tests",
-                file=file,
-                action=f"Create tests for {file}. Use `platonic_converge(path, '{file}')` "
-                       f"for automated profile → generate → validate cycle.",
-                rationale=f"Distance from ideal: {entry['distance']} (no tests + spec gap {entry['spec_gap']})",
-                estimated_effort="medium",
-                evidence=entry,
-            ))
+            actions.append(
+                ActionItem(
+                    rank=i,
+                    priority="P1_critical",
+                    category="no_tests",
+                    file=file,
+                    action=f"Create tests for {file}. Use `platonic_converge(path, '{file}')` "
+                    f"for automated profile → generate → validate cycle.",
+                    rationale=f"Distance from ideal: {entry['distance']} (no tests + spec gap {entry['spec_gap']})",
+                    estimated_effort="medium",
+                    evidence=entry,
+                )
+            )
         elif entry["mutation_survival"] > 0:
-            actions.append(ActionItem(
-                rank=i,
-                priority="P2_important",
-                category="mutation_survival",
-                file=file,
-                action=f"Close mutation gaps in {file} ({entry['mutation_survival']} survivors). "
-                       f"Use `platonic_converge(path, '{file}')` to converge.",
-                rationale=f"Distance from ideal: {entry['distance']}",
-                estimated_effort="medium",
-                evidence=entry,
-            ))
+            actions.append(
+                ActionItem(
+                    rank=i,
+                    priority="P2_important",
+                    category="mutation_survival",
+                    file=file,
+                    action=f"Close mutation gaps in {file} ({entry['mutation_survival']} survivors). "
+                    f"Use `platonic_converge(path, '{file}')` to converge.",
+                    rationale=f"Distance from ideal: {entry['distance']}",
+                    estimated_effort="medium",
+                    evidence=entry,
+                )
+            )
         else:
-            actions.append(ActionItem(
-                rank=i,
-                priority="P2_important",
-                category="spec_gap",
-                file=file,
-                action=f"Close spec gap in {file} (gap={entry['spec_gap']}). "
-                       f"Use `spec_file_prescribe(path, '{file}')` for targeted recommendations.",
-                rationale=f"Distance from ideal: {entry['distance']}",
-                estimated_effort="medium",
-                evidence=entry,
-            ))
+            actions.append(
+                ActionItem(
+                    rank=i,
+                    priority="P2_important",
+                    category="spec_gap",
+                    file=file,
+                    action=f"Close spec gap in {file} (gap={entry['spec_gap']}). "
+                    f"Use `spec_file_prescribe(path, '{file}')` for targeted recommendations.",
+                    rationale=f"Distance from ideal: {entry['distance']}",
+                    estimated_effort="medium",
+                    evidence=entry,
+                )
+            )
 
     result["action_plan"] = [asdict(a) for a in actions]
     result["elapsed_s"] = round(time.monotonic() - start, 2)
@@ -1118,7 +1169,8 @@ def run_complete_analysis(
             "high_fan_out": decomp.get("composition", {}).get("high_fan_out", []),
             "high_fan_in": decomp.get("composition", {}).get("high_fan_in", []),
             "entangled": [
-                a for a in decomp.get("action_plan", [])
+                a
+                for a in decomp.get("action_plan", [])
                 if a.get("category") == "entangled_behavior"
             ],
         }
@@ -1128,7 +1180,9 @@ def run_complete_analysis(
     # Add platonic convergence roadmap
     try:
         platonic = run_platonic_analysis(
-            project_root, src_dirs=src_dirs, include_mutation=include_mutation,
+            project_root,
+            src_dirs=src_dirs,
+            include_mutation=include_mutation,
             max_files=max_files,
         )
         result["convergence_roadmap"] = platonic.get("convergence_roadmap", [])
