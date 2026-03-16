@@ -11,8 +11,8 @@ from lintgate.specification.prescriptive_backends import (
     DistributedBackend,
     PrescriptiveAdapter,
     PureBackend,
-    SynthesisGateResult,
     StatefulBackend,
+    SynthesisGateResult,
     WitnessRecord,
     _build_synthesis_profile,
     _classify_return_type,
@@ -382,7 +382,9 @@ class TestClassifyReturnType:
 
     def test_simple_containers(self):
         for rt in ("dict[str, int]", "list[str]", "set[int]", "tuple[str, int]"):
-            assert _classify_return_type(rt) == "simple_container", f"Expected simple_container for {rt}"
+            assert _classify_return_type(rt) == "simple_container", (
+                f"Expected simple_container for {rt}"
+            )
 
     def test_complex_nested(self):
         for rt in ("dict[str, list[int]]", "list[dict[str, int]]"):

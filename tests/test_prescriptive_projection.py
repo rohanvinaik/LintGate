@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 
 from lintgate.specification.prescriptive_projection import (
@@ -13,7 +12,6 @@ from lintgate.specification.prescriptive_projection import (
     load_projection,
     save_projection,
 )
-
 
 # ── _build_reverse_graph ─────────────────────────────────────────────
 

@@ -32,7 +32,6 @@ from lintgate.specification.prescriptive_synthesis import (
     synthesize_body,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
@@ -151,7 +150,7 @@ class TestKeyInversion:
         # Execute the generated body
         func_code = f"def func(data):\n{result.body}"
         ns: dict = {}
-        exec(func_code, ns)  # noqa: S102
+        exec(func_code, ns)  # noqa: S102  # nosec B102 — executing synthesized test bodies
         output = ns["func"]({"a": [1, 2], "b": [2, 3]})
         assert output == {1: ["a"], 2: ["a", "b"], 3: ["b"]}
 
@@ -165,7 +164,14 @@ class TestCountAggregation:
             params=[{"name": "words", "type": "list[str]"}],
             return_type="dict[str, int]",
             invariants=[
-                Invariant("c", pred_custom("count occurrences"), "count word occurrences", "src", 0.8, "safety"),
+                Invariant(
+                    "c",
+                    pred_custom("count occurrences"),
+                    "count word occurrences",
+                    "src",
+                    0.8,
+                    "safety",
+                ),
             ],
         )
         match = _recognize_count_aggregation(spec)
@@ -207,7 +213,7 @@ class TestCountAggregation:
         result = synthesize_body(spec)
         assert result.success
         ns: dict = {}
-        exec(f"def func(items):\n{result.body}", ns)  # noqa: S102
+        exec(f"def func(items):\n{result.body}", ns)  # noqa: S102  # nosec B102 — executing synthesized test bodies
         assert ns["func"](["a", "b", "a", "c", "b", "a"]) == {"a": 3, "b": 2, "c": 1}
 
 
@@ -220,7 +226,9 @@ class TestGroupAggregation:
             params=[{"name": "events", "type": "list[str]"}],
             return_type="dict[str, list[str]]",
             invariants=[
-                Invariant("g", pred_custom("group by category"), "group events", "src", 0.8, "safety"),
+                Invariant(
+                    "g", pred_custom("group by category"), "group events", "src", 0.8, "safety"
+                ),
             ],
         )
         match = _recognize_group_aggregation(spec)
@@ -242,7 +250,9 @@ class TestGroupAggregation:
         assert "groups" in body
 
     def test_generates_body_with_key_attr(self):
-        match = PatternMatch("group_aggregation", 0.80, {"input_param": "items", "key_attr": "category"})
+        match = PatternMatch(
+            "group_aggregation", 0.80, {"input_param": "items", "key_attr": "category"}
+        )
         body = _generate_group_aggregation(match)
         assert "item.category" in body
 
@@ -277,8 +287,22 @@ class TestFieldProjection:
             params=[{"name": "data", "type": "dict[str, str]"}],
             return_type="str",
             invariants=[
-                Invariant("a", Predicate(op=PredicateOp.HAS_ATTR, value="name"), "name", "src", 0.9, "safety"),
-                Invariant("b", Predicate(op=PredicateOp.HAS_ATTR, value="age"), "age", "src", 0.9, "safety"),
+                Invariant(
+                    "a",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="name"),
+                    "name",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
+                Invariant(
+                    "b",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="age"),
+                    "age",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
             ],
         )
         assert _recognize_field_projection(spec) is None
@@ -288,15 +312,28 @@ class TestFieldProjection:
             params=[{"name": "data", "type": "dict[str, str]"}],
             return_type="list[str]",
             invariants=[
-                Invariant("a", Predicate(op=PredicateOp.HAS_ATTR, value="name"), "name", "src", 0.9, "safety"),
+                Invariant(
+                    "a",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="name"),
+                    "name",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
             ],
         )
         assert _recognize_field_projection(spec) is None
 
     def test_generates_valid_body(self):
-        match = PatternMatch("field_projection", 0.90, {
-            "input_param": "data", "field_name": "name", "default_value": '""',
-        })
+        match = PatternMatch(
+            "field_projection",
+            0.90,
+            {
+                "input_param": "data",
+                "field_name": "name",
+                "default_value": '""',
+            },
+        )
         body = _generate_field_projection(match)
         ast.parse(f"def f():\n{body}")
         assert "data.get('name'" in body
@@ -306,13 +343,20 @@ class TestFieldProjection:
             params=[{"name": "data", "type": "dict[str, str]"}],
             return_type="str",
             invariants=[
-                Invariant("a", Predicate(op=PredicateOp.HAS_ATTR, value="name"), "extract name", "src", 0.9, "safety"),
+                Invariant(
+                    "a",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="name"),
+                    "extract name",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
             ],
         )
         result = synthesize_body(spec)
         assert result.success
         ns: dict = {}
-        exec(f"def func(data):\n{result.body}", ns)  # noqa: S102
+        exec(f"def func(data):\n{result.body}", ns)  # noqa: S102  # nosec B102 — executing synthesized test bodies
         assert ns["func"]({"name": "alice", "age": "30"}) == "alice"
         assert ns["func"]({}) == ""  # default value
 
@@ -347,13 +391,22 @@ class TestSynthesizeBody:
             _spec(
                 params=[{"name": "w", "type": "list[str]"}],
                 return_type="dict[str, int]",
-                invariants=[Invariant("c", pred_custom("count"), "count things", "src", 0.8, "safety")],
+                invariants=[
+                    Invariant("c", pred_custom("count"), "count things", "src", 0.8, "safety")
+                ],
             ),
             _spec(
                 params=[{"name": "d", "type": "dict[str, str]"}],
                 return_type="str",
                 invariants=[
-                    Invariant("a", Predicate(op=PredicateOp.HAS_ATTR, value="key"), "key", "src", 0.9, "safety"),
+                    Invariant(
+                        "a",
+                        Predicate(op=PredicateOp.HAS_ATTR, value="key"),
+                        "key",
+                        "src",
+                        0.9,
+                        "safety",
+                    ),
                 ],
             ),
         ]
@@ -429,7 +482,9 @@ class TestRecognizerExactValues:
         spec = _spec(
             params=[{"name": "tokens", "type": "list[str]"}],
             return_type="dict[str, int]",
-            invariants=[Invariant("c", pred_custom("count"), "count frequency", "src", 0.8, "safety")],
+            invariants=[
+                Invariant("c", pred_custom("count"), "count frequency", "src", 0.8, "safety")
+            ],
         )
         match = _recognize_count_aggregation(spec)
         assert match is not None
@@ -441,8 +496,17 @@ class TestRecognizerExactValues:
             params=[{"name": "events", "type": "list[str]"}],
             return_type="dict[str, list[str]]",
             invariants=[
-                Invariant("g", pred_custom("group by category"), "group events", "src", 0.8, "safety"),
-                Invariant("k", Predicate(op=PredicateOp.HAS_ATTR, value="category"), "cat", "src", 0.9, "safety"),
+                Invariant(
+                    "g", pred_custom("group by category"), "group events", "src", 0.8, "safety"
+                ),
+                Invariant(
+                    "k",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="category"),
+                    "cat",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
             ],
         )
         match = _recognize_group_aggregation(spec)
@@ -455,7 +519,14 @@ class TestRecognizerExactValues:
             params=[{"name": "record", "type": "dict[str, int]"}],
             return_type="int",
             invariants=[
-                Invariant("a", Predicate(op=PredicateOp.HAS_ATTR, value="score"), "score", "src", 0.9, "safety"),
+                Invariant(
+                    "a",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="score"),
+                    "score",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
             ],
         )
         match = _recognize_field_projection(spec)
@@ -470,22 +541,44 @@ class TestRecognizerExactValues:
 
 class TestSignalHelpers:
     def test_has_invariant_signal(self):
-        spec = _spec(invariants=[
-            Invariant("c", pred_custom("count words"), "count word frequency", "src", 0.8, "safety"),
-        ])
+        spec = _spec(
+            invariants=[
+                Invariant(
+                    "c", pred_custom("count words"), "count word frequency", "src", 0.8, "safety"
+                ),
+            ]
+        )
         assert _has_invariant_signal(spec, {"count", "frequency"})
         assert not _has_invariant_signal(spec, {"group", "bucket"})
 
     def test_extract_key_attribute_from_has_attr(self):
-        spec = _spec(invariants=[
-            Invariant("a", Predicate(op=PredicateOp.HAS_ATTR, value="category"), "cat", "src", 0.9, "safety"),
-        ])
+        spec = _spec(
+            invariants=[
+                Invariant(
+                    "a",
+                    Predicate(op=PredicateOp.HAS_ATTR, value="category"),
+                    "cat",
+                    "src",
+                    0.9,
+                    "safety",
+                ),
+            ]
+        )
         assert _extract_key_attribute(spec) == "category"
 
     def test_extract_key_attribute_from_description(self):
-        spec = _spec(invariants=[
-            Invariant("a", pred_custom("group by status"), "group by status field", "src", 0.8, "safety"),
-        ])
+        spec = _spec(
+            invariants=[
+                Invariant(
+                    "a",
+                    pred_custom("group by status"),
+                    "group by status field",
+                    "src",
+                    0.8,
+                    "safety",
+                ),
+            ]
+        )
         assert _extract_key_attribute(spec) == "status"
 
     def test_extract_field_from_description(self):
