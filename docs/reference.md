@@ -196,9 +196,9 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 
 | Tool                        | Purpose                                                                 |
 | --------------------------- | ----------------------------------------------------------------------- |
-| `prescriptive_spec_compose` | Compose a PrescriptiveSpec from theory + compass (prospective or retrospective mode) |
-| `prescriptive_spec_compile` | Compile PrescriptiveSpec into test skeletons + generation constraints    |
-| `prescriptive_spec_verify`  | Verify code refinement against its PrescriptiveSpec (reads cached state) |
+| `prescriptive_spec_compose` | Compose a PrescriptiveSpec from theory + compass. Accepts `description` (NL sentences → invariants), `claims` (explicit NL claims → typed predicates), and `interface_hint` (JSON string with parameters/return_type/problem_class). Uses `project_claims()` for target-scoped claim projection (high/medium/low relevance). Creates `PrescriptiveWorkflowRecord` for cross-tool state tracking. |
+| `prescriptive_spec_compile` | Compile PrescriptiveSpec into test skeletons + generation constraints. Persists `CompilationTargets`, materializes test file to `tests/generated/`, writes kill expectations alongside the spec. Updates workflow record state to "compiled". |
+| `prescriptive_spec_verify`  | Verify code refinement against its PrescriptiveSpec. Accepts `target` as primary identity (derives file/function). Returns structural (AST) + behavioral (mutation) evidence. Tightened next_actions: pass→`spec_gate_check`, structural_fail→edit code, behavioral_fail→`platonic_converge`, unknown→`mutation_run_sampling`. Updates workflow record with evidence. |
 | `prescriptive_spec_status`  | Show prescriptive coverage, sigma convergence, problem class distribution |
 
 ### Offline Analysis

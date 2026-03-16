@@ -129,7 +129,7 @@ class SpecificationChannel:
 
         # Persist slim graph projection for prescriptive retrospective compose
         try:
-            from lintgate.specification.prescriptive_projection import (
+            from lintgate.specification.prescriptive.projection import (
                 build_projection_from_ledger,
                 save_projection,
             )
@@ -424,7 +424,7 @@ def _check_pspec001(
     project_root: str,
 ) -> None:
     """PSPEC001: Function violates prescriptive spec invariants (AST check)."""
-    from lintgate.specification.prescriptive_spec import load_spec
+    from lintgate.specification.prescriptive.spec import load_spec
 
     spec = load_spec(project_root, fs.function_key)
     if spec is None or not spec.invariants:
@@ -448,7 +448,7 @@ def _check_pspec001(
     except (OSError, UnicodeDecodeError):
         return
 
-    from lintgate.specification.prescriptive_ast_checker import check_invariants_against_ast
+    from lintgate.specification.prescriptive.ast_checker import check_invariants_against_ast
 
     func_name = fs.function_key.split("::")[-1] if "::" in fs.function_key else fs.function_key
     results = check_invariants_against_ast(source, func_name, spec.invariants)
@@ -482,8 +482,8 @@ def _check_pspec002(
     threshold: float = 2.0,
 ) -> None:
     """PSPEC002: Prescriptive σ diverges >threshold× from retrospective σ."""
-    from lintgate.specification.prescriptive_sigma import compute_convergence_signal
-    from lintgate.specification.prescriptive_spec import load_spec
+    from lintgate.specification.prescriptive.sigma import compute_convergence_signal
+    from lintgate.specification.prescriptive.spec import load_spec
 
     spec = load_spec(project_root, fs.function_key)
     if spec is None:
@@ -522,7 +522,7 @@ def _check_pspec003(
     project_root: str,
 ) -> None:
     """PSPEC003: Function written without prescriptive spec (advisory)."""
-    from lintgate.specification.prescriptive_spec import load_spec_index
+    from lintgate.specification.prescriptive.spec import load_spec_index
 
     index = load_spec_index(project_root)
     if not index:

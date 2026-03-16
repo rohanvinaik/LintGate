@@ -66,7 +66,7 @@ def _check_bash_alignment(data: dict[str, Any], exec_compass: Any, project_root:
     specs = None
     if project_root:
         try:
-            from lintgate.specification.prescriptive_spec import load_all_specs
+            from lintgate.specification.prescriptive.spec import load_all_specs
 
             all_specs = load_all_specs(project_root)
             if all_specs:
@@ -99,7 +99,7 @@ def _check_prescriptive_obligations(data: dict[str, Any], project_root: str) -> 
     if not filepath or not filepath.endswith(".py"):
         return ""
 
-    from lintgate.specification.prescriptive_spec import load_spec_index
+    from lintgate.specification.prescriptive.spec import load_spec_index
 
     index = load_spec_index(project_root)
     if not index:
@@ -127,7 +127,7 @@ def _check_prescriptive_obligations(data: dict[str, Any], project_root: str) -> 
     if not matching:
         return ""
 
-    from lintgate.specification.prescriptive_spec import load_spec
+    from lintgate.specification.prescriptive.spec import load_spec
 
     invariant_descs: list[str] = []
     constraint_descs: list[str] = []

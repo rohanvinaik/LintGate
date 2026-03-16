@@ -132,7 +132,9 @@ class TestBaseConfidence:
     def test_undecorated_handler_base_confidence(self):
         """Handler without known decorator → base 0.65 + 0.05 (no writes) = 0.70."""
         result = _find_nested_handler_candidates(_bag_of_handlers(), "test.py")
-        helper_p = [p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_helper"]
+        helper_p = [
+            p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_helper"
+        ]
         assert len(helper_p) == 1
         # No decorator match, no captured writes → 0.65 + 0.05 = 0.70
         assert helper_p[0].confidence == pytest.approx(0.70)
@@ -145,7 +147,9 @@ class TestDecoratorBonus:
     def test_known_decorator_confidence(self):
         """Handler with @app.route → 0.65 + 0.15 + 0.05 (no writes) = 0.85."""
         result = _find_nested_handler_candidates(_bag_of_handlers(), "test.py")
-        health_p = [p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_health"]
+        health_p = [
+            p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_health"
+        ]
         assert len(health_p) == 1
         assert health_p[0].confidence == pytest.approx(0.85)
 
@@ -173,7 +177,11 @@ def register(app):
         return counter
 """)
         result = _find_nested_handler_candidates(func, "test.py")
-        inc_p = [p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_increment"]
+        inc_p = [
+            p
+            for p in result
+            if p.kind == "extract_function" and p.proposed_name == "_impl_increment"
+        ]
         assert len(inc_p) == 1
         # @app.get decorator (+0.15), but writes counter → no +0.05
         # 0.65 + 0.15 = 0.80
@@ -199,7 +207,11 @@ class TestClosureCapture:
     def test_captured_reads_as_inputs(self):
         """Outer-scope variable reads become Prescription.inputs."""
         result = _find_nested_handler_candidates(_handlers_with_closure(), "test.py")
-        get_p = [p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_get_data"]
+        get_p = [
+            p
+            for p in result
+            if p.kind == "extract_function" and p.proposed_name == "_impl_get_data"
+        ]
         assert len(get_p) == 1
         # get_data reads 'db' and 'timeout' from outer scope
         assert "db" in get_p[0].inputs
@@ -208,7 +220,11 @@ class TestClosureCapture:
     def test_captured_writes_as_outputs(self):
         """Outer-scope variable writes become Prescription.outputs."""
         result = _find_nested_handler_candidates(_handlers_with_closure(), "test.py")
-        post_p = [p for p in result if p.kind == "extract_function" and p.proposed_name == "_impl_post_data"]
+        post_p = [
+            p
+            for p in result
+            if p.kind == "extract_function" and p.proposed_name == "_impl_post_data"
+        ]
         assert len(post_p) == 1
         # post_data calls db.insert — if db is written (via method call) it depends on analysis
         # The important thing is outputs is a list (could be empty or contain 'db')
@@ -251,7 +267,7 @@ class TestNonFuncDefSkipped:
         extract_prescriptions = [p for p in result if p.kind == "extract_function"]
         # Only FunctionDef nodes get prescriptions, not 'config = app.config'
         names = {p.proposed_name for p in extract_prescriptions}
-        assert all(n.startswith("_impl_") for n in names)
+        assert all(n is not None and n.startswith("_impl_") for n in names)
         # 3 nested funcs, not 4 (the assignment doesn't count)
         assert len(extract_prescriptions) == 3
 

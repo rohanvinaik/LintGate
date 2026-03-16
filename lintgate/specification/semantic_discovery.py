@@ -187,7 +187,7 @@ def _is_stale(cache_entry: dict[str, Any], filepath: str) -> bool:
         current_mtime = os.path.getmtime(filepath)
     except OSError:
         return True
-    cached_mtime = cache_entry.get("mtime", 0)
+    cached_mtime: float = cache_entry.get("mtime", 0)
     return current_mtime != cached_mtime
 
 

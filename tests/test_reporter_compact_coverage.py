@@ -287,8 +287,7 @@ class TestAttachDeltaOrBlocking:
     def test_truncation_with_many_blockers(self):
         compact: dict[str, Any] = {}
         current = {
-            f"fp{i}": {"severity": "blocking", "kind": "E501", "count": 1}
-            for i in range(10)
+            f"fp{i}": {"severity": "blocking", "kind": "E501", "count": 1} for i in range(10)
         }
         _attach_delta_or_blocking(compact, current, None)
         # Default max_findings is 5
@@ -298,14 +297,11 @@ class TestAttachDeltaOrBlocking:
     def test_config_max_findings_respected(self):
         compact: dict[str, Any] = {}
         current = {
-            f"fp{i}": {"severity": "blocking", "kind": "E501", "count": 1}
-            for i in range(10)
+            f"fp{i}": {"severity": "blocking", "kind": "E501", "count": 1} for i in range(10)
         }
         from lintgate.controlplane.types import ChannelConfig
 
-        config = ControlPlaneConfig(
-            channels={"lint": ChannelConfig(max_findings_shown=8)}
-        )
+        config = ControlPlaneConfig(channels={"lint": ChannelConfig(max_findings_shown=8)})
         _attach_delta_or_blocking(compact, current, None, config)
         assert len(compact["blocking_issues"]) == 8
         assert compact["blocking_truncated"] == 2
@@ -349,9 +345,7 @@ class TestBuildBootstrapProgress:
         assert _build_bootstrap_progress(mesh) is None
 
     def test_returns_none_when_bootstrap_not_needed(self):
-        cr = ChannelResult(
-            channel="tests", status="pass", metrics={"bootstrap_needed": False}
-        )
+        cr = ChannelResult(channel="tests", status="pass", metrics={"bootstrap_needed": False})
         mesh = MeshResult(channel_results=[cr])
         assert _build_bootstrap_progress(mesh) is None
 
@@ -368,9 +362,7 @@ class TestBuildBootstrapProgress:
         assert result["reason"] == "no_tests"
 
     def test_default_reason_when_missing(self):
-        cr = ChannelResult(
-            channel="tests", status="fail", metrics={"bootstrap_needed": True}
-        )
+        cr = ChannelResult(channel="tests", status="fail", metrics={"bootstrap_needed": True})
         mesh = MeshResult(channel_results=[cr])
         result = _build_bootstrap_progress(mesh)
         assert result is not None

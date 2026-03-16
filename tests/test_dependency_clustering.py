@@ -29,7 +29,9 @@ def _parse_func(code: str) -> ast.FunctionDef:
     return node
 
 
-def _make_info(writes: frozenset[str] = frozenset(), reads: frozenset[str] = frozenset()) -> _StmtInfo:
+def _make_info(
+    writes: frozenset[str] = frozenset(), reads: frozenset[str] = frozenset()
+) -> _StmtInfo:
     return _StmtInfo(index=0, stmt=_parse_stmt("x = 1"), reads=reads, writes=writes, has_exit=False)
 
 
@@ -245,9 +247,7 @@ class TestCollectScopeVars:
 
 class TestIsBagOfHandlers:
     def test_all_decorated_funcs(self):
-        tree = ast.parse(
-            "@route\ndef a(): pass\n@route\ndef b(): pass\n@route\ndef c(): pass\n"
-        )
+        tree = ast.parse("@route\ndef a(): pass\n@route\ndef b(): pass\n@route\ndef c(): pass\n")
         assert _is_bag_of_handlers(tree.body) is True
 
     def test_mixed_content(self):

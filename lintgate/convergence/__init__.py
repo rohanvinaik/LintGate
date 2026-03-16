@@ -2,8 +2,10 @@
 
 from .aggregator import (
     aggregate,
-    aggregate_file,
     classify_actionability,
+)
+from .aggregator_file_level import (
+    aggregate_file,
     classify_file_actionability,
 )
 from .evidence import Actionability, ConvergenceResult, LensEvidence, LensKind

@@ -335,7 +335,7 @@ def test_gate_contract_drift_none_when_all_parity_checks_pass(tmp_path: Path) ->
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=[
             "Tests (3.11)",
             "Tests (3.12)",
@@ -358,7 +358,7 @@ def test_gate_contract_drift_detects_missing_pre_push_command(tmp_path: Path) ->
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=[
             "Tests (3.11)",
             "Tests (3.12)",
@@ -395,7 +395,7 @@ def test_gate_contract_drift_detects_branch_protection_mismatch(tmp_path: Path) 
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=["Tests (3.11)", "Tests (3.12)", "Qlty"],
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
@@ -426,7 +426,7 @@ def test_gate_contract_drift_best_effort_when_remote_unavailable_by_default(
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=None,
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
@@ -456,7 +456,7 @@ def test_gate_contract_drift_fails_closed_when_env_enabled(tmp_path: Path) -> No
 
     with (
         patch(
-            "lintgate.quality_infra._fetch_branch_protection_required_checks",
+            "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
             return_value=None,
         ),
         patch.dict("os.environ", {"LINTGATE_BRANCH_PROTECTION_FAIL_CLOSED": "1"}),
@@ -479,7 +479,7 @@ local_pre_push: []
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=[],
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
@@ -507,7 +507,7 @@ local_pre_push:
     (hook_dir / "pre-push").write_text("bash scripts/ci/run_quality_infra_gate.sh\n")
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=["Tests (3.11)"],
     ):
         errors = _check_gate_contract_drift(str(tmp_path))
@@ -529,7 +529,7 @@ def test_gate_contract_drift_detects_extra_remote_required_checks(
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=[
             "Tests (3.11)",
             "Tests (3.12)",
@@ -582,7 +582,7 @@ def test_gate_contract_drift_detects_required_check_missing_from_workflows(
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=[
             "Tests (3.11)",
             "Tests (3.12)",
@@ -687,7 +687,7 @@ def test_collect_workflow_declared_checks_unions_all_workflows(tmp_path: Path) -
 
 def test_github_repo_slug_handles_timeout(tmp_path: Path) -> None:
     with patch(
-        "lintgate.quality_infra.subprocess.run",
+        "lintgate.quality_infra_gate.subprocess.run",
         side_effect=subprocess.TimeoutExpired("git", 3),
     ):
         assert _github_repo_slug(str(tmp_path)) is None
@@ -695,7 +695,7 @@ def test_github_repo_slug_handles_timeout(tmp_path: Path) -> None:
 
 def test_github_repo_slug_nonzero_and_non_github_remote(tmp_path: Path) -> None:
     nonzero = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
-    with patch("lintgate.quality_infra.subprocess.run", return_value=nonzero):
+    with patch("lintgate.quality_infra_gate.subprocess.run", return_value=nonzero):
         assert _github_repo_slug(str(tmp_path)) is None
 
     no_match = subprocess.CompletedProcess(
@@ -704,7 +704,7 @@ def test_github_repo_slug_nonzero_and_non_github_remote(tmp_path: Path) -> None:
         stdout="git@gitlab.com:user/repo.git\n",
         stderr="",
     )
-    with patch("lintgate.quality_infra.subprocess.run", return_value=no_match):
+    with patch("lintgate.quality_infra_gate.subprocess.run", return_value=no_match):
         assert _github_repo_slug(str(tmp_path)) is None
 
 
@@ -715,18 +715,18 @@ def test_github_repo_slug_success(tmp_path: Path) -> None:
         stdout="git@github.com:owner/repo.git\n",
         stderr="",
     )
-    with patch("lintgate.quality_infra.subprocess.run", return_value=ok):
+    with patch("lintgate.quality_infra_gate.subprocess.run", return_value=ok):
         assert _github_repo_slug(str(tmp_path)) == "owner/repo"
 
 
 def test_fetch_branch_protection_required_checks_paths(tmp_path: Path) -> None:
-    with patch("lintgate.quality_infra._github_repo_slug", return_value=None):
+    with patch("lintgate.quality_infra_gate._github_repo_slug", return_value=None):
         assert _fetch_branch_protection_required_checks(str(tmp_path)) is None
 
     with (
-        patch("lintgate.quality_infra._github_repo_slug", return_value="owner/repo"),
+        patch("lintgate.quality_infra_gate._github_repo_slug", return_value="owner/repo"),
         patch(
-            "lintgate.quality_infra.subprocess.run",
+            "lintgate.quality_infra_gate.subprocess.run",
             side_effect=subprocess.TimeoutExpired("gh", 8),
         ),
     ):
@@ -734,15 +734,15 @@ def test_fetch_branch_protection_required_checks_paths(tmp_path: Path) -> None:
 
     failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="x")
     with (
-        patch("lintgate.quality_infra._github_repo_slug", return_value="owner/repo"),
-        patch("lintgate.quality_infra.subprocess.run", return_value=failed),
+        patch("lintgate.quality_infra_gate._github_repo_slug", return_value="owner/repo"),
+        patch("lintgate.quality_infra_gate.subprocess.run", return_value=failed),
     ):
         assert _fetch_branch_protection_required_checks(str(tmp_path)) is None
 
     ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="A\n\nB\n", stderr="")
     with (
-        patch("lintgate.quality_infra._github_repo_slug", return_value="owner/repo"),
-        patch("lintgate.quality_infra.subprocess.run", return_value=ok),
+        patch("lintgate.quality_infra_gate._github_repo_slug", return_value="owner/repo"),
+        patch("lintgate.quality_infra_gate.subprocess.run", return_value=ok),
     ):
         assert _fetch_branch_protection_required_checks(str(tmp_path)) == ["A", "B"]
 
@@ -1064,7 +1064,7 @@ def test_gate_contract_drift_rejects_sonar_ci_only_mode(tmp_path: Path) -> None:
     )
 
     with patch(
-        "lintgate.quality_infra._fetch_branch_protection_required_checks",
+        "lintgate.quality_infra_gate._fetch_branch_protection_required_checks",
         return_value=[
             "Tests (3.11)",
             "Tests (3.12)",

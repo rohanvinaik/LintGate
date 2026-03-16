@@ -1214,7 +1214,7 @@ class TestPostProcessSession:
                 return_value=MagicMock(),
             ),
             patch("lintgate.controlplane.session_memory.save_session"),
-            patch("lintgate.hooks.controlplane.run_constraint_proposer", return_value=[]),
+            patch("lintgate.hooks.controlplane_ops.run_constraint_proposer", return_value=[]),
         ):
             ctx = PostProcessContext(
                 session=session,

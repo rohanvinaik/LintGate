@@ -212,7 +212,10 @@ class TestRunControlplane:
         mock_cp_config.channel_enabled.return_value = False
 
         with (
-            patch("lintgate.hooks.posttooluse.classify_change", return_value=classification),
+            patch(
+                "lintgate.hooks.posttooluse_controlplane.classify_change",
+                return_value=classification,
+            ),
             patch("lintgate.hooks.habit.record_behavior_event"),
             patch("lintgate.hooks.habit.record_habit_event_lightweight"),
             patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
@@ -256,7 +259,10 @@ class TestRunControlplane:
         monkeypatch.setattr(sys, "stdout", stdout_capture)
 
         with (
-            patch("lintgate.hooks.posttooluse.classify_change", return_value=classification),
+            patch(
+                "lintgate.hooks.posttooluse_controlplane.classify_change",
+                return_value=classification,
+            ),
             patch("lintgate.hooks.habit.record_behavior_event"),
             patch("lintgate.hooks.habit.record_habit_event_lightweight"),
             patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
@@ -276,7 +282,7 @@ class TestRunControlplane:
             patch("lintgate.hooks.controlplane.accumulate_session_telemetry"),
             patch("lintgate.hooks.controlplane.refresh_runtime_after_run"),
             patch("lintgate.hooks.arbitration.arbitrate_output", return_value={}),
-            patch("lintgate.hooks.posttooluse.log_metric"),
+            patch("lintgate.state.log_metric"),
             pytest.raises(SystemExit) as exc,
         ):
             _run_controlplane(
@@ -322,7 +328,10 @@ class TestRunControlplane:
         monkeypatch.setattr(sys, "stdout", stdout_capture)
 
         with (
-            patch("lintgate.hooks.posttooluse.classify_change", return_value=classification),
+            patch(
+                "lintgate.hooks.posttooluse_controlplane.classify_change",
+                return_value=classification,
+            ),
             patch("lintgate.hooks.habit.record_behavior_event"),
             patch("lintgate.hooks.habit.record_habit_event_lightweight"),
             patch("lintgate.hooks.controlplane.load_global_priors", return_value={}),
@@ -348,7 +357,7 @@ class TestRunControlplane:
                 "lintgate.hooks.arbitration.arbitrate_output",
                 side_effect=lambda r, *a, **kw: r,
             ),
-            patch("lintgate.hooks.posttooluse.log_metric"),
+            patch("lintgate.state.log_metric"),
             pytest.raises(SystemExit) as exc,
         ):
             _run_controlplane(

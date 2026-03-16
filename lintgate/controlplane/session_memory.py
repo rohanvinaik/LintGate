@@ -27,19 +27,16 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from lintgate.types import LintIssue
-
-    from .behavior_compass import BehaviorCompass
-    from .types import MeshResult, RepairAction
+from typing import Any
 
 from lintgate.orchestration.knowledge import KnowledgeManager, SessionKnowledge
 
 SESSION_DIR = Path.home() / ".claude" / "lintgate" / "session"
 
 _MAX_SNAPSHOTS = 50  # Prevent unbounded growth within a session
+
+
+# ── Data classes ──────────────────────────────────────────────────
 
 
 @dataclass
@@ -283,6 +280,9 @@ class SessionMemory:
 # ── Public API ────────────────────────────────────────────────────────
 
 
+# ── Session persistence ───────────────────────────────────────────
+
+
 def load_session(project_root: str) -> SessionMemory | None:
     """Load a session for a project, or None if no active session exists.
 
@@ -307,8 +307,8 @@ def load_session(project_root: str) -> SessionMemory | None:
 
 def save_session(session: SessionMemory) -> None:
     """Persist session to disk."""
-    SESSION_DIR.mkdir(parents=True, exist_ok=True)
     session_path = _session_path(session.project_root)
+    session_path.parent.mkdir(parents=True, exist_ok=True)
     session.last_active = time.time()
 
     try:
@@ -345,7 +345,8 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
 
         # Check for pending transfer packet (#169)
         transfer_path = (
-            SESSION_DIR / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
+            _session_path(project_root).parent
+            / f"transfer_{hashlib.sha256(project_root.encode()).hexdigest()[:12]}.json"
         )
         if transfer_path.exists():
             try:
@@ -371,335 +372,19 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
     return session
 
 
-def record_mesh_run(
-    session: SessionMemory,
-    mesh_result: MeshResult,
-    finding_index: dict[str, dict[str, Any]] | None = None,
-    disposition: str | None = None,
-    last_nudge: dict[str, Any] | None = None,
-    compliance_outcome: str | None = None,
-) -> SessionSnapshot:
-    """Record a mesh run and append its snapshot to session memory."""
-    coherence = mesh_result.coherence
-    run_id = mesh_result.event.event_id if mesh_result.event else uuid.uuid4().hex[:12]
-
-    # Collect findings and repairs across all channel results
-    total_findings = 0
-    blocking_count = 0
-    all_repair_ids: list[str] = []
-    pattern_this_run: dict[str, int] = {}
-
-    repair_catalog: dict[str, dict[str, Any]] = {}
-
-    for cr in mesh_result.channel_results:
-        for finding in cr.findings:
-            total_findings += 1
-            if finding.severity == "blocking":
-                blocking_count += 1
-            # Track pattern by linter|kind
-            key = f"{finding.linter}|{finding.kind}"
-            pattern_this_run[key] = pattern_this_run.get(key, 0) + 1
-
-        for repair in cr.repairs:
-            all_repair_ids.append(repair.action_id)
-            if repair.action_id not in session.repair_outcomes:
-                session.repair_outcomes[repair.action_id] = "pending"
-            # Persist enough metadata to replay repairs even if the run snapshot
-            # becomes unavailable or the session rolls forward.
-            repair_catalog[repair.action_id] = {
-                "channel": repair.channel,
-                "kind": repair.kind,
-                "summary": repair.summary,
-                "safe": str(repair.safe).lower(),
-                "payload": dict(repair.payload),
-            }
-
-    # Extract pattern alerts from lint channel metrics
-    pattern_alerts: list[dict[str, Any]] = []
-    for cr in mesh_result.channel_results:
-        if cr.channel == "lint":
-            pattern_alerts = cr.metrics.get("pattern_alerts", [])
-            break
-
-    snapshot = SessionSnapshot(
-        run_id=run_id,
-        timestamp=time.time(),
-        coherence_state=coherence.state,
-        loud_channels=list(coherence.loud_channels),
-        silent_channels=list(coherence.silent_channels),
-        finding_count=total_findings,
-        blocking_count=blocking_count,
-        pattern_alerts=pattern_alerts,
-        repairs_proposed=all_repair_ids,
-        repairs_applied=[],
-        repair_catalog=repair_catalog,
-        finding_index=finding_index or {},
-        disposition=disposition,
-        last_nudge=last_nudge,
-        compliance_outcome=compliance_outcome,
-    )
-
-    session.snapshots.append(snapshot)
-
-    # Trim snapshots if exceeding max
-    if len(session.snapshots) > _MAX_SNAPSHOTS:
-        session.snapshots = session.snapshots[-_MAX_SNAPSHOTS:]
-
-    # Update coherence trajectory
-    session.coherence_trajectory.append(coherence.state)
-
-    # Update pattern trends
-    for key, count in pattern_this_run.items():
-        if key not in session.pattern_trend:
-            session.pattern_trend[key] = []
-        session.pattern_trend[key].append(count)
-        # Keep bounded
-        if len(session.pattern_trend[key]) > _MAX_SNAPSHOTS:
-            session.pattern_trend[key] = session.pattern_trend[key][-_MAX_SNAPSHOTS:]
-
-    session.last_active = time.time()
-    return snapshot
-
-
-def expire_session(session: SessionMemory, max_age_hours: float = 4.0) -> bool:
-    """Check if a session has expired due to inactivity.
-
-    Args:
-        session: Session to check.
-        max_age_hours: Maximum inactivity period in hours.
-
-    Returns:
-        True if the session has expired and should be replaced.
-    """
-    if max_age_hours <= 0:
-        return False
-    max_age_seconds = max_age_hours * 3600
-    elapsed = time.time() - session.last_active
-    return elapsed > max_age_seconds
-
-
-# ── Repair Tracking ──────────────────────────────────────────────────
-
-
-def propose_repairs(session: SessionMemory, repairs: list[RepairAction]) -> None:
-    """Register newly proposed repairs in the session.
-
-    Sets their initial status to 'pending'. Does not overwrite
-    existing repair outcomes (idempotent for reruns).
-    """
-    for repair in repairs:
-        if repair.action_id not in session.repair_outcomes:
-            session.repair_outcomes[repair.action_id] = "pending"
-
-
-def report_repair_outcome(session: SessionMemory, action_id: str, outcome: str) -> None:
-    """Record the outcome of a repair action.
-
-    Args:
-        session: Active session memory.
-        action_id: The repair action ID.
-        outcome: One of 'applied', 'ignored', 'rejected'.
-    """
-    session.repair_outcomes[action_id] = outcome
-
-
-def detect_applied_repairs(
-    session: SessionMemory,
-    current_findings: list[LintIssue],
-) -> list[str]:
-    """Heuristic repair detection: infer applied repairs from absent findings.
-
-    For each pending repair, check if its associated finding signature
-    is no longer present in current findings. If absent → infer 'applied'.
-
-    This is a heuristic — it may produce false positives when issues
-    disappear for other reasons. That's acceptable for advisory reporting.
-
-    Args:
-        session: Active session memory with pending repairs.
-        current_findings: Findings from the current mesh run.
-
-    Returns:
-        List of action_ids that were inferred as applied.
-    """
-    if not session.snapshots:
-        return []
-
-    # Build set of current finding signatures
-    current_sigs = set()
-    for f in current_findings:
-        sig = f"{f.linter}|{f.kind}|{f.file or ''}|{f.line or 0}"
-        current_sigs.add(sig)
-
-    # Look at the most recent snapshot's proposed repairs
-    # and check which associated findings have disappeared
-    applied: list[str] = []
-    last_snapshot = session.snapshots[-1]
-
-    # We can only detect applied repairs if we have previous findings to compare
-    if len(session.snapshots) < 2:
-        return []
-
-    prev_snapshot = session.snapshots[-2]
-
-    # For now, we track repairs by their action_id status
-    # A more sophisticated version would store finding-repair associations
-    for _action_id, status in session.repair_outcomes.items():
-        if status == "pending" and last_snapshot.blocking_count < prev_snapshot.blocking_count:
-            # Mark as potentially applied (conservative: only if blocking decreased)
-            pass  # Future: correlate specific findings with specific repairs
-
-    return applied
-
-
-# ── Behavior Compass Helpers ─────────────────────────────────────────
-
-
-def load_behavior_compass(session: SessionMemory) -> BehaviorCompass:
-    """Deserialize BehaviorCompass from session's behavior_compass dict.
-
-    Returns a fresh compass if the session has no compass data.
-    """
-    from .behavior_compass import BehaviorCompass
-
-    return BehaviorCompass.from_dict(session.behavior_compass)
-
-
-def save_behavior_compass(session: SessionMemory, compass: BehaviorCompass) -> None:
-    """Serialize BehaviorCompass into session's behavior_compass dict."""
-    session.behavior_compass = compass.to_dict()
-
-
-# ── Habit Mode Helpers ────────────────────────────────────────────────
-
-
-def get_habit_mode_active(session: SessionMemory) -> bool:
-    """Quick check if habit mode is active without full deserialization."""
-    return bool(session.behavior_compass.get("habit_mode", {}).get("active", False))
-
-
-# ── Persistent Test Failure Tracking (#205) ─────────────────────────
-
-
-def _extract_test_failure_keys(snapshot: SessionSnapshot) -> set[str]:
-    """Extract test failure fingerprints from a snapshot's finding index."""
-    keys: set[str] = set()
-    for fp, info in snapshot.finding_index.items():
-        kind = info.get("kind", "")
-        if kind in ("test_failure", "TEFF009"):
-            keys.add(fp)
-    return keys
-
-
-def escalate_persistent_failures(session: SessionMemory) -> list[dict[str, Any]]:
-    """TEFF008 — Identify test failures present from session start to now.
-
-    Compares the first snapshot's test failures with the latest snapshot.
-    Failures that persist without being addressed get escalated.
-
-    Returns a list of dicts suitable for building LintIssue findings.
-    """
-    if len(session.snapshots) < 2:
-        return []
-
-    initial = session.snapshots[0]
-    latest = session.snapshots[-1]
-
-    initial_failures = _extract_test_failure_keys(initial)
-    latest_failures = _extract_test_failure_keys(latest)
-
-    if not initial_failures:
-        return []
-
-    persistent = initial_failures & latest_failures
-    if not persistent:
-        return []
-
-    # Check which persistent failures were classified via agent feedback
-    classified = set()
-    for disagreement in session.agent_disagreements:
-        if disagreement.get("type") == "test_failure_classification":
-            classified.add(disagreement.get("fingerprint", ""))
-
-    uninvestigated = persistent - classified
-    if not uninvestigated:
-        return []
-
-    findings: list[dict[str, Any]] = []
-    for fp in sorted(uninvestigated):
-        info = latest.finding_index.get(fp, {})
-        findings.append(
-            {
-                "fingerprint": fp,
-                "kind": info.get("kind", "test_failure"),
-                "message": info.get("message", ""),
-                "file": info.get("file"),
-                "line": info.get("line"),
-                "snapshots_present": len(session.snapshots),
-            }
-        )
-
-    return findings
-
-
-def check_session_exit_gate(session: SessionMemory) -> list[str]:
-    """Return advisory messages for session exit.
-
-    Checks for unresolved test failures that persisted through the
-    entire session without investigation or classification.
-    This is advisory — it surfaces the gap but does not hard-block.
-    """
-    advisories: list[str] = []
-
-    persistent = escalate_persistent_failures(session)
-    if persistent:
-        advisories.append(
-            f"{len(persistent)} test failure{'s' if len(persistent) != 1 else ''} "
-            f"present at session start and not addressed. "
-            f"Classify each as stale/regression/flaky via "
-            f"controlplane_agent_feedback before completing session."
-        )
-
-    return advisories
-
-
-def record_test_failure_classification(
-    session: SessionMemory,
-    fingerprint: str,
-    classification: str,
-    rationale: str = "",
-) -> None:
-    """Record a structured classification for a test failure.
-
-    Valid classifications:
-    - stale_test: Tests reference deleted interfaces
-    - known_regression: Code is broken, tracked in an issue
-    - flaky: Non-deterministic failure
-    - out_of_scope: Explicitly deferred with rationale
-    """
-    valid = {"stale_test", "known_regression", "flaky", "out_of_scope"}
-    if classification not in valid:
-        return
-
-    session.agent_disagreements.append(
-        {
-            "type": "test_failure_classification",
-            "fingerprint": fingerprint,
-            "classification": classification,
-            "rationale": rationale,
-            "timestamp": time.time(),
-        }
-    )
-
-
-# ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _session_path(project_root: str) -> Path:
-    """Get the session file path for a project."""
-    return SESSION_DIR / f"{_project_hash(project_root)}.json"
-
-
-def _project_hash(project_root: str) -> str:
-    """Generate a stable hash for a project path."""
-    return hashlib.sha256(project_root.encode()).hexdigest()[:16]
+from .session_memory_ops import (  # noqa: F401, E402
+    _extract_test_failure_keys,
+    _project_hash,
+    _session_path,
+    check_session_exit_gate,
+    detect_applied_repairs,
+    escalate_persistent_failures,
+    expire_session,
+    get_habit_mode_active,
+    load_behavior_compass,
+    propose_repairs,
+    record_mesh_run,
+    record_test_failure_classification,
+    report_repair_outcome,
+    save_behavior_compass,
+)

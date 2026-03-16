@@ -493,7 +493,7 @@ class TestSessionSerialization:
 
 class TestPersistence:
     def test_save_and_load(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session = SessionMemory(
                 session_id="persist_test",
                 project_root="/test/persist",
@@ -508,25 +508,25 @@ class TestPersistence:
             assert loaded.snapshots[0].run_id == "r1"
 
     def test_load_nonexistent(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             assert load_session("/nonexistent") is None
 
     def test_load_corrupted(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session_path = tmp_path / f"{_project_hash('/bad')}.json"
             session_path.write_text("not json!!!")
             assert load_session("/bad") is None
 
     def test_load_non_dict_json(self, tmp_path):
         """A JSON file that is not a dict returns None."""
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session_path = tmp_path / f"{_project_hash('/array')}.json"
             session_path.write_text("[1, 2, 3]")
             assert load_session("/array") is None
 
     def test_save_updates_last_active(self, tmp_path):
         """save_session updates last_active to current time."""
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session = SessionMemory(
                 session_id="ts_test",
                 project_root="/test/ts",
@@ -540,7 +540,10 @@ class TestPersistence:
     def test_save_creates_directory(self, tmp_path):
         """save_session creates SESSION_DIR if it doesn't exist."""
         nested = tmp_path / "deep" / "nested"
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", nested):
+        with (
+            patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", nested),
+            patch("lintgate.controlplane.session_memory.SESSION_DIR", nested),
+        ):
             session = SessionMemory(
                 session_id="mkdir_test",
                 project_root="/test/mkdir",
@@ -554,14 +557,14 @@ class TestPersistence:
 
 class TestGetOrCreate:
     def test_creates_new_session(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session = get_or_create_session("/new/project")
             assert session.project_root == "/new/project"
             assert session.session_id  # auto-generated
             assert len(session.snapshots) == 0
 
     def test_loads_existing(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             # Create and save a session
             original = SessionMemory(
                 session_id="existing",
@@ -577,7 +580,7 @@ class TestGetOrCreate:
             assert loaded.coherence_trajectory == ["stable", "isolated"]
 
     def test_replaces_expired(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             old = SessionMemory(
                 session_id="old_session",
                 project_root="/expired/project",
@@ -607,7 +610,7 @@ class TestGetOrCreate:
         }
         transfer_path.write_text(json.dumps(packet))
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session = get_or_create_session(project_root)
             # Transfer packet should be preloaded
             assert session.latest_transfer_packet is not None
@@ -628,7 +631,7 @@ class TestGetOrCreate:
         transfer_path = tmp_path / f"transfer_{transfer_hash}.json"
         transfer_path.write_text("not valid json!!")
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             session = get_or_create_session(project_root)
             assert session.latest_transfer_packet is None
             assert len(session.snapshots) == 0
@@ -1450,13 +1453,13 @@ class TestHelpers:
         assert isinstance(h, str)
 
     def test_session_path(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             path = _session_path("/test/proj")
             assert str(path).startswith(str(tmp_path))
             assert path.suffix == ".json"
 
     def test_session_path_uses_project_hash(self, tmp_path):
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path):
+        with patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path):
             path = _session_path("/test/proj")
             expected_name = f"{_project_hash('/test/proj')}.json"
             assert path.name == expected_name

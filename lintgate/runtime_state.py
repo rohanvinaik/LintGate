@@ -371,7 +371,7 @@ def build_runtime_state(
 
     # Populate prescriptive spec counters from disk cache
     try:
-        from lintgate.specification.prescriptive_spec import load_spec_index
+        from lintgate.specification.prescriptive.spec import load_spec_index
 
         index = load_spec_index(project_root)
         state.prescriptive_spec_count = len(index)

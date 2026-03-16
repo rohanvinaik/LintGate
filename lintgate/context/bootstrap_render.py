@@ -332,7 +332,7 @@ def render_claude_md(
 def _render_prescriptive_rules(project_root: str) -> list[str]:
     """Render prescriptive_rules managed section from saved specs."""
     try:
-        from lintgate.specification.prescriptive_spec import load_all_specs
+        from lintgate.specification.prescriptive.spec import load_all_specs
 
         specs = load_all_specs(project_root)
         if not specs:

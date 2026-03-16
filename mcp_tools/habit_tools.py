@@ -179,7 +179,7 @@ def _impl_habit_status(project_root: str) -> str:
 
     # Add prescriptive spec coverage if specs exist
     with contextlib.suppress(Exception):
-        from lintgate.specification.prescriptive_spec import load_all_specs
+        from lintgate.specification.prescriptive.spec import load_all_specs
 
         all_specs = load_all_specs(project_root)
         if all_specs:
@@ -238,7 +238,7 @@ def _impl_habit_compact(project_root: str) -> str:
 
     # Inject prescriptive spec state into snapshot
     with contextlib.suppress(Exception):
-        from lintgate.specification.prescriptive_spec import load_all_specs
+        from lintgate.specification.prescriptive.spec import load_all_specs
 
         all_specs = load_all_specs(project_root)
         if all_specs:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest import mock
 
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     ForbiddenBehavior,
     Invariant,
     PrescriptiveSpec,
@@ -498,7 +498,7 @@ class TestPSPEC001Channel:
     def test_pspec001_invariant_violation(self, tmp_path):
         """PSPEC001 emitted when AST check finds return type mismatch."""
         from lintgate.channels.specification_channel import _check_pspec001
-        from lintgate.specification.prescriptive_spec import (
+        from lintgate.specification.prescriptive.spec import (
             Invariant,
             PrescriptiveSpec,
             pred_type,
@@ -553,7 +553,7 @@ class TestPSPEC001Channel:
     def test_pspec001_no_violation_when_matching(self, tmp_path):
         """PSPEC001 not emitted when types match."""
         from lintgate.channels.specification_channel import _check_pspec001
-        from lintgate.specification.prescriptive_spec import (
+        from lintgate.specification.prescriptive.spec import (
             Invariant,
             PrescriptiveSpec,
             pred_type,
@@ -607,7 +607,7 @@ class TestPSPEC001Channel:
 class TestEnrichedRetrospective:
     def test_boundary_obligations_from_design_signals(self):
         """Retrospective compose adds boundary obligations from design signals."""
-        from lintgate.specification.prescriptive_spec import PrescriptiveSpecComposer
+        from lintgate.specification.prescriptive.spec import PrescriptiveSpecComposer
 
         class FakeDesign:
             boundary_points = 5

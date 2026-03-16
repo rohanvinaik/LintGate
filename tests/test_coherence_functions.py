@@ -19,7 +19,9 @@ class TestHasActionableFindings:
         cr = ChannelResult(
             channel="lint",
             status="fail",
-            findings=[LintIssue(linter="ruff", kind="E501", message="line too long", severity="blocking")],
+            findings=[
+                LintIssue(linter="ruff", kind="E501", message="line too long", severity="blocking")
+            ],
         )
         assert _has_actionable_findings(cr) is True
 
@@ -29,7 +31,11 @@ class TestHasActionableFindings:
         cr = ChannelResult(
             channel="lint",
             status="fail",
-            findings=[LintIssue(linter="ruff", kind="W291", message="trailing whitespace", severity="warning")],
+            findings=[
+                LintIssue(
+                    linter="ruff", kind="W291", message="trailing whitespace", severity="warning"
+                )
+            ],
         )
         assert _has_actionable_findings(cr) is True
 
@@ -40,7 +46,9 @@ class TestHasActionableFindings:
             channel="lint",
             status="fail",
             severity="informational",
-            findings=[LintIssue(linter="ruff", kind="I001", message="unsorted", severity="informational")],
+            findings=[
+                LintIssue(linter="ruff", kind="I001", message="unsorted", severity="informational")
+            ],
         )
         assert _has_actionable_findings(cr) is False
 
@@ -85,7 +93,9 @@ class TestPartitionResults:
                 channel="lint",
                 status="fail",
                 severity="informational",
-                findings=[LintIssue(linter="ruff", kind="I001", message="x", severity="informational")],
+                findings=[
+                    LintIssue(linter="ruff", kind="I001", message="x", severity="informational")
+                ],
             ),
         ]
         partition = _partition_results(results, severity_weighted=True)

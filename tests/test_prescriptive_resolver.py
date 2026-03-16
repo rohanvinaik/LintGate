@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-from lintgate.specification.prescriptive_spec import (
+from lintgate.specification.prescriptive.spec import (
     PredicateOp,
     _build_func_index,
     _find_function_at,

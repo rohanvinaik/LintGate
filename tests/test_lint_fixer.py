@@ -1325,7 +1325,7 @@ class TestSecretChecker:
         from lintgate.linters.secret_checker import SecretChecker
 
         p = tmp_path / "a.py"
-        p.write_text('TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz123456"\n')
+        p.write_text('TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz123456"\n')  # noqa: S105 — synthetic test fixture
         ctx = self._ctx(tmp_path)
         ctx.files = [str(p)]
 

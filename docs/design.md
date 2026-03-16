@@ -2111,6 +2111,103 @@ No separate App config needed. The contract that the local pipeline enforces is 
 
 ---
 
+## Prescriptive Specification System
+
+The prescriptive spec system inverts LintGate's default retrospective flow: instead of analyzing code after it's written, it composes behavioral contracts *before* code exists, then verifies the implementation satisfies the contract.
+
+### Architecture
+
+The system has five layers:
+
+**Predicate IR.** Claims are compiled into a typed `Predicate` with operators (`EQ`, `PURE`, `IS_TYPE`, `PARAM_COUNT_LTE`, `CALLS`, `RETURNS_NON_NULL`, etc.), not strings. Compound predicates compose via `AND`/`OR`/`NOT`. Predicates are normalizable (sorted operands, flattened nesting) and structurally comparable. The `CUSTOM` escape hatch preserves claims that require semantic understanding.
+
+**Claim projection (`project_claims`).** Compass directives and theory claims are filtered by relevance to a specific target function:
+- *High confidence* (0.9): claim text mentions the target function name (length > 3 to exclude stopwords)
+- *Medium confidence* (0.75): compiled predicate op matches target context (e.g., `PURE` claim + pure function)
+- *Low confidence* (0.55): generic project-level claims, demoted by 0.15
+- *Rejected*: claims contradicted by `func_spec` evidence (e.g., `PURE` claim on a stateful function), logged with reason
+
+Agent-provided `description` (NL sentences split on `. `) and explicit `claims` are compiled through `compile_claim()` into additional `Invariant` objects with provenance tags (`agent:claim:N`, `agent:description:N`).
+
+**PrescriptiveSpec IR.** The composed spec contains: `Invariant` list (predicate + confidence + kind + source), `ForbiddenBehavior` list (predicate + severity), `StateVariable`/`StateTransition` for stateful specs, `TestObligation`/`RefinementObligation` for retrospective enrichment, `GenerationConstraint` list for LLM-consumable MUST/MUST NOT directives, and `prescriptive_sigma` (specification complexity estimate).
+
+**Backend compilation.** Three problem-class backends compile the IR into `CompilationTargets`:
+- `PureBackend`: Hypothesis property skeletons, exact-value assertions, mutation kill expectations
+- `StatefulBackend`: Init/Next/Invariant transition tests, state variable initialization checks
+- `DistributedBackend`: Protocol conformance tests, message sequence monitors
+
+The `PrescriptiveAdapter` bridges compilation to existing systems: `materialize_test_file()` writes pytest files to `tests/generated/`, `persist_kill_expectations()` writes `{hash}_expectations.json` alongside the spec, and `verify_refinement()` produces structural (AST) + behavioral (mutation cache) evidence.
+
+**Workflow record (`PrescriptiveWorkflowRecord`).** A stable handle persisted as `{target_hash}_workflow.json` alongside the spec. Tracks state progression (`composed` → `compiled` → `materialized` → `implementing` → `verifying` → `converging` → `complete`), projected claims log, compiled targets path, materialized test path, expected kill set, structural/behavioral evidence, convergence signal, and recommended next action with args. Every tool in the chain reads/writes the same record using `target_key` as the primary identity.
+
+### Tool chain
+
+```
+prescriptive_spec_compose(target, description=..., claims=[...], interface_hint=...)
+    → project_claims() filters compass + theory by target relevance
+    → PrescriptiveSpec IR saved
+    → PrescriptiveWorkflowRecord(state="composed") persisted
+    → next_actions: [compile]
+
+prescriptive_spec_compile(target)
+    → CompilationTargets persisted to {spec_id}_targets.json
+    → test file materialized to tests/generated/
+    → kill expectations persisted to {hash}_expectations.json
+    → PrescriptiveWorkflowRecord(state="compiled")
+    → next_actions: ["write code guided by generation_prompt", verify]
+
+prescriptive_spec_verify(target=...)
+    → structural evidence (AST invariant checks) + behavioral evidence (mutation cache)
+    → PrescriptiveWorkflowRecord(state="verifying", evidence=...)
+    → next_actions:
+        pass → spec_gate_check
+        structural_fail → "edit code to satisfy failing invariants"
+        behavioral_fail → platonic_converge (spec-aware)
+        unknown → mutation_run_sampling
+
+platonic_converge(file)
+    → loads expected_kill_set from prescriptive spec expectations
+    → overrides target_kill_rate with per-category kill targets
+    → per-iteration prescriptive_kill_status tracking per function
+    → converges toward the spec contract, not generic threshold
+```
+
+### Integration points
+
+- **PostToolUse hook**: advisory when editing files with specs
+- **PreToolUse hook**: obligation + generation constraint guidance before writes
+- **UserPromptSubmit hook**: `PSpec: N specs (X% covered)` in primer
+- **PreCompact hook**: prescriptive state preserved in compaction capsule
+- **Theory freeze**: auto-composes specs for high-confidence targets
+- **ControlPlane**: PSPEC001 (AST invariant violation), PSPEC002 (sigma divergence), PSPEC003 (missing spec)
+- **Living context**: `prescriptive_rules` managed section in CLAUDE.md
+- **Compass alignment**: `check_alignment_with_specs()` checks actions against forbidden behaviors
+- **Platonic convergence**: spec-aware kill targets override generic thresholds
+
+### Configuration
+
+```yaml
+controlplane:
+  prescriptive_spec:
+    enabled: true
+    auto_compose_on_freeze: true
+    emit_advisory_on_write: true
+    sigma_divergence_threshold: 2.0
+```
+
+### Persistence layout
+
+```
+.lintgate/prescriptive_specs/
+├── index.json                        # target_key → spec_id mapping
+├── {target_hash}.json                # PrescriptiveSpec IR
+├── {target_hash}_workflow.json       # PrescriptiveWorkflowRecord
+├── {target_hash}_expectations.json   # Expected kill set from compilation
+└── {spec_id}_targets.json            # CompilationTargets
+```
+
+---
+
 ## Design Lineage
 
 LintGate pulls patterns from four projects that explored different facets of the same problem: how do you build reliable feedback loops between code generation and code validation?
@@ -2237,6 +2334,15 @@ lintgate/
 │   │   ├── test_generators.py       # Category-specific test template generators for mutation prescriptions
 │   │   ├── automation.py            # MutationOrchestrator (Tier 1/2 background queue + debounce)
 │   │   └── policy.py                # RuntimeBudget + MutationTelemetry
+│   ├── specification/               # Prescriptive specification system
+│   │   ├── prescriptive_spec.py     # Predicate IR, domain types (Invariant, ForbiddenBehavior, StateTransition),
+│   │   │                            #   PrescriptiveSpec, PrescriptiveSpecComposer, project_claims(),
+│   │   │                            #   PrescriptiveWorkflowRecord, persistence (save/load spec + workflow)
+│   │   ├── prescriptive_backends.py # PureBackend, StatefulBackend, DistributedBackend, CompilationTargets,
+│   │   │                            #   PrescriptiveAdapter (materialize, persist_kill_expectations, verify_refinement)
+│   │   ├── prescriptive_ast_checker.py  # AST-level invariant checking (PSPEC001)
+│   │   ├── prescriptive_sigma.py    # Prescriptive sigma estimation + convergence signal
+│   │   └── prescriptive_projection.py  # Graph projection for coupling surface enrichment
 │   └── channels/                    # ControlPlane channel implementations
 │       ├── lint_channel.py          # Wraps the linter pipeline
 │       ├── test_channel.py          # Test discovery + execution
@@ -2250,6 +2356,10 @@ lintgate/
 │   ├── compass_tools.py             # compass_status, compass_update, compass_interview, compass_check,
 │   │                                #   compass_reset, theory_mode_enter, theory_mode_freeze, setup_hooks
 │   ├── habit_tools.py               # declare_mode, habit_status, habit_compact, habit_configure
+│   ├── prescriptive_tools.py        # prescriptive_spec_compose, _compile, _verify, _status
+│   ├── _prescriptive_impl.py        # Implementation: compose (claim injection, projection), compile
+│   │                                #   (persist targets, materialize tests), verify (target lookup,
+│   │                                #   tightened next_actions), status
 │   └── ...                          # lint_tools, controlplane_tools, behavior_tools, context_tools, etc.
 ├── tests/                           # 55+ test files
 │   ├── test_compass.py              # Compass data model, depth scoring, gap report
