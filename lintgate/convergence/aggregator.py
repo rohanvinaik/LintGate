@@ -464,3 +464,16 @@ def adapt_call_graph(data: dict, threshold: int = 8) -> list[LensEvidence]:
                 )
             )
     return results
+
+
+from .aggregator_file_level import (  # noqa: F401, E402
+    _apply_weight,
+    adapt_cochange_file,
+    adapt_cohesion_file,
+    adapt_contract_coverage,
+    adapt_cross_channel,
+    adapt_fan_in_file,
+    adapt_import_weight_file,
+    aggregate_file,
+    classify_file_actionability,
+)

@@ -209,7 +209,10 @@ class TestBehaviorMcpContracts:
         )
         from mcp_server import behavior_precheck
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with (
+            patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"),
+            patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path / "session"),
+        ):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = new_compass()
             compass.hypotheses.append(
@@ -253,7 +256,10 @@ class TestBehaviorMcpContracts:
         )
         from mcp_server import behavior_precheck
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with (
+            patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"),
+            patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path / "session"),
+        ):
             behavior_precheck(
                 path=str(tmp_path),
                 planned_action="git status",
@@ -280,7 +286,10 @@ class TestBehaviorMcpContracts:
             "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with (
+            patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"),
+            patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path / "session"),
+        ):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             compass = new_compass()
             # Seed state that deterministically fires approach_cycling.
@@ -336,7 +345,10 @@ class TestBehaviorMcpContracts:
             "controlplane:\n  enabled: true\n  session_memory: true\n"
         )
 
-        with patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"):
+        with (
+            patch("lintgate.controlplane.session_memory.SESSION_DIR", tmp_path / "session"),
+            patch("lintgate.controlplane.session_memory_ops.SESSION_DIR", tmp_path / "session"),
+        ):
             session = get_or_create_session(str(tmp_path), max_age_hours=4.0)
             session.snapshots.append(SessionSnapshot(run_id="prev", finding_index={}))
             save_session(session)

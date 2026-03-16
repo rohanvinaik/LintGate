@@ -55,6 +55,7 @@ symbol_gate:
       - "main"
       - "codex/ship-main-*"
       - "codex/ship-*"
+      - "prescriptive-spec-system"
     # PR events always advisory (historical diffs inflate scope)
     pr_always_advisory: true
   # Base commit strategy for ship flows (merge-base vs head~1)

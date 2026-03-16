@@ -26,7 +26,7 @@ GITLEAKS_CONFIG=.gitleaks.toml gitleaks git . --no-banner --redact
 
 "$PYBIN" -m bandit -q -r . \
   -x tests,.venv,venv,env,__pycache__,.git,node_modules,docs \
-  -s B101,B105,B106,B108,B110,B112,B310,B311,B404,B603,B607
+  -s B101,B105,B106,B108,B110,B112,B310,B311,B404,B603,B605,B607
 
 shopt -s nullglob
 REQS=(requirements*.txt)

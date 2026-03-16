@@ -445,6 +445,8 @@ def _analyze_test_coverage(project_root: str, py_files: list[str]) -> dict[str, 
 
 
 _PROJECT_SENTINEL = "<project>"
+
+
 def _count_lines(path: str) -> int:
     try:
         with open(path, encoding="utf-8", errors="ignore") as f:
