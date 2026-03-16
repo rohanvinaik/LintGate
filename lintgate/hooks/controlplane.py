@@ -18,6 +18,9 @@ _SESSION_TELEMETRY_UPDATE_CAP = 10
 _SESSION_TELEMETRY_COUNTER_KEY = "_model_profile_telem_updates"
 
 
+# ── Session telemetry management ──────────────────────────────────
+
+
 def session_telemetry_updates_used(session: Any) -> int:
     """Return telemetry updates applied in the current session."""
     if session is None or not hasattr(session, "behavior_compass"):
@@ -89,6 +92,9 @@ def _collect_model_candidates(input_data: dict[str, Any]) -> list[str | None]:
         candidates.append(os.environ.get(env_key))
 
     return candidates
+
+
+# ── Model identity resolution ─────────────────────────────────────
 
 
 def resolve_event_model_key(input_data: dict[str, Any]) -> str | None:
@@ -210,6 +216,9 @@ def _check_session_gate(
     return None
 
 
+# ── Session setup + gate checking ─────────────────────────────────
+
+
 def setup_session_and_gate(
     cp_config: Any,
     cwd: str,
@@ -318,6 +327,9 @@ def _apply_model_telemetry(session: Any, input_data: dict) -> None:
             save_profiles(store)
 
 
+# ── Behavior delta application ────────────────────────────────────
+
+
 def apply_behavior_delta(
     session: Any,
     cr: Any,
@@ -375,6 +387,9 @@ def record_snapshot_behavior(
 
 
 # ── Constraint proposer ──────────────────────────────────────────────
+
+
+# ── Post-processing + persistence ─────────────────────────────────
 
 
 def run_constraint_proposer(session: Any, mesh_result: Any, cp_config: Any) -> list[dict]:

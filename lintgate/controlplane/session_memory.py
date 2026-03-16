@@ -42,6 +42,9 @@ SESSION_DIR = Path.home() / ".claude" / "lintgate" / "session"
 _MAX_SNAPSHOTS = 50  # Prevent unbounded growth within a session
 
 
+# ── Data classes ──────────────────────────────────────────────────
+
+
 @dataclass
 class BehaviorEventData:
     """Behavioral event data populated by the behavior channel."""
@@ -283,6 +286,9 @@ class SessionMemory:
 # ── Public API ────────────────────────────────────────────────────────
 
 
+# ── Session persistence ───────────────────────────────────────────
+
+
 def load_session(project_root: str) -> SessionMemory | None:
     """Load a session for a project, or None if no active session exists.
 
@@ -369,6 +375,9 @@ def get_or_create_session(project_root: str, max_age_hours: float = 4.0) -> Sess
             session.resolution_repertoire = knowledge.repertoire
 
     return session
+
+
+# ── Mesh run recording ────────────────────────────────────────────
 
 
 def record_mesh_run(
@@ -481,6 +490,9 @@ def expire_session(session: SessionMemory, max_age_hours: float = 4.0) -> bool:
 # ── Repair Tracking ──────────────────────────────────────────────────
 
 
+# ── Repair tracking ───────────────────────────────────────────────
+
+
 def propose_repairs(session: SessionMemory, repairs: list[RepairAction]) -> None:
     """Register newly proposed repairs in the session.
 
@@ -555,6 +567,9 @@ def detect_applied_repairs(
 # ── Behavior Compass Helpers ─────────────────────────────────────────
 
 
+# ── Behavior compass integration ──────────────────────────────────
+
+
 def load_behavior_compass(session: SessionMemory) -> BehaviorCompass:
     """Deserialize BehaviorCompass from session's behavior_compass dict.
 
@@ -579,6 +594,9 @@ def get_habit_mode_active(session: SessionMemory) -> bool:
 
 
 # ── Persistent Test Failure Tracking (#205) ─────────────────────────
+
+
+# ── Test failure analysis ─────────────────────────────────────────
 
 
 def _extract_test_failure_keys(snapshot: SessionSnapshot) -> set[str]:

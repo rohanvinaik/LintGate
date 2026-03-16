@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from lintgate.linters.test_effectiveness.types import MappingDiagnostics
 
 
+# ── Name extraction + utilities ───────────────────────────────────
+
+
 def _get_name(node: ast.expr) -> str:
     """Extract a dotted name from an AST expression node."""
     if isinstance(node, ast.Name):
@@ -29,6 +32,9 @@ def _get_name(node: ast.expr) -> str:
         prefix = _get_name(node.value)
         return f"{prefix}.{node.attr}" if prefix else node.attr
     return ""
+
+
+# ── AST visitors for test/source analysis ─────────────────────────
 
 
 class _ImportCollector(ast.NodeVisitor):
@@ -279,6 +285,9 @@ def _filter_candidates_by_module_hint(
     return filtered
 
 
+# ── Source function index building ─────────────────────────────────
+
+
 def build_source_function_index(
     source_files: list[str],
 ) -> dict[str, str | list[str]]:
@@ -308,6 +317,9 @@ def build_source_function_index(
             _merge_index_entry(index, key, filepath)
 
     return index
+
+
+# ── Test-to-source mapping ────────────────────────────────────────
 
 
 def map_tests_to_source(
@@ -655,6 +667,9 @@ def _process_test_call(
         success = True
 
     return success
+
+
+# ── Matching strategies ───────────────────────────────────────────
 
 
 def _apply_call_graph_strategy(

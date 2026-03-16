@@ -15,6 +15,8 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
+# ── Types ─────────────────────────────────────────────────────────
+
 
 @dataclass
 class FunctionInfo:
@@ -162,6 +164,9 @@ def _extract_signals(tree: ast.Module, source: str) -> SourceSignals:
     _derive_composite_signals(signals)
 
     return signals
+
+
+# ── AST signal extraction ─────────────────────────────────────────
 
 
 class _SignalVisitor(ast.NodeVisitor):
@@ -413,6 +418,9 @@ def _derive_composite_signals(signals: SourceSignals) -> None:
 # ── Archetype Matching ───────────────────────────────────────────────────
 
 
+# ── Archetype scoring ─────────────────────────────────────────────
+
+
 def _match_archetypes(signals: SourceSignals) -> list[ArchetypeMatch]:
     """Match extracted signals against archetype definitions."""
     matches: list[ArchetypeMatch] = []
@@ -653,6 +661,9 @@ def _score_round_trip(signals: SourceSignals) -> tuple[float, list[str]]:
 
 
 # ── AST Helpers ──────────────────────────────────────────────────────────
+
+
+# ── AST helpers ───────────────────────────────────────────────────
 
 
 def _decorator_name(node: ast.expr) -> str:

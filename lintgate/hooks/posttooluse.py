@@ -61,6 +61,9 @@ from lintgate.hooks.runtime_state import (
 )
 
 
+# ── Input parsing + normalization ────────────────────────────────
+
+
 def _parse_hook_input() -> dict | None:
     """Parse and validate stdin JSON. Returns None on invalid input."""
     try:
@@ -93,6 +96,9 @@ def _normalize_fields(input_data: dict) -> tuple[str, dict, str, str]:
         cwd = os.getcwd()
 
     return tool_name, tool_input, tool_output, cwd
+
+
+# ── Legacy lint pipeline (non-ControlPlane) ──────────────────────
 
 
 def _run_legacy_pipeline(
@@ -307,6 +313,9 @@ def _finalize_report(
     return report, telemetry
 
 
+# ── ControlPlane event preparation ────────────────────────────────
+
+
 def _prepare_controlplane_event(
     input_data: dict, config: Any, cp_config: Any, cwd: str
 ) -> tuple[Any, Any, str, dict, str]:
@@ -479,6 +488,9 @@ def _should_suppress_report(hook_fp: str | None, prev_fp: str | None, mesh_resul
     return not any(
         f.severity == "blocking" for cr in mesh_result.channel_results for f in cr.findings
     )
+
+
+# ── ControlPlane execution ────────────────────────────────────────
 
 
 def _run_controlplane(
@@ -655,6 +667,9 @@ def _run_controlplane(
     sys.exit(0)
 
 
+# ── Prescriptive spec detection ───────────────────────────────────
+
+
 def _check_prescriptive_specs(tool_input: dict, project_root: str) -> str | None:
     """Check if written/edited functions have prescriptive specs."""
     filepath = tool_input.get("file_path", "")
@@ -747,6 +762,9 @@ def _detect_new_functions(
     if tool_name == "Edit":
         return _detect_edit_functions(tool_input)
     return None
+
+
+# ── Utilities ─────────────────────────────────────────────────────
 
 
 def _fallback_config(cwd: str) -> Any:

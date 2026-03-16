@@ -71,6 +71,9 @@ _MATRIX_EXPR_RE = re.compile(r"\${{\s*matrix\.([A-Za-z0-9_-]+)\s*}}")
 # ── Result dataclass ─────────────────────────────────────────────────────
 
 
+# ── Types ─────────────────────────────────────────────────────────
+
+
 @dataclass
 class QualityAuditResult:
     """Result of auditing quality infrastructure completeness."""
@@ -86,6 +89,9 @@ class QualityAuditResult:
 
 
 # ── Core audit function ──────────────────────────────────────────────────
+
+
+# ── Audit orchestrator ────────────────────────────────────────────
 
 
 def audit_quality_infrastructure(project_root: str) -> QualityAuditResult:
@@ -139,6 +145,9 @@ def audit_quality_infrastructure(project_root: str) -> QualityAuditResult:
 
 
 # ── Helper functions ─────────────────────────────────────────────────────
+
+
+# ── Git + badge checks ────────────────────────────────────────────
 
 
 def _is_git_repo(project_root: str) -> bool:
@@ -210,6 +219,9 @@ def _check_badge_fingerprints(project_root: str) -> tuple[int, bool]:
     # Fallback: check content directly
     found = sum(1 for fp in _REQUIRED_BADGE_FINGERPRINTS if fp in content)
     return found, found == len(_REQUIRED_BADGE_FINGERPRINTS)
+
+
+# ── Gate contract validation ──────────────────────────────────────
 
 
 def _check_gate_contract_drift(project_root: str) -> list[str]:
@@ -457,6 +469,9 @@ def _extract_pre_push_gate_ids(pre_push_content: str) -> list[str]:
     return sorted(set(_PRE_PUSH_GATE_ID_RE.findall(pre_push_content)))
 
 
+# ── CI workflow parsing ───────────────────────────────────────────
+
+
 def _collect_workflow_declared_checks(
     root: Path,
     workflows: list[str],
@@ -538,6 +553,9 @@ def _matrix_axis_values(value: Any) -> list[str]:
                 values.extend(str(item) for item in parsed)
         return list(dict.fromkeys(values))
     return []
+
+
+# ── Branch protection + CLI ────────────────────────────────────────
 
 
 def _fetch_branch_protection_required_checks(project_root: str) -> list[str] | None:

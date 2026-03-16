@@ -20,6 +20,8 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
+# ── Types ─────────────────────────────────────────────────────────
+
 
 @dataclass
 class ImportReference:
@@ -88,6 +90,9 @@ class MoveResult:
 
 
 # ── Import scanning (AST-based, always available) ────────────────
+
+
+# ── Import scanning ───────────────────────────────────────────────
 
 
 def scan_all_imports(
@@ -259,6 +264,9 @@ def _is_monkeypatch_setattr(node: ast.Call) -> bool:
 
 
 # ── Rewrite computation ──────────────────────────────────────────
+
+
+# ── Import rewriting ──────────────────────────────────────────────
 
 
 def _compute_rewrites(
@@ -466,6 +474,9 @@ def _str_to_cst_module(dotted: str) -> Any:
 # ── Shim generation ──────────────────────────────────────────────
 
 
+# ── Shim generation ───────────────────────────────────────────────
+
+
 def generate_shim(
     project_root: str,
     old_module: str,
@@ -546,6 +557,9 @@ def _extract_public_names(filepath: str) -> list[str]:
 # ── Smoke gate ───────────────────────────────────────────────────
 
 
+# ── Smoke testing ─────────────────────────────────────────────────
+
+
 def smoke_test_import(
     module_name: str,
     project_root: str,
@@ -576,6 +590,9 @@ def smoke_test_import(
 
 
 # ── Main orchestration ───────────────────────────────────────────
+
+
+# ── Orchestrator ──────────────────────────────────────────────────
 
 
 def refactor_move(
