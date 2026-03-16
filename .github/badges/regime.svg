@@ -1,5 +1,5 @@
-<svg width="200.9" height="20" viewBox="0 0 2009 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Regime: 2436A / 814B (symbolic)">
-  <title>Regime: 2436A / 814B (symbolic)</title>
+<svg width="200.9" height="20" viewBox="0 0 2009 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Regime: 2466A / 821B (symbolic)">
+  <title>Regime: 2466A / 821B (symbolic)</title>
   <linearGradient id="a" x2="0" y2="100%">
     <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
     <stop offset="1" stop-opacity=".1"/>
@@ -13,8 +13,8 @@
   <g aria-hidden="true" fill="#fff" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
     <text x="60" y="148" textLength="417" fill="#000" opacity="0.25">Regime</text>
     <text x="50" y="138" textLength="417">Regime</text>
-    <text x="572" y="148" textLength="1392" fill="#000" opacity="0.25">2436A / 814B (symbolic)</text>
-    <text x="562" y="138" textLength="1392">2436A / 814B (symbolic)</text>
+    <text x="572" y="148" textLength="1392" fill="#000" opacity="0.25">2466A / 821B (symbolic)</text>
+    <text x="562" y="138" textLength="1392">2466A / 821B (symbolic)</text>
   </g>
   
 </svg>
