@@ -192,6 +192,84 @@ def _should_suppress_report(hook_fp: str | None, prev_fp: str | None, mesh_resul
 # ── ControlPlane execution ────────────────────────────────────────
 
 
+def _inject_field_deltas(
+    report: dict | None, current_fields: dict[str, str], prev_fields: dict[str, str]
+) -> None:
+    """Inject field-level deltas into report for delta-first output."""
+    if not (prev_fields and current_fields and report):
+        return
+    with contextlib.suppress(Exception):
+        from lintgate.controlplane.reporter.hook import compute_field_deltas
+
+        field_deltas = compute_field_deltas(current_fields, prev_fields)
+        if field_deltas:
+            report["state_delta"] = field_deltas
+
+
+def _emit_delivery_bus(bus: Any, advisory: str | None) -> str | None:
+    """Emit delivery bus and return updated advisory string."""
+    try:
+        bus_report = bus.emit(preferred_channels=["hook_text", "rule_file", "mcp_status"])
+        if bus_report.get("systemMessage"):
+            return bus_report["systemMessage"]
+    except Exception:
+        pass
+    return advisory
+
+
+def _inject_report_extras(
+    report: dict | None, tool_name: str, tool_input: dict, cwd: str, cp_config: Any
+) -> None:
+    """Inject test generation hints and prescriptive advisories into report."""
+    if not report:
+        return
+    with contextlib.suppress(Exception):
+        new_funcs = _detect_new_functions(tool_name, tool_input, cwd)
+        if new_funcs:
+            if cp_config.prescriptive_spec_enabled:
+                report["test_generation_hint"] = {
+                    "new_functions": new_funcs,
+                    "suggestion": (
+                        "New functions detected. Run prescriptive_spec_compose to create "
+                        "behavioral contracts, then prescriptive_spec_compile for test "
+                        "skeletons + generation constraints"
+                    ),
+                }
+            else:
+                report["test_generation_hint"] = {
+                    "new_functions": new_funcs,
+                    "suggestion": "Consider bootstrap_tests or controlplane_test_skeleton for new functions",
+                }
+    with contextlib.suppress(Exception):
+        if tool_name in ("Write", "Edit", "MultiEdit") and cp_config.prescriptive_spec_enabled:
+            pspec_msg = _check_prescriptive_specs(tool_input, cwd)
+            if pspec_msg:
+                report.setdefault("prescriptive_advisory", pspec_msg)
+
+
+def _build_high_priority_advisory(
+    report: dict | None, proposed_constraints: list[dict], advisory: str | None
+) -> str | None:
+    """Build high-priority advisory string from constraints and report extras."""
+    with contextlib.suppress(Exception):
+        addons: list[str] = []
+        if proposed_constraints:
+            texts = [c.get("rule", c.get("text", ""))[:60] for c in proposed_constraints[:2]]
+            if any(texts):
+                addons.append(f"[Constraint] New: {'; '.join(t for t in texts if t)}")
+        if report and report.get("prescriptive_advisory"):
+            addons.append(report["prescriptive_advisory"])
+        if report and report.get("test_generation_hint", {}).get("new_functions"):
+            hint = report["test_generation_hint"]
+            names = [f.get("name", "") for f in hint["new_functions"][:3]]
+            addons.append(f"[New] {', '.join(n for n in names if n)}: {hint['suggestion'][:80]}")
+        if addons and advisory:
+            return advisory + " | " + " | ".join(addons)
+        if addons:
+            return " | ".join(addons)
+    return advisory
+
+
 def _run_controlplane(
     input_data: dict, config: Any, cp_config: Any, cwd: str, start: float
 ) -> None:
@@ -284,73 +362,10 @@ def _run_controlplane(
         disposition=disposition,
     )
 
-    # Delta-first output: inject field-level deltas so agents see only what changed
-    if prev_fields and current_fields and report:
-        with contextlib.suppress(Exception):
-            from lintgate.controlplane.reporter.hook import compute_field_deltas
-
-            field_deltas = compute_field_deltas(current_fields, prev_fields)
-            if field_deltas:
-                report["state_delta"] = field_deltas
-
-    # Multi-channel Delivery Bus Emission (#174)
-    try:
-        bus_report = bus.emit(preferred_channels=["hook_text", "rule_file", "mcp_status"])
-        if bus_report.get("systemMessage"):
-            advisory = bus_report["systemMessage"]
-    except Exception:
-        pass
-
-    # Incremental test signal — detect new functions from edits (Gap 7)
-    with contextlib.suppress(Exception):
-        new_funcs = _detect_new_functions(tool_name, tool_input, cwd)
-        if new_funcs and report:
-            if cp_config.prescriptive_spec_enabled:
-                report["test_generation_hint"] = {
-                    "new_functions": new_funcs,
-                    "suggestion": (
-                        "New functions detected. Run prescriptive_spec_compose to create "
-                        "behavioral contracts, then prescriptive_spec_compile for test "
-                        "skeletons + generation constraints"
-                    ),
-                }
-            else:
-                report["test_generation_hint"] = {
-                    "new_functions": new_funcs,
-                    "suggestion": "Consider bootstrap_tests or controlplane_test_skeleton for new functions",
-                }
-
-    # PrescriptiveSpec advisory — notify when edited functions have specs
-    with contextlib.suppress(Exception):
-        if tool_name in ("Write", "Edit", "MultiEdit") and cp_config.prescriptive_spec_enabled:
-            pspec_msg = _check_prescriptive_specs(tool_input, cwd)
-            if pspec_msg and report:
-                report.setdefault("prescriptive_advisory", pspec_msg)
-
-    # Surface proposed constraints and prescriptive advisories in systemMessage
-    # so the model sees them at the highest-attention position
-    with contextlib.suppress(Exception):
-        high_priority_addons: list[str] = []
-        if proposed_constraints:
-            constraint_texts = [
-                c.get("rule", c.get("text", ""))[:60] for c in proposed_constraints[:2]
-            ]
-            if any(constraint_texts):
-                high_priority_addons.append(
-                    f"[Constraint] New: {'; '.join(t for t in constraint_texts if t)}"
-                )
-        if report and report.get("prescriptive_advisory"):
-            high_priority_addons.append(report["prescriptive_advisory"])
-        if report and report.get("test_generation_hint", {}).get("new_functions"):
-            hint = report["test_generation_hint"]
-            func_names = [f.get("name", "") for f in hint["new_functions"][:3]]
-            high_priority_addons.append(
-                f"[New] {', '.join(f for f in func_names if f)}: {hint['suggestion'][:80]}"
-            )
-        if high_priority_addons and advisory:
-            advisory += " | " + " | ".join(high_priority_addons)
-        elif high_priority_addons:
-            advisory = " | ".join(high_priority_addons)
+    _inject_field_deltas(report, current_fields, prev_fields)
+    advisory = _emit_delivery_bus(bus, advisory)
+    _inject_report_extras(report, tool_name, tool_input, cwd, cp_config)
+    advisory = _build_high_priority_advisory(report, proposed_constraints, advisory)
 
     accumulate_session_telemetry(report, session)
     refresh_runtime_after_run(cwd, session, cp_config, mesh_result, tool_name, tool_input)

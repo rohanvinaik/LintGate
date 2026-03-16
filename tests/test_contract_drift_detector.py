@@ -126,21 +126,21 @@ def test_filepath_to_module_basic():
 def test_get_call_name_simple():
     src = "foo()"
     tree = ast.parse(src)
-    call = tree.body[0].value
+    call = tree.body[0].value  # type: ignore[attr-defined]
     assert _get_call_name(call) == "foo"
 
 
 def test_get_call_name_attribute():
     src = "obj.method()"
     tree = ast.parse(src)
-    call = tree.body[0].value
+    call = tree.body[0].value  # type: ignore[attr-defined]
     assert _get_call_name(call) == "obj.method"
 
 
 def test_get_call_name_nested():
     src = "a.b.c()"
     tree = ast.parse(src)
-    call = tree.body[0].value
+    call = tree.body[0].value  # type: ignore[attr-defined]
     assert _get_call_name(call) == "a.b.c"
 
 
