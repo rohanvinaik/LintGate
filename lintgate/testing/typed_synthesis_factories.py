@@ -271,24 +271,25 @@ _BUILTINS = {
 
 def _collect_local_names(func_node: ast.FunctionDef) -> set[str]:
     """Collect all locally defined names in a function (params, assigns, targets)."""
-    local_names: set[str] = set()
-    for arg in func_node.args.args:
-        local_names.add(arg.arg)
-
+    local_names: set[str] = {arg.arg for arg in func_node.args.args}
     for child in ast.walk(func_node):
-        if isinstance(child, ast.Assign):
-            for target in child.targets:
-                _collect_names_from_target(target, local_names)
-        elif isinstance(child, (ast.For, ast.comprehension)):
-            _collect_names_from_target(child.target, local_names)
-        elif isinstance(child, (ast.With, ast.AsyncWith)):
-            for item in child.items:
-                if item.optional_vars and isinstance(item.optional_vars, ast.Name):
-                    local_names.add(item.optional_vars.id)
-        elif isinstance(child, ast.NamedExpr) and isinstance(child.target, ast.Name):
-            local_names.add(child.target.id)
-
+        _collect_name_from_node(child, local_names)
     return local_names
+
+
+def _collect_name_from_node(child: ast.AST, names: set[str]) -> None:
+    """Extract defined names from a single AST node into the set."""
+    if isinstance(child, ast.Assign):
+        for target in child.targets:
+            _collect_names_from_target(target, names)
+    elif isinstance(child, (ast.For, ast.comprehension)):
+        _collect_names_from_target(child.target, names)
+    elif isinstance(child, (ast.With, ast.AsyncWith)):
+        for item in child.items:
+            if item.optional_vars and isinstance(item.optional_vars, ast.Name):
+                names.add(item.optional_vars.id)
+    elif isinstance(child, ast.NamedExpr) and isinstance(child.target, ast.Name):
+        names.add(child.target.id)
 
 
 def _collect_names_from_target(target: ast.expr, names: set[str]) -> None:

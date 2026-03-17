@@ -157,31 +157,38 @@ def _find_function_at(source: str, annotation_line: int) -> str | None:
     return None
 
 
-def _collect_claim_items(
-    compass: Any, theory_profile: dict[str, Any]
-) -> list[tuple[str, float, str]]:
-    """Collect all claim texts with confidence from compass and theory profile."""
+def _collect_compass_claims(compass: Any) -> list[tuple[str, float, str]]:
+    """Collect claims from compass directives and axes."""
     items: list[tuple[str, float, str]] = []
-
     if hasattr(compass, "directives"):
         for i, d in enumerate(compass.directives):
             conf = 0.7 if d.kind == "toward" else 0.6
             items.append((d.text, conf, f"compass:{d.kind}:{i}"))
-
     if hasattr(compass, "axes"):
         for axis_name, axis in compass.axes.items():
             for j, claim in enumerate(axis.claims):
                 items.append((claim.text, claim.confidence, f"compass:{axis_name}:{j}"))
-
-    for facet_name, facet_data in theory_profile.items():
-        if isinstance(facet_data, dict):
-            claims = facet_data.get("claims", [])
-            for k, claim in enumerate(claims):
-                text = claim.get("text", "") if isinstance(claim, dict) else str(claim)
-                conf = claim.get("confidence", 0.7) if isinstance(claim, dict) else 0.7
-                items.append((text, conf, f"theory:{facet_name}:{k}"))
-
     return items
+
+
+def _collect_theory_claims(theory_profile: dict[str, Any]) -> list[tuple[str, float, str]]:
+    """Collect claims from theory profile facets."""
+    items: list[tuple[str, float, str]] = []
+    for facet_name, facet_data in theory_profile.items():
+        if not isinstance(facet_data, dict):
+            continue
+        for k, claim in enumerate(facet_data.get("claims", [])):
+            text = claim.get("text", "") if isinstance(claim, dict) else str(claim)
+            conf = claim.get("confidence", 0.7) if isinstance(claim, dict) else 0.7
+            items.append((text, conf, f"theory:{facet_name}:{k}"))
+    return items
+
+
+def _collect_claim_items(
+    compass: Any, theory_profile: dict[str, Any]
+) -> list[tuple[str, float, str]]:
+    """Collect all claim texts with confidence from compass and theory profile."""
+    return _collect_compass_claims(compass) + _collect_theory_claims(theory_profile)
 
 
 def _match_claims_to_symbols(

@@ -61,6 +61,24 @@ def _parse_cst_module(filepath: str) -> tuple[Any | None, str]:
         return None, f"Parse error: {e}"
 
 
+def _rewrite_import_aliases(
+    aliases: Any, old_module: str, new_module: str
+) -> tuple[list[Any], bool]:
+    """Rewrite import aliases, returning (new_aliases, changed)."""
+    new_names = []
+    changed = False
+    for alias in aliases:
+        name_str = _cst_module_to_str(alias.name)
+        if name_str and (name_str == old_module or name_str.startswith(old_module + ".")):
+            new_name = _str_to_cst_module(name_str.replace(old_module, new_module, 1))
+            if new_name is not None:
+                new_names.append(alias.with_changes(name=new_name))
+                changed = True
+                continue
+        new_names.append(alias)
+    return new_names, changed
+
+
 def _build_import_rewriter(old_module: str, new_module: str) -> Any:
     """Create a libcst CSTTransformer that rewrites imports from old to new module."""
     import libcst as cst
@@ -82,19 +100,9 @@ def _build_import_rewriter(old_module: str, new_module: str) -> Any:
 
         def leave_Import(self, original_node: cst.Import, updated_node: cst.Import) -> cst.Import:  # noqa: N802
             if not isinstance(updated_node.names, cst.ImportStar):
-                new_names = []
-                changed = False
-                for alias in updated_node.names:
-                    name_str = _cst_module_to_str(alias.name)
-                    if name_str and (
-                        name_str == old_module or name_str.startswith(old_module + ".")
-                    ):
-                        new_name = _str_to_cst_module(name_str.replace(old_module, new_module, 1))
-                        if new_name is not None:
-                            new_names.append(alias.with_changes(name=new_name))
-                            changed = True
-                            continue
-                    new_names.append(alias)
+                new_names, changed = _rewrite_import_aliases(
+                    updated_node.names, old_module, new_module
+                )
                 if changed:
                     self.changed = True
                     return updated_node.with_changes(names=new_names)
