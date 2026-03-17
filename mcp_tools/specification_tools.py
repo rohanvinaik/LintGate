@@ -175,6 +175,16 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         full = validate_file_in_project(project_root, file)
         result = analyze_file(full, project_root, enrich=enrich)
         output = result.to_dict()
+
+        # Compact per-function output: strip verbose fields that bloat context.
+        # Agents should use spec_file_prescribe for full per-function details.
+        _COMPACT_DROP_KEYS = {"design_signals", "empirical_overlay", "trajectory"}
+        if "functions" in output and isinstance(output["functions"], dict):
+            for _fk, fdata in output["functions"].items():
+                if isinstance(fdata, dict):
+                    for drop_key in _COMPACT_DROP_KEYS:
+                        fdata.pop(drop_key, None)
+
         output["next_actions"] = serialize_next_actions(
             [
                 NextAction(

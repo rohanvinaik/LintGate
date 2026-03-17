@@ -57,6 +57,23 @@ def _build_mutation_context(
     )
 
 
+_MUTATION_BULK_KEYS = frozenset({
+    "kill_matrix", "survivor_records", "killed_records",
+})
+
+
+def _strip_bulk_mutation_fields(results: list[dict]) -> list[dict]:
+    """Strip verbose mutation internals from per-function results.
+
+    kill_matrix, survivor_records, and killed_records can be hundreds of
+    lines per function. The agent only needs kill_rate + per_category summary.
+    """
+    return [
+        {k: v for k, v in r.items() if k not in _MUTATION_BULK_KEYS}
+        for r in results
+    ]
+
+
 def impl_run_sampling(
     helpers: Any, path: str, file: str, function: str | None, budget_ms: float
 ) -> str:
@@ -95,11 +112,12 @@ def impl_run_sampling(
             reason="Run exhaustive profiling for deeper analysis",
         )
     ]
+    compact_results = _strip_bulk_mutation_fields(results)
     output: dict[str, Any] = {
         "file": file,
         "functions_sampled": len(results),
         "tests_discovered": len(ctx.test_files),
-        "results": results,
+        "results": compact_results,
         "next_actions": serialize_next_actions(next_actions),
     }
     discovery_failures = [r for r in results if r.get("discovery_failed")]
@@ -158,7 +176,7 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         "file": file,
         "functions_profiled": len(results),
         "tests_discovered": len(ctx.test_files),
-        "results": results,
+        "results": _strip_bulk_mutation_fields(results),
         "analysis": analysis,
         "next_actions": serialize_next_actions(next_actions),
     }
@@ -452,7 +470,7 @@ def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None)
         helpers["_json_dumps"](
             {
                 "file": file,
-                "results": results,
+                "results": _strip_bulk_mutation_fields(results),
                 "next_actions": serialize_next_actions(next_actions),
             },
             output_mode="compact",

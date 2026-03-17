@@ -173,14 +173,26 @@ def staging_dir(project_root: str, workflow_dir: str, workflow_id: str) -> Path:
     return Path(project_root) / workflow_dir / workflow_id / "staged"
 
 
+_ENVELOPE_DROP_KEYS = frozenset({
+    "orch_state_snapshot",  # Full per-function trajectory — persisted to disk, not needed in response
+    "iterations",           # Full per-iteration decision logs — persisted to disk
+})
+
+
 def workflow_envelope(
     record: PlatonicWorkflowRecord,
     *,
     next_actions: list[NextAction] | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the machine-oriented MCP response envelope."""
+    """Build the machine-oriented MCP response envelope.
+
+    Strips bulk internal fields (orch_state_snapshot, iterations) that are
+    persisted to disk for resume but would exhaust the model's context window.
+    """
     payload = record.to_dict()
+    for key in _ENVELOPE_DROP_KEYS:
+        payload.pop(key, None)
     payload["next_actions"] = serialize_next_actions(next_actions or [])
     if extra:
         payload.update(extra)
