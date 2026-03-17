@@ -233,13 +233,25 @@ def _extract_repairs(details, channel):
     return all_repairs
 
 
+_EVIDENCE_BULK_KEYS = frozenset({
+    "_module_fan_in", "_import_graph", "_file_map", "_file_cohesion",
+})
+
+
 def _extract_evidence(details, channel):
-    """Extract metrics/evidence from run details."""
+    """Extract metrics/evidence from run details, stripping bulk internals.
+
+    Keys like _module_fan_in, _import_graph, _file_map, _file_cohesion can
+    contain thousands of entries and should not be sent through MCP responses
+    — they exhaust the consuming model's context window.
+    """
     evidence: dict[str, Any] = {}
     for ch_name, ch_data in _filter_channels(details.get("channels", {}), channel):
         metrics = ch_data.get("metrics", {})
         if metrics:
-            evidence[ch_name] = metrics
+            stripped = {k: v for k, v in metrics.items() if k not in _EVIDENCE_BULK_KEYS}
+            if stripped:
+                evidence[ch_name] = stripped
     return evidence
 
 
