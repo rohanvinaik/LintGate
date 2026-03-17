@@ -102,11 +102,21 @@ def _extract_findings(
     (highest value-per-effort first) and filtered accordingly.
     """
     all_findings = []
+    seen_fingerprints: dict[str, int] = {}  # fingerprint → index in all_findings
     for ch_name, ch_data in _filter_channels(details.get("channels", {}), channel):
         for f in ch_data.get("findings", []):
             if severity and f.get("severity") != severity:
                 continue
-            all_findings.append({**f, "channel": ch_name})
+            # Deduplicate by (kind, message, line) — collapse duplicates from
+            # junk directories into a single finding with occurrence count
+            dedup_key = f"{f.get('kind', '')}|{f.get('message', '')[:60]}|{f.get('line', '')}"
+            if dedup_key in seen_fingerprints:
+                idx = seen_fingerprints[dedup_key]
+                all_findings[idx]["occurrence_count"] = all_findings[idx].get("occurrence_count", 1) + 1
+                continue
+            entry = {**f, "channel": ch_name}
+            seen_fingerprints[dedup_key] = len(all_findings)
+            all_findings.append(entry)
 
     if finding_domain and finding_domain != "all":
         all_findings = [f for f in all_findings if _finding_domain(f) == finding_domain]
@@ -234,22 +244,33 @@ def _extract_repairs(details, channel):
 
 
 _EVIDENCE_BULK_KEYS = frozenset({
+    # Structure channel internals — O(N) maps used by convergence_analyze
     "_module_fan_in", "_import_graph", "_file_map", "_file_cohesion",
+    # Lint channel internals — repeated file lists and recurrence history
+    "files_linted", "recurrence", "linter_statuses",
 })
+
+_EVIDENCE_LIST_CAP = 5  # Max items for list-valued evidence fields
 
 
 def _extract_evidence(details, channel):
     """Extract metrics/evidence from run details, stripping bulk internals.
 
-    Keys like _module_fan_in, _import_graph, _file_map, _file_cohesion can
-    contain thousands of entries and should not be sent through MCP responses
-    — they exhaust the consuming model's context window.
+    Removes O(N) maps and caps list fields to prevent context window exhaustion.
     """
     evidence: dict[str, Any] = {}
     for ch_name, ch_data in _filter_channels(details.get("channels", {}), channel):
         metrics = ch_data.get("metrics", {})
         if metrics:
-            stripped = {k: v for k, v in metrics.items() if k not in _EVIDENCE_BULK_KEYS}
+            stripped: dict[str, Any] = {}
+            for k, v in metrics.items():
+                if k in _EVIDENCE_BULK_KEYS:
+                    continue
+                # Cap list fields (e.g. pattern_alerts, top_repeated)
+                if isinstance(v, list) and len(v) > _EVIDENCE_LIST_CAP:
+                    stripped[k] = v[:_EVIDENCE_LIST_CAP]
+                else:
+                    stripped[k] = v
             if stripped:
                 evidence[ch_name] = stripped
     return evidence
