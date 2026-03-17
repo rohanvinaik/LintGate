@@ -247,6 +247,261 @@ def impl_platonic_validate_only(
     )
 
 
+def _load_prescriptive_kill_overrides(
+    project_root: str, rel_file: str, target_kill_rate: float
+) -> tuple[dict[str, dict[str, bool]], float]:
+    """Load prescriptive spec kill expectations for functions in this file."""
+    overrides: dict[str, dict[str, bool]] = {}
+    try:
+        from lintgate.specification.prescriptive_spec import (
+            _SPEC_DIR,
+            _target_hash,
+            load_all_specs,
+        )
+
+        all_pspecs = load_all_specs(project_root)
+        for pspec in all_pspecs.values():
+            spec_file = (
+                pspec.target_key.split("::")[0].replace(".", "/") + ".py"
+                if "::" in pspec.target_key
+                else ""
+            )
+            if not (spec_file and (spec_file == rel_file or rel_file.endswith(spec_file))):
+                continue
+            exp_path = os.path.join(
+                project_root,
+                _SPEC_DIR,
+                f"{_target_hash(pspec.target_key)}_expectations.json",
+            )
+            if not os.path.isfile(exp_path):
+                continue
+            with open(exp_path, encoding="utf-8") as _ef:
+                exp_data = json.load(_ef)
+            eks = exp_data.get("expected_kill_set", {})
+            if eks:
+                overrides[pspec.target_key] = eks
+                expected_categories = len(eks)
+                if expected_categories > 0:
+                    target_kill_rate = max(
+                        target_kill_rate,
+                        sum(1 for v in eks.values() if v) / expected_categories,
+                    )
+    except Exception:
+        pass
+    return overrides, target_kill_rate
+
+
+def _compute_iteration_metrics(
+    orch_state: Any,
+    spec_result: Any,
+    mutation_results: list[dict],
+    runtime_mutation_cache: dict[str, dict],
+    reconciliation_threshold: float,
+    prescriptive_kill_overrides: dict[str, dict[str, bool]],
+    iter_data: dict[str, Any],
+    update_target_fn: Any,
+) -> None:
+    """Compute per-function spec/mutation metrics and update orchestrator state."""
+    from lintgate.specification.static_empirical_reconciliation import (
+        build_overlay,
+        reconcile_spec_level,
+    )
+
+    for func_key, target in orch_state.targets.items():
+        if target.status != "eligible":
+            continue
+
+        spec_data = spec_result.functions.get(func_key, {})
+        mut_result = _find_mutation_result(mutation_results, func_key)
+
+        spec_level = spec_data.get("specification_level", 0.0)
+        survival = mut_result.get("survival_rate", 1.0) if mut_result else 1.0
+        kill_rate = 1.0 - survival
+        phase = spec_data.get("phase", "bulk")
+        sigma = spec_data.get("sigma", spec_data.get("estimated_sigma", 0))
+        regime = spec_data.get("regime", "A")
+
+        overlay = build_overlay(func_key, sigma, regime, phase, runtime_mutation_cache)
+        control_spec_level, recon_source = reconcile_spec_level(
+            spec_level,
+            overlay,
+            confidence_threshold=reconciliation_threshold,
+        )
+
+        update_target_fn(orch_state, func_key, control_spec_level, kill_rate, phase)
+
+        func_entry: dict[str, Any] = {
+            "function_key": func_key,
+            "static_spec_level": round(spec_level, 4),
+            "reconciled_spec_level": round(control_spec_level, 4),
+            "reconciled_data_source": recon_source,
+            "kill_rate": round(kill_rate, 4),
+            "phase": phase,
+        }
+
+        if func_key in prescriptive_kill_overrides:
+            func_entry["prescriptive_kill_status"] = _check_prescriptive_kills(
+                prescriptive_kill_overrides[func_key],
+                (mut_result or {}).get("per_category", []),
+            )
+
+        iter_data["functions"].append(func_entry)
+
+
+def _check_prescriptive_kills(
+    expected_kills: dict[str, bool],
+    per_category: list[dict[str, Any]],
+) -> dict[str, str]:
+    """Check per-category kill results against prescriptive expectations."""
+    cat_status: dict[str, str] = {}
+    for cat, should_kill in expected_kills.items():
+        actual_killed = None
+        for cd in per_category:
+            if cd.get("category") == cat:
+                actual_killed = cd.get("survived", 0) == 0
+                break
+        if actual_killed is None:
+            cat_status[cat] = "unknown"
+        elif actual_killed == should_kill:
+            cat_status[cat] = "pass"
+        else:
+            cat_status[cat] = "fail"
+    return cat_status
+
+
+def _update_staged_artifacts(
+    staged_artifacts: list[dict[str, Any]],
+    gen_result: dict[str, Any],
+    iteration: int,
+) -> None:
+    """Track staged artifacts from test generation, including reference-only."""
+    if gen_result.get("skipped_reason") == "existing_tests_adequate":
+        ref_artifact = {
+            "generated_path": gen_result.get("generated_path", ""),
+            "staging_path": "",
+            "apply_destination": gen_result.get("generated_path", ""),
+            "content_hash": "",
+            "source_iteration": iteration,
+            "reference_only": True,
+            "canonical_path": gen_result.get("canonical_path", ""),
+        }
+        if not any(a["generated_path"] == ref_artifact["generated_path"] for a in staged_artifacts):
+            staged_artifacts.append(ref_artifact)
+    elif gen_result.get("files_written", 0) > 0 and gen_result.get("staging_path"):
+        staged_artifact = {
+            "generated_path": gen_result.get("generated_path", ""),
+            "staging_path": gen_result.get("staging_path", ""),
+            "apply_destination": _apply_destination_for_generated_path(
+                gen_result.get("generated_path", "")
+            ),
+            "content_hash": gen_result.get("content_hash", ""),
+            "source_iteration": iteration,
+        }
+        existing_idx = next(
+            (
+                i
+                for i, a in enumerate(staged_artifacts)
+                if a["generated_path"] == staged_artifact["generated_path"]
+            ),
+            None,
+        )
+        if existing_idx is not None:
+            staged_artifacts[existing_idx] = staged_artifact
+        else:
+            staged_artifacts.append(staged_artifact)
+
+
+def _build_convergence_next_actions(
+    workflow_state: str,
+    path: str,
+    workflow_id: str | None,
+    decompose_targets: list,
+    orch_state: Any,
+) -> tuple[list, str, dict[str, Any], bool, bool, str]:
+    """Route workflow state to next actions, primary action, and flags."""
+    from lintgate.next_action import NextAction
+
+    next_actions: list[NextAction] = []
+    primary = ""
+    args: dict[str, Any] = {}
+    autopilot = False
+    human_review = False
+
+    terminal_states = frozenset(
+        {
+            "CONVERGED",
+            "BLOCKED_DISCOVERY",
+            "BLOCKED_TOPOLOGY",
+            "BLOCKED_NO_ELIGIBLE_TARGETS",
+            "FAILED",
+            "EXISTING_TESTS_SUFFICIENT",
+            "PLATEAU_NO_GENERATION",
+        }
+    )
+
+    if workflow_state == "READY_TO_APPLY":
+        primary, args, autopilot = (
+            "platonic_apply",
+            {"path": path, "workflow_id": workflow_id, "dry_run": True},
+            True,
+        )
+    elif workflow_state == "READY_TO_APPLY_WITH_REVIEW":
+        primary, args, human_review = (
+            "platonic_apply",
+            {"path": path, "workflow_id": workflow_id, "dry_run": True},
+            True,
+        )
+    elif workflow_state == "NEEDS_DECOMPOSITION" and decompose_targets:
+        primary = "extraction_plan"
+        args = {"path": path, "function": decompose_targets[0].function_key}
+    elif workflow_state not in terminal_states:
+        primary, args, autopilot = (
+            "platonic_continue",
+            {"path": path, "workflow_id": workflow_id},
+            True,
+        )
+
+    if orch_state.ready_to_apply or workflow_state in (
+        "READY_TO_APPLY",
+        "READY_TO_APPLY_WITH_REVIEW",
+    ):
+        next_actions.append(
+            NextAction(
+                tool="platonic_apply",
+                args={"path": path, "workflow_id": workflow_id, "dry_run": True},
+                reason="Inspect the apply plan for generated tests.",
+            )
+        )
+    elif primary == "platonic_continue":
+        next_actions.append(
+            NextAction(
+                tool="platonic_continue",
+                args={"path": path, "workflow_id": workflow_id},
+                reason="Resume the persisted platonic workflow.",
+            )
+        )
+
+    decompose_keys = [
+        t.function_key for t in orch_state.targets.values() if t.status == "decompose"
+    ]
+    if decompose_keys:
+        next_actions.append(
+            NextAction(
+                tool="extraction_plan",
+                args={"path": path, "function": decompose_keys[0]},
+                reason=f"Decomposition is now the primary next move for {decompose_keys[0]}",
+            )
+        )
+
+    step = (
+        "validate"
+        if workflow_state in ("VALIDATING", "READY_TO_APPLY", "READY_TO_APPLY_WITH_REVIEW")
+        else "profile"
+    )
+
+    return next_actions, primary, args, autopilot, human_review, step
+
+
 def impl_platonic_converge(
     helpers: Any,
     path: str,
@@ -346,45 +601,9 @@ def impl_platonic_converge(
     decompose_targets = assessment["decompose_targets"]
     primary_target = assessment.get("primary_target", rel_file)
 
-    # ── Prescriptive spec awareness ───────────────────────────────
-    # If prescriptive specs exist for functions in this file, override
-    # convergence targets with per-category kill expectations from the spec.
-    prescriptive_kill_overrides: dict[str, dict[str, bool]] = {}
-    try:
-        from lintgate.specification.prescriptive_spec import load_all_specs
-
-        all_pspecs = load_all_specs(project_root)
-        for pspec in all_pspecs.values():
-            # Match specs to this file
-            spec_file = (
-                pspec.target_key.split("::")[0].replace(".", "/") + ".py"
-                if "::" in pspec.target_key
-                else ""
-            )
-            if spec_file and (spec_file == rel_file or rel_file.endswith(spec_file)):
-                # Load kill expectations
-                from lintgate.specification.prescriptive_spec import _SPEC_DIR, _target_hash
-
-                exp_path = os.path.join(
-                    project_root,
-                    _SPEC_DIR,
-                    f"{_target_hash(pspec.target_key)}_expectations.json",
-                )
-                if os.path.isfile(exp_path):
-                    with open(exp_path, encoding="utf-8") as _ef:
-                        exp_data = json.load(_ef)
-                    eks = exp_data.get("expected_kill_set", {})
-                    if eks:
-                        prescriptive_kill_overrides[pspec.target_key] = eks
-                        # Override aggregate target_kill_rate with spec expectation
-                        expected_categories = len(eks)
-                        if expected_categories > 0:
-                            target_kill_rate = max(
-                                target_kill_rate,
-                                sum(1 for v in eks.values() if v) / expected_categories,
-                            )
-    except Exception:
-        pass
+    prescriptive_kill_overrides, target_kill_rate = _load_prescriptive_kill_overrides(
+        project_root, rel_file, target_kill_rate
+    )
 
     if not auto_targets:
         state = "NEEDS_DECOMPOSITION" if decompose_targets else "BLOCKED_NO_ELIGIBLE_TARGETS"
@@ -517,64 +736,16 @@ def impl_platonic_converge(
             }
 
         # Build per-function metrics from mutation + spec
-        for func_key, target in orch_state.targets.items():
-            if target.status != "eligible":
-                continue
-
-            spec_data = spec_result.functions.get(func_key, {})
-            mut_result = _find_mutation_result(mutation_results, func_key)
-
-            spec_level = spec_data.get("specification_level", 0.0)
-            survival = mut_result.get("survival_rate", 1.0) if mut_result else 1.0
-            kill_rate = 1.0 - survival
-            phase = spec_data.get("phase", "bulk")
-            sigma = spec_data.get("sigma", spec_data.get("estimated_sigma", 0))
-            regime = spec_data.get("regime", "A")
-
-            # Formal reconciliation replaces ad-hoc "if kill_rate > spec_level"
-            from lintgate.specification.static_empirical_reconciliation import (
-                build_overlay,
-                reconcile_spec_level,
-            )
-
-            overlay = build_overlay(func_key, sigma, regime, phase, runtime_mutation_cache)
-            control_spec_level, recon_source = reconcile_spec_level(
-                spec_level,
-                overlay,
-                confidence_threshold=effective_reconciliation_threshold,
-            )
-
-            update_target(orch_state, func_key, control_spec_level, kill_rate, phase)
-
-            func_entry: dict[str, Any] = {
-                "function_key": func_key,
-                "static_spec_level": round(spec_level, 4),
-                "reconciled_spec_level": round(control_spec_level, 4),
-                "reconciled_data_source": recon_source,
-                "kill_rate": round(kill_rate, 4),
-                "phase": phase,
-            }
-
-            # Check per-category kills against prescriptive expectations
-            if func_key in prescriptive_kill_overrides:
-                expected_kills = prescriptive_kill_overrides[func_key]
-                per_cat = (mut_result or {}).get("per_category", [])
-                cat_status: dict[str, str] = {}
-                for cat, should_kill in expected_kills.items():
-                    actual_killed = None
-                    for cd in per_cat:
-                        if cd.get("category") == cat:
-                            actual_killed = cd.get("survived", 0) == 0
-                            break
-                    if actual_killed is None:
-                        cat_status[cat] = "unknown"
-                    elif actual_killed == should_kill:
-                        cat_status[cat] = "pass"
-                    else:
-                        cat_status[cat] = "fail"
-                func_entry["prescriptive_kill_status"] = cat_status
-
-            iter_data["functions"].append(func_entry)
+        _compute_iteration_metrics(
+            orch_state,
+            spec_result,
+            mutation_results,
+            runtime_mutation_cache,
+            effective_reconciliation_threshold,
+            prescriptive_kill_overrides,
+            iter_data,
+            update_target,
+        )
 
         mutation_cache = runtime_mutation_cache
         _persist_mutation_cache_entries(project_root, mutation_cache)
@@ -599,44 +770,7 @@ def impl_platonic_converge(
         if gen_result.get("skipped_reason"):
             iter_data["skipped_reason"] = gen_result["skipped_reason"]
 
-        # Track staged artifacts (including reference-only for skipped targets)
-        if gen_result.get("skipped_reason") == "existing_tests_adequate":
-            ref_artifact = {
-                "generated_path": gen_result.get("generated_path", ""),
-                "staging_path": "",
-                "apply_destination": gen_result.get("generated_path", ""),
-                "content_hash": "",
-                "source_iteration": iteration,
-                "reference_only": True,
-                "canonical_path": gen_result.get("canonical_path", ""),
-            }
-            if not any(
-                a["generated_path"] == ref_artifact["generated_path"] for a in staged_artifacts
-            ):
-                staged_artifacts.append(ref_artifact)
-        elif gen_result.get("files_written", 0) > 0 and gen_result.get("staging_path"):
-            staged_artifact = {
-                "generated_path": gen_result.get("generated_path", ""),
-                "staging_path": gen_result.get("staging_path", ""),
-                "apply_destination": _apply_destination_for_generated_path(
-                    gen_result.get("generated_path", "")
-                ),
-                "content_hash": gen_result.get("content_hash", ""),
-                "source_iteration": iteration,
-            }
-            # Update existing artifact for same generated_path or append
-            existing_idx = next(
-                (
-                    i
-                    for i, a in enumerate(staged_artifacts)
-                    if a["generated_path"] == staged_artifact["generated_path"]
-                ),
-                None,
-            )
-            if existing_idx is not None:
-                staged_artifacts[existing_idx] = staged_artifact
-            else:
-                staged_artifacts.append(staged_artifact)
+        _update_staged_artifacts(staged_artifacts, gen_result, iteration)
         if gen_result.get("manual_contract_candidates"):
             iter_data["manual_contract_candidates"] = gen_result["manual_contract_candidates"]
 
@@ -687,72 +821,15 @@ def impl_platonic_converge(
         iteration_log=iteration_log,
     )
 
-    converge_next_actions: list[NextAction] = []
-    primary_next_action = ""
-    converge_next_args: dict[str, Any] = {}
-    autopilot_safe = False
-    human_review_required_flag = False
-    if workflow_state == "READY_TO_APPLY":
-        primary_next_action = "platonic_apply"
-        converge_next_args = {"path": path, "workflow_id": workflow_id, "dry_run": True}
-        autopilot_safe = True
-    elif workflow_state == "READY_TO_APPLY_WITH_REVIEW":
-        primary_next_action = "platonic_apply"
-        converge_next_args = {"path": path, "workflow_id": workflow_id, "dry_run": True}
-        autopilot_safe = False
-        human_review_required_flag = True
-    elif workflow_state == "NEEDS_DECOMPOSITION" and decompose_targets:
-        primary_next_action = "extraction_plan"
-        converge_next_args = {"path": path, "function": decompose_targets[0].function_key}
-    elif workflow_state not in (
-        "CONVERGED",
-        "BLOCKED_DISCOVERY",
-        "BLOCKED_TOPOLOGY",
-        "BLOCKED_NO_ELIGIBLE_TARGETS",
-        "FAILED",
-        "EXISTING_TESTS_SUFFICIENT",
-        "PLATEAU_NO_GENERATION",
-    ):
-        primary_next_action = "platonic_continue"
-        converge_next_args = {"path": path, "workflow_id": workflow_id}
-        autopilot_safe = True
-
-    if orch_state.ready_to_apply or workflow_state in (
-        "READY_TO_APPLY",
-        "READY_TO_APPLY_WITH_REVIEW",
-    ):
-        converge_next_actions.append(
-            NextAction(
-                tool="platonic_apply",
-                args={"path": path, "workflow_id": workflow_id, "dry_run": True},
-                reason="Inspect the apply plan for generated tests.",
-            )
-        )
-    elif primary_next_action == "platonic_continue":
-        converge_next_actions.append(
-            NextAction(
-                tool="platonic_continue",
-                args={"path": path, "workflow_id": workflow_id},
-                reason="Resume the persisted platonic workflow.",
-            )
-        )
-
-    runtime_decompose_targets = [
-        t.function_key for t in orch_state.targets.values() if t.status == "decompose"
-    ]
-    if runtime_decompose_targets:
-        converge_next_actions.append(
-            NextAction(
-                tool="extraction_plan",
-                args={"path": path, "function": runtime_decompose_targets[0]},
-                reason=f"Decomposition is now the primary next move for {runtime_decompose_targets[0]}",
-            )
-        )
-
-    workflow_step = (
-        "validate"
-        if workflow_state in ("VALIDATING", "READY_TO_APPLY", "READY_TO_APPLY_WITH_REVIEW")
-        else "profile"
+    (
+        converge_next_actions,
+        primary_next_action,
+        converge_next_args,
+        autopilot_safe,
+        human_review_required_flag,
+        workflow_step,
+    ) = _build_convergence_next_actions(
+        workflow_state, path, workflow_id, decompose_targets, orch_state
     )
     workflow = PlatonicWorkflowRecord(
         workflow_id=workflow_id,

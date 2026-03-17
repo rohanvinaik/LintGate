@@ -22,6 +22,74 @@ _MATRIX_EXPR_RE = re.compile(r"\${{\s*matrix\.([A-Za-z0-9_-]+)\s*}}")
 # ── Gate contract validation ──────────────────────────────────────────────
 
 
+def _check_pre_push_parity(
+    pre_push_path: Path,
+    local_steps: list[str],
+    local_ids: list[str],
+    parity_contents: str,
+    errors: list[str],
+) -> None:
+    """Validate pre-push hook contains all contract commands and gate IDs."""
+    if not pre_push_path.exists():
+        errors.append("Missing .githooks/pre-push required by gate contract")
+        return
+    pre_push_content = pre_push_path.read_text(errors="ignore")
+    for cmd in local_steps:
+        if cmd not in pre_push_content:
+            errors.append(f"pre-push missing contract command fragment: {cmd}")
+        if cmd not in parity_contents:
+            errors.append(f"parity_workflows missing contract command fragment: {cmd}")
+    hook_gate_ids = _extract_pre_push_gate_ids(pre_push_content)
+    if hook_gate_ids:
+        missing_hook_ids = sorted(set(local_ids) - set(hook_gate_ids))
+        extra_hook_ids = sorted(set(hook_gate_ids) - set(local_ids))
+        if missing_hook_ids:
+            errors.append("pre-push missing contract gate id(s): " + ", ".join(missing_hook_ids))
+        if extra_hook_ids:
+            errors.append(
+                "pre-push exposes gate id(s) not in gate_contract.yaml: "
+                + ", ".join(extra_hook_ids)
+            )
+
+
+def _check_sonar_mode(
+    contract: dict[str, Any], required_checks: list[str], errors: list[str]
+) -> None:
+    """Validate sonar local_mode matches contract requirements."""
+    sonar_mode = (
+        ((contract.get("tools") or {}).get("sonar") or {}).get("local_mode", "")
+        if isinstance(contract.get("tools"), dict)
+        else ""
+    )
+    if "SonarQube Cloud Scan" in required_checks and str(sonar_mode).strip() != "local_scan":
+        errors.append("tools.sonar.local_mode must be 'local_scan' for local/CI parity")
+
+
+def _check_branch_protection(
+    project_root: str, required_checks: list[str], errors: list[str]
+) -> None:
+    """Validate branch protection checks match contract requirements."""
+    remote_checks = _fetch_branch_protection_required_checks(project_root)
+    require_remote = _branch_protection_fail_closed()
+    if remote_checks is None:
+        if require_remote:
+            errors.append(
+                "Unable to read main branch protection checks via gh api (fail-closed mode)"
+            )
+    else:
+        missing_remote = sorted(set(required_checks) - set(remote_checks))
+        extra_remote = sorted(set(remote_checks) - set(required_checks))
+        if missing_remote:
+            errors.append(
+                "Branch protection missing contract required check(s): " + ", ".join(missing_remote)
+            )
+        if extra_remote:
+            errors.append(
+                "Branch protection has extra required check(s) not in contract: "
+                + ", ".join(extra_remote)
+            )
+
+
 def _check_gate_contract_drift(project_root: str) -> list[str]:
     """Validate gate_contract.yaml parity across local/CI/branch-protection.
 
@@ -71,31 +139,9 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
         if wf.exists():
             parity_contents += "\n" + wf.read_text(errors="ignore")
 
-    if not pre_push_path.exists():
-        errors.append("Missing .githooks/pre-push required by gate contract")
-    else:
-        pre_push_content = pre_push_path.read_text(errors="ignore")
-        for cmd in local_steps:
-            if cmd not in pre_push_content:
-                errors.append(f"pre-push missing contract command fragment: {cmd}")
-            if cmd not in parity_contents:
-                errors.append(f"parity_workflows missing contract command fragment: {cmd}")
-        hook_gate_ids = _extract_pre_push_gate_ids(pre_push_content)
-        if hook_gate_ids:
-            missing_hook_ids = sorted(set(local_ids) - set(hook_gate_ids))
-            extra_hook_ids = sorted(set(hook_gate_ids) - set(local_ids))
-            if missing_hook_ids:
-                errors.append(
-                    "pre-push missing contract gate id(s): " + ", ".join(missing_hook_ids)
-                )
-            if extra_hook_ids:
-                errors.append(
-                    "pre-push exposes gate id(s) not in gate_contract.yaml: "
-                    + ", ".join(extra_hook_ids)
-                )
+    _check_pre_push_parity(pre_push_path, local_steps, local_ids, parity_contents, errors)
 
     declared_checks = _collect_workflow_declared_checks(root, parity_workflows)
-
     _check_parity_map(contract, declared_checks, errors)
 
     missing_declared = sorted(set(required_checks) - declared_checks)
@@ -105,33 +151,8 @@ def _check_gate_contract_drift(project_root: str) -> list[str]:
             + ", ".join(missing_declared)
         )
 
-    sonar_mode = (
-        ((contract.get("tools") or {}).get("sonar") or {}).get("local_mode", "")
-        if isinstance(contract.get("tools"), dict)
-        else ""
-    )
-    if "SonarQube Cloud Scan" in required_checks and str(sonar_mode).strip() != "local_scan":
-        errors.append("tools.sonar.local_mode must be 'local_scan' for local/CI parity")
-
-    remote_checks = _fetch_branch_protection_required_checks(project_root)
-    require_remote = _branch_protection_fail_closed()
-    if remote_checks is None:
-        if require_remote:
-            errors.append(
-                "Unable to read main branch protection checks via gh api (fail-closed mode)"
-            )
-    else:
-        missing_remote = sorted(set(required_checks) - set(remote_checks))
-        extra_remote = sorted(set(remote_checks) - set(required_checks))
-        if missing_remote:
-            errors.append(
-                "Branch protection missing contract required check(s): " + ", ".join(missing_remote)
-            )
-        if extra_remote:
-            errors.append(
-                "Branch protection has extra required check(s) not in contract: "
-                + ", ".join(extra_remote)
-            )
+    _check_sonar_mode(contract, required_checks, errors)
+    _check_branch_protection(project_root, required_checks, errors)
 
     return errors
 
