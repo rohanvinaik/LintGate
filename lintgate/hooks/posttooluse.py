@@ -216,6 +216,12 @@ def main() -> None:
         if tool_name not in ("Write", "Edit", "MultiEdit", "Bash"):
             _exit_clean()
 
+        # Skip non-code files — linting .md/.yaml/.json is wasteful noise
+        if tool_name in ("Write", "Edit", "MultiEdit"):
+            file_path = tool_input.get("file_path", "")
+            if file_path and not file_path.endswith(".py"):
+                _exit_clean()
+
         try:
             config = load_config(cwd)
         except Exception:
