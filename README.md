@@ -7,17 +7,9 @@
 [![Security](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Side-Effect-Free](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/purity.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Algebraic Properties](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/properties.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Mean σ](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/sigma.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Spec Coverage](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/spec-coverage.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Regime](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/regime.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Mutation Kill Rate](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mutation-kill-rate.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Tests](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/test-count.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/algebra-badges.yml)
-[![Benchmark](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/benchmark.yml)
+[![Mutation Kill Rate](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mutation-kill-rate.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
+[![Mean σ](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/sigma.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
+[![Tests](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/test-count.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
 <!-- lintgate:quality-badges:end -->
 
 `118 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
