@@ -99,7 +99,7 @@ _MCP_INSTRUCTIONS = (
     "  prescriptive_spec_verify(path, file) — verify refinement (structural AST checks + behavioral mutation checks)\n"
     "  prescriptive_spec_status(path) — project-wide prescriptive coverage\n"
     "All responses include next_actions with suggested follow-up tools. "
-    "124 tools total — use getting_started or lint_status to explore."
+    "127 tools total — use getting_started or lint_status to explore."
 )
 
 

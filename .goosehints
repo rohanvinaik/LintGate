@@ -1,0 +1,55 @@
+# LintGate — Project Instructions for Goose + Local Models
+
+## How to use LintGate tools
+
+LintGate is an MCP extension with 124 tools. You have access to all of them. Here's what matters:
+
+### Tool responses are SLIM summaries
+Every tool saves full analysis to disk and returns a ~200 token summary with:
+- `analysis_id` — unique ID for this analysis
+- `summary` — human-readable headline
+- `file` — path to full analysis on disk
+- `next_actions` — what to do next
+
+Do NOT read the full analysis file unless you specifically need a detail not in the summary. The summary contains enough to decide your next action.
+
+### Core workflow (use these 6 tools)
+1. `controlplane_run(path=".")` — project health check. Returns top blockers inline.
+2. `controlplane_get_details(run_id="...", severity="blocking")` — drill into findings
+3. `lint_fix(path=".")` — auto-fix safe lint issues
+4. `mutation_run_sampling(path=".", file="path/to/file.py")` — test quality check
+5. `mutation_prescribe(path=".", file="path/to/file.py")` — what tests to write
+6. `spec_file_analyze(path=".", file="path/to/file.py")` — specification complexity
+
+### The golden path (auto-improve any codebase)
+```
+controlplane_run → lint_fix → mutation_run_sampling → mutation_prescribe → [write tests] → mutation_validate_tests
+```
+
+### Prescriptive workflow (write new code)
+```
+prescriptive_spec_compose → prescriptive_spec_compile → prescriptive_code_scaffold → [fill placeholders] → prescriptive_spec_verify
+```
+
+### Decomposition workflow (simplify complex code)
+```
+refactor_extract_method(path, file, start_line, end_line, helper_name, dry_run=true) → [review] → dry_run=false
+```
+
+### After every file edit
+Call `after_edit(path=".")` — it runs fast lint on changed files and catches issues immediately. This replaces the automatic post-edit hooks that Claude Code uses.
+
+### At the start of every session
+Call `session_orient(path=".")` — it runs controlplane on recent changes and gives you a prioritized action plan with top blockers.
+
+### Before committing
+Call `before_commit(path=".")` — checks for lint issues and secrets in staged files.
+
+## What NOT to do
+- Do NOT read `.lintgate/analysis/` files unless you specifically need them
+- Do NOT re-run a tool to get more data — use `query_analysis(analysis_id, tool_name, path)` instead
+- Do NOT try more than 3 approaches to fix something — run `constraint_check` first
+- Follow `next_actions` from every tool response — they tell you exactly what to do next
+
+## This codebase
+LintGate is a specification compiler for AI-generated code. 124 MCP tools, 18 linters, 6 parallel analysis channels. The `lintgate/` directory contains the core library. `mcp_tools/` contains the MCP tool surface. `mcp_server.py` is the entry point.

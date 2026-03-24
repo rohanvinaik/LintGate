@@ -55,6 +55,7 @@ from . import (
     convergence_tools,
     dep_tools,
     gh_tools,
+    goose_hooks,
     habit_tools,
     lint_tools,
     model_tools,
@@ -104,6 +105,7 @@ ALL_MODULES = [
     cold_start_tools,
     redundancy_tools,
     test_regeneration_tools,
+    goose_hooks,
 ]
 
 
