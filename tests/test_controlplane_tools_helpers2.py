@@ -25,6 +25,14 @@ from mcp_tools.controlplane_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def _stub_helpers(**overrides):
     defaults = {
@@ -256,7 +264,7 @@ class TestImplAgentFeedback:
             mock.patch("mcp_tools._controlplane_impl_feedback._generate_living_context_patches"),
         ):
             raw = _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["session_id"] == "s2"
         rec.assert_not_called()
 
@@ -283,7 +291,7 @@ class TestImplAgentFeedback:
             raw = _impl_controlplane_agent_feedback(
                 "/tmp", "run1", "disagree", ["c1"], ["c2"], _stub_helpers()
             )
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["session_id"] == "s1"
         rec.assert_called_once()
 
@@ -524,7 +532,7 @@ class TestImplApplyRepairs:
             ) as exec_fn,
         ):
             raw = _impl_controlplane_apply_repairs("/tmp", None, True, _stub_helpers())
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["repairs_executed"] == 1
         exec_fn.assert_called_once()
 
@@ -583,7 +591,7 @@ class TestRegister:
             ) as report_mock,
         ):
             raw = report_fn(path="/tmp/test", action_id="a1", outcome="applied")
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["action_id"] == "a1"
         assert parsed["outcome"] == "applied"
         report_mock.assert_called_once_with(fake_session, "a1", "applied")
@@ -617,7 +625,7 @@ class TestRegister:
             ),
         ):
             raw = skeleton_fn(path="/tmp/test", target_file="foo.py")
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["source_file"] == "/tmp/test/foo.py"
 
 
