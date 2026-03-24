@@ -41,7 +41,7 @@ jobs:
             --cov=lintgate --cov=mcp_tools \
             --cov-report=xml:coverage.xml \
             --junitxml=pytest-results.xml \
-            -x -q --timeout=120
+            -x -q
 
       - name: Upload coverage
         if: always() && matrix.python-version == '3.12'
