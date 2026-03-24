@@ -319,7 +319,7 @@ def register(mcp, helpers):
             ),
             "next_actions": next_actions,
         }
-        summary = f"Test skeleton for {function}."
+        summary = f"Test skeleton for {rel_file}."
         return tool_response(result, "controlplane_test_skeleton", project_root, summary, next_actions=next_actions)
 
     @mcp.tool()
