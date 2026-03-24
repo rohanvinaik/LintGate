@@ -19,6 +19,15 @@ from pathlib import Path
 
 import pytest
 
+def _load_tool_result(json_str):
+    import json as _j, os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
+
 # ── Locate the LintGate project root ──────────────────────────────────
 
 _THIS_DIR = Path(__file__).resolve().parent
@@ -69,33 +78,33 @@ class TestControlPlaneMCPWrapper:
         from mcp_server import controlplane_run
 
         raw = controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert isinstance(result, dict)
 
     def test_controlplane_run_includes_run_id(self) -> None:
         from mcp_server import controlplane_run
 
-        result = json.loads(controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed"))
+        result = _load_tool_result(controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed"))
         assert "run_id" in result
         assert result["run_id"]  # non-empty
 
     def test_controlplane_run_channel_results_present(self) -> None:
         from mcp_server import controlplane_run
 
-        result = json.loads(controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed"))
+        result = _load_tool_result(controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed"))
         # Compact mode returns channel summaries
         assert "channels" in result or "channel_results" in result
 
     def test_controlplane_get_details_succeeds(self) -> None:
         from mcp_server import controlplane_get_details, controlplane_run
 
-        run_result = json.loads(
+        run_result = _load_tool_result(
             controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed")
         )
         run_id = run_result["run_id"]
 
         details_raw = controlplane_get_details(run_id)
-        details = json.loads(details_raw)
+        details = _load_tool_result(details_raw)
         assert isinstance(details, dict)
         assert "run_id" in details
 
@@ -104,7 +113,7 @@ class TestControlPlaneMCPWrapper:
 
         # Should not raise
         raw = controlplane_run(PROJECT_ROOT, scope="project", strictness="relaxed")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         # Basic structural sanity
         assert "run_id" in result
         assert "duration_ms" in result or "channels" in result
@@ -135,7 +144,7 @@ class TestControlPlaneSelfTest:
         )
 
         # Must be valid JSON
-        result = json.loads(result_json)
+        result = _load_tool_result(result_json)
 
         # Must have a run_id
         assert "run_id" in result, "Missing run_id in controlplane_run output"
@@ -166,7 +175,7 @@ class TestControlPlaneSelfTest:
             helpers=helpers,
         )
 
-        result = json.loads(result_json)
+        result = _load_tool_result(result_json)
         assert "coherence" in result, "Missing coherence in output"
 
     def test_get_details_drilldown(self):
@@ -189,7 +198,7 @@ class TestControlPlaneSelfTest:
             files=None,
             helpers=helpers,
         )
-        run_result = json.loads(run_json)
+        run_result = _load_tool_result(run_json)
         run_id = run_result["run_id"]
 
         # Now drill down
@@ -201,7 +210,7 @@ class TestControlPlaneSelfTest:
             sections=["findings", "channel_details", "coherence"],
             helpers=helpers,
         )
-        details = json.loads(details_json)
+        details = _load_tool_result(details_json)
 
         assert details["run_id"] == run_id
         assert "channel_details" in details
@@ -225,6 +234,6 @@ class TestControlPlaneSelfTest:
             helpers=helpers,
         )
 
-        result = json.loads(result_json)
+        result = _load_tool_result(result_json)
         assert "run_id" in result
         assert "channels" in result
