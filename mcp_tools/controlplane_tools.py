@@ -14,6 +14,8 @@ import json
 import os
 from typing import Literal
 
+from mcp_tools._disk_helpers import tool_response
+
 from ._controlplane_impl_details import (  # noqa: F401
     _DEFAULT_SECTIONS,
     _SECTION_POPULATORS,
@@ -120,7 +122,42 @@ def register(mcp, helpers):
                 Use "full_sweep" for project-wide refactoring (no 50-file cap).
             files: Explicit list of files to analyze when scope="files".
         """
-        return str(_impl_controlplane_run(path, channels, strictness, scope, files, helpers))
+        import json as _json
+        from mcp_tools._disk_helpers import tool_response
+        project_root = helpers["_validate_project_root"](path)
+        result_json = str(_impl_controlplane_run(path, channels, strictness, scope, files, helpers))
+        result = _json.loads(result_json)
+        counts = result.get("counts", {})
+        coherence = result.get("coherence", {})
+
+        # Top 5 blocking findings — enough to decide next action without a round-trip
+        top_blockers = []
+        for issue in result.get("blocking_issues", [])[:5]:
+            top_blockers.append(
+                f"  {issue.get('kind', '?'):24s} {issue.get('file', '?'):30s} {issue.get('message', '')[:60]}"
+            )
+
+        lines = [
+            f"{counts.get('blocking', 0)} blocking, {counts.get('warning', 0)} warnings "
+            f"across {counts.get('channels_run', 0)} channels.",
+        ]
+        if coherence.get("state"):
+            lines.append(f"Coherence: {coherence['state']}")
+        if top_blockers:
+            lines.append("\nTop blockers:")
+            lines.extend(top_blockers)
+
+        summary = "\n".join(lines)
+        return tool_response(
+            result, "controlplane_run", project_root, summary,
+            run_id=result.get("run_id", ""),
+            next_actions=result.get("next_actions"),
+            extra={
+                "run_id": result.get("run_id"),
+                "counts": counts,
+                "coherence": coherence.get("state", "unknown"),
+            },
+        )
 
     @mcp.tool()
     def controlplane_get_details(
@@ -156,18 +193,61 @@ def register(mcp, helpers):
             finding_domain: Optional bucket filter. Use "code" to exclude environment
                 findings such as dependency CVEs; use "environment" for the inverse.
         """
-        return str(
-            _impl_controlplane_get_details(
-                run_id,
-                channel,
-                severity,
-                max_issues,
-                sections,
-                helpers,
-                finding_domain=finding_domain,
-                top_n=top_n,
-                time_budget_minutes=time_budget_minutes,
+        import json as _json
+        try:
+            result_raw = _impl_controlplane_get_details(
+                run_id, channel, severity, max_issues, sections, helpers,
+                finding_domain=finding_domain, top_n=top_n, time_budget_minutes=time_budget_minutes,
             )
+        except (ValueError, FileNotFoundError) as exc:
+            # Run not found — return error with pointer to disk file if it exists
+            disk_file = os.path.join(os.getcwd(), ".lintgate", "analysis", "controlplane_run", f"{run_id}.json")
+            if os.path.isfile(disk_file):
+                return tool_response(
+                    {"error": str(exc), "note": "Run not in session memory but available on disk."},
+                    "controlplane_get_details", os.getcwd(),
+                    f"Run {run_id} not in session memory. Full data at: {disk_file}",
+                    run_id=run_id,
+                )
+            raise
+
+        # impl returns JSON string via _json_dumps
+        if isinstance(result_raw, str):
+            try:
+                result = _json.loads(result_raw)
+            except (ValueError, TypeError):
+                result = {"raw": result_raw}
+        elif isinstance(result_raw, dict):
+            result = result_raw
+        else:
+            result = {"raw": str(result_raw)}
+
+        total = result.get("total_findings", result.get("total_matching", 0))
+        sev = severity or "all"
+
+        # One-line summaries for each finding
+        finding_lines = []
+        issues = result.get("issues", result.get("findings", []))
+        if isinstance(issues, list):
+            for i, issue in enumerate(issues[:max_issues], 1):
+                if isinstance(issue, dict):
+                    kind = issue.get("kind", "?")
+                    f = issue.get("file", "?")
+                    msg = issue.get("message", "")[:60]
+                    finding_lines.append(f"  {i}. {kind:24s} {f:30s} {msg}")
+
+        lines = [f"{total} {sev} findings (showing {min(total, max_issues)}):"]
+        lines.extend(finding_lines)
+
+        repairs = result.get("repairs_available", result.get("repairs", []))
+        if repairs:
+            n_repairs = len(repairs) if isinstance(repairs, list) else repairs
+            lines.append(f"\nRepairs available: {n_repairs}")
+
+        summary = "\n".join(lines)
+        return tool_response(
+            result, "controlplane_get_details", os.getcwd(), summary,
+            run_id=run_id,
         )
 
     @mcp.tool()
@@ -227,16 +307,20 @@ def register(mcp, helpers):
             ]
         )
 
-        return json.dumps(
-            {
-                "source_file": target_file,
-                "test_path": test_path,
-                "skeleton": skeleton,
-                "note": "Review and customize before saving. Use Write tool to create the file.",
-                "next_actions": next_actions,
-            },
-            indent=2,
-        )
+        result = {
+            "source_file": target_file,
+            "test_path": test_path,
+            "skeleton": skeleton,
+            "status": "skeleton_needs_edit",
+            "action_required": (
+                "This is a SKELETON — it will NOT pass if run directly. "
+                "Replace all placeholder values (pass stubs, ..., EXPECTED) "
+                "with real values, then write with the Write tool."
+            ),
+            "next_actions": next_actions,
+        }
+        summary = f"Test skeleton for {function}."
+        return tool_response(result, "controlplane_test_skeleton", project_root, summary, next_actions=next_actions)
 
     @mcp.tool()
     def controlplane_report_repair(
@@ -272,18 +356,17 @@ def register(mcp, helpers):
         report_repair_outcome(session, action_id, outcome)
         save_session(session)
 
-        return json.dumps(
-            {
-                "action_id": action_id,
-                "outcome": outcome,
-                "session_id": session.session_id,
-                "pending_repairs": sum(
-                    1 for v in session.repair_outcomes.values() if v == "pending"
-                ),
-                "total_repairs_tracked": len(session.repair_outcomes),
-            },
-            indent=2,
-        )
+        result = {
+            "action_id": action_id,
+            "outcome": outcome,
+            "session_id": session.session_id,
+            "pending_repairs": sum(
+                1 for v in session.repair_outcomes.values() if v == "pending"
+            ),
+            "total_repairs_tracked": len(session.repair_outcomes),
+        }
+        summary = f"Repair reported for {action_id}."
+        return tool_response(result, "controlplane_report_repair", project_root, summary)
 
     @mcp.tool()
     def controlplane_agent_feedback(
@@ -385,13 +468,7 @@ def register(mcp, helpers):
         # Reconstruct finding index from persisted data
         finding_index = run_data.get("finding_index", {})
         if not finding_index:
-            return json.dumps(
-                {
-                    "run_id": run_id,
-                    "work_queue": {"items": [], "total_files": 0},
-                    "note": "No findings in this run.",
-                }
-            )
+            return json.dumps({"run_id": run_id, "note": "No findings in this run."})
 
         # Extract import graph from structure channel if available
         import_graph: dict = {}
@@ -414,7 +491,10 @@ def register(mcp, helpers):
                 wq_dict["items"] = wq_dict["items"][:max_items]
                 wq_dict["truncated"] = True
                 wq_dict["total_items"] = total_items
-            return json.dumps({"run_id": run_id, "work_queue": wq_dict}, indent=2)
+            wq_result = {"run_id": run_id, "work_queue": wq_dict}
+            n_files = wq_dict.get("total_files", total_items)
+            wq_summary = f"Work queue: {n_files} files."
+            return tool_response(wq_result, "controlplane_get_work_queue", os.getcwd(), wq_summary)
         except Exception as e:
             return json.dumps({"run_id": run_id, "error": f"Failed to build work queue: {e}"})
 

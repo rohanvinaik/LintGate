@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
+from mcp_tools._disk_helpers import tool_response
 
 
 def impl_refactor_move(
@@ -36,7 +37,8 @@ def impl_refactor_move(
         _build_next_actions(path, source, destination, dry_run, result)
     )
 
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+    summary = f"Refactor move: {source} -> {destination} ({'dry-run' if dry_run else 'applied'})."
+    return tool_response(output, "refactor_move", project_root, summary)
 
 
 def _build_next_actions(

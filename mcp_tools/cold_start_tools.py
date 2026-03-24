@@ -18,6 +18,8 @@ import os
 from typing import Any
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register cold-start bridge tools on the shared MCP instance."""
 
@@ -37,8 +39,17 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             top_n: Maximum number of functions to return (default 20).
             file_filter: Optional substring filter for source file paths.
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_test_triage(project_root, top_n, file_filter)
+        result_json = _impl_test_triage(project_root, top_n, file_filter)
+        result = _json.loads(result_json)
+        total = result.get("total_untested", 0)
+        shown = result.get("shown", 0)
+        summary = f"Triage: {total} untested functions. Showing top {shown}."
+        return tool_response(
+            result, "test_triage", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def test_infer_inputs(
@@ -59,8 +70,19 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             function: Function name to analyze.
             max_examples: Maximum call-site examples to return (default 5).
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_test_infer_inputs(project_root, file, function, max_examples)
+        result_json = _impl_test_infer_inputs(project_root, file, function, max_examples)
+        result = _json.loads(result_json)
+        if "error" in result:
+            return result_json
+        sites = len(result.get("call_sites", []))
+        patterns = len(result.get("output_access_patterns", []))
+        summary = f"Inferred inputs for {function}: {sites} call sites, {patterns} output patterns."
+        return tool_response(
+            result, "test_infer_inputs", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def test_characterize(
@@ -83,8 +105,19 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             function: Function name to characterize.
             write: If True, write the test to tests/generated/. If False, return as string.
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_test_characterize(project_root, file, function, write)
+        result_json = _impl_test_characterize(project_root, file, function, write)
+        result = _json.loads(result_json)
+        if "error" in result:
+            return result_json
+        golden = "with golden" if result.get("golden_captured") else "no golden"
+        written = f", written to {result.get('test_path', '')}" if result.get("written") else ""
+        summary = f"Characterized {function} in {file} ({golden}){written}."
+        return tool_response(
+            result, "test_characterize", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def test_characterize_mark(

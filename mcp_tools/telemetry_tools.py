@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp, helpers):
     """Register telemetry tools on the shared MCP instance."""
 
@@ -56,6 +58,10 @@ def register(mcp, helpers):
             if performance_economics.get("has_data", False):
                 summary["performance_economics"] = performance_economics
 
-        return json.dumps(summary, indent=2)
+        project_root = helpers["_validate_project_root"](path)
+        runs = summary.get("total_runs", 0)
+        avg_dur = summary.get("avg_duration_ms", 0)
+        text = f"Telemetry ({period}): {runs} runs. Avg {avg_dur}ms."
+        return tool_response(summary, "telemetry_summary", project_root, text)
 
     return {"telemetry_summary": telemetry_summary}

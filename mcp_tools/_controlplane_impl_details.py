@@ -353,6 +353,18 @@ def _impl_controlplane_get_details(
 
     details = load_controlplane_run(run_id)
     if details is None:
+        # Fallback: check disk-first analysis files
+        import os as _os
+        for base in [_os.getcwd(), _os.environ.get("LINTGATE_PROJECT_ROOT", "")]:
+            if not base:
+                continue
+            disk_file = _os.path.join(base, ".lintgate", "analysis", "controlplane_run", f"{run_id}.json")
+            if _os.path.isfile(disk_file):
+                import json as _json
+                with open(disk_file, encoding="utf-8") as _f:
+                    details = _json.loads(_f.read())
+                break
+    if details is None:
         raise ValueError(f"No ControlPlane run found with run_id: {run_id}")
 
     sections_set = set(sections) if sections else _DEFAULT_SECTIONS

@@ -7,6 +7,8 @@ interactive MCP tool for on-demand contract health checks.
 from __future__ import annotations
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp, helpers):
     """Register contract audit tools on the MCP instance."""
 
@@ -108,6 +110,13 @@ def register(mcp, helpers):
         }
 
         clear_schemas()
-        return helpers["_json_dumps"](result, output_mode="compact")  # type: ignore[no-any-return]
+        project_root = helpers["_validate_project_root"](path)
+        violations = result.get("issue_count", 0)
+        n_channels = len(result.get("active_channels", []))
+        summary = f"Contract audit: {violations} violations across {n_channels} channels."
+        return tool_response(
+            result, "contract_audit", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     return {"contract_audit": contract_audit}

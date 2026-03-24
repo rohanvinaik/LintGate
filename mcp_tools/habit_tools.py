@@ -404,6 +404,8 @@ def _impl_habit_bootstrap(project_root: str) -> str:
 # ── Registration ─────────────────────────────────────────────────────
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp, helpers):
     """Register habit mode tools on the shared MCP instance."""
 
@@ -429,8 +431,15 @@ def register(mcp, helpers):
         Returns: active state, habit score, signals, active files,
         test status, compaction count, and token economics.
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_habit_status(project_root)
+        result_json = _impl_habit_status(project_root)
+        result = _json.loads(result_json)
+        score = result.get("habit_score", 0)
+        active = "active" if result.get("active") else "inactive"
+        compactions = result.get("compaction_count", 0)
+        summary = f"Habit mode: {active}, score={score}, compactions={compactions}."
+        return tool_response(result, "habit_status", project_root, summary)
 
     @mcp.tool()
     def habit_compact(path: str) -> str:
@@ -442,8 +451,14 @@ def register(mcp, helpers):
 
         Use this when approaching context window limits during sustained work.
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_habit_compact(project_root)
+        result_json = _impl_habit_compact(project_root)
+        result = _json.loads(result_json)
+        comp_num = result.get("compaction_number", 0)
+        score = result.get("habit_score", 0)
+        summary = f"Compaction #{comp_num} complete. Habit score: {score}."
+        return tool_response(result, "habit_compact", project_root, summary)
 
     @mcp.tool()
     def habit_configure(
@@ -490,8 +505,15 @@ def register(mcp, helpers):
         Args:
             path: Project root path.
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_habit_bootstrap(project_root)
+        result_json = _impl_habit_bootstrap(project_root)
+        result = _json.loads(result_json)
+        if "error" in result:
+            return result_json
+        sessions = result.get("sessions_parsed", 0)
+        summary = f"Habit bootstrap: {sessions} sessions parsed."
+        return tool_response(result, "habit_bootstrap", project_root, summary)
 
     return {
         "declare_mode": declare_mode,

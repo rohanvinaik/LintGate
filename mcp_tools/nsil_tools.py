@@ -11,6 +11,8 @@ from lintgate.config import load_controlplane_config
 from lintgate.controlplane.session_memory import load_session
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp, helpers):
     """Register NSIL tools on the shared MCP server instance."""
 
@@ -43,7 +45,11 @@ def register(mcp, helpers):
 
         snapshot = project_snapshot(session, config, current_task="NSIL observation")
 
-        return helpers["_json_dumps"](asdict(snapshot))  # type: ignore[no-any-return]
+        result_dict = asdict(snapshot)
+        summary = "NSIL inference snapshot projected from session memory."
+        return tool_response(
+            result_dict, "nsil_inference_snapshot", root, summary,
+        )
 
     @mcp.tool()
     def nsil_verify_action(
@@ -98,7 +104,14 @@ def register(mcp, helpers):
             active_constraints=active_constraints,
         )
 
-        return helpers["_json_dumps"](asdict(result))  # type: ignore[no-any-return]
+        result_dict = asdict(result)
+        approved = result_dict.get("approved", False)
+        violations = len(result_dict.get("violations", []))
+        va_summary = f"Action '{action_type}': {'approved' if approved else 'rejected'}. {violations} violations."
+        return tool_response(
+            result_dict, "nsil_verify_action", root, va_summary,
+            extra={"approved": approved, "violations": violations, "action_type": action_type},
+        )
 
     @mcp.tool()
     def nsil_export_training_data(
@@ -134,12 +147,14 @@ def register(mcp, helpers):
         examples, diagnostics = extract_training_examples(artifact_paths)
 
         if not examples:
-            return json.dumps(
-                {
-                    "status": "warning",
-                    "message": "No training examples found in current session artifacts.",
-                    "diagnostics": {k: d.to_dict() for k, d in diagnostics.items()},
-                }
+            warn_result = {
+                "status": "warning",
+                "message": "No training examples found in current session artifacts.",
+                "diagnostics": {k: d.to_dict() for k, d in diagnostics.items()},
+            }
+            return tool_response(
+                warn_result, "nsil_export_training_data", root,
+                "Exported 0 examples.",
             )
 
         # Write to JSONL
@@ -159,13 +174,16 @@ def register(mcp, helpers):
                     + "\n"
                 )
 
-        return helpers["_json_dumps"](  # type: ignore[no-any-return]
-            {
-                "status": "success",
-                "exported_count": len(examples),
-                "export_path": str(export_path),
-                "diagnostics": {k: d.to_dict() for k, d in diagnostics.items()},
-            }
+        export_result = {
+            "status": "success",
+            "exported_count": len(examples),
+            "export_path": str(export_path),
+            "diagnostics": {k: d.to_dict() for k, d in diagnostics.items()},
+        }
+        et_summary = f"Exported {len(examples)} training examples to {export_path}."
+        return tool_response(
+            export_result, "nsil_export_training_data", root, et_summary,
+            extra={"exported_count": len(examples), "export_path": str(export_path)},
         )
 
     @mcp.tool()
@@ -225,17 +243,21 @@ def register(mcp, helpers):
         passed = sum(1 for r in results if r.passed)
         avg_latency = sum(r.latency_ms for r in results) / total if total > 0 else 0
 
-        return helpers["_json_dumps"](  # type: ignore[no-any-return]
-            {
-                "status": "success",
-                "metrics": {
-                    "total_scenarios": total,
-                    "passed_count": passed,
-                    "accuracy": round(passed / total, 2) if total > 0 else 0,
-                    "avg_latency_ms": round(avg_latency, 2),
-                },
-                "results": [asdict(r) for r in results],
-            }
+        benchmark_result = {
+            "status": "success",
+            "metrics": {
+                "total_scenarios": total,
+                "passed_count": passed,
+                "accuracy": round(passed / total, 2) if total > 0 else 0,
+                "avg_latency_ms": round(avg_latency, 2),
+            },
+            "results": [asdict(r) for r in results],
+        }
+        accuracy = round(passed / total, 2) if total > 0 else 0
+        bm_summary = f"NSIL benchmark: {passed}/{total} passed. Accuracy: {accuracy}. Avg latency: {round(avg_latency, 2)}ms."
+        return tool_response(
+            benchmark_result, "nsil_benchmark", helpers["_validate_project_root"](project_root), bm_summary,
+            extra={"passed": passed, "total": total, "accuracy": accuracy},
         )
 
     return {

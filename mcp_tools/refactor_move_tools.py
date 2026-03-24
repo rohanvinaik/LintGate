@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp, helpers):
     """Register refactor_move tools on the shared MCP instance."""
@@ -41,4 +43,88 @@ def register(mcp, helpers):
 
         return impl_refactor_move(helpers, path, source, destination, dry_run, generate_shim)
 
-    return {"refactor_move": refactor_move}
+    @mcp.tool()
+    def refactor_extract_method(
+        path: str,
+        file: str,
+        start_line: int,
+        end_line: int,
+        helper_name: str,
+        dry_run: bool = True,
+    ) -> str:
+        """Extract a block of code into a named helper function (same file).
+
+        WHEN TO USE: After mutation_decompose or extraction_plan identifies
+        a complex function that should be split. This handles the common case
+        where refactor_move can't help — splitting a single function's body
+        into helper functions within the same module.
+
+        Analyzes the block to detect inputs (variables read) and outputs
+        (variables written and used later), then generates the helper
+        function signature and call replacement.
+
+        Example:
+            refactor_extract_method(
+                path="/project",
+                file="src/model_atlas/ingest.py",
+                start_line=45,
+                end_line=78,
+                helper_name="_process_stream_batch",
+                dry_run=True,
+            )
+
+        Args:
+            path: Project root path.
+            file: Relative path to the source file.
+            start_line: First line of the block to extract (1-indexed).
+            end_line: Last line of the block to extract (1-indexed).
+            helper_name: Name for the extracted helper function.
+            dry_run: Preview only (default True). Set False to apply.
+        """
+        from lintgate.refactor_move import extract_method
+
+        project_root = helpers["_validate_project_root"](path)
+        result = extract_method(
+            project_root, file, start_line, end_line, helper_name, dry_run=dry_run,
+        )
+        output = result.to_dict()
+
+        from lintgate.next_action import NextAction, serialize_next_actions
+        actions = []
+        if dry_run and not result.errors:
+            actions.append(NextAction(
+                tool="refactor_extract_method",
+                args={"path": path, "file": file, "start_line": start_line,
+                      "end_line": end_line, "helper_name": helper_name, "dry_run": False},
+                reason="Apply the extraction",
+            ))
+        elif not dry_run and not result.errors:
+            actions.append(NextAction(
+                tool="lint_files", args={"path": path, "files": [file]},
+                reason="Verify extraction didn't break imports",
+            ))
+        output["next_actions"] = serialize_next_actions(actions)
+
+        # Decision-relevant details inline
+        if result.errors:
+            summary_msg = f"Extract failed: {'; '.join(result.errors[:3])}"
+        elif dry_run:
+            inputs_str = ", ".join(result.inputs) if result.inputs else "none"
+            outputs_str = ", ".join(result.outputs) if result.outputs else "none"
+            n_lines = result.extracted_code.count("\n") if result.extracted_code else 0
+            summary_msg = (
+                f"Extract: {result.helper_signature or f'def {helper_name}()'}\n"
+                f"  Inputs: {inputs_str}\n"
+                f"  Outputs: {outputs_str}\n"
+                f"  Lines: {n_lines}\n"
+                f"\nApply with dry_run=false"
+            )
+        else:
+            summary_msg = (
+                f"Applied: {helper_name} extracted\n"
+                f"  Replaced lines {start_line}-{end_line} with: {result.call_replacement}\n"
+                f"  File: {file}"
+            )
+        return tool_response(output, "refactor_extract_method", project_root, summary_msg)
+
+    return {"refactor_move": refactor_move, "refactor_extract_method": refactor_extract_method}

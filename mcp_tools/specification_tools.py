@@ -32,6 +32,8 @@ __all__ = ["_MAX_FILES_PER_RUN", "_MAX_TOTAL_LINES", "register"]
 # ---------------------------------------------------------------------------
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register specification analysis tools on the shared MCP instance."""
 
@@ -56,8 +58,13 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             file: Optional specific file to analyze.
             function: Optional function name substring to filter by.
         """
+        project_root = helpers["_validate_project_root"](path)
         result = impl_spec_analyze(path, file, function, helpers)
-        return str(helpers["_json_dumps"](result, output_mode="compact"))
+        n = len(result.get("functions", {}))
+        regime_b = sum(1 for f in result.get("functions", {}).values() if isinstance(f, dict) and f.get("regime") == "B")
+        avg_s = round(sum(f.get("sigma", 0) for f in result.get("functions", {}).values() if isinstance(f, dict)) / max(n, 1), 1)
+        summary = f"Analyzed {n} functions. {regime_b} in regime B. Avg σ={avg_s}."
+        return tool_response(result, "spec_analyze", project_root, summary, next_actions=result.get("next_actions"))
 
     @mcp.tool()
     def spec_prescribe(
@@ -85,8 +92,12 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             max_prescriptions: Maximum prescriptions to return (default 10).
             regression_mode: Target recently-changed functions (default False).
         """
+        project_root = helpers["_validate_project_root"](path)
         result = impl_spec_prescribe(path, function, max_prescriptions, regression_mode, helpers)
-        return str(helpers["_json_dumps"](result, output_mode="compact"))
+        prescriptions = result.get("prescriptions", [])
+        top = prescriptions[0].get("function", "?") if prescriptions else "none"
+        summary = f"{len(prescriptions)} prescriptions generated. Top priority: {top}."
+        return tool_response(result, "spec_prescribe", project_root, summary, next_actions=result.get("next_actions"))
 
     @mcp.tool()
     def spec_composition(
@@ -108,8 +119,12 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             module_a: Optional module path substring to filter caller side.
             module_b: Optional module path substring to filter callee side.
         """
+        project_root = helpers["_validate_project_root"](path)
         result = impl_spec_composition(path, module_a, module_b, helpers)
-        return str(helpers["_json_dumps"](result, output_mode="compact"))
+        pairs = result.get("pairs", [])
+        max_gap = max((p.get("gamma", 0) for p in pairs), default=0)
+        summary = f"Composition analysis: {len(pairs)} module pairs. Max γ={round(max_gap, 2)}."
+        return tool_response(result, "spec_composition", project_root, summary, next_actions=result.get("next_actions"))
 
     @mcp.tool()
     def spec_gate_check(
@@ -135,8 +150,13 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             function: Optional function name to check.
             hint: Optional specific hint to filter by (e.g., "cacheable").
         """
+        project_root = helpers["_validate_project_root"](path)
         result = impl_spec_gate_check(path, file, function, hint, helpers)
-        return str(helpers["_json_dumps"](result, output_mode="compact"))
+        gates = result.get("gates", [])
+        passed = sum(1 for g in gates if g.get("passed"))
+        blocked = len(gates) - passed
+        summary = f"{passed}/{len(gates)} optimization hints backed by spec. {blocked} blocked."
+        return tool_response(result, "spec_gate_check", project_root, summary, next_actions=result.get("next_actions"))
 
     @mcp.tool()
     def spec_file_analyze(
@@ -184,7 +204,12 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                 ),
             ]
         )
-        return str(helpers["_json_dumps"](output, output_mode="compact"))
+        funcs = output.get("functions", {})
+        n = len(funcs)
+        regime_b = sum(1 for f in funcs.values() if isinstance(f, dict) and f.get("regime") == "B")
+        max_s = max((f.get("sigma", 0) for f in funcs.values() if isinstance(f, dict)), default=0)
+        summary = f"{n} functions in {file}. {regime_b} regime B. Max σ={round(max_s, 1)}."
+        return tool_response(output, "spec_file_analyze", project_root, summary, next_actions=output.get("next_actions"))
 
     @mcp.tool()
     def spec_file_prescribe(
@@ -230,7 +255,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                 ),
             ]
         )
-        return str(helpers["_json_dumps"](output, output_mode="compact"))
+        n = len(output.get("prescriptions", output.get("functions", {})))
+        summary = f"{n} prescriptions for {file}."
+        return tool_response(output, "spec_file_prescribe", project_root, summary, next_actions=output.get("next_actions"))
 
     @mcp.tool()
     def spec_project_rollup(
@@ -285,7 +312,11 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                 ),
             ]
         )
-        return str(helpers["_json_dumps"](output, output_mode="compact"))
+        n = output.get("files_analyzed", 0)
+        avg = round(output.get("avg_sigma", 0), 1)
+        hotspots = len(output.get("hotspots", []))
+        summary = f"Project rollup: {n} files. Avg σ={avg}. {hotspots} hotspot files."
+        return tool_response(output, "spec_project_rollup", project_root, summary, next_actions=output.get("next_actions"))
 
     return {
         "spec_analyze": spec_analyze,

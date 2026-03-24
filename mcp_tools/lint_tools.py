@@ -84,6 +84,8 @@ def _linter_available(linter: Any, project_root: str) -> bool:
         return bool(linter.available())
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp, helpers):
     """Register lint tools on the shared MCP instance."""
 
@@ -141,7 +143,13 @@ def register(mcp, helpers):
         except Exception:
             pass
 
-        return helpers["_json_dumps"](result, "compact")  # type: ignore[no-any-return]
+        blocking = result.get("blocking_count", 0)
+        issues = result.get("issue_count", 0)
+        summary = f"{issues} issues found in {len(existing)} files. {blocking} blocking."
+        return tool_response(
+            result, "lint_files", resolved_project_root, summary,
+            run_id=result.get("run_id", ""), next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def lint_project(
@@ -176,7 +184,13 @@ def register(mcp, helpers):
             output_mode="compact",
         )
         result["total_python_files"] = len(py_files)
-        return helpers["_json_dumps"](result, "compact")  # type: ignore[no-any-return]
+        blocking = result.get("blocking_count", 0)
+        issues = result.get("issue_count", 0)
+        summary = f"{issues} issues across {len(py_files)} files. {blocking} blocking."
+        return tool_response(
+            result, "lint_project", project_root, summary,
+            run_id=result.get("run_id", ""), next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def lint_get_details(
@@ -236,7 +250,9 @@ def register(mcp, helpers):
         if details.get("linter_diagnostics"):
             output["linter_diagnostics"] = details["linter_diagnostics"]
 
-        return helpers["_json_dumps"](output, "standard")  # type: ignore[no-any-return]
+        sev_label = severity or "all"
+        summary = f"Details for run {run_id}: {output['total_matching']} issues ({sev_label} severity)."
+        return tool_response(output, "lint_get_details", os.getcwd(), summary, run_id=run_id)
 
     @mcp.tool()
     def lint_status(path: str | None = None) -> str:
@@ -338,7 +354,12 @@ def register(mcp, helpers):
         if _onboarding.get("config_state") != "config_enabled":
             status["onboarding"] = _onboarding
 
-        return json.dumps(status, indent=2)
+        missing = len(status.get("missing_tools", []))
+        linter_count = status.get("linter_count", 0)
+        last = status.get("last_run")
+        last_info = f"run_id={last.get('run_id', '?')}" if last else "none"
+        summary = f"LintGate v{status.get('version', '?')}: {linter_count} linters, {missing} missing tools. Last run: {last_info}."
+        return tool_response(status, "lint_status", project_root, summary)
 
     @mcp.tool()
     def audit_tool_versions(
@@ -381,13 +402,11 @@ def register(mcp, helpers):
                 }
             )
 
-        return json.dumps(
-            {
-                "summary": summary,
-                **audit,
-            },
-            indent=2,
-        )
+        result = {"summary": summary, **audit}
+        issue_count = summary.get("issue_count", 0) if isinstance(summary, dict) else 0
+        fix_info = f" auto_fix={auto_fix}" if auto_fix else ""
+        sum_text = f"Version audit: {issue_count} issues found.{fix_info}"
+        return tool_response(result, "audit_tool_versions", project_root, sum_text)
 
     @mcp.tool()
     def lint_fix(
@@ -430,9 +449,7 @@ def register(mcp, helpers):
             target_files = helpers["_collect_python_files"](project_root)
 
         if not target_files:
-            return helpers["_json_dumps"](  # type: ignore[no-any-return]
-                {"error": "No Python files found", "dry_run": dry_run}, "standard"
-            )
+            return json.dumps({"error": "No Python files found", "dry_run": dry_run})
 
         result = run_safe_fixes(
             files=target_files,
@@ -441,7 +458,10 @@ def register(mcp, helpers):
             safe_only=safe_only,
         )
 
-        return helpers["_json_dumps"](result.to_dict(), "standard")  # type: ignore[no-any-return]
+        rd = result.to_dict()
+        fixed = rd.get("fixed_count", 0)
+        summary = f"{fixed} fixes applied (dry_run={dry_run})."
+        return tool_response(rd, "lint_fix", project_root, summary)
 
     return {
         "lint_files": lint_files,

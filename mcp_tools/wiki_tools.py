@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
+from mcp_tools._disk_helpers import tool_response
 
 
 def _do_wiki_materialize(
@@ -205,7 +206,8 @@ def register(mcp, helpers):
             ]
         )
         result["next_actions"] = next_actions
-        return json.dumps(result, indent=2)
+        n = result.get("pages_count", 0)
+        return tool_response(result, "wiki_materialize", project_root, f"Materialized {n} pages.")
 
     @mcp.tool()
     def wiki_status(path: str) -> str:
@@ -224,7 +226,7 @@ def register(mcp, helpers):
         status = check_wiki_freshness(project_root)
 
         if "error" in status:
-            return json.dumps(status)
+            return json.dumps(status, separators=(",", ":"))
 
         next_actions: list[NextAction] = []
         if status.get("stale", 0) > 0 or status.get("missing", 0) > 0:
@@ -256,7 +258,8 @@ def register(mcp, helpers):
         if next_actions:
             result["next_actions"] = serialize_next_actions(next_actions)
 
-        return json.dumps(result, indent=2)
+        n = result.get("total", 0)
+        return tool_response(result, "wiki_status", project_root, f"Wiki: {n} pages.")
 
     @mcp.tool()
     def wiki_publish_pages(
@@ -286,7 +289,7 @@ def register(mcp, helpers):
         response = _do_wiki_publish(project_root, out_dir, check_links, site_title, base_url)
 
         if "error" in response:
-            return json.dumps(response)
+            return json.dumps(response, separators=(",", ":"))
 
         next_actions_list: list[NextAction] = []
         if response.get("link_errors"):
@@ -307,7 +310,8 @@ def register(mcp, helpers):
             )
         )
         response["next_actions"] = serialize_next_actions(next_actions_list)
-        return json.dumps(response, indent=2)
+        n = response.get("pages_published", 0)
+        return tool_response(response, "wiki_publish_pages", project_root, f"Published {n} pages.")
 
     @mcp.tool()
     def wiki_check_links(path: str) -> str:
@@ -361,7 +365,10 @@ def register(mcp, helpers):
         if next_actions:
             response["next_actions"] = serialize_next_actions(next_actions)
 
-        return json.dumps(response, indent=2)
+        n_broken = len(link_result.broken_links) if hasattr(link_result, 'broken_links') else 0
+        n_orphans = len(link_result.orphan_files) if hasattr(link_result, 'orphan_files') else 0
+        status_str = "PASS" if link_result.ok else f"FAIL ({n_broken} broken, {n_orphans} orphans)"
+        return tool_response(response, "wiki_check_links", project_root, f"Link check: {status_str}.")
 
     return {
         "wiki_materialize": wiki_materialize,

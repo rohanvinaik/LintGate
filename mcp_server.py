@@ -122,6 +122,86 @@ def _build_mcp_server() -> FastMCP:
 mcp = _build_mcp_server()
 
 
+# ─── Layer 2: MCP Resources — lazy-loaded analysis output ────────────────
+
+
+@mcp.resource("analysis://{tool_name}/{analysis_id}")
+def read_analysis_resource(tool_name: str, analysis_id: str) -> str:
+    """Read a saved analysis file by tool name and analysis ID."""
+    for base in [os.getcwd(), os.environ.get("LINTGATE_PROJECT_ROOT", "")]:
+        if not base:
+            continue
+        filepath = os.path.join(base, ".lintgate", "analysis", tool_name, f"{analysis_id}.json")
+        if os.path.isfile(filepath):
+            with open(filepath, encoding="utf-8") as f:
+                return f.read()
+    raise FileNotFoundError(f"Analysis not found: {tool_name}/{analysis_id}")
+
+
+# ─── Layer 3: Retrieval tool — surgical JSON path queries ────────────────
+
+
+@mcp.tool()
+def query_analysis(
+    analysis_id: str,
+    tool_name: str = "",
+    path: str = "$",
+    max_items: int = 20,
+) -> str:
+    """Query a specific section of a saved analysis by JSON path.
+
+    WHEN TO USE: When you need a specific part of a large analysis result
+    without loading the entire file into context.
+
+    Example: query_analysis(analysis_id="cp_abc123", tool_name="controlplane_run", path="blocking_findings")
+
+    Args:
+        analysis_id: The analysis ID from a computation tool's response.
+        tool_name: The tool that produced the analysis.
+        path: Dot-separated JSON path (e.g. "counts.blocking"). Use "$" for root.
+        max_items: Max list items to return.
+    """
+    base = os.getcwd()
+    if tool_name:
+        search_dirs = [os.path.join(base, ".lintgate", "analysis", tool_name)]
+    else:
+        analysis_root = os.path.join(base, ".lintgate", "analysis")
+        search_dirs = [
+            os.path.join(analysis_root, d) for d in os.listdir(analysis_root)
+            if os.path.isdir(os.path.join(analysis_root, d))
+        ] if os.path.isdir(analysis_root) else []
+
+    filepath = None
+    for d in search_dirs:
+        candidate = os.path.join(d, f"{analysis_id}.json")
+        if os.path.isfile(candidate):
+            filepath = candidate
+            break
+    if not filepath:
+        return json.dumps({"error": f"Analysis {analysis_id} not found"})
+
+    with open(filepath, encoding="utf-8") as f:
+        data = json.loads(f.read())
+
+    if path and path != "$":
+        for key in path.split("."):
+            if isinstance(data, dict) and key in data:
+                data = data[key]
+            elif isinstance(data, list):
+                try:
+                    data = data[int(key)]
+                except (ValueError, IndexError):
+                    return json.dumps({"error": f"Path '{path}' not found"})
+            else:
+                return json.dumps({"error": f"Path '{path}' not found"})
+
+    if isinstance(data, list) and len(data) > max_items:
+        total = len(data)
+        data = data[:max_items]
+        return json.dumps({"result": data, "truncated": total - max_items}, separators=(",", ":"), default=str)
+    return json.dumps({"result": data}, separators=(",", ":"), default=str)
+
+
 # ─── Tier definitions (match tier_selector.py) ──────────────────────────
 
 TIER_LINTERS = {
@@ -423,6 +503,35 @@ def _infer_project_root(payload: Any) -> str | None:
         if os.path.isfile(abs_path):
             return os.path.dirname(abs_path)
     return None
+
+
+def _save_analysis(data: Any, tool_name: str, project_root: str, *, run_id: str = "") -> str:
+    """Write analysis output to .lintgate/analysis/<tool>/<id>.json. Returns filepath."""
+    import hashlib
+    analysis_dir = os.path.join(project_root, ".lintgate", "analysis", tool_name)
+    os.makedirs(analysis_dir, exist_ok=True)
+    serialized = json.dumps(data, separators=(",", ":"), default=str)
+    content_hash = hashlib.sha256(serialized.encode()).hexdigest()[:10]
+    filename = f"{run_id}.json" if run_id else f"{content_hash}.json"
+    filepath = os.path.join(analysis_dir, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(serialized)
+    return filepath
+
+
+def _tool_response(
+    data: Any, tool_name: str, project_root: str, summary: str,
+    *, run_id: str = "", next_actions: list | None = None, extra: dict[str, Any] | None = None,
+) -> str:
+    """Save analysis to disk, return slim tool response (~100 tokens)."""
+    filepath = _save_analysis(data, tool_name, project_root, run_id=run_id)
+    analysis_id = run_id or os.path.basename(filepath).removesuffix(".json")
+    response: dict[str, Any] = {"analysis_id": analysis_id, "summary": summary, "file": filepath}
+    if extra:
+        response.update(extra)
+    if next_actions:
+        response["next_actions"] = next_actions
+    return json.dumps(response, separators=(",", ":"), default=str)
 
 
 def _json_dumps(data: Any, output_mode: str = "compact") -> str:
@@ -754,6 +863,10 @@ def _run_lint(
 _helpers = {
     "_validate_project_root": _validate_project_root,
     "_json_dumps": _json_dumps,
+    # NOTE: _save_analysis and _tool_response live in mcp_tools/_disk_helpers.py
+    # Tool files import them directly to avoid stale-dict issues with long-lived
+    # MCP server processes. Do NOT add new shared utilities here — put them in
+    # standalone modules under mcp_tools/ instead.
     "_build_onboarding_status": _build_onboarding_status,
     "_collect_python_files": _collect_python_files,
     "_resolve_files": _resolve_files,

@@ -9,6 +9,9 @@
 from __future__ import annotations
 
 import json
+import os
+
+from mcp_tools._disk_helpers import tool_response
 
 
 def register(mcp, helpers):
@@ -80,7 +83,7 @@ def register(mcp, helpers):
             )
 
         result["next_actions"] = _build_next_actions(state, archived)
-        return str(helpers["_json_dumps"](result, output_mode="compact"))
+        return tool_response(result, "refactor_checkpoint", project_root, "Checkpoint saved.")
 
     @mcp.tool()
     def refactor_resume(path: str) -> str:
@@ -122,7 +125,8 @@ def register(mcp, helpers):
             if state:
                 summary["next_actions"] = _build_next_actions(state, archived=False)
 
-        return str(helpers["_json_dumps"](summary, output_mode="compact"))
+        n = len(summary.get("files", {}))
+        return tool_response(summary, "refactor_resume", project_root, f"Resume: {n} files.")
 
     @mcp.tool()
     def refactor_thesis(path: str, thesis: str) -> str:
@@ -169,7 +173,7 @@ def register(mcp, helpers):
                 },
             ],
         }
-        return str(helpers["_json_dumps"](result, output_mode="compact"))
+        return tool_response(result, "refactor_thesis", project_root, f"Thesis recorded: {len(state.files)} files tracked.", next_actions=result.get("next_actions"))
 
     return {
         "refactor_checkpoint": refactor_checkpoint,

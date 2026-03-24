@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp, helpers):
     """Register dependency tools on the shared MCP instance."""
 
@@ -23,7 +25,11 @@ def register(mcp, helpers):
         from lintgate.dependency_health import full_dependency_health
 
         project_root = helpers["_validate_project_root"](path)
-        return json.dumps(full_dependency_health(project_root), indent=2)
+        result = full_dependency_health(project_root)
+        issues = len(result.get("issues", []))
+        vulns = result.get("summary", {}).get("vulnerabilities", 0)
+        summary = f"Dependencies: {issues} issues. {vulns} CVEs."
+        return tool_response(result, "dep_health_check", project_root, summary)
 
     @mcp.tool()
     def dep_sync(
@@ -114,7 +120,9 @@ def register(mcp, helpers):
             health_after = full_dependency_health(project_root)
             result["health_after"] = health_after["summary"]
 
-        return json.dumps(result, indent=2)
+        changes = len(result.get("actions", []))
+        summary = f"Dependency sync: {changes} actions taken."
+        return tool_response(result, "dep_sync", project_root, summary)
 
     @mcp.tool()
     def toolchain_health_check(
@@ -168,7 +176,11 @@ def register(mcp, helpers):
             results = install_missing_tools(project_root, report.tools, auto_only=True)
             output["install_results"] = results
 
-        return json.dumps(output, indent=2)
+        n_tools = len(output.get("tools", []))
+        met = "all met" if output.get("all_required_met") else "gaps found"
+        drift = len(output.get("drift_warnings", []))
+        summary = f"Toolchain: {n_tools} tools checked, {met}. {drift} drift warnings."
+        return tool_response(output, "toolchain_health_check", project_root, summary)
 
     return {
         "dep_health_check": dep_health_check,

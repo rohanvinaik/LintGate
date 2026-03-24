@@ -570,6 +570,8 @@ def _impl_optimization_landscape(
     return result
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register convergence analysis tools on the shared MCP instance."""
 
@@ -597,7 +599,17 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             file: Optional file path filter.
             function: Optional function name substring filter.
         """
-        return json.dumps(_impl_convergence_analyze(path, file, function, helpers))
+        project_root = helpers["_validate_project_root"](path)
+        result = _impl_convergence_analyze(path, file, function, helpers)
+        if "error" in result:
+            return json.dumps(result)
+        fc = result.get("function_convergence", {})
+        filec = result.get("file_convergence", {})
+        summary = f"Convergence: {fc.get('total', 0)} functions, {filec.get('total', 0)} files."
+        return tool_response(
+            result, "convergence_analyze", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def extraction_plan(
@@ -619,7 +631,16 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             path: Project root path.
             function: Target function (format: "file.py::function_name").
         """
-        return json.dumps(_impl_extraction_plan(path, function, helpers))
+        project_root = helpers["_validate_project_root"](path)
+        result = _impl_extraction_plan(path, function, helpers)
+        if "error" in result:
+            return json.dumps(result)
+        n_steps = len(result.get("steps", []))
+        summary = f"Extraction plan for {function}: {n_steps} steps."
+        return tool_response(
+            result, "extraction_plan", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def optimization_landscape(
@@ -644,7 +665,19 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
                 "static" (manifest-only, no convergence needed),
                 "dynamic" (convergence-based, requires prior runs).
         """
-        return json.dumps(_impl_optimization_landscape(path, helpers, mode=mode))
+        project_root = helpers["_validate_project_root"](path)
+        result = _impl_optimization_landscape(path, helpers, mode=mode)
+        if "error" in result:
+            return json.dumps(result)
+        s = result.get("summary", {})
+        cache = s.get("cache_candidates", 0) if s else 0
+        par = s.get("parallel_opportunities", 0) if s else 0
+        m = result.get("mode", mode)
+        summary = f"Optimization landscape ({m}): {cache} cache candidates, {par} parallel opportunities."
+        return tool_response(
+            result, "optimization_landscape", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def platonic_converge(

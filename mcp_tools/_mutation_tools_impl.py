@@ -95,6 +95,9 @@ def impl_run_sampling(
             reason="Run exhaustive profiling for deeper analysis",
         )
     ]
+    from mcp_tools._disk_helpers import tool_response
+
+    compact_results = _strip_bulk_mutation_fields(results)
     output: dict[str, Any] = {
         "file": file,
         "functions_sampled": len(results),
@@ -106,10 +109,25 @@ def impl_run_sampling(
     if discovery_failures:
         output["discovery_warning"] = (
             f"{len(discovery_failures)} function(s) had test discovery failures. "
-            "Survival rates reflect missing tests, not specification gaps. "
-            "Check discovery_diagnostics in per-function results for details."
+            "Survival rates reflect missing tests, not specification gaps."
         )
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+    # Rich summary: per-function kill rate + surviving categories
+    lines = [f"{file}: {len(results)} functions, {len(ctx.test_files)} test files"]
+    for r in results:
+        fname = r.get("function_key", r.get("function", "?"))
+        total = r.get("total_mutants", 0)
+        killed = r.get("total_killed", 0)
+        rate = round(killed / total * 100, 1) if total else 0
+        surviving = [c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0]
+        if surviving:
+            lines.append(f"  {fname}: {killed}/{total} killed ({rate}%) — surviving: {', '.join(surviving)}")
+        elif total > 0:
+            lines.append(f"  {fname}: {killed}/{total} killed ({rate}%) — fully specified")
+        else:
+            lines.append(f"  {fname}: no mutants generated")
+    summary = "\n".join(lines)
+    return tool_response(output, "mutation_run_sampling", project_root, summary, next_actions=output.get("next_actions"))
 
 
 def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> str:
@@ -165,11 +183,29 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
     discovery_failures = [r for r in results if r.get("discovery_failed")]
     if discovery_failures:
         output["discovery_warning"] = (
-            f"{len(discovery_failures)} function(s) had test discovery failures. "
-            "Survival rates reflect missing tests, not specification gaps. "
-            "Check discovery_diagnostics in per-function results for details."
+            f"{len(discovery_failures)} function(s) had test discovery failures."
         )
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+    from mcp_tools._disk_helpers import tool_response
+
+    total_mutants = sum(r.get("total_mutants", 0) for r in results)
+    total_killed = sum(r.get("total_killed", 0) for r in results)
+    rate = round(total_killed / total_mutants * 100, 1) if total_mutants else 0
+    lines = [f"{file}: {len(results)} functions, {total_mutants} mutants, {rate}% kill rate"]
+    for r in results:
+        fname = r.get("function_key", r.get("function", "?"))
+        t = r.get("total_mutants", 0)
+        k = r.get("total_killed", 0)
+        fr = round(k / t * 100, 1) if t else 0
+        surviving = [c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0]
+        if surviving:
+            lines.append(f"  {fname}: {k}/{t} killed ({fr}%) — surviving: {', '.join(surviving)}")
+        elif t > 0:
+            lines.append(f"  {fname}: {k}/{t} killed ({fr}%) — fully specified")
+        else:
+            lines.append(f"  {fname}: no mutants generated")
+    summary = "\n".join(lines)
+    return tool_response(output, "mutation_run_full", project_root, summary, next_actions=output.get("next_actions"))
 
 
 def impl_get_state(helpers: Any, path: str, file: str | None, function: str | None) -> str:
@@ -219,16 +255,44 @@ def impl_prescribe(helpers: Any, path: str, file: str | None, function: str | No
                 reason="Generate test skeletons for surviving categories",
             ),
         ]
-    return str(
-        helpers["_json_dumps"](
-            {
-                "total_prescriptions": len(prescriptions),
-                "prescriptions": prescriptions,
-                "next_actions": serialize_next_actions(next_actions),
-            },
-            output_mode="compact",
-        )
-    )
+    from mcp_tools._disk_helpers import tool_response
+
+    output = {
+        "total_prescriptions": len(prescriptions),
+        "prescriptions": prescriptions,
+        "next_actions": serialize_next_actions(next_actions),
+    }
+
+    # Rich summary: mutation diff + assertion shape + suggested input
+    lines = [f"{len(prescriptions)} prescriptions:"]
+    for i, rx in enumerate(prescriptions[:10], 1):
+        cat = rx.get("category", "?")
+        func = rx.get("function", "?")
+        survived = rx.get("survived", 1)
+        diff = rx.get("diff_summary", "")
+        desc = rx.get("description", "")
+        assertion = rx.get("assertion_shape", "")
+        suggested = rx.get("suggested_input", "")
+        action = rx.get("action", "")
+
+        line = f"  {i}. {cat}(×{survived}) {func}"
+        # Show the actual mutation that survived
+        if diff:
+            line += f"\n     Mutation: {diff[:80]}"
+        elif desc:
+            line += f"\n     Mutation: {desc[:80]}"
+        # Show what test to write
+        if assertion:
+            line += f"\n     Assert: {assertion[:80]}"
+        if suggested:
+            line += f"\n     Input: {suggested[:80]}"
+        elif action:
+            line += f"\n     Action: {action[:80]}"
+        lines.append(line)
+    if len(prescriptions) > 10:
+        lines.append(f"  ... and {len(prescriptions) - 10} more")
+    summary = "\n".join(lines)
+    return tool_response(output, "mutation_prescribe", project_root, summary, next_actions=output.get("next_actions"))
 
 
 def _collect_prescriptions(states: list[dict[str, Any]]) -> list[dict[str, Any]]:

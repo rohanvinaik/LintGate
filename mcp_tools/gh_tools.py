@@ -9,7 +9,10 @@ Thin registration wrapper. Implementations live in:
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
+
+from mcp_tools._disk_helpers import tool_response
 
 from mcp_tools._gh_helpers import (  # noqa: F401
     _GITHUB_REMOTE_RE,
@@ -60,7 +63,10 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         Args:
             path: Project root path.
         """
-        return json.dumps(impl_project_organize_audit(path, helpers))
+        project_root = helpers["_validate_project_root"](path)
+        result = impl_project_organize_audit(path, helpers)
+        n = len(result.get("findings", []))
+        return tool_response(result, "project_organize_audit", project_root, f"Organize audit: {n} findings.")
 
     @mcp.tool()
     def project_organize_apply(
@@ -84,7 +90,10 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             actions: List of action types to apply. Default: ['labels', 'milestones'].
             write: If False (default), dry-run showing what would happen.
         """
-        return json.dumps(impl_project_organize_apply(path, actions, write, helpers))
+        project_root = helpers["_validate_project_root"](path)
+        result = impl_project_organize_apply(path, actions, write, helpers)
+        n = len(result.get("changes", []))
+        return tool_response(result, "project_organize_apply", project_root, f"Organize apply: {n} changes.")
 
     @mcp.tool()
     def project_wiki_sync(
@@ -110,7 +119,10 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             scope: What to sync: 'theory', 'compass', 'design', or 'all'.
             write: If False (default), show what pages would be generated.
         """
-        return json.dumps(impl_project_wiki_sync(path, scope, write, helpers))
+        project_root = helpers["_validate_project_root"](path)
+        result = impl_project_wiki_sync(path, scope, write, helpers)
+        n = len(result.get("pages", []))
+        return tool_response(result, "project_wiki_sync", project_root, f"Wiki sync: {n} pages.")
 
     @mcp.tool()
     def project_wiki_read(
@@ -130,7 +142,9 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             path: Project root path.
             page: Wiki page name (without .md extension). Default: 'Home'.
         """
-        return json.dumps(impl_project_wiki_read(path, page, helpers))
+        project_root = helpers["_validate_project_root"](path)
+        result = impl_project_wiki_read(path, page, helpers)
+        return tool_response(result, "project_wiki_read", project_root, f"{page} content retrieved.")
 
     return {
         "project_organize_audit": project_organize_audit,

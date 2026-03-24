@@ -9,6 +9,8 @@ import json
 from typing import Any
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register test hygiene tools on the shared MCP instance."""
 
@@ -84,7 +86,14 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         output["next_actions"] = _next_actions(result, path)
 
-        return json.dumps(output, indent=2)
+        project_root = helpers["_validate_project_root"](path)
+        n_findings = len(output.get("findings", []))
+        n_repairs = len(output.get("repairs", []))
+        summary = f"Test hygiene: {n_findings} issues found. {n_repairs} repairs available."
+        return tool_response(
+            output, "test_hygiene_scan", project_root, summary,
+            next_actions=output.get("next_actions"),
+        )
 
     return {"test_hygiene_scan": test_hygiene_scan}
 

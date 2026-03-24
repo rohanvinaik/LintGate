@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json as _json
+import os
+
+
+from mcp_tools._disk_helpers import tool_response
 
 def register(mcp, helpers):
     """Register model calibration tools on the shared MCP instance."""
@@ -50,21 +55,24 @@ def register(mcp, helpers):
                         "age_days": round((__import__("time").time() - prof.updated_at) / 86400, 1),
                     }
                 )
-            return helpers["_json_dumps"](  # type: ignore[no-any-return]
-                {
-                    "profiles_count": len(summaries),
-                    "profiles": summaries,
-                    "next_actions": [
-                        "model_profile_probe_start(model_id='<model>') — calibrate a new model",
-                    ]
-                    if not summaries
-                    else [
-                        "model_profile_probe_start(model_id='<model>') — "
-                        "calibrate or recalibrate a model",
-                        "bootstrap_context_files(model_id='<model>') — "
-                        "generate model-aware bootstrap content",
-                    ],
-                }
+            all_result = {
+                "profiles_count": len(summaries),
+                "profiles": summaries,
+                "next_actions": [
+                    "model_profile_probe_start(model_id='<model>') — calibrate a new model",
+                ]
+                if not summaries
+                else [
+                    "model_profile_probe_start(model_id='<model>') — "
+                    "calibrate or recalibrate a model",
+                    "bootstrap_context_files(model_id='<model>') — "
+                    "generate model-aware bootstrap content",
+                ],
+            }
+            status_label = "no profiles" if not summaries else f"{len(summaries)} profiles"
+            return tool_response(
+                all_result, "model_profile_status", os.getcwd(),
+                f"Model profile: {status_label}.",
             )
 
         # Specific model lookup
@@ -143,7 +151,12 @@ def register(mcp, helpers):
                 "generate model-aware bootstrap content"
             )
         result["next_actions"] = next_actions
-        return helpers["_json_dumps"](result)  # type: ignore[no-any-return]
+        ms_summary = f"Model {canonical}: {status}. Confidence: {profile.confidence:.2f}. Age: {age_days}d."
+        return tool_response(
+            result, "model_profile_status", os.getcwd(), ms_summary,
+            next_actions=next_actions,
+            extra={"model_key": canonical, "status": status, "confidence": profile.confidence},
+        )
 
     @mcp.tool()
     def model_profile_probe_start(
@@ -215,53 +228,57 @@ def register(mcp, helpers):
                 else ("stale" if existing.is_stale() else "low_confidence"),
             }
 
-        return helpers["_json_dumps"](  # type: ignore[no-any-return]
-            {
-                "model_key": canonical,
-                "probe_version": f"v{PROBE_VERSION}",
-                "probe_set": probe_set,
-                "task_count": len(tasks),
-                "tasks": tasks,
-                "response_schema": {
-                    "format": {
-                        "task_id": {
-                            "text": "str (required): Describe your approach",
-                            "tool_calls": "list[str] (optional): Ordered tool names",
-                            "actions": "list[str] (optional): Ordered action descriptions",
-                            "retry_count": "int (optional): Times same command retried",
-                            "verify_points": "list[int] (optional): After which steps you verify",
-                            "constraint_refs": "list[str] (optional): Errors/constraints referenced",
-                        },
+        probe_result = {
+            "model_key": canonical,
+            "probe_version": f"v{PROBE_VERSION}",
+            "probe_set": probe_set,
+            "task_count": len(tasks),
+            "tasks": tasks,
+            "response_schema": {
+                "format": {
+                    "task_id": {
+                        "text": "str (required): Describe your approach",
+                        "tool_calls": "list[str] (optional): Ordered tool names",
+                        "actions": "list[str] (optional): Ordered action descriptions",
+                        "retry_count": "int (optional): Times same command retried",
+                        "verify_points": "list[int] (optional): After which steps you verify",
+                        "constraint_refs": "list[str] (optional): Errors/constraints referenced",
                     },
-                    "example": {
-                        tasks[0]["id"]: {
-                            "text": "I would first read the source file to understand the code...",
-                            "tool_calls": ["Read", "Read", "Edit", "Bash"],
-                            "actions": [
-                                "Read utils.py to understand function",
-                                "Read test output carefully",
-                                "Fix the shadowed variable on line 5",
-                                "Run pytest to verify",
-                            ],
-                            "verify_points": [3],
-                            "constraint_refs": ["variable shadowing in loop"],
-                        },
-                    },
-                    "minimum_tasks": 3,
-                    "note": (
-                        "Structured trace fields (tool_calls, actions, verify_points) "
-                        "significantly improve calibration accuracy. Text-only responses "
-                        "are accepted but produce lower-confidence profiles."
-                    ),
                 },
-                "existing_profile": existing_info,
-                "eta": "60-120 seconds",
-                "next_actions": [
-                    "Complete each task, then call "
-                    f"model_profile_probe_submit(model_id='{model_id}', "
-                    "answers={{task_id: {{text: '...', tool_calls: [...], ...}}}})",
-                ],
-            }
+                "example": {
+                    tasks[0]["id"]: {
+                        "text": "I would first read the source file to understand the code...",
+                        "tool_calls": ["Read", "Read", "Edit", "Bash"],
+                        "actions": [
+                            "Read utils.py to understand function",
+                            "Read test output carefully",
+                            "Fix the shadowed variable on line 5",
+                            "Run pytest to verify",
+                        ],
+                        "verify_points": [3],
+                        "constraint_refs": ["variable shadowing in loop"],
+                    },
+                },
+                "minimum_tasks": 3,
+                "note": (
+                    "Structured trace fields (tool_calls, actions, verify_points) "
+                    "significantly improve calibration accuracy. Text-only responses "
+                    "are accepted but produce lower-confidence profiles."
+                ),
+            },
+            "existing_profile": existing_info,
+            "eta": "60-120 seconds",
+            "next_actions": [
+                "Complete each task, then call "
+                f"model_profile_probe_submit(model_id='{model_id}', "
+                "answers={{task_id: {{text: '...', tool_calls: [...], ...}}}})",
+            ],
+        }
+        ps_summary = f"Probe started for {canonical}. {len(tasks)} tasks. Complete and submit."
+        return tool_response(
+            probe_result, "model_profile_probe_start", os.getcwd(), ps_summary,
+            next_actions=probe_result.get("next_actions"),
+            extra={"model_key": canonical, "task_count": len(tasks)},
         )
 
     @mcp.tool()
@@ -408,24 +425,28 @@ def register(mcp, helpers):
             f"model_profile_status(model_id='{model_id}') — view full profile details"
         )
 
-        return helpers["_json_dumps"](  # type: ignore[no-any-return]
-            {
-                "model_key": canonical,
-                "status": status,
-                "confidence": profile.confidence,
-                "probe_version": profile.probe_version,
-                "probe_runs": profile.probe_runs,
-                "signal_risk": profile.signal_risk,
-                "custom_anti_patterns": profile.custom_anti_patterns,
-                "custom_dispositions": profile.custom_dispositions,
-                "tasks_scored": len(normalized_answers),
-                "message": (
-                    f"Profile created for {canonical} with confidence {profile.confidence:.2f}. "
-                    f"Probe v{profile.probe_version} uses behavioral micro-tasks "
-                    f"(weak prior, decays fast as real telemetry arrives)."
-                ),
-                "next_actions": next_actions,
-            }
+        submit_result = {
+            "model_key": canonical,
+            "status": status,
+            "confidence": profile.confidence,
+            "probe_version": profile.probe_version,
+            "probe_runs": profile.probe_runs,
+            "signal_risk": profile.signal_risk,
+            "custom_anti_patterns": profile.custom_anti_patterns,
+            "custom_dispositions": profile.custom_dispositions,
+            "tasks_scored": len(normalized_answers),
+            "message": (
+                f"Profile created for {canonical} with confidence {profile.confidence:.2f}. "
+                f"Probe v{profile.probe_version} uses behavioral micro-tasks "
+                f"(weak prior, decays fast as real telemetry arrives)."
+            ),
+            "next_actions": next_actions,
+        }
+        sub_summary = f"Profile {canonical}: {status}. Confidence: {profile.confidence:.2f}. {len(normalized_answers)} tasks scored."
+        return tool_response(
+            submit_result, "model_profile_probe_submit", os.getcwd(), sub_summary,
+            next_actions=next_actions,
+            extra={"model_key": canonical, "status": status, "confidence": profile.confidence},
         )
 
     return {

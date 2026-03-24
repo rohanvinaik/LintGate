@@ -4,7 +4,7 @@ extract_project_theory, build_theory_pack, get_theory_context."""
 
 from __future__ import annotations
 
-import json
+from mcp_tools._disk_helpers import tool_response
 
 
 def _do_patch_review(project_root: str) -> dict:
@@ -185,7 +185,8 @@ def register(mcp, helpers):
         project_root = helpers["_validate_project_root"](path)
         guidance = build_context_guidance(project_root, files=files)
         guidance["summary"] = summarize_context_guidance(guidance)
-        return json.dumps(guidance, indent=2)
+        n = len(guidance.get("items", guidance.get("rules", [])))
+        return tool_response(guidance, "context_guidance", project_root, f"Context guidance: {n} items.")
 
     @mcp.tool()
     def audit_context_health(path: str) -> str:
@@ -198,7 +199,11 @@ def register(mcp, helpers):
         """
         from lintgate.context_auditor import audit_context_health as _audit
 
-        return json.dumps(_audit(helpers["_validate_project_root"](path)), indent=2)
+        project_root = helpers["_validate_project_root"](path)
+        result = _audit(project_root)
+        score = result.get("health_score", result.get("score", "?"))
+        issues = len(result.get("issues", result.get("findings", [])))
+        return tool_response(result, "audit_context_health", project_root, f"Context audit: {score}% health. {issues} issues.")
 
     @mcp.tool()
     def bootstrap_context_files(
@@ -222,18 +227,17 @@ def register(mcp, helpers):
         Returns ``quick_wins`` — concrete next steps.
         Returns ``agent_instructions`` — ordered workflow for what to do with the result.
         """
-        return json.dumps(
-            _do_bootstrap(
-                helpers["_validate_project_root"](path),
-                write=write,
-                overwrite=overwrite,
-                include_theory_rules_doc=include_theory_rules_doc,
-                max_machine_rules=max_machine_rules,
-                model_id=model_id,
-                use_model_profile=use_model_profile,
-            ),
-            indent=2,
+        project_root = helpers["_validate_project_root"](path)
+        result = _do_bootstrap(
+            project_root,
+            write=write,
+            overwrite=overwrite,
+            include_theory_rules_doc=include_theory_rules_doc,
+            max_machine_rules=max_machine_rules,
+            model_id=model_id,
+            use_model_profile=use_model_profile,
         )
+        return tool_response(result, "bootstrap_context_files", project_root, "Context files generated.")
 
     @mcp.tool()
     def context_patch_review(path: str) -> str:
@@ -245,16 +249,19 @@ def register(mcp, helpers):
         Args:
             path: Project root path.
         """
-        result = _do_patch_review(helpers["_validate_project_root"](path))
+        project_root = helpers["_validate_project_root"](path)
+        result = _do_patch_review(project_root)
+        na = None
         if result.get("pending_count", 0) > 0:
-            result["next_actions"] = [
+            na = [
                 {
                     "tool": "context_patch_apply",
                     "reason": "Apply pending patches",
                     "args": {"path": path},
                 }
             ]
-        return json.dumps(result, indent=2)
+        n = result.get("pending_count", 0)
+        return tool_response(result, "context_patch_review", project_root, f"Patch review: {n} pending patches.", next_actions=na)
 
     @mcp.tool()
     def context_patch_apply(
@@ -269,18 +276,20 @@ def register(mcp, helpers):
             patch_ids: Specific patch IDs to apply. If None, applies all pending.
             dry_run: Preview changes without writing (default False).
         """
-        return json.dumps(
-            _do_patch_apply(helpers["_validate_project_root"](path), patch_ids, dry_run), indent=2
-        )
+        project_root = helpers["_validate_project_root"](path)
+        result = _do_patch_apply(project_root, patch_ids, dry_run)
+        n = result.get("applied", 0)
+        return tool_response(result, "context_patch_apply", project_root, f"Patch apply: {n} patches applied.")
 
     @mcp.tool()
     def extract_theory_constraints(path: str) -> str:
         """Extract enforceable lint rules from CLAUDE.md/AGENTS.md prose directives."""
         from lintgate.theory_extractor import extract_theory
 
-        return json.dumps(
-            extract_theory(helpers["_validate_project_root"](path))["enforceable_rules"], indent=2
-        )
+        project_root = helpers["_validate_project_root"](path)
+        rules = extract_theory(project_root)["enforceable_rules"]
+        n = len(rules) if isinstance(rules, list) else 0
+        return tool_response(rules, "extract_theory_constraints", project_root, f"Constraints: {n} rules extracted.")
 
     @mcp.tool()
     def extract_project_theory(path: str) -> str:
@@ -289,7 +298,10 @@ def register(mcp, helpers):
         WHEN TO USE: To understand a project's documented guidelines before making changes,
         or to check if changes align with documented principles.
         """
-        return json.dumps(_do_extract_theory(helpers["_validate_project_root"](path)), indent=2)
+        project_root = helpers["_validate_project_root"](path)
+        result = _do_extract_theory(project_root)
+        n = len(result.get("claims", result.get("theory", {}).get("claims", [])))
+        return tool_response(result, "extract_project_theory", project_root, f"Theory extracted: {n} claims.")
 
     @mcp.tool()
     def build_theory_pack(path: str, include_full_profile: bool = False) -> str:
@@ -298,10 +310,10 @@ def register(mcp, helpers):
         Use this instead of extract_project_theory when you need a token-efficient
         overview for ongoing work.
         """
-        return json.dumps(
-            _do_build_theory_pack(helpers["_validate_project_root"](path), include_full_profile),
-            indent=2,
-        )
+        project_root = helpers["_validate_project_root"](path)
+        result = _do_build_theory_pack(project_root, include_full_profile)
+        n = len(result.get("claims", result.get("theory_pack", {}).get("claims", [])))
+        return tool_response(result, "build_theory_pack", project_root, f"Theory pack: {n} claims.")
 
     @mcp.tool()
     def get_theory_context(
@@ -319,15 +331,15 @@ def register(mcp, helpers):
             raise ValueError("max_claims must be > 0")
         from lintgate.theory_extractor import get_theory_context as _get
 
-        return json.dumps(
-            _get(
-                helpers["_validate_project_root"](path),
-                facet=facet,
-                keywords=keywords,
-                max_claims=max_claims,
-            ),
-            indent=2,
+        project_root = helpers["_validate_project_root"](path)
+        result = _get(
+            project_root,
+            facet=facet,
+            keywords=keywords,
+            max_claims=max_claims,
         )
+        n = len(result.get("claims", []))
+        return tool_response(result, "get_theory_context", project_root, f"Theory context: {n} claims.")
 
     return {
         "context_guidance": context_guidance,

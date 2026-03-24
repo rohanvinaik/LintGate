@@ -72,7 +72,16 @@ def _analyze_test_strength_impl(
         "generate_property_tests(path) — Hypothesis templates for pure functions",
     ]
 
-    return str(helpers["_json_dumps"](result, output_mode="compact"))
+    score = result.get("summary", {}).get("effectiveness_score", 0)
+    weak = sum(
+        1 for f in result.get("test_functions", {}).values()
+        if f.get("effectiveness_score", 1.0) < 0.3
+    )
+    summary = f"Test strength: {score}. {weak} weak assertions."
+    return tool_response(
+        result, "analyze_test_strength", project_root, summary,
+        next_actions=result.get("next_actions"),
+    )
 
 
 def _check_early_exit(
@@ -214,7 +223,11 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
 
     result["mutation_hotspots"] = []
 
-    return str(helpers["_json_dumps"](result))
+    total_a = result.get("summary", {}).get("total_assertions", 0)
+    sem_a = result.get("summary", {}).get("semantic_assertions", 0)
+    n_funcs = len(result.get("test_functions", {}))
+    summary = f"{n_funcs} test functions inspected. {total_a} assertions ({sem_a} semantic)."
+    return tool_response(result, "inspect_test_assertions", project_root, summary)
 
 
 def _resolve_target_files(project_root: str, test_file: str) -> list[str] | dict[str, str]:
@@ -347,6 +360,8 @@ def _compute_quality_profile(result: dict[str, Any]) -> None:
             else 0.0,
         }
 
+
+from mcp_tools._disk_helpers import tool_response
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register test effectiveness tools on the shared MCP instance."""

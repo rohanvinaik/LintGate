@@ -360,13 +360,17 @@ def _impl_generate_property_tests(
             "prefer_mutation_hotspots: use mutation_run_full → mutation_prescribe for hotspot data."
         )
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    project_root = helpers["_validate_project_root"](path)
+    summary = f"Property tests generated for {len(results)} functions ({total_with_props} pure with properties)."
+    return tool_response(output, "generate_property_tests", project_root, summary)
 
 
 # ---------------------------------------------------------------------------
 # MCP registration — thin wrappers delegating to impl/helper functions above
 # ---------------------------------------------------------------------------
 
+
+from mcp_tools._disk_helpers import tool_response
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register performance analysis tools on the shared MCP instance."""
@@ -397,9 +401,14 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         if not py_files or manifest is None:
             return json.dumps({"error": "No Python files found in project"})
 
-        summary = _build_manifest_summary(manifest, project_root)
-        result = _filter_manifest(summary, filter_by, function)
-        return helpers["_json_dumps"](result, output_mode="compact")  # type: ignore[no-any-return]
+        manifest_summary = _build_manifest_summary(manifest, project_root)
+        result = _filter_manifest(manifest_summary, filter_by, function)
+        s = result.get("summary", {})
+        total = s.get("total_functions", 0)
+        pure = s.get("pure_functions", 0)
+        cacheable = s.get("property_distribution", {}).get("cacheable", 0)
+        summary = f"{total} functions analyzed. {pure} pure, {cacheable} cacheable."
+        return tool_response(result, "inspect_algebra", project_root, summary)
 
     @mcp.tool()
     def generate_property_tests(
@@ -475,7 +484,13 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         if not template:
             return json.dumps({"error": "Failed to generate Hypothesis template for function."})
 
-        return json.dumps(_execute_property_tests(template, project_root, function))
+        result = _execute_property_tests(template, project_root, function)
+        if "error" in result:
+            return json.dumps(result)
+        passed = "passed" if result.get("success") else "failed"
+        hints = len(result.get("refinement_hints", []))
+        summary = f"Property tests for {function}: {passed}. {hints} refinement hints."
+        return tool_response(result, "run_property_tests", project_root, summary)
 
     return {
         "inspect_algebra": inspect_algebra,

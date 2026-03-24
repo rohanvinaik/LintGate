@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register bootstrap tools on the shared MCP instance."""
 
@@ -37,8 +39,16 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         pipeline = BootstrapPipeline(project_root)
         result = pipeline.run(dry_run=dry_run, force=force)
+        result_dict = result.to_dict()
 
-        return helpers["_json_dumps"](result.to_dict())  # type: ignore[no-any-return]
+        generated = result_dict.get("tests_generated", 0)
+        status = result_dict.get("status", "unknown")
+        bt_summary = f"Bootstrap: {status}. {generated} tests generated."
+        return tool_response(
+            result_dict, "bootstrap_tests", project_root, bt_summary,
+            next_actions=result_dict.get("next_actions"),
+            extra={"status": status, "tests_generated": generated},
+        )
 
     @mcp.tool()
     def bootstrap_status(path: str) -> str:
@@ -57,7 +67,14 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         from lintgate.orchestration.bootstrap_state import BootstrapState
 
         state = BootstrapState.load(project_root)
-        return helpers["_json_dumps"](state.to_summary())  # type: ignore[no-any-return]
+        result_dict = state.to_summary()
+        phase = result_dict.get("phase", "unknown")
+        bs_summary = f"Bootstrap status: {phase}."
+        return tool_response(
+            result_dict, "bootstrap_status", project_root, bs_summary,
+            next_actions=result_dict.get("next_actions"),
+            extra={"phase": phase},
+        )
 
     return {
         "bootstrap_tests": bootstrap_tests,

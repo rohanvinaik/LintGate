@@ -15,6 +15,8 @@ from collections import defaultdict
 from typing import Any
 
 
+from mcp_tools._disk_helpers import tool_response
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register redundancy analysis tools on the shared MCP instance."""
 
@@ -35,8 +37,17 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             path: Project root path.
             top_n: Maximum number of redundancy findings to return.
         """
+        import json as _json
         project_root = helpers["_validate_project_root"](path)
-        return _impl_redundancy_project(project_root, top_n)
+        result_json = _impl_redundancy_project(project_root, top_n)
+        result = _json.loads(result_json)
+        n_tests = result.get("total_tests_in_matrix", 0)
+        redundant = result.get("redundant_test_count", 0)
+        summary = f"Redundancy: {n_tests} tests. {redundant} redundant."
+        return tool_response(
+            result, "test_redundancy_project", project_root, summary,
+            next_actions=result.get("next_actions"),
+        )
 
     return {"test_redundancy_project": test_redundancy_project}
 
