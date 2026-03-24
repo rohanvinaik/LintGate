@@ -15,6 +15,14 @@ if TYPE_CHECKING:
 
 from mcp_tools.telemetry_tools import register
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -63,7 +71,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert result["period"] == "7d"
         assert result["total_runs"] == 0
 
@@ -84,7 +92,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ) as mock_fn:
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="30d"))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path), period="30d"))
         mock_fn.assert_called_once_with(str(tmp_path), period="30d")
         assert result["period"] == "30d"
 
@@ -95,7 +103,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="1d"))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path), period="1d"))
         assert result["period"] == "1d"
 
     def test_period_all(self, tmp_path: Path) -> None:
@@ -105,7 +113,7 @@ class TestTelemetrySummaryBase:
             "lintgate.telemetry.compute_telemetry_summary",
             return_value=mock_summary,
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path), period="all"))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path), period="all"))
         assert result["total_runs"] == 100
 
 
@@ -127,7 +135,7 @@ class TestTelemetrySummaryFeatureUsage:
                 return_value=mock_feature,
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert "feature_usage" in result
         assert result["feature_usage"]["total_invocations"] == 5
 
@@ -145,7 +153,7 @@ class TestTelemetrySummaryFeatureUsage:
                 return_value=mock_feature,
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert "feature_usage" not in result
 
     def test_feature_usage_exception_suppressed(self, tmp_path: Path) -> None:
@@ -161,7 +169,7 @@ class TestTelemetrySummaryFeatureUsage:
                 side_effect=RuntimeError("broken"),
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         # Should still return base summary without feature_usage
         assert "feature_usage" not in result
         assert result["total_runs"] == 10
@@ -185,7 +193,7 @@ class TestTelemetrySummaryQualityEconomics:
                 return_value=mock_qe,
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert "quality_economics" in result
         assert result["quality_economics"]["qg_pass_rate"] == 0.85
 
@@ -203,7 +211,7 @@ class TestTelemetrySummaryQualityEconomics:
                 return_value=mock_qe,
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert "quality_economics" not in result
 
     def test_quality_economics_exception_suppressed(self, tmp_path: Path) -> None:
@@ -219,7 +227,7 @@ class TestTelemetrySummaryQualityEconomics:
                 side_effect=ImportError("missing"),
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert "quality_economics" not in result
         assert result["total_runs"] == 10
 
@@ -247,7 +255,7 @@ class TestTelemetrySummaryCombined:
                 return_value=mock_qe,
             ),
         ):
-            result = json.loads(tools["telemetry_summary"](path=str(tmp_path)))
+            result = _load_tool_result(tools["telemetry_summary"](path=str(tmp_path)))
         assert "feature_usage" in result
         assert "quality_economics" in result
         assert result["total_runs"] == 20

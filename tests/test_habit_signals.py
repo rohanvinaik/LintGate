@@ -47,6 +47,14 @@ from lintgate._habit_types import (
 from lintgate.hook_posttooluse import _record_habit_event_lightweight
 from lintgate.token_tracker import TokenTrackerState
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── _compute_same_file_ratio ────────────────────────────────────────
 
 
@@ -1101,7 +1109,7 @@ def test_habit_status_standalone_loads_persisted_tracker(monkeypatch, tmp_path) 
         tracker_dict=tracker.to_dict(),
     )
 
-    payload = json.loads(tools["habit_status"](path=str(project)))
+    payload = _load_tool_result(tools["habit_status"](path=str(project)))
     token_econ = payload["token_economics"]
     assert token_econ["estimated_tokens_used"] == 12345
     assert token_econ["tool_call_count"] == 7

@@ -143,6 +143,24 @@ class TestEssentialToolDocstrings:
 # ── getting_started tool ───────────────────────────────────────────────
 
 
+def _load_tool_result(json_str: str) -> dict:
+    """Parse a tool response; if disk-first, load full analysis from file."""
+    import json
+
+    response = json.loads(json_str)
+    if isinstance(response, dict) and "file" in response and "analysis_id" in response:
+        with open(response["file"]) as f:
+            return json.loads(f.read())
+    return response
+
+
+def _call_getting_started(tmp_path) -> dict:
+    """Call getting_started and load the full analysis from disk."""
+    from mcp_server import getting_started
+
+    return _load_tool_result(getting_started(str(tmp_path)))
+
+
 class TestGettingStarted:
     """The getting_started tool is the robust cold-start entry point."""
 
@@ -156,7 +174,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert "essential_tools" in result
         for tool in [
             "lint_files",
@@ -173,7 +191,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert "first_session_workflow" in result
         assert isinstance(result["first_session_workflow"], list)
         assert len(result["first_session_workflow"]) >= 3
@@ -183,7 +201,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert "config_status" in result
         cs = result["config_status"]
         # Machine-readable flags
@@ -198,7 +216,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert result["all_tools_count"] == 49
 
     def test_returns_next_actions(self, tmp_path: Path) -> None:
@@ -206,7 +224,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert "next_actions" in result
         assert isinstance(result["next_actions"], list)
         assert len(result["next_actions"]) >= 1
@@ -216,7 +234,7 @@ class TestGettingStarted:
 
         from mcp_server import getting_started
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert "startup_setup" in result
         startup = result["startup_setup"]
         assert "venv_setup" in startup
@@ -234,7 +252,7 @@ class TestGettingStarted:
         config_path = tmp_path / ".claude" / "lintgate.yaml"
         assert not config_path.exists()
 
-        result = json.loads(getting_started(str(tmp_path)))
+        result = _call_getting_started(tmp_path)
         assert config_path.exists()
         assert result["config_status"]["config_state"] == "config_enabled"
         assert any(
@@ -269,7 +287,7 @@ class TestGettingStarted:
                 return_value=fake_python,
             ),
         ):
-            result = json.loads(getting_started(str(tmp_path)))
+            result = _call_getting_started(tmp_path)
 
         assert result["startup_setup"]["venv_setup"]["status"] == "created"
         assert any(
@@ -305,7 +323,7 @@ class TestGettingStarted:
                 return_value=(["uv", "venv", ".venv"], "uv"),
             ),
         ):
-            result = json.loads(getting_started(str(tmp_path)))
+            result = _call_getting_started(tmp_path)
 
         assert any(action.get("example") == "uv venv .venv" for action in result["next_actions"])
 
@@ -338,7 +356,8 @@ class TestGettingStarted:
                 return_value=[],
             ),
         ):
-            result = json.loads(getting_started(str(tmp_path), auto_setup=False))
+            response = _load_tool_result(getting_started(str(tmp_path), auto_setup=False))
+        result = response
 
         assert result["startup_setup"]["missing_tools_after"]
         assert result["startup_setup"]["missing_tools_after"][0]["tool"] == "ty"
@@ -377,7 +396,8 @@ class TestGettingStarted:
                 return_value={"detected": True, "owner": "alice", "repo": "demo"},
             ),
         ):
-            result = json.loads(getting_started(str(tmp_path), auto_setup=True))
+            response = _load_tool_result(getting_started(str(tmp_path), auto_setup=True))
+        result = response
 
         startup = result["startup_setup"]
         assert startup["github_quality"]["status"] in {"written", "already_exists"}
@@ -432,7 +452,7 @@ class TestGettingStarted:
                 ),
             ),
         ):
-            result = json.loads(getting_started(str(tmp_path)))
+            result = _call_getting_started(tmp_path)
 
         assert result["system_mutation_guard"] == "active"
         assert "security_guidance" in result
@@ -452,7 +472,7 @@ class TestScaffoldConfig:
         from mcp_server import scaffold_config
 
         (tmp_path / "app.py").write_text("print('hello')\n")
-        result = json.loads(scaffold_config(str(tmp_path), write=False))
+        result = _load_tool_result(scaffold_config(str(tmp_path), write=False))
 
         assert result["status"] == "preview"
         assert "yaml" in result
@@ -472,7 +492,7 @@ class TestScaffoldConfig:
         config_file.write_text(original)
         (tmp_path / "app.py").write_text("print('hello')\n")
 
-        result = json.loads(scaffold_config(str(tmp_path), write=False))
+        result = _load_tool_result(scaffold_config(str(tmp_path), write=False))
 
         assert result["status"] == "preview_existing"
         assert "yaml" in result
@@ -619,7 +639,7 @@ class TestControlPlaneRunOnboarding:
 
         from mcp_server import controlplane_run
 
-        result = json.loads(controlplane_run(str(tmp_path)))
+        result = _load_tool_result(controlplane_run(str(tmp_path)))
         assert "onboarding" in result
         assert result["onboarding"]["config_state"] == "no_config"
         assert "setup_hint" in result["onboarding"]
@@ -632,7 +652,7 @@ class TestControlPlaneRunOnboarding:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import controlplane_run
 
-        result = json.loads(controlplane_run(str(tmp_path)))
+        result = _load_tool_result(controlplane_run(str(tmp_path)))
         assert "onboarding" not in result
 
     def test_onboarding_present_when_config_disabled(self, tmp_path: Path) -> None:
@@ -643,7 +663,7 @@ class TestControlPlaneRunOnboarding:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         from mcp_server import controlplane_run
 
-        result = json.loads(controlplane_run(str(tmp_path)))
+        result = _load_tool_result(controlplane_run(str(tmp_path)))
         assert "onboarding" in result
         assert result["onboarding"]["config_state"] == "config_disabled"
 
@@ -659,7 +679,7 @@ class TestControlPlaneStatusBackwardCompat:
 
         from mcp_server import controlplane_status
 
-        result = json.loads(controlplane_status(str(tmp_path)))
+        result = _load_tool_result(controlplane_status(str(tmp_path)))
         # Old keys must remain
         assert "controlplane_enabled" in result
         assert "note" in result
@@ -675,7 +695,7 @@ class TestControlPlaneStatusBackwardCompat:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: false\n")
         from mcp_server import controlplane_status
 
-        result = json.loads(controlplane_status(str(tmp_path)))
+        result = _load_tool_result(controlplane_status(str(tmp_path)))
         assert "controlplane_enabled" in result
         assert result["controlplane_enabled"] is False
         assert "onboarding" in result
@@ -689,7 +709,7 @@ class TestControlPlaneStatusBackwardCompat:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import controlplane_status
 
-        result = json.loads(controlplane_status(str(tmp_path)))
+        result = _load_tool_result(controlplane_status(str(tmp_path)))
         assert result["controlplane_enabled"] is True
         assert "onboarding" not in result
 
@@ -705,7 +725,7 @@ class TestLintStatusOnboarding:
 
         from mcp_server import lint_status
 
-        result = json.loads(lint_status(str(tmp_path)))
+        result = _load_tool_result(lint_status(str(tmp_path)))
         assert "onboarding" in result
         assert result["onboarding"]["config_state"] == "no_config"
 
@@ -717,7 +737,7 @@ class TestLintStatusOnboarding:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
         from mcp_server import lint_status
 
-        result = json.loads(lint_status(str(tmp_path)))
+        result = _load_tool_result(lint_status(str(tmp_path)))
         assert "onboarding" not in result
 
     def test_missing_tools_field_present(self, tmp_path: Path) -> None:
@@ -725,7 +745,7 @@ class TestLintStatusOnboarding:
 
         from mcp_server import lint_status
 
-        result = json.loads(lint_status(str(tmp_path)))
+        result = _load_tool_result(lint_status(str(tmp_path)))
         assert "missing_tools" in result
         assert isinstance(result["missing_tools"], list)
 

@@ -121,6 +121,11 @@ def test_mcp_bootstrap_context_files_returns_payload(tmp_path) -> None:
         include_theory_rules_doc=False,
     )
     payload = json.loads(output)
+    if "file" in payload and "analysis_id" in payload:
+        import os
+        if os.path.isfile(payload["file"]):
+            with open(payload["file"]) as _f:
+                payload = json.loads(_f.read())
 
     rel_paths = {item["relative_path"] for item in payload["files"]}
     assert rel_paths == {".claude/CLAUDE.md", "AGENTS.md", ".claude/rules/inquiry.md"}

@@ -19,6 +19,14 @@ if TYPE_CHECKING:
 
 from mcp_tools.context_tools import register
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -80,7 +88,7 @@ class TestContextGuidance:
                 return_value="All good",
             ),
         ):
-            result = json.loads(tools["context_guidance"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_guidance"](path=str(tmp_path)))
         assert result["summary"] == "All good"
 
     def test_with_files_argument(self, tmp_path: Path) -> None:
@@ -96,7 +104,7 @@ class TestContextGuidance:
                 return_value="Summary",
             ),
         ):
-            result = json.loads(tools["context_guidance"](path=str(tmp_path), files=["foo.py"]))
+            result = _load_tool_result(tools["context_guidance"](path=str(tmp_path), files=["foo.py"]))
         mock_build.assert_called_once_with(str(tmp_path), files=["foo.py"])
         assert isinstance(result, dict)
 
@@ -112,7 +120,7 @@ class TestAuditContextHealth:
             "lintgate.context_auditor.audit_context_health",
             return_value=mock_audit,
         ):
-            result = json.loads(tools["audit_context_health"](path=str(tmp_path)))
+            result = _load_tool_result(tools["audit_context_health"](path=str(tmp_path)))
         assert result["score"] == 80
 
 
@@ -130,7 +138,7 @@ class TestBootstrapContextFiles:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["bootstrap_context_files"](path=str(tmp_path)))
+            result = _load_tool_result(tools["bootstrap_context_files"](path=str(tmp_path)))
         assert "claude_md" in result
 
     def test_write_mode_passes_through(self, tmp_path: Path) -> None:
@@ -162,7 +170,7 @@ class TestBootstrapContextFiles:
             ),
         ):
             # Should not raise despite telemetry failure
-            result = json.loads(tools["bootstrap_context_files"](path=str(tmp_path)))
+            result = _load_tool_result(tools["bootstrap_context_files"](path=str(tmp_path)))
         assert result["ok"] is True
 
     def test_model_id_passes_through(self, tmp_path: Path) -> None:
@@ -191,7 +199,7 @@ class TestContextPatchReview:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=mock_session,
         ):
-            result = json.loads(tools["context_patch_review"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_patch_review"](path=str(tmp_path)))
         assert result["pending_count"] == 0
         assert "No pending" in result["message"]
 
@@ -231,7 +239,7 @@ class TestContextPatchReview:
                 return_value={"diff_preview": "--- old\n+++ new"},
             ),
         ):
-            result = json.loads(tools["context_patch_review"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_patch_review"](path=str(tmp_path)))
         assert result["pending_count"] == 1
         assert len(result["patches"]) == 1
         assert result["patches"][0]["status"] == "pending"
@@ -263,7 +271,7 @@ class TestContextPatchReview:
                 return_value=None,
             ),
         ):
-            result = json.loads(tools["context_patch_review"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_patch_review"](path=str(tmp_path)))
         assert result["patches"][0]["status"] == "no_op"
         assert result["patches"][0]["diff_preview"] is None
 
@@ -280,7 +288,7 @@ class TestContextPatchApply:
             "lintgate.controlplane.session_memory.get_or_create_session",
             return_value=mock_session,
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_patch_apply"](path=str(tmp_path)))
         assert result["applied"] == 0
         assert "No matching" in result["message"]
 
@@ -322,7 +330,7 @@ class TestContextPatchApply:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_patch_apply"](path=str(tmp_path)))
         assert result["applied"] == 1
         assert result["dry_run"] is False
 
@@ -375,7 +383,7 @@ class TestContextPatchApply:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path), patch_ids=["p2"]))
+            result = _load_tool_result(tools["context_patch_apply"](path=str(tmp_path), patch_ids=["p2"]))
         # Only p2 should be processed
         assert result["applied"] == 1
         assert len(result["results"]) == 1
@@ -417,7 +425,7 @@ class TestContextPatchApply:
                 return_value={"applied": False, "diff_preview": "+x"},
             ),
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path), dry_run=True))
+            result = _load_tool_result(tools["context_patch_apply"](path=str(tmp_path), dry_run=True))
         assert result["dry_run"] is True
         mock_save.assert_not_called()
 
@@ -452,7 +460,7 @@ class TestContextPatchApply:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["context_patch_apply"](path=str(tmp_path)))
+            result = _load_tool_result(tools["context_patch_apply"](path=str(tmp_path)))
         assert result["results"][0]["status"] == "no_op"
         assert result["results"][0]["applied"] is False
 
@@ -473,7 +481,7 @@ class TestExtractTheoryConstraints:
             "lintgate.theory_extractor.extract_theory",
             return_value=mock_result,
         ):
-            result = json.loads(tools["extract_theory_constraints"](path=str(tmp_path)))
+            result = _load_tool_result(tools["extract_theory_constraints"](path=str(tmp_path)))
         assert isinstance(result, list)
         assert result[0]["type"] == "LINTGATE_FORBID_REGEX"
 
@@ -495,7 +503,7 @@ class TestExtractProjectTheory:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["extract_project_theory"](path=str(tmp_path)))
+            result = _load_tool_result(tools["extract_project_theory"](path=str(tmp_path)))
         assert "profile" in result
 
     def test_telemetry_logged(self, tmp_path: Path) -> None:
@@ -526,7 +534,7 @@ class TestBuildTheoryPack:
             ),
             patch("lintgate.state.log_feature_usage"),
         ):
-            result = json.loads(tools["build_theory_pack"](path=str(tmp_path)))
+            result = _load_tool_result(tools["build_theory_pack"](path=str(tmp_path)))
         assert result["summary"] == "Project uses X"
 
     def test_include_full_profile_passed(self, tmp_path: Path) -> None:
@@ -554,7 +562,7 @@ class TestGetTheoryContext:
             "lintgate.theory_extractor.get_theory_context",
             return_value=mock_ctx,
         ):
-            result = json.loads(tools["get_theory_context"](path=str(tmp_path)))
+            result = _load_tool_result(tools["get_theory_context"](path=str(tmp_path)))
         assert "claims" in result
 
     def test_max_claims_zero_raises(self, tmp_path: Path) -> None:

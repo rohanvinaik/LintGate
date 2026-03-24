@@ -35,6 +35,14 @@ from mcp_tools.compass_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -967,7 +975,7 @@ class TestRegister:
             "inferred_claims": 0,
         }
         with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
-            result = json.loads(tools["compass_update"](path="/p", write=False))
+            result = _load_tool_result(tools["compass_update"](path="/p", write=False))
         action_tools = [a["tool"] for a in result["next_actions"]]
         assert "compass_interview" in action_tools
         assert "compass_update" in action_tools  # write=False suggests re-run
@@ -982,7 +990,7 @@ class TestRegister:
             "written": True,
         }
         with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
-            result = json.loads(tools["compass_update"](path="/p", write=True))
+            result = _load_tool_result(tools["compass_update"](path="/p", write=True))
         action_tools = [a["tool"] for a in result["next_actions"]]
         assert "compass_interview" not in action_tools
         assert "compass_update" not in action_tools

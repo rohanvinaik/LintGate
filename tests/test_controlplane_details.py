@@ -18,6 +18,14 @@ from lintgate.state import (
     save_run_details,
 )
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── ControlPlane Run Cache ─────────────────────────────────────────────
 
 
@@ -205,6 +213,6 @@ class TestControlplaneGetDetails:
         from mcp_server import controlplane_get_details
 
         with mock.patch("lintgate.state.RUNS_DIR", runs_dir):
-            payload = json.loads(controlplane_get_details(sample_run))
+            payload = _load_tool_result(controlplane_get_details(sample_run))
         assert "evidence" in payload
         assert "lint" in payload["evidence"]

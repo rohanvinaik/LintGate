@@ -9,6 +9,14 @@ from mcp_tools.redundancy_tools import (
     _greedy_covering_set,
 )
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 
 class TestComputeUniqueKills:
     def test_unique_kills_basic(self):
@@ -89,7 +97,7 @@ class TestToolRegistration:
         from mcp_tools.redundancy_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(tools["test_redundancy_project"](path=str(tmp_path)))
+        result = _load_tool_result(tools["test_redundancy_project"](path=str(tmp_path)))
         assert result["status"] == "no_profiled_data"
 
     def test_with_mock_profiled_data(self, tmp_path):
@@ -122,7 +130,7 @@ class TestToolRegistration:
         from mcp_tools.redundancy_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(tools["test_redundancy_project"](path=str(tmp_path)))
+        result = _load_tool_result(tools["test_redundancy_project"](path=str(tmp_path)))
 
         assert result["status"] == "analyzed"
         assert result["profiled_functions"] == 1

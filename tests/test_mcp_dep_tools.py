@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 
 from mcp_tools.dep_tools import register
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -61,7 +69,7 @@ class TestDepHealthCheck:
             "lintgate.dependency_health.full_dependency_health",
             return_value=mock_health,
         ):
-            result = json.loads(tools["dep_health_check"](path=str(tmp_path)))
+            result = _load_tool_result(tools["dep_health_check"](path=str(tmp_path)))
         assert result["summary"]["score"] == 90
 
     def test_passes_project_root(self, tmp_path: Path) -> None:
@@ -87,7 +95,7 @@ class TestDepSync:
             "lintgate.dependency_health.full_dependency_health",
             return_value=mock_health,
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path)))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path)))
         assert result["project"] == str(tmp_path)
         assert result["actions"] == []
         assert "health_before" in result
@@ -104,7 +112,7 @@ class TestDepSync:
             ),
             patch("shutil.which", return_value=None),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         assert "error" in result
         assert "uv not found" in result["error"]
 
@@ -120,7 +128,7 @@ class TestDepSync:
             ),
             patch("shutil.which", return_value="/usr/bin/uv"),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert len(venv_action) == 1
         assert venv_action[0]["status"] == "skipped"
@@ -144,7 +152,7 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert venv_action[0]["status"] == "ok"
         assert "health_after" in result
@@ -167,7 +175,7 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert venv_action[0]["status"] == "error"
         assert venv_action[0]["returncode"] == 1
@@ -187,7 +195,7 @@ class TestDepSync:
                 side_effect=subprocess.TimeoutExpired(cmd="uv venv", timeout=60),
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
         venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
         assert venv_action[0]["status"] == "timeout"
 
@@ -209,7 +217,7 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert len(lock_action) == 1
         assert lock_action[0]["status"] == "ok"
@@ -233,7 +241,7 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert lock_action[0]["status"] == "error"
 
@@ -252,7 +260,7 @@ class TestDepSync:
                 side_effect=subprocess.TimeoutExpired(cmd="uv lock", timeout=120),
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert lock_action[0]["status"] == "timeout"
 
@@ -274,7 +282,7 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True))
         action_types = [a["action"] for a in result["actions"]]
         assert "create_venv" in action_types
         assert "lock" in action_types
@@ -298,6 +306,6 @@ class TestDepSync:
                 return_value=mock_proc,
             ),
         ):
-            result = json.loads(tools["dep_sync"](path=str(tmp_path), lock=True))
+            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
         lock_action = [a for a in result["actions"] if a["action"] == "lock"]
         assert len(lock_action[0]["stderr"]) <= 500

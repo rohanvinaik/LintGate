@@ -11,6 +11,14 @@ from __future__ import annotations
 import json
 import textwrap
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 
 def _build_mini_project(tmp_path):
     """Create a minimal project with source and test files."""
@@ -78,7 +86,7 @@ class TestOrchestrationChain:
         from mcp_tools.cold_start_tools import register
 
         tools = register(FakeMCP(), {"_validate_project_root": lambda p: p})
-        result = json.loads(tools["test_triage"](path=str(project)))
+        result = _load_tool_result(tools["test_triage"](path=str(project)))
 
         assert result["total_untested"] >= 1
         assert len(result["next_actions"]) >= 1
@@ -141,7 +149,7 @@ class TestOrchestrationChain:
         from mcp_tools.test_hygiene_tools import register
 
         tools = register(FakeMCP(), {})
-        result = json.loads(tools["test_hygiene_scan"](path=str(project)))
+        result = _load_tool_result(tools["test_hygiene_scan"](path=str(project)))
 
         # Should have findings
         assert len(result["findings"]) >= 1
@@ -173,7 +181,7 @@ class TestOrchestrationChain:
         from mcp_tools.redundancy_tools import register
 
         tools = register(FakeMCP(), {"_validate_project_root": lambda p: p})
-        result = json.loads(tools["test_redundancy_project"](path=str(tmp_path)))
+        result = _load_tool_result(tools["test_redundancy_project"](path=str(tmp_path)))
 
         # Both tests have zero unique kills
         assert result["zero_unique_kill_count"] == 2

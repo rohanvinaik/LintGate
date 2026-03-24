@@ -15,6 +15,14 @@ from mcp_tools.convergence_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── Test helpers ──────────────────────────────────────────────────────
 
 
@@ -249,9 +257,9 @@ class TestRegistration:
                 "mcp_tools._platonic_impl.impl_platonic_apply",
                 lambda *_a, **_kw: json.dumps({"workflow_id": "wf1", "state": "READY_TO_APPLY"}),
             )
-            project = json.loads(tools["platonic_project"](tmp_project))
-            cont = json.loads(tools["platonic_continue"](tmp_project, "wf1"))
-            apply = json.loads(tools["platonic_apply"](tmp_project, "wf1"))
+            project = _load_tool_result(tools["platonic_project"](tmp_project))
+            cont = _load_tool_result(tools["platonic_continue"](tmp_project, "wf1"))
+            apply = _load_tool_result(tools["platonic_apply"](tmp_project, "wf1"))
 
         assert project["workflow_id"] == "wf1"
         assert cont["state"] == "VALIDATING"

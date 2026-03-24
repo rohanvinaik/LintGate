@@ -11,6 +11,14 @@ import json
 import os
 from typing import Any
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Minimal MCP stub so register() can attach @mcp.tool() callables
 # ---------------------------------------------------------------------------
@@ -77,7 +85,7 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(tools["hygiene_check"](path=str(tmp_path), planned_action="echo hello"))
+        result = _load_tool_result(tools["hygiene_check"](path=str(tmp_path), planned_action="echo hello"))
         assert result["status"] == "no_checks_applicable"
         assert result["next_actions"] == []
 
@@ -625,7 +633,7 @@ class TestGlobalMemoryStatus:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(tools["global_memory_status"](path=str(tmp_path)))
+        result = _load_tool_result(tools["global_memory_status"](path=str(tmp_path)))
         assert "error" in result
 
     def test_returns_profile_data(self, tmp_path, monkeypatch):
@@ -660,7 +668,7 @@ class TestGlobalMemoryStatus:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(tools["global_memory_status"](path=str(tmp_path)))
+        result = _load_tool_result(tools["global_memory_status"](path=str(tmp_path)))
 
         assert result["scope"] == "project"
         assert result["session_count"] == 5
@@ -690,7 +698,7 @@ class TestGlobalMemoryStatus:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(tools["global_memory_status"](path=str(tmp_path)))
+        result = _load_tool_result(tools["global_memory_status"](path=str(tmp_path)))
         # Zero-total nudge outcomes should not appear in the output
         assert "some_signal" not in result["nudge_outcomes"]
 
@@ -711,7 +719,7 @@ class TestGlobalMemoryReset:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(tools["global_memory_reset"](path=str(tmp_path)))
+        result = _load_tool_result(tools["global_memory_reset"](path=str(tmp_path)))
 
         assert result["status"] == "reset"
         assert result["scope"] == "project"

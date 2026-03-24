@@ -21,6 +21,14 @@ from mcp_tools.performance_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 
 def _make_purity(name: str, *, is_pure: bool = True) -> PurityResult:
     return PurityResult(
@@ -314,7 +322,7 @@ class TestInspectAlgebra:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["inspect_algebra"](path=str(tmp_path)))
+        result = _load_tool_result(tools["inspect_algebra"](path=str(tmp_path)))
         assert "summary" in result
         assert result["summary"]["total_functions"] >= 1
 
@@ -325,7 +333,7 @@ class TestInspectAlgebra:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["inspect_algebra"](path=str(tmp_path), filter_by="pure"))
+        result = _load_tool_result(tools["inspect_algebra"](path=str(tmp_path), filter_by="pure"))
         assert "filter_applied" in result
         assert result["filter_applied"]["type"] == "pure"
 
@@ -336,7 +344,7 @@ class TestInspectAlgebra:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["inspect_algebra"](path=str(tmp_path), function="add"))
+        result = _load_tool_result(tools["inspect_algebra"](path=str(tmp_path), function="add"))
         assert "filter_applied" in result
 
     def test_empty_project(self, tmp_path):
@@ -344,7 +352,7 @@ class TestInspectAlgebra:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["inspect_algebra"](path=str(tmp_path)))
+        result = _load_tool_result(tools["inspect_algebra"](path=str(tmp_path)))
         assert "error" in result
 
 
@@ -359,7 +367,7 @@ class TestGeneratePropertyTests:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["generate_property_tests"](path=str(tmp_path)))
+        result = _load_tool_result(tools["generate_property_tests"](path=str(tmp_path)))
         # May or may not find algebraic properties beyond PURE
         assert "note" in result or "functions" in result
 
@@ -368,7 +376,7 @@ class TestGeneratePropertyTests:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["generate_property_tests"](path=str(tmp_path)))
+        result = _load_tool_result(tools["generate_property_tests"](path=str(tmp_path)))
         assert "error" in result
 
     def test_no_candidates_returns_note(self, tmp_path):
@@ -379,7 +387,7 @@ class TestGeneratePropertyTests:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(tools["generate_property_tests"](path=str(tmp_path)))
+        result = _load_tool_result(tools["generate_property_tests"](path=str(tmp_path)))
         assert "note" in result
 
     def test_with_function_filter(self, tmp_path):

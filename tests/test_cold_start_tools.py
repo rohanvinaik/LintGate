@@ -5,6 +5,18 @@ from __future__ import annotations
 import json
 import textwrap
 
+def _load_tool_result(json_str: str) -> dict:
+    """Parse a tool response; if disk-first, load full analysis from file."""
+    import json as _json
+    response = _json.loads(json_str)
+    if isinstance(response, dict) and "file" in response and "analysis_id" in response:
+        import os
+        if os.path.isfile(response["file"]):
+            with open(response["file"]) as f:
+                return _json.loads(f.read())
+    return response
+
+
 from mcp_tools.cold_start_tools import (
     _extract_signature,
     _find_call_sites,
@@ -221,7 +233,7 @@ class TestTestTriage:
         from mcp_tools.cold_start_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(tools["test_triage"](path=str(tmp_path)))
+        result = _load_tool_result(tools["test_triage"](path=str(tmp_path)))
         assert result["total_untested"] >= 1
         assert len(result["functions"]) >= 1
         # compute should be in results (it's untested and has branches)
@@ -246,7 +258,7 @@ class TestTestCharacterize:
         from mcp_tools.cold_start_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(
+        result = _load_tool_result(
             tools["test_characterize"](
                 path=str(tmp_path), file="mymod.py", function="add", write=False
             )
@@ -271,7 +283,7 @@ class TestTestCharacterize:
         from mcp_tools.cold_start_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(
+        result = _load_tool_result(
             tools["test_characterize"](
                 path=str(tmp_path), file="mymod.py", function="foo", write=True
             )
@@ -301,7 +313,7 @@ class TestTestCharacterizeMark:
         from mcp_tools.cold_start_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(
+        result = _load_tool_result(
             tools["test_characterize_mark"](
                 path=str(tmp_path),
                 test_file=str(test_file.relative_to(tmp_path)),
@@ -324,7 +336,7 @@ class TestTestCharacterizeMark:
         from mcp_tools.cold_start_tools import register
 
         tools = register(fake, {"_validate_project_root": lambda p: p})
-        result = json.loads(
+        result = _load_tool_result(
             tools["test_characterize_mark"](
                 path=str(tmp_path), test_file="x.py", maturity="invalid"
             )

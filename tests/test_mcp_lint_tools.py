@@ -23,6 +23,14 @@ from mcp_tools.lint_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json, os
+    r = json.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return json.loads(f.read())
+    return r
+
+
 # ── _FakeMCP for registering tools ──────────────────────────────────
 
 
@@ -236,7 +244,7 @@ class TestLintFiles:
         f = tmp_path / "a.py"
         f.touch()
         tools = _register()
-        result = json.loads(tools["lint_files"](files=[str(f)]))
+        result = _load_tool_result(tools["lint_files"](files=[str(f)]))
         assert result["run_id"] == "r1"
 
     def test_raises_when_no_files(self):
@@ -255,7 +263,7 @@ class TestLintFiles:
         tools = _register(
             _resolve_files=lambda files, root: (["/a.py"], ["/b.py"]),
         )
-        result = json.loads(tools["lint_files"](files=["/a.py", "/b.py"]))
+        result = _load_tool_result(tools["lint_files"](files=["/a.py", "/b.py"]))
         assert result["missing_files"] == ["/b.py"]
 
     def test_explicit_project_root(self, tmp_path):
@@ -276,7 +284,7 @@ class TestLintFiles:
 class TestLintProject:
     def test_basic_invocation(self, tmp_path):
         tools = _register()
-        result = json.loads(tools["lint_project"](path=str(tmp_path)))
+        result = _load_tool_result(tools["lint_project"](path=str(tmp_path)))
         assert "run_id" in result
         assert result["total_python_files"] == 1
 
@@ -318,7 +326,7 @@ class TestLintGetDetails:
     def test_all_severities(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1"))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1"))
             assert result["total_matching"] == 3
             assert len(result["issues"]) == 3
         finally:
@@ -327,7 +335,7 @@ class TestLintGetDetails:
     def test_filter_blocking(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", severity="blocking"))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1", severity="blocking"))
             assert result["total_matching"] == 1
             assert result["issues"][0]["severity"] == "blocking"
         finally:
@@ -336,7 +344,7 @@ class TestLintGetDetails:
     def test_filter_warning(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", severity="warning"))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1", severity="warning"))
             assert result["total_matching"] == 1
         finally:
             p.stop()
@@ -344,7 +352,7 @@ class TestLintGetDetails:
     def test_filter_informational(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", severity="informational"))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1", severity="informational"))
             assert result["total_matching"] == 1
         finally:
             p.stop()
@@ -376,7 +384,7 @@ class TestLintGetDetails:
             }
         )
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", max_issues=5))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1", max_issues=5))
             assert result["total_matching"] == 20
             assert len(result["issues"]) == 5
             assert result["truncated"] == 15
@@ -386,7 +394,7 @@ class TestLintGetDetails:
     def test_include_recurrence(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1", include_recurrence=True))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1", include_recurrence=True))
             assert result["recurrence"] == {"E1": 3}
         finally:
             p.stop()
@@ -394,7 +402,7 @@ class TestLintGetDetails:
     def test_linter_diagnostics_included(self):
         tools, p = self._make_tools()
         try:
-            result = json.loads(tools["lint_get_details"](run_id="r1"))
+            result = _load_tool_result(tools["lint_get_details"](run_id="r1"))
             assert result["linter_diagnostics"] == {"ruff": "ok"}
         finally:
             p.stop()
@@ -438,7 +446,7 @@ class TestLintStatus:
             ),
         ):
             tools = _register()
-            result = json.loads(tools["lint_status"](path=str(tmp_path)))
+            result = _load_tool_result(tools["lint_status"](path=str(tmp_path)))
 
         assert result["version"] == "0.2.0"
         assert "ruff" in result["linters"]
@@ -473,7 +481,7 @@ class TestAuditToolVersions:
             mock.patch("lintgate.state.log_version_event"),
         ):
             tools = _register()
-            result = json.loads(tools["audit_tool_versions"](path=str(tmp_path)))
+            result = _load_tool_result(tools["audit_tool_versions"](path=str(tmp_path)))
 
         assert result["summary"]["issue_count"] == 0
         assert result["issue_count"] == 0
@@ -493,7 +501,7 @@ class TestLintFix:
         )
         with mock.patch("lintgate.lint_fixer.run_safe_fixes", return_value=fix_result):
             tools = _register()
-            result = json.loads(tools["lint_fix"](path=str(tmp_path)))
+            result = _load_tool_result(tools["lint_fix"](path=str(tmp_path)))
         assert result["dry_run"] is True
 
     def test_fix_with_files(self, tmp_path):
@@ -504,7 +512,7 @@ class TestLintFix:
         )
         with mock.patch("lintgate.lint_fixer.run_safe_fixes", return_value=fix_result):
             tools = _register()
-            result = json.loads(tools["lint_fix"](files=[str(f)], dry_run=False))
+            result = _load_tool_result(tools["lint_fix"](files=[str(f)], dry_run=False))
         assert result["dry_run"] is False
 
     def test_fix_no_files_no_path_raises(self):
@@ -514,5 +522,5 @@ class TestLintFix:
 
     def test_fix_no_python_files_found(self, tmp_path):
         tools = _register(_collect_python_files=lambda root: [])
-        result = json.loads(tools["lint_fix"](path=str(tmp_path)))
+        result = _load_tool_result(tools["lint_fix"](path=str(tmp_path)))
         assert result["error"] == "No Python files found"
