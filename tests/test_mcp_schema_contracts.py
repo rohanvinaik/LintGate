@@ -15,6 +15,14 @@ import pytest
 from lintgate.state import generate_run_id, load_run_details, save_run_details
 from lintgate.types import LintIssue
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── next_actions Schema ─────────────────────────────────────────────────
 
 
@@ -124,7 +132,7 @@ class TestOutputModeContracts:
 
         data = {"run_id": "abc", "blocking": 0, "nested": {"key": "value"}}
         result = _json_dumps(data, "compact")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed == data
 
     def test_standard_json_is_valid(self) -> None:
@@ -132,7 +140,7 @@ class TestOutputModeContracts:
 
         data = {"run_id": "abc", "blocking": 0}
         result = _json_dumps(data, "standard")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed == data
 
     def test_full_json_is_valid(self) -> None:
@@ -140,7 +148,7 @@ class TestOutputModeContracts:
 
         data = {"run_id": "abc", "blocking": 0}
         result = _json_dumps(data, "full")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed == data
 
     def test_compact_has_no_whitespace_padding(self) -> None:
@@ -168,7 +176,7 @@ class TestOutputModeContracts:
         # But _json_dumps with unknown mode should still produce valid JSON
         data = {"test": True}
         result = _json_dumps(data, "unknown_mode")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed == data
 
 
@@ -237,15 +245,14 @@ class TestBehaviorMcpContracts:
                     "iBSS must be signed by Apple",
                 ],
             )
-            payload = json.loads(raw)
-
+            payload = _load_tool_result(raw)
         assert payload["coverage"]["prediction_recall"] <= 1.0
         assert payload["coverage"]["prediction_recall"] == 1.0
 
     def test_controlplane_status_lists_behavior_channel(self, tmp_path: Path) -> None:
         from mcp_server import controlplane_status
 
-        payload = json.loads(controlplane_status(path=str(tmp_path)))
+        payload = _load_tool_result(controlplane_status(path=str(tmp_path)))
         assert "behavior" in payload["available_channels"]
         assert "structure" in payload["available_channels"]
 
@@ -354,7 +361,7 @@ class TestBehaviorMcpContracts:
             save_session(session)
 
             raw = controlplane_run(path=str(tmp_path), channels="behavior")
-            payload = json.loads(raw)
+            payload = _load_tool_result(raw)
             # Compact output should be serialized without pretty indent.
             assert "\n  " not in raw
 

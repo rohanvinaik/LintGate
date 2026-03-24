@@ -18,6 +18,14 @@ from mcp_tools._mutation_tools_impl import (
     impl_prescribe_tests,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -143,7 +151,7 @@ class TestImplDecompose:
                 ],
             }
         ]
-        result = json.loads(impl_decompose(_make_helpers(), ".", "f.py", None, "analyze"))
+        result = _load_tool_result(impl_decompose(_make_helpers(), ".", "f.py", None, "analyze"))
         assert result["candidates"] == []
 
     @patch("mcp_tools._mutation_tools_impl.iter_cached_states")
@@ -160,7 +168,7 @@ class TestImplDecompose:
                 ],
             }
         ]
-        result = json.loads(impl_decompose(_make_helpers(), ".", "f.py", None, "analyze"))
+        result = _load_tool_result(impl_decompose(_make_helpers(), ".", "f.py", None, "analyze"))
         assert len(result["candidates"]) == 1
         assert result["candidates"][0]["function"] == "f.py::complex_func"
         assert "VALUE" in result["candidates"][0]["surviving_categories"]
@@ -175,7 +183,7 @@ class TestImplGetState:
     @patch("mcp_tools._mutation_tools_impl.get_cache_dir")
     def test_no_cache_dir(self, mock_cache_dir):
         mock_cache_dir.return_value = Path("/nonexistent/cache/dir")
-        result = json.loads(impl_get_state(_make_helpers(), ".", None, None))
+        result = _load_tool_result(impl_get_state(_make_helpers(), ".", None, None))
         assert "No mutation data yet" in result["note"]
         assert "next_actions" in result
 
@@ -186,7 +194,7 @@ class TestImplGetState:
         cache_dir.exists.return_value = True
         mock_cache_dir.return_value = cache_dir
         mock_states.return_value = [{"function_key": "f.py::add", "survival_rate": 0.5}]
-        result = json.loads(impl_get_state(_make_helpers(), ".", "f.py", None))
+        result = _load_tool_result(impl_get_state(_make_helpers(), ".", "f.py", None))
         assert result["total_functions"] == 1
         assert len(result["states"]) == 1
 
@@ -200,7 +208,7 @@ class TestImplPrescribe:
     def test_no_states(self, mock_cache_dir, mock_states):
         mock_cache_dir.return_value = Path("/cache")
         mock_states.return_value = []
-        result = json.loads(impl_prescribe(_make_helpers(), ".", None, None))
+        result = _load_tool_result(impl_prescribe(_make_helpers(), ".", None, None))
         assert "No mutation data" in result["note"]
 
     @patch("mcp_tools._mutation_tools_impl.iter_cached_states")
@@ -215,7 +223,7 @@ class TestImplPrescribe:
                 ],
             }
         ]
-        result = json.loads(impl_prescribe(_make_helpers(), ".", "mod.py", None))
+        result = _load_tool_result(impl_prescribe(_make_helpers(), ".", "mod.py", None))
         assert result["total_prescriptions"] == 1
         assert result["prescriptions"][0]["category"] == "VALUE"
         assert len(result["next_actions"]) >= 1
@@ -232,7 +240,7 @@ class TestImplPrescribe:
                 ],
             }
         ]
-        result = json.loads(impl_prescribe(_make_helpers(), ".", None, None))
+        result = _load_tool_result(impl_prescribe(_make_helpers(), ".", None, None))
         assert result["total_prescriptions"] == 0
         assert result["next_actions"] == []
 
@@ -260,7 +268,7 @@ class TestImplPrescribeTests:
             "test_name": "test_func_value_mutation",
             "skeleton": "def test_func_value_mutation(): ...",
         }
-        result = json.loads(impl_prescribe_tests(_make_helpers(), ".", "mod.py", None))
+        result = _load_tool_result(impl_prescribe_tests(_make_helpers(), ".", "mod.py", None))
         assert len(result["skeletons"]) == 1
         assert result["skeletons"][0]["category"] == "VALUE"
         assert len(result["next_actions"]) >= 1
@@ -277,7 +285,7 @@ class TestImplPrescribeTests:
                 ],
             }
         ]
-        result = json.loads(impl_prescribe_tests(_make_helpers(), ".", "mod.py", None))
+        result = _load_tool_result(impl_prescribe_tests(_make_helpers(), ".", "mod.py", None))
         assert result["skeletons"] == []
         assert result["next_actions"] == []
 
@@ -289,7 +297,7 @@ class TestImplClearState:
     @patch("mcp_tools._mutation_tools_impl.get_cache_dir")
     def test_no_cache_dir(self, mock_cache_dir):
         mock_cache_dir.return_value = Path("/nonexistent")
-        result = json.loads(impl_clear_state(_make_helpers(), ".", None))
+        result = _load_tool_result(impl_clear_state(_make_helpers(), ".", None))
         assert "No mutation state to clear" in result["note"]
 
     def test_clears_json_files(self, tmp_path):
@@ -300,7 +308,7 @@ class TestImplClearState:
         (cache_dir / "scheduler_state.json").write_text("{}")
 
         with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
-            result = json.loads(impl_clear_state(_make_helpers(), ".", None))
+            result = _load_tool_result(impl_clear_state(_make_helpers(), ".", None))
 
         assert result["cleared"] == 2
         assert (cache_dir / "scheduler_state.json").exists()  # preserved
@@ -312,7 +320,7 @@ class TestImplClearState:
         (cache_dir / "b.json").write_text('{"function_key": "other.py::g"}')
 
         with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
-            result = json.loads(impl_clear_state(_make_helpers(), ".", "target.py"))
+            result = _load_tool_result(impl_clear_state(_make_helpers(), ".", "target.py"))
 
         assert result["cleared"] == 1
         assert not (cache_dir / "a.json").exists()

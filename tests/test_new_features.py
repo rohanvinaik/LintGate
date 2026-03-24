@@ -14,6 +14,14 @@ from lintgate.linters.context_rule_checker import ContextRuleChecker
 from lintgate.types import AggregatedResult, LinterContext, LintIssue
 from lintgate.versioning import collect_required_version_specs, inspect_tool_versions
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def test_wheel_packaging_includes_mcp_tools_package() -> None:
     pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
@@ -144,8 +152,7 @@ def test_audit_tool_versions_persists_and_returns_summary(tmp_path, monkeypatch)
     monkeypatch.setattr("lintgate.state.log_version_event", fake_log_version_event)
 
     out = mcp_server.audit_tool_versions(path=str(tmp_path), auto_fix=True)  # type: ignore[attr-defined]
-    payload = json.loads(out)
-
+    payload = _load_tool_result(out)
     assert payload["summary"]["issue_count"] == 1
     assert payload["summary"]["post_fix_issue_count"] == 0
     assert captured["saved_project"] == str(tmp_path)

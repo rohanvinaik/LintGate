@@ -16,6 +16,14 @@ from mcp_tools._test_regeneration_apply import (
     persist_validation,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ---------------------------------------------------------------------------
 # persist_validation
 # ---------------------------------------------------------------------------
@@ -195,7 +203,7 @@ class TestImplRebuildApply:
             return_value=None,
         ):
             result_str = impl_rebuild_apply(helpers, str(tmp_path))
-            result = json.loads(result_str)
+            result = _load_tool_result(result_str)
             assert "error" in result
             assert "manifest" in result["error"].lower()
 
@@ -207,7 +215,7 @@ class TestImplRebuildApply:
             return_value=plan,
         ):
             result_str = impl_rebuild_apply(helpers, str(tmp_path))
-            result = json.loads(result_str)
+            result = _load_tool_result(result_str)
             assert "error" in result
             assert "validation" in result["error"].lower()
 
@@ -229,7 +237,7 @@ class TestImplRebuildApply:
             return_value=plan,
         ):
             result_str = impl_rebuild_apply(helpers, str(tmp_path), dry_run=True)
-            result = json.loads(result_str)
+            result = _load_tool_result(result_str)
             assert result["dry_run"] is True
             assert result["quarantined"] == 0
             assert result["promoted"] == 0

@@ -9,6 +9,14 @@ import json
 import textwrap
 from unittest import mock
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── controlplane_tools helpers ────────────────────────────────────────
 
 
@@ -295,7 +303,7 @@ class TestRegisterControlplaneToolClosures:
             ),
             mock.patch("os.path.exists", return_value=True),
         ):
-            result = json.loads(skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py"))
+            result = _load_tool_result(skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py"))
             assert result["source_file"] == "/tmp/proj/foo.py"
 
 
@@ -432,7 +440,7 @@ class TestRegisterOnboardingClaudeMdExists:
                 return_value=qi_result,
             ),
         ):
-            result = json.loads(getting_started(path=str(tmp_path)))
+            result = _load_tool_result(getting_started(path=str(tmp_path)))
 
         actions = result.get("next_actions", [])
         bootstrap_actions = [a for a in actions if a.get("tool") == "bootstrap_context_files"]

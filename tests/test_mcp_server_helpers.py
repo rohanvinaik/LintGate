@@ -31,6 +31,14 @@ from mcp_server import (
     _validate_tier,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -1438,7 +1446,7 @@ class TestModelProfileMcp:
                 answers=self._V2_ANSWERS,
             )
         )
-        status = json.loads(profile_status(path=str(tmp_path), model_id="claude-opus-4"))
+        status = _load_tool_result(profile_status(path=str(tmp_path), model_id="claude-opus-4"))
 
         assert first["probe_runs"] == 1
         assert second["probe_runs"] == 2
@@ -1548,8 +1556,7 @@ def test_tool_applicability_guide_schema():
     guide_func = tools["tool_applicability_guide"]
 
     result_str = guide_func()
-    guide = json.loads(result_str)
-
+    guide = _load_tool_result(result_str)
     core_tools = [
         "controlplane_run",
         "lint_files",
@@ -1578,8 +1585,7 @@ def test_tool_applicability_guide_content():
     guide_func = tools["tool_applicability_guide"]
 
     result_str = guide_func()
-    guide = json.loads(result_str)
-
+    guide = _load_tool_result(result_str)
     assert "Every 3-5 tool uses" in guide["controlplane_run"]["cadence"]
     assert "After every edit" in guide["lint_files"]["cadence"]
     assert "Onboarding only" in guide["getting_started"]["cadence"]

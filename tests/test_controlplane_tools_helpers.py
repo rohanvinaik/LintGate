@@ -26,6 +26,14 @@ from mcp_tools.controlplane_tools import (
     _select_channels,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────
 
 
@@ -330,7 +338,7 @@ class TestImplGetDetails:
             raw = _impl_controlplane_get_details(
                 "r1", "lint", None, 10, ["findings"], _stub_helpers()
             )
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["total_matching"] == 1
         assert parsed["findings"][0]["channel"] == "lint"
 
@@ -347,7 +355,7 @@ class TestImplGetDetails:
             raw = _impl_controlplane_get_details(
                 "r1", None, "blocking", 10, ["findings"], _stub_helpers()
             )
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["total_matching"] == 0
         assert parsed["findings"] == []
 
@@ -364,7 +372,7 @@ class TestImplGetDetails:
             raw = _impl_controlplane_get_details(
                 "r1", None, None, 10, ["evidence"], _stub_helpers()
             )
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert "evidence" not in parsed  # empty evidence not included
 
     def test_repairs_section(self):
@@ -381,7 +389,7 @@ class TestImplGetDetails:
         }
         with mock.patch("lintgate.state.load_controlplane_run", return_value=details):
             raw = _impl_controlplane_get_details("r1", None, None, 10, ["repairs"], _stub_helpers())
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert len(parsed["repairs"]) == 1
         assert parsed["repairs"][0]["action_id"] == "fix1"
 
@@ -404,7 +412,7 @@ class TestImplGetDetails:
             raw = _impl_controlplane_get_details(
                 "r1", None, None, 10, ["channel_details"], _stub_helpers()
             )
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert "lint" in parsed["channel_details"]
         assert parsed["channel_details"]["lint"]["status"] == "fail"
 
@@ -505,5 +513,5 @@ class TestImplControlplaneRun:
             raw = _impl_controlplane_run(
                 "/tmp", "lint,bogus", "normal", None, None, _stub_helpers()
             )
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["unknown_channels"] == ["bogus"]

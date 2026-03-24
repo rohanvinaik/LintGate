@@ -19,6 +19,14 @@ from mcp_tools._onboarding_getting_started_impl import (
     _impl_tool_applicability_guide,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ---------------------------------------------------------------------------
 # _detect_mutation_guard
 # ---------------------------------------------------------------------------
@@ -286,7 +294,7 @@ class TestBuildNextActions:
 class TestImplToolApplicabilityGuide:
     def test_returns_json_string(self):
         result = _impl_tool_applicability_guide(helpers={})
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert "controlplane_run" in parsed
         assert "lint_files" in parsed
         assert parsed["getting_started"]["cadence"] == "Onboarding only."
@@ -310,7 +318,7 @@ class TestImplScaffoldConfig:
         mock_mod = mock_ot.return_value
         mock_mod._scaffold_config_yaml.return_value = "yaml: content"
         helpers = {"_validate_project_root": lambda p: str(tmp_path)}
-        result = json.loads(_impl_scaffold_config(helpers, str(tmp_path), write=False))
+        result = _load_tool_result(_impl_scaffold_config(helpers, str(tmp_path), write=False))
         assert result["status"] == "preview"
         assert result["yaml"] == "yaml: content"
 
@@ -319,7 +327,7 @@ class TestImplScaffoldConfig:
         mock_mod = mock_ot.return_value
         mock_mod._scaffold_config_yaml.return_value = "yaml: content"
         helpers = {"_validate_project_root": lambda p: str(tmp_path)}
-        result = json.loads(_impl_scaffold_config(helpers, str(tmp_path), write=True))
+        result = _load_tool_result(_impl_scaffold_config(helpers, str(tmp_path), write=True))
         assert result["status"] == "written"
         config_path = os.path.join(str(tmp_path), ".claude", "lintgate.yaml")
         assert os.path.isfile(config_path)
@@ -332,7 +340,7 @@ class TestImplScaffoldConfig:
         config_dir.mkdir()
         (config_dir / "lintgate.yaml").write_text("yaml: old")
         helpers = {"_validate_project_root": lambda p: str(tmp_path)}
-        result = json.loads(_impl_scaffold_config(helpers, str(tmp_path), write=False))
+        result = _load_tool_result(_impl_scaffold_config(helpers, str(tmp_path), write=False))
         assert result["status"] == "preview_existing"
         assert "message" in result
 

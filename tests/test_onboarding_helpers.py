@@ -32,6 +32,14 @@ from mcp_tools.quality_helpers import (
     _read_informational_bandit_codes,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # -- _parse_pyproject_metadata ------------------------------------------------
 
 
@@ -545,7 +553,7 @@ class TestRegister:
         ):
             raw = tools["getting_started"](path=str(tmp_path), reset=True)
             mock_reset.assert_called_once_with(str(tmp_path))
-            output = json.loads(raw)
+            output = _load_tool_result(raw)
             actions = output.get("startup_setup", {}).get("actions_applied", [])
             assert any(a.get("action") == "reset_dir" for a in actions)
 
@@ -570,7 +578,7 @@ class TestRegister:
             return_value=yaml_content,
         ):
             raw = tools["scaffold_config"](path=str(tmp_path), write=False)
-        output = json.loads(raw)
+        output = _load_tool_result(raw)
         assert output["status"] == "preview_existing"
         assert "already exists" in output.get("message", "")
 
@@ -589,7 +597,7 @@ class TestRegister:
             return_value=yaml_content,
         ):
             raw = tools["scaffold_config"](path=str(tmp_path), write=True)
-        output = json.loads(raw)
+        output = _load_tool_result(raw)
         assert output["status"] == "written"
         config_path = tmp_path / ".claude" / "lintgate.yaml"
         assert config_path.exists()
@@ -658,5 +666,5 @@ class TestRegisterGettingStartedBranch:
         (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
 
         raw = fn(path=str(tmp_path))
-        output = json.loads(raw)
+        output = _load_tool_result(raw)
         assert "project" in output or "guidance" in output or "status" in output

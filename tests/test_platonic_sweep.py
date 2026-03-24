@@ -5,6 +5,14 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def _make_helpers(project_root="/tmp/project"):
     return {
@@ -53,7 +61,7 @@ class TestPlatonicSweep:
             }
         )
         helpers = _make_helpers(str(tmp_path))
-        result = json.loads(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
+        result = _load_tool_result(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
         assert "scheduler_status" in result
         assert result["scheduler_status"]["completed_count"] >= 0
 
@@ -63,7 +71,7 @@ class TestPlatonicSweep:
 
         mock_rollup.return_value = _mock_rollup(hotspot_files=[])
         helpers = _make_helpers(str(tmp_path))
-        result = json.loads(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
+        result = _load_tool_result(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
         assert result["functions_swept"] == 0
 
     @patch("lintgate.testing.platonic_selection.assess_file")
@@ -80,7 +88,7 @@ class TestPlatonicSweep:
             }
         )
         helpers = _make_helpers(str(tmp_path))
-        result = json.loads(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.001))
+        result = _load_tool_result(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.001))
         assert result["elapsed_s"] < 5  # Should respect budget
 
     @patch("lintgate.testing.platonic_selection.assess_file")
@@ -91,7 +99,7 @@ class TestPlatonicSweep:
         mock_rollup.return_value = _mock_rollup(hotspot_files=[{"file": "bad.py"}])
         mock_assess.return_value = _mock_assessment(veto=True)
         helpers = _make_helpers(str(tmp_path))
-        result = json.loads(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
+        result = _load_tool_result(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
         assert result["functions_swept"] == 0
 
     @patch("lintgate.specification.project_rollup.rollup_project")
@@ -118,7 +126,7 @@ class TestPlatonicSweep:
 
         mock_rollup.return_value = _mock_rollup(hotspot_files=[])
         helpers = _make_helpers(str(tmp_path))
-        result = json.loads(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
+        result = _load_tool_result(impl_platonic_sweep(helpers, str(tmp_path), budget_s=0.01))
         assert result["resumed"] is True
 
     @patch("lintgate.testing.platonic_selection.assess_file")

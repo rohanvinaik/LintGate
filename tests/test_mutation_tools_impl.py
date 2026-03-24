@@ -19,6 +19,14 @@ from mcp_tools._mutation_tools_impl import (
     impl_run_sampling,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── helpers ────────────────────────────────────────────────────────
 
 
@@ -93,7 +101,7 @@ def test_run_sampling_function_not_found(mock_resolve):
     mock_resolve.return_value = ("/test/project/foo.py", None, "Function 'bar' not found")
     helpers = _make_helpers()
     result_raw = impl_run_sampling(helpers, "/test", "foo.py", "bar", 1000.0)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["error"] == "Function 'bar' not found"
 
 
@@ -118,7 +126,7 @@ def test_run_sampling_success(mock_resolve, mock_run, mock_ctx):
     mock_run.return_value = [{"func": "add", "survived": 0}]
     helpers = _make_helpers()
     result_raw = impl_run_sampling(helpers, "/test", "foo.py", None, 1000.0)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["functions_sampled"] == 1
     assert result["tests_discovered"] == 2
     assert "next_actions" in result
@@ -132,7 +140,7 @@ def test_run_full_function_not_found(mock_resolve):
     mock_resolve.return_value = ("/test/project/foo.py", None, "Function 'baz' not found")
     helpers = _make_helpers()
     result_raw = impl_run_full(helpers, "/test", "foo.py", "baz")
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["error"] == "Function 'baz' not found"
 
 
@@ -147,7 +155,7 @@ def test_run_full_success(mock_resolve, mock_run, mock_ctx, mock_analysis):
     mock_run.return_value = [{"func": "add"}]
     helpers = _make_helpers()
     result_raw = impl_run_full(helpers, "/test", "foo.py", None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["functions_profiled"] == 1
     assert result["analysis"] == {"ok": True}
     assert "next_actions" in result
@@ -192,7 +200,7 @@ def test_run_full_bare_method_uses_qualified_owner_and_kills_mutants(tmp_path):
     )
 
     result_raw = impl_run_full(helpers, str(tmp_path), "widget.py", "to_dict")
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     entry = result["results"][0]
 
     assert entry["function_key"] == "widget.py::Widget.to_dict"
@@ -209,7 +217,7 @@ def test_get_state_no_cache_dir(mock_cache):
     mock_cache.return_value = Path("/nonexistent/cache/dir")
     helpers = _make_helpers()
     result_raw = impl_get_state(helpers, "/test", None, None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["note"] == "No mutation data yet"
     assert "next_actions" in result
 
@@ -226,7 +234,7 @@ def test_get_state_with_data(mock_cache, mock_iter):
         ]
         helpers = _make_helpers()
         result_raw = impl_get_state(helpers, "/test", "mod.py", None)
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert result["total_functions"] == 2
         assert len(result["states"]) == 2
 
@@ -240,7 +248,7 @@ def test_get_state_empty_cache(mock_cache, mock_iter):
         mock_iter.return_value = []
         helpers = _make_helpers()
         result_raw = impl_get_state(helpers, "/test", None, None)
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert result["total_functions"] == 0
         assert result["states"] == []
 
@@ -318,7 +326,7 @@ def test_collect_prescriptions_no_survivors():
 def test_prescribe_no_data(mock_cache, mock_iter):
     helpers = _make_helpers()
     result_raw = impl_prescribe(helpers, "/test", None, None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["note"] == "No mutation data — run sampling first"
 
 
@@ -334,7 +342,7 @@ def test_prescribe_with_data(mock_cache, mock_iter, mock_presc):
     ]
     helpers = _make_helpers()
     result_raw = impl_prescribe(helpers, "/test", "x.py", None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["total_prescriptions"] == 1
     assert result["prescriptions"][0]["category"] == "VALUE"
     assert "next_actions" in result
@@ -348,7 +356,7 @@ def test_prescribe_with_data(mock_cache, mock_iter, mock_presc):
 def test_decompose_no_candidates(mock_cache, mock_iter):
     helpers = _make_helpers()
     result_raw = impl_decompose(helpers, "/test", "foo.py", None, "suggest")
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["mode"] == "suggest"
     assert result["candidates"] == []
 
@@ -368,7 +376,7 @@ def test_decompose_with_candidates(mock_cache, mock_iter):
     ]
     helpers = _make_helpers()
     result_raw = impl_decompose(helpers, "/test", "mod.py", None, "suggest")
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert len(result["candidates"]) == 1
     assert result["candidates"][0]["function"] == "mod.py::complex_fn"
     assert "VALUE" in result["candidates"][0]["surviving_categories"]
@@ -390,7 +398,7 @@ def test_decompose_single_survivor_not_candidate(mock_cache, mock_iter):
     ]
     helpers = _make_helpers()
     result_raw = impl_decompose(helpers, "/test", "mod.py", None, "suggest")
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["candidates"] == []
 
 
@@ -402,7 +410,7 @@ def test_decompose_single_survivor_not_candidate(mock_cache, mock_iter):
 def test_prescribe_tests_no_data(mock_cache, mock_iter):
     helpers = _make_helpers()
     result_raw = impl_prescribe_tests(helpers, "/test", "foo.py", None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["skeletons"] == []
 
 
@@ -427,7 +435,7 @@ def test_prescribe_tests_with_survivors(mock_cache, mock_iter, mock_skel):
     }
     helpers = _make_helpers()
     result_raw = impl_prescribe_tests(helpers, "/test", "m.py", None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert len(result["skeletons"]) == 1
     assert result["skeletons"][0]["category"] == "VALUE"
     assert "next_actions" in result
@@ -464,8 +472,7 @@ def test_prescribe_tests_fills_value_from_golden(mock_cache, mock_iter, mock_res
 
     helpers = _make_helpers()
     result_raw = impl_prescribe_tests(helpers, "/test", "pkg/mod.py", None)
-    result = json.loads(result_raw)
-
+    result = _load_tool_result(result_raw)
     assert len(result["skeletons"]) == 1
     skeleton = result["skeletons"][0]
     assert skeleton["source"] == "golden_capture"
@@ -505,8 +512,7 @@ def test_prescribe_tests_golden_capture_flag(mock_cache, mock_iter, mock_resolve
 
     helpers = _make_helpers()
     result_raw = impl_prescribe_tests(helpers, "/test", "pkg/mod.py", None)
-    result = json.loads(result_raw)
-
+    result = _load_tool_result(result_raw)
     by_cat = {s["category"]: s for s in result["skeletons"]}
     # VALUE skeleton should have golden_capture_used=True
     assert by_cat["VALUE"]["golden_capture_used"] is True
@@ -533,7 +539,7 @@ def test_prescribe_tests_generic_skeleton_golden_flag(mock_cache, mock_iter, moc
     }
     helpers = _make_helpers()
     result_raw = impl_prescribe_tests(helpers, "/test", "m.py", None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert len(result["skeletons"]) == 1
     assert result["skeletons"][0]["golden_capture_used"] is False
 
@@ -546,7 +552,7 @@ def test_clear_state_no_cache(mock_cache):
     mock_cache.return_value = Path("/nonexistent/path")
     helpers = _make_helpers()
     result_raw = impl_clear_state(helpers, "/test", None)
-    result = json.loads(result_raw)
+    result = _load_tool_result(result_raw)
     assert result["note"] == "No mutation state to clear"
 
 
@@ -560,7 +566,7 @@ def test_clear_state_clears_files(tmp_path):
     with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
         helpers = _make_helpers()
         result_raw = impl_clear_state(helpers, "/test", None)
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
     assert result["cleared"] == 2
     assert (cache_dir / "scheduler_state.json").exists() is True
 
@@ -574,7 +580,7 @@ def test_clear_state_filters_by_file(tmp_path):
     with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
         helpers = _make_helpers()
         result_raw = impl_clear_state(helpers, "/test", "mod.py")
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
     assert result["cleared"] == 1
     assert (cache_dir / "func_b.json").exists() is True
 
@@ -587,5 +593,5 @@ def test_clear_state_handles_corrupt_json(tmp_path):
     with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
         helpers = _make_helpers()
         result_raw = impl_clear_state(helpers, "/test", "something.py")
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
     assert result["cleared"] == 1

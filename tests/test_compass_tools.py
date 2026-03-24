@@ -33,6 +33,14 @@ from mcp_tools.compass_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
@@ -1163,7 +1171,7 @@ class TestRegisterExact:
         }
         with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
             raw = tools["compass_update"](path="/p", write=True)
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         tools_suggested = [a["tool"] for a in result["next_actions"]]
         # write=True means no compass_update suggestion
         assert "compass_update" not in tools_suggested
@@ -1180,7 +1188,7 @@ class TestRegisterExact:
         }
         with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
             raw = tools["compass_update"](path="/p", write=False)
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         tools_suggested = [a["tool"] for a in result["next_actions"]]
         assert "compass_update" in tools_suggested
 
@@ -1194,7 +1202,7 @@ class TestRegisterExact:
         }
         with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
             raw = tools["compass_update"](path="/p", write=True)
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         tools_suggested = [a["tool"] for a in result["next_actions"]]
         assert "compass_interview" in tools_suggested
 

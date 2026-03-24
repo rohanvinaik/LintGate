@@ -26,6 +26,14 @@ from mcp_tools._platonic_impl import (
     impl_platonic_project,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def _make_helpers(project_root: str) -> dict[str, Any]:
     def _validate_project_root(path: str) -> str:
@@ -189,7 +197,7 @@ class TestRerouteManualContractCandidates:
 class TestPlatonicConverge:
     def test_file_not_found(self, tmp_path):
         helpers = _make_helpers(str(tmp_path))
-        result = json.loads(impl_platonic_converge(helpers, str(tmp_path), "missing.py"))
+        result = _load_tool_result(impl_platonic_converge(helpers, str(tmp_path), "missing.py"))
         assert "error" in result
 
     def test_no_eligible_targets(self, tmp_path):
@@ -210,7 +218,7 @@ class TestPlatonicConverge:
         }
 
         with patch("lintgate.testing.platonic_selection.assess_file", return_value=assessment):
-            result = json.loads(impl_platonic_converge(helpers, str(tmp_path), "mod.py"))
+            result = _load_tool_result(impl_platonic_converge(helpers, str(tmp_path), "mod.py"))
 
         assert result["state"] == "BLOCKED_NO_ELIGIBLE_TARGETS"
         assert result["status"] == "no_eligible_targets"
@@ -234,7 +242,7 @@ class TestPlatonicConverge:
         }
 
         with patch("lintgate.testing.platonic_selection.assess_file", return_value=assessment):
-            result = json.loads(impl_platonic_converge(helpers, str(tmp_path), "mod.py"))
+            result = _load_tool_result(impl_platonic_converge(helpers, str(tmp_path), "mod.py"))
 
         assert result["state"] == "NEEDS_DECOMPOSITION"
         assert result["primary_next_action"] == "extraction_plan"
@@ -461,7 +469,7 @@ class TestPlatonicProjectContinueApply:
                 return_value=json.dumps({"workflow_id": "wf1", "state": "PROFILING"}),
             ) as mock_converge,
         ):
-            result = json.loads(impl_platonic_project(helpers, str(tmp_path)))
+            result = _load_tool_result(impl_platonic_project(helpers, str(tmp_path)))
 
         assert result["workflow_id"] == "wf1"
         mock_converge.assert_called_once()
@@ -482,7 +490,7 @@ class TestPlatonicProjectContinueApply:
         )
         save_workflow(str(tmp_path), ".lintgate/platonic_workflows", record)
 
-        result = json.loads(impl_platonic_continue(helpers, str(tmp_path), "wf1"))
+        result = _load_tool_result(impl_platonic_continue(helpers, str(tmp_path), "wf1"))
         assert result["state"] == "READY_TO_APPLY"
         assert result["status"] == "terminal"
 
@@ -510,7 +518,7 @@ class TestPlatonicProjectContinueApply:
             "mcp_tools._platonic_impl.impl_platonic_converge",
             return_value=json.dumps({"workflow_id": "wf1", "state": "VALIDATING"}),
         ) as mock_converge:
-            result = json.loads(impl_platonic_continue(helpers, str(tmp_path), "wf1"))
+            result = _load_tool_result(impl_platonic_continue(helpers, str(tmp_path), "wf1"))
 
         assert result["state"] == "VALIDATING"
         assert mock_converge.call_args.kwargs["workflow_id"] == "wf1"
@@ -529,7 +537,7 @@ class TestPlatonicProjectContinueApply:
         )
         save_workflow(str(tmp_path), ".lintgate/platonic_workflows", record)
 
-        result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1"))
+        result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1"))
         assert result["state"] == "FAILED"
         assert result["reason_code"] == "APPLY_NOT_READY"
 
@@ -557,7 +565,7 @@ class TestPlatonicProjectContinueApply:
                 return_value=json.dumps({"dry_run": True, "actions": []}),
             ),
         ):
-            result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
+            result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
 
         assert result["state"] == "READY_TO_APPLY"
         assert result["apply_result"]["dry_run"] is True
@@ -587,7 +595,7 @@ class TestPlatonicProjectContinueApply:
                 return_value=json.dumps({"dry_run": False, "actions": [{"action": "promote"}]}),
             ),
         ):
-            result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=False))
+            result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=False))
 
         assert result["state"] == "CONVERGED"
         workflow = load_workflow(str(tmp_path), ".lintgate/platonic_workflows", "wf1")
@@ -791,7 +799,7 @@ class TestPlatonicContinueStepAware:
                 }
             ),
         ):
-            result = json.loads(impl_platonic_validate_only(helpers, str(tmp_path), "wf1", record))
+            result = _load_tool_result(impl_platonic_validate_only(helpers, str(tmp_path), "wf1", record))
 
         assert result["state"] == "PROFILING"
         assert result["reason_code"] == "VALIDATION_FAILED_REROUTE"
@@ -1063,7 +1071,7 @@ class TestWorkflowScopedApply:
         )
         save_workflow(str(tmp_path), ".lintgate/platonic_workflows", record)
 
-        result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
+        result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
         assert result["apply_result"]["dry_run"] is True
         assert len(result["apply_result"]["actions"]) == 1
         assert result["apply_result"]["actions"][0]["destination"] == "tests/test_mod.py"
@@ -1093,7 +1101,7 @@ class TestWorkflowScopedApply:
                 return_value=json.dumps({"dry_run": True, "actions": []}),
             ),
         ):
-            result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
+            result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
 
         assert result["apply_result"]["dry_run"] is True
 
@@ -1212,7 +1220,7 @@ class TestPartialSuccessSemantics:
             "mcp_tools._test_regeneration_apply.impl_rebuild_apply",
             return_value=json.dumps({"dry_run": True, "actions": []}),
         ):
-            result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
+            result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
 
         assert result.get("reason_code") != "STALE_VALIDATION"
         assert result.get("reason_code") != "APPLY_NOT_READY"
@@ -1938,7 +1946,7 @@ class TestApplyVacuousDetection:
         val_dir.mkdir(parents=True, exist_ok=True)
         (val_dir / "validation.json").write_text(json.dumps({"ready_to_apply": True}))
 
-        result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=False))
+        result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=False))
 
         assert result["state"] == "FAILED"
         assert result["reason_code"] == "APPLY_VACUOUS"
@@ -1974,7 +1982,7 @@ class TestApplyVacuousDetection:
         val_dir.mkdir(parents=True, exist_ok=True)
         (val_dir / "validation.json").write_text(json.dumps({"ready_to_apply": True}))
 
-        result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
+        result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=True))
 
         # Dry run returns preview, not failure
         assert result["state"] == "READY_TO_APPLY"
@@ -2005,7 +2013,7 @@ class TestApplyVacuousDetection:
                 return_value=json.dumps({"dry_run": False, "actions": [{"action": "promote"}]}),
             ),
         ):
-            result = json.loads(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=False))
+            result = _load_tool_result(impl_platonic_apply(helpers, str(tmp_path), "wf1", dry_run=False))
 
         assert result["state"] == "CONVERGED"
 
@@ -2092,7 +2100,7 @@ class TestValidateOnlyTerminalStates:
             "mcp_tools._test_regeneration_gates.impl_rebuild_validate",
             return_value=json.dumps({"error": "validation_boom"}),
         ):
-            result = json.loads(impl_platonic_continue(helpers, str(tmp_path), "wf1"))
+            result = _load_tool_result(impl_platonic_continue(helpers, str(tmp_path), "wf1"))
 
         assert result["state"] == "FAILED"
         assert result.get("primary_next_action") != "platonic_continue"

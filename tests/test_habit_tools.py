@@ -25,6 +25,14 @@ from mcp_tools.habit_tools import (
     register,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -251,11 +259,11 @@ class TestImplDeclareMode:
     """Tests for _impl_declare_mode."""
 
     def test_invalid_mode_returns_json_error(self, tmp_path):
-        result = json.loads(_impl_declare_mode(str(tmp_path), "turbo"))
+        result = _load_tool_result(_impl_declare_mode(str(tmp_path), "turbo"))
         assert result == {"error": "mode must be 'habit' or 'standard'"}
 
     def test_invalid_mode_exact_error_text(self, tmp_path):
-        result = json.loads(_impl_declare_mode(str(tmp_path), "invalid"))
+        result = _load_tool_result(_impl_declare_mode(str(tmp_path), "invalid"))
         assert result["error"] == "mode must be 'habit' or 'standard'"
 
     def test_habit_mode_returns_status_ok(self, tmp_path, monkeypatch):
@@ -275,7 +283,7 @@ class TestImplDeclareMode:
         monkeypatch.setattr("lintgate.state.log_metric", lambda *a, **kw: None)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_declare_mode(str(tmp_path), "habit"))
+        result = _load_tool_result(_impl_declare_mode(str(tmp_path), "habit"))
         assert result["status"] == "ok"
         assert result["mode"] == "habit"
         assert result["habit_score"] == 0.0
@@ -297,7 +305,7 @@ class TestImplDeclareMode:
         monkeypatch.setattr("lintgate.state.log_metric", lambda *a, **kw: None)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_declare_mode(str(tmp_path), "standard"))
+        result = _load_tool_result(_impl_declare_mode(str(tmp_path), "standard"))
         # state.active is False (default), so message says deactivated
         assert "deactivated" in result["message"]
 
@@ -343,7 +351,7 @@ class TestImplDeclareMode:
         monkeypatch.setattr("lintgate.state.log_metric", lambda d: logged_metrics.append(d))
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_declare_mode(str(tmp_path), "habit"))
+        result = _load_tool_result(_impl_declare_mode(str(tmp_path), "habit"))
         assert result["status"] == "ok"
         assert len(logged_metrics) == 0
 
@@ -367,7 +375,7 @@ class TestImplHabitStatus:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_status(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_status(str(tmp_path)))
         assert result["active"] is True
         assert result["habit_score"] == 0.65
         assert result["declared"] is True
@@ -403,7 +411,7 @@ class TestImplHabitStatus:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_status(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_status(str(tmp_path)))
         assert len(result["active_files"]) == 5
         assert result["active_files"][0] == "f0.py"
         assert result["active_files"][4] == "f4.py"
@@ -430,7 +438,7 @@ class TestImplHabitStatus:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_status(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_status(str(tmp_path)))
         assert result["habit_score"] == 0.123
 
 
@@ -469,7 +477,7 @@ class TestImplHabitCompact:
         monkeypatch.setattr("lintgate.state.log_metric", lambda *a, **kw: None)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_compact(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_compact(str(tmp_path)))
         assert result["snapshot"] == "ok"
         # Verify session_memory and compass were loaded
         assert captured["session_memory"] is not None
@@ -507,7 +515,7 @@ class TestImplHabitCompact:
         monkeypatch.setattr("lintgate.state.log_metric", lambda *a, **kw: None)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_compact(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_compact(str(tmp_path)))
         assert result["result"] == "with_theory"
         assert captured_kw["theory_pack"] == {"facets": ["core"]}
         assert captured_kw["last_lint_run"] == {"lint": "data"}
@@ -541,7 +549,7 @@ class TestImplHabitCompact:
         monkeypatch.setattr("lintgate.state.log_metric", lambda *a, **kw: None)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_compact(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_compact(str(tmp_path)))
         assert result["minimal"] is True
         assert captured_kw["theory_pack"] is None
 
@@ -579,13 +587,13 @@ class TestImplHabitConfigure:
         assert result["overrides_applied"]["compact_threshold"] == 0.9
 
         # In range
-        result = json.loads(_impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None))
         assert result["overrides_applied"]["compact_threshold"] == 0.5
 
     def test_enter_score_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, 0.1, None, None, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, 0.1, None, None, None, None))
         assert result["overrides_applied"]["enter_score"] == 0.3
 
         result = json.loads(
@@ -601,31 +609,31 @@ class TestImplHabitConfigure:
         )
         assert result["overrides_applied"]["exit_score"] == 0.1
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, 0.9, None, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, 0.9, None, None, None))
         assert result["overrides_applied"]["exit_score"] == 0.8
 
     def test_sustain_calls_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, 0, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, None, 0, None, None))
         assert result["overrides_applied"]["sustain_calls"] == 1
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, 50, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, None, 50, None, None))
         assert result["overrides_applied"]["sustain_calls"] == 20
 
     def test_token_api_interval_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, None, 1, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, None, None, 1, None))
         assert result["overrides_applied"]["token_api_interval"] == 5
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, None, 200, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, None, None, 200, None))
         assert result["overrides_applied"]["token_api_interval"] == 100
 
     def test_context_window_size_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, None, None, None, None, 100))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, None, None, None, 100))
         assert result["overrides_applied"]["context_window_size"] == 10000
 
         result = json.loads(
@@ -636,7 +644,7 @@ class TestImplHabitConfigure:
     def test_all_overrides_at_once(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), 0.6, 0.7, 0.4, 10, 30, 150000))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), 0.6, 0.7, 0.4, 10, 30, 150000))
         overrides = result["overrides_applied"]
         assert overrides["compact_threshold"] == 0.6
         assert overrides["enter_score"] == 0.7
@@ -663,7 +671,7 @@ class TestImplHabitConfigure:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), 0.5, None, None, None, None, None))
         assert result["status"] == "ok"
         assert len(saved) == 1
         assert session.behavior_compass["habit_config_overrides"]["compact_threshold"] == 0.5
@@ -692,7 +700,7 @@ class TestImplHabitConfigure:
         )
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_configure(str(tmp_path), None, 0.8, None, None, None, None))
+        result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, 0.8, None, None, None, None))
         assert result["status"] == "ok"
         assert len(saved_kw) == 1
         assert saved_kw[0]["config_overrides"]["existing"] == 1
@@ -716,7 +724,7 @@ class TestImplHabitBootstrap:
         monkeypatch.setitem(sys.modules, "mneme.ingest", None)
         monkeypatch.setitem(sys.modules, "mneme.ingest.session_parser", None)
 
-        result = json.loads(_impl_habit_bootstrap(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_bootstrap(str(tmp_path)))
         assert "error" in result
         assert "mneme" in result["error"]
 
@@ -737,7 +745,7 @@ class TestImplHabitBootstrap:
         monkeypatch.setitem(sys.modules, "mneme.ingest.session_parser", mock_module)
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(_impl_habit_bootstrap(str(tmp_path)))
+        result = _load_tool_result(_impl_habit_bootstrap(str(tmp_path)))
         assert "error" in result
         assert "No sessions found" in result["error"]
 

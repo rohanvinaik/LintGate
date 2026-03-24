@@ -30,6 +30,14 @@ from lintgate.state import (
 )
 from lintgate.types import AggregatedResult, LintIssue
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -412,7 +420,7 @@ class TestLogMetric:
         jsonl_files = list(metrics.glob("*.jsonl"))
         assert len(jsonl_files) == 1
         line = jsonl_files[0].read_text().strip()
-        entry = json.loads(line)
+        entry = _load_tool_result(line)
         assert entry["event"] == "test"
         assert entry["value"] == 42
         assert "timestamp" in entry
@@ -422,7 +430,7 @@ class TestLogMetric:
         log_metric({"timestamp": "SHOULD_NOT_APPEAR", "x": 1})
         metrics = state_dirs["METRICS_DIR"]
         line = list(metrics.glob("*.jsonl"))[0].read_text().strip()
-        entry = json.loads(line)
+        entry = _load_tool_result(line)
         assert entry["timestamp"] != "SHOULD_NOT_APPEAR"
         assert entry["x"] == 1
 

@@ -20,6 +20,14 @@ from mcp_tools._behavior_impl import (
     impl_prediction_register,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── helpers ────────────────────────────────────────────────────────
 
 
@@ -503,7 +511,7 @@ class TestImplHygieneCheck:
             command_class="pytest_run", warnings=[], recommendation="Looks good"
         )
         helpers = _make_helpers()
-        result = json.loads(impl_hygiene_check(helpers, path="/test", planned_action="pytest"))
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="pytest"))
         assert result["status"] == "pass"
         assert result["command_class"] == "pytest_run"
         assert result["message"] == "Looks good"
@@ -561,7 +569,7 @@ class TestImplHygieneCheck:
     @patch("lintgate.state.log_feature_usage")
     def test_classify_exception_returns_no_checks_applicable(self, mock_log, mock_classify):
         helpers = _make_helpers()
-        result = json.loads(impl_hygiene_check(helpers, path="/test", planned_action="ls"))
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="ls"))
         assert result["status"] == "no_checks_applicable"
         assert "No hygiene checks applicable" in result["message"]
 
@@ -569,7 +577,7 @@ class TestImplHygieneCheck:
     @patch("lintgate.state.log_feature_usage")
     def test_classify_returns_none(self, mock_log, mock_classify):
         helpers = _make_helpers()
-        result = json.loads(impl_hygiene_check(helpers, path="/test", planned_action="ls"))
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="ls"))
         assert result["status"] == "no_checks_applicable"
 
     @patch("lintgate.hygiene.classify_and_check")
@@ -911,7 +919,7 @@ class TestImplPredictionRegister:
                 prediction_type="exit_code",
                 prediction_value=0,
             )
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "accuracy_note" in result["prediction_tracking"]
         assert "3 more" in result["prediction_tracking"]["accuracy_note"]
 
@@ -959,7 +967,7 @@ class TestImplPredictionRegister:
                 prediction_type="exit_code",
                 prediction_value=0,
             )
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "recent_outcomes" in result["prediction_tracking"]
         assert result["prediction_tracking"]["recent_outcomes"][0]["id"] == "p1"
 
@@ -1029,7 +1037,7 @@ class TestImplBehaviorPrecheck:
         helpers = _make_helpers()
 
         result_raw = impl_behavior_precheck(helpers, tools, path="/test", planned_action="pytest")
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert "deprecation" in result
         assert "behavior_precheck is deprecated" in result["deprecation"]["message"]
         assert "migration" in result["deprecation"]
@@ -1054,7 +1062,7 @@ class TestImplBehaviorPrecheck:
         result_raw = impl_behavior_precheck(
             helpers, tools, path="/test", planned_action="pip install foo"
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert "hygiene" in result
         assert result["hygiene"]["command_class"] == "pip_install"
         assert result["hygiene"]["recommendation"] == "create venv"
@@ -1070,7 +1078,7 @@ class TestImplBehaviorPrecheck:
         helpers = _make_helpers()
 
         result_raw = impl_behavior_precheck(helpers, tools, path="/test", planned_action="ls")
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert "hygiene" not in result
 
     def test_prediction_missing_type(self):
@@ -1092,7 +1100,7 @@ class TestImplBehaviorPrecheck:
             prediction_type=None,
             prediction_value=0,
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert "prediction_error" in result
         assert "prediction_type is required" in result["prediction_error"]["errors"][0]
 
@@ -1115,7 +1123,7 @@ class TestImplBehaviorPrecheck:
             prediction_type="exit_code",
             prediction_value=None,
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert "prediction_error" in result
         assert "prediction_value is required" in result["prediction_error"]["errors"][0]
 
@@ -1138,7 +1146,7 @@ class TestImplBehaviorPrecheck:
             prediction_type="invalid_type",
             prediction_value=0,
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert "prediction_error" in result
         assert "invalid" in result["prediction_error"]["errors"][0]
 
@@ -1168,7 +1176,7 @@ class TestImplBehaviorPrecheck:
             prediction_type="exit_code",
             prediction_value=0,
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert result["prediction_tracking"]["prediction_registered"] is True
         assert result["prediction_tracking"]["pending_count"] == 1
         tools["prediction_register"].assert_called_once_with(
@@ -1191,7 +1199,7 @@ class TestImplBehaviorPrecheck:
         helpers = _make_helpers()
 
         result_raw = impl_behavior_precheck(helpers, tools, path="/test", planned_action="ls")
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         # No prediction_tracking or prediction_error
         assert "prediction_error" not in result
 
@@ -1217,7 +1225,7 @@ class TestImplBehaviorPrecheck:
             prediction_type="exit_code",
             prediction_value=0,
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         # prediction_registered flag should NOT be present
         pt = result.get("prediction_tracking", {})
         assert pt.get("prediction_registered") is not True
@@ -1242,7 +1250,7 @@ class TestImplBehaviorPrecheck:
             prediction_type=None,
             prediction_value=None,
         )
-        result = json.loads(result_raw)
+        result = _load_tool_result(result_raw)
         assert len(result["prediction_error"]["errors"]) == 2
 
     def test_constraint_check_forwarded_with_known_constraints(self):
@@ -1308,8 +1316,7 @@ class TestImplGlobalMemoryStatus:
         mock_profile.return_value = self._make_profile()
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
-
+        result = _load_tool_result(raw)
         assert result["scope"] == "project"
         assert result["enabled"] is True
         assert result["session_count"] == 5
@@ -1322,7 +1329,7 @@ class TestImplGlobalMemoryStatus:
     def test_returns_error_when_no_config(self, mock_config):
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "error" in result
         assert "not configured" in result["error"]
 
@@ -1342,7 +1349,7 @@ class TestImplGlobalMemoryStatus:
         )
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "approach_cycle" in result["nudge_outcomes"]
         assert result["nudge_outcomes"]["approach_cycle"]["acceptance_rate"] == 0.75
         # zero-total nudge outcomes should be excluded
@@ -1359,7 +1366,7 @@ class TestImplGlobalMemoryStatus:
         mock_profile.return_value = self._make_profile(intent_ratios={"debug": 30, "implement": 70})
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         ratios = result["intent_ratios_normalized"]
         assert ratios["implement"] == 0.7
         assert ratios["debug"] == 0.3
@@ -1375,7 +1382,7 @@ class TestImplGlobalMemoryStatus:
         mock_profile.return_value = self._make_profile(intent_ratios={})
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["intent_ratios_normalized"] == {}
 
     @patch(
@@ -1397,7 +1404,7 @@ class TestImplGlobalMemoryStatus:
         )
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         transfer = result["transfer_telemetry"]
         assert transfer["latest_transfer_packet"] == {"type": "handoff"}
         assert transfer["resolutions_available"] == 2
@@ -1421,7 +1428,7 @@ class TestImplGlobalMemoryStatus:
         )
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         transfer = result["transfer_telemetry"]
         assert transfer["latest_transfer_packet"] is None
         assert transfer["packet_age_hours"] is None
@@ -1437,7 +1444,7 @@ class TestImplGlobalMemoryStatus:
         mock_profile.return_value = self._make_profile()
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["transfer_telemetry"] == {}
 
     @patch(
@@ -1453,7 +1460,7 @@ class TestImplGlobalMemoryStatus:
         )
         helpers = _make_helpers()
         raw = impl_global_memory_status(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["computed_bias_adjustments"]["approach_cycle"] == 0.1235
 
 
@@ -1470,7 +1477,7 @@ class TestImplGlobalMemoryReset:
     def test_returns_reset_status(self, mock_save):
         helpers = _make_helpers()
         raw = impl_global_memory_reset(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["status"] == "reset"
         assert result["scope"] == "project"
         assert "reset to empty state" in result["message"]
@@ -1483,7 +1490,7 @@ class TestImplGlobalMemoryReset:
     def test_profile_path_in_output(self, mock_save):
         helpers = _make_helpers()
         raw = impl_global_memory_reset(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["profile_path"] == "/test/profile.json"
 
     @patch(
@@ -1506,7 +1513,7 @@ class TestImplGlobalMemoryReset:
     def test_scope_note_present(self, mock_save):
         helpers = _make_helpers()
         raw = impl_global_memory_reset(helpers, path="/test")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "scope_note" in result
         assert "Cross-session" in result["scope_note"]
 
@@ -1517,7 +1524,7 @@ class TestImplGlobalMemoryReset:
     def test_project_root_is_absolute(self, mock_save):
         helpers = _make_helpers()
         raw = impl_global_memory_reset(helpers, path=".")
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         # project_root should be an absolute path
         import os
 

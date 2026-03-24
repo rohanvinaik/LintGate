@@ -8,6 +8,14 @@ import tempfile
 
 import pytest
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 @pytest.fixture()
 def temp_project():
@@ -70,8 +78,7 @@ class TestAnalyzeTestStrength:
         mcp = FakeMCP()
         tools = register(mcp, helpers)
         result_str = tools["analyze_test_strength"](path=temp_project)
-        result = json.loads(result_str)
-
+        result = _load_tool_result(result_str)
         assert "summary" in result or "error" in result or "note" in result
         if "error" not in result and "note" not in result:
             assert "mutation_ci_context" in result
@@ -90,7 +97,7 @@ class TestAnalyzeTestStrength:
         mcp = FakeMCP()
         tools = register(mcp, helpers)
         result_str = tools["analyze_test_strength"](path=temp_project, function_filter="add")
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert "error" not in result
 
     def test_zero_mapping_hints(self, helpers):
@@ -120,8 +127,7 @@ class TestAnalyzeTestStrength:
             mcp = FakeMCP()
             tools = register(mcp, helpers)
             result_str = tools["analyze_test_strength"](path=tmpdir)
-            result = json.loads(result_str)
-
+            result = _load_tool_result(result_str)
             assert "note" in result
             assert "No mapped functions analyzed" in result["note"]
             assert "diagnostics" in result
@@ -138,7 +144,7 @@ class TestAnalyzeTestStrength:
         mcp = FakeMCP()
         tools = register(mcp, helpers)
         result_str = tools["analyze_test_strength"](path=temp_project, file_filter="calculator")
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert "error" not in result
         assert "calculator.py" in str(result)
         # Verify filtering actually runs
@@ -157,7 +163,7 @@ class TestAnalyzeTestStrength:
         mcp = FakeMCP()
         tools = register(mcp, helpers)
         result_str = tools["analyze_test_strength"](path=temp_project, file_filter="calc")
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert "filter_applied" in result
         assert result["filter_applied"]["file"] == "calc"
 
@@ -173,7 +179,7 @@ class TestAnalyzeTestStrength:
         result_str = tools["analyze_test_strength"](
             path=temp_project, file_filter="calc", function_filter="add"
         )
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert "filter_applied" in result
         assert result["filter_applied"]["file"] == "calc"
         assert result["filter_applied"]["function"] == "add"
@@ -195,8 +201,7 @@ class TestAnalyzeTestStrength:
         result_str = tools["analyze_test_strength"](
             path=temp_project, file_filter="nonexistent_file"
         )
-        result = json.loads(result_str)
-
+        result = _load_tool_result(result_str)
         assert "error" not in result
         assert "note" not in result
         assert len(result.get("top_vulnerable", [])) == 0
@@ -220,8 +225,7 @@ class TestInspectTestAssertions:
         tools = register(mcp, helpers)
         test_file = os.path.join(temp_project, "tests", "test_calculator.py")
         result_str = tools["inspect_test_assertions"](path=temp_project, test_file=test_file)
-        result = json.loads(result_str)
-
+        result = _load_tool_result(result_str)
         assert "test_functions" in result
         assert "summary" in result
         assert result["summary"]["total_assertions"] >= 1
@@ -245,7 +249,7 @@ class TestInspectTestAssertions:
         mcp = FakeMCP()
         tools = register(mcp, helpers)
         result_str = tools["inspect_test_assertions"](path=temp_project, test_file="nonexistent.py")
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert "error" in result
 
     def test_isolated_sentinel_emits_followup_hint(self, helpers):
@@ -265,7 +269,7 @@ class TestInspectTestAssertions:
                 "def test_existence_only():\n    result = fetch()\n    assert result is not None\n"
             )
 
-        result = json.loads(_inspect_test_assertions_impl(root, test_file, helpers))
+        result = _load_tool_result(_inspect_test_assertions_impl(root, test_file, helpers))
         func = result["test_functions"].get("test_existence_only", {})
         warnings = func.get("warnings", [])
         sentinels = [w for w in warnings if w["kind"] == "isolated_sentinel"]
@@ -296,8 +300,7 @@ class TestInspectTestAssertions:
             f.write("def test_ok():\n    assert 1 == 1\n")
 
         result_json = _inspect_test_assertions_impl(root, "", helpers)
-        result = json.loads(result_json)
-
+        result = _load_tool_result(result_json)
         # Even without errors, these fields should be present
         assert "file_errors" in result
         assert "analyzed_file_count" in result["summary"]

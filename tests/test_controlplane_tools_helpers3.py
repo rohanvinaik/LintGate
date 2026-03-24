@@ -17,6 +17,14 @@ from mcp_tools.controlplane_tools import (
     _setup_session,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def _stub_helpers(**overrides):
     """Build a helpers dict with sensible defaults for testing."""
@@ -148,7 +156,7 @@ class TestImplControlplaneStatus:
             return_value=cfg,
         ):
             raw = _impl_controlplane_status("/tmp", _stub_helpers())
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["controlplane_enabled"] is True
         assert "available_channels" in parsed
 
@@ -161,7 +169,7 @@ class TestImplControlplaneStatus:
             return_value=None,
         ):
             raw = _impl_controlplane_status("/tmp", helpers)
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["controlplane_enabled"] is False
         assert "onboarding" in parsed
 
@@ -177,5 +185,5 @@ class TestImplControlplaneStatus:
             mock.patch("os.getcwd", return_value="/cwd"),
         ):
             raw = _impl_controlplane_status(None, _stub_helpers())
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["project"] == "/cwd"

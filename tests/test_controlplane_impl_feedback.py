@@ -29,6 +29,14 @@ from mcp_tools._controlplane_impl_feedback import (
     _record_disagreement,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Lightweight session stand-in ─────────────────────────────────────────
 
 
@@ -745,7 +753,7 @@ class TestImplControlplaneAgentFeedback:
             rejected_constraints=None,
             helpers=helpers,
         )
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert result["session_id"] == "sess-abc"
         assert result["total_disagreements"] == 1
         assert any("bad lint" in a for a in result["actions_taken"])
@@ -769,7 +777,7 @@ class TestImplControlplaneAgentFeedback:
             helpers=helpers,
             tuned_findings=[{"signature": "SIG1", "action": "suppress", "rationale": "noisy"}],
         )
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert result["tuned"] == ["SIG1"]
 
     @patch("mcp_tools._controlplane_impl_feedback._process_test_failure_classifications")
@@ -812,7 +820,7 @@ class TestImplControlplaneApplyRepairs:
         helpers = {"_validate_project_root": lambda p: "/proj"}
 
         result_str = _impl_controlplane_apply_repairs("/proj", None, False, helpers)
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert result["summary"]["collected"] == 0
         assert result["summary"]["succeeded"] == 0
         assert result["summary"]["skipped"] == 1
@@ -832,7 +840,7 @@ class TestImplControlplaneApplyRepairs:
         helpers = {"_validate_project_root": lambda p: "/proj"}
 
         result_str = _impl_controlplane_apply_repairs("/proj", None, False, helpers)
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert result["summary"]["succeeded"] == 1
         assert result["summary"]["failed"] == 0
         assert result["summary"]["collected"] == 1
@@ -858,7 +866,7 @@ class TestImplControlplaneApplyRepairs:
         helpers = {"_validate_project_root": lambda p: "/proj"}
 
         result_str = _impl_controlplane_apply_repairs("/proj", None, False, helpers)
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert result["summary"]["total_proposed"] == 4
         assert result["summary"]["succeeded"] == 1
         assert result["summary"]["failed"] == 1
@@ -878,7 +886,7 @@ class TestImplControlplaneApplyRepairs:
         helpers = {"_validate_project_root": lambda p: "/proj"}
 
         result_str = _impl_controlplane_apply_repairs("/proj", None, False, helpers)
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert result["pending_remaining"] == 2
 
     @patch("lintgate.controlplane.session_memory.save_session")

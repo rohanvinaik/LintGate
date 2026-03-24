@@ -20,6 +20,14 @@ from lintgate.controlplane.types import (
     SupervisionEvent,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -318,7 +326,7 @@ class TestTestHygieneScanTool:
         (test_dir / "test_x.py").write_text("def test_stub():\n    pass\n")
 
         result = fn(path=str(tmp_path))
-        data = json.loads(result)
+        data = _load_tool_result(result)
         assert "status" in data
         assert "findings" in data
         assert "next_actions" in data

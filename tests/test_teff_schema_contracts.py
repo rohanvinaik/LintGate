@@ -14,6 +14,14 @@ from lintgate.linters.test_effectiveness.types import (
     TestEffectivenessManifest,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def test_teff_schema_version_is_current():
     assert TEFF_SCHEMA_VERSION == "2.0.0"
@@ -68,8 +76,7 @@ def test_analyze_test_strength_schema_contract(tmp_path):
     ):
         result_json = _analyze_test_strength_impl(str(tmp_path), helpers)
 
-    result = json.loads(result_json)
-
+    result = _load_tool_result(result_json)
     assert result["state"] == "success"
     assert result["schema_version"] == "2.0.0"
 
@@ -115,8 +122,7 @@ def test_inspect_test_assertions_schema_contract(tmp_path):
 
     # Use actual classifer which will find 0 assertions in our dummy file, but still output schema
     result_json = _inspect_test_assertions_impl(str(tmp_path), "tests/test_app.py", helpers)
-    result = json.loads(result_json)
-
+    result = _load_tool_result(result_json)
     assert result["schema_version"] == "2.0.0"
     assert "test_functions" in result
     assert "summary" in result

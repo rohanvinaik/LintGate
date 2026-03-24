@@ -12,6 +12,14 @@ from mcp_tools._mutation_impl import (
     walk_functions,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── generate_test_skeleton ──────────────────────────────────────────
 
 
@@ -168,7 +176,7 @@ class TestImplGetState:
 
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
-        result = json.loads(_impl_get_state(helpers, str(tmp_path), None, None))
+        result = _load_tool_result(_impl_get_state(helpers, str(tmp_path), None, None))
         assert "No mutation data" in result.get("note", "")
         assert "next_actions" in result
 
@@ -179,7 +187,7 @@ class TestImplPrescribe:
 
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
-        result = json.loads(_impl_prescribe(helpers, str(tmp_path), None, None))
+        result = _load_tool_result(_impl_prescribe(helpers, str(tmp_path), None, None))
         assert "No mutation data" in result.get("note", "")
 
     def test_with_cached_data(self, tmp_path):
@@ -200,7 +208,7 @@ class TestImplPrescribe:
         )
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
-        result = json.loads(_impl_prescribe(helpers, str(tmp_path), None, None))
+        result = _load_tool_result(_impl_prescribe(helpers, str(tmp_path), None, None))
         assert result["total_prescriptions"] == 1
         assert result["prescriptions"][0]["category"] == "VALUE"
         assert "next_actions" in result
@@ -226,7 +234,7 @@ class TestImplPrescribeTests:
         )
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
-        result = json.loads(_impl_prescribe_tests(helpers, str(tmp_path), "", None))
+        result = _load_tool_result(_impl_prescribe_tests(helpers, str(tmp_path), "", None))
         assert len(result["skeletons"]) == 1
         assert result["skeletons"][0]["category"] == "BOUNDARY"
         assert "next_actions" in result
@@ -240,7 +248,7 @@ class TestImplClearState:
 
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
-        result = json.loads(_impl_clear_state(helpers, str(tmp_path), None))
+        result = _load_tool_result(_impl_clear_state(helpers, str(tmp_path), None))
         assert "No mutation state" in result.get("note", "")
 
     def test_clears_files(self, tmp_path):
@@ -253,5 +261,5 @@ class TestImplClearState:
 
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
-        result = json.loads(_impl_clear_state(helpers, str(tmp_path), None))
+        result = _load_tool_result(_impl_clear_state(helpers, str(tmp_path), None))
         assert result["cleared"] == 2

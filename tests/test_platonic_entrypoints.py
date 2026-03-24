@@ -22,6 +22,14 @@ from lintgate.testing.platonic_entrypoints import (
 )
 from lintgate.testing.platonic_workflow import PlatonicWorkflowRecord
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -230,7 +238,7 @@ class TestRunPlatonicProject:
         result = run_platonic_project(
             helpers, "/proj", max_files=5, budget_ms=30000, converge_fn=converge_fn
         )
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["state"] == "BLOCKED_NO_ELIGIBLE_TARGETS"
         assert parsed["reason_code"] == "BLOCKED_NO_ELIGIBLE_TARGETS"
         assert parsed["workflow_id"] == "wf_test_001"
@@ -269,7 +277,7 @@ class TestRunPlatonicContinue:
         converge_fn = MagicMock()
 
         result = run_platonic_continue(helpers, "/proj", "missing_wf", converge_fn=converge_fn)
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["error"] == "Workflow not found: missing_wf"
         converge_fn.assert_not_called()
 
@@ -282,7 +290,7 @@ class TestRunPlatonicContinue:
         converge_fn = MagicMock()
 
         result = run_platonic_continue(helpers, "/proj", "wf001", converge_fn=converge_fn)
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["status"] == "terminal"
         assert parsed["state"] == "READY_TO_APPLY"
         assert len(parsed["next_actions"]) == 1
@@ -302,7 +310,7 @@ class TestRunPlatonicContinue:
         converge_fn = MagicMock()
 
         result = run_platonic_continue(helpers, "/proj", "wf001", converge_fn=converge_fn)
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["status"] == "terminal"
         assert len(parsed["next_actions"]) == 1
         assert parsed["next_actions"][0]["tool"] == "extraction_plan"
@@ -357,7 +365,7 @@ class TestRunPlatonicApply:
     def test_workflow_not_found(self, mock_load, mock_config):
         helpers = _make_helpers("/proj")
         result = run_platonic_apply(helpers, "/proj", "missing_wf")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["error"] == "Workflow not found: missing_wf"
 
     @patch("lintgate.config.load_controlplane_config", side_effect=Exception("no config"))
@@ -368,7 +376,7 @@ class TestRunPlatonicApply:
         helpers = _make_helpers("/proj")
 
         result = run_platonic_apply(helpers, "/proj", "wf001")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["state"] == "FAILED"
         assert parsed["reason_code"] == "APPLY_NOT_READY"
 
@@ -384,7 +392,7 @@ class TestRunPlatonicApply:
         helpers = _make_helpers("/proj")
 
         result = run_platonic_apply(helpers, "/proj", "wf001")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["state"] == "FAILED"
         assert parsed["reason_code"] == "STALE_VALIDATION"
 
@@ -404,7 +412,7 @@ class TestRunPlatonicApply:
         helpers = _make_helpers("/proj")
 
         result = run_platonic_apply(helpers, "/proj", "wf001", dry_run=True)
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["state"] == "READY_TO_APPLY"
         assert len(parsed["next_actions"]) == 1
         assert parsed["next_actions"][0]["tool"] == "platonic_apply"

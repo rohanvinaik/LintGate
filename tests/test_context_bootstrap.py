@@ -21,6 +21,14 @@ from lintgate.context_bootstrap import (
     bootstrap_context_files,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def test_bootstrap_context_files_generates_theory_grounded_drafts(tmp_path) -> None:
     (tmp_path / "pyproject.toml").write_text(
@@ -120,7 +128,7 @@ def test_mcp_bootstrap_context_files_returns_payload(tmp_path) -> None:
         write=False,
         include_theory_rules_doc=False,
     )
-    payload = json.loads(output)
+    payload = _load_tool_result(output)
     if "file" in payload and "analysis_id" in payload:
         import os
         if os.path.isfile(payload["file"]):

@@ -35,6 +35,14 @@ from mcp_tools.quality_helpers import (
     _write_pre_push_hook,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 # ── GitHub Remote Detection ──────────────────────────────────────────────
 
 
@@ -664,7 +672,7 @@ class TestSetupGithubQualityTool:
             "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"owner": "alice", "repo": "test"},
         ):
-            result = json.loads(setup_github_quality(str(tmp_path), write=False))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=False))
 
         assert result["status"] == "preview"
         assert result["codeclimate"]["status"] == "preview"
@@ -709,7 +717,7 @@ class TestSetupGithubQualityTool:
             "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"owner": "alice", "repo": "test"},
         ):
-            result = json.loads(setup_github_quality(str(tmp_path), write=True))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=True))
 
         assert result["status"] == "written"
         assert (tmp_path / ".codeclimate.yml").exists()
@@ -769,7 +777,7 @@ class TestSetupGithubQualityTool:
             "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"owner": "alice", "repo": "test"},
         ):
-            result = json.loads(setup_github_quality(str(tmp_path), write=True))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=True))
 
         assert result["codeclimate"]["status"] in ("already_exists", "drift_repaired")
         assert result["sonar"]["status"] in ("already_exists", "drift_repaired")
@@ -805,7 +813,7 @@ class TestSetupGithubQualityTool:
             "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"owner": "OWNER", "repo": "REPO"},
         ):
-            result = json.loads(setup_github_quality(str(tmp_path), write=False))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=False))
 
         assert result["badges"]["status"] == "skipped_no_remote"
 
@@ -820,7 +828,7 @@ class TestSetupGithubQualityTool:
             "mcp_tools.setup_github_quality._detect_github_remote",
             return_value={"owner": "a", "repo": "b"},
         ):
-            result = json.loads(setup_github_quality(str(tmp_path), write=True))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=True))
 
         assert result["gitignore"]["status"] == "augmented"
         gi_content = (tmp_path / ".gitignore").read_text()
@@ -839,7 +847,7 @@ class TestSetupGithubQualityTool:
 
         # Second run — gitignore patterns already present, badges block exists
         with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
-            result = json.loads(setup_github_quality(str(tmp_path), write=True))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=True))
 
         assert result["gitignore"]["status"] == "no_changes_needed"
         # Badge block exists so it gets "no_change" (same content replaced)
@@ -861,7 +869,7 @@ class TestSetupGithubQualityTool:
 
         gh_mock = {"owner": "a", "repo": "b"}
         with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
-            result = json.loads(setup_github_quality(str(tmp_path), write=True))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=True))
 
         assert result["qlty"]["status"] == "written"
         assert result["qlty"]["local_only"] is False
@@ -882,7 +890,7 @@ class TestSetupGithubQualityTool:
 
         gh_mock = {"owner": "a", "repo": "b"}
         with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
-            result = json.loads(setup_github_quality(str(tmp_path), write=True))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=True))
 
         # drift_repaired is re-normalized to already_exists for qlty in setup_github_quality
         assert result["qlty"]["status"] in ("already_exists", "drift_repaired")
@@ -895,7 +903,7 @@ class TestSetupGithubQualityTool:
 
         gh_mock = {"owner": "a", "repo": "b"}
         with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
-            result = json.loads(setup_github_quality(str(tmp_path), write=False))
+            result = _load_tool_result(setup_github_quality(str(tmp_path), write=False))
 
         assert "guidance" in result
         assert "three_layer_stack" in result["guidance"]

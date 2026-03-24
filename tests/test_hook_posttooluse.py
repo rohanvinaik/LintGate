@@ -32,6 +32,14 @@ from lintgate.renderers.dynamic import read_generation_from_file
 from lintgate.runtime_state import load_runtime_state
 from lintgate.types import ChangeClassification, ProjectConfig
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def test_resolve_event_model_key_from_top_level() -> None:
     assert _resolve_event_model_key({"model": "claude-opus-4"}) == "anthropic:claude-opus-4"
@@ -294,7 +302,7 @@ class TestRunControlplane:
             )
         assert exc.value.code == 0
         output = stdout_capture.getvalue().strip()
-        parsed = json.loads(output)
+        parsed = _load_tool_result(output)
         assert isinstance(parsed, dict)
 
     def test_advisory_prepended_to_report(self, tmp_path, monkeypatch) -> None:
@@ -369,7 +377,7 @@ class TestRunControlplane:
             )
         assert exc.value.code == 0
         output = stdout_capture.getvalue().strip()
-        parsed = json.loads(output)
+        parsed = _load_tool_result(output)
         assert advisory_msg in parsed["systemMessage"]
         assert "lint report" in parsed["systemMessage"]
 
@@ -417,7 +425,7 @@ def test_posttooluse_runtime_state_flows_into_json_dumps(
 
     payload = {"project": str(tmp_path), "status": "ok"}
     rendered = mcp_server._json_dumps(payload, output_mode="compact")
-    parsed = json.loads(rendered)
+    parsed = _load_tool_result(rendered)
     assert "session_context" in parsed
     assert parsed["session_context"]["gen"] >= 1
     assert parsed["session_context"]["focus"]

@@ -6,6 +6,14 @@ from lintgate.renderers.nsil.types import (
     UserIntent,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def test_nsil_system_context():
     ctx = SystemContext(project_root="/test")
@@ -99,7 +107,7 @@ def test_nsil_inference_snapshot_with_session():
         mock.patch("mcp_tools.nsil_tools.load_session", return_value=session),
     ):
         result = snapshot_tool("/tmp")
-        parsed = json.loads(result)
+        parsed = _load_tool_result(result)
         assert parsed["snapshot_id"].startswith("snap_")
         assert parsed["context"]["project_root"] == "/tmp"
         assert parsed["agent_state"]["current_mode"] == "planning"

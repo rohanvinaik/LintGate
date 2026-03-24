@@ -21,6 +21,14 @@ from mcp_tools._test_regeneration_gates import (
     impl_rebuild_validate,
 )
 
+def _load_tool_result(json_str):
+    import json as _j, os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
+        with open(r["file"]) as f: return _j.loads(f.read())
+    return r
+
+
 
 def _mock_func(
     strategy_name,
@@ -417,7 +425,7 @@ class TestValidationPersistence:
             "_json_dumps": lambda d, **kw: json.dumps(d),
         }
         raw = impl_rebuild_apply(helpers, str(tmp_path))
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "error" in result
 
 
@@ -557,7 +565,7 @@ class TestImplRebuildValidate:
             return_value=None,
         ):
             result = impl_rebuild_validate(helpers, "/proj")
-            parsed = json.loads(result)
+            parsed = _load_tool_result(result)
             assert "error" in parsed
 
     @patch("mcp_tools._test_regeneration_apply.persist_validation")
@@ -611,7 +619,7 @@ class TestImplRebuildValidate:
             return_value=plan,
         ):
             result = impl_rebuild_validate(helpers, "/proj")
-            parsed = json.loads(result)
+            parsed = _load_tool_result(result)
             assert parsed["ready_to_apply"] is True
             assert "scorecard" in parsed
             assert "next_actions" in parsed
@@ -664,7 +672,7 @@ class TestImplRebuildValidate:
             return_value=plan,
         ):
             result = impl_rebuild_validate(helpers, "/proj")
-            parsed = json.loads(result)
+            parsed = _load_tool_result(result)
             assert parsed["ready_to_apply"] is False
             assert parsed["review_ready_to_apply"] is True
 
