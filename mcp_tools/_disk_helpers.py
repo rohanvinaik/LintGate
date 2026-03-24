@@ -11,8 +11,10 @@ import os
 from typing import Any
 
 
-def save_analysis(data: Any, tool_name: str, project_root: str, *, run_id: str = "") -> str:
+def save_analysis(data: Any, tool_name: str, project_root: str | None, *, run_id: str = "") -> str:
     """Write analysis output to .lintgate/analysis/<tool>/<id>.json. Returns filepath."""
+    if not project_root:
+        project_root = os.getcwd()
     analysis_dir = os.path.join(project_root, ".lintgate", "analysis", tool_name)
     os.makedirs(analysis_dir, exist_ok=True)
     serialized = json.dumps(data, separators=(",", ":"), default=str)
