@@ -156,59 +156,10 @@ def register(mcp, helpers):
             summary += f" {len(staged)} files clean."
 
         return tool_response(output, "before_commit", project_root, summary)
-
-    @mcp.tool()
-    def session_orient(path: str) -> str:
-        """Orient at session start — replaces Claude Code SessionStart hook.
-
-        WHEN TO USE: Call at the start of every session. Runs controlplane
-        to understand project state, checks for stale theory, and returns
-        a prioritized action plan.
-
-        Example: session_orient(path="/my/project")
-
-        Args:
-            path: Project root path.
-        """
-        from mcp_tools._controlplane_impl_run import _impl_controlplane_run
-
-        project_root = helpers["_validate_project_root"](path)
-
-        # Run controlplane with lint + structure channels (fast)
-        result_json = str(_impl_controlplane_run(
-            path, "lint,structure,git", "relaxed", "changed", None, helpers,
-        ))
-        result = json.loads(result_json)
-
-        counts = result.get("counts", {})
-        coherence = result.get("coherence", {})
-        git_ctx = result.get("git_context", {})
-
-        lines = [
-            f"Project: {os.path.basename(project_root)}",
-            f"Branch: {git_ctx.get('branch', '?')}",
-            f"State: {coherence.get('state', '?')}",
-            f"Blockers: {counts.get('blocking', 0)}, Warnings: {counts.get('warning', 0)}",
-        ]
-
-        # Top 3 blockers for immediate action
-        for issue in result.get("blocking_issues", [])[:3]:
-            lines.append(f"  → {issue.get('kind', '?')}: {issue.get('file', '?')} — {issue.get('message', '')[:50]}")
-
-        if counts.get("blocking", 0) == 0:
-            lines.append("\nNo blockers. Ready to work.")
-        else:
-            lines.append(f"\nStart with: lint_fix(path=\"{path}\") to auto-fix safe issues.")
-
-        summary = "\n".join(lines)
-        return tool_response(
-            result, "session_orient", project_root, summary,
-            run_id=result.get("run_id", ""),
-            next_actions=result.get("next_actions"),
+,
         )
 
     return {
         "after_edit": after_edit,
         "before_commit": before_commit,
-        "session_orient": session_orient,
     }

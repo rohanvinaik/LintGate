@@ -40,7 +40,7 @@ refactor_extract_method(path, file, start_line, end_line, helper_name, dry_run=t
 Call `after_edit(path=".")` — it runs fast lint on changed files and catches issues immediately. This replaces the automatic post-edit hooks that Claude Code uses.
 
 ### At the start of every session
-Call `session_orient(path=".")` — it runs controlplane on recent changes and gives you a prioritized action plan with top blockers.
+Call `getting_started(path=".")` — runs controlplane, auto-sets up config, and gives you a prioritized action plan.
 
 ### Before committing
 Call `before_commit(path=".")` — checks for lint issues and secrets in staged files.
