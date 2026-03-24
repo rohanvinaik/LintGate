@@ -156,8 +156,6 @@ def register(mcp, helpers):
             summary += f" {len(staged)} files clean."
 
         return tool_response(output, "before_commit", project_root, summary)
-,
-        )
 
     return {
         "after_edit": after_edit,
