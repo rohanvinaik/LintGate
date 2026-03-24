@@ -1,8 +1,6 @@
 name: SonarQube Cloud Analysis
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_run:
     workflows: ["Tests"]
     types: [completed]
@@ -11,76 +9,47 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  actions: read  # Required to download artifacts from triggering workflow
+  actions: read
 
 concurrency:
-  group: sonarcloud-${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: sonarcloud-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   sonarcloud:
     name: SonarQube Cloud Scan
     runs-on: ubuntu-latest
-    # Only run when Tests succeeded (or on manual dispatch)
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request' ||
       github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Check for SONAR_TOKEN
         id: check_token
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          if [ -z "$SONAR_TOKEN" ]; then
+          if [ -z "${{ secrets.SONAR_TOKEN }}" ]; then
             echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::SONAR_TOKEN secret is not configured; skipping SonarQube Cloud scan."
-            echo "Add SONAR_TOKEN at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            echo "::notice::SONAR_TOKEN not configured — skipping scan."
           else
             echo "has_token=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Checkout full history
+      - uses: actions/checkout@v4
         if: steps.check_token.outputs.has_token == 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          # For workflow_run, checkout the commit that triggered Tests
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Set up Python for PR coverage
+      - name: Download coverage from Tests
         if: steps.check_token.outputs.has_token == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies for Sonar scan
-        if: steps.check_token.outputs.has_token == 'true'
-        run: |
-          python -m pip install --upgrade pip==25.0.1
-          python -m pip install pysonar-scanner==0.3.0.2016
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            python -m pip install -e ".[dev]" 2>/dev/null \
-              || python -m pip install -e "." 2>/dev/null \
-              || python -m pip install pytest
-            python -m pip install pytest-cov
-          fi
-
-      - name: Download coverage artifact from Tests
-        if: steps.check_token.outputs.has_token == 'true' && github.event_name == 'workflow_run'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v4
         with:
           name: coverage-report-3.12
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-      - name: SonarQube Cloud Scan
+      - name: SonarQube Scan
         if: steps.check_token.outputs.has_token == 'true'
+        uses: SonarSource/sonarqube-scan-action@v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: bash scripts/ci/run_sonar_gate.sh
-
-      - name: Check Quality Gate
-        if: steps.check_token.outputs.has_token == 'true'
-        run: true

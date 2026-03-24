@@ -1,4 +1,4 @@
-name: Deploy Wiki to GitHub Pages
+name: Deploy Wiki
 
 on:
   push:
@@ -6,10 +6,7 @@ on:
     paths:
       - 'docs/wiki/**'
       - 'wiki.yaml'
-      - '.lintgate/wiki_manifest.yaml'
-      - '.lintgate/_metrics.yaml'
       - 'lintgate/wiki/**'
-      - 'mcp_tools/wiki_tools.py'
   workflow_dispatch:
 
 permissions:
@@ -29,42 +26,12 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          pip install -e ".[dev]"
+      - name: Install
+        run: pip install -e ".[dev]"
 
-      - name: Materialize wiki pages
-        run: |
-          python -c "
-          from lintgate.wiki.manifest import load_manifest
-          from lintgate.wiki.composer import compose_all_pages
-          from lintgate.wiki.freshness import build_page_freshness, save_freshness_state, WikiFreshnessState
-          import os
-
-          root = os.getcwd()
-          manifest = load_manifest(root)
-          if manifest is None:
-              print('No wiki manifest found, skipping.')
-              exit(0)
-
-          composed = compose_all_pages(manifest, root)
-          wiki_dir = os.path.join(root, '.lintgate', 'wiki')
-          os.makedirs(wiki_dir, exist_ok=True)
-
-          state = WikiFreshnessState()
-          for page in composed:
-              out_path = os.path.join(wiki_dir, f'{page.name}.md')
-              with open(out_path, 'w') as f:
-                  f.write(page.content)
-              print(f'  Materialized: {page.name}')
-
-          save_freshness_state(root, state)
-          print(f'Materialized {len(composed)} pages.')
-          "
-
-      - name: Publish to static site
+      - name: Build wiki
         run: |
           python -c "
           from lintgate.wiki.manifest import load_manifest
@@ -75,28 +42,19 @@ jobs:
           root = os.getcwd()
           manifest = load_manifest(root)
           if manifest is None:
-              print('No wiki manifest found, skipping.')
-              exit(0)
+              print('No wiki manifest — skipping.')
+              sys.exit(0)
 
           composed = compose_all_pages(manifest, root)
           result = publish_pages(
-              manifest=manifest,
-              composed=composed,
-              project_root=root,
-              out_dir='_site',
-              check_links=True,
-              site_title='LintGate',
-              base_url='',
+              manifest=manifest, composed=composed, project_root=root,
+              out_dir='_site', check_links=True, site_title='LintGate',
           )
-
-          print(f'Published {len(result.pages)} pages to _site/')
+          print(f'Published {len(result.pages)} pages')
           if result.link_errors:
-              print(f'Link check FAILED:')
               for err in result.link_errors:
                   print(f'  {err}')
               sys.exit(1)
-          else:
-              print('Link check PASSED')
           "
 
       - uses: actions/upload-pages-artifact@v4
@@ -110,8 +68,4 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/configure-pages@v5
-        id: pages
-
       - uses: actions/deploy-pages@v4
-        id: deployment
