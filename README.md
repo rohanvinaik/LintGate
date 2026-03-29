@@ -12,7 +12,7 @@
 [![Tests](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/test-count.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
 <!-- lintgate:quality-badges:end -->
 
-`126 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
+`125 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
 
 Built entirely through vibe coding by a biochemist with no formal CS training. The metrics above are computed by the system on its own codebase.
 
