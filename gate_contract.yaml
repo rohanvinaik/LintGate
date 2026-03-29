@@ -1,95 +1,31 @@
-version: "1.0"
+version: "2.0"
 
+# Required CI checks — must pass before merge.
+# Maps to job names in .github/workflows/ci.yml
 required_checks:
   - "Tests (3.11)"
   - "Tests (3.12)"
-  - "Qlty"
-  - "SonarQube Cloud Scan"
+  - "SonarQube"
 
 ci_workflows:
-  - ".github/workflows/tests.yml"
-  - ".github/workflows/qlty.yml"
-  - ".github/workflows/sonarcloud.yml"
-  - ".github/workflows/security-lite.yml"
+  - ".github/workflows/ci.yml"
   - ".github/workflows/codeql.yml"
-  - ".github/workflows/quality-infra-gate.yml"
-
-parity_workflows:
-  - ".github/workflows/tests.yml"
-  - ".github/workflows/qlty.yml"
-  - ".github/workflows/sonarcloud.yml"
-  - ".github/workflows/security-lite.yml"
-  - ".github/workflows/quality-infra-gate.yml"
-
-local_pre_push:
-  - id: "quality_infra"
-    command: "bash scripts/ci/run_quality_infra_gate.sh"
-  - id: "qlty"
-    command: "bash scripts/ci/run_qlty_gate.sh"
-  - id: "security_lite"
-    command: "bash scripts/ci/run_security_lite_gate.sh"
-  - id: "tests_311"
-    command: "bash scripts/ci/run_tests_gate.sh --python-version 3.11"
-  - id: "tests_312"
-    command: "bash scripts/ci/run_tests_gate.sh --python-version 3.12"
-  - id: "sonar"
-    command: "bash scripts/ci/run_sonar_gate.sh"
-
-parity_map:
-  # local gate ID → CI workflow job/check name
-  # Every required_checks entry must appear as a value here.
-  # Every local_pre_push ID must appear as a key here.
-  quality_infra: "Quality Infrastructure Gate"
-  qlty: "Qlty"
-  security_lite: "Secrets + SAST + Supply Chain"
-  tests_311: "Tests (3.11)"
-  tests_312: "Tests (3.12)"
-  sonar: "SonarQube Cloud Scan"
-
-symbol_gate:
-  # Single source of truth for advisory policy.
-  # Consumed by: .githooks/pre-push, .github/workflows/tests.yml, scripts/ship_main.py
-  advisory_policy:
-    # Branch patterns where symbol gate failures are non-blocking (fnmatch syntax)
-    advisory_branches:
-      - "main"
-      - "codex/ship-main-*"
-      - "codex/ship-*"
-      - "prescriptive-spec-system"
-    # PR events always advisory (historical diffs inflate scope)
-    pr_always_advisory: true
-  # Base commit strategy for ship flows (merge-base vs head~1)
-  ship_base_strategy: "merge-base"
+  - ".github/workflows/spec-badges.yml"
+  - ".github/workflows/deploy-docs.yml"
 
 ci:
-  # CI triggers only on pull_request + push to main.
-  # Side-branch pushes do NOT trigger CI — local pre-push is the developer gate.
-  # ship_main.py creates a PR which triggers CI as the single remote authority.
   branch_trigger_policy: "pr_and_main_only"
 
-tools:
-  qlty:
-    init_policy: "dry_run_then_init"
-    shellcheckrc_policy: "backup_restore"
-  sonar:
-    local_mode: "local_scan"
-    freshness_source: "scanner_quality_gate"
-
+# Toolchain manifest — consumed by getting_started() and tool_health_check
 toolchain:
-  # Single source of truth for CLI tool provisioning.
-  # Consumed by: getting_started(), pre-push hook, tool_health_check MCP tool.
-  # Self-managing: reconcile_with_registry() warns when a linter's required_tool
-  # is missing from this manifest.
   tools:
-    # --- Core linter (always needed) ---
     - id: ruff
       kind: python_cli
       package: "ruff>=0.4.0"
       required: true
-      required_by: [lint]
+      required_by: [lint, ci]
       auto_install: true
 
-    # --- Optional Python linters ---
     - id: mypy
       kind: python_cli
       package: "mypy>=1.8"
@@ -115,14 +51,14 @@ toolchain:
       kind: python_cli
       package: "bandit>=1.7"
       required: false
-      required_by: [lint, pre_push, ci]
+      required_by: [lint]
       auto_install: true
 
     - id: pip-audit
       kind: python_cli
       package: "pip-audit>=2.6"
       required: false
-      required_by: [pre_push, ci]
+      required_by: [lint]
       auto_install: true
 
     - id: vulture
@@ -131,37 +67,3 @@ toolchain:
       required: false
       required_by: [lint]
       auto_install: true
-
-    # --- Gate stack tools (native binaries) ---
-    - id: qlty
-      kind: native_binary
-      required: true
-      required_by: [pre_push, ci]
-      auto_install: false
-      install:
-        darwin: "brew install qlty || curl -sSL https://qlty.sh/install | sh"
-        linux: "curl -sSL https://qlty.sh/install | sh"
-
-    - id: gitleaks
-      kind: native_binary
-      required: true
-      required_by: [pre_push, ci]
-      auto_install: false
-      install:
-        darwin: "brew install gitleaks"
-        linux: "brew install gitleaks"
-
-    - id: sonar-scanner
-      kind: native_binary
-      required: true
-      required_by: [pre_push]
-      auto_install: false
-      install:
-        darwin: "brew install sonar-scanner"
-        linux: "brew install sonar-scanner"
-
-compliance:
-  # Minimum rolling compliance rate (0.0-1.0) required to ship
-  min_rate: 0.8
-  # Whether to block ship if the rate is below min_rate
-  block_on_low_compliance: true

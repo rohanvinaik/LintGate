@@ -16,67 +16,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v4
         with:
-          python-version: "3.12"
+          version: "latest"
 
       - name: Install dependencies
         run: |
-          pip install -e ".[dev]"
-          pip install git+https://github.com/rohanvinaik/Wesker.git
+          uv sync --extra dev
+          uv pip install git+https://github.com/rohanvinaik/Wesker.git
 
-      # ── Metrics computation ─────────────────────────────────────
-      - name: Compute specification metrics
-        run: |
-          # Mutation kill rate via Wesker
-          python -m Wesker lintgate/ --exclude lintgate/linters/ lintgate/renderers/ --json > .wesker-report.json 2>&1 || true
-          KILL_PCT=$(python -c "import json; d=json.load(open('.wesker-report.json')); print(d.get('mutation',{}).get('kill_pct',0))" 2>/dev/null || echo "0")
-          KILLED=$(python -c "import json; d=json.load(open('.wesker-report.json')); print(d.get('mutation',{}).get('total_killed',0))" 2>/dev/null || echo "0")
-          TOTAL=$(python -c "import json; d=json.load(open('.wesker-report.json')); print(d.get('mutation',{}).get('total_mutants',0))" 2>/dev/null || echo "0")
-          FUNCS=$(python -c "import json; d=json.load(open('.wesker-report.json')); print(d.get('mutation',{}).get('total_functions',0))" 2>/dev/null || echo "0")
-
-          # Test count
-          TEST_COUNT=$(python -m pytest tests/ --co -q 2>/dev/null | grep '::' | wc -l | tr -d ' ')
-          SOURCE_LOC=$(find lintgate/ -name '*.py' -exec cat {} + | grep -cv '^\s*$\|^\s*#' || echo "0")
-          RATIO="1:$(python -c "print(round($SOURCE_LOC / max($TEST_COUNT, 1), 1))")"
-
-          # Mean sigma
-          SIGMA=$(python -c "
-          import ast, os
-          from pathlib import Path
-          total, count = 0, 0
-          for py in Path('lintgate').rglob('*.py'):
-              if '__pycache__' in str(py): continue
-              try:
-                  tree = ast.parse(py.read_text())
-              except: continue
-              for node in ast.walk(tree):
-                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                      s = max(sum(1 for _ in ast.walk(node) if isinstance(_, (ast.Compare, ast.Return, ast.If, ast.IfExp))), 1)
-                      total += s; count += 1
-          print(round(total / max(count, 1), 1))
-          ")
-
-          # Export to GITHUB_ENV
-          {
-            echo "MUTATION_KILL_PCT=$KILL_PCT"
-            echo "MUTATION_KILLED=$KILLED"
-            echo "MUTATION_TOTAL=$TOTAL"
-            echo "MUTATION_FUNCTIONS=$FUNCS"
-            echo "TEST_COUNT=$TEST_COUNT"
-            echo "TEST_RATIO=$RATIO"
-            echo "MEAN_SIGMA=$SIGMA"
-          } >> "$GITHUB_ENV"
-
-          echo "Mutation: $KILLED/$TOTAL ($KILL_PCT%)"
-          echo "Tests: $TEST_COUNT ($RATIO)"
-          echo "Mean σ: $SIGMA across $FUNCS functions"
+      # ── Wesker mutation testing ──────────────────────────────────
+      - name: Run Wesker specification metrics
+        run: uv run python -m Wesker.metrics
+        env:
+          WESKER_COLOR: "1"
 
       - name: Create badges directory
         run: mkdir -p .github/badges
 
-      # ── Badge generation ────────────────────────────────────────
+      # ── Badge generation ──────────────────────────────────────────
 
       - name: Generate Mutation Kill Rate Badge
         uses: emibcn/badge-action@v2.0.2
@@ -84,8 +42,17 @@ jobs:
           label: "Mutation Kill Rate"
           label-color: "333"
           status: "${{ env.MUTATION_KILL_PCT }}% (${{ env.MUTATION_KILLED }}/${{ env.MUTATION_TOTAL }})"
-          color: ${{ env.MUTATION_KILL_PCT == '100' && '2ea043' || env.MUTATION_KILL_PCT >= '80' && 'f0ad4e' || 'e5534b' }}
+          color: ${{ env.MUTATION_KILL_PCT == '100' && '2ea043' || 'e5534b' }}
           path: ".github/badges/mutation-kill-rate.svg"
+
+      - name: Generate MC/DC Badge
+        uses: emibcn/badge-action@v2.0.2
+        with:
+          label: "MC/DC (DO-178C Level A)"
+          label-color: "333"
+          status: "${{ env.MCDC_STATUS }} (${{ env.MCDC_COVERED }}/${{ env.MCDC_TOTAL }} conditions)"
+          color: ${{ env.MCDC_STATUS == 'Verified' && '0ea5e9' || 'e5534b' }}
+          path: ".github/badges/mcdc.svg"
 
       - name: "Generate Mean σ Badge"
         uses: emibcn/badge-action@v2.0.2
@@ -105,7 +72,7 @@ jobs:
           color: "2ea043"
           path: ".github/badges/test-count.svg"
 
-      # ── Push to badges branch ──────────────────────────────────
+      # ── Push to badges branch ────────────────────────────────────
 
       - name: Push badges to badges branch
         if: github.ref == 'refs/heads/main'
@@ -133,5 +100,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Update spec badges (kill=${{ env.MUTATION_KILL_PCT }}%, σ̄=${{ env.MEAN_SIGMA }}, tests=${{ env.TEST_COUNT }})"
+          git commit -m "Update spec badges (kill=${{ env.MUTATION_KILL_PCT }}%, σ̄=${{ env.MEAN_SIGMA }}, tests=${{ env.TEST_COUNT }}, ratio=${{ env.TEST_RATIO }})"
           git push origin badges
