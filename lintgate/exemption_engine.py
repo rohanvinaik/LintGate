@@ -421,10 +421,7 @@ def _detect_cli_entrypoint(project_root: str, file: str, function: str) -> bool:
             pass
 
     # Scripts directory heuristic
-    if "/scripts/" in file or file.startswith("scripts/"):
-        return True
-
-    return False
+    return "/scripts/" in file or file.startswith("scripts/")
 
 
 def _count_existing_exemptions(project_root: str, finding: str) -> int:

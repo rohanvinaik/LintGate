@@ -89,6 +89,10 @@ exclude = ["docs/mutation/Aristotle/Mutation_Theory/.lake/"]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TC"]
 ignore = [
     "E501",  # Line length handled by formatter
+    "E402",  # Module-level import not at top — deferred imports in register() pattern
+    "N802",  # Function name should be lowercase — libcst visitor methods (leave_ImportFrom etc.)
+    "N806",  # Variable in function should be lowercase — local constants (_SKIP, _AUG_OPS)
+    "SIM102", # Nested if — often clearer than merged condition for AST traversals
 ]
 
 [tool.ruff.lint.isort]

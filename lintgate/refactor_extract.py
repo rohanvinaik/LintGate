@@ -281,10 +281,7 @@ def _build_helper_code(
     helper_body = init_lines
     for line in block_lines:
         if line.strip():
-            if line.startswith(block_indent):
-                relative = line[len(block_indent):]
-            else:
-                relative = line.lstrip()
+            relative = line[len(block_indent):] if line.startswith(block_indent) else line.lstrip()
             helper_body += enclosing_indent + "    " + relative
         else:
             helper_body += "\n"
@@ -533,7 +530,7 @@ def _collect_module_level_names(tree: ast.Module) -> set[str]:
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     names.add(target.id)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or isinstance(node, ast.ClassDef):
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(node.name)
     return names
 
