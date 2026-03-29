@@ -1,0 +1,20 @@
+<svg width="302.1" height="20" viewBox="0 0 3021 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MC/DC (DO-178C Level A): Verified (0/0 conditions)">
+  <title>MC/DC (DO-178C Level A): Verified (0/0 conditions)</title>
+  <linearGradient id="a" x2="0" y2="100%">
+    <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <mask id="m"><rect width="3021" height="200" rx="30" fill="#FFF"/></mask>
+  <g mask="url(#m)">
+    <rect width="1571" height="200" fill="#333"/>
+    <rect width="1450" height="200" fill="#0ea5e9" x="1571"/>
+    <rect width="3021" height="200" fill="url(#a)"/>
+  </g>
+  <g aria-hidden="true" fill="#fff" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
+    <text x="60" y="148" textLength="1471" fill="#000" opacity="0.25">MC/DC (DO-178C Level A)</text>
+    <text x="50" y="138" textLength="1471">MC/DC (DO-178C Level A)</text>
+    <text x="1626" y="148" textLength="1350" fill="#000" opacity="0.25">Verified (0/0 conditions)</text>
+    <text x="1616" y="138" textLength="1350">Verified (0/0 conditions)</text>
+  </g>
+  
+</svg>
