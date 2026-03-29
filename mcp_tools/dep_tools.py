@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from mcp_tools._disk_helpers import _safe_json, tool_response
 
-from mcp_tools._disk_helpers import tool_response
 
 def register(mcp, helpers):
     """Register dependency tools on the shared MCP instance."""
@@ -63,7 +62,7 @@ def register(mcp, helpers):
             result["error"] = (
                 "uv not found in PATH — install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
             )
-            return json.dumps(result, indent=2)
+            return _safe_json(result)
 
         if create_venv:
             venv_path = root / ".venv"

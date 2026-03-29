@@ -25,8 +25,10 @@ from mcp_tools.habit_tools import (
     register,
 )
 
+
 def _load_tool_result(json_str):
-    import json as _j, os as _os
+    import json as _j
+    import os as _os
     r = _j.loads(json_str)
     if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
         with open(r["file"]) as f: return _j.loads(f.read())

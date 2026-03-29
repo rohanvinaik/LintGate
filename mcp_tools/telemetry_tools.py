@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
-
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp, helpers):
     """Register telemetry tools on the shared MCP instance."""

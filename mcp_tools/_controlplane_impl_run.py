@@ -780,9 +780,10 @@ class _RunContext:
 def _build_run_result(ctx: _RunContext) -> str:
     """Phase 3: Result assembly — compact report, coherence, next_actions.
 
-    Returns the JSON string for the MCP response.
+    Returns a slim tool_response JSON string (analysis saved to disk).
     """
     from lintgate.controlplane.reporter import format_mesh_report_compact
+    from mcp_tools._disk_helpers import tool_response
 
     mesh_result = ctx.mesh_result
     session = ctx.session
@@ -826,7 +827,40 @@ def _build_run_result(ctx: _RunContext) -> str:
     if onboarding.get("config_state") != "config_enabled":
         compact["onboarding"] = onboarding
 
-    return ctx.helpers["_json_dumps"](compact, output_mode="compact")  # type: ignore[no-any-return]
+    # Build NL summary from compact counts and coherence
+    counts = compact.get("counts", {})
+    coherence = compact.get("coherence", {})
+    top_blockers = []
+    for issue in compact.get("blocking_issues", [])[:5]:
+        top_blockers.append(
+            f"  {issue.get('kind', '?'):24s} {issue.get('file', '?'):30s} "
+            f"{issue.get('message', '')[:60]}"
+        )
+
+    lines = [
+        f"{counts.get('blocking', 0)} blocking, {counts.get('warning', 0)} warnings "
+        f"across {counts.get('channels_run', 0)} channels.",
+    ]
+    if coherence.get("state"):
+        lines.append(f"Coherence: {coherence['state']}")
+    if top_blockers:
+        lines.append("\nTop blockers:")
+        lines.extend(top_blockers)
+
+    summary = "\n".join(lines)
+    return tool_response(
+        compact,
+        "controlplane_run",
+        ctx.project_root,
+        summary,
+        run_id=compact.get("run_id", ""),
+        next_actions=compact.get("next_actions"),
+        extra={
+            "run_id": compact.get("run_id"),
+            "counts": counts,
+            "coherence": coherence.get("state", "unknown"),
+        },
+    )
 
 
 def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):

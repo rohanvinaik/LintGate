@@ -13,6 +13,8 @@ import contextlib
 import json
 from typing import Any
 
+from mcp_tools._disk_helpers import _safe_json
+
 # ── Module-level helpers ─────────────────────────────────────────────
 
 
@@ -142,15 +144,15 @@ def _impl_declare_mode(project_root: str, mode: str) -> str:
                 }
             )
 
-    return json.dumps(
-        {
-            "status": "ok",
-            "mode": mode,
-            "habit_score": round(state.habit_score, 3),
-            "active": state.active,
-            "message": f"Habit mode {'activated' if state.active else 'deactivated'}.",
-        }
-    )
+    data = {
+        "status": "ok",
+        "mode": mode,
+        "habit_score": round(state.habit_score, 3),
+        "active": state.active,
+    }
+    status = "activated" if state.active else "deactivated"
+    summary = f"Habit mode {status}. Score: {round(state.habit_score, 3)}."
+    return tool_response(data, "declare_mode", project_root, summary)
 
 
 def _impl_habit_status(project_root: str) -> str:
@@ -191,7 +193,7 @@ def _impl_habit_status(project_root: str) -> str:
                 },
             }
 
-    return json.dumps(result, indent=2)
+    return _safe_json(result)
 
 
 def _impl_habit_compact(project_root: str) -> str:
@@ -282,7 +284,7 @@ def _impl_habit_compact(project_root: str) -> str:
             }
         )
 
-    return json.dumps(snapshot, indent=2)
+    return _safe_json(snapshot)
 
 
 def _impl_habit_configure(
@@ -362,7 +364,7 @@ def _impl_habit_configure(
 
         log_feature_usage("habit_mode", project_root, {"tool": "habit_configure"})
 
-    return json.dumps(
+    return _safe_json(
         {
             "status": "ok",
             "overrides_applied": overrides,
@@ -398,13 +400,14 @@ def _impl_habit_bootstrap(project_root: str) -> str:
 
         log_feature_usage("habit_mode", project_root, {"tool": "habit_bootstrap"})
 
-    return json.dumps(summary, indent=2)
+    return _safe_json(summary)
 
 
 # ── Registration ─────────────────────────────────────────────────────
 
 
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp, helpers):
     """Register habit mode tools on the shared MCP instance."""

@@ -16,6 +16,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from mcp_tools._disk_helpers import _safe_json
+
 _LINTGATE_REPO_URL = "https://github.com/rohanvinaik/LintGate.git"
 
 
@@ -1002,7 +1004,7 @@ def impl_colab_sweep_generate(
     source_count = _count_source_files(project_root)
 
     if not git_info["repo_url"]:
-        return json.dumps(
+        return _safe_json(
             {
                 "error": "No git remote found. The Colab notebook needs a cloneable repo URL.",
                 "hint": "Run: git remote add origin <your-repo-url>",
@@ -1065,7 +1067,7 @@ def impl_colab_sweep_generate(
         ),
     ]
 
-    return json.dumps(
+    return _safe_json(
         {
             "notebook_path": output,
             "mode": mode,

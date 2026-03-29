@@ -27,10 +27,8 @@ from scripts._common import (
     emit,
     emit_error,
     resolve_files,
-    save_analysis,
     validate_project_root,
 )
-
 
 # ── Lint pipeline (moved from mcp_server.py) ──────────────────────────
 
@@ -60,11 +58,10 @@ def _run_lint(
     from lintgate.results_aggregator import aggregate_results
     from lintgate.state import (
         generate_run_id,
-        load_last_run,
+        log_metric,
         save_run,
         save_run_details,
     )
-    from lintgate.state import log_metric
 
     if strictness not in _VALID_STRICTNESS:
         strictness = "normal"

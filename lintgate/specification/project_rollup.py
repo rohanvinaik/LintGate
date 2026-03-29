@@ -106,7 +106,7 @@ def rollup_project(
     """
     rollup = ProjectRollup(project_root=project_root)
     rollup.include_tests = include_tests
-    py_files = discover_project_files(project_root, extra_exclude_dirs=frozenset({"archive"}))
+    py_files = discover_project_files(project_root)
 
     if not py_files:
         return rollup

@@ -15,7 +15,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mcp.server.fastmcp import FastMCP
-from mcp_tools._disk_helpers import tool_response
 
 mcp = FastMCP(
     "lintgate",
@@ -30,7 +29,7 @@ mcp = FastMCP(
 )
 
 # Import the full machinery (but don't expose it all as tools)
-from mcp_server import _helpers, _tool_funcs
+from mcp_server import _tool_funcs
 
 
 @mcp.tool()

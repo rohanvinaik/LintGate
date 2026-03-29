@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import textwrap
+
 
 def _load_tool_result(json_str: str) -> dict:
     """Parse a tool response; if disk-first, load full analysis from file."""

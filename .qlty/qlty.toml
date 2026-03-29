@@ -33,7 +33,6 @@ exclude_patterns = [
   "**/.benchmarks/**",
   "**/mutants/**",
   "**/.mutmut-cache/**",
-  "**/Mutation_Theory_SCRATCH/**",
 ]
 
 test_patterns = [

@@ -8,7 +8,6 @@ without relying on the dynamic ``globals().update()`` trick used by
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
 
@@ -213,6 +212,22 @@ def setup_github_quality(
     output["guidance"] = guidance
     output["next_actions"] = next_actions
 
-    if _helpers and "_json_dumps" in _helpers:
-        return _helpers["_json_dumps"](output, output_mode="compact")  # type: ignore[no-any-return]
-    return json.dumps(output, indent=2)
+    # NL summary
+    status = "written" if write else "preview"
+    artifact_count = len(artifact_definitions)
+    workflow_count = sum(1 for v in (output.get("github_actions") or {}).values() if v)
+    summary = (
+        f"setup_github_quality ({status}): {artifact_count} artifacts, {workflow_count} workflows"
+    )
+    if output.get("badges", {}).get("status") == "injected":
+        summary += ", badges injected"
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "setup_github_quality",
+        project_root,
+        summary,
+        next_actions=next_actions,
+    )

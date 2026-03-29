@@ -273,26 +273,7 @@ def _extract_coherence_keywords(text: str) -> list[str]:
     return [w for w in words if w not in _COHERENCE_STOPWORDS]
 
 
-def _is_contradicting(proposal_text: str, claim_text: str) -> bool:
-    """Heuristic: does the proposal forbid what the claim endorses, or vice versa?
-
-    Conservative: only flags clear contradictions where noun overlap exists
-    and polarity is reversed.
-    """
-    p_lower = proposal_text.lower()
-    c_lower = claim_text.lower()
-
-    # Extract meaningful nouns (4+ chars, not stopwords/polarity words)
-    all_polarity = _POSITIVE_POLARITY | _NEGATIVE_POLARITY
-    p_nouns = {w for w in _extract_coherence_keywords(p_lower) if w not in all_polarity}
-    c_nouns = {w for w in _extract_coherence_keywords(c_lower) if w not in all_polarity}
-
-    # Need at least 1 overlapping concept noun
-    overlap = p_nouns & c_nouns
-    if not overlap:
-        return False
-
-    # Check polarity: texts must have DIFFERENT dominant polarity
+def _dominant_polarity(c_lower, p_lower):
     p_words = set(p_lower.split())
     c_words = set(c_lower.split())
 
@@ -313,6 +294,30 @@ def _is_contradicting(proposal_text: str, claim_text: str) -> bool:
         if c_pos_count > c_neg_count
         else ("negative" if c_neg_count > c_pos_count else "neutral")
     )
+    return c_dominant, p_dominant
+
+
+def _is_contradicting(proposal_text: str, claim_text: str) -> bool:
+    """Heuristic: does the proposal forbid what the claim endorses, or vice versa?
+
+    Conservative: only flags clear contradictions where noun overlap exists
+    and polarity is reversed.
+    """
+    p_lower = proposal_text.lower()
+    c_lower = claim_text.lower()
+
+    # Extract meaningful nouns (4+ chars, not stopwords/polarity words)
+    all_polarity = _POSITIVE_POLARITY | _NEGATIVE_POLARITY
+    p_nouns = {w for w in _extract_coherence_keywords(p_lower) if w not in all_polarity}
+    c_nouns = {w for w in _extract_coherence_keywords(c_lower) if w not in all_polarity}
+
+    # Need at least 1 overlapping concept noun
+    overlap = p_nouns & c_nouns
+    if not overlap:
+        return False
+
+    # Check polarity: texts must have DIFFERENT dominant polarity
+    c_dominant, p_dominant = _dominant_polarity(c_lower, p_lower)
 
     # Contradiction requires opposite dominant polarity
     if p_dominant == "neutral" or c_dominant == "neutral":

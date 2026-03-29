@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import ast
-import json
 import os
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
+from mcp_tools._disk_helpers import _safe_json
 
 # Patterns for filtering non-production files from optimization targets
 _NON_PRODUCTION_PATTERNS = (
@@ -572,6 +572,7 @@ def _impl_optimization_landscape(
 
 from mcp_tools._disk_helpers import tool_response
 
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register convergence analysis tools on the shared MCP instance."""
 
@@ -602,7 +603,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         project_root = helpers["_validate_project_root"](path)
         result = _impl_convergence_analyze(path, file, function, helpers)
         if "error" in result:
-            return json.dumps(result)
+            return _safe_json(result)
         fc = result.get("function_convergence", {})
         filec = result.get("file_convergence", {})
         summary = f"Convergence: {fc.get('total', 0)} functions, {filec.get('total', 0)} files."
@@ -634,7 +635,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         project_root = helpers["_validate_project_root"](path)
         result = _impl_extraction_plan(path, function, helpers)
         if "error" in result:
-            return json.dumps(result)
+            return _safe_json(result)
         n_steps = len(result.get("steps", []))
         summary = f"Extraction plan for {function}: {n_steps} steps."
         return tool_response(
@@ -668,7 +669,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         project_root = helpers["_validate_project_root"](path)
         result = _impl_optimization_landscape(path, helpers, mode=mode)
         if "error" in result:
-            return json.dumps(result)
+            return _safe_json(result)
         s = result.get("summary", {})
         cache = s.get("cache_candidates", 0) if s else 0
         par = s.get("parallel_opportunities", 0) if s else 0

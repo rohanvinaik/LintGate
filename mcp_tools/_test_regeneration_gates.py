@@ -112,7 +112,23 @@ def impl_rebuild_validate(
             )
         ]
     )
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+    # NL summary
+    pass_fail = "PASS" if gate_pass else ("REVIEW_READY" if review_ready else "FAIL")
+    scorecard_lines: list[str] = _build_scorecard(gates)
+    failed_gates = [line.strip() for line in scorecard_lines if "FAIL" in line]
+    summary_parts = [f"test_rebuild_validate: {pass_fail}"]
+    if failed_gates:
+        summary_parts.append(f"Failed: {', '.join(failed_gates)}")
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "test_rebuild_validate",
+        project_root,
+        " | ".join(summary_parts),
+        next_actions=output.get("next_actions"),
+    )
 
 
 def _is_review_ready_to_apply(gates: dict[str, Any], gate_pass: bool) -> bool:

@@ -86,6 +86,7 @@ def _linter_available(linter: Any, project_root: str) -> bool:
 
 from mcp_tools._disk_helpers import tool_response
 
+
 def register(mcp, helpers):
     """Register lint tools on the shared MCP instance."""
 

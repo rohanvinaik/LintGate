@@ -14,6 +14,8 @@ import os
 from contextlib import suppress
 from typing import Any
 
+from mcp_tools._disk_helpers import _safe_json
+
 # ---------------------------------------------------------------------------
 # Lazy accessor — resolves names through the parent module so that
 # ``mock.patch("mcp_tools.onboarding_tools._foo")`` works correctly.
@@ -302,7 +304,7 @@ def _impl_getting_started(
     json_dumps = helpers.get("_json_dumps")
     if json_dumps:
         return json_dumps(output, output_mode="compact")  # type: ignore[no-any-return]
-    return json.dumps(output, indent=2)
+    return _safe_json(output)
 
 
 _TOOL_APPLICABILITY_GUIDE = {
@@ -366,7 +368,7 @@ def _impl_tool_applicability_guide(helpers: dict) -> str:
     json_dumps = helpers.get("_json_dumps")
     if json_dumps:
         return json_dumps(_TOOL_APPLICABILITY_GUIDE)  # type: ignore[no-any-return]
-    return json.dumps(_TOOL_APPLICABILITY_GUIDE, indent=2)
+    return _safe_json(_TOOL_APPLICABILITY_GUIDE)
 
 
 def _impl_scaffold_config(helpers: dict, path: str, write: bool = False) -> str:
@@ -397,7 +399,7 @@ def _impl_scaffold_config(helpers: dict, path: str, write: bool = False) -> str:
     }
     if existing_config and not write:
         output["message"] = "Config already exists. Returning scaffold preview only."
-    return json.dumps(output, indent=2)
+    return _safe_json(output)
 
 
 def _impl_setup_github_quality(

@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 from typing import Any
 
+from mcp_tools._disk_helpers import _safe_json
+
 
 def _build_manifest_summary(manifest: Any, project_root: str) -> dict[str, Any]:
     """Build a compact summary of the property manifest."""
@@ -120,7 +122,7 @@ def _generate_from_prescriptions(
 
     _ = function
     _ = max_functions
-    helpers["_validate_project_root"](path)
+    project_root = helpers["_validate_project_root"](path)
     next_actions = serialize_next_actions(
         [
             NextAction(
@@ -136,12 +138,15 @@ def _generate_from_prescriptions(
             ),
         ]
     )
-    return json.dumps(
-        {
-            "note": "from_prescriptions mode has moved to dedicated mutation tools.",
-            "workflow": "mutation_run_sampling → mutation_prescribe → mutation_prescribe_tests",
-            "next_actions": next_actions,
-        }
+    data = {
+        "note": "from_prescriptions mode has moved to dedicated mutation tools.",
+        "workflow": "mutation_run_sampling → mutation_prescribe → mutation_prescribe_tests",
+        "next_actions": next_actions,
+    }
+    return tool_response(
+        data, "generate_property_tests", project_root,
+        "from_prescriptions redirected to mutation tools.",
+        next_actions=next_actions,
     )
 
 
@@ -339,7 +344,9 @@ def _impl_generate_property_tests(
         note = "No pure functions with algebraic properties found"
         if function:
             note += f" matching '{function}'"
-        return json.dumps({"note": note, "suggestion": "Run inspect_algebra to see all functions"})
+        data = {"note": note, "suggestion": "Run inspect_algebra to see all functions"}
+        project_root = helpers["_validate_project_root"](path)
+        return tool_response(data, "generate_property_tests", project_root, note)
 
     results = [_build_test_entry(name, func) for name, func in candidates]
 
@@ -371,6 +378,7 @@ def _impl_generate_property_tests(
 
 
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register performance analysis tools on the shared MCP instance."""
@@ -474,7 +482,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         _, manifest, _py_files = _build_manifest_for_project(path, helpers)
 
         if not manifest or function not in manifest.functions:
-            return json.dumps(
+            return _safe_json(
                 {"error": f"Function '{function}' not found in performance manifest."}
             )
 
@@ -486,7 +494,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
 
         result = _execute_property_tests(template, project_root, function)
         if "error" in result:
-            return json.dumps(result)
+            return _safe_json(result)
         passed = "passed" if result.get("success") else "failed"
         hints = len(result.get("refinement_hints", []))
         summary = f"Property tests for {function}: {passed}. {hints} refinement hints."

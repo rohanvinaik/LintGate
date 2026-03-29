@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
-from mcp_tools._disk_helpers import tool_response
+from mcp_tools._disk_helpers import _safe_json, tool_response
 
 
 def _do_wiki_materialize(
@@ -226,7 +225,7 @@ def register(mcp, helpers):
         status = check_wiki_freshness(project_root)
 
         if "error" in status:
-            return json.dumps(status, separators=(",", ":"))
+            return _safe_json(status, separators=(",", ":"))
 
         next_actions: list[NextAction] = []
         if status.get("stale", 0) > 0 or status.get("missing", 0) > 0:
@@ -289,7 +288,7 @@ def register(mcp, helpers):
         response = _do_wiki_publish(project_root, out_dir, check_links, site_title, base_url)
 
         if "error" in response:
-            return json.dumps(response, separators=(",", ":"))
+            return _safe_json(response, separators=(",", ":"))
 
         next_actions_list: list[NextAction] = []
         if response.get("link_errors"):

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register bootstrap tools on the shared MCP instance."""

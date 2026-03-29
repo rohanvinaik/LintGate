@@ -34,6 +34,7 @@ __all__ = ["_MAX_FILES_PER_RUN", "_MAX_TOTAL_LINES", "register"]
 
 from mcp_tools._disk_helpers import tool_response
 
+
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register specification analysis tools on the shared MCP instance."""
 

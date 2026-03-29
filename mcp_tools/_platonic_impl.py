@@ -68,6 +68,7 @@ from lintgate.testing.platonic_outcomes import (
 from lintgate.testing.platonic_outcomes import (
     workflow_state_from_outputs as _workflow_state_from_outputs_impl,
 )
+from mcp_tools._disk_helpers import tool_response
 
 
 def _is_default_float(value: float, default: float) -> bool:
@@ -239,11 +240,19 @@ def impl_platonic_validate_only(
     )
     save_workflow(project_root, platonic_cfg.workflow_dir, workflow)
 
-    return str(
-        helpers["_json_dumps"](
-            workflow_envelope(workflow, next_actions=next_actions),
-            output_mode="compact",
-        )
+    envelope = workflow_envelope(workflow, next_actions=next_actions)
+    summary = (
+        f"Validation {workflow.state} for {workflow.rel_file} "
+        f"(wf={workflow_id}, reason={reason_code}). "
+        f"Next: {workflow.primary_next_action or 'none'}."
+    )
+    return tool_response(
+        envelope,
+        "platonic_validate",
+        project_root,
+        summary,
+        run_id=workflow_id,
+        next_actions=[a.to_dict() for a in next_actions] if next_actions else None,
     )
 
 
@@ -673,7 +682,18 @@ def impl_platonic_converge(
                 "classifications": assessment["summary"]["strategy_distribution"],
             },
         )
-        return str(helpers["_json_dumps"](output, output_mode="compact"))
+        summary = (
+            f"Converge {state} for {rel_file} ({assessment['summary']['total_functions']} funcs). "
+            f"{workflow.blocking_reason}"
+        )
+        return tool_response(
+            output,
+            "platonic_converge",
+            project_root,
+            summary,
+            run_id=workflow_id,
+            next_actions=[a.to_dict() for a in next_actions] if next_actions else None,
+        )
 
     # Initialize convergence state — hydrate from snapshot on resume
     iteration_log: list[dict[str, Any]] = []
@@ -880,21 +900,34 @@ def impl_platonic_converge(
     )
     save_workflow(project_root, platonic_cfg.workflow_dir, workflow)
 
-    return str(
-        helpers["_json_dumps"](
-            workflow_envelope(
-                workflow,
-                next_actions=converge_next_actions,
-                extra={
-                    "file": rel_file,
-                    "health": health_data,
-                    "convergence": conv_summary,
-                    "iterations": iteration_log,
-                    "reconciliation_threshold": effective_reconciliation_threshold,
-                },
-            ),
-            output_mode="compact",
-        )
+    envelope = workflow_envelope(
+        workflow,
+        next_actions=converge_next_actions,
+        extra={
+            "file": rel_file,
+            "health": health_data,
+            "convergence": conv_summary,
+            "iterations": iteration_log,
+            "reconciliation_threshold": effective_reconciliation_threshold,
+        },
+    )
+    iters_done = len(iteration_log)
+    ready = conv_summary.get("ready_to_apply", False)
+    avg_kill = conv_summary.get("mean_kill_rate", 0.0)
+    summary = (
+        f"Converge {workflow_state} for {rel_file} after {iters_done} iteration(s). "
+        f"Kill rate: {avg_kill:.0%}, ready_to_apply={ready}. "
+        f"Next: {primary_next_action or 'none'}."
+    )
+    return tool_response(
+        envelope,
+        "platonic_converge",
+        project_root,
+        summary,
+        run_id=workflow_id,
+        next_actions=[a.to_dict() for a in converge_next_actions]
+        if converge_next_actions
+        else None,
     )
 
 
@@ -1200,11 +1233,12 @@ def impl_platonic_sweep(
         )
     )
 
+    elapsed_s = round(time.monotonic() - start, 1)
     output: dict[str, Any] = {
         "project": project_root,
         "resumed": resumed,
         "budget_s": budget_s,
-        "elapsed_s": round(time.monotonic() - start, 1),
+        "elapsed_s": elapsed_s,
         "batches_run": batches_run,
         "functions_swept": len(sweep_results),
         "scheduler_status": status.to_dict(),
@@ -1216,4 +1250,16 @@ def impl_platonic_sweep(
         },
         "next_actions": serialize_next_actions(next_actions),
     }
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+    summary = (
+        f"Sweep: {len(sweep_results)} functions across {len(file_summary)} files "
+        f"in {elapsed_s}s ({batches_run} batches). "
+        f"Queue remaining: {status.queue_depth}. "
+        f"Mean spec level: {rollup.mean_spec_level:.3f}."
+    )
+    return tool_response(
+        output,
+        "platonic_sweep",
+        project_root,
+        summary,
+        next_actions=[a.to_dict() for a in next_actions] if next_actions else None,
+    )

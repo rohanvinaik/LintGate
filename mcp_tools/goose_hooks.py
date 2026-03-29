@@ -12,10 +12,8 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from typing import Any
 
-from mcp_tools._disk_helpers import tool_response
+from mcp_tools._disk_helpers import _safe_json, tool_response
 
 
 def register(mcp, helpers):
@@ -105,7 +103,7 @@ def register(mcp, helpers):
             staged = []
 
         if not staged:
-            return json.dumps({"verdict": "pass", "note": "No staged Python files."})
+            return _safe_json({"verdict": "pass", "note": "No staged Python files."})
 
         # Lint staged files
         py_files = [os.path.join(project_root, f) for f in staged if os.path.isfile(os.path.join(project_root, f))]

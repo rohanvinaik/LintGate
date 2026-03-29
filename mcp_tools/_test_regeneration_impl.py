@@ -113,7 +113,27 @@ def impl_rebuild_plan(
             ),
         ]
     )
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+    # NL summary
+    total = output.get("total_functions", 0)
+    auto = output.get("auto_generate_unit", 0)
+    preserve = output.get("preserve_count", 0)
+    summary = (
+        f"test_rebuild_plan: {total} functions classified — "
+        f"{auto} auto-generate, {preserve} preserve"
+    )
+    if manifest_path:
+        summary += f" | manifest: {manifest_path}"
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "test_rebuild_plan",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
+    )
 
 
 def impl_rebuild_generate(
@@ -187,6 +207,20 @@ def impl_rebuild_generate(
             }
         )
 
+    # Always write skeletons to disk (even in preview mode) so content
+    # never bloats the MCP response.  When write=False, use a staging dir.
+    if not write:
+        staging_dir = os.path.join(project_root, ".lintgate", "staged_tests")
+        os.makedirs(staging_dir, exist_ok=True)
+        for rel_path, content in skeletons.items():
+            out_path = os.path.join(staging_dir, os.path.basename(rel_path))
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            # Update generated entries with staged path
+            for g in generated:
+                if g["target_test_file"] == rel_path:
+                    g["staged_path"] = os.path.relpath(out_path, project_root)
+
     output: dict[str, Any] = {
         "files_generated": len(generated),
         "files_processed": files_processed,
@@ -194,16 +228,31 @@ def impl_rebuild_generate(
         "generated": generated,
     }
 
-    if not write:
-        output["skeletons"] = skeletons
+    next_actions = [
+        NextAction(
+            tool="test_rebuild_validate",
+            args={"path": path},
+            reason="Validate generated tests against quality gates",
+        ),
+    ]
+    output["next_actions"] = serialize_next_actions(next_actions)
 
-    output["next_actions"] = serialize_next_actions(
-        [
-            NextAction(
-                tool="test_rebuild_validate",
-                args={"path": path},
-                reason="Validate generated tests against quality gates",
-            ),
-        ]
+    # Slim summary
+    lines = [
+        f"{len(generated)}/{sum(len(v) for v in by_file.values())} files generated ({files_processed} processed)"
+    ]
+    for g in generated:
+        target = g.get("staged_path") or g["target_test_file"]
+        n_funcs = len(g.get("functions", []))
+        lines.append(f"  {target}: {n_funcs} function(s), written={g.get('written', False)}")
+    summary = "\n".join(lines)
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "test_rebuild_generate",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
     )
-    return str(helpers["_json_dumps"](output, output_mode="compact"))

@@ -141,26 +141,8 @@ def read_analysis_resource(tool_name: str, analysis_id: str) -> str:
 # ─── Layer 3: Retrieval tool — surgical JSON path queries ────────────────
 
 
-@mcp.tool()
-def query_analysis(
-    analysis_id: str,
-    tool_name: str = "",
-    path: str = "$",
-    max_items: int = 20,
-) -> str:
-    """Query a specific section of a saved analysis by JSON path.
-
-    WHEN TO USE: When you need a specific part of a large analysis result
-    without loading the entire file into context.
-
-    Example: query_analysis(analysis_id="cp_abc123", tool_name="controlplane_run", path="blocking_findings")
-
-    Args:
-        analysis_id: The analysis ID from a computation tool's response.
-        tool_name: The tool that produced the analysis.
-        path: Dot-separated JSON path (e.g. "counts.blocking"). Use "$" for root.
-        max_items: Max list items to return.
-    """
+def _find_analysis_file(analysis_id: str, tool_name: str) -> str | None:
+    """Locate an analysis JSON file by ID, optionally scoped to a tool."""
     base = os.getcwd()
     if tool_name:
         search_dirs = [os.path.join(base, ".lintgate", "analysis", tool_name)]
@@ -170,36 +152,131 @@ def query_analysis(
             os.path.join(analysis_root, d) for d in os.listdir(analysis_root)
             if os.path.isdir(os.path.join(analysis_root, d))
         ] if os.path.isdir(analysis_root) else []
-
-    filepath = None
     for d in search_dirs:
         candidate = os.path.join(d, f"{analysis_id}.json")
         if os.path.isfile(candidate):
-            filepath = candidate
-            break
+            return candidate
+    return None
+
+
+def _resolve_section(data: dict[str, Any], section: str) -> dict[str, Any] | str:
+    """Resolve a section name to its data subset. Returns error string on failure."""
+    sections = data.get("_sections", {})
+    if section in sections:
+        return {k: data[k] for k in sections[section] if k in data}
+    available = list(sections.keys()) if sections else ["no sections indexed"]
+    return f"Section '{section}' not found. Available: {available}"
+
+
+def _build_manifest(data: dict[str, Any]) -> dict[str, Any]:
+    """Build a section manifest from an envelope-wrapped analysis file."""
+    sections = data.get("_sections", {})
+    meta = data.get("_meta", {})
+    manifest: dict[str, Any] = {"tool": meta.get("tool", "?"), "sections": {}}
+    for sec_name, sec_keys in sections.items():
+        key_summaries: dict[str, Any] = {}
+        for k in sec_keys:
+            v = data.get(k)
+            if isinstance(v, list):
+                key_summaries[k] = f"list[{len(v)}]"
+            elif isinstance(v, dict):
+                key_summaries[k] = f"dict[{len(v)} keys]"
+            elif isinstance(v, (int, float)) or isinstance(v, str) and len(v) < 60:
+                key_summaries[k] = v
+            else:
+                key_summaries[k] = type(v).__name__ if v is not None else "null"
+        manifest["sections"][sec_name] = key_summaries
+    return manifest
+
+
+def _traverse_path(data: Any, path: str) -> tuple[Any, str]:
+    """Traverse a dot-separated JSON path. Returns (result, error)."""
+    for key in path.split("."):
+        if isinstance(data, dict) and key in data:
+            data = data[key]
+        elif isinstance(data, list):
+            try:
+                data = data[int(key)]
+            except (ValueError, IndexError):
+                return None, f"Path '{path}' not found"
+        else:
+            return None, f"Path '{path}' not found"
+    return data, ""
+
+
+def _format_query_result(data: Any, max_items: int, filepath: str) -> str:
+    """Format query result with list truncation and size guard."""
+    if isinstance(data, list) and len(data) > max_items:
+        total = len(data)
+        data = data[:max_items]
+        return json.dumps({"result": data, "truncated": total - max_items}, separators=(",", ":"), default=str)
+
+    result_str = json.dumps({"result": data}, separators=(",", ":"), default=str)
+    if len(result_str) > 2048:
+        keys_hint = ""
+        if isinstance(data, dict):
+            keys_hint = f", keys: {list(data.keys())[:10]}"
+        elif isinstance(data, list):
+            keys_hint = f", {len(data)} items"
+        return json.dumps({
+            "result": f"Response too large ({len(result_str)} chars){keys_hint}. Use a more specific path or Read the file directly.",
+            "file": filepath,
+            "hint": "Use section='findings' or a dot-path to drill into specific keys",
+        }, separators=(",", ":"), default=str)
+    return result_str
+
+
+@mcp.tool()
+def query_analysis(
+    analysis_id: str,
+    tool_name: str = "",
+    path: str = "$",
+    max_items: int = 20,
+    section: str = "",
+) -> str:
+    """Query a specific section of a saved analysis by JSON path.
+
+    WHEN TO USE: When you need a specific part of a large analysis result
+    without loading the entire file into context.
+
+    Supports two query modes:
+    1. section="findings" — returns all keys classified as findings (auto-resolved)
+    2. path="counts.blocking" — direct dot-path traversal
+
+    When path="$" (root), returns the section manifest showing what's queryable.
+
+    Examples:
+        query_analysis(analysis_id="abc", section="findings")
+        query_analysis(analysis_id="abc", path="counts.blocking")
+        query_analysis(analysis_id="abc")  # returns section manifest
+
+    Args:
+        analysis_id: The analysis ID from a computation tool's response.
+        tool_name: The tool that produced the analysis.
+        path: Dot-separated JSON path (e.g. "counts.blocking"). Use "$" for root.
+        max_items: Max list items to return (default 20).
+        section: Query by section name: "findings", "metrics", "status", "meta", "actions", "config", "data".
+    """
+    filepath = _find_analysis_file(analysis_id, tool_name)
     if not filepath:
         return json.dumps({"error": f"Analysis {analysis_id} not found"})
 
     with open(filepath, encoding="utf-8") as f:
         data = json.loads(f.read())
 
-    if path and path != "$":
-        for key in path.split("."):
-            if isinstance(data, dict) and key in data:
-                data = data[key]
-            elif isinstance(data, list):
-                try:
-                    data = data[int(key)]
-                except (ValueError, IndexError):
-                    return json.dumps({"error": f"Path '{path}' not found"})
-            else:
-                return json.dumps({"error": f"Path '{path}' not found"})
+    if section and isinstance(data, dict):
+        resolved = _resolve_section(data, section)
+        if isinstance(resolved, str):
+            return json.dumps({"error": resolved})
+        data = resolved
+    elif path == "$" and isinstance(data, dict) and "_sections" in data:
+        return json.dumps({"manifest": _build_manifest(data)}, separators=(",", ":"), default=str)
+    elif path and path != "$":
+        data, err = _traverse_path(data, path)
+        if err:
+            return json.dumps({"error": err})
 
-    if isinstance(data, list) and len(data) > max_items:
-        total = len(data)
-        data = data[:max_items]
-        return json.dumps({"result": data, "truncated": total - max_items}, separators=(",", ":"), default=str)
-    return json.dumps({"result": data}, separators=(",", ":"), default=str)
+    return _format_query_result(data, max_items, filepath)
 
 
 # ─── Tier definitions (match tier_selector.py) ──────────────────────────
@@ -534,11 +611,18 @@ def _tool_response(
     return json.dumps(response, separators=(",", ":"), default=str)
 
 
+_JSON_DUMPS_MAX_RESPONSE = 2048  # ~500 tokens — auto-save to disk if exceeded
+
+
 def _json_dumps(data: Any, output_mode: str = "compact") -> str:
     """Serialize data to JSON with mode-appropriate formatting.
 
     compact/standard: no indent, compact separators (~15-20% smaller)
     full: indent=2 for human readability
+
+    Safety net: if serialized output exceeds _JSON_DUMPS_MAX_RESPONSE bytes,
+    auto-saves to disk and returns a slim pointer. This prevents any tool
+    from accidentally dumping bulk data into the context window.
     """
     payload = data
     if isinstance(data, dict):
@@ -550,8 +634,20 @@ def _json_dumps(data: Any, output_mode: str = "compact") -> str:
                 payload = attach_session_context(dict(data), project_root)
 
     if output_mode == "full":
-        return json.dumps(payload, indent=2)
-    return json.dumps(payload, separators=(",", ":"))
+        result = json.dumps(payload, indent=2)
+    else:
+        result = json.dumps(payload, separators=(",", ":"))
+
+    # Safety net: auto-save large responses to disk
+    if len(result) > _JSON_DUMPS_MAX_RESPONSE and isinstance(data, dict):
+        project_root = _infer_project_root(data) or os.getcwd()
+        try:
+            from mcp_tools._disk_helpers import wrap_impl_response
+            return wrap_impl_response(result, "auto_saved", project_root)
+        except Exception:
+            pass  # Fall through to raw return if disk save fails
+
+    return result
 
 
 def _execute_lint_pipeline(

@@ -47,8 +47,10 @@ from lintgate._habit_types import (
 from lintgate.hook_posttooluse import _record_habit_event_lightweight
 from lintgate.token_tracker import TokenTrackerState
 
+
 def _load_tool_result(json_str):
-    import json, os
+    import json
+    import os
     r = json.loads(json_str)
     if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
         with open(r["file"]) as f: return json.loads(f.read())

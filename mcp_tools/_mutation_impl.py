@@ -27,6 +27,7 @@ class DiscoveryDiagnostics:
     ast_test_callables: int = 0
     import_successes: int = 0
     import_failures: list[str] = field(default_factory=list)
+    import_error_details: list[dict[str, str]] = field(default_factory=list)
     class_instantiation_failures: list[str] = field(default_factory=list)
     callables_loaded: int = 0
     fallback_used: bool = False
@@ -47,6 +48,8 @@ class DiscoveryDiagnostics:
             d["ast_test_callables"] = self.ast_test_callables
         if self.import_failures:
             d["import_failures"] = self.import_failures[:5]
+        if self.import_error_details:
+            d["import_error_details"] = self.import_error_details[:5]
         if self.class_instantiation_failures:
             d["class_instantiation_failures"] = self.class_instantiation_failures[:5]
         if self.linkage_source:
@@ -605,10 +608,13 @@ def _load_all_tests_from_files(
     """
     callables: list[Any] = []
     for tf in test_files:
-        mod = _try_import_module(tf)
+        mod, err_detail = _try_import_module(tf)
         if mod is None:
             if diag is not None:
-                diag.import_failures.append(os.path.basename(tf))
+                basename = os.path.basename(tf)
+                diag.import_failures.append(basename)
+                if err_detail:
+                    diag.import_error_details.append({"file": basename, "error": err_detail})
             continue
         if diag is not None:
             diag.import_successes += 1
@@ -630,10 +636,13 @@ def _import_test_functions(
     loaded_modules: dict[str, Any] = {}
     for ref in refs:
         if ref.test_file not in loaded_modules:
-            mod = _try_import_module(ref.test_file)
+            mod, err_detail = _try_import_module(ref.test_file)
             loaded_modules[ref.test_file] = mod
             if mod is None and diag is not None:
-                diag.import_failures.append(os.path.basename(ref.test_file))
+                basename = os.path.basename(ref.test_file)
+                diag.import_failures.append(basename)
+                if err_detail:
+                    diag.import_error_details.append({"file": basename, "error": err_detail})
             elif mod is not None and diag is not None:
                 diag.import_successes += 1
         mod = loaded_modules[ref.test_file]
@@ -694,11 +703,14 @@ def _find_method_in_test_classes(mod: Any, method_name: str) -> Any:
     return None
 
 
-def _try_import_module(filepath: str) -> Any:
+def _try_import_module(filepath: str) -> tuple[Any, str]:
     """Try to dynamically import a Python file as a module.
 
     Establishes project import context by adding the project root
     (directory containing tests/) to sys.path before import.
+
+    Returns (module, error_detail) — module is None on failure,
+    error_detail is a short string describing why (empty on success).
     """
     import importlib.util
     import sys
@@ -716,17 +728,18 @@ def _try_import_module(filepath: str) -> Any:
     if spec is None or spec.loader is None:
         if path_added and project_root is not None:
             sys.path.remove(project_root)
-        return None
+        return None, "spec_from_file_location returned None"
     try:
         mod = importlib.util.module_from_spec(spec)
         # Register in sys.modules BEFORE exec so dataclass decorators,
         # __module__ introspection, and intra-test imports resolve.
         sys.modules[mod_name] = mod
         spec.loader.exec_module(mod)
-        return mod
-    except Exception:
+        return mod, ""
+    except Exception as exc:
         sys.modules.pop(mod_name, None)
-        return None
+        detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+        return None, detail
     finally:
         # Leave project_root in sys.path — other test modules may need it
         pass

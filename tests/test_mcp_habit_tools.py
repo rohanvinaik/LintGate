@@ -14,8 +14,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+
 def _load_tool_result(json_str):
-    import json, os
+    import json
+    import os
     r = json.loads(json_str)
     if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
         with open(r["file"]) as f: return json.loads(f.read())

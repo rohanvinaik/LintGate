@@ -97,7 +97,6 @@ def impl_run_sampling(
     ]
     from mcp_tools._disk_helpers import tool_response
 
-    compact_results = _strip_bulk_mutation_fields(results)
     output: dict[str, Any] = {
         "file": file,
         "functions_sampled": len(results),
@@ -119,15 +118,25 @@ def impl_run_sampling(
         total = r.get("total_mutants", 0)
         killed = r.get("total_killed", 0)
         rate = round(killed / total * 100, 1) if total else 0
-        surviving = [c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0]
+        surviving = [
+            c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0
+        ]
         if surviving:
-            lines.append(f"  {fname}: {killed}/{total} killed ({rate}%) — surviving: {', '.join(surviving)}")
+            lines.append(
+                f"  {fname}: {killed}/{total} killed ({rate}%) — surviving: {', '.join(surviving)}"
+            )
         elif total > 0:
             lines.append(f"  {fname}: {killed}/{total} killed ({rate}%) — fully specified")
         else:
             lines.append(f"  {fname}: no mutants generated")
     summary = "\n".join(lines)
-    return tool_response(output, "mutation_run_sampling", project_root, summary, next_actions=output.get("next_actions"))
+    return tool_response(
+        output,
+        "mutation_run_sampling",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
+    )
 
 
 def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> str:
@@ -197,7 +206,9 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         t = r.get("total_mutants", 0)
         k = r.get("total_killed", 0)
         fr = round(k / t * 100, 1) if t else 0
-        surviving = [c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0]
+        surviving = [
+            c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0
+        ]
         if surviving:
             lines.append(f"  {fname}: {k}/{t} killed ({fr}%) — surviving: {', '.join(surviving)}")
         elif t > 0:
@@ -205,7 +216,9 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
         else:
             lines.append(f"  {fname}: no mutants generated")
     summary = "\n".join(lines)
-    return tool_response(output, "mutation_run_full", project_root, summary, next_actions=output.get("next_actions"))
+    return tool_response(
+        output, "mutation_run_full", project_root, summary, next_actions=output.get("next_actions")
+    )
 
 
 def impl_get_state(helpers: Any, path: str, file: str | None, function: str | None) -> str:
@@ -229,11 +242,33 @@ def impl_get_state(helpers: Any, path: str, file: str | None, function: str | No
             )
         )
     states = iter_cached_states(cache_dir, file, function)
-    return str(
-        helpers["_json_dumps"](
-            {"total_functions": len(states), "states": states}, output_mode="compact"
-        )
-    )
+
+    output: dict[str, Any] = {"total_functions": len(states), "states": states}
+
+    # Build slim summary: top functions with surviving mutations, capped
+    total_funcs = len(states)
+    # Prioritize: functions with survivors first, then lowest kill rate
+    with_survivors = [s for s in states if any(c.get("survived", 0) > 0 for c in s.get("per_category", []))]
+    top = sorted(with_survivors, key=lambda s: s.get("total_killed", 0) / max(s.get("total_mutants", 1), 1))[:10]
+
+    lines = [f"{total_funcs} cached function(s), {len(with_survivors)} with survivors"]
+    for s in top:
+        fk = s.get("function_key", "?")
+        total = s.get("total_mutants", 0)
+        killed = s.get("total_killed", 0)
+        rate = round(killed / total * 100, 1) if total else 0
+        surviving_cats = [
+            c.get("category", "?") for c in s.get("per_category", []) if c.get("survived", 0) > 0
+        ]
+        suffix = f" — surviving: {', '.join(surviving_cats)}" if surviving_cats else ""
+        lines.append(f"  {fk}: {killed}/{total} ({rate}%){suffix}")
+    if len(with_survivors) > 10:
+        lines.append(f"  ... and {len(with_survivors) - 10} more with survivors")
+    summary = "\n".join(lines)
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(output, "mutation_get_state", project_root, summary)
 
 
 def impl_prescribe(helpers: Any, path: str, file: str | None, function: str | None) -> str:
@@ -292,7 +327,9 @@ def impl_prescribe(helpers: Any, path: str, file: str | None, function: str | No
     if len(prescriptions) > 10:
         lines.append(f"  ... and {len(prescriptions) - 10} more")
     summary = "\n".join(lines)
-    return tool_response(output, "mutation_prescribe", project_root, summary, next_actions=output.get("next_actions"))
+    return tool_response(
+        output, "mutation_prescribe", project_root, summary, next_actions=output.get("next_actions")
+    )
 
 
 def _collect_prescriptions(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -487,7 +524,23 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
                 ),
             ]
         )
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+
+    # NL summary
+    if candidates:
+        funcs = ", ".join(c["function"] for c in candidates[:3])
+        summary = f"mutation_decompose: {len(candidates)} candidate(s) — {funcs}"
+    else:
+        summary = f"mutation_decompose: no decomposition candidates (mode={mode})"
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "mutation_decompose",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
+    )
 
 
 def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None) -> str:
@@ -512,15 +565,45 @@ def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None)
             reason="Check if specification level now meets optimization hint thresholds",
         ),
     ]
-    return str(
-        helpers["_json_dumps"](
-            {
-                "file": file,
-                "results": results,
-                "next_actions": serialize_next_actions(next_actions),
-            },
-            output_mode="compact",
-        )
+
+    output: dict[str, Any] = {
+        "file": file,
+        "results": results,
+        "next_actions": serialize_next_actions(next_actions),
+    }
+
+    # Build slim summary: per-function kill rate + delta
+    lines = [f"{file}: {len(results)} functions validated"]
+    for r in results:
+        fname = r.get("function_key", r.get("function", "?"))
+        total = r.get("total_mutants", 0)
+        killed = r.get("total_killed", 0)
+        rate = round(killed / total * 100, 1) if total else 0
+        delta = r.get("survival_delta")
+        delta_str = f" (delta: {delta:+.3f})" if delta is not None else ""
+        surviving = [
+            c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0
+        ]
+        if surviving:
+            lines.append(
+                f"  {fname}: {killed}/{total} killed ({rate}%){delta_str} — surviving: {', '.join(surviving)}"
+            )
+        elif total > 0:
+            lines.append(
+                f"  {fname}: {killed}/{total} killed ({rate}%){delta_str} — fully specified"
+            )
+        else:
+            lines.append(f"  {fname}: no mutants generated")
+    summary = "\n".join(lines)
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "mutation_validate_tests",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
     )
 
 
@@ -730,14 +813,53 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
                 condition="after implementing the test skeletons",
             ),
         ]
-    return str(
-        helpers["_json_dumps"](
-            {
-                "skeletons": skeletons,
-                "next_actions": serialize_next_actions(next_actions),
-            },
-            output_mode="compact",
-        )
+    # Write skeletons to a file so LLM can Read them instead of inline
+    skeleton_path = ""
+    if skeletons:
+        skel_dir = os.path.join(project_root, ".lintgate", "skeletons")
+        os.makedirs(skel_dir, exist_ok=True)
+        # Group by function for readable output
+        skel_file = os.path.join(skel_dir, f"prescribe_{os.path.basename(file or 'all')}")
+        if not skel_file.endswith(".py"):
+            skel_file += ".py"
+        skel_lines = ['"""Auto-generated test skeletons from mutation_prescribe_tests."""\n\n']
+        for skel in skeletons:
+            func = skel.get("function", "unknown")
+            cat = skel.get("category", "unknown")
+            skel_lines.append(f"# --- {func} [{cat}] ---\n")
+            if skel.get("setup_code"):
+                skel_lines.append(f"# Setup: {skel['setup_code']}\n")
+            if skel.get("test_code"):
+                skel_lines.append(skel["test_code"])
+                skel_lines.append("\n\n")
+        with open(skel_file, "w", encoding="utf-8") as f:
+            f.writelines(skel_lines)
+        skeleton_path = os.path.relpath(skel_file, project_root)
+
+    output: dict[str, Any] = {
+        "skeletons": skeletons,
+        "skeleton_file": skeleton_path,
+        "next_actions": serialize_next_actions(next_actions),
+    }
+
+    # Slim summary
+    cats_seen = {}
+    for skel in skeletons:
+        cat = skel.get("category", "?")
+        cats_seen[cat] = cats_seen.get(cat, 0) + 1
+    cat_summary = ", ".join(f"{c}:{n}" for c, n in sorted(cats_seen.items()))
+    summary = f"{len(skeletons)} skeleton(s) for {file or 'all'}: {cat_summary}"
+    if skeleton_path:
+        summary += f"\nSkeletons written to: {skeleton_path}"
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "mutation_prescribe_tests",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
     )
 
 

@@ -5,12 +5,13 @@ Extracted from controlplane_tools.py to keep the register() module under 400 lin
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
+
+from mcp_tools._disk_helpers import _safe_json
 
 # ── controlplane_agent_feedback helpers ─────────────────────────────────
 
@@ -203,7 +204,7 @@ def _impl_controlplane_agent_feedback(
 
     save_session(session)
     result = _build_feedback_result(session, actions_taken, tuned_results, rejected_tunings)
-    return json.dumps(result, indent=2)
+    return _safe_json(result)
 
 
 # ── controlplane_apply_repairs helpers ──────────────────────────────────
@@ -494,4 +495,11 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers, *, ru
     if skip_diagnostics:
         response["skipped"] = skip_diagnostics
 
-    return json.dumps(response, indent=2)
+    # NL summary
+    summary = f"Repairs: {succeeded} succeeded, {failed} failed, {len(skip_diagnostics) + skipped_in_exec} skipped. {pending_remaining} pending."
+    if skipped_by_reason:
+        reasons = ", ".join(f"{r}:{n}" for r, n in skipped_by_reason.items())
+        summary += f" Skip reasons: {reasons}"
+
+    from mcp_tools._disk_helpers import tool_response
+    return tool_response(response, "controlplane_apply_repairs", project_root, summary)

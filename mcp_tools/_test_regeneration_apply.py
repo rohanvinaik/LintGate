@@ -107,7 +107,21 @@ def impl_rebuild_apply(
             ]
         )
 
-    return str(helpers["_json_dumps"](output, output_mode="compact"))
+    mode = "dry_run" if dry_run else "applied"
+    summary = (
+        f"test_rebuild_apply ({mode}): "
+        f"{output['quarantined']} quarantined, {output['promoted']} promoted"
+    )
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "test_rebuild_apply",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
+    )
 
 
 def _quarantine_files(

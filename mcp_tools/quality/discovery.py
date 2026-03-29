@@ -22,6 +22,9 @@ _SKIP_DIRS = frozenset(
         ".pytest_cache",
         ".tox",
         ".nox",
+        "mutants",
+        ".mutmut",
+        ".mutmut-cache",
     }
 )
 

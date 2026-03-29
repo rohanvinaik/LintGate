@@ -13,14 +13,15 @@ ControlPlane cannot analyze itself without crashing, it should not ship.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 import pytest
 
+
 def _load_tool_result(json_str):
-    import json as _j, os
+    import json as _j
+    import os
     r = _j.loads(json_str)
     if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
         with open(r["file"]) as f: return _j.loads(f.read())

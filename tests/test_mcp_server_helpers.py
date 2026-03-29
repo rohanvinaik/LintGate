@@ -31,8 +31,10 @@ from mcp_server import (
     _validate_tier,
 )
 
+
 def _load_tool_result(json_str):
-    import json as _j, os as _os
+    import json as _j
+    import os as _os
     r = _j.loads(json_str)
     if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
         with open(r["file"]) as f: return _j.loads(f.read())
@@ -1426,7 +1428,6 @@ class TestModelProfileMcp:
     }
 
     def test_probe_submit_increments_probe_runs(self, monkeypatch, tmp_path):
-        import json
 
         probe_start, probe_submit, profile_status = self._load_mcp_funcs()
         lintgate_home = tmp_path / "lintgate_home"
@@ -1453,7 +1454,6 @@ class TestModelProfileMcp:
         assert status["probe_runs"] == 2
 
     def test_probe_start_returns_tasks(self, monkeypatch, tmp_path):
-        import json
 
         probe_start, _, _ = self._load_mcp_funcs()
         lintgate_home = tmp_path / "lintgate_home"
@@ -1474,7 +1474,6 @@ class TestModelProfileMcp:
             assert "instruction" in task
 
     def test_probe_start_rejects_unsupported_probe_set(self, monkeypatch, tmp_path):
-        import json
 
         probe_start, _, _ = self._load_mcp_funcs()
         lintgate_home = tmp_path / "lintgate_home"
@@ -1492,7 +1491,6 @@ class TestModelProfileMcp:
         assert result["supported_probe_sets"] == ["quick"]
 
     def test_probe_submit_v1_compat(self, monkeypatch, tmp_path):
-        import json
 
         _, probe_submit, _ = self._load_mcp_funcs()
         lintgate_home = tmp_path / "lintgate_home"
@@ -1515,7 +1513,6 @@ class TestModelProfileMcp:
         assert result["tasks_scored"] == 3
 
     def test_probe_submit_rejects_too_few_answers(self, monkeypatch, tmp_path):
-        import json
 
         _, probe_submit, _ = self._load_mcp_funcs()
         lintgate_home = tmp_path / "lintgate_home"

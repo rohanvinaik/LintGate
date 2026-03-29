@@ -6,7 +6,6 @@ Extracted from controlplane_tools.py to keep the register() module under 400 lin
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import time
 from typing import Any
@@ -350,17 +349,22 @@ def _impl_controlplane_get_details(
 ):
     """Core implementation of controlplane_get_details."""
     from lintgate.state import load_controlplane_run
+    from mcp_tools._disk_helpers import tool_response
 
     details = load_controlplane_run(run_id)
     if details is None:
         # Fallback: check disk-first analysis files
         import os as _os
+
         for base in [_os.getcwd(), _os.environ.get("LINTGATE_PROJECT_ROOT", "")]:
             if not base:
                 continue
-            disk_file = _os.path.join(base, ".lintgate", "analysis", "controlplane_run", f"{run_id}.json")
+            disk_file = _os.path.join(
+                base, ".lintgate", "analysis", "controlplane_run", f"{run_id}.json"
+            )
             if _os.path.isfile(disk_file):
                 import json as _json
+
                 with open(disk_file, encoding="utf-8") as _f:
                     details = _json.loads(_f.read())
                 break
@@ -388,7 +392,41 @@ def _impl_controlplane_get_details(
             else:
                 populator(output, details, channel, severity, max_issues, run_id)
 
-    return helpers["_json_dumps"](output)
+    # Build NL summary from output counts by severity
+    total = output.get("total_matching", 0)
+    sev_label = severity or "all"
+
+    finding_lines = []
+    issues = output.get("findings", [])
+    if isinstance(issues, list):
+        for i, issue in enumerate(issues[:max_issues], 1):
+            if isinstance(issue, dict):
+                kind = issue.get("kind", "?")
+                f = issue.get("file", "?")
+                msg = issue.get("message", "")[:60]
+                finding_lines.append(f"  {i}. {kind:24s} {f:30s} {msg}")
+
+    lines = [f"{total} {sev_label} findings (showing {min(total, max_issues)}):"]
+    lines.extend(finding_lines)
+
+    repairs = output.get("repairs", [])
+    if repairs:
+        n_repairs = len(repairs) if isinstance(repairs, list) else repairs
+        lines.append(f"\nRepairs available: {n_repairs}")
+
+    summary = "\n".join(lines)
+
+    # Derive project_root from environment for disk storage
+    project_root = os.environ.get("LINTGATE_PROJECT_ROOT", "") or os.getcwd()
+
+    return tool_response(
+        output,
+        "controlplane_get_details",
+        project_root,
+        summary,
+        run_id=run_id,
+        next_actions=output.get("next_actions"),
+    )
 
 
 # ── controlplane_status helpers ─────────────────────────────────────────
@@ -462,6 +500,7 @@ def _get_session_status(project_root):
 def _impl_controlplane_status(path, helpers):
     """Core implementation of controlplane_status."""
     from lintgate.config import load_controlplane_config
+    from mcp_tools._disk_helpers import tool_response
 
     project_root = helpers["_validate_project_root"](path) if path else os.getcwd()
     status: dict[str, Any] = {"project": project_root}
@@ -475,4 +514,20 @@ def _impl_controlplane_status(path, helpers):
         status["onboarding"] = helpers["_build_onboarding_status"](project_root)
 
     status["available_channels"] = _AVAILABLE_CHANNEL_DESCRIPTIONS
-    return json.dumps(status, indent=2)
+
+    # Build NL summary
+    enabled = status.get("controlplane_enabled", False)
+    if enabled:
+        channel_count = len([c for c in status.get("channels", {}).values() if c.get("enabled")])
+        session_info = status.get("session")
+        runs = session_info.get("runs", 0) if session_info else 0
+        summary = f"ControlPlane enabled. {channel_count} channels active, {runs} runs in session."
+    else:
+        summary = "ControlPlane not enabled. Add controlplane.enabled to lintgate.yaml."
+
+    return tool_response(
+        status,
+        "controlplane_status",
+        project_root,
+        summary,
+    )

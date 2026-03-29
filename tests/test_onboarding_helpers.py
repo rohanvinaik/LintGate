@@ -9,7 +9,6 @@ _compute_bandit_ci_skips, and register.
 from __future__ import annotations
 
 import hashlib
-import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -32,8 +31,10 @@ from mcp_tools.quality_helpers import (
     _read_informational_bandit_codes,
 )
 
+
 def _load_tool_result(json_str):
-    import json as _j, os as _os
+    import json as _j
+    import os as _os
     r = _j.loads(json_str)
     if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file","")):
         with open(r["file"]) as f: return _j.loads(f.read())

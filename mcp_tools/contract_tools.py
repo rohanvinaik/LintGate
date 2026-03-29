@@ -6,8 +6,8 @@ interactive MCP tool for on-demand contract health checks.
 
 from __future__ import annotations
 
-
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp, helpers):
     """Register contract audit tools on the MCP instance."""

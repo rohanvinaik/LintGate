@@ -17,6 +17,8 @@ import json
 import os
 from typing import Any
 
+from mcp_tools._disk_helpers import tool_response
+
 # ── Mode state helpers ───────────────────────────────────────────────
 
 
@@ -511,7 +513,22 @@ def register(mcp, helpers):
 
         Example: compass_status(path="/my/project")
         """
-        return jd(_impl_status(vr(path), path))  # type: ignore[no-any-return]
+        project_root = vr(path)
+        result = _impl_status(project_root, path)
+        if result.get("status") == "no_compass":
+            return jd(result)  # type: ignore[no-any-return]
+        axes = result.get("axes", {})
+        depths = {k: v.get("depth", 0) for k, v in axes.items()}
+        staleness = result.get("staleness", 0)
+        mode = result.get("mode", "normal")
+        summary = f"Compass: {sum(1 for d in depths.values() if d > 0)}/{len(depths)} axes populated. Staleness: {staleness}. Mode: {mode}."
+        return tool_response(
+            result,
+            "compass_status",
+            project_root,
+            summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def compass_check(path: str, action: str) -> str:
@@ -521,7 +538,20 @@ def register(mcp, helpers):
             path: Project root path.
             action: Description of the action to check.
         """
-        return jd(_impl_check(vr(path), action))  # type: ignore[no-any-return]
+        project_root = vr(path)
+        result = _impl_check(project_root, action)
+        if result.get("aligned") is None:
+            return jd(result)  # type: ignore[no-any-return]
+        aligned = result.get("aligned", True)
+        n_violations = len(result.get("violations", []))
+        n_warnings = len(result.get("warnings", []))
+        summary = f"Alignment: {'OK' if aligned else 'BLOCKED'}. Violations: {n_violations}. Warnings: {n_warnings}."
+        return tool_response(
+            result,
+            "compass_check",
+            project_root,
+            summary,
+        )
 
     @mcp.tool()
     def compass_update(
@@ -546,7 +576,19 @@ def register(mcp, helpers):
         if not write:
             next_actions.append({"tool": "compass_update", "args": {"path": path, "write": True}})
         result["next_actions"] = next_actions
-        return jd(result)  # type: ignore[no-any-return]
+        axes = result.get("axes", {})
+        inferred = result.get("inferred_claims", 0)
+        written = result.get("written", False)
+        summary = (
+            f"Compass updated: {len(axes)} axes, {inferred} inferred claims. Written: {written}."
+        )
+        return tool_response(
+            result,
+            "compass_update",
+            project_root,
+            summary,
+            next_actions=next_actions,
+        )
 
     @mcp.tool()
     def compass_interview(
@@ -561,7 +603,29 @@ def register(mcp, helpers):
             answers: Dict mapping "axis:question_idx" to answer text.
             skip: Set True to dismiss the interview recommendation.
         """
-        return jd(_impl_interview(vr(path), path, answers, skip))  # type: ignore[no-any-return]
+        project_root = vr(path)
+        result = _impl_interview(project_root, path, answers, skip)
+        # Small error/status returns stay as jd
+        if "error" in result or result.get("status") == "skipped":
+            return jd(result)  # type: ignore[no-any-return]
+        if "applied" in result:
+            summary = f"Interview: {len(result['applied'])} answers applied."
+            return tool_response(
+                result,
+                "compass_interview",
+                project_root,
+                summary,
+            )
+        # Questions path
+        questions = result.get("questions", [])
+        summary = f"Interview: {len(questions)} questions. Pass answers to apply."
+        return tool_response(
+            result,
+            "compass_interview",
+            project_root,
+            summary,
+            next_actions=[{"tool": "compass_interview", "args": {"path": path, "answers": "..."}}],
+        )
 
     @mcp.tool()
     def compass_reset(path: str, scope: str = "compass", confirm: bool = False) -> str:
@@ -572,7 +636,20 @@ def register(mcp, helpers):
             scope: "compass" | "session" | "project" | "global".
             confirm: Set True to actually delete (default False = dry run).
         """
-        return jd(_impl_reset(vr(path), path, scope, confirm))  # type: ignore[no-any-return]
+        project_root = vr(path)
+        result = _impl_reset(project_root, path, scope, confirm)
+        if "error" in result:
+            return jd(result)  # type: ignore[no-any-return]
+        dry_run = result.get("dry_run", True)
+        deleted = result.get("deleted", [])
+        summary = f"Reset {scope}: {'dry-run' if dry_run else 'applied'}. {len(deleted)} items {'would be ' if dry_run else ''}deleted."
+        return tool_response(
+            result,
+            "compass_reset",
+            project_root,
+            summary,
+            next_actions=result.get("next_actions"),
+        )
 
     @mcp.tool()
     def theory_mode_enter(path: str) -> str:
@@ -582,7 +659,20 @@ def register(mcp, helpers):
     @mcp.tool()
     def theory_mode_freeze(path: str) -> str:
         """Freeze compass and exit theory mode to normal."""
-        return jd(_impl_theory_freeze(vr(path)))  # type: ignore[no-any-return]
+        project_root = vr(path)
+        result = _impl_theory_freeze(project_root)
+        if "error" in result:
+            return jd(result)  # type: ignore[no-any-return]
+        warnings_count = len(result.get("warnings", []))
+        prescriptive = result.get("prescriptive_specs", {})
+        auto_composed = len(prescriptive.get("auto_composed", [])) if prescriptive else 0
+        summary = f"Compass frozen. Hash: {result.get('compass_hash', '?')[:10]}. Warnings: {warnings_count}. Auto-composed specs: {auto_composed}."
+        return tool_response(
+            result,
+            "theory_mode_freeze",
+            project_root,
+            summary,
+        )
 
     @mcp.tool()
     def setup_hooks(path: str, write: bool = False) -> str:
@@ -592,7 +682,17 @@ def register(mcp, helpers):
             path: Project root path.
             write: Write settings to disk (default False = preview).
         """
-        return jd(_impl_setup_hooks(vr(path), write))  # type: ignore[no-any-return]
+        project_root = vr(path)
+        result = _impl_setup_hooks(project_root, write)
+        status = result.get("status", "preview")
+        hooks_count = len(result.get("hooks", {}))
+        summary = f"Hooks config: {status}. {hooks_count} hook events configured. Path: {result.get('path', '')}."
+        return tool_response(
+            result,
+            "setup_hooks",
+            project_root,
+            summary,
+        )
 
     return {
         "compass_status": compass_status,

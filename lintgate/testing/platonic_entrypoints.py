@@ -89,14 +89,12 @@ def run_platonic_project(
             summary=workflow.evidence_summary,
         )
         save_workflow(project_root, platonic_cfg.workflow_dir, workflow)
-        return str(
-            helpers["_json_dumps"](
-                workflow_envelope(
-                    workflow, next_actions=[], extra={"status": "no_eligible_targets"}
-                ),
-                output_mode="compact",
-            )
+        from mcp_tools._disk_helpers import tool_response as _tr
+
+        payload = workflow_envelope(
+            workflow, next_actions=[], extra={"status": "no_eligible_targets"}
         )
+        return _tr(payload, "platonic_project", project_root, "No eligible targets for improvement.")
 
     return converge_fn(
         helpers,
@@ -161,14 +159,12 @@ def run_platonic_continue(
                     reason="Workflow is already routing to decomposition.",
                 )
             )
-        return str(
-            helpers["_json_dumps"](
-                workflow_envelope(
-                    workflow, next_actions=next_actions, extra={"status": "terminal"}
-                ),
-                output_mode="compact",
-            )
+        from mcp_tools._disk_helpers import tool_response as _tr
+
+        payload = workflow_envelope(
+            workflow, next_actions=next_actions, extra={"status": "terminal"}
         )
+        return _tr(payload, "platonic_continue", project_root, f"Workflow {workflow.state}. Target: {workflow.primary_target or 'none'}.")
 
     # Step-aware dispatch: VALIDATING skips profiling + generation
     if workflow.state == "VALIDATING" and validate_only_fn is not None:
@@ -219,6 +215,7 @@ def run_platonic_apply(
         save_workflow,
         workflow_envelope,
     )
+    from mcp_tools._disk_helpers import tool_response
     from mcp_tools._test_regeneration_apply import _load_validation, impl_rebuild_apply
 
     project_root = helpers["_validate_project_root"](path) or path
@@ -251,7 +248,10 @@ def run_platonic_apply(
             "reason_code": "APPLY_NOT_READY",
             "autopilot_safe": False,
         }
-        return str(helpers["_json_dumps"](failed, output_mode="compact"))
+        from mcp_tools._disk_helpers import tool_response
+
+        summary = f"Apply blocked: {blocking_reason} State: {workflow.state}."
+        return tool_response(failed, "platonic_apply", project_root, summary)
 
     if workflow.validation_artifact_path:
         persisted_validation = _load_validation_from_path(workflow.validation_artifact_path)
@@ -282,7 +282,7 @@ def run_platonic_apply(
             "reason_code": "STALE_VALIDATION",
             "autopilot_safe": False,
         }
-        return str(helpers["_json_dumps"](failed, output_mode="compact"))
+        return tool_response(failed, "platonic_apply", project_root, "Apply blocked: validation stale or missing.")
 
     # Workflow-scoped apply: promote staged artifacts if available
     if workflow.staged_artifacts:
@@ -308,7 +308,7 @@ def run_platonic_apply(
             "autopilot_safe": False,
             "apply_result": result,
         }
-        return str(helpers["_json_dumps"](failed, output_mode="compact"))
+        return tool_response(failed, "platonic_apply", project_root, f"Apply error: {result['error'][:200]}")
 
     # Detect vacuous apply: all staged artifacts were skipped, nothing promoted.
     # Only applies to workflow-scoped path where "promoted" is explicitly tracked.
@@ -335,7 +335,7 @@ def run_platonic_apply(
             summary={"applied": False, "actions": result.get("actions", [])},
         )
         save_workflow(project_root, platonic_cfg.workflow_dir, workflow)
-        return str(helpers["_json_dumps"](failed, output_mode="compact"))
+        return tool_response(failed, "platonic_apply", project_root, "Apply vacuous: no artifacts promoted.")
 
     next_actions: list[NextAction] = []
     if dry_run:
@@ -355,7 +355,9 @@ def run_platonic_apply(
                 "step": "apply",
             },
         )
-        return str(helpers["_json_dumps"](payload, output_mode="compact"))
+        promoted = result.get("promoted", 0)
+        quarantined = result.get("quarantined", 0)
+        return tool_response(payload, "platonic_apply", project_root, f"Apply dry-run: {promoted} to promote, {quarantined} to quarantine.")
 
     workflow.state = "CONVERGED"
     workflow.step = "apply"
@@ -374,7 +376,8 @@ def run_platonic_apply(
     )
     save_workflow(project_root, platonic_cfg.workflow_dir, workflow)
     payload = workflow_envelope(workflow, next_actions=[], extra={"apply_result": result})
-    return str(helpers["_json_dumps"](payload, output_mode="compact"))
+    promoted = result.get("promoted", 0)
+    return tool_response(payload, "platonic_apply", project_root, f"Applied: {promoted} artifact(s) promoted.")
 
 
 # ── Helpers ────────────────────────────────────────────────────────

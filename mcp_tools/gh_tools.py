@@ -8,12 +8,9 @@ Thin registration wrapper. Implementations live in:
 
 from __future__ import annotations
 
-import json
-import os
 from typing import Any
 
 from mcp_tools._disk_helpers import tool_response
-
 from mcp_tools._gh_helpers import (  # noqa: F401
     _GITHUB_REMOTE_RE,
     _clone_wiki,

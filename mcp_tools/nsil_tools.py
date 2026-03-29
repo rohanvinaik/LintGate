@@ -9,9 +9,8 @@ from pathlib import Path
 
 from lintgate.config import load_controlplane_config
 from lintgate.controlplane.session_memory import load_session
+from mcp_tools._disk_helpers import _safe_json, tool_response
 
-
-from mcp_tools._disk_helpers import tool_response
 
 def register(mcp, helpers):
     """Register NSIL tools on the shared MCP server instance."""
@@ -39,7 +38,7 @@ def register(mcp, helpers):
         from lintgate.renderers.nsil.projection import project_snapshot
 
         if config is None:
-            return json.dumps(
+            return _safe_json(
                 {"error": "No ControlPlane config found. Ensure .claude/lintgate.yaml exists."}
             )
 

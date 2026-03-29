@@ -10,12 +10,11 @@ Only uses profiled (exhaustive) mutation data for deletion-grade confidence.
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from typing import Any
 
+from mcp_tools._disk_helpers import _safe_json, tool_response
 
-from mcp_tools._disk_helpers import tool_response
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register redundancy analysis tools on the shared MCP instance."""
@@ -63,7 +62,7 @@ def _impl_redundancy_project(project_root: str, top_n: int) -> str:
     profiled = [s for s in all_states if s.get("coverage_depth") == "profiled"]
 
     if not profiled:
-        return json.dumps(
+        return _safe_json(
             {
                 "status": "no_profiled_data",
                 "message": "No profiled mutation data found. Run mutation_run_full on key functions first.",
@@ -97,7 +96,7 @@ def _impl_redundancy_project(project_root: str, top_n: int) -> str:
                 test_kills[test_name].add(namespaced)
 
     if not all_mutants:
-        return json.dumps(
+        return _safe_json(
             {
                 "status": "no_killable_mutants",
                 "profiled_functions": function_count,
@@ -150,7 +149,7 @@ def _impl_redundancy_project(project_root: str, top_n: int) -> str:
     }
 
     output["next_actions"] = _build_next_actions(output, project_root)
-    return json.dumps(output, indent=2)
+    return _safe_json(output)
 
 
 def _compute_unique_kills(test_kills: dict[str, set[str]]) -> dict[str, int]:

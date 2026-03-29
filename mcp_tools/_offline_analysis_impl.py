@@ -13,6 +13,7 @@ import subprocess
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
+from mcp_tools._disk_helpers import _safe_json, tool_response
 
 
 def _get_git_info(project_root: str) -> dict[str, str]:
@@ -125,14 +126,14 @@ def impl_offline_analysis_generate(
     src_dirs = _detect_src_dirs(project_root)
 
     if mode not in _MODE_NAMES:
-        return json.dumps(
+        return _safe_json(
             {
                 "error": f"Unknown mode '{mode}'. Valid: {', '.join(_MODE_NAMES)}",
             }
         )
 
     if not repo_url:
-        return json.dumps(
+        return _safe_json(
             {
                 "error": "No git remote found. The notebook needs a repo URL to clone.",
                 "hint": "Run: git remote add origin <your-repo-url>",
@@ -160,6 +161,15 @@ def impl_offline_analysis_generate(
     with open(output, "w", encoding="utf-8") as f:
         json.dump(notebook, f, indent=1)
 
+    next_actions = serialize_next_actions(
+        [
+            NextAction(
+                tool="prescriptive_spec_status",
+                args={"path": path},
+                reason="Check existing prescriptive spec coverage",
+            ),
+        ]
+    )
     result = {
         "notebook_path": output,
         "mode": mode,
@@ -173,17 +183,10 @@ def impl_offline_analysis_generate(
             "Runtime > Run all. The final cell downloads the analysis JSON "
             "that an LLM agent can consume for systematic fixes."
         ),
-        "next_actions": serialize_next_actions(
-            [
-                NextAction(
-                    tool="prescriptive_spec_status",
-                    args={"path": path},
-                    reason="Check existing prescriptive spec coverage",
-                ),
-            ]
-        ),
+        "next_actions": next_actions,
     }
-    return json.dumps(result, indent=2)
+    summary = f"Notebook generated: {os.path.basename(output)} ({mode} mode, {len(src_dirs)} src dirs)."
+    return tool_response(result, "offline_analysis_generate", project_root, summary, next_actions=next_actions)
 
 
 def impl_offline_analysis_run(
@@ -229,7 +232,16 @@ def impl_offline_analysis_run(
     p2 = sum(1 for a in plan if a.get("priority", "").startswith("P2"))
     p3 = sum(1 for a in plan if a.get("priority", "").startswith("P3"))
 
-    summary = {
+    next_actions = serialize_next_actions(
+        [
+            NextAction(
+                tool="lint_fix",
+                args={"path": path},
+                reason="Start with auto-fixable lint issues (action plan phase 1)",
+            ),
+        ]
+    )
+    full_summary = {
         "output_path": output,
         "elapsed_s": result.get("elapsed_s", 0),
         "project": {
@@ -258,17 +270,10 @@ def impl_offline_analysis_run(
             "Pass this file to an LLM coding agent with: "
             "'Implement the action plan in this analysis, starting from rank 1.'"
         ),
-        "next_actions": serialize_next_actions(
-            [
-                NextAction(
-                    tool="lint_fix",
-                    args={"path": path},
-                    reason="Start with auto-fixable lint issues (action plan phase 1)",
-                ),
-            ]
-        ),
+        "next_actions": next_actions,
     }
-    return json.dumps(summary, indent=2)
+    nl_summary = f"Analysis complete in {result.get('elapsed_s', 0)}s. {len(plan)} actions ({p0} P0, {p1} P1). Output: {output}"
+    return tool_response(full_summary, "offline_analysis_run", project_root, nl_summary, next_actions=next_actions)
 
 
 # ── Notebook builder ──────────────────────────────────────────────────

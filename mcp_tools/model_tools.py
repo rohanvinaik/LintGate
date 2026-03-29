@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json as _json
 import os
 
-
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp, helpers):
     """Register model calibration tools on the shared MCP instance."""

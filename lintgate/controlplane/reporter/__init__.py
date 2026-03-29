@@ -169,50 +169,19 @@ def format_mesh_report(
         if not has_problems:
             return {}
 
-    max_tokens = _compute_dynamic_budget(all_findings, mesh_result, config)
-
-    # Assemble all report sections against the token budget
-    parts, token_estimate, blocking_count, warning_count = _assemble_report_sections(
-        mesh_result=mesh_result,
-        display_findings=display_findings,
-        all_findings=all_findings,
-        active_channels=active_channels,
-        delta=delta,
-        resurfaced_count=resurfaced_count,
-        max_tokens=max_tokens,
-        disposition=disposition,
-        proposed_constraints=proposed_constraints,
-        cycle_alerts=cycle_alerts,
-    )
-
-    # Close tag
-    parts.append("</controlplane-report>")
-
-    # Count findings not shown in the systemMessage text.
-    shown_blocking = min(blocking_count, 5)
-    shown_warnings = min(warning_count, 3)
-    if delta is not None:
-        suppressed = len(all_findings) - len(display_findings)
-        hidden_findings = (
-            suppressed
-            + max(0, blocking_count - shown_blocking)
-            + max(0, warning_count - shown_warnings)
-        )
-    else:
-        hidden_findings = len(all_findings) - shown_blocking - shown_warnings
-
-    if hidden_findings > 0:
-        parts.insert(-1, f"[{hidden_findings} findings not shown inline]")
-
-    message = "\n".join(parts)
-    output: dict[str, Any] = {"systemMessage": message}
-
-    # Claude PostToolUse hook schema
+    # Count findings by severity
+    blocking_findings = [f for f in all_findings if f.severity == "blocking"]
+    warning_findings = [f for f in all_findings if f.severity == "warning"]
+    blocking_count = len(blocking_findings)
+    warning_count = len(warning_findings)
     display_informational = [f for f in display_findings if f.severity == "informational"]
     total_informational = [f for f in all_findings if f.severity == "informational"]
     informational_count = (
         len(display_informational) if delta is not None else len(total_informational)
     )
+    hidden_findings = len(all_findings) - len(display_findings)
+
+    # Build compact additional context (max 300 chars, budget-controlled)
     additional_context = _build_posttooluse_context(
         PostToolUseInputs(
             mesh_result=mesh_result,
@@ -227,6 +196,49 @@ def format_mesh_report(
             cycle_alerts=cycle_alerts or [],
         )
     )
+
+    # Save verbose report to disk (not to context window)
+    import json as _json
+    import os as _os
+
+    max_tokens = _compute_dynamic_budget(all_findings, mesh_result, config)
+    parts, _token_est, _bc, _wc = _assemble_report_sections(
+        mesh_result=mesh_result,
+        display_findings=display_findings,
+        all_findings=all_findings,
+        active_channels=active_channels,
+        delta=delta,
+        resurfaced_count=resurfaced_count,
+        max_tokens=max_tokens,
+        disposition=disposition,
+        proposed_constraints=proposed_constraints,
+        cycle_alerts=cycle_alerts,
+    )
+    parts.append("</controlplane-report>")
+    verbose_report = "\n".join(parts)
+
+    # Persist verbose report to disk for optional drill-down
+    project_root = _os.environ.get("LINTGATE_PROJECT_ROOT", _os.getcwd())
+    report_dir = _os.path.join(project_root, ".lintgate", "analysis", "posttooluse_report")
+    _os.makedirs(report_dir, exist_ok=True)
+    import hashlib as _hashlib
+
+    report_id = _hashlib.sha256(verbose_report.encode()).hexdigest()[:10]
+    report_path = _os.path.join(report_dir, f"{report_id}.json")
+    try:
+        with open(report_path, "w", encoding="utf-8") as _f:
+            _json.dump(
+                {"report": verbose_report, "additional_context": additional_context},
+                _f,
+                separators=(",", ":"),
+            )
+    except OSError:
+        report_path = ""
+
+    # systemMessage: compact NL summary only — verbose report is on disk
+    output: dict[str, Any] = {
+        "systemMessage": f"PostToolUse: {additional_context}",
+    }
     output["hookSpecificOutput"] = {
         "hookEventName": "PostToolUse",
         "additionalContext": additional_context,

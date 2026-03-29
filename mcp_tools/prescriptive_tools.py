@@ -9,6 +9,8 @@ import json
 import os
 from typing import Any
 
+from mcp_tools._disk_helpers import tool_response
+
 from ._prescriptive_impl import (
     impl_prescriptive_spec_compile,
     impl_prescriptive_spec_compose,
@@ -16,8 +18,6 @@ from ._prescriptive_impl import (
     impl_prescriptive_spec_verify,
 )
 
-
-from mcp_tools._disk_helpers import tool_response
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register prescriptive specification tools on the shared MCP instance."""

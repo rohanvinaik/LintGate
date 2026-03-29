@@ -160,9 +160,24 @@ def impl_hygiene_check(helpers: dict[str, Any], path: str, planned_action: str) 
                         priority=1,
                     )
                 )
-    output["next_actions"] = serialize_next_actions(_na_list)
+    na_serialized = serialize_next_actions(_na_list)
+    output["next_actions"] = na_serialized
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    # Build NL summary
+    status = output.get("status", "unknown")
+    if status == "warnings":
+        n_warn = len(output.get("warnings", []))
+        summary = f"Hygiene: {n_warn} warning(s) for {output.get('command_class', 'unknown')} action. {output.get('recommendation', '')}"
+    elif status == "pass":
+        summary = (
+            f"Hygiene: pass ({output.get('command_class', 'unknown')}). {output.get('message', '')}"
+        )
+    else:
+        summary = f"Hygiene: {output.get('message', 'no checks applicable')}"
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(output, "hygiene_check", project_root, summary, next_actions=na_serialized)
 
 
 def impl_constraint_check(
@@ -271,10 +286,32 @@ def impl_constraint_check(
                 priority=1,
             )
         )
-    if _cc_actions:
-        output["next_actions"] = serialize_next_actions(_cc_actions)
+    na_serialized = serialize_next_actions(_cc_actions) if _cc_actions else []
+    if na_serialized:
+        output["next_actions"] = na_serialized
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    # Build NL summary
+    cov = output.get("coverage", {})
+    n_relevant = cov.get("relevant_hypotheses", 0)
+    gap = cov.get("coverage_gap", 0)
+    recall_pct = f"{cov.get('prediction_recall', 1.0):.0%}"
+    n_uncertain = len(output.get("uncertainty_zones", []))
+    n_similar = len(output.get("similar_failures", []))
+    summary = (
+        f"Constraints: {n_relevant} relevant, gap={gap}, recall={recall_pct}, "
+        f"{n_uncertain} uncertainty zones, {n_similar} similar failures. "
+        f"{recommendation}"
+    )
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "constraint_check",
+        project_root,
+        summary,
+        next_actions=na_serialized or None,
+    )
 
 
 def impl_prediction_register(
@@ -407,7 +444,7 @@ def impl_prediction_register(
 
     from lintgate.next_action import NextAction, serialize_next_actions
 
-    output["next_actions"] = serialize_next_actions(
+    na_serialized = serialize_next_actions(
         [
             NextAction(
                 tool="terminal",
@@ -416,8 +453,28 @@ def impl_prediction_register(
             ),
         ]
     )
+    output["next_actions"] = na_serialized
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    # Build NL summary
+    acc_str = ""
+    if accuracy_section.get("accuracy") is not None:
+        acc_str = f", accuracy={accuracy_section['accuracy']}"
+    summary = (
+        f"Prediction '{pred_obj.prediction_id}' registered: "
+        f"{prediction_type}={prediction_value} for {command_sig}. "
+        f"{accuracy_section.get('pending_count', 0)} pending, "
+        f"{accuracy_section.get('checked_count', 0)} checked{acc_str}."
+    )
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "prediction_register",
+        project_root,
+        summary,
+        next_actions=na_serialized,
+    )
 
 
 def impl_behavior_precheck(
@@ -526,7 +583,29 @@ def impl_behavior_precheck(
         },
     }
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    # Build NL summary
+    cov = output.get("coverage", {})
+    gap = cov.get("coverage_gap", 0)
+    has_hygiene = "hygiene" in output
+    pred_ok = output.get("prediction_tracking", {}).get("prediction_registered", False)
+    parts = [f"gap={gap}"]
+    if has_hygiene:
+        parts.append(f"{len(output['hygiene'].get('warnings', []))} hygiene warnings")
+    if pred_ok:
+        parts.append("prediction registered")
+    summary = f"Behavior precheck (DEPRECATED): {', '.join(parts)}. Use orthogonal tools instead."
+
+    na_serialized = output.get("next_actions")
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "behavior_precheck",
+        project_root,
+        summary,
+        next_actions=na_serialized,
+    )
 
 
 def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
@@ -598,7 +677,19 @@ def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
         },
     }
 
-    return helpers["_json_dumps"](output)  # type: ignore[no-any-return]
+    # Build NL summary
+    n_signals = len(profile.signal_priors)
+    n_nudges = len(nudge_rates)
+    n_intents = len(normalized_intents)
+    enabled_str = "enabled" if cp_config.global_memory_enabled else "disabled"
+    summary = (
+        f"Global memory ({enabled_str}): {profile.session_count} sessions, "
+        f"{n_signals} signal priors, {n_nudges} nudge outcomes, {n_intents} intent types."
+    )
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(output, "global_memory_status", project_root, summary)
 
 
 def impl_global_memory_reset(helpers: dict[str, Any], path: str) -> str:

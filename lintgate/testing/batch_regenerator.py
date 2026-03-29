@@ -293,23 +293,33 @@ class BatchRegenerator:
         if not module_path:
             return "", []
         try:
-            from lintgate.testing.characterization import (
-                capture_golden,
-                corroborate_captures,
-                generate_golden_test,
-            )
-
-            captures = capture_golden(module_path, func_name, call_site_inputs)
+            captures = self._capture_raw(module_path, func_name, call_site_inputs)
             if not captures:
                 return "", []
+            captures = self._corroborate(captures, rel_file, func_key, func_name)
+            from lintgate.testing.characterization import generate_golden_test
 
-            mutation_state = self._load_mutation_cache().get(func_key)
-            is_pure = self._check_purity(rel_file, func_name)
-            captures = corroborate_captures(captures, mutation_state, is_pure)
-            rendered = generate_golden_test(func_key, captures)
-            return rendered, captures
+            return generate_golden_test(func_key, captures), captures
         except Exception:
             return "", []
+
+    def _capture_raw(
+        self, module_path: str, func_name: str, call_site_inputs: list[dict],
+    ) -> list:
+        """Capture golden values from call sites."""
+        from lintgate.testing.characterization import capture_golden
+
+        return capture_golden(module_path, func_name, call_site_inputs)
+
+    def _corroborate(
+        self, captures: list, rel_file: str, func_key: str, func_name: str,
+    ) -> list:
+        """Corroborate captures against mutation state and purity."""
+        from lintgate.testing.characterization import corroborate_captures
+
+        mutation_state = self._load_mutation_cache().get(func_key)
+        is_pure = self._check_purity(rel_file, func_name)
+        return corroborate_captures(captures, mutation_state, is_pure)
 
     def _check_purity(self, rel_file: str, func_name: str) -> bool:
         """Check if a function is pure via AST analysis."""

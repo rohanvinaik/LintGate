@@ -17,6 +17,7 @@ from lintgate.linters.test_effectiveness.test_effectiveness_logic import (
     handle_no_mapped_functions,
     reconcile_with_coverage,
 )
+from mcp_tools._disk_helpers import _safe_json
 
 
 def _analyze_test_strength_impl(
@@ -38,7 +39,7 @@ def _analyze_test_strength_impl(
         project_root, effective_weights=effective_weights
     )
 
-    early = _check_early_exit(py_files, test_files, source_files, manifest, path)
+    early = _check_early_exit(py_files, test_files, source_files, manifest, path, project_root)
     if early is not None:
         return early
 
@@ -90,10 +91,11 @@ def _check_early_exit(
     source_files: list[str],
     manifest: Any,
     path: str,
+    project_root: str = "",
 ) -> str | None:
     """Return a JSON error string for early-exit conditions, or None to continue."""
     if not py_files:
-        return json.dumps(
+        return _safe_json(
             {
                 "error": "No Python files found in path.",
                 "state": AnalysisState.NO_PYTHON_FILES.value,
@@ -101,7 +103,7 @@ def _check_early_exit(
         )
 
     if not test_files:
-        return json.dumps(
+        return _safe_json(
             {
                 "note": "No test files found (looking for test_*.py).",
                 "state": AnalysisState.NO_TEST_FILES.value,
@@ -109,17 +111,17 @@ def _check_early_exit(
         )
 
     if not source_files:
-        return json.dumps(
-            {
-                "note": "Test files found, but no source files found to analyze.",
-                "hint": "Run this tool on the project root, not the tests directory.",
-                "details": f"Found {len(test_files)} test files but 0 source files in '{path}'.",
-                "state": "no_source_files",
-            }
-        )
+        data = {
+            "note": "Test files found, but no source files found to analyze.",
+            "hint": "Run this tool on the project root, not the tests directory.",
+            "details": f"Found {len(test_files)} test files but 0 source files in '{path}'.",
+            "state": "no_source_files",
+        }
+        summary = f"No source files in '{path}'. {len(test_files)} test files found."
+        return tool_response(data, "analyze_test_strength", project_root or path, summary)
 
     if manifest is None:
-        return json.dumps(
+        return _safe_json(
             {
                 "error": "Failed to build effectiveness manifest.",
                 "state": "manifest_build_failed",
@@ -129,15 +131,23 @@ def _check_early_exit(
     if not manifest.functions:
         diag = manifest.diagnostics
         if diag.mapped > 0:
-            return json.dumps(
-                {
-                    "note": "Mappings were found but no analyzable public functions were produced.",
-                    "hint": "Ensure source files contain public (non-underscore) functions.",
-                    "state": AnalysisState.MAPPINGS_FOUND_BUT_NO_ANALYZABLE_PUBLIC_FUNCTIONS.value,
-                    "diagnostics": diag.to_dict(),
-                }
+            data = {
+                "note": "Mappings were found but no analyzable public functions were produced.",
+                "hint": "Ensure source files contain public (non-underscore) functions.",
+                "state": AnalysisState.MAPPINGS_FOUND_BUT_NO_ANALYZABLE_PUBLIC_FUNCTIONS.value,
+                "diagnostics": diag.to_dict(),
+            }
+            summary = f"Mapped {diag.mapped} but no analyzable public functions."
+            return tool_response(
+                data, "analyze_test_strength", project_root or path, summary,
             )
-        return str(handle_no_mapped_functions(manifest, source_files, test_files))
+        # handle_no_mapped_functions returns json.dumps — parse and re-route to disk
+        raw = handle_no_mapped_functions(manifest, source_files, test_files)
+        data = json.loads(raw)
+        summary = f"No mapped functions. {len(source_files)} source, {len(test_files)} test files."
+        return tool_response(
+            data, "analyze_test_strength", project_root or path, summary,
+        )
 
     return None
 
@@ -193,7 +203,7 @@ def _inspect_test_assertions_impl(path: str, test_file: str, helpers: Any) -> st
     resolved = _resolve_target_files(project_root, test_file)
 
     if isinstance(resolved, dict):
-        return json.dumps(resolved)
+        return _safe_json(resolved)
 
     target_files: list[str] = resolved
     if not target_files:
@@ -362,6 +372,7 @@ def _compute_quality_profile(result: dict[str, Any]) -> None:
 
 
 from mcp_tools._disk_helpers import tool_response
+
 
 def register(mcp: Any, helpers: Any) -> dict[str, Any]:
     """Register test effectiveness tools on the shared MCP instance."""

@@ -170,9 +170,7 @@ class TestGettingStarted:
         assert callable(getting_started)
 
     def test_returns_essential_tools(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         result = _call_getting_started(tmp_path)
         assert "essential_tools" in result
@@ -187,9 +185,7 @@ class TestGettingStarted:
             assert tool in result["essential_tools"], f"Missing: {tool}"
 
     def test_returns_first_session_workflow(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         result = _call_getting_started(tmp_path)
         assert "first_session_workflow" in result
@@ -197,9 +193,7 @@ class TestGettingStarted:
         assert len(result["first_session_workflow"]) >= 3
 
     def test_returns_onboarding_status(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         result = _call_getting_started(tmp_path)
         assert "config_status" in result
@@ -212,17 +206,13 @@ class TestGettingStarted:
         assert "config_path_checked" in cs
 
     def test_returns_tool_count(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         result = _call_getting_started(tmp_path)
         assert result["all_tools_count"] == 49
 
     def test_returns_next_actions(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         result = _call_getting_started(tmp_path)
         assert "next_actions" in result
@@ -230,9 +220,7 @@ class TestGettingStarted:
         assert len(result["next_actions"]) >= 1
 
     def test_startup_setup_payload_present(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         result = _call_getting_started(tmp_path)
         assert "startup_setup" in result
@@ -245,9 +233,7 @@ class TestGettingStarted:
         assert "github_quality" in startup
 
     def test_auto_setup_scaffolds_missing_config(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         config_path = tmp_path / ".claude" / "lintgate.yaml"
         assert not config_path.exists()
@@ -261,9 +247,7 @@ class TestGettingStarted:
         )
 
     def test_auto_setup_records_venv_provision_action(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         fake_python = str(tmp_path / ".venv" / "bin" / "python")
@@ -296,9 +280,7 @@ class TestGettingStarted:
         )
 
     def test_next_actions_include_venv_create_when_missing(self, tmp_path: Path) -> None:
-        import json
 
-        from mcp_server import getting_started
 
         fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         with (
@@ -328,7 +310,6 @@ class TestGettingStarted:
         assert any(action.get("example") == "uv venv .venv" for action in result["next_actions"])
 
     def test_missing_tool_reasons_are_reported_without_manual_probe(self, tmp_path: Path) -> None:
-        import json
 
         from mcp_server import getting_started
 
@@ -366,7 +347,6 @@ class TestGettingStarted:
     def test_auto_setup_bootstraps_github_quality_when_remote_detected(
         self, tmp_path: Path
     ) -> None:
-        import json
 
         from mcp_server import getting_started
 
@@ -413,7 +393,6 @@ class TestGettingStarted:
         import json
         import os
 
-        from mcp_server import getting_started
 
         fake_gaps: dict[str, list[object]] = {"tool_status": [], "missing_tools": []}
         fake_python = str(tmp_path / ".venv" / "bin" / "python")
@@ -467,7 +446,6 @@ class TestScaffoldConfig:
         assert callable(scaffold_config)
 
     def test_preview_returns_yaml_for_new_project(self, tmp_path: Path) -> None:
-        import json
 
         from mcp_server import scaffold_config
 
@@ -481,7 +459,6 @@ class TestScaffoldConfig:
     def test_preview_existing_config_still_returns_yaml_without_writing(
         self, tmp_path: Path
     ) -> None:
-        import json
 
         from mcp_server import scaffold_config
 
@@ -635,7 +612,6 @@ class TestControlPlaneRunOnboarding:
     """controlplane_run includes onboarding when using default config."""
 
     def test_onboarding_present_no_config(self, tmp_path: Path) -> None:
-        import json
 
         from mcp_server import controlplane_run
 
@@ -645,7 +621,6 @@ class TestControlPlaneRunOnboarding:
         assert "setup_hint" in result["onboarding"]
 
     def test_no_onboarding_when_config_enabled(self, tmp_path: Path) -> None:
-        import json
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
@@ -656,7 +631,6 @@ class TestControlPlaneRunOnboarding:
         assert "onboarding" not in result
 
     def test_onboarding_present_when_config_disabled(self, tmp_path: Path) -> None:
-        import json
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
@@ -675,7 +649,6 @@ class TestControlPlaneStatusBackwardCompat:
     """controlplane_status preserves old keys and adds onboarding."""
 
     def test_preserves_old_keys_when_no_config(self, tmp_path: Path) -> None:
-        import json
 
         from mcp_server import controlplane_status
 
@@ -688,7 +661,6 @@ class TestControlPlaneStatusBackwardCompat:
         assert "onboarding" in result
 
     def test_preserves_old_keys_when_config_disabled(self, tmp_path: Path) -> None:
-        import json
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
@@ -702,7 +674,6 @@ class TestControlPlaneStatusBackwardCompat:
         assert result["onboarding"]["config_state"] == "config_disabled"
 
     def test_no_onboarding_when_fully_configured(self, tmp_path: Path) -> None:
-        import json
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
@@ -721,7 +692,6 @@ class TestLintStatusOnboarding:
     """lint_status includes onboarding when ControlPlane is not fully configured."""
 
     def test_onboarding_when_no_controlplane(self, tmp_path: Path) -> None:
-        import json
 
         from mcp_server import lint_status
 
@@ -730,7 +700,6 @@ class TestLintStatusOnboarding:
         assert result["onboarding"]["config_state"] == "no_config"
 
     def test_no_onboarding_when_fully_configured(self, tmp_path: Path) -> None:
-        import json
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
@@ -741,7 +710,6 @@ class TestLintStatusOnboarding:
         assert "onboarding" not in result
 
     def test_missing_tools_field_present(self, tmp_path: Path) -> None:
-        import json
 
         from mcp_server import lint_status
 
