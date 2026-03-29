@@ -76,7 +76,12 @@ def save_analysis(data: Any, tool_name: str, project_root: str | None, *, run_id
     if not project_root:
         project_root = os.getcwd()
     analysis_dir = os.path.join(project_root, ".lintgate", "analysis", tool_name)
-    os.makedirs(analysis_dir, exist_ok=True)
+    try:
+        os.makedirs(analysis_dir, exist_ok=True)
+    except OSError:
+        # Fallback to CWD if project_root is not writable (e.g., /test in CI)
+        analysis_dir = os.path.join(os.getcwd(), ".lintgate", "analysis", tool_name)
+        os.makedirs(analysis_dir, exist_ok=True)
 
     # Build standardized envelope
     if isinstance(data, dict):
