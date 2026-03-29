@@ -130,7 +130,13 @@ def _handle_quality_bootstrap(
     result: dict[str, Any] = {"status": "not_requested"}
     if auto_setup and gh.get("detected") and not has_configs:
         with suppress(Exception):
-            result = json.loads(setup_github_quality(path=project_root, write=True))
+            raw = json.loads(setup_github_quality(path=project_root, write=True))
+            # tool_response returns slim envelope — load full data from disk
+            if "file" in raw and os.path.isfile(raw.get("file", "")):
+                with open(raw["file"]) as _f:
+                    result = json.loads(_f.read())
+            else:
+                result = raw
             startup_actions.append(
                 {
                     "action": "github_quality_bootstrapped",
@@ -244,7 +250,7 @@ def _impl_getting_started(
     auto_install_optional_linters: bool = True,
     reset: bool = False,
     intent: str | None = None,
-) -> str:
+) -> dict:
     """Core logic for the getting_started MCP tool."""
     ot = _ot()
     project_root = helpers["_validate_project_root"](path)
@@ -301,10 +307,7 @@ def _impl_getting_started(
             "Use # lintgate-override to bypass if required."
         )
 
-    json_dumps = helpers.get("_json_dumps")
-    if json_dumps:
-        return json_dumps(output, output_mode="compact")  # type: ignore[no-any-return]
-    return _safe_json(output)
+    return output
 
 
 _TOOL_APPLICABILITY_GUIDE = {

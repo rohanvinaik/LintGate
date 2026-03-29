@@ -44,6 +44,16 @@ except ImportError:
     _finding_domain = None  # type: ignore[assignment]
     _summarize_findings = None  # type: ignore[assignment]
 
+def _load_tool_result(json_str):
+    import json as _j
+    import os as _os
+    r = _j.loads(json_str)
+    if isinstance(r, dict) and "file" in r and "analysis_id" in r and _os.path.isfile(r.get("file", "")):
+        with open(r["file"]) as f:
+            return _j.loads(f.read())
+    return r
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
 
@@ -607,7 +617,7 @@ class TestImplControlplaneGetDetails:
             raw = _impl_controlplane_get_details(
                 "run-1", None, None, 100, ["findings", "coherence"], {"_json_dumps": json.dumps}
             )
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["run_id"] == "run-1"
         assert result["duration_ms"] == 100
         assert "coherence" in result
@@ -621,7 +631,7 @@ class TestImplControlplaneGetDetails:
             raw = _impl_controlplane_get_details(
                 "run-1", None, None, 100, None, {"_json_dumps": json.dumps}
             )
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert "findings" in result
         assert "coherence" in result
         assert "channel_details" in result
@@ -641,7 +651,7 @@ class TestImplControlplaneGetDetails:
                 {"_json_dumps": json.dumps},
                 top_n=1,
             )
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result.get("sorted_by") == "roi"
         assert len(result["findings"]) == 1
 
@@ -670,7 +680,7 @@ class TestImplControlplaneGetDetails:
                 {"_json_dumps": json.dumps},
                 finding_domain="code",
             )
-        result = json.loads(raw)
+        result = _load_tool_result(raw)
         assert result["total_matching"] == 1
         assert result["findings"][0]["channel"] == "lint"
         assert result["finding_summary"]["domains"]["code"]["total"] == 1
@@ -796,7 +806,7 @@ class TestImplControlplaneStatus:
         }
         with patch("lintgate.config.load_controlplane_config", return_value=cfg):
             raw = _impl_controlplane_status("/tmp/proj", helpers)
-        status = json.loads(raw)
+        status = _load_tool_result(raw)
         assert status["project"] == "/tmp/proj"
         assert status["controlplane_enabled"] is True
         assert "available_channels" in status
@@ -808,7 +818,7 @@ class TestImplControlplaneStatus:
         }
         with patch("lintgate.config.load_controlplane_config", return_value=None):
             raw = _impl_controlplane_status("/tmp/proj", helpers)
-        status = json.loads(raw)
+        status = _load_tool_result(raw)
         assert status["controlplane_enabled"] is False
         assert "note" in status
         assert status["onboarding"] == {"step": 1}
@@ -824,7 +834,7 @@ class TestImplControlplaneStatus:
             patch("os.getcwd", return_value="/mock/cwd"),
         ):
             raw = _impl_controlplane_status(None, helpers)
-        status = json.loads(raw)
+        status = _load_tool_result(raw)
         assert status["project"] == "/mock/cwd"
 
 

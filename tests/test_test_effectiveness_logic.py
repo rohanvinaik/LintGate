@@ -9,6 +9,8 @@ from unittest.mock import patch
 import pytest
 
 from lintgate.linters.test_effectiveness.test_effectiveness_logic import (
+
+
     _ASSERTION_UPGRADE_MAP,
     apply_filters,
     build_assertion_upgrades,
@@ -341,7 +343,7 @@ class TestHandleNoMappedFunctions:
         diag = MappingDiagnostics()
         manifest = _make_manifest(diagnostics=diag)
         raw = handle_no_mapped_functions(manifest, [], [])
-        parsed = json.loads(raw)
+        parsed = _load_tool_result(raw)
         assert parsed["note"] == "No mapped functions analyzed."
         assert parsed["state"] == AnalysisState.UNMAPPED_TESTS.value
         assert (

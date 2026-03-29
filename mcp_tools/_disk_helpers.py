@@ -76,12 +76,6 @@ def save_analysis(data: Any, tool_name: str, project_root: str | None, *, run_id
     if not project_root:
         project_root = os.getcwd()
     analysis_dir = os.path.join(project_root, ".lintgate", "analysis", tool_name)
-    try:
-        os.makedirs(analysis_dir, exist_ok=True)
-    except OSError:
-        # Fallback to CWD if project_root is not writable (e.g., /test in CI)
-        analysis_dir = os.path.join(os.getcwd(), ".lintgate", "analysis", tool_name)
-        os.makedirs(analysis_dir, exist_ok=True)
 
     # Build standardized envelope
     if isinstance(data, dict):
@@ -103,7 +97,27 @@ def save_analysis(data: Any, tool_name: str, project_root: str | None, *, run_id
 
     content_hash = hashlib.sha256(serialized.encode()).hexdigest()[:10]
     filename = f"{run_id}.json" if run_id else f"{content_hash}.json"
-    filepath = os.path.join(analysis_dir, filename)
+
+    # Try project_root first, fall back to CWD, then /tmp
+    for candidate_dir in [
+        analysis_dir,
+        os.path.join(os.getcwd(), ".lintgate", "analysis", tool_name),
+    ]:
+        try:
+            os.makedirs(candidate_dir, exist_ok=True)
+            filepath = os.path.join(candidate_dir, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(serialized)
+            return filepath
+        except OSError:
+            continue
+
+    # Last resort: /tmp
+    import tempfile
+
+    fallback_dir = os.path.join(tempfile.gettempdir(), "lintgate_analysis", tool_name)
+    os.makedirs(fallback_dir, exist_ok=True)
+    filepath = os.path.join(fallback_dir, filename)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(serialized)
     return filepath

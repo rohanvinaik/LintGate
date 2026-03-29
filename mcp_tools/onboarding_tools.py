@@ -202,7 +202,7 @@ def register(mcp, helpers):
                 to tailor next-action guidance.
         """
         project_root = helpers["_validate_project_root"](path)
-        result_json = _impl_getting_started(
+        result = _impl_getting_started(
             helpers,
             path,
             auto_setup=auto_setup,
@@ -210,7 +210,6 @@ def register(mcp, helpers):
             reset=reset,
             intent=intent,
         )
-        result = json.loads(result_json)
         intent_str = intent or "general"
         gs_summary = f"Getting started for {os.path.basename(project_root)}. Intent: {intent_str}."
         return tool_response(

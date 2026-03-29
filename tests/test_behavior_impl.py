@@ -536,9 +536,7 @@ class TestImplHygieneCheck:
             recommendation="Create venv first",
         )
         helpers = _make_helpers()
-        result = json.loads(
-            impl_hygiene_check(helpers, path="/test", planned_action="pip install foo")
-        )
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="pip install foo"))
         assert result["status"] == "warnings"
         assert result["command_class"] == "pip_install"
         assert len(result["warnings"]) == 1
@@ -552,9 +550,7 @@ class TestImplHygieneCheck:
         warn = self._make_warning(actionability="immediate")
         mock_classify.return_value = self._make_hygiene_result(warnings=[warn])
         helpers = _make_helpers()
-        result = json.loads(
-            impl_hygiene_check(helpers, path="/test", planned_action="pip install foo")
-        )
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="pip install foo"))
         assert len(result["next_actions"]) == 1
         assert result["next_actions"][0]["tool"] == "terminal"
 
@@ -564,9 +560,7 @@ class TestImplHygieneCheck:
         warn = self._make_warning(actionability="advisory")
         mock_classify.return_value = self._make_hygiene_result(warnings=[warn])
         helpers = _make_helpers()
-        result = json.loads(
-            impl_hygiene_check(helpers, path="/test", planned_action="pip install foo")
-        )
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="pip install foo"))
         assert result["next_actions"] == []
 
     @patch("lintgate.hygiene.classify_and_check", side_effect=Exception("boom"))
@@ -592,9 +586,7 @@ class TestImplHygieneCheck:
         ]
         mock_classify.return_value = self._make_hygiene_result(warnings=warns)
         helpers = _make_helpers()
-        result = json.loads(
-            impl_hygiene_check(helpers, path="/test", planned_action="pip install foo")
-        )
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="pip install foo"))
         # Only first 2 immediate warnings generate next_actions
         assert len(result["next_actions"]) <= 2
 
@@ -604,9 +596,7 @@ class TestImplHygieneCheck:
         warn = self._make_warning(confidence=0.8567)
         mock_classify.return_value = self._make_hygiene_result(warnings=[warn])
         helpers = _make_helpers()
-        result = json.loads(
-            impl_hygiene_check(helpers, path="/test", planned_action="pip install foo")
-        )
+        result = _load_tool_result(impl_hygiene_check(helpers, path="/test", planned_action="pip install foo"))
         assert result["warnings"][0]["confidence"] == 0.86
 
 
@@ -673,7 +663,7 @@ class TestImplConstraintCheck:
                 planned_action=kwargs.get("planned_action", "pytest tests/"),
                 known_constraints=kwargs.get("known_constraints"),
             )
-        return json.loads(raw)
+        return _load_tool_result(raw)
 
     def test_basic_output_structure(self):
         compass, patches = self._setup_mocks()
@@ -821,7 +811,7 @@ class TestImplPredictionRegister:
                 prediction_type=kwargs.get("prediction_type", "exit_code"),
                 prediction_value=kwargs.get("prediction_value", 0),
             )
-        return json.loads(raw)
+        return _load_tool_result(raw)
 
     def test_invalid_prediction_type_returns_error(self):
         compass, patches = self._setup_mocks()
