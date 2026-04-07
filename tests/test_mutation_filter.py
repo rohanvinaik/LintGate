@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import ast
 
-from lintgate.specification.mutation_engine import MutationCategory
-from lintgate.specification.mutation_filter import filter_categories
+from Wesker.engine import MutationCategory
+from Wesker.filter import filter_categories
 
 
 def _parse_func(source: str) -> ast.FunctionDef:

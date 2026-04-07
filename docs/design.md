@@ -259,7 +259,7 @@ MCP tools:
 
 ### Mutation Testing Engine
 
-The mutation subsystem provides 10 MCP tools for inline AST mutation analysis. It generates mutants across 5 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE), evaluates them against existing tests, and produces survival profiles that reveal specification gaps.
+The mutation subsystem provides 10 MCP tools for inline AST mutation analysis. It generates mutants across 7 semantic categories (VALUE, SWAP, STATE, BOUNDARY, TYPE, ARITHMETIC, LOGICAL) via [Wesker](https://github.com/rohanvinaik/Wesker), evaluates them against existing tests in-process, and produces survival profiles that reveal specification gaps.
 
 **Two-tier execution model**:
 - `mutation_run_sampling` — fast sampled run (<=3 mutants per category, time-budgeted). Use after editing files for quick feedback.

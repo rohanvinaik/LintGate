@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .mutation_engine import MutationCategory, ProfilingResult
+from Wesker.engine import MutationCategory, ProfilingResult
 
 
 @dataclass

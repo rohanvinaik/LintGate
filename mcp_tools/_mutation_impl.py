@@ -722,6 +722,12 @@ def _try_import_module(filepath: str) -> tuple[Any, str]:
     if project_root and project_root not in sys.path:
         sys.path.insert(0, project_root)
         path_added = True
+    # Support src-layout projects (e.g. src/prism/) where the package
+    # isn't importable from the project root alone.
+    if project_root:
+        src_dir = os.path.join(project_root, "src")
+        if os.path.isdir(src_dir) and src_dir not in sys.path:
+            sys.path.insert(0, src_dir)
 
     mod_name = f"_mutation_test_{os.path.basename(filepath).replace('.py', '')}"
     spec = importlib.util.spec_from_file_location(mod_name, filepath)
@@ -1043,7 +1049,7 @@ def run_post_profiling_analysis(
 
 def reconstruct_profiling_result(result_dict: dict) -> Any:
     """Reconstruct a ProfilingResult from cached dict for analysis."""
-    from lintgate.specification.mutation_engine import (
+    from Wesker.engine import (
         CategoryResult,
         MutationCategory,
         ProfilingResult,

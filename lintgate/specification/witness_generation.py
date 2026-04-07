@@ -2,8 +2,8 @@
 
 Converts surviving mutant records into actionable prescriptions with
 specific inputs, expected behaviors, and assertion shapes. Handles
-VALUE, BOUNDARY, SWAP, STATE, and TYPE categories with category-specific
-witness templates.
+VALUE, BOUNDARY, SWAP, STATE, TYPE, ARITHMETIC, and LOGICAL categories
+with category-specific witness templates.
 """
 
 from __future__ import annotations
@@ -142,6 +142,58 @@ def _type_witness(survivor: dict[str, Any], func_key: str) -> dict[str, Any]:
     }
 
 
+def _arithmetic_witness(survivor: dict[str, Any], func_key: str) -> dict[str, Any]:
+    """Generate witness for ARITHMETIC mutations (operator swap: +↔-, *↔/, //→/, %, **, unary negation)."""
+    short_name = _short_name(func_key)
+    diff = survivor.get("diff_summary", "")
+
+    return {
+        "why_this_matters": (
+            "An ARITHMETIC mutation survived: an arithmetic operator was swapped "
+            "(e.g., + to -, * to /) but no test detected the difference. "
+            "Tests don't verify exact arithmetic results."
+        ),
+        "suggested_input": _infer_input_from_diff(
+            diff, "inputs where the original and mutated operators produce different results"
+        ),
+        "expected_behavior": (
+            "Function should return a specific numeric result that changes "
+            "when the arithmetic operator changes"
+        ),
+        "assertion_shape": f"assert {short_name}(a, b) == EXPECTED_ARITHMETIC_RESULT",
+        "confidence": 0.8 if diff else 0.5,
+        "needs_source_review": not bool(diff),
+    }
+
+
+def _logical_witness(survivor: dict[str, Any], func_key: str) -> dict[str, Any]:
+    """Generate witness for LOGICAL mutations (boolean logic: and↔or, not removal)."""
+    short_name = _short_name(func_key)
+    diff = survivor.get("diff_summary", "")
+
+    return {
+        "why_this_matters": (
+            "A LOGICAL mutation survived: a boolean operator was swapped "
+            "(e.g., and to or, or not was removed) but no test detected the "
+            "difference. Tests don't exercise both branches of the boolean condition."
+        ),
+        "suggested_input": _infer_input_from_diff(
+            diff,
+            "inputs that exercise both branches of the boolean condition "
+            "(e.g., one True/one False to distinguish and from or)",
+        ),
+        "expected_behavior": (
+            "Function should behave differently when the logical combination changes "
+            "(and vs or, with not vs without)"
+        ),
+        "assertion_shape": (
+            f"assert {short_name}(true_case, false_case) == EXPECTED_LOGICAL_RESULT"
+        ),
+        "confidence": 0.8 if diff else 0.5,
+        "needs_source_review": not bool(diff),
+    }
+
+
 def _generic_witness(survivor: dict[str, Any], func_key: str) -> dict[str, Any]:
     """Fallback witness for unknown categories."""
     category = survivor.get("category", "UNKNOWN")
@@ -161,6 +213,8 @@ _CATEGORY_GENERATORS = {
     "SWAP": _swap_witness,
     "STATE": _state_witness,
     "TYPE": _type_witness,
+    "ARITHMETIC": _arithmetic_witness,
+    "LOGICAL": _logical_witness,
 }
 
 

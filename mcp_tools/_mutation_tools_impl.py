@@ -9,6 +9,7 @@ import os
 from typing import Any
 
 from lintgate.next_action import NextAction, serialize_next_actions
+from lintgate.specification.test_impact import build_test_impact_map
 
 from ._mutation_impl import (
     MutationContext,
@@ -61,8 +62,8 @@ def impl_run_sampling(
     helpers: Any, path: str, file: str, function: str | None, budget_ms: float
 ) -> str:
     from lintgate.keys import canonical_function_key
-    from lintgate.specification.mutation_engine import run_function_sampling
-    from lintgate.specification.mutation_filter import filter_categories
+    from Wesker.engine import run_function_sampling
+    from Wesker.filter import filter_categories
 
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
@@ -141,8 +142,8 @@ def impl_run_sampling(
 
 def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> str:
     from lintgate.keys import canonical_function_key
-    from lintgate.specification.mutation_engine import run_function_profiling
-    from lintgate.specification.mutation_filter import filter_categories
+    from Wesker.engine import run_function_profiling
+    from Wesker.filter import filter_categories
 
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
@@ -543,6 +544,110 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
     )
 
 
+def impl_validate_tests(helpers: Any, path: str, file: str, function: str | None) -> str:
+    """Dedicated validation: re-profile + impact map coverage + confidence scoring."""
+    project_root = helpers["_validate_project_root"](path)
+    full, func_node, err = resolve_function(project_root, file, function)
+    if err:
+        return str(helpers["_json_dumps"]({"error": err}))
+
+    cache_dir = get_cache_dir(project_root)
+    targets = _resolve_refactor_targets(full, func_node, function)
+    if isinstance(targets, str):
+        return str(helpers["_json_dumps"]({"error": targets}))
+
+    rel_path = os.path.relpath(full, project_root)
+    test_files = discover_test_files(project_root, full)
+    results = _profile_targets(targets, full, rel_path, cache_dir, test_files)
+
+    # Build impact map from discovered test files
+    impact_map = build_test_impact_map(test_files)
+
+    # Enrich each result with validation confidence and mapped tests
+    mapping_warnings: list[str] = []
+    for r in results:
+        func_key = r.get("function_key", "")
+        # Try qualified key, then bare function name
+        bare_name = func_key.split("::")[-1] if "::" in func_key else func_key
+        refs = impact_map.tests_for(func_key)
+        if not refs:
+            refs = impact_map.tests_for(bare_name)
+
+        mapped_test_names = [ref.test_function for ref in refs]
+        has_coverage = len(refs) > 0
+        delta = r.get("survival_delta")
+        improved = delta is not None and delta < 0
+
+        if has_coverage and improved:
+            confidence = 1.0
+        elif improved:
+            confidence = 0.5
+        else:
+            confidence = 0.0
+
+        r["validation_confidence"] = confidence
+        r["mapped_tests"] = mapped_test_names
+        if not has_coverage:
+            mapping_warnings.append(func_key)
+
+    next_actions = [
+        NextAction(
+            tool="spec_gate_check",
+            args={"path": path},
+            reason="Check if specification level now meets optimization hint thresholds",
+        ),
+    ]
+
+    output: dict[str, Any] = {
+        "file": file,
+        "results": results,
+        "mapping_warnings": mapping_warnings,
+        "impact_map_summary": impact_map.to_dict(),
+        "next_actions": serialize_next_actions(next_actions),
+    }
+
+    # Build slim summary: per-function kill rate + delta + confidence
+    lines = [f"{file}: {len(results)} functions validated"]
+    for r in results:
+        fname = r.get("function_key", r.get("function", "?"))
+        total = r.get("total_mutants", 0)
+        killed = r.get("total_killed", 0)
+        rate = round(killed / total * 100, 1) if total else 0
+        delta = r.get("survival_delta")
+        delta_str = f" (delta: {delta:+.3f})" if delta is not None else ""
+        conf = r.get("validation_confidence", 0.0)
+        mapped_count = len(r.get("mapped_tests", []))
+        surviving = [
+            c.get("category", "?") for c in r.get("per_category", []) if c.get("survived", 0) > 0
+        ]
+        status = f"conf={conf:.1f}, {mapped_count} mapped tests"
+        if surviving:
+            lines.append(
+                f"  {fname}: {killed}/{total} killed ({rate}%){delta_str}"
+                f" — {status} — surviving: {', '.join(surviving)}"
+            )
+        elif total > 0:
+            lines.append(
+                f"  {fname}: {killed}/{total} killed ({rate}%){delta_str}"
+                f" — {status} — fully specified"
+            )
+        else:
+            lines.append(f"  {fname}: no mutants generated — {status}")
+    if mapping_warnings:
+        lines.append(f"  WARNING: {len(mapping_warnings)} function(s) have no impact map coverage")
+    summary = "\n".join(lines)
+
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        output,
+        "mutation_validate_tests",
+        project_root,
+        summary,
+        next_actions=output.get("next_actions"),
+    )
+
+
 def impl_refactor_loop(helpers: Any, path: str, file: str, function: str | None) -> str:
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
@@ -631,8 +736,8 @@ def _profile_targets(
 ) -> list[dict[str, Any]]:
     """Profile each target function and compute survival deltas."""
     from lintgate.keys import canonical_function_key
-    from lintgate.specification.mutation_engine import run_function_profiling
-    from lintgate.specification.mutation_filter import filter_categories
+    from Wesker.engine import run_function_profiling
+    from Wesker.filter import filter_categories
 
     results: list[dict[str, Any]] = []
     for qualname, node in targets:

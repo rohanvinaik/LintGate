@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .mutation_engine import ProfilingResult
+    from Wesker.engine import ProfilingResult
 
 _FLOAT_ZERO_EPS = 1e-12
 

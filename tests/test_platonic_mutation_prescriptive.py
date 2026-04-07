@@ -21,8 +21,8 @@ _PATCHES = {
     "resolve": "mcp_tools._mutation_impl.resolve_function",
     "run_with_tests": "mcp_tools._mutation_impl.run_on_functions_with_tests",
     "build_ctx": "mcp_tools._mutation_tools_impl._build_mutation_context",
-    "engine": "lintgate.specification.mutation_engine.run_function_sampling",
-    "filter": "lintgate.specification.mutation_filter.filter_categories",
+    "engine": "Wesker.engine.run_function_sampling",
+    "filter": "Wesker.filter.filter_categories",
     "key_fn": "lintgate.keys.canonical_function_key",
 }
 

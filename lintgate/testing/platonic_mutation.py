@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import json
 
+_ENVIRONMENTAL_STATES = frozenset({"DISCOVERY_IMPORT_FAILED", "NO_TEST_FILES"})
+
 
 def load_mutation_cache(
     project_root: str,
     rel_file: str,
 ) -> dict[str, dict] | None:
-    """Load cached mutation state for a file."""
+    """Load cached mutation state for a file.
+
+    Environmental states (DISCOVERY_IMPORT_FAILED, NO_TEST_FILES) are
+    filtered out — they describe a broken run, not a function property.
+    Filtering forces re-profiling instead of persisting stale exclusions.
+    """
     try:
         from mcp_tools._mutation_impl import get_cache_dir, iter_cached_states
 
@@ -17,8 +24,11 @@ def load_mutation_cache(
         cache: dict[str, dict] = {}
         for state in iter_cached_states(cache_dir, rel_file):
             key = state.get("function_key", "")
-            if key:
-                cache[key] = state
+            if not key:
+                continue
+            if state.get("discovery_state") in _ENVIRONMENTAL_STATES:
+                continue
+            cache[key] = state
         return cache if cache else None
     except Exception:
         return None
@@ -56,8 +66,8 @@ def run_mutation_sampling(
     """Run mutation sampling on a file, returning per-function results."""
     try:
         from lintgate.keys import canonical_function_key
-        from lintgate.specification.mutation_engine import run_function_sampling
-        from lintgate.specification.mutation_filter import filter_categories
+        from Wesker.engine import run_function_sampling
+        from Wesker.filter import filter_categories
         from mcp_tools._mutation_impl import resolve_function, run_on_functions_with_tests
         from mcp_tools._mutation_tools_impl import _build_mutation_context
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from lintgate.specification.mutation_engine import (
+from Wesker.engine import (
     CategoryResult,
     Mutant,
     MutantResult,
@@ -771,8 +771,8 @@ class TestProfilingRecords:
         assert len(result.survivor_records) >= 1
         rec = result.survivor_records[0]
         assert "mutant_id" in rec
-        assert rec["status"] == "survived"
-        assert "diff_summary" in rec
+        assert "category" in rec
+        assert "mutant" in rec
 
     def test_profiling_includes_killed_records(self):
         func = _parse_func("def f(x): return x + 1")
@@ -792,7 +792,7 @@ class TestProfilingRecords:
         assert len(result.killed_records) >= 1
         rec = result.killed_records[0]
         assert "mutant_id" in rec
-        assert rec["status"] == "killed"
+        assert "category" in rec
         assert rec["killed_by"] in ("assertion", "crash", "timeout")
 
     def test_records_appear_in_to_dict(self):

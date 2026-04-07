@@ -10,7 +10,7 @@ import ast
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from lintgate.specification.mutation_engine import MutantResult
+    from Wesker.engine import MutantResult
 
 
 def build_survivor_record(result: MutantResult) -> dict[str, Any]:

@@ -62,7 +62,7 @@ _STRATEGY = "lintgate.specification.test_regeneration_strategy.Strategy"
 _LOAD_TESTS = "mcp_tools._mutation_impl._load_all_tests_from_files"
 _RESOLVE = "mcp_tools._mutation_impl.resolve_function"
 _PURITY = "mcp_tools._mutation_impl.detect_purity"
-_SAMPLING = "lintgate.specification.mutation_engine.run_function_sampling"
+_SAMPLING = "Wesker.engine.run_function_sampling"
 
 
 class _FakeStrategy:
@@ -234,7 +234,7 @@ class TestRunFreshKillRates:
             patch(_SAMPLING, side_effect=fake_sampling),
         ):
             run_fresh_kill_rates(plan, str(tmp_path))  # type: ignore[arg-type]  # _Plan duck-types RebuildManifest
-        from lintgate.specification.mutation_engine import MutationCategory
+        from Wesker.engine import MutationCategory
 
         assert MutationCategory.STATE in captured_categories["cats"]
 

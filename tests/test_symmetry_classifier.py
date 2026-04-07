@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lintgate.specification.mutation_engine import (
+from Wesker.engine import (
     CategoryResult,
     MutationCategory,
     ProfilingResult,

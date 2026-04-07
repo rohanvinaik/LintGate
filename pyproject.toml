@@ -30,6 +30,7 @@ dependencies = [
     "pyyaml>=6.0",
     "packaging>=23.0",
     "tomli>=2.0; python_version < '3.11'",
+    "Wesker>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -69,6 +70,7 @@ lintgate = "lintgate.hook_posttooluse:main"
 lintgate-pre = "lintgate.hook_pretooluse:main"
 lintgate-admin = "lintgate.cli.admin:main"
 lintgate-mcp = "mcp_server:run_server"
+lintgate-mcp-lite = "mcp_server_lite:run_server"
 controlplane = "lintgate.controlplane.cli:main"
 controlplane-mcp = "mcp_server:run_server"
 
@@ -79,6 +81,7 @@ packages = ["lintgate", "mcp_tools"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "mcp_server.py" = "mcp_server.py"
+"mcp_server_lite.py" = "mcp_server_lite.py"
 
 [tool.ruff]
 target-version = "py310"

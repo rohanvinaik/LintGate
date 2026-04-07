@@ -12,7 +12,7 @@
 [![Tests](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/test-count.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
 <!-- lintgate:quality-badges:end -->
 
-`125 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
+`134 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
 
 Built entirely through vibe coding by a biochemist with no formal CS training. The metrics above are computed by the system on its own codebase.
 
@@ -30,9 +30,11 @@ LintGate eliminates this failure class by ensuring the conditions for correct co
 
 **Specification complexity (σ):** For every function, LintGate measures the minimum number of tests needed to fully specify its behavior. Not "how many tests do you have" — "how many do you *need*." σ is a property of the program itself, not of any test suite. Functions with high σ need decomposition, not more tests.
 
-**Mutation profiling:** Five categories of AST mutation (VALUE, SWAP, BOUNDARY, STATE, TYPE) probe which behavioral degrees of freedom your tests actually constrain. Surviving mutants aren't bugs — they're the specification gaps that let bugs in later.
+**Mutation profiling:** Seven categories of AST mutation (VALUE, SWAP, BOUNDARY, STATE, TYPE, ARITHMETIC, LOGICAL) probe which behavioral degrees of freedom your tests actually constrain. Surviving mutants aren't bugs — they're the specification gaps that let bugs in later. Powered by [Wesker](https://github.com/rohanvinaik/Wesker) — a standalone, zero-dependency mutation engine with in-process evaluation, integrated equivalence detection, and MC/DC verification.
 
 **Prescriptive decomposition:** When σ is too high, mutation survival profiles identify the entangled behavioral dimensions. The system prescribes specific structural decomposition — not "this function is too complex" but "these two concerns are entangled along this dimension, separate them here."
+
+**Test suite compaction:** Mutation convergence analysis identifies the minimum killing set — the smallest subset of existing tests that achieves the same kill rate as the full suite. The optimizer AST-extracts surviving tests with their fixtures and helpers, producing a replacement file with identical specification coverage and no redundancy. On LintGate's own codebase: 115→16 tests (81% reduction) for `session_memory`, 40→5 (88%) for `compass`.
 
 **Symbolic refactoring:** `refactor_move` extracts functions by AST node movement — zero tokens, zero bugs, correct imports. `refactor_extract_method` detects closure variables and refuses when control flow (break/continue) would be corrupted. The refusals are as valuable as the applications.
 
@@ -103,11 +105,20 @@ Auto-detects Claude Code, Cursor, Copilot, Windsurf, Gemini CLI, Cline, Roo Code
 
 Works from zero state. No config required. Gets better as it accumulates signal — theory extraction, behavioral calibration, living context, prescriptive specs. Each layer is additive.
 
+**Autonomous code generation** (after composing specs):
+
+6. `auto_resolve(path, target)` — cache/synthesis gate → verified code, or returns a constrained prompt for you to fill
+7. `auto_sweep(path)` — resolve all deterministic cases instantly, returns prompts for the rest
+
+You are the stochastic engine. The tool is pure CPU — it never makes API calls.
+
 ## Economics
 
 LintGate's tools are symbolic — math on a CPU, not LLM inference. Supervision overhead is ~2% of total tokens while eliminating debugging entirely and cutting total session cost by half.
 
 The savings come from what doesn't happen. Every uncaught discipline failure degrades the context window, which degrades all subsequent reasoning. Symbolic checks prevent failures before they enter the context.
+
+The auto-resolve pipeline inverts the economics further: pure functions matching known algebraic forms resolve with zero tokens (synthesis gate). Non-matching specs return a tight constrained prompt — the calling LLM generates the body, the tool verifies deterministically. Verified results are cached by spec content hash — rebuilds are free.
 
 ---
 

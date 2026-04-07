@@ -65,7 +65,7 @@ def run_fresh_kill_rates(
     Returns:
         (kill_rates, zero_kill_count, per_function_details)
     """
-    from lintgate.specification.mutation_engine import (
+    from Wesker.engine import (
         MutationCategory,
         run_function_sampling,
     )

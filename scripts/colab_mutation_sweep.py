@@ -81,8 +81,8 @@ def profile_single_file(args: tuple[str, str, float, bool]) -> dict:
     sys.path.insert(0, project_root)
 
     from lintgate.keys import canonical_function_key
-    from lintgate.specification.mutation_engine import run_function_sampling
-    from lintgate.specification.mutation_filter import filter_categories
+    from Wesker.engine import run_function_sampling
+    from Wesker.filter import filter_categories
     from mcp_tools._mutation_impl import (
         MutationContext,
         detect_purity_map,

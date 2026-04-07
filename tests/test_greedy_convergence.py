@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from lintgate.specification.greedy_convergence import analyze_convergence
-from lintgate.specification.mutation_engine import (
+from Wesker.engine import (
     CategoryResult,
     MutationCategory,
     ProfilingResult,
