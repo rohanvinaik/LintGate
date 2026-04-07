@@ -353,6 +353,25 @@ def _inject_behavior_priors(event, session, cp_config):
             }
 
 
+def _inject_prism_data(event):
+    """Inject Prism session efficiency data if bridge file exists."""
+    with contextlib.suppress(Exception):
+        import json
+        from pathlib import Path
+
+        bridge_path = Path.home() / ".claude" / "prism" / "bridge.json"
+        if bridge_path.is_file():
+            data = json.loads(bridge_path.read_text())
+            if data.get("_meta", {}).get("schema_version"):
+                event.raw_input["prism_data"] = {
+                    "efficiency_score": data.get("efficiency_score"),
+                    "error_rate": data.get("error_rate"),
+                    "tool_calls": data.get("tool_calls"),
+                    "compactions": data.get("compactions"),
+                    "updated": data.get("_meta", {}).get("updated"),
+                }
+
+
 def _persist_behavior_compass_delta(cr, session, cp_config):
     """Persist behavior compass delta from a single channel result."""
     from lintgate.controlplane.session_memory import (
@@ -848,6 +867,17 @@ def _build_run_result(ctx: _RunContext) -> str:
         lines.extend(top_blockers)
 
     summary = "\n".join(lines)
+
+    # Inline top blocking findings in the slim response so models don't
+    # need a second query_analysis call for the most common drill-down.
+    top_blocking_inline = []
+    for issue in compact.get("blocking_issues", [])[:3]:
+        top_blocking_inline.append({
+            "kind": issue.get("kind", "?"),
+            "file": issue.get("file", "?"),
+            "message": issue.get("message", "")[:80],
+        })
+
     return tool_response(
         compact,
         "controlplane_run",
@@ -859,6 +889,7 @@ def _build_run_result(ctx: _RunContext) -> str:
             "run_id": compact.get("run_id"),
             "counts": counts,
             "coherence": coherence.get("state", "unknown"),
+            "top_blocking": top_blocking_inline,
         },
     )
 
@@ -882,6 +913,7 @@ def _impl_controlplane_run(path, channels, strictness, scope, files, helpers):
     # Behavior tracking
     _record_tool_event_for_behavior(session, cp_config)
     _inject_behavior_priors(event, session, cp_config)
+    _inject_prism_data(event)
 
     # Phase 2 — execute channels
     mesh_result = _execute_channels(
