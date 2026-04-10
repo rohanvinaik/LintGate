@@ -65,9 +65,10 @@ def run_mutation_sampling(
 ) -> list[dict]:
     """Run mutation sampling on a file, returning per-function results."""
     try:
-        from lintgate.keys import canonical_function_key
         from Wesker.engine import run_function_sampling
         from Wesker.filter import filter_categories
+
+        from lintgate.keys import canonical_function_key
         from mcp_tools._mutation_impl import resolve_function, run_on_functions_with_tests
         from mcp_tools._mutation_tools_impl import _build_mutation_context
 

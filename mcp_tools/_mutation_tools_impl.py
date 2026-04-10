@@ -61,9 +61,10 @@ def _build_mutation_context(
 def impl_run_sampling(
     helpers: Any, path: str, file: str, function: str | None, budget_ms: float
 ) -> str:
-    from lintgate.keys import canonical_function_key
     from Wesker.engine import run_function_sampling
     from Wesker.filter import filter_categories
+
+    from lintgate.keys import canonical_function_key
 
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
@@ -141,9 +142,10 @@ def impl_run_sampling(
 
 
 def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> str:
-    from lintgate.keys import canonical_function_key
     from Wesker.engine import run_function_profiling
     from Wesker.filter import filter_categories
+
+    from lintgate.keys import canonical_function_key
 
     project_root = helpers["_validate_project_root"](path)
     full, func_node, err = resolve_function(project_root, file, function)
@@ -735,9 +737,10 @@ def _profile_targets(
     test_files: list[str],
 ) -> list[dict[str, Any]]:
     """Profile each target function and compute survival deltas."""
-    from lintgate.keys import canonical_function_key
     from Wesker.engine import run_function_profiling
     from Wesker.filter import filter_categories
+
+    from lintgate.keys import canonical_function_key
 
     results: list[dict[str, Any]] = []
     for qualname, node in targets:
