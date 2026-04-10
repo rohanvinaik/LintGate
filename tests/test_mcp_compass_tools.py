@@ -962,7 +962,15 @@ class TestRegister:
         with patch("mcp_tools.compass_tools._impl_status", return_value={"status": "ok"}) as m:
             raw = tools["compass_status"](path="/p")
         m.assert_called_once_with("/p", "/p")
-        assert json.loads(raw) == {"status": "ok"}
+        # compass_status now returns a slim disk-first envelope; verify the
+        # on-disk payload round-trips the impl return value.
+        parsed = json.loads(raw)
+        assert parsed.get("analysis_id")
+        import os as _os
+        with open(parsed["file"], encoding="utf-8") as _f:
+            disk = json.load(_f)
+        assert disk["status"] == "ok"
+        assert _os.path.isfile(parsed["file"])
 
     def test_compass_check_delegates(self) -> None:
         tools, _ = self._register()

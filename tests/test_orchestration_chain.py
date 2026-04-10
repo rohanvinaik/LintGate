@@ -110,8 +110,7 @@ class TestOrchestrationChain:
         from mcp_tools.cold_start_tools import register
 
         tools = register(FakeMCP(), {"_validate_project_root": lambda p: p})
-        result = json.loads(
-            tools["test_infer_inputs"](path=str(project), file="mylib/core.py", function="compute")
+        result = _load_tool_result(tools["test_infer_inputs"](path=str(project), file="mylib/core.py", function="compute")
         )
 
         assert len(result["next_actions"]) >= 1
@@ -131,8 +130,7 @@ class TestOrchestrationChain:
         from mcp_tools.cold_start_tools import register
 
         tools = register(FakeMCP(), {"_validate_project_root": lambda p: p})
-        result = json.loads(
-            tools["test_characterize"](path=str(project), file="mylib/core.py", function="compute")
+        result = _load_tool_result(tools["test_characterize"](path=str(project), file="mylib/core.py", function="compute")
         )
 
         assert result["maturity"] == "unchecked"
@@ -152,7 +150,7 @@ class TestOrchestrationChain:
 
         from mcp_tools.test_hygiene_tools import register
 
-        tools = register(FakeMCP(), {})
+        tools = register(FakeMCP(), {"_validate_project_root": lambda p: p})
         result = _load_tool_result(tools["test_hygiene_scan"](path=str(project)))
 
         # Should have findings
@@ -210,19 +208,19 @@ class TestFullChainNextActions:
         from mcp_tools.cold_start_tools import register as reg_cold
         from mcp_tools.test_hygiene_tools import register as reg_hygiene
 
-        hygiene = reg_hygiene(FakeMCP(), {})
+        hygiene = reg_hygiene(FakeMCP(), {"_validate_project_root": lambda p: p})
         cold = reg_cold(FakeMCP(), {"_validate_project_root": lambda p: p})
 
         # Collect all next_actions from tools
         results = [
-            json.loads(hygiene["test_hygiene_scan"](path=str(project))),
-            json.loads(cold["test_triage"](path=str(project))),
-            json.loads(
+            _load_tool_result(hygiene["test_hygiene_scan"](path=str(project))),
+            _load_tool_result(cold["test_triage"](path=str(project))),
+            _load_tool_result(
                 cold["test_infer_inputs"](
                     path=str(project), file="mylib/core.py", function="compute"
                 )
             ),
-            json.loads(
+            _load_tool_result(
                 cold["test_characterize"](
                     path=str(project), file="mylib/core.py", function="compute"
                 )

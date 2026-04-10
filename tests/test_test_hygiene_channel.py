@@ -320,7 +320,7 @@ class TestTestHygieneScanTool:
                 return decorator
 
         fake = FakeMCP()
-        tools = register(fake, {})
+        tools = register(fake, {"_validate_project_root": lambda p: p})
         fn = tools["test_hygiene_scan"]
 
         test_dir = tmp_path / "tests"

@@ -119,3 +119,31 @@ exclude = ["docs/mutation/Aristotle/Mutation_Theory/.lake/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.wesker]
+# Wesker specification-metrics scope for the spec-badges CI workflow.
+#
+# lintgate has ~300 source files and 11k+ tests. Wesker's default behaviour is
+# to (a) run in-process mutation profiling across every file in `source_dir`
+# and (b) auto-discover every function containing a relational operator and
+# run a full pytest suite per operator swap for MC/DC verification.
+#
+# Neither is feasible on the full lintgate tree in CI:
+#   - In-process profiling: ~300 files × 10s budget each ≈ 50 min (too long).
+#   - MC/DC auto-discovery: hundreds of functions × N conditions × 5 ROR swaps
+#     × one full pytest run each → many hours.
+#
+# We scope Wesker to `lintgate/specification/` (the scoring / classification
+# core) and provide an explicit, tight `mcdc_targets` list to suppress
+# auto-discovery. The spec/ core is small, relational-operator-dense, and
+# directly drives regime classification — exactly what MC/DC wants to verify.
+source_dir = "lintgate/specification"
+exclude = [
+    "lintgate/specification/__init__.py",
+]
+mcdc_targets = [
+    ["lintgate/specification/test_regeneration_strategy.py", "_compute_confidence"],
+    ["lintgate/specification/test_regeneration_strategy.py", "_has_discovery_artifact"],
+]
+max_per_category = 3
+convergence_passes = 1

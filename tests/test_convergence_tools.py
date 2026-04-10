@@ -232,7 +232,7 @@ class TestRegistration:
 
         # convergence_analyze
         result_str = tools["convergence_analyze"](tmp_project)
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert isinstance(result, dict)
 
     def test_golden_path_wrappers_return_json(self, tmp_project):
@@ -271,10 +271,10 @@ class TestRegistration:
 
         # extraction_plan
         result_str = tools["extraction_plan"](tmp_project, "module.py::compute")
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert isinstance(result, dict)
 
         # optimization_landscape
         result_str = tools["optimization_landscape"](tmp_project)
-        result = json.loads(result_str)
+        result = _load_tool_result(result_str)
         assert isinstance(result, dict)

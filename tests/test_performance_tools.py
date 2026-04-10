@@ -401,8 +401,7 @@ class TestGeneratePropertyTests:
             _FakeMCP(),
             _stub_helpers(_validate_project_root=lambda p, **kw: str(tmp_path)),
         )
-        result = json.loads(
-            tools["generate_property_tests"](path=str(tmp_path), function="nonexistent")
+        result = _load_tool_result(tools["generate_property_tests"](path=str(tmp_path), function="nonexistent")
         )
         assert "note" in result
         assert "nonexistent" in result["note"]

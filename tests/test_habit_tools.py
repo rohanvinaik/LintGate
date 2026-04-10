@@ -568,7 +568,7 @@ class TestImplHabitConfigure:
 
     def test_no_overrides_returns_empty_dict(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
-        result = json.loads(
+        result = _load_tool_result(
             _impl_habit_configure(str(tmp_path), None, None, None, None, None, None)
         )
         assert result["status"] == "ok"
@@ -579,13 +579,13 @@ class TestImplHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         # Too low
-        result = json.loads(
+        result = _load_tool_result(
             _impl_habit_configure(str(tmp_path), 0.01, None, None, None, None, None)
         )
         assert result["overrides_applied"]["compact_threshold"] == 0.1
 
         # Too high
-        result = json.loads(
+        result = _load_tool_result(
             _impl_habit_configure(str(tmp_path), 0.99, None, None, None, None, None)
         )
         assert result["overrides_applied"]["compact_threshold"] == 0.9
@@ -600,7 +600,7 @@ class TestImplHabitConfigure:
         result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, 0.1, None, None, None, None))
         assert result["overrides_applied"]["enter_score"] == 0.3
 
-        result = json.loads(
+        result = _load_tool_result(
             _impl_habit_configure(str(tmp_path), None, 0.99, None, None, None, None)
         )
         assert result["overrides_applied"]["enter_score"] == 0.95
@@ -608,7 +608,7 @@ class TestImplHabitConfigure:
     def test_exit_score_clamped_to_range(self, tmp_path, monkeypatch):
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
-        result = json.loads(
+        result = _load_tool_result(
             _impl_habit_configure(str(tmp_path), None, None, 0.05, None, None, None)
         )
         assert result["overrides_applied"]["exit_score"] == 0.1
@@ -640,7 +640,7 @@ class TestImplHabitConfigure:
         result = _load_tool_result(_impl_habit_configure(str(tmp_path), None, None, None, None, None, 100))
         assert result["overrides_applied"]["context_window_size"] == 10000
 
-        result = json.loads(
+        result = _load_tool_result(
             _impl_habit_configure(str(tmp_path), None, None, None, None, None, 999999)
         )
         assert result["overrides_applied"]["context_window_size"] == 500000

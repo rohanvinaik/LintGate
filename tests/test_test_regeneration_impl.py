@@ -11,6 +11,35 @@ from mcp_tools._test_regeneration_impl import (
 )
 
 
+def _load_tool_result_text(raw: str) -> str:
+    """Return the on-disk envelope content as a string, or ``raw`` itself.
+
+    ``impl_rebuild_plan`` / ``impl_rebuild_generate`` now return a slim
+    ``tool_response`` envelope: a short JSON string pointing to the full
+    analysis file on disk. These tests were written against the pre-
+    envelope contract where the full serialised dict came back directly.
+    This helper restores that contract: if ``raw`` is a slim envelope,
+    read the on-disk JSON and return its text representation; otherwise
+    return ``raw`` unchanged.
+    """
+    import json as _j
+    import os as _os
+
+    try:
+        parsed = _j.loads(raw)
+    except (_j.JSONDecodeError, TypeError):
+        return raw
+    if (
+        isinstance(parsed, dict)
+        and parsed.get("analysis_id")
+        and parsed.get("file")
+        and _os.path.isfile(parsed["file"])
+    ):
+        with open(parsed["file"], encoding="utf-8") as f:
+            return f.read()
+    return raw
+
+
 def _make_helpers(project_root="/tmp/project"):
     return {
         "_validate_project_root": MagicMock(return_value=project_root),
@@ -116,7 +145,9 @@ class TestRebuildPlanBranches:
         mock_build.return_value = MagicMock(summary=lambda: {"total": 1, "auto_generate": 1})
         mock_write.return_value = "/tmp/manifest.json"
         helpers = _make_helpers(str(tmp_path))
-        result = impl_rebuild_plan(helpers, str(tmp_path), file="mod.py")
+        result = _load_tool_result_text(
+            impl_rebuild_plan(helpers, str(tmp_path), file="mod.py")
+        )
         assert "manifest_path" in result
         assert "/tmp/manifest.json" in result
         assert "errors" in result
@@ -187,7 +218,9 @@ class TestRebuildPlanBranches:
         mock_build.return_value = MagicMock(summary=lambda: {"total": 0})
         mock_write.return_value = ""
         helpers = _make_helpers(str(tmp_path))
-        result = impl_rebuild_plan(helpers, str(tmp_path), file="bad.py")
+        result = _load_tool_result_text(
+            impl_rebuild_plan(helpers, str(tmp_path), file="bad.py")
+        )
         assert "invalid syntax" in result
 
     @patch("lintgate.specification.test_regeneration_strategy.build_manifest")
@@ -215,7 +248,9 @@ class TestRebuildPlanBranches:
         mock_classify.return_value = MagicMock()
         mock_build.return_value = MagicMock(summary=lambda: {"total": 1})
         helpers = _make_helpers(str(tmp_path))
-        result = impl_rebuild_plan(helpers, str(tmp_path), file="mod.py", write_manifest=False)
+        result = _load_tool_result_text(
+            impl_rebuild_plan(helpers, str(tmp_path), file="mod.py", write_manifest=False)
+        )
         assert "'manifest_path': ''" in result or "manifest_path" in result
 
     @patch("lintgate.specification.test_regeneration_strategy.write_manifest")
@@ -317,6 +352,8 @@ class TestRebuildGenerate:
         mock_load.return_value = plan
         mock_regen.return_value.generate_for_file.return_value = None
         helpers = _make_helpers(str(tmp_path))
-        result = impl_rebuild_generate(helpers, str(tmp_path), max_files=1)
+        result = _load_tool_result_text(
+            impl_rebuild_generate(helpers, str(tmp_path), max_files=1)
+        )
         # Should process at most 1 file
         assert "files_processed" in result

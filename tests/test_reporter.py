@@ -62,6 +62,25 @@ from lintgate.types import LintIssue
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
+def _verbose(report: dict) -> str:
+    """Read the verbose XML-style report from the on-disk file.
+
+    ``format_mesh_report`` returns only a compact summary in ``systemMessage``;
+    the full verbose report is persisted to ``.lintgate/analysis/posttooluse_report/``
+    and pointed to via the private ``_report_path`` key. These helper unwraps it
+    so tests can assert against the verbose content.
+    """
+    import json
+    import os
+
+    path = report.get("_report_path", "")
+    if not path or not os.path.isfile(path):
+        return ""
+    with open(path) as f:
+        data = json.load(f)
+    return data.get("report", "")
+
+
 def _mesh(
     channel_results: list[ChannelResult] | None = None,
     coherence_state: Any = "stable",
@@ -658,8 +677,8 @@ def test_format_mesh_report_blocking_section() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "BLOCKING" in report["systemMessage"]
-    assert "Undefined name 'foo'" in report["systemMessage"]
+    assert "BLOCKING" in _verbose(report)
+    assert "Undefined name 'foo'" in _verbose(report)
 
 
 def test_format_mesh_report_warnings_section() -> None:
@@ -674,7 +693,7 @@ def test_format_mesh_report_warnings_section() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "WARNINGS" in report["systemMessage"]
+    assert "WARNINGS" in _verbose(report)
 
 
 def test_format_mesh_report_coherence_section() -> None:
@@ -686,7 +705,7 @@ def test_format_mesh_report_coherence_section() -> None:
         coherence_summary="Only lint fails.",
     )
     report = format_mesh_report(mesh)
-    assert "COHERENCE [isolated]" in report["systemMessage"]
+    assert "COHERENCE [isolated]" in _verbose(report)
 
 
 def test_format_mesh_report_partial_notice() -> None:
@@ -700,7 +719,7 @@ def test_format_mesh_report_partial_notice() -> None:
         coherence_summary="Timeout.",
     )
     report = format_mesh_report(mesh)
-    assert "PARTIAL" in report["systemMessage"]
+    assert "PARTIAL" in _verbose(report)
 
 
 def test_format_mesh_report_channel_summary() -> None:
@@ -711,7 +730,7 @@ def test_format_mesh_report_channel_summary() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "Channels:" in report["systemMessage"]
+    assert "Channels:" in _verbose(report)
 
 
 def test_format_mesh_report_pattern_alerts() -> None:
@@ -735,7 +754,7 @@ def test_format_mesh_report_pattern_alerts() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "PATTERN ALERT" in report["systemMessage"]
+    assert "PATTERN ALERT" in _verbose(report)
 
 
 def test_format_mesh_report_repairs_section() -> None:
@@ -750,7 +769,7 @@ def test_format_mesh_report_repairs_section() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "SUGGESTED REPAIRS" in report["systemMessage"]
+    assert "SUGGESTED REPAIRS" in _verbose(report)
 
 
 def test_format_mesh_report_proposed_constraints() -> None:
@@ -769,7 +788,7 @@ def test_format_mesh_report_proposed_constraints() -> None:
         }
     ]
     report = format_mesh_report(mesh, proposed_constraints=constraints)
-    assert "PROPOSED CONSTRAINTS" in report["systemMessage"]
+    assert "PROPOSED CONSTRAINTS" in _verbose(report)
 
 
 def test_format_mesh_report_proposed_constraints_only_active() -> None:
@@ -789,7 +808,7 @@ def test_format_mesh_report_proposed_constraints_only_active() -> None:
         }
     ]
     report = format_mesh_report(mesh, proposed_constraints=constraints)
-    assert "PROPOSED CONSTRAINTS" not in report["systemMessage"]
+    assert "PROPOSED CONSTRAINTS" not in _verbose(report)
 
 
 def test_format_mesh_report_informational_count() -> None:
@@ -831,7 +850,7 @@ def test_format_mesh_report_delta_escalated_and_resolved() -> None:
     # Pass previous_finding_index to trigger delta internal computation
     report = format_mesh_report(mesh, previous_finding_index=prev_index)
 
-    msg = report["systemMessage"]
+    msg = _verbose(report)
     assert "DELTA:" in msg
     assert "1 escalated" in msg
     assert "1 resolved" in msg
@@ -858,7 +877,7 @@ def test_format_mesh_report_tight_budget_truncation() -> None:
         config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=38))
         report = format_mesh_report(mesh, config=config)
 
-        msg = report["systemMessage"]
+        msg = _verbose(report)
         assert "<controlplane-report" in msg
         # Tight budget truncates blocking list — verify truncation message present
         assert "more blocking issues" in msg
@@ -876,7 +895,7 @@ def test_format_mesh_report_minimal_header() -> None:
         mesh.incomplete_channels = ["tests"]
 
         report = format_mesh_report(mesh, config=config)
-        msg = report["systemMessage"]
+        msg = _verbose(report)
         # minimal header should still include coherence
         assert 'coherence="stable"' in msg
 
@@ -896,7 +915,7 @@ def test_format_mesh_report_informational_plural() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "INFO: 2 informational findings" in report["systemMessage"]
+    assert "INFO: 2 informational findings" in _verbose(report)
 
 
 def test_format_mesh_report_hidden_findings_marker() -> None:
@@ -908,8 +927,8 @@ def test_format_mesh_report_hidden_findings_marker() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    # Only 3 warnings shown inline, rest hidden
-    assert "findings not shown inline" in report["systemMessage"]
+    # Only N warnings shown inline, the rest are summarised as "... and K more warnings"
+    assert "more warnings" in _verbose(report)
 
 
 def test_format_mesh_report_close_tag() -> None:
@@ -919,7 +938,7 @@ def test_format_mesh_report_close_tag() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert report["systemMessage"].endswith("</controlplane-report>")
+    assert _verbose(report).endswith("</controlplane-report>")
 
 
 def test_format_mesh_report_telemetry_when_delta() -> None:
@@ -955,8 +974,8 @@ def test_format_mesh_report_delta_new_findings() -> None:
     )
     # Empty previous index => all findings are new
     report = format_mesh_report(mesh, previous_finding_index={})
-    assert "DELTA:" in report["systemMessage"]
-    assert "1 new" in report["systemMessage"]
+    assert "DELTA:" in _verbose(report)
+    assert "1 new" in _verbose(report)
 
 
 def test_format_mesh_report_delta_resolved() -> None:
@@ -1008,7 +1027,7 @@ def test_format_mesh_report_delta_suppresses_unchanged() -> None:
     report = format_mesh_report(cur_mesh, previous_finding_index=prev_index)
     # Unchanged finding is suppressed
     if "DELTA:" in report.get("systemMessage", ""):
-        assert "unchanged (suppressed)" in report["systemMessage"]
+        assert "unchanged (suppressed)" in _verbose(report)
 
 
 def test_format_mesh_report_resurfacing_cadence() -> None:
@@ -1035,7 +1054,8 @@ def test_format_mesh_report_resurfacing_cadence() -> None:
         snapshot_count=10,  # Triggers resurfacing cadence
     )
     msg = report.get("systemMessage", "")
-    assert "resurfaced" in msg
+    # New compact format uses key=value pairs: resurface=N
+    assert "resurface=" in msg
 
 
 def test_format_mesh_report_baseline_delta() -> None:
@@ -1079,7 +1099,7 @@ def test_format_mesh_report_blocking_budget_overflow() -> None:
     )
     config = ControlPlaneConfig(token_policy=TokenPolicy(hook_max_tokens=300))
     report = format_mesh_report(mesh, config=config)
-    msg = report["systemMessage"]
+    msg = _verbose(report)
     assert "BLOCKING" in msg
 
 
@@ -1168,7 +1188,7 @@ def test_report_has_xml_structure() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    msg = report["systemMessage"]
+    msg = _verbose(report)
     assert msg.startswith("<controlplane-report")
     assert msg.strip().endswith("</controlplane-report>")
 
@@ -1190,7 +1210,7 @@ def test_duration_in_header() -> None:
     )
     report = format_mesh_report(mesh)
     assert (
-        'duration="42ms"' in report["systemMessage"] or 'duration="43ms"' in report["systemMessage"]
+        'duration="42ms"' in _verbose(report) or 'duration="43ms"' in _verbose(report)
     )
 
 
@@ -1254,7 +1274,7 @@ def test_delta_report_limits_repeated_finding_display() -> None:
     report = format_mesh_report(
         current_mesh, previous_finding_index=previous_index, snapshot_count=1
     )
-    msg = report["systemMessage"]
+    msg = _verbose(report)
     assert "DELTA: 2 new" in msg
 
 

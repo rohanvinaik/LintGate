@@ -100,7 +100,7 @@ class TestImplAgentFeedbackNoDisagreement:
                 "lintgate.controlplane.session_memory.save_session",
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 _impl_controlplane_agent_feedback("/tmp", None, None, None, None, _stub_helpers())
             )
 
@@ -122,7 +122,7 @@ class TestImplGetDetailsSpecificSections:
             "lintgate.state.load_controlplane_run",
             return_value=details,
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 _impl_controlplane_get_details(
                     "run1", None, None, 50, ["findings"], _stub_helpers()
                 )
@@ -145,7 +145,7 @@ class TestImplGetDetailsSpecificSections:
             "lintgate.state.load_controlplane_run",
             return_value=details,
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 _impl_controlplane_get_details(
                     "run1", None, None, 50, ["coherence"], _stub_helpers()
                 )
@@ -167,7 +167,7 @@ class TestImplGetDetailsSpecificSections:
             "lintgate.state.load_controlplane_run",
             return_value=details,
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 _impl_controlplane_get_details(
                     "run1", None, None, 50, ["evidence"], _stub_helpers()
                 )

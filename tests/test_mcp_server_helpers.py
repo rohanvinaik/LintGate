@@ -1435,14 +1435,14 @@ class TestModelProfileMcp:
         lintgate_home = tmp_path / "lintgate_home"
         monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
 
-        first = json.loads(
+        first = _load_tool_result(
             probe_submit(
                 path=str(tmp_path),
                 model_id="claude-opus-4",
                 answers=self._V2_ANSWERS,
             )
         )
-        second = json.loads(
+        second = _load_tool_result(
             probe_submit(
                 path=str(tmp_path),
                 model_id="claude-opus-4",
@@ -1461,7 +1461,7 @@ class TestModelProfileMcp:
         lintgate_home = tmp_path / "lintgate_home"
         monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
 
-        result = json.loads(
+        result = _load_tool_result(
             probe_start(
                 path=str(tmp_path),
                 model_id="claude-opus-4",
@@ -1481,7 +1481,7 @@ class TestModelProfileMcp:
         lintgate_home = tmp_path / "lintgate_home"
         monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
 
-        result = json.loads(
+        result = _load_tool_result(
             probe_start(
                 path=str(tmp_path),
                 model_id="claude-opus-4",
@@ -1503,7 +1503,7 @@ class TestModelProfileMcp:
             "t2_retry_behavior": "Install the missing dependency first",
             "t3_verification_cadence": "Fix each bug and test after each",
         }
-        result = json.loads(
+        result = _load_tool_result(
             probe_submit(
                 path=str(tmp_path),
                 model_id="claude-opus-4",
@@ -1520,7 +1520,7 @@ class TestModelProfileMcp:
         lintgate_home = tmp_path / "lintgate_home"
         monkeypatch.setenv("LINTGATE_HOME", str(lintgate_home))
 
-        result = json.loads(
+        result = _load_tool_result(
             probe_submit(
                 path=str(tmp_path),
                 model_id="claude-opus-4",

@@ -487,7 +487,7 @@ def impl_behavior_precheck(
     prediction_type: str | None = None,
     prediction_value: str | int | None = None,
 ) -> str:
-    import json
+    from mcp_tools._disk_helpers import load_tool_response
 
     project_root = helpers["_validate_project_root"](path)
 
@@ -498,12 +498,15 @@ def impl_behavior_precheck(
 
     # Call constraint_check, then undo the session counter increment
     # so behavior_precheck counts as ONE constraint check, not two.
+    # Inner MCP tools now return slim disk-first envelopes; unwrap to the
+    # full data dict so downstream field accesses (`status`, `prediction_tracking`,
+    # `command_class`, ...) work correctly.
     constraint_result_raw = tools["constraint_check"](
         path=path,
         planned_action=planned_action,
         known_constraints=known_constraints,
     )
-    output = json.loads(constraint_result_raw)
+    output = load_tool_response(constraint_result_raw)
 
     # Undo the double-count: constraint_check incremented the counter,
     # but this wrapper call should not count as a separate invocation.
@@ -548,7 +551,7 @@ def impl_behavior_precheck(
                 prediction_type=prediction_type,
                 prediction_value=prediction_value,
             )
-            pred_result = json.loads(pred_result_raw)
+            pred_result = load_tool_response(pred_result_raw)
             prediction_registered = pred_result.get("status") == "registered"
             if "prediction_tracking" in pred_result:
                 output["prediction_tracking"] = pred_result["prediction_tracking"]
@@ -560,7 +563,7 @@ def impl_behavior_precheck(
         path=path,
         planned_action=planned_action,
     )
-    hygiene_result = json.loads(hygiene_result_raw)
+    hygiene_result = load_tool_response(hygiene_result_raw)
     if hygiene_result.get("status") == "warnings":
         output["hygiene"] = {
             "command_class": hygiene_result.get("command_class"),

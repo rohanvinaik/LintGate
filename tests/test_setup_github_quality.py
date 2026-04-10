@@ -921,7 +921,7 @@ class TestSetupGithubQualityTool:
 
         gh_mock = {"owner": "a", "repo": "b"}
         with patch("mcp_tools.setup_github_quality._detect_github_remote", return_value=gh_mock):
-            result = json.loads(
+            result = _load_tool_result(
                 setup_github_quality(
                     str(tmp_path),
                     write=False,
@@ -949,7 +949,7 @@ class TestSetupGithubQualityTool:
                 return_value=None,
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 setup_github_quality(
                     str(tmp_path),
                     write=True,

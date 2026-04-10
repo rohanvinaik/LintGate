@@ -921,15 +921,15 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
                 condition="after implementing the test skeletons",
             ),
         ]
-    # Write skeletons to a file so LLM can Read them instead of inline
+    # Write skeletons to a file so LLM can Read them instead of inline.
+    # Tests and tools may pass a non-writable project_root (e.g. "/test",
+    # "/project"); fall back to CWD / tempdir rather than erroring the
+    # whole tool call over a cosmetic skeleton write.
     skeleton_path = ""
     if skeletons:
-        skel_dir = os.path.join(project_root, ".lintgate", "skeletons")
-        os.makedirs(skel_dir, exist_ok=True)
-        # Group by function for readable output
-        skel_file = os.path.join(skel_dir, f"prescribe_{os.path.basename(file or 'all')}")
-        if not skel_file.endswith(".py"):
-            skel_file += ".py"
+        skel_basename = f"prescribe_{os.path.basename(file or 'all')}"
+        if not skel_basename.endswith(".py"):
+            skel_basename += ".py"
         skel_lines = ['"""Auto-generated test skeletons from mutation_prescribe_tests."""\n\n']
         for skel in skeletons:
             func = skel.get("function", "unknown")
@@ -940,9 +940,34 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
             if skel.get("test_code"):
                 skel_lines.append(skel["test_code"])
                 skel_lines.append("\n\n")
-        with open(skel_file, "w", encoding="utf-8") as f:
-            f.writelines(skel_lines)
-        skeleton_path = os.path.relpath(skel_file, project_root)
+
+        candidate_roots = [
+            os.path.join(project_root, ".lintgate", "skeletons"),
+            os.path.join(os.getcwd(), ".lintgate", "skeletons"),
+        ]
+        skel_file = ""
+        for candidate in candidate_roots:
+            try:
+                os.makedirs(candidate, exist_ok=True)
+                skel_file = os.path.join(candidate, skel_basename)
+                with open(skel_file, "w", encoding="utf-8") as f:
+                    f.writelines(skel_lines)
+                break
+            except OSError:
+                skel_file = ""
+                continue
+        if not skel_file:
+            import tempfile
+
+            fallback_dir = os.path.join(tempfile.gettempdir(), "lintgate_skeletons")
+            os.makedirs(fallback_dir, exist_ok=True)
+            skel_file = os.path.join(fallback_dir, skel_basename)
+            with open(skel_file, "w", encoding="utf-8") as f:
+                f.writelines(skel_lines)
+        try:
+            skeleton_path = os.path.relpath(skel_file, project_root)
+        except ValueError:
+            skeleton_path = skel_file
 
     output: dict[str, Any] = {
         "skeletons": skeletons,

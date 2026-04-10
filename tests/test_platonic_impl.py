@@ -312,7 +312,7 @@ class TestPlatonicConverge:
                 return_value=json.dumps({"ready_to_apply": True, "gates": {}}),
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 impl_platonic_converge(
                     helpers,
                     str(tmp_path),
@@ -395,7 +395,7 @@ class TestPlatonicConverge:
                 side_effect=fake_reconcile,
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 impl_platonic_converge(helpers, str(tmp_path), "mod.py", max_iterations=1)
             )
 
@@ -1495,7 +1495,7 @@ class TestProfilingResumeFromSnapshot:
                 return_value=json.dumps({"ready_to_apply": True, "gates": {}}),
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 impl_platonic_converge(
                     helpers,
                     str(tmp_path),
@@ -1593,7 +1593,7 @@ class TestProfilingResumeFromSnapshot:
                 return_value=json.dumps({"ready_to_apply": True, "gates": {}}),
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 impl_platonic_converge(
                     helpers,
                     str(tmp_path),
@@ -1898,7 +1898,7 @@ class TestConvergeExistingTestsAdequate:
                 return_value=json.dumps({"ready_to_apply": False, "gates": {}}),
             ),
         ):
-            result = json.loads(
+            result = _load_tool_result(
                 impl_platonic_converge(
                     helpers,
                     str(tmp_path),

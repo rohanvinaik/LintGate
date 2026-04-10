@@ -535,8 +535,7 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), enter_score=0.1, exit_score=5.0)
+        result = _load_tool_result(tools["habit_configure"](path=str(tmp_path), enter_score=0.1, exit_score=5.0)
         )
         assert result["overrides_applied"]["enter_score"] == 0.3
         assert result["overrides_applied"]["exit_score"] == 0.8
@@ -569,8 +568,7 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](path=str(tmp_path), context_window_size=999999)
+        result = _load_tool_result(tools["habit_configure"](path=str(tmp_path), context_window_size=999999)
         )
         assert result["overrides_applied"]["context_window_size"] == 500000
 
@@ -632,8 +630,7 @@ class TestHabitConfigure:
         monkeypatch.setattr("lintgate.state.log_feature_usage", lambda *a, **kw: None)
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["habit_configure"](
+        result = _load_tool_result(tools["habit_configure"](
                 path=str(tmp_path),
                 compact_threshold=0.5,
                 enter_score=0.7,

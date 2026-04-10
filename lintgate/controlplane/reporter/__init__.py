@@ -243,6 +243,11 @@ def format_mesh_report(
         "hookEventName": "PostToolUse",
         "additionalContext": additional_context,
     }
+    # Private pointer to the verbose on-disk report. Claude Code ignores
+    # unknown keys; internal consumers (tests, drill-down tools) can load
+    # the full XML-style report from this path.
+    if report_path:
+        output["_report_path"] = report_path
 
     # Telemetry counters
     telemetry = _build_telemetry_counters(

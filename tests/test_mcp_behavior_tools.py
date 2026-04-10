@@ -108,8 +108,7 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="pip install requests")
+        result = _load_tool_result(tools["hygiene_check"](path=str(tmp_path), planned_action="pip install requests")
         )
         assert result["status"] == "pass"
         assert result["command_class"] == "pip_install"
@@ -137,8 +136,7 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="pip install requests")
+        result = _load_tool_result(tools["hygiene_check"](path=str(tmp_path), planned_action="pip install requests")
         )
         assert result["status"] == "warnings"
         assert len(result["warnings"]) == 1
@@ -173,8 +171,7 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="pip install foo")
+        result = _load_tool_result(tools["hygiene_check"](path=str(tmp_path), planned_action="pip install foo")
         )
         # Only the immediate warning generates a next_action
         assert len(result["next_actions"]) == 1
@@ -189,8 +186,7 @@ class TestHygieneCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["hygiene_check"](path=str(tmp_path), planned_action="pip install x")
+        result = _load_tool_result(tools["hygiene_check"](path=str(tmp_path), planned_action="pip install x")
         )
         assert result["status"] == "no_checks_applicable"
 
@@ -213,8 +209,7 @@ class TestConstraintCheck:
         config_dir.mkdir(exist_ok=True)
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
-        result = json.loads(
-            tools["constraint_check"](
+        result = _load_tool_result(tools["constraint_check"](
                 path=str(tmp_path),
                 planned_action="pytest tests/",
             )
@@ -232,8 +227,7 @@ class TestConstraintCheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["constraint_check"](
+        result = _load_tool_result(tools["constraint_check"](
                 path=str(tmp_path),
                 planned_action="pytest tests/",
                 known_constraints=["some tests may fail due to missing fixtures"],
@@ -259,8 +253,7 @@ class TestConstraintCheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["constraint_check"](
+        result = _load_tool_result(tools["constraint_check"](
                 path=str(tmp_path),
                 planned_action="make build",
             )
@@ -306,8 +299,7 @@ class TestConstraintCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["constraint_check"](
+        result = _load_tool_result(tools["constraint_check"](
                 path=str(tmp_path),
                 planned_action="pytest tests/",
             )
@@ -353,8 +345,7 @@ class TestConstraintCheck:
         )
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["constraint_check"](
+        result = _load_tool_result(tools["constraint_check"](
                 path=str(tmp_path),
                 planned_action="pytest tests/",
             )
@@ -380,8 +371,7 @@ class TestPredictionRegister:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["prediction_register"](
+        result = _load_tool_result(tools["prediction_register"](
                 path=str(tmp_path),
                 planned_action="pytest tests/",
                 prediction="Tests will pass",
@@ -401,8 +391,7 @@ class TestPredictionRegister:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["prediction_register"](
+        result = _load_tool_result(tools["prediction_register"](
                 path=str(tmp_path),
                 planned_action="read file contents",
                 prediction="File will exist",
@@ -421,8 +410,7 @@ class TestPredictionRegister:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["prediction_register"](
+        result = _load_tool_result(tools["prediction_register"](
                 path=str(tmp_path),
                 planned_action="run pytest tests/",
                 prediction="All tests pass",
@@ -445,8 +433,7 @@ class TestPredictionRegister:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["prediction_register"](
+        result = _load_tool_result(tools["prediction_register"](
                 path=str(tmp_path),
                 planned_action="bash pytest tests/",
                 prediction="Tests pass",
@@ -467,8 +454,7 @@ class TestPredictionRegister:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["prediction_register"](
+        result = _load_tool_result(tools["prediction_register"](
                 path=str(tmp_path),
                 planned_action="run python script.py",
                 prediction="No import errors",
@@ -500,8 +486,7 @@ class TestBehaviorPrecheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["behavior_precheck"](
+        result = _load_tool_result(tools["behavior_precheck"](
                 path=str(tmp_path),
                 planned_action="pytest tests/",
             )
@@ -522,8 +507,7 @@ class TestBehaviorPrecheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["behavior_precheck"](
+        result = _load_tool_result(tools["behavior_precheck"](
                 path=str(tmp_path),
                 planned_action="run pytest tests/",
                 prediction="Tests pass",
@@ -549,8 +533,7 @@ class TestBehaviorPrecheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["behavior_precheck"](
+        result = _load_tool_result(tools["behavior_precheck"](
                 path=str(tmp_path),
                 planned_action="run pytest tests/",
                 prediction="Tests pass",
@@ -573,8 +556,7 @@ class TestBehaviorPrecheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["behavior_precheck"](
+        result = _load_tool_result(tools["behavior_precheck"](
                 path=str(tmp_path),
                 planned_action="run pytest tests/",
                 prediction="Tests pass",
@@ -610,8 +592,7 @@ class TestBehaviorPrecheck:
         (config_dir / "lintgate.yaml").write_text("controlplane:\n  enabled: true\n")
 
         tools = _register(tmp_path)
-        result = json.loads(
-            tools["behavior_precheck"](
+        result = _load_tool_result(tools["behavior_precheck"](
                 path=str(tmp_path),
                 planned_action="pip install requests",
             )
