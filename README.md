@@ -2,15 +2,16 @@
 
 **A specification compiler for AI-generated code.** Not a linter. A formal system that measures how hard your code is to specify, tells you where to split it, and proves the measurement is mathematically well-posed.
 
-<!-- lintgate:quality-badges:start -->
-[![Tests](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/tests.yml)
-[![Security](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/security-lite.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
+[![CI](https://github.com/rohanvinaik/LintGate/actions/workflows/ci.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/rohanvinaik/LintGate/actions/workflows/codeql.yml/badge.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/codeql.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_LintGate&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_LintGate)
-[![Mutation Kill Rate](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mutation-kill-rate.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
-[![Mean σ](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/sigma.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
 [![Tests](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/test-count.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
-<!-- lintgate:quality-badges:end -->
+[![Mean σ](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/sigma.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
+<br>
+[![Mutation Kill Rate](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mutation-kill-rate.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
+[![MC/DC](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mcdc.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
+[![Mutation Sampling](https://raw.githubusercontent.com/rohanvinaik/LintGate/badges/.github/badges/mutation-sampling.svg)](https://github.com/rohanvinaik/LintGate/actions/workflows/spec-badges.yml)
 
 `134 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
 
