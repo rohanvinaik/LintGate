@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 118 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 125 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (118)
+## MCP Tools (125)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -17,7 +17,12 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `getting_started` | First-call orientation with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics + next actions) |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
 | `setup_github_quality` | Generate Code Climate/SonarCloud configs, SonarCloud + qlty + security-lite workflows, README badges, .gitignore augmentation |
+| `sync_ci_config` | Reconcile pyproject.toml, sonar-project.properties, and lintgate.yaml — propagate test/generated/pure-function classifications into CI config |
 | `tool_applicability_guide` | Definitive guide on when and how to use each LintGate MCP tool |
+| `propose_exemption` | Propose an exemption for a structural finding — approved or rejected based on rationale and evidence anchors |
+| `query_analysis` | Query a specific section of a saved analysis by JSON dot-path — surgical access to large results without loading the full file |
+| `after_edit` | Hook equivalent: run after editing files. Fast lint check on changed files + session state update (replaces PostToolUse:Edit hook) |
+| `before_commit` | Hook equivalent: run before committing. Lint + secrets-in-diff + test status; returns go/no-go verdict |
 
 ### Lint Pipeline
 
@@ -200,6 +205,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `prescriptive_spec_compile` | Compile PrescriptiveSpec into test skeletons + generation constraints. Persists `CompilationTargets`, materializes test file to `tests/generated/`, writes kill expectations alongside the spec. Updates workflow record state to "compiled". |
 | `prescriptive_spec_verify`  | Verify code refinement against its PrescriptiveSpec. Accepts `target` as primary identity (derives file/function). Returns structural (AST) + behavioral (mutation) evidence. Tightened next_actions: pass→`spec_gate_check`, structural_fail→edit code, behavioral_fail→`platonic_converge`, unknown→`mutation_run_sampling`. Updates workflow record with evidence. |
 | `prescriptive_spec_status`  | Show prescriptive coverage, sigma convergence, problem class distribution |
+| `prescriptive_code_scaffold` | Generate an implementation skeleton from the compiled PrescriptiveSpec — signature, guards, branches, return shape. You fill in only the computation |
 
 ### Offline Analysis
 
@@ -216,6 +222,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `refactor_resume`     | Load refactor state and provide structured summary for session resumption |
 | `refactor_thesis`     | Record or update the agent's structural thesis about the codebase      |
 | `refactor_move`       | Move a Python module with automatic import rewriting (libcst-based, dry-run default) |
+| `refactor_extract_method` | Extract a block of code into a named helper function in the same file — detects closure variables, refuses when control flow (break/continue) would be corrupted |
 
 ### GitHub Project Organization
 

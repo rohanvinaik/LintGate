@@ -144,14 +144,15 @@ def _impl_declare_mode(project_root: str, mode: str) -> str:
                 }
             )
 
+    status = "activated" if state.active else "deactivated"
+    summary = f"Habit mode {status}. Score: {round(state.habit_score, 3)}."
     data = {
         "status": "ok",
         "mode": mode,
         "habit_score": round(state.habit_score, 3),
         "active": state.active,
+        "message": summary,
     }
-    status = "activated" if state.active else "deactivated"
-    summary = f"Habit mode {status}. Score: {round(state.habit_score, 3)}."
     return tool_response(data, "declare_mode", project_root, summary)
 
 
