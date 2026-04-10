@@ -21,9 +21,7 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: |
-          uv sync --extra dev
-          uv pip install git+https://github.com/rohanvinaik/Wesker.git
+        run: uv sync --extra dev
 
       # ── Wesker statistical mutation testing ──────────────────────
       #

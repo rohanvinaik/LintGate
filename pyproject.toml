@@ -30,7 +30,7 @@ dependencies = [
     "pyyaml>=6.0",
     "packaging>=23.0",
     "tomli>=2.0; python_version < '3.11'",
-    "Wesker>=0.1.0",
+    "Wesker @ git+https://github.com/rohanvinaik/Wesker.git",
 ]
 
 [project.optional-dependencies]
@@ -73,6 +73,11 @@ lintgate-mcp = "mcp_server:run_server"
 lintgate-mcp-lite = "mcp_server_lite:run_server"
 controlplane = "lintgate.controlplane.cli:main"
 controlplane-mcp = "mcp_server:run_server"
+
+[tool.hatch.metadata]
+# Wesker is git-only (not published to PyPI); allow direct URL reference
+# in the dependencies list. Lintgate itself is not published to PyPI.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 # Include mcp_server.py at the root of the wheel so `mcp_server:mcp.run`
