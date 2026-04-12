@@ -55,7 +55,7 @@ algebra = [
 ]
 # Refactoring (safe module moves)
 refactor = [
-    "libcst>=1.0",
+    "libcst>=1.8.6",
 ]
 # Development
 dev = [
