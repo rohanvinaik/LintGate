@@ -28,7 +28,7 @@ classifiers = [
 # All linters (ruff, mypy, radon, bandit) are optional
 dependencies = [
     "pyyaml>=6.0",
-    "packaging>=23.0",
+    "packaging>=26.0",
     "tomli>=2.0; python_version < '3.11'",
     "Wesker @ git+https://github.com/rohanvinaik/Wesker.git",
 ]
