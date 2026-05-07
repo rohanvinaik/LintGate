@@ -445,15 +445,23 @@ def _collect_access_patterns(tree: ast.AST, var_name: str, patterns: set[str]) -
 
 
 def _try_golden_capture(
-    module_path: str, function: str, sig_info: dict[str, Any]
+    module_path: str,
+    function: str,
+    sig_info: dict[str, Any],
+    project_root: str | None = None,
 ) -> dict[str, Any] | None:
     """Try to import, execute, and capture a golden value for a function.
 
     Returns {"value": repr, "deterministic": bool} on success, None on failure.
     Only attempts capture for functions with no parameters or all-defaulted parameters.
     Runs twice to check determinism.
+
+    When ``project_root`` is set and the module isn't stdlib, capture runs
+    in a subprocess from that directory to avoid namespace-package
+    shadowing across LintGate's process-wide sys.path.
     """
     import importlib
+    import sys
 
     params = [p for p in sig_info.get("params", []) if p["name"] != "self"]
     if params and not sig_info.get("defaults"):
@@ -463,6 +471,12 @@ def _try_golden_capture(
     n_defaults = len(sig_info.get("defaults", []))
     if len(params) > n_defaults:
         return None
+
+    top_level = module_path.split(".", 1)[0]
+    if project_root and top_level not in sys.stdlib_module_names:
+        from lintgate.testing.characterization import _subprocess_capture
+
+        return _subprocess_capture(project_root, module_path, function, [], {})
 
     try:
         mod = importlib.import_module(module_path)
@@ -492,7 +506,7 @@ def _impl_test_characterize(project_root: str, file: str, function: str, write: 
     module_path = file.replace("/", ".").replace("\\", ".").removesuffix(".py")
 
     # Attempt golden-value capture for zero-arg / all-defaulted functions
-    golden = _try_golden_capture(module_path, function, sig_info)
+    golden = _try_golden_capture(module_path, function, sig_info, project_root=project_root)
 
     # Generate test code
     test_code = _generate_characterization_test(module_path, function, sig_info, golden)

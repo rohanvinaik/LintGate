@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import ast
 import importlib
+import json
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -39,17 +42,23 @@ def capture_golden(
     module_path: str,
     function_name: str,
     call_site_inputs: list[dict],
+    project_root: str | None = None,
 ) -> list[GoldenCapture]:
     """Capture golden values using call-site inferred inputs.
 
     For each call site with evaluable literal args, calls the function
     twice to check determinism and captures the result.
+
+    When ``project_root`` is provided and ``module_path`` is not stdlib,
+    capture runs in a subprocess from that directory — this avoids
+    namespace-package shadowing when LintGate runs as a long-lived MCP
+    process whose sys.path differs from the target project's.
     """
     captures: list[GoldenCapture] = []
     seen_args: set[str] = set()
 
     # Try zero-arg capture first
-    zero = _try_capture(module_path, function_name, [], {})
+    zero = _try_capture(module_path, function_name, [], {}, project_root)
     if zero is not None:
         captures.append(zero)
         seen_args.add("()")
@@ -64,7 +73,7 @@ def capture_golden(
         if key in seen_args:
             continue
         seen_args.add(key)
-        capture = _try_capture(module_path, function_name, args, kwargs)
+        capture = _try_capture(module_path, function_name, args, kwargs, project_root)
         if capture is not None:
             captures.append(capture)
 
@@ -178,8 +187,26 @@ def _try_capture(
     function_name: str,
     args: list[Any],
     kwargs: dict[str, Any],
+    project_root: str | None = None,
 ) -> GoldenCapture | None:
-    """Try to capture a golden value by calling the function twice."""
+    """Try to capture a golden value by calling the function twice.
+
+    When ``project_root`` is set and the module isn't stdlib, runs in a
+    subprocess so the import resolves against the target project's
+    sys.path instead of LintGate's process-wide sys.path.
+    """
+    top_level = module_path.split(".", 1)[0]
+    if project_root and top_level not in sys.stdlib_module_names:
+        out = _subprocess_capture(project_root, module_path, function_name, args, kwargs)
+        if out is None:
+            return None
+        return GoldenCapture(
+            inputs=list(args),
+            kwargs=dict(kwargs),
+            output=out["value"],
+            deterministic=out["deterministic"],
+        )
+
     try:
         mod = importlib.import_module(module_path)
         func = getattr(mod, function_name)
@@ -194,6 +221,60 @@ def _try_capture(
         )
     except Exception:
         return None
+
+
+def _subprocess_capture(
+    project_root: str,
+    module_path: str,
+    function_name: str,
+    args: list[Any],
+    kwargs: dict[str, Any],
+    timeout: float = 5.0,
+) -> dict[str, Any] | None:
+    """Execute ``function_name`` from ``module_path`` twice in a subprocess.
+
+    Returns ``{"value": repr, "deterministic": bool}`` or None on any failure.
+    The subprocess runs with cwd=project_root and project_root prepended to
+    sys.path — this matches what the target project's tests would see, and
+    avoids LintGate's own sys.path shadowing project-internal package names.
+    """
+    code = (
+        "import json, sys\n"
+        f"sys.path.insert(0, {project_root!r})\n"
+        f"from {module_path} import {function_name} as _fn\n"
+        f"_args = {args!r}\n"
+        f"_kwargs = {kwargs!r}\n"
+        "try:\n"
+        "    _r1 = _fn(*_args, **_kwargs)\n"
+        "    _r2 = _fn(*_args, **_kwargs)\n"
+        "    print(json.dumps({\n"
+        "        'ok': True,\n"
+        "        'value': repr(_r1),\n"
+        "        'deterministic': repr(_r1) == repr(_r2),\n"
+        "    }))\n"
+        "except BaseException as e:\n"
+        "    print(json.dumps({'ok': False, 'error': type(e).__name__}))\n"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout.strip())
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not data.get("ok"):
+        return None
+    return {"value": data["value"], "deterministic": data["deterministic"]}
 
 
 def _eval_call_site(site: dict) -> tuple[list[Any], dict[str, Any]] | None:

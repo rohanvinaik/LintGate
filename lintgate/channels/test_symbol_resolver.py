@@ -16,7 +16,6 @@ Finding code: **TEFF009 — Stale test references deleted symbol**
 from __future__ import annotations
 
 import ast
-import importlib.util
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -219,15 +218,22 @@ def _reconstruct_dotpath(node: ast.Attribute) -> str | None:
 
 
 def _detect_project_packages(project_root: str) -> set[str]:
-    """Detect top-level package names in the project."""
+    """Detect top-level package names in the project.
+
+    Scans both ``<project_root>`` and ``<project_root>/src`` so src-layout
+    projects (where the package lives at ``src/<pkg>/__init__.py``) are
+    detected the same as flat layouts.
+    """
     packages: set[str] = set()
-    try:
-        for entry in os.listdir(project_root):
-            full = os.path.join(project_root, entry)
+    for root in (project_root, os.path.join(project_root, "src")):
+        try:
+            entries = os.listdir(root)
+        except OSError:
+            continue
+        for entry in entries:
+            full = os.path.join(root, entry)
             if os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
                 packages.add(entry)
-    except OSError:
-        pass
     return packages
 
 
@@ -245,11 +251,15 @@ def _symbol_exists(module_path: str, symbol_name: str, project_root: str) -> boo
     - Module-level variable assignments
     - Re-exports via __all__ or import chains
     """
-    # Convert module path to file path
+    # Convert module path to file path. Probe both flat and src/ layouts:
+    # callers filter on top-level packages discovered by _detect_project_packages,
+    # which now includes src/ entries — keep this aligned.
     rel_path = module_path.replace(".", os.sep)
     candidates = [
         os.path.join(project_root, rel_path + ".py"),
         os.path.join(project_root, rel_path, "__init__.py"),
+        os.path.join(project_root, "src", rel_path + ".py"),
+        os.path.join(project_root, "src", rel_path, "__init__.py"),
     ]
 
     for filepath in candidates:
@@ -272,8 +282,7 @@ def _symbol_exists(module_path: str, symbol_name: str, project_root: str) -> boo
         ):
             return True
 
-    # Last resort: try importlib spec resolution (catches installed packages)
-    return _try_importlib_resolve(module_path, symbol_name)
+    return False
 
 
 def _node_defines_symbol(node: ast.AST, symbol_name: str) -> bool:
@@ -322,22 +331,6 @@ def _find_reexport(
                 source_module = f"{parent_module}.{node.module}" if node.level > 0 else node.module
                 return _symbol_exists(source_module, alias.name, project_root)
     return False
-
-
-def _try_importlib_resolve(module_path: str, symbol_name: str) -> bool:
-    """Try to resolve a symbol using importlib.util.find_spec.
-
-    This is a fallback for installed packages. Returns False for safety
-    if the module can't be found — we'd rather report a false positive
-    (stale reference to a moved symbol) than miss a genuinely deleted symbol.
-    """
-    try:
-        spec = importlib.util.find_spec(module_path)
-        # Module exists — we assume the symbol is there if the module resolves.
-        # This is conservative: we only flag symbols where even the module is gone.
-        return spec is not None
-    except (ModuleNotFoundError, ValueError, AttributeError):
-        return False
 
 
 def build_stale_test_findings(

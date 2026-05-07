@@ -23,6 +23,27 @@ def _target_hash(target_key: str) -> str:
     return hashlib.sha256(target_key.encode()).hexdigest()[:16]
 
 
+def _require_valid_root(project_root: object, fn_name: str) -> str:
+    """Reject non-path values before they create garbage directories.
+
+    A historical leak (Mar 2026) produced 72 directories named
+    ``<function impl_prescriptive_spec_status at 0x...>/`` at the repo
+    root because somewhere a function reference (or its repr) reached
+    ``save_spec`` as ``project_root``. We can't reconstruct the call
+    site, but the symptom is unmistakable: any path containing
+    ``<function `` is the bug, not a real directory.
+    """
+    if not isinstance(project_root, str):
+        raise TypeError(
+            f"{fn_name}: project_root must be str, got {type(project_root).__name__}"
+        )
+    if "<function " in project_root or "<bound method " in project_root:
+        raise ValueError(
+            f"{fn_name}: project_root looks like a stringified callable: {project_root!r}"
+        )
+    return project_root
+
+
 @dataclass
 class PrescriptiveWorkflowRecord:
     """Stable handle for a prescriptive spec workflow across tool calls.
@@ -102,6 +123,7 @@ class PrescriptiveWorkflowRecord:
 
 def save_workflow_record(project_root: str, record: PrescriptiveWorkflowRecord) -> None:
     """Save a PrescriptiveWorkflowRecord alongside its spec."""
+    project_root = _require_valid_root(project_root, "save_workflow_record")
     spec_dir = os.path.join(project_root, _SPEC_DIR)
     os.makedirs(spec_dir, exist_ok=True)
     h = _target_hash(record.target_key)
@@ -128,6 +150,7 @@ def load_workflow_record(project_root: str, target_key: str) -> PrescriptiveWork
 
 def save_spec(project_root: str, spec: PrescriptiveSpec) -> None:
     """Save a PrescriptiveSpec to disk and update the index."""
+    project_root = _require_valid_root(project_root, "save_spec")
     spec_dir = os.path.join(project_root, _SPEC_DIR)
     os.makedirs(spec_dir, exist_ok=True)
 

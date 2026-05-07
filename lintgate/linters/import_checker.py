@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import os
+import sys
 from typing import TYPE_CHECKING
 
 from ..types import LinterContext, LintIssue
@@ -165,29 +166,62 @@ class ImportChecker(BaseLinter):
                 )
 
     def _module_exists(self, module_name: str, project_root: str) -> bool:
-        """Check if a module can be found by importlib.
+        """Check if a module can be found.
 
-        Checks both installed packages and local project modules.
-        Uses importlib.util.find_spec which doesn't execute the module.
+        Resolution order is filesystem-first to avoid namespace-package
+        shadowing: when LintGate runs as a long-lived MCP process, its own
+        sys.path can contain directories that collide with package names in
+        the target project (e.g. LintGate has its own ``scripts/``). A naive
+        ``find_spec`` call resolves against LintGate's sys.path and returns
+        wrong specs for those collisions, producing
+        ``ModuleNotFoundError: ... (unknown location)`` for shadowed
+        submodule lookups.
+
+        1. stdlib (``sys.stdlib_module_names``) — unambiguous, can't be shadowed.
+        2. Local project filesystem walk against ``project_root``.
+        3. ``find_spec`` only when ``module_name``'s top-level does NOT exist
+           as a directory under ``project_root`` — prevents the shadow case.
+           Namespace-only specs (``origin is None``) are rejected.
         """
-        # Check installed packages
-        try:
-            spec = importlib.util.find_spec(module_name)
-            if spec is not None:
-                return True
-        except (ModuleNotFoundError, ValueError):
-            pass
-
-        # Check local project files (src/module_name.py, module_name/__init__.py)
         top_level = module_name.split(".")[0]
+
+        if top_level in sys.stdlib_module_names:
+            return True
+
+        rel_path = module_name.replace(".", os.sep)
         local_candidates = [
+            # Full module path
+            os.path.join(project_root, rel_path + ".py"),
+            os.path.join(project_root, rel_path, "__init__.py"),
+            os.path.join(project_root, "src", rel_path + ".py"),
+            os.path.join(project_root, "src", rel_path, "__init__.py"),
+            # Top-level package marker (covers cases where the submodule
+            # isn't a separate file but lives inside __init__.py)
             os.path.join(project_root, top_level + ".py"),
             os.path.join(project_root, top_level, "__init__.py"),
             os.path.join(project_root, "src", top_level + ".py"),
             os.path.join(project_root, "src", top_level, "__init__.py"),
         ]
+        if any(os.path.exists(c) for c in local_candidates):
+            return True
 
-        return any(os.path.exists(c) for c in local_candidates)
+        # If the top-level looks project-internal but no file matched above,
+        # treat as missing — find_spec would resolve against LintGate's
+        # sys.path (a different process) and return shadow specs.
+        if os.path.isdir(os.path.join(project_root, top_level)) or os.path.isdir(
+            os.path.join(project_root, "src", top_level)
+        ):
+            return False
+
+        try:
+            spec = importlib.util.find_spec(module_name)
+        except (ModuleNotFoundError, ValueError, ImportError, AttributeError):
+            return False
+        if spec is None:
+            return False
+        # Reject namespace-only matches: they can be assembled from any
+        # directory on sys.path with no concrete loader.
+        return bool(spec.origin) or bool(spec.has_location)
 
     def _run_custom(self, command: str, ctx: LinterContext) -> Iterable[LintIssue]:
         """Run a user-defined import verification command."""
