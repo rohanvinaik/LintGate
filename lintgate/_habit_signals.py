@@ -391,6 +391,35 @@ def declare_mode(
     return None
 
 
+def declare_workflow(
+    state: HabitModeState,
+    workflow: str | None,
+) -> str:
+    """Set or clear the workflow mode on session state.
+
+    Orthogonal to habit/standard economy mode.
+
+    Args:
+        state: Current habit mode state.
+        workflow: WorkflowMode value string, or None/empty to clear.
+
+    Returns: The resulting workflow_mode value ("" if cleared).
+    """
+    from lintgate._habit_types import WorkflowMode
+
+    if not workflow:
+        state.workflow_mode = ""
+        return ""
+
+    parsed = WorkflowMode.from_str(workflow)
+    if parsed is None:
+        valid = ", ".join(WorkflowMode.valid_names())
+        raise ValueError(f"Invalid workflow mode '{workflow}'. Valid: {valid}")
+
+    state.workflow_mode = parsed.value
+    return parsed.value
+
+
 def quick_intent(tool_name: str) -> str:
     """Cheap intent classification for standalone path (no command_sig).
 

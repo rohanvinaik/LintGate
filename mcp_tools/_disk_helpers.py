@@ -155,7 +155,7 @@ def tool_response(
     return json.dumps(response, separators=(",", ":"), default=str)
 
 
-def load_tool_response(raw: str) -> dict[str, Any]:
+def load_tool_response(raw: str | dict) -> dict[str, Any]:
     """Unwrap a slim tool_response envelope back to its full data dict.
 
     The ``tool_response`` helper returns a slim JSON envelope
@@ -167,19 +167,33 @@ def load_tool_response(raw: str) -> dict[str, Any]:
     back to the underlying data. This helper does both the parse and
     the disk read in one step.
 
-    If ``raw`` is not a slim envelope (no ``file`` key, or the file is
-    missing), returns the parsed JSON as-is — this preserves backward
-    compatibility with impls that return plain ``json.dumps(dict)``.
+    Accepts a JSON string or an already-parsed dict. If ``raw`` is not
+    a slim envelope (no ``file`` key, or the file is missing), returns
+    the parsed JSON as-is — this preserves backward compatibility with
+    impls that return plain ``json.dumps(dict)``.
     """
-    parsed = json.loads(raw)
+    if isinstance(raw, dict):
+        parsed: Any = raw
+    else:
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {}
     if not isinstance(parsed, dict):
         return {}
-    file_path = parsed.get("file", "")
-    if parsed.get("analysis_id") and file_path and os.path.isfile(file_path):
-        with open(file_path, encoding="utf-8") as f:
-            loaded = json.load(f)
-        if isinstance(loaded, dict):
-            return loaded
+    file_path = parsed.get("file")
+    if (
+        parsed.get("analysis_id")
+        and isinstance(file_path, str)
+        and os.path.isfile(file_path)
+    ):
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                full = json.load(f)
+            if isinstance(full, dict):
+                return full
+        except (OSError, json.JSONDecodeError):
+            return parsed
     return parsed
 
 

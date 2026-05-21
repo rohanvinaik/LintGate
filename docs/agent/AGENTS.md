@@ -1,6 +1,6 @@
 # LintGate Agent Tool Reference
 
-> **Tool count**: 125 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
+> **Tool count**: 131 MCP tools. Source of truth: `grep -Rho '@mcp.tool()' mcp_server.py mcp_tools/*.py | wc -l`
 
 ## Golden Path (Auto-Improve)
 
@@ -60,6 +60,7 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 | `controlplane_report_repair` | Report repair outcome (applied/ignored/rejected) | After applying or skipping repair |
 | `controlplane_agent_feedback` | Record disagreements or accept/reject constraints | When findings seem wrong |
 | `controlplane_get_work_queue` | Get dependency-ordered work queue from a cached run | When resuming work without re-running |
+| `controlplane_execute` | Single-command project improvement: analyze → repair → converge → validate | When you want a complete improvement cycle without chaining tools |
 
 ### Behavior & Predictions
 
@@ -146,6 +147,38 @@ Before pushing, run the local gate stack: `python scripts/ship_main.py` (or `--p
 **Interpolation layer**: `project_claims()` projects compass + theory claims onto specific targets with 3-tier relevance scoring (function name mention → high, predicate op match → medium, generic → low). Claims contradicted by `func_spec` evidence are rejected with log entries. `PrescriptiveWorkflowRecord` persists workflow state (composed → compiled → verifying → complete) so every tool reads/writes the same handle via `target_key`.
 
 **Spec-aware convergence**: `platonic_converge` loads prescriptive specs for the convergence file, reads `expected_kill_set` from persisted expectations, and overrides `target_kill_rate` with per-category kill targets. Iteration data includes `prescriptive_kill_status` per function.
+
+### Autonomous Code Resolution
+
+The auto-resolve system closes the loop in the prescriptive pipeline. **You (the calling LLM) are the stochastic engine** — the MCP tool handles all deterministic work (cache, synthesis gate, AST verification, witness execution) and returns constrained generation prompts for the cases it cannot resolve symbolically. The tool never makes API calls.
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `auto_resolve` | **Phase 1** (no `proposed_body`): cache check → synthesis gate for known algebraic forms → returns `status="needs_generation"` with `generation_prompt` if deterministic paths are exhausted. **Phase 2** (with `proposed_body`): verifies your implementation via AST parse + structural checks + witness I/O execution → caches and writes to `.lintgate/resolved/{name}.py` on pass, returns `retry_constraints` on fail. | After `prescriptive_spec_compose` + `prescriptive_spec_compile` — call once to get the prompt, generate the body, call again to verify |
+| `auto_sweep` | Resolve ALL composed specs in one pass. Synthesis gate and cache hits resolve instantly. Returns a manifest with `needs_generation` items — follow up with `auto_resolve(target, proposed_body=...)` for each. | Batch resolution across a project — deterministic cases resolve for free, you handle the rest |
+
+**Resolution strategies** (in preference order):
+1. **Cache hit** — spec content hash matches a previously verified resolution. 0ms, pure disk read.
+2. **Synthesis gate** — pure function matching a known algebraic form (key_inversion, count_aggregation, group_aggregation, field_projection). Deterministic, ~10ms.
+3. **Caller generation** — tool returns a `generation_prompt` with: function signature, MUST/MUST NOT constraints, invariants, algebraic laws, forbidden behaviors. You generate the body, pass it back via `proposed_body` for deterministic verification.
+
+**Verification layers** (all CPU, no LLM):
+1. AST parse — syntactically valid Python
+2. Structural checks — return statement presence, purity (no global/nonlocal), no forbidden side effects
+3. Witness execution — run generated function against known I/O pairs in subprocess
+4. Pytest execution (optional) — run generated test file from `prescriptive_spec_compile`
+
+**Retry loop**: When your `proposed_body` fails verification, the response includes `retry_constraints` (e.g., "MUST include a return statement", "Wrong output: got 3, expected 5") and an updated `generation_prompt` with those failures prepended. Fix and resubmit.
+
+**How to use as the calling LLM**:
+1. Call `auto_resolve(path, target)` — if `status="resolved"` or `"cached"`, done.
+2. If `status="needs_generation"`, read the `generation_prompt` field.
+3. Generate the function body following the constraints in the prompt.
+4. Call `auto_resolve(path, target, proposed_body="    return ...")` — if `status="resolved"`, done.
+5. If `status="failed"`, read `retry_constraints`, fix the body, resubmit.
+
+**Workflow**: `prescriptive_spec_compose` → `prescriptive_spec_compile` → `auto_resolve` → [generate] → `auto_resolve(proposed_body=...)` → `prescriptive_spec_verify`.
+**Sweep**: `auto_sweep(path)` → deterministic cases done → `auto_resolve(proposed_body=...)` for each `needs_generation` item.
 
 ### Mutation Testing
 

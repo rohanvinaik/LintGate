@@ -20,7 +20,6 @@ from typing import Any
 
 from mcp_tools._onboarding_getting_started_impl import (  # noqa: F401
     _ESSENTIAL_TOOLS,
-    _TOOL_APPLICABILITY_GUIDE,
     _build_next_actions,
     _detect_mutation_guard,
     _handle_config_and_venv,
@@ -220,19 +219,70 @@ def register(mcp, helpers):
 
     @mcp.tool()
     def tool_applicability_guide() -> str:
-        """Returns the definitive guide on when and how to use each LintGate MCP tool.
+        """Returns workflow modes organized by task shape — pick the row that
+        matches your situation.
 
-        This covers cadence (how often to run), triggers (what events should prompt a run),
-        and anti-patterns (when NOT to use the tool).
+        Shows 5 modes (surgical, refactor, greenfield, explore, debug_spiral)
+        with the tool loop for each. Use declare_workflow() to activate one.
         """
         result_json = _impl_tool_applicability_guide(helpers)
         result = json.loads(result_json)
-        n = len(result) if isinstance(result, dict) else 0
-        tag_summary = f"Tool applicability guide: {n} tools documented."
+        summary = "Workflow guide: 5 task-shape modes."
         return tool_response(
-            result, "tool_applicability_guide", os.getcwd(), tag_summary,
-            extra={"tools_documented": n},
+            result, "tool_applicability_guide", os.getcwd(), summary,
         )
+
+    @mcp.tool()
+    def implementation_guide(
+        path: str,
+        intent: str | None = None,
+    ) -> str:
+        """Get a mode-specific workflow guide for your current session.
+
+        WHEN TO USE: Mid-session re-orientation — see the edit loop and
+        signal policy for your current or requested workflow mode.
+        Without intent, shows the currently active mode's guide.
+
+        For initial setup, use getting_started(intent=...) instead.
+
+        Args:
+            path: Project root path.
+            intent: Optional — "surgical", "refactor", "greenfield",
+                    "explore", "debug_spiral", or a task description
+                    like "fix_bug", "audit", "new_code".
+        """
+        project_root = helpers["_validate_project_root"](path)
+
+        from lintgate.workflow_guides import MODE_SPECS, render_all_guides_summary, render_guide
+
+        # Determine which mode to show
+        mode_name = None
+        if intent:
+            from lintgate.orchestration.workflows import intent_to_workflow_mode
+
+            mode_name = intent_to_workflow_mode(intent) or intent
+
+        # If no intent, read current workflow from runtime state
+        if not mode_name:
+            try:
+                from lintgate.runtime_state import load_runtime_state
+
+                runtime = load_runtime_state(project_root)
+                if runtime and runtime.workflow_mode:
+                    mode_name = runtime.workflow_mode
+            except Exception:
+                pass
+
+        if mode_name and mode_name in MODE_SPECS:
+            guide = render_guide(MODE_SPECS[mode_name], project_root)
+            result = {"mode": mode_name, "guide": guide}
+            summary = f"Guide for {mode_name} mode."
+        else:
+            guide = render_all_guides_summary()
+            result = {"mode": None, "guide": guide}
+            summary = "All workflow modes. Use declare_workflow to activate one."
+
+        return tool_response(result, "implementation_guide", project_root, summary)
 
     @mcp.tool()
     def propose_exemption(

@@ -1,0 +1,49 @@
+# Build artifacts and caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.benchmarks/
+.hypothesis/
+
+# Coverage output
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+
+# LintGate analysis output (large JSON files)
+.lintgate/
+
+# External quality tools
+.qlty/
+.scannerwork/
+
+# Mutation scratch artifacts
+mutants/
+.mutmut-cache/
+*.py.meta
+
+# Cloudflare Worker
+node_modules/
+.wrangler/
+worker/dist/
+
+# Generated scratch files
+cp_*.json
+details_*.json
+algebra_*.json
+getting_started.json
+lint_status.json
+structure_details.json
+test_strength_*.json
+mutation_ab_report.json
+.mutation_ab_state.json

@@ -7,7 +7,39 @@ Kept in a single leaf module to avoid circular imports.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+# ── Workflow Mode (orthogonal to habit/standard economy mode) ────────
+
+class WorkflowMode(str, Enum):
+    """Session workflow mode — controls signal surface and hook behavior.
+
+    Orthogonal to EconomyMode (habit/standard) which controls token/compaction.
+    A session can be habit+surgical or standard+refactor, etc.
+    """
+
+    SURGICAL = "surgical"       # Narrow edits, trusted codebase, silent-on-clean
+    REFACTOR = "refactor"       # Structural changes, full channel output
+    GREENFIELD = "greenfield"   # New code, prescriptive spec pipeline
+    EXPLORE = "explore"         # Read-heavy, relaxed linting
+    DEBUG_SPIRAL = "debug_spiral"  # Recovery mode, constraint-first
+
+    @classmethod
+    def from_str(cls, value: str | None) -> WorkflowMode | None:
+        """Parse a string to WorkflowMode, returning None for invalid/empty."""
+        if not value:
+            return None
+        try:
+            return cls(value.lower().strip())
+        except ValueError:
+            return None
+
+    @classmethod
+    def valid_names(cls) -> list[str]:
+        """Return list of valid mode names for error messages."""
+        return [m.value for m in cls]
 
 # ── Tool classification sets ─────────────────────────────────────────
 
@@ -144,6 +176,7 @@ class HabitModeState:
     habit_score: float = 0.0
     sustain_counter: int = 0
     declared: bool = False  # Agent self-declared via declare_mode
+    workflow_mode: str = ""  # Orthogonal to habit/standard — see WorkflowMode enum
 
     signals: HabitSignals = field(default_factory=HabitSignals)
     active_files: list[str] = field(default_factory=list)  # MRU order, max 20
@@ -163,6 +196,7 @@ class HabitModeState:
             "habit_score": round(self.habit_score, 3),
             "sustain_counter": self.sustain_counter,
             "declared": self.declared,
+            "workflow_mode": self.workflow_mode,
             "signals": self.signals.to_dict(),
             "active_files": self.active_files,
             "last_test_status": self.last_test_status,
@@ -182,6 +216,7 @@ class HabitModeState:
             habit_score=float(data.get("habit_score", 0.0)),
             sustain_counter=int(data.get("sustain_counter", 0)),
             declared=bool(data.get("declared", False)),
+            workflow_mode=str(data.get("workflow_mode", "")),
             signals=HabitSignals.from_dict(data.get("signals", {})),
             active_files=list(data.get("active_files", [])),
             last_test_status=str(data.get("last_test_status", "")),

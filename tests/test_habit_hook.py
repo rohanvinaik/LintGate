@@ -396,6 +396,22 @@ class TestDetectTestResults:
         _detect_test_results("Bash", None, compass, habit_state, detect_fn)
         detect_fn.assert_called_once_with(habit_state, "", "x")
 
+    def test_bash_uses_last_action_history_item(self):
+        """Kill VALUE_2: must use [-1] (last item), not [-0] (first)."""
+        detect_fn = MagicMock()
+        compass = FakeCompass(action_history=[{"sig": "first"}, {"sig": "last"}])
+        habit_state = FakeHabitState()
+        _detect_test_results("Bash", "out", compass, habit_state, detect_fn)
+        detect_fn.assert_called_once_with(habit_state, "out", "last")
+
+    def test_bash_missing_sig_key_defaults_empty(self):
+        """Kill VALUE_4: .get('sig', '') must default to '' not 'mutated'."""
+        detect_fn = MagicMock()
+        compass = FakeCompass(action_history=[{"other_key": "val"}])
+        habit_state = FakeHabitState()
+        _detect_test_results("Bash", "out", compass, habit_state, detect_fn)
+        detect_fn.assert_called_once_with(habit_state, "out", "")
+
 
 # ── _apply_context_window_override ───────────────────────────────────
 
@@ -707,6 +723,24 @@ class TestDetectBashSignals:
         with patch("lintgate.habit_mode.detect_test_result") as mock_detect:
             _detect_bash_signals("Bash", "output", "", habit_state, signal_fires)
             mock_detect.assert_not_called()
+
+    def test_bash_clean_output_no_signal_fire(self):
+        """Kill VALUE_3/4: clean output must NOT trigger signal_fires ('error'/'traceback' specific)."""
+        habit_state = FakeHabitState()
+        signal_fires: dict = {}
+        with patch("lintgate.habit_mode.detect_test_result"):
+            _detect_bash_signals(
+                "Bash", "all tests passed successfully", "pytest", habit_state, signal_fires
+            )
+        assert signal_fires == {}
+
+    def test_bash_non_string_output_defaults_empty(self):
+        """Kill VALUE_1: non-string output must become '' not 'mutated'."""
+        habit_state = FakeHabitState()
+        signal_fires: dict = {}
+        with patch("lintgate.habit_mode.detect_test_result") as mock_detect:
+            _detect_bash_signals("Bash", 12345, "pytest tests/", habit_state, signal_fires)
+            mock_detect.assert_called_once_with(habit_state, "", "pytest tests/")
 
 
 # ── _apply_path_b_telemetry ─────────────────────────────────────────

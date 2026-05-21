@@ -11,6 +11,7 @@ from typing import Any
 
 from mcp_tools._disk_helpers import tool_response
 
+from ._auto_resolve_impl import impl_auto_resolve, impl_auto_sweep
 from ._prescriptive_impl import (
     impl_prescriptive_spec_compile,
     impl_prescriptive_spec_compose,
@@ -237,9 +238,108 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         summary = "\n".join(lines)
         return tool_response(result, "prescriptive_code_scaffold", project_root, summary, next_actions=result.get("next_actions"))
 
+    @mcp.tool()
+    def auto_resolve(
+        path: str,
+        target: str,
+        proposed_body: str = "",
+        verify_with_pytest: bool = False,
+    ) -> str:
+        """Autonomously resolve a function from its prescriptive spec.
+
+        Two-phase design — the tool never makes API calls. YOU are the intelligence.
+
+        **Phase 1** (no proposed_body): Tries cache + synthesis gate. If a known
+        algebraic form matches (key_inversion, count_aggregation, etc.), resolves
+        deterministically with zero LLM involvement. Otherwise returns
+        status="needs_generation" with a generation_prompt containing the function
+        signature, MUST/MUST NOT constraints, invariants, and forbidden behaviors.
+
+        **Phase 2** (with proposed_body): Verifies your proposed implementation
+        against deterministic checks (AST parse, structural purity, witness I/O
+        execution). If passed → caches by spec content hash, writes to
+        .lintgate/resolved/{name}.py. If failed → returns specific retry_constraints
+        and an updated generation_prompt with failure context.
+
+        CHAIN: prescriptive_spec_compose → prescriptive_spec_compile → auto_resolve
+            → [you generate body from prompt] → auto_resolve(proposed_body=...) → verify
+        REQUIRES: A composed spec for the target.
+        COST: 0 tokens for cache/synthesis. Verification is pure CPU (AST + subprocess).
+
+        Args:
+            path: Project root path.
+            target: Function key (module::function) with a composed spec.
+            proposed_body: The function body to verify (4-space indented, no def line).
+                           Empty on first call — the tool returns a generation prompt.
+            verify_with_pytest: Run generated tests for deeper verification (slower).
+        """
+        project_root = helpers["_validate_project_root"](path)
+        result = impl_auto_resolve(
+            path, target, helpers,
+            proposed_body=proposed_body,
+            verify_with_pytest=verify_with_pytest,
+        )
+        status = result.get("status", "unknown")
+        method = result.get("method", "")
+        if status == "needs_generation":
+            summary = f"auto_resolve {target}: needs generation — prompt returned"
+        elif status == "failed":
+            summary = f"auto_resolve {target}: verification failed — retry constraints returned"
+        else:
+            summary = f"auto_resolve {target}: {status} via {method}"
+        return tool_response(result, "auto_resolve", project_root, summary, next_actions=result.get("next_actions"))
+
+    @mcp.tool()
+    def auto_sweep(
+        path: str,
+        scope: str = "all",
+        max_targets: int = 50,
+        verify_with_pytest: bool = False,
+    ) -> str:
+        """Sweep project — resolve all deterministic cases, return prompts for the rest.
+
+        Discovers every composed PrescriptiveSpec, sorts by σ ascending
+        (simplest first — highest synthesis gate hit rate), then resolves
+        each via cache + synthesis gate. Specs that exceed deterministic
+        resolution are returned with generation prompts for you to fill.
+
+        The tool never makes API calls. All resolution is CPU-based.
+
+        WHEN TO USE: Point at a project with composed specs. Deterministic
+        cases resolve instantly. For the rest, follow up with auto_resolve
+        calls passing your generated bodies.
+
+        CHAIN: prescriptive_spec_compose (for each target) → auto_sweep
+            → [you generate bodies for needs_generation items] → auto_resolve(proposed_body=...)
+
+        Args:
+            path: Project root path.
+            scope: "all" or module prefix filter (e.g. "lintgate.core").
+            max_targets: Maximum specs to resolve in one sweep (default 50).
+            verify_with_pytest: Run generated tests for each resolution (slower).
+        """
+        project_root = helpers["_validate_project_root"](path)
+        result = impl_auto_sweep(
+            path, helpers,
+            scope=scope, max_targets=max_targets,
+            verify_with_pytest=verify_with_pytest,
+        )
+        resolved = result.get("resolved", 0)
+        total = result.get("total_specs", 0)
+        synth = result.get("synthesized", 0)
+        needs = sum(1 for r in result.get("results", []) if isinstance(r, dict) and r.get("status") == "needs_generation")
+        failed = result.get("failed", 0)
+        summary = (
+            f"Sweep: {resolved}/{total} resolved "
+            f"(synth={synth}, needs_generation={needs}, failed={failed})"
+        )
+        return tool_response(result, "auto_sweep", project_root, summary, next_actions=result.get("next_actions"))
+
     return {
         "prescriptive_spec_compose": prescriptive_spec_compose,
         "prescriptive_spec_compile": prescriptive_spec_compile,
         "prescriptive_spec_verify": prescriptive_spec_verify,
         "prescriptive_spec_status": prescriptive_spec_status,
+        "auto_resolve": auto_resolve,
+        "auto_sweep": auto_sweep,
     }

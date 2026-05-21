@@ -10,10 +10,9 @@ from lintgate.agent_reporter import (
     _add_delta_section,
     _add_fixable_section,
     _add_header,
-    _add_info_section,
     _add_linter_status_section,
-    _add_pattern_alert_section,
-    _add_recurrence_section,
+    _add_pattern_summary,
+    _add_warnings_count,
     _add_warnings_section,
     _build_posttooluse_context,
     _compute_delta,
@@ -136,10 +135,6 @@ class TestFormatReport:
             },
         )
         last_run = {"blocking_count": 0, "total_issues": 3}
-        recurrence = {
-            "repeated_issue_count": 1,
-            "top_repeated": [{"file": "/src/foo.py", "line": 5, "message": "repeat", "count": 3}],
-        }
         pattern = {
             "alerted_patterns": [
                 {
@@ -147,20 +142,31 @@ class TestFormatReport:
                     "kind": "E501",
                     "count_this_run": 4,
                     "files_this_run": 2,
-                    "alert_reason": "single_run_volume",
-                    "recent_run_count": 0,
+                    "alert_reason": "recurring_across_runs",
+                    "recent_run_count": 3,
                 }
             ]
         }
-        output = format_report(result, last_run, recurrence, pattern)
+        output = format_report(result, last_run, pattern_report=pattern)
         msg = output["systemMessage"]
         assert "BLOCKING" in msg
-        assert "WARNINGS" in msg
-        assert "INFO:" in msg
+        # When blocking exists, warnings are condensed to count
+        assert "WARNINGS:" in msg
+        assert "fix blocking issues first" in msg
         assert "REGRESSION" in msg
-        assert "RECURRING" in msg
-        assert "PATTERN NOTE" in msg
+        assert "Recurring:" in msg
         assert "Auto-fixable" in msg
+
+    def test_warnings_expanded_when_no_blocking(self) -> None:
+        """When no blocking issues, warnings are shown in full."""
+        result = _make_result(
+            warnings=[_make_issue(severity="warning", kind=f"W{i}", line=i) for i in range(5)],
+            metrics={"total_issues": 5, "warning_count": 5},
+        )
+        output = format_report(result)
+        msg = output["systemMessage"]
+        assert "WARNINGS (5):" in msg
+        assert "and 2 more warnings" in msg
 
 
 # ─── _build_posttooluse_context ──────────────────────────────────────────
@@ -313,27 +319,57 @@ class TestAddWarningsSection:
         assert "WARNINGS (1):" in parts[0]
 
 
-# ─── _add_info_section ──────────────────────────────────────────────────
+# ─── _add_warnings_count ────────────────────────────────────────────────
 
 
-class TestAddInfoSection:
-    """Tests for _add_info_section."""
+class TestAddWarningsCount:
+    """Tests for _add_warnings_count (condensed warnings when blocking exists)."""
 
-    def test_empty_info_adds_nothing(self) -> None:
+    def test_empty_warnings_adds_nothing(self) -> None:
         parts: list[str] = []
-        _add_info_section(parts, [])
+        _add_warnings_count(parts, [])
         assert parts == []
 
-    def test_single_info_singular(self) -> None:
+    def test_shows_count_with_focus_hint(self) -> None:
         parts: list[str] = []
-        _add_info_section(parts, [_make_issue(severity="informational")])
-        assert parts[0] == "INFO: 1 informational finding"
+        issues = [_make_issue(severity="warning", line=i) for i in range(22)]
+        _add_warnings_count(parts, issues)
+        assert parts == ["WARNINGS: 22 (fix blocking issues first)"]
 
-    def test_multiple_info_plural(self) -> None:
+
+# ─── _add_pattern_summary ──────────────────────────────────────────────
+
+
+class TestAddPatternSummary:
+    """Tests for _add_pattern_summary (condensed pattern alerts)."""
+
+    def test_none_pattern_adds_nothing(self) -> None:
         parts: list[str] = []
-        issues = [_make_issue(severity="informational", line=i) for i in range(3)]
-        _add_info_section(parts, issues)
-        assert "3 informational findings" in parts[0]
+        _add_pattern_summary(parts, None)
+        assert parts == []
+
+    def test_empty_alerts_adds_nothing(self) -> None:
+        parts: list[str] = []
+        _add_pattern_summary(parts, {"alerted_patterns": []})
+        assert parts == []
+
+    def test_single_run_volume_ignored(self) -> None:
+        parts: list[str] = []
+        _add_pattern_summary(parts, {"alerted_patterns": [
+            {"alert_reason": "single_run_volume", "kind": "E501", "recent_run_count": 0},
+        ]})
+        assert parts == []
+
+    def test_recurring_condensed_to_one_line(self) -> None:
+        parts: list[str] = []
+        _add_pattern_summary(parts, {"alerted_patterns": [
+            {"alert_reason": "recurring_across_runs", "kind": "cognitive-complexity", "recent_run_count": 5},
+            {"alert_reason": "recurring_across_runs", "kind": "too-many-locals", "recent_run_count": 3},
+        ]})
+        assert len(parts) == 1
+        assert "Recurring:" in parts[0]
+        assert "cognitive-complexity (5/5 runs)" in parts[0]
+        assert "too-many-locals (3/5 runs)" in parts[0]
 
 
 # ─── _add_delta_section ──────────────────────────────────────────────────
@@ -435,178 +471,6 @@ class TestAddFixableSection:
         parts: list[str] = []
         _add_fixable_section(parts, {"fixable_count": 5})
         assert "5 issues (run: ruff check --fix)" in parts[0]
-
-
-# ─── _add_recurrence_section ─────────────────────────────────────────────
-
-
-class TestAddRecurrenceSection:
-    """Tests for _add_recurrence_section."""
-
-    def test_none_summary_adds_nothing(self) -> None:
-        parts: list[str] = []
-        _add_recurrence_section(parts, None)
-        assert parts == []
-
-    def test_zero_repeated_adds_nothing(self) -> None:
-        parts: list[str] = []
-        _add_recurrence_section(parts, {"repeated_issue_count": 0})
-        assert parts == []
-
-    def test_singular_recurrence(self) -> None:
-        parts: list[str] = []
-        summary = {
-            "repeated_issue_count": 1,
-            "top_repeated": [
-                {
-                    "file": "/project/src/main.py",
-                    "line": 42,
-                    "message": "unused import",
-                    "count": 3,
-                    "linter": "ruff",
-                    "kind": "F401",
-                }
-            ],
-        }
-        _add_recurrence_section(parts, summary)
-        joined = "\n".join(parts)
-        assert "1 issue signature seen" in joined
-        assert "[ruff/F401]" in joined
-        assert "main.py:42" in joined
-        assert "x3" in joined
-
-    def test_plural_recurrence(self) -> None:
-        parts: list[str] = []
-        summary = {
-            "repeated_issue_count": 2,
-            "top_repeated": [],
-        }
-        _add_recurrence_section(parts, summary)
-        assert "2 issue signatures seen" in parts[0]
-
-    def test_recurrence_caps_at_ten(self) -> None:
-        parts: list[str] = []
-        items = [
-            {"file": f"/f{i}.py", "line": i, "message": f"m{i}", "count": 1} for i in range(15)
-        ]
-        summary = {"repeated_issue_count": 15, "top_repeated": items}
-        _add_recurrence_section(parts, summary)
-        # header + 10 items = 11 lines
-        assert len(parts) == 11
-
-    def test_recurrence_item_without_line(self) -> None:
-        parts: list[str] = []
-        summary = {
-            "repeated_issue_count": 1,
-            "top_repeated": [{"file": "/project/foo.py", "message": "something", "count": 2}],
-        }
-        _add_recurrence_section(parts, summary)
-        joined = "\n".join(parts)
-        # Should show file basename without :line
-        assert "foo.py" in joined
-        assert "foo.py:" not in joined.split("x2")[0].split("foo.py")[1]
-
-    def test_recurrence_defaults_for_missing_fields(self) -> None:
-        parts: list[str] = []
-        summary = {
-            "repeated_issue_count": 1,
-            "top_repeated": [{"count": 1}],
-        }
-        _add_recurrence_section(parts, summary)
-        joined = "\n".join(parts)
-        assert "[linter/issue]" in joined
-
-
-# ─── _add_pattern_alert_section ──────────────────────────────────────────
-
-
-class TestAddPatternAlertSection:
-    """Tests for _add_pattern_alert_section."""
-
-    def test_none_pattern_report_adds_nothing(self) -> None:
-        parts: list[str] = []
-        _add_pattern_alert_section(parts, None)
-        assert parts == []
-
-    def test_empty_alerted_patterns_adds_nothing(self) -> None:
-        parts: list[str] = []
-        _add_pattern_alert_section(parts, {"alerted_patterns": []})
-        assert parts == []
-
-    def test_recurring_across_runs_alert(self) -> None:
-        parts: list[str] = []
-        pattern = {
-            "alerted_patterns": [
-                {
-                    "linter": "ruff",
-                    "kind": "E501",
-                    "count_this_run": 10,
-                    "files_this_run": 3,
-                    "alert_reason": "recurring_across_runs",
-                    "recent_run_count": 4,
-                }
-            ]
-        }
-        _add_pattern_alert_section(parts, pattern)
-        text = parts[0]
-        assert "PATTERN ALERT" in text
-        assert "[ruff/E501]" in text
-        assert "4 of last" in text
-        assert str(_RECENT_WINDOW) in text
-        assert "categorical mistake" in text
-
-    def test_single_run_volume_note(self) -> None:
-        parts: list[str] = []
-        pattern = {
-            "alerted_patterns": [
-                {
-                    "linter": "mypy",
-                    "kind": "import-error",
-                    "count_this_run": 7,
-                    "files_this_run": 5,
-                    "alert_reason": "single_run_volume",
-                    "recent_run_count": 0,
-                }
-            ]
-        }
-        _add_pattern_alert_section(parts, pattern)
-        text = parts[0]
-        assert "PATTERN NOTE" in text
-        assert "[mypy/import-error]" in text
-        assert "7 times across 5 files" in text
-
-    def test_pattern_alerts_capped_at_three(self) -> None:
-        parts: list[str] = []
-        alerts = [
-            {
-                "linter": f"l{i}",
-                "kind": f"K{i}",
-                "count_this_run": 1,
-                "files_this_run": 1,
-                "alert_reason": "single_run_volume",
-                "recent_run_count": 0,
-            }
-            for i in range(5)
-        ]
-        _add_pattern_alert_section(parts, {"alerted_patterns": alerts})
-        assert len(parts) == 3
-
-    def test_unknown_alert_reason_adds_nothing(self) -> None:
-        parts: list[str] = []
-        pattern = {
-            "alerted_patterns": [
-                {
-                    "linter": "ruff",
-                    "kind": "E501",
-                    "count_this_run": 1,
-                    "files_this_run": 1,
-                    "alert_reason": "unknown_reason",
-                    "recent_run_count": 0,
-                }
-            ]
-        }
-        _add_pattern_alert_section(parts, pattern)
-        assert parts == []
 
 
 # ─── _add_linter_status_section ──────────────────────────────────────────

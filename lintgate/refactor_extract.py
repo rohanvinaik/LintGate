@@ -298,7 +298,7 @@ def _build_helper_code(
     else:
         call = f"{block_indent}{', '.join(outputs)} = {helper_name}({', '.join(inputs)})\n"
 
-    return extracted_code, helper_signature, call.strip()
+    return extracted_code, helper_signature, call
 
 
 def extract_method(
@@ -351,9 +351,21 @@ def extract_method(
     # Find the enclosing function
     enclosing = _find_enclosing_function(tree, start_line)
     if enclosing is None:
-        result.errors.append(
-            f"No enclosing function found for line {start_line}"
-        )
+        # Suggest the nearest function so the agent can adjust the range
+        nearest = _find_nearest_function(tree, start_line)
+        if nearest:
+            result.errors.append(
+                f"No enclosing function found for line {start_line}. "
+                f"Nearest function: '{nearest.name}' at lines "
+                f"{nearest.lineno}-{nearest.end_lineno or '?'}. "
+                f"Try a range within that function."
+            )
+        else:
+            result.errors.append(
+                f"No enclosing function found for line {start_line}. "
+                f"The line may be at module level — extract_method requires "
+                f"a block inside a function or method body."
+            )
         return result
 
     # Extract the block
@@ -538,19 +550,59 @@ def _collect_module_level_names(tree: ast.Module) -> set[str]:
 def _find_enclosing_function(
     tree: ast.Module, line: int
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Find the function definition containing the given line."""
-    for node in getattr(tree, "body", []):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.lineno <= line <= (node.end_lineno or node.lineno):
-                # Check for nested functions — prefer the innermost
-                for child in ast.walk(node):
-                    if child is node:
-                        continue
-                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        if child.lineno <= line <= (child.end_lineno or child.lineno):
-                            return child
-                return node
-    return None
+    """Find the innermost function definition containing the given line.
+
+    Walks into ClassDef bodies so methods inside classes are found.
+    Always returns the innermost enclosing function, even when the
+    target line is inside a for/with/try/if block within that function.
+    """
+    best: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+
+    def _search(node: ast.AST) -> None:
+        nonlocal best
+        for child in ast.iter_child_nodes(node):
+            if not hasattr(child, "lineno") or not hasattr(child, "end_lineno"):
+                continue
+            if not (child.lineno <= line <= (child.end_lineno or child.lineno)):
+                continue
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                best = child
+                _search(child)  # look for deeper nested functions
+                return
+            if isinstance(child, ast.ClassDef):
+                _search(child)  # walk into class bodies to find methods
+                return
+
+    _search(tree)
+    return best
+
+
+def _find_nearest_function(
+    tree: ast.Module, line: int,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Find the function definition nearest to the given line.
+
+    Used to provide a helpful suggestion when _find_enclosing_function
+    returns None (e.g., the line is between functions or at module level).
+    """
+    best: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    best_dist = float("inf")
+
+    def _scan(node: ast.AST) -> None:
+        nonlocal best, best_dist
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                start = child.lineno
+                end = child.end_lineno or child.lineno
+                dist = min(abs(line - start), abs(line - end))
+                if dist < best_dist:
+                    best_dist = dist
+                    best = child
+            elif isinstance(child, ast.ClassDef):
+                _scan(child)
+
+    _scan(tree)
+    return best
 
 
 def _find_all_enclosing_functions(
@@ -639,6 +691,15 @@ def _collect_assigned_names(tree: ast.AST) -> set[str]:
         elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)
         elif isinstance(node, (ast.For, ast.AsyncFor)):
+            if isinstance(node.target, ast.Name):
+                names.add(node.target.id)
+            elif isinstance(node.target, ast.Tuple):
+                for elt in node.target.elts:
+                    if isinstance(elt, ast.Name):
+                        names.add(elt.id)
+        elif isinstance(node, ast.comprehension):
+            # Comprehension iteration variables (e.g. c in [c for c in items])
+            # are scoped to the comprehension — they are defined, not inputs.
             if isinstance(node.target, ast.Name):
                 names.add(node.target.id)
             elif isinstance(node.target, ast.Tuple):

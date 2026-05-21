@@ -411,7 +411,7 @@ class TestFormatChannelSummary:
 
 
 class TestFormatPatternAlerts:
-    def test_recurring_across_runs(self):
+    def test_recurring_condensed(self):
         alerts = [
             {
                 "linter": "ruff",
@@ -421,9 +421,10 @@ class TestFormatPatternAlerts:
             }
         ]
         result = _format_pattern_alerts(alerts)
-        assert "PATTERN ALERT: [ruff/F821] recurring across 4 recent runs" in result
+        assert "Recurring:" in result
+        assert "F821 (4 runs)" in result
 
-    def test_single_run_volume(self):
+    def test_single_run_volume_ignored(self):
         alerts = [
             {
                 "linter": "mypy",
@@ -433,7 +434,7 @@ class TestFormatPatternAlerts:
             }
         ]
         result = _format_pattern_alerts(alerts)
-        assert "PATTERN NOTE: [mypy/E001] appeared 12 times this run" in result
+        assert result == ""
 
     def test_unknown_reason_skipped(self):
         alerts = [{"linter": "x", "kind": "Y", "alert_reason": "something_else"}]
@@ -451,9 +452,11 @@ class TestFormatPatternAlerts:
             for i in range(5)
         ]
         result = _format_pattern_alerts(alerts)
-        assert "[l0/K0]" in result
-        assert "[l2/K2]" in result
-        assert "[l3/K3]" not in result
+        assert "K0" in result
+        assert "K2" in result
+        assert "K3" not in result
+        # All condensed into one line
+        assert result.count("\n") == 0
 
     def test_empty_alerts(self):
         assert _format_pattern_alerts([]) == ""
@@ -461,8 +464,8 @@ class TestFormatPatternAlerts:
     def test_missing_keys_use_defaults(self):
         alerts = [{"alert_reason": "recurring_across_runs"}]
         result = _format_pattern_alerts(alerts)
-        assert "[?/?]" in result
-        assert "recurring across 0 recent runs" in result
+        assert "Recurring:" in result
+        assert "? (0 runs)" in result
 
 
 # ── _format_repairs ──────────────────────────────────────────────────────
@@ -891,7 +894,7 @@ class TestAssembleReportSections:
             proposed_constraints=None,
             cycle_alerts=None,
         )
-        assert any("PATTERN ALERT" in p for p in parts)
+        assert any("Recurring:" in p for p in parts)
 
     def test_repairs_section(self):
         repair = RepairAction(summary="Fix import order", safe=True)
@@ -911,43 +914,8 @@ class TestAssembleReportSections:
         )
         assert any("SUGGESTED REPAIRS" in p for p in parts)
 
-    def test_informational_count_no_delta(self):
-        info_findings = [_issue(severity="informational")]
-        mr = _mesh()
-        parts, *_ = _assemble_report_sections(
-            mesh_result=mr,
-            display_findings=[],
-            all_findings=info_findings,
-            active_channels=[],
-            delta=None,
-            resurfaced_count=0,
-            max_tokens=5000,
-            disposition=None,
-            proposed_constraints=None,
-            cycle_alerts=None,
-        )
-        assert any("INFO: 1 informational finding" in p for p in parts)
-
-    def test_informational_count_with_delta(self):
-        info_display = [_issue(severity="informational")]
-        info_all = [_issue(severity="informational")] * 5
-        mr = _mesh()
-        parts, *_ = _assemble_report_sections(
-            mesh_result=mr,
-            display_findings=info_display,
-            all_findings=info_all,
-            active_channels=[],
-            delta={"new": []},
-            resurfaced_count=0,
-            max_tokens=5000,
-            disposition=None,
-            proposed_constraints=None,
-            cycle_alerts=None,
-        )
-        # With delta present, shown = display_informational
-        assert any("INFO: 1 informational finding" in p for p in parts)
-
-    def test_informational_plural(self):
+    def test_informational_not_shown(self):
+        """INFO section removed — informational findings are noise."""
         info_findings = [_issue(severity="informational")] * 3
         mr = _mesh()
         parts, *_ = _assemble_report_sections(
@@ -962,7 +930,7 @@ class TestAssembleReportSections:
             proposed_constraints=None,
             cycle_alerts=None,
         )
-        assert any("INFO: 3 informational findings" in p for p in parts)
+        assert not any("INFO:" in p for p in parts)
 
     def test_proposed_constraints_only_proposed_status(self):
         constraints = [

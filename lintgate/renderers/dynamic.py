@@ -55,6 +55,10 @@ def render_session_content(runtime: RuntimeState) -> str:
         mode_line += f" (score: {runtime.habit_score:.2f})"
     lines.append(mode_line)
 
+    # Workflow mode (orthogonal to economy mode)
+    if runtime.workflow_mode:
+        lines.append(f"Workflow: {runtime.workflow_mode}")
+
     # Active files
     if runtime.active_files:
         basenames = [f.rsplit("/", 1)[-1] for f in runtime.active_files[:5]]

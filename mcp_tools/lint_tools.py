@@ -1,94 +1,98 @@
-"""Lint tools — lint_files, lint_project, lint_get_details, lint_status, audit_tool_versions, lint_fix."""
+"""Lint tools — thin subprocess wrappers around scripts/lint_run.py.
+
+All computation lives in scripts/lint_run.py. This module registers MCP
+tools that invoke the script via subprocess and relay its stdout. Pure
+helper functions (_tool_package_name, _project_venv_python, etc.) are
+re-exported from lintgate.lint_helpers for test-import compatibility.
+"""
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
-import shlex
-from pathlib import Path
-from typing import Any, Literal
+import subprocess
+import sys
+from typing import Literal
+
+from lintgate.lint_helpers import (  # re-exported for tests
+    _format_cmd,
+    _linter_available,
+    _missing_tool_hints,
+    _project_venv_python,
+    _tool_package_name,
+)
+
+__all__ = [
+    "_format_cmd",
+    "_linter_available",
+    "_missing_tool_hints",
+    "_project_venv_python",
+    "_tool_package_name",
+    "register",
+]
+
+_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts",
+    "lint_run.py",
+)
+
+# Error prefixes that should become ValueError in the MCP layer
+# (preserves the pre-subprocess contract for callers).
+_VALUE_ERROR_PREFIXES = (
+    "No lint run found",
+    "Invalid severity",
+    "No specified files exist",
+    "No files specified",
+    "Either files or path",
+    "Invalid tier",
+    "No Python files found",
+    "No valid Python files",
+)
 
 
-def _tool_package_name(tool: str) -> str:
-    """Map external tool executable names to install package names."""
-    return "pip-audit" if tool == "pip-audit" else tool
+def _run_script(path: str, *args: str) -> str:
+    """Invoke scripts/lint_run.py as a subprocess and relay stdout.
 
-
-def _project_venv_python(project_root: str) -> str | None:
-    """Return project venv python path if present."""
-    for venv_name in (".venv", "venv", "env"):
-        py = Path(project_root) / venv_name / "bin" / "python"
-        if py.exists() and py.is_file():
-            return str(py)
-    return None
-
-
-def _format_cmd(cmd: list[str]) -> str:
-    """Render command as shell-safe string."""
-    return " ".join(shlex.quote(part) for part in cmd)
-
-
-def _missing_tool_hints(
-    project_root: str,
-    registry: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Build actionable install hints for unavailable external tools."""
-    missing: dict[str, dict[str, Any]] = {}
-    for linter_name, linter in sorted(registry.items()):
-        tool = getattr(linter, "required_tool", None)
-        if not tool:
-            continue
-        if _linter_available(linter, project_root):
-            continue
-
-        entry = missing.setdefault(
-            tool,
-            {
-                "tool": tool,
-                "package": _tool_package_name(tool),
-                "required_by": [],
-                "reason": "executable_not_found",
-            },
-        )
-        entry["required_by"].append(linter_name)
-
-    venv_python = _project_venv_python(project_root)
-    hints: list[dict[str, Any]] = []
-    for tool in sorted(missing):
-        item = missing[tool]
-        package = item["package"]
-        if venv_python:
-            cmd = [venv_python, "-m", "pip", "install", package]
-            install_command = _format_cmd(cmd)
-            auto_installable = tool in {"ty", "pip-audit"}
-        else:
-            install_command = f"pip install {package}"
-            auto_installable = False
-
-        hints.append(
-            {
-                **item,
-                "install_command": install_command,
-                "auto_installable": auto_installable,
-            }
-        )
-    return hints
-
-
-def _linter_available(linter: Any, project_root: str) -> bool:
-    """Check linter availability with backward-compatible call signatures."""
+    Raises ValueError when the script emits a known validation error
+    (preserves the pre-subprocess MCP contract).
+    """
     try:
-        return bool(linter.available(project_root=project_root))
-    except TypeError:
-        return bool(linter.available())
+        proc = subprocess.run(
+            [sys.executable, _SCRIPT, path, *args],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "lint_run subprocess timed out"})
+    except OSError as exc:
+        return json.dumps({"error": f"lint_run subprocess failed: {exc}"})
 
+    stdout = (proc.stdout or "").strip()
+    if not stdout:
+        return json.dumps({
+            "error": f"lint_run exit {proc.returncode}",
+            "stderr": (proc.stderr or "").strip()[-500:],
+        })
 
-from mcp_tools._disk_helpers import tool_response
+    # Peek at the last-line JSON for ValueError-worthy errors
+    last = stdout.splitlines()[-1]
+    try:
+        parsed = json.loads(last)
+    except json.JSONDecodeError:
+        return stdout
+    if isinstance(parsed, dict) and "error" in parsed and "analysis_id" not in parsed:
+        msg = str(parsed["error"])
+        for prefix in _VALUE_ERROR_PREFIXES:
+            if msg.startswith(prefix):
+                raise ValueError(msg)
+    return stdout
 
 
 def register(mcp, helpers):
     """Register lint tools on the shared MCP instance."""
+    del helpers  # unused — the script handles validation and state
 
     @mcp.tool()
     def lint_files(
@@ -96,6 +100,7 @@ def register(mcp, helpers):
         tier: int = 2,
         project_root: str | None = None,
         strictness: Literal["relaxed", "normal", "strict"] = "normal",
+        scope: Literal["compact", "surgical"] = "compact",
     ) -> str:
         """Lint specific files at a given tier level.
 
@@ -104,53 +109,23 @@ def register(mcp, helpers):
 
         Example: lint_files(files=["/my/project/src/main.py"])
 
+        Args:
+            scope: "compact" (default) returns flat issue counts.
+                   "surgical" splits into edit_scope (your changes) and
+                   baseline (pre-existing project state from last full run).
+
         Returns compact JSON with run_id, issue counts, and next_actions.
-        Use lint_get_details(run_id) to drill into full issue details.
-        Use lint_fix() to auto-fix safe issues found.
         """
         if tier not in (0, 1, 2, 3):
             raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
         if not files:
             raise ValueError("No files specified")
 
-        resolved_project_root = (
-            helpers["_validate_project_root"](project_root, arg_name="project_root")
-            if project_root
-            else os.path.dirname(os.path.abspath(files[0]))
-        )
-        existing, missing = helpers["_resolve_files"](files, resolved_project_root)
-
-        if not existing:
-            raise ValueError(f"No specified files exist. Missing: {missing}")
-
-        result = helpers["_run_lint"](
-            existing,
-            resolved_project_root,
-            int(tier),
-            strictness,
-            output_mode="compact",
-        )
-        if missing:
-            result["missing_files"] = missing
-
-        # Refactor state integration (#199): auto-update per-file findings
-        try:
-            from lintgate.refactor_state import update_file_findings
-
-            issue_count = result.get("issue_count", 0)
-            for f in existing:
-                rel = os.path.relpath(f, resolved_project_root)
-                update_file_findings(resolved_project_root, rel, issue_count)
-        except Exception:
-            pass
-
-        blocking = result.get("blocking_count", 0)
-        issues = result.get("issue_count", 0)
-        summary = f"{issues} issues found in {len(existing)} files. {blocking} blocking."
-        return tool_response(
-            result, "lint_files", resolved_project_root, summary,
-            run_id=result.get("run_id", ""), next_actions=result.get("next_actions"),
-        )
+        path_arg = project_root or os.path.dirname(os.path.abspath(files[0]))
+        args = ["files", "--tier", str(tier), "--strictness", strictness, "--scope", scope, "--files", *files]
+        if project_root:
+            args.extend(["--project-root", project_root])
+        return _run_script(path_arg, *args)
 
     @mcp.tool()
     def lint_project(
@@ -161,37 +136,14 @@ def register(mcp, helpers):
         """Lint all Python files in a project at a given tier level.
 
         WHEN TO USE: For a full project scan — run at the start of a session
-        or before committing. For checking specific files after edits, use lint_files instead.
+        or before committing. For checking specific files after edits, use
+        lint_files instead.
 
         Example: lint_project(path="/my/project")
-
-        Returns compact JSON with run_id, issue counts, and next_actions.
-        Use lint_get_details(run_id) to drill into full issue details.
-        Use lint_fix(path) to auto-fix safe issues found.
         """
         if tier not in (0, 1, 2, 3):
             raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
-        project_root = helpers["_validate_project_root"](path)
-
-        py_files = helpers["_collect_python_files"](project_root)
-        if not py_files:
-            raise ValueError(f"No Python files found under: {project_root}")
-
-        result = helpers["_run_lint"](
-            py_files,
-            project_root,
-            int(tier),
-            strictness,
-            output_mode="compact",
-        )
-        result["total_python_files"] = len(py_files)
-        blocking = result.get("blocking_count", 0)
-        issues = result.get("issue_count", 0)
-        summary = f"{issues} issues across {len(py_files)} files. {blocking} blocking."
-        return tool_response(
-            result, "lint_project", project_root, summary,
-            run_id=result.get("run_id", ""), next_actions=result.get("next_actions"),
-        )
+        return _run_script(path, "project", "--tier", str(tier), "--strictness", strictness)
 
     @mcp.tool()
     def lint_get_details(
@@ -207,160 +159,27 @@ def register(mcp, helpers):
 
         Args:
             run_id: The run_id from a previous lint_files/lint_project response.
-            severity: Filter by severity: "blocking", "warning", "informational", or None for all.
+            severity: Filter by severity: "blocking", "warning", "informational",
+                      or None for all.
             max_issues: Maximum issues to return (default 10).
             include_recurrence: Include recurrence data from issue memory.
         """
-        from lintgate.state import load_run_details
-
-        details = load_run_details(run_id)
-        if details is None:
-            raise ValueError(f"No lint run found with run_id: {run_id}")
-
         valid_severities = {"blocking", "warning", "informational", None}
         if severity not in valid_severities:
             raise ValueError(
                 f"Invalid severity '{severity}'; expected one of: blocking, warning, informational"
             )
-
-        output: dict[str, Any] = {
-            "run_id": run_id,
-            "tier": details.get("tier", ""),
-            "project": details.get("project", ""),
-            "duration_ms": details.get("duration_ms", 0),
-        }
-
-        # Collect requested issues
-        issues: list[dict[str, Any]] = []
-        if severity is None or severity == "blocking":
-            issues.extend(details.get("blocking_issues", []))
-        if severity is None or severity == "warning":
-            issues.extend(details.get("warning_issues", []))
-        if severity is None or severity == "informational":
-            issues.extend(details.get("info_issues", []))
-
-        output["total_matching"] = len(issues)
-        output["issues"] = issues[:max_issues]
-        if len(issues) > max_issues:
-            output["truncated"] = len(issues) - max_issues
-
+        args = ["details", "--run-id", run_id, "--max-issues", str(max_issues)]
+        if severity:
+            args.extend(["--severity", severity])
         if include_recurrence:
-            output["recurrence"] = details.get("recurrence", {})
-
-        # Also include linter diagnostics for context
-        if details.get("linter_diagnostics"):
-            output["linter_diagnostics"] = details["linter_diagnostics"]
-
-        sev_label = severity or "all"
-        summary = f"Details for run {run_id}: {output['total_matching']} issues ({sev_label} severity)."
-        return tool_response(output, "lint_get_details", os.getcwd(), summary, run_id=run_id)
+            args.append("--include-recurrence")
+        return _run_script(os.getcwd(), *args)
 
     @mcp.tool()
     def lint_status(path: str | None = None) -> str:
         """Show LintGate status: linters, run history, context, version audits, and today's metrics."""
-        from lintgate.config import load_config
-        from lintgate.context_guidance import (
-            build_context_guidance,
-            summarize_context_guidance,
-        )
-        from lintgate.registry import build_registry
-        from lintgate.state import METRICS_DIR, load_last_run, load_last_version_audit
-        from lintgate.versioning import format_version_audit_summary
-
-        project_root = helpers["_validate_project_root"](path) if path else os.getcwd()
-
-        status: dict[str, Any] = {
-            "version": "0.2.0",
-        }
-
-        config = load_config(project_root)
-        registry = build_registry(config)
-        linters_info = {}
-        for name, linter in sorted(registry.items()):
-            linters_info[name] = {
-                "tier": linter.tier,
-                "available": _linter_available(linter, project_root),
-                "tool": linter.required_tool,
-            }
-        status["linters"] = linters_info
-        status["linter_count"] = len(linters_info)
-        status["missing_tools"] = _missing_tool_hints(project_root, registry)
-
-        status["project"] = project_root
-        status["config"] = {
-            "languages": config.languages,
-            "pipeline_critical_paths": config.pipeline_critical_paths,
-            "severity_overrides": config.severity_overrides,
-            "enabled_linters": config.enabled_linters,
-            "tool_version_requirements": config.tool_version_requirements,
-        }
-
-        last_run = load_last_run(project_root)
-        if last_run:
-            from datetime import datetime as dt
-
-            ts = last_run.get("timestamp", 0)
-            last_run["timestamp_human"] = dt.fromtimestamp(ts).isoformat()
-            status["last_run"] = last_run
-        else:
-            status["last_run"] = None
-
-        version_audit = load_last_version_audit(project_root)
-        if version_audit:
-            status["last_version_audit"] = {
-                "summary": format_version_audit_summary(version_audit),
-                "issues": version_audit.get("issues", []),
-            }
-        else:
-            status["last_version_audit"] = None
-
-        guidance = build_context_guidance(project_root)
-        status["context_guidance"] = summarize_context_guidance(guidance)
-
-        # Recent metrics summary.
-        try:
-            from datetime import datetime as dt
-
-            today = dt.now().strftime("%Y%m%d")
-            metrics_file = METRICS_DIR / f"lintgate_{today}.jsonl"
-            if metrics_file.exists():
-                with open(metrics_file) as f:
-                    lines = f.readlines()
-                total_runs = len(lines)
-                total_blocking = 0
-                total_duration = 0.0
-                tiers_used: dict[str, int] = {}
-
-                for line in lines:
-                    try:
-                        entry = json.loads(line)
-                        total_blocking += entry.get("blocking_count", 0)
-                        total_duration += entry.get("duration_ms", 0)
-                        tier = entry.get("tier", "unknown")
-                        tiers_used[tier] = tiers_used.get(tier, 0) + 1
-                    except json.JSONDecodeError:
-                        continue
-
-                status["today_metrics"] = {
-                    "total_runs": total_runs,
-                    "total_blocking_found": total_blocking,
-                    "avg_duration_ms": round(total_duration / max(total_runs, 1), 1),
-                    "tier_distribution": tiers_used,
-                }
-        except Exception:
-            status["today_metrics"] = None
-
-        # Surface onboarding when ControlPlane is not fully configured
-        _onboarding = helpers["_build_onboarding_status"](project_root)
-        if _onboarding.get("config_state") != "config_enabled":
-            status["onboarding"] = _onboarding
-
-        missing = len(status.get("missing_tools", []))
-        linter_count = status.get("linter_count", 0)
-        last = status.get("last_run")
-        last_info = f"run_id={last.get('run_id', '?')}" if last else "none"
-        summary = f"LintGate v{status.get('version', '?')}: {linter_count} linters, {missing} missing tools. Last run: {last_info}."
-        return tool_response(status, "lint_status", project_root, summary)
+        return _run_script(path or os.getcwd(), "status")
 
     @mcp.tool()
     def audit_tool_versions(
@@ -373,41 +192,12 @@ def register(mcp, helpers):
         Compares installed tool versions against requirements in lintgate.yaml.
         Set auto_fix=True to attempt automatic upgrades via pip/uv.
         """
-        from lintgate.config import load_config
-        from lintgate.state import log_version_event, save_version_audit
-        from lintgate.versioning import format_version_audit_summary, run_version_audit
-
-        project_root = helpers["_validate_project_root"](path)
-        config = load_config(project_root)
-
-        audit = run_version_audit(
-            project_root,
-            config_requirements=config.tool_version_requirements,
-            auto_fix=auto_fix,
-            verify_after_fix=verify_after_fix,
-        )
-
-        summary = format_version_audit_summary(audit)
-
-        with contextlib.suppress(Exception):
-            save_version_audit(project_root, audit)
-
-        with contextlib.suppress(Exception):
-            log_version_event(
-                {
-                    "event": "audit_tool_versions",
-                    "project": project_root,
-                    "auto_fix": auto_fix,
-                    "issue_count": summary.get("issue_count", 0),
-                    "post_fix_issue_count": summary.get("post_fix_issue_count"),
-                }
-            )
-
-        result = {"summary": summary, **audit}
-        issue_count = summary.get("issue_count", 0) if isinstance(summary, dict) else 0
-        fix_info = f" auto_fix={auto_fix}" if auto_fix else ""
-        sum_text = f"Version audit: {issue_count} issues found.{fix_info}"
-        return tool_response(result, "audit_tool_versions", project_root, sum_text)
+        args = ["audit"]
+        if auto_fix:
+            args.append("--auto-fix")
+        if not verify_after_fix:
+            args.append("--no-verify-after-fix")
+        return _run_script(path, *args)
 
     @mcp.tool()
     def lint_fix(
@@ -425,44 +215,18 @@ def register(mcp, helpers):
 
         Default is dry_run=True which previews changes without modifying files.
         Set dry_run=False to apply fixes.
-
-        Args:
-            files: Specific files to fix. If None, uses path to fix entire project.
-            path: Project root (required if files is None).
-            dry_run: Preview changes without applying (default True).
-            safe_only: Only apply ruff's safe fix rules (default True).
         """
-        from lintgate.lint_fixer import run_safe_fixes
-
         if not files and not path:
             raise ValueError("Either files or path must be provided")
-
-        if path:
-            project_root = helpers["_validate_project_root"](path)
-        else:
-            project_root = os.path.dirname(os.path.abspath(files[0]))  # type: ignore[index]
-
-        # Resolve files
+        path_arg = path or (os.path.dirname(os.path.abspath(files[0])) if files else os.getcwd())
+        args = ["fix"]
+        if not dry_run:
+            args.append("--no-dry-run")
+        if not safe_only:
+            args.append("--no-safe-only")
         if files:
-            existing, _missing = helpers["_resolve_files"](files, project_root)
-            target_files = existing
-        else:
-            target_files = helpers["_collect_python_files"](project_root)
-
-        if not target_files:
-            return json.dumps({"error": "No Python files found", "dry_run": dry_run})
-
-        result = run_safe_fixes(
-            files=target_files,
-            project_root=project_root,
-            dry_run=dry_run,
-            safe_only=safe_only,
-        )
-
-        rd = result.to_dict()
-        fixed = rd.get("fixed_count", 0)
-        summary = f"{fixed} fixes applied (dry_run={dry_run})."
-        return tool_response(rd, "lint_fix", project_root, summary)
+            args.extend(["--files", *files])
+        return _run_script(path_arg, *args)
 
     return {
         "lint_files": lint_files,

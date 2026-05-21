@@ -214,9 +214,34 @@ class TestControlplaneGetDetails:
             assert repairs[0]["safe"] is True
 
     def test_tool_default_sections_include_evidence(self, runs_dir: Path, sample_run: str) -> None:
-        from mcp_server import controlplane_get_details
+        """Post Phase-2c: the MCP tool subprocesses, so RUNS_DIR patches don't
+        reach the child. Call cmd_get_details in-process to exercise the same
+        logic under the patch."""
+        import argparse
+        import io
+        import json as _json
+        import sys as _sys
 
-        with mock.patch("lintgate.state.RUNS_DIR", runs_dir):
-            payload = _load_tool_result(controlplane_get_details(sample_run))
+        from scripts.controlplane_run import cmd_get_details
+
+        captured = io.StringIO()
+        with mock.patch("lintgate.state.RUNS_DIR", runs_dir), mock.patch.object(_sys, "stdout", captured):
+            cmd_get_details(argparse.Namespace(
+                run_id=sample_run,
+                channel=None,
+                severity=None,
+                max_issues=10,
+                section=[],
+                top_n=None,
+                time_budget_minutes=None,
+                finding_domain=None,
+            ))
+        line = captured.getvalue().strip().splitlines()[-1]
+        envelope = _json.loads(line)
+        if "file" in envelope:
+            with open(envelope["file"]) as f:
+                payload = _json.loads(f.read())
+        else:
+            payload = envelope
         assert "evidence" in payload
         assert "lint" in payload["evidence"]

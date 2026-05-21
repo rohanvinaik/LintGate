@@ -14,6 +14,7 @@ from lintgate.specification.test_impact import build_test_impact_map
 from ._mutation_impl import (
     MutationContext,
     _enrich_mutation_result,
+    detect_delegation,
     detect_purity,
     detect_purity_map,
     discover_test_files,
@@ -30,6 +31,35 @@ from ._mutation_impl import (
     save_cached_state,
     walk_functions,
 )
+
+
+def _check_delegation(project_root: str, file: str) -> str | None:
+    """Check if a file delegates to a script; return DELEGATION response or None."""
+    full_path = os.path.join(project_root, file) if not os.path.isabs(file) else file
+    if not os.path.isfile(full_path):
+        return None
+    delegated = detect_delegation(full_path)
+    if delegated is None:
+        return None
+    from mcp_tools._disk_helpers import tool_response
+
+    return tool_response(
+        {"status": "DELEGATION", "delegates_to": delegated, "file": file},
+        "mutation_delegation",
+        project_root,
+        summary=(
+            f"{file} is a subprocess wrapper. "
+            f"Run improve_tests on {delegated} instead."
+        ),
+        next_actions=[
+            {
+                "tool": "improve_tests",
+                "args": {"path": project_root, "file": delegated},
+                "reason": f"Wrapper delegates to {delegated}",
+                "priority": "required",
+            },
+        ],
+    )
 
 
 def _build_mutation_context(
@@ -67,6 +97,12 @@ def impl_run_sampling(
     from lintgate.keys import canonical_function_key
 
     project_root = helpers["_validate_project_root"](path)
+
+    # Check for wrapper delegation before profiling
+    delegation = _check_delegation(project_root, file)
+    if delegation is not None:
+        return delegation
+
     full, func_node, err = resolve_function(project_root, file, function)
     if err and function:
         return str(helpers["_json_dumps"]({"error": err}))
@@ -148,6 +184,12 @@ def impl_run_full(helpers: Any, path: str, file: str, function: str | None) -> s
     from lintgate.keys import canonical_function_key
 
     project_root = helpers["_validate_project_root"](path)
+
+    # Check for wrapper delegation before profiling
+    delegation = _check_delegation(project_root, file)
+    if delegation is not None:
+        return delegation
+
     full, func_node, err = resolve_function(project_root, file, function)
     if err and function:
         return str(helpers["_json_dumps"]({"error": err}))
@@ -485,6 +527,24 @@ def impl_decompose(helpers: Any, path: str, file: str, function: str | None, mod
     project_root = helpers["_validate_project_root"](path)
     states = iter_cached_states(get_cache_dir(project_root), file, function)
 
+    if not states:
+        from mcp_tools._disk_helpers import tool_response
+
+        return tool_response(
+            {"status": "NEEDS_PROFILE", "mode": mode, "file": file or "all"},
+            "mutation_decompose",
+            project_root,
+            summary=f"No mutation data for {file or 'all'}. Run improve_tests(path, file) first.",
+            next_actions=[
+                {
+                    "tool": "improve_tests",
+                    "args": {"path": path, "file": file or ""},
+                    "reason": "Mutation profile required before decomposition analysis",
+                    "priority": "required",
+                },
+            ],
+        )
+
     candidates: list[dict[str, Any]] = []
     for data in states:
         per_category = data.get("per_category", [])
@@ -800,7 +860,9 @@ def _load_golden_captures(
 
             # Get call site inputs from mutation data
             call_site_inputs = mut_data.get("call_site_inputs", [])
-            captures = capture_golden(mod_path, func_name, call_site_inputs)
+            captures = capture_golden(
+                mod_path, func_name, call_site_inputs, project_root=project_root,
+            )
             if not captures:
                 continue
 
@@ -842,13 +904,38 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
     project_root = helpers["_validate_project_root"](path)
     states = iter_cached_states(get_cache_dir(project_root), file, function)
 
+    if not states:
+        from mcp_tools._disk_helpers import tool_response
+
+        return tool_response(
+            {"status": "NEEDS_PROFILE", "file": file or "all"},
+            "mutation_prescribe_tests",
+            project_root,
+            summary=f"No mutation data for {file or 'all'}. Run improve_tests(path, file) first.",
+            next_actions=[
+                {
+                    "tool": "improve_tests",
+                    "args": {"path": path, "file": file or ""},
+                    "reason": "Mutation profile required before generating test skeletons",
+                    "priority": "required",
+                },
+            ],
+        )
+
     # Load golden captures for VALUE skeleton enrichment
     golden_by_func = _load_golden_captures(project_root, file)
 
     skeletons: list[dict[str, Any]] = []
+    skipped_categories: list[dict[str, str]] = []
     for data in states:
         func_key = data.get("function_key", "")
         survivors = data.get("survivor_records", [])
+
+        # Build set of already-killed categories to skip
+        killed_cats: set[str] = set()
+        for cat_data in data.get("per_category", []):
+            if cat_data.get("survived", 0) == 0 and cat_data.get("killed", 0) > 0:
+                killed_cats.add(cat_data["category"])
 
         if survivors:
             # Resolve AST node for richer oracle-light properties
@@ -858,6 +945,9 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
             best_by_cat: dict[str, dict[str, Any]] = {}
             for survivor in survivors:
                 cat = survivor.get("category", "")
+                if cat in killed_cats:
+                    skipped_categories.append({"function": func_key, "category": cat, "reason": "already_killed"})
+                    continue
                 prop = generate_executable_property(
                     survivor,
                     func_key,
@@ -974,6 +1064,8 @@ def impl_prescribe_tests(helpers: Any, path: str, file: str, function: str | Non
         "skeleton_file": skeleton_path,
         "next_actions": serialize_next_actions(next_actions),
     }
+    if skipped_categories:
+        output["skipped_categories"] = skipped_categories
 
     # Slim summary
     cats_seen = {}
@@ -1029,7 +1121,7 @@ def impl_clear_state(helpers: Any, path: str, file: str | None) -> str:
     if not cache_dir.exists():
         return str(helpers["_json_dumps"]({"note": "No mutation state to clear"}))
 
-    cleared = 0
+    cleared_cache = 0
     for cache_file in list(cache_dir.glob("*.json")):
         if cache_file.name == "scheduler_state.json":
             continue
@@ -1042,5 +1134,34 @@ def impl_clear_state(helpers: Any, path: str, file: str | None) -> str:
             except (OSError, json.JSONDecodeError):
                 pass
         cache_file.unlink(missing_ok=True)
-        cleared += 1
-    return str(helpers["_json_dumps"]({"cleared": cleared}))
+        cleared_cache += 1
+
+    # Also count analysis files cleared
+    cleared_analysis = 0
+    analysis_dir = os.path.join(project_root, ".lintgate", "analysis")
+    if os.path.isdir(analysis_dir):
+        for tool_dir in ["mutation_run_sampling", "mutation_run_full"]:
+            td = os.path.join(analysis_dir, tool_dir)
+            if not os.path.isdir(td):
+                continue
+            for af in os.listdir(td):
+                if not af.endswith(".json"):
+                    continue
+                if file:
+                    try:
+                        with open(os.path.join(td, af), encoding="utf-8") as f:
+                            data = json.load(f)
+                        if file not in data.get("file", ""):
+                            continue
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                os.unlink(os.path.join(td, af))
+                cleared_analysis += 1
+
+    return str(helpers["_json_dumps"]({
+        "cleared": {
+            "mutation_cache": cleared_cache,
+            "analysis_files": cleared_analysis,
+            "total": cleared_cache + cleared_analysis,
+        },
+    }))

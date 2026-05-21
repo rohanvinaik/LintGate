@@ -83,6 +83,50 @@ def test_load_mutation_cache_returns_dict_when_entries_exist():
     }
 
 
+def test_load_mutation_cache_filters_import_failed():
+    """DISCOVERY_IMPORT_FAILED entries should be filtered out as stale."""
+    mock_states = [
+        {"function_key": "mod.func_a", "discovery_state": "DISCOVERY_IMPORT_FAILED"},
+        {"function_key": "mod.func_b", "survived": 0, "discovery_state": "DISCOVERY_OK"},
+    ]
+    with (
+        patch("mcp_tools._mutation_impl.get_cache_dir", return_value="/tmp/cache"),
+        patch("mcp_tools._mutation_impl.iter_cached_states", return_value=mock_states),
+    ):
+        result = load_mutation_cache("/proj", "mod.py")
+    assert result is not None
+    assert "mod.func_a" not in result
+    assert "mod.func_b" in result
+
+
+def test_load_mutation_cache_filters_no_test_files():
+    """NO_TEST_FILES entries should be filtered out as stale."""
+    mock_states = [
+        {"function_key": "mod.func_a", "discovery_state": "NO_TEST_FILES"},
+    ]
+    with (
+        patch("mcp_tools._mutation_impl.get_cache_dir", return_value="/tmp/cache"),
+        patch("mcp_tools._mutation_impl.iter_cached_states", return_value=mock_states),
+    ):
+        result = load_mutation_cache("/proj", "mod.py")
+    # All entries filtered → should return None
+    assert result is None
+
+
+def test_load_mutation_cache_keeps_real_artifacts():
+    """DISCOVERY_ARTIFACT (a real classification) should NOT be filtered."""
+    mock_states = [
+        {"function_key": "mod.func_a", "discovery_state": "DISCOVERY_ARTIFACT"},
+    ]
+    with (
+        patch("mcp_tools._mutation_impl.get_cache_dir", return_value="/tmp/cache"),
+        patch("mcp_tools._mutation_impl.iter_cached_states", return_value=mock_states),
+    ):
+        result = load_mutation_cache("/proj", "mod.py")
+    assert result is not None
+    assert "mod.func_a" in result
+
+
 # --- persist_mutation_cache_entries ---
 
 

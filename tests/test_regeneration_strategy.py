@@ -26,6 +26,7 @@ from lintgate.specification.test_regeneration_strategy import (
     _has_high_risk_name,
     _has_system_surface_name,
     _is_entrypoint_surface,
+    _try_integration_generate,
     build_evidence,
     build_manifest,
     classify_function,
@@ -309,12 +310,54 @@ class TestClassifyFunction:
         assert result.strategy == Strategy.EXCLUDE_MUTATION
         assert "entrypoint_surface" in result.reason_codes
 
+    def test_pure_entrypoint_name_not_excluded(self) -> None:
+        """A pure function named 'run' should not be excluded."""
+        ev = _ev("mod::run", "mod.py", is_pure=True)
+        result = classify_function(ev)
+        assert result.strategy != Strategy.EXCLUDE_MUTATION
+        assert "entrypoint_surface" not in result.reason_codes
+
+    def test_impure_entrypoint_name_still_excluded(self) -> None:
+        """An impure function named 'run' is still excluded."""
+        ev = _ev("mod::run", "mod.py", is_pure=False)
+        result = classify_function(ev)
+        assert result.strategy == Strategy.EXCLUDE_MUTATION
+        assert "entrypoint_surface" in result.reason_codes
+
+    def test_pure_main_not_excluded(self) -> None:
+        """Even 'main' passes through if pure."""
+        ev = _ev("mod::main", "mod.py", is_pure=True)
+        result = classify_function(ev)
+        assert result.strategy != Strategy.EXCLUDE_MUTATION
+
+    def test_import_failed_demotes_to_manual(self) -> None:
+        """DISCOVERY_IMPORT_FAILED is environmental, not a hard exclude."""
+        ev = _ev("mod::func", "mod.py", discovery_state="DISCOVERY_IMPORT_FAILED")
+        result = classify_function(ev)
+        assert result.strategy == Strategy.MANUAL_CONTRACT
+        assert "stale_environmental_state" in result.reason_codes
+        assert result.confidence == 0.2
+
+    def test_no_test_files_demotes_to_manual(self) -> None:
+        """NO_TEST_FILES is environmental, not a hard exclude."""
+        ev = _ev("mod::func", "mod.py", discovery_state="NO_TEST_FILES")
+        result = classify_function(ev)
+        assert result.strategy == Strategy.MANUAL_CONTRACT
+        assert "stale_environmental_state" in result.reason_codes
+
     def test_artifact_checked_before_entrypoint(self) -> None:
         """Artifact veto takes priority over entrypoint veto."""
         ev = _ev("mod::main", "mod.py", discovery_state="DISCOVERY_ARTIFACT")
         result = classify_function(ev)
         assert "discovery_artifact" in result.reason_codes
         assert "entrypoint_surface" not in result.reason_codes
+
+    def test_environmental_checked_before_artifact(self) -> None:
+        """Environmental state takes priority (checked first in _try_exclude)."""
+        ev = _ev("mod::func", "mod.py", discovery_state="DISCOVERY_IMPORT_FAILED")
+        result = classify_function(ev)
+        assert result.strategy == Strategy.MANUAL_CONTRACT
+        assert "stale_environmental_state" in result.reason_codes
 
     # ── Tier 2: Preserve-system ──────────────────────────────────
 
@@ -415,21 +458,51 @@ class TestClassifyFunction:
         assert result.manual_review_required is False
         assert result.confidence >= 0.5
 
-    # ── Tier 4: Manual-contract ──────────────────────────────────
+    # ── Tier 4b: I/O-boundary integration ─────────────────────────
 
-    def test_stateful_function_gets_manual_contract(self) -> None:
-        ev = _ev("mod::update_state", "mod.py", is_stateful=True, sigma_upper_bound=3)
+    def test_stateful_low_entanglement_gets_integration(self) -> None:
+        """Stateful function with ≤2 surviving categories → integration tier."""
+        ev = _ev("mod::read_data", "mod.py", is_stateful=True, sigma_upper_bound=3)
         result = classify_function(ev)
-        assert result.strategy == Strategy.MANUAL_CONTRACT
-        assert "stateful_or_side_effects" in result.reason_codes
-        assert result.existing_test_action == ExistingTestAction.QUARANTINE_ONLY
-        assert result.confidence == 0.3
+        assert result.strategy == Strategy.AUTO_GENERATE_UNIT
+        assert "io_boundary" in result.reason_codes
+        assert result.generation_mode == "integration"
+        assert result.manual_review_required is True
 
-    def test_side_effects_gets_manual_contract(self) -> None:
+    def test_side_effects_low_entanglement_gets_integration(self) -> None:
         ev = _ev("mod::write_file", "mod.py", has_side_effects=True, sigma_upper_bound=2)
         result = classify_function(ev)
+        assert result.strategy == Strategy.AUTO_GENERATE_UNIT
+        assert "io_boundary" in result.reason_codes
+
+    def test_stateful_high_entanglement_gets_manual(self) -> None:
+        """3+ surviving categories → genuine entanglement → manual."""
+        ev = _ev(
+            "mod::tangled", "mod.py", is_stateful=True, sigma_upper_bound=5,
+            surviving_categories=["VALUE", "SWAP", "BOUNDARY"],
+        )
+        result = classify_function(ev)
         assert result.strategy == Strategy.MANUAL_CONTRACT
-        assert "stateful_or_side_effects" in result.reason_codes
+
+    def test_pure_skips_integration_tier(self) -> None:
+        """Pure functions should be caught by auto_generate, not integration."""
+        ev = _ev("mod::pure_fn", "mod.py", is_pure=True, sigma_upper_bound=3)
+        assert _try_integration_generate(ev) is None
+
+    def test_integration_requires_sigma(self) -> None:
+        """Zero sigma → no signal → skip integration tier."""
+        ev = _ev("mod::fn", "mod.py", is_stateful=True, sigma_upper_bound=0)
+        assert _try_integration_generate(ev) is None
+
+    def test_integration_skips_artifact(self) -> None:
+        """Discovery artifacts skip integration tier."""
+        ev = _ev(
+            "mod::fn", "mod.py", is_stateful=True, sigma_upper_bound=3,
+            discovery_state="DISCOVERY_ARTIFACT",
+        )
+        assert _try_integration_generate(ev) is None
+
+    # ── Tier 5: Manual-contract ──────────────────────────────────
 
     def test_high_risk_name_gets_manual_contract(self) -> None:
         ev = _ev("mod::hook_handler", "mod.py", is_stateful=True)

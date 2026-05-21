@@ -343,13 +343,9 @@ def _load_mutation_evidence(
                     # Check if this function imports from our target module
                     imports_used = cdata.get("imports_from", [])
                     if not imports_used:
-                        # Fallback: check function_key for the module name
-                        fk = cdata.get("function_key", "")
-                        if module_name.split(".")[-1] not in fk:
-                            continue
-                        else:
-                            # Same module — already checked above
-                            continue
+                        # No import metadata, or same module (already aggregated
+                        # above) — either way, skip this entry.
+                        continue
                     if any(module_name in imp for imp in imports_used):
                         kr = cdata.get("kill_rate")
                         if kr is not None and kr > 0:

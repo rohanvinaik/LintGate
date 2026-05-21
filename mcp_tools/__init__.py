@@ -31,7 +31,8 @@ Domain modules:
 - wiki_tools: wiki_materialize, wiki_status, wiki_publish_pages, wiki_check_links
 - specification_tools: spec_analyze, spec_prescribe, spec_composition, spec_gate_check
 - prescriptive_tools: prescriptive_spec_compose, prescriptive_spec_compile,
-                      prescriptive_spec_verify, prescriptive_spec_status
+                      prescriptive_spec_verify, prescriptive_spec_status,
+                      auto_resolve, auto_sweep
 - mutation_tools: mutation_run_sampling, mutation_run_full, mutation_get_state,
                   mutation_prescribe, mutation_decompose, mutation_refactor_loop,
                   mutation_prescribe_tests, mutation_validate_tests, mutation_clear_state
@@ -39,6 +40,7 @@ Domain modules:
 - test_hygiene_tools: test_hygiene_scan
 - cold_start_tools: test_triage, test_infer_inputs, test_characterize, test_characterize_mark
 - redundancy_tools: test_redundancy_project
+- test_optimizer_tools: test_suite_triage, test_suite_compact
 - offline_analysis_tools: offline_analysis_generate, offline_analysis_run
 - test_regeneration_tools: test_rebuild_plan, test_rebuild_generate,
                           test_rebuild_validate, test_rebuild_apply
@@ -66,6 +68,7 @@ from . import (
     performance_tools,
     prescriptive_tools,
     redundancy_tools,
+    test_optimizer_tools,
     refactor_move_tools,
     refactor_tools,
     specification_tools,
@@ -104,6 +107,7 @@ ALL_MODULES = [
     test_hygiene_tools,
     cold_start_tools,
     redundancy_tools,
+    test_optimizer_tools,
     test_regeneration_tools,
     goose_hooks,
 ]

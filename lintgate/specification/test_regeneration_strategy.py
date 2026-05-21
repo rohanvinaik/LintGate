@@ -83,6 +83,15 @@ _ARTIFACT_STATES = frozenset(
         "MOCK_BOUNDARY_ARTIFACT",
     }
 )
+# Environmental states indicate a broken *run*, not a property of the function.
+# These should not hard-exclude — the root cause may have been fixed since the
+# cache was written.
+_ENVIRONMENTAL_STATES = frozenset(
+    {
+        "DISCOVERY_IMPORT_FAILED",
+        "NO_TEST_FILES",
+    }
+)
 _PHASE_WEIGHTS: dict[str, float] = {
     "bulk": 0.6,
     "transition": 0.8,
@@ -119,6 +128,11 @@ def _has_discovery_artifact(evidence: FunctionEvidence) -> bool:
     )
 
 
+def _has_stale_environmental_state(evidence: FunctionEvidence) -> bool:
+    """Environmental states (import failures, missing tests) indicate a broken run, not a function property."""
+    return evidence.discovery_state in _ENVIRONMENTAL_STATES
+
+
 def _compute_confidence(evidence: FunctionEvidence) -> float:
     """confidence = min(topology_confidence, 1.0 - survival_rate) * phase_weight"""
     topology_conf = 1.0
@@ -134,8 +148,26 @@ def _compute_confidence(evidence: FunctionEvidence) -> float:
 
 
 def _try_exclude(evidence: FunctionEvidence) -> ClassificationResult | None:
-    """Tier 1: hard exclusions (artifact discovery, entrypoint surfaces)."""
+    """Tier 1: hard exclusions (artifact discovery, entrypoint surfaces).
+
+    Two guards prevent stale cache from poisoning classifications:
+    - Environmental states (DISCOVERY_IMPORT_FAILED, NO_TEST_FILES) demote
+      to MANUAL_CONTRACT instead of hard-excluding, since the root cause
+      may have been fixed since the cache was written.
+    - Pure functions with entrypoint names (e.g. a pure ``run()`` that
+      returns str) pass through to normal classification tiers.
+    """
     func_key = evidence.function_key
+    if _has_stale_environmental_state(evidence):
+        return ClassificationResult(
+            function_key=func_key,
+            strategy=Strategy.MANUAL_CONTRACT,
+            existing_test_action=ExistingTestAction.PRESERVE,
+            target_test_file="",
+            confidence=0.2,
+            reason_codes=["stale_environmental_state"],
+            evidence=evidence,
+        )
     if _has_discovery_artifact(evidence):
         return ClassificationResult(
             function_key=func_key,
@@ -146,7 +178,7 @@ def _try_exclude(evidence: FunctionEvidence) -> ClassificationResult | None:
             reason_codes=["discovery_artifact"],
             evidence=evidence,
         )
-    if _is_entrypoint_surface(func_key):
+    if _is_entrypoint_surface(func_key) and not evidence.is_pure:
         return ClassificationResult(
             function_key=func_key,
             strategy=Strategy.EXCLUDE_MUTATION,
@@ -248,8 +280,56 @@ def _try_auto_generate(evidence: FunctionEvidence) -> ClassificationResult | Non
     )
 
 
+def _try_integration_generate(evidence: FunctionEvidence) -> ClassificationResult | None:
+    """Tier 4b: I/O-boundary functions with low entanglement.
+
+    Functions that fail auto_generate's locality check (not pure, has side
+    effects or state) but show low mutation entanglement (≤2 surviving
+    categories) are I/O-adjacent — structurally sound computation that
+    happens to read/write via I/O. These can have integration-style tests
+    generated rather than requiring manual contracts.
+    """
+    # Must have been rejected by auto_generate for locality reasons
+    if evidence.is_pure:
+        return None
+    if not evidence.has_side_effects and not evidence.is_stateful:
+        return None
+
+    # Need meaningful signal
+    topology_ok = evidence.topology_state in ("NORMAL", "")
+    mutation_meaningful = evidence.survival_interpretation in ("MEANINGFUL", "")
+    if not (topology_ok and mutation_meaningful):
+        return None
+    if _has_discovery_artifact(evidence):
+        return None
+    if evidence.sigma_upper_bound <= 0:
+        return None
+
+    surviving_count = len(evidence.mutation.surviving_categories)
+    if surviving_count > 2:
+        return None  # 3+ categories = genuine entanglement, fall through
+
+    confidence = _compute_confidence(evidence) * 0.8
+    target_file = _compute_target_test_file(evidence.source_file)
+    reasons = ["io_boundary"]
+    if surviving_count > 0:
+        reasons.append(f"low_entanglement_{surviving_count}_categories")
+
+    return ClassificationResult(
+        function_key=evidence.function_key,
+        strategy=Strategy.AUTO_GENERATE_UNIT,
+        existing_test_action=ExistingTestAction.QUARANTINE_REPLACE,
+        target_test_file=target_file,
+        confidence=confidence,
+        reason_codes=reasons,
+        evidence=evidence,
+        generation_mode="integration",
+        manual_review_required=True,
+    )
+
+
 def _fallback_manual(evidence: FunctionEvidence) -> ClassificationResult:
-    """Tier 5: manual-contract (meaningful but mutation-resistant)."""
+    """Tier 6: manual-contract (meaningful but mutation-resistant)."""
     reasons: list[str] = []
     if evidence.is_stateful or evidence.has_side_effects:
         reasons.append("stateful_or_side_effects")
@@ -277,6 +357,7 @@ def classify_function(evidence: FunctionEvidence) -> ClassificationResult:
         or _try_preserve(evidence)
         or _try_decompose(evidence)
         or _try_auto_generate(evidence)
+        or _try_integration_generate(evidence)
         or _fallback_manual(evidence)
     )
 

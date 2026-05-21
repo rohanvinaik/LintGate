@@ -270,6 +270,112 @@ def _build_high_priority_advisory(
     return advisory
 
 
+def _load_pre_edit_stash(cwd: str) -> dict | None:
+    """Load and consume the pre-edit snapshot stashed by PreToolUse."""
+    stash_path = os.path.join(cwd, ".lintgate", "pre_edit_snapshot.json")
+    try:
+        with open(stash_path) as f:
+            data = json.load(f)
+        os.remove(stash_path)  # consume: one stash per edit
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _compute_surgical_delta(
+    pre_stash: dict, mesh_result: Any, cwd: str
+) -> dict:
+    """Compute scoped delta between pre-edit stash and post-edit findings.
+
+    Returns: {
+        "delta": int (positive = new findings, negative = improvements),
+        "edit_file": str,
+        "pre_count": int,
+        "post_count": int,
+        "new_findings": list[str],  # file:line:code for new issues
+    }
+    """
+    edit_file = pre_stash.get("file", "")
+    pre_count = pre_stash.get("finding_count", 0)
+
+    # Count post-edit findings scoped to the edited file
+    post_count = 0
+    new_findings: list[str] = []
+    for cr in mesh_result.channel_results:
+        for finding in cr.findings:
+            f_file = str(getattr(finding, "file", "") or "")
+            if not f_file:
+                continue
+            rel = os.path.relpath(f_file, cwd) if os.path.isabs(f_file) else f_file
+            if rel == edit_file:
+                post_count += 1
+                line = getattr(finding, "line", "")
+                code = getattr(finding, "code", "") or getattr(finding, "kind", "")
+                msg = getattr(finding, "message", "")[:60]
+                severity = str(getattr(finding, "severity", "")).lower()
+                new_findings.append(f"  {rel}:{line}:{code} ({severity}) {msg}")
+
+    return {
+        "delta": post_count - pre_count,
+        "edit_file": edit_file,
+        "pre_count": pre_count,
+        "post_count": post_count,
+        "new_findings": new_findings[:8],
+    }
+
+
+def _format_surgical_report(delta: dict, heartbeat_count: int) -> dict:
+    """Format a surgical-mode report from a delta computation.
+
+    Returns {} for silent-on-clean, or a minimal systemMessage for deltas.
+    """
+    d = delta["delta"]
+    edit_file = delta["edit_file"]
+
+    if d == 0 and delta["post_count"] == 0:
+        # Clean edit — silence with periodic heartbeat
+        if heartbeat_count > 0 and heartbeat_count % 5 == 0:
+            return {"systemMessage": f"[surgical] {edit_file}: clean ({heartbeat_count} edits)"}
+        return {}
+
+    if d == 0 and delta["post_count"] > 0:
+        # No change from this edit, pre-existing issues
+        if heartbeat_count > 0 and heartbeat_count % 5 == 0:
+            return {"systemMessage": f"[surgical] {edit_file}: {delta['post_count']} pre-existing (no change)"}
+        return {}
+
+    if d < 0:
+        return {"systemMessage": f"[surgical] improved: {d} in {edit_file}"}
+
+    # d > 0: this edit introduced findings
+    lines = [f"[surgical] +{d} in {edit_file}:"]
+    lines.extend(delta["new_findings"])
+    return {"systemMessage": "\n".join(lines)}
+
+
+def _get_surgical_heartbeat_count(session: Any) -> int:
+    """Get and increment the surgical heartbeat counter from session."""
+    if session is None or not hasattr(session, "behavior_compass"):
+        return 0
+    bc = session.behavior_compass
+    if not isinstance(bc, dict):
+        return 0
+    count = bc.get("_surgical_heartbeat", 0)
+    bc["_surgical_heartbeat"] = count + 1
+    return count + 1
+
+
+def _is_surgical_mode(cwd: str) -> bool:
+    """Check if the current session is in surgical workflow mode."""
+    try:
+        from lintgate.runtime_state import load_runtime_state
+
+        runtime = load_runtime_state(cwd)
+        return runtime is not None and runtime.workflow_mode == "surgical"
+    except Exception:
+        return False
+
+
 def _run_controlplane(
     input_data: dict, config: Any, cp_config: Any, cwd: str, start: float
 ) -> None:
@@ -307,6 +413,28 @@ def _run_controlplane(
     )
 
     mesh_result = run_mesh(event, cp_config, channels, session=session)
+
+    # ── Surgical mode short-circuit ──────────────────────────────────
+    # In surgical mode: compute scoped delta, emit minimal or nothing.
+    # Full controlplane still runs (state tracking, session updates) but
+    # the REPORT is replaced with the delta-only format.
+    if _is_surgical_mode(cwd):
+        pre_stash = _load_pre_edit_stash(cwd)
+        if pre_stash is not None:
+            delta = _compute_surgical_delta(pre_stash, mesh_result, cwd)
+            heartbeat = _get_surgical_heartbeat_count(session)
+            report = _format_surgical_report(delta, heartbeat)
+
+            # Still refresh runtime state for downstream consumers
+            with contextlib.suppress(Exception):
+                from lintgate.hooks.controlplane import refresh_runtime_after_run
+
+                refresh_runtime_after_run(
+                    cwd, session, cp_config, mesh_result, tool_name, tool_input
+                )
+
+            _emit_hook_output(report, cwd)
+            sys.exit(0)
 
     hook_fp, prev_fp, current_fields, prev_fields = _compute_fingerprint_state(mesh_result, session)
 
@@ -382,8 +510,47 @@ def _run_controlplane(
             start=start,
         )
 
-    print(json.dumps(report if report else {}))
+    _emit_hook_output(report if report else {}, cwd)
     sys.exit(0)
+
+
+def _emit_hook_output(report: dict, project_root: str) -> None:
+    """Save full report to disk, print slim summary to stdout."""
+    if not report:
+        print("{}")
+        return
+
+    # Save full report to disk
+    try:
+        import time as _time
+
+        hook_dir = os.path.join(project_root, ".lintgate", "hooks", "posttooluse")
+        os.makedirs(hook_dir, exist_ok=True)
+        ts = int(_time.time())
+        hook_file = os.path.join(hook_dir, f"{ts}.json")
+        with open(hook_file, "w", encoding="utf-8") as f:
+            json.dump(report, f, separators=(",", ":"), default=str)
+
+        # Build slim summary from full report
+        full_msg = report.get("systemMessage", "")
+        # Extract key signals: coherence, blocking count, channel summary
+        slim_parts: list[str] = []
+        if full_msg:
+            # Take first line only (usually the coherence/status line)
+            first_line = full_msg.split("\n")[0][:200]
+            slim_parts.append(first_line)
+        slim_parts.append(f"Full: {os.path.relpath(hook_file, project_root)}")
+        slim_msg = " | ".join(slim_parts)
+
+        slim_report = dict(report)
+        slim_report["systemMessage"] = slim_msg
+        # Remove heavy payload keys from the slim version
+        for key in ("hookSpecificOutput", "state_delta", "findings_detail"):
+            slim_report.pop(key, None)
+        print(json.dumps(slim_report, separators=(",", ":"), default=str))
+    except Exception:
+        # Fail-open: if disk write fails, print original report
+        print(json.dumps(report, separators=(",", ":"), default=str))
 
 
 # ── Prescriptive spec detection ───────────────────────────────────

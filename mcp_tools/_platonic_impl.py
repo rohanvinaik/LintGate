@@ -420,6 +420,60 @@ def _update_staged_artifacts(
             staged_artifacts.append(staged_artifact)
 
 
+def _attempt_auto_decomposition(
+    path: str,
+    decompose_targets: list,
+) -> dict[str, Any] | None:
+    """Attempt to auto-plan extraction for decompose targets.
+
+    Returns dict with tool, args, verified=True if a clean extraction is
+    possible.  Returns None if manual planning is needed.
+    Prefers refactor_move for module/symbol splits, refactor_extract_method
+    only for extract_method plan steps.
+    """
+    try:
+        from mcp_tools.convergence_tools import _impl_extraction_plan
+
+        target = decompose_targets[0]
+        func_key = getattr(target, "function_key", str(target))
+        # Use a minimal helpers dict — extraction_plan only needs project root validation
+        plan_data = _impl_extraction_plan(path, func_key, {"_validate_project_root": lambda p: p})
+
+        steps = plan_data.get("steps", [])
+        if not steps:
+            return None
+
+        first_step = steps[0]
+        step_type = first_step.get("step_type", "")
+
+        if step_type == "create_module":
+            return {
+                "verified": True,
+                "tool": "refactor_move",
+                "args": {
+                    "path": path,
+                    "source": first_step.get("source_file", ""),
+                    "target": first_step.get("target_module", ""),
+                    "symbols": first_step.get("symbols", []),
+                    "dry_run": True,
+                },
+            }
+        elif step_type in ("create_function", "extract_body"):
+            return {
+                "verified": True,
+                "tool": "refactor_extract_method",
+                "args": {
+                    "path": path,
+                    "file": first_step.get("source_file", ""),
+                    "function": func_key,
+                    "dry_run": True,
+                },
+            }
+        return None
+    except Exception:
+        return None
+
+
 def _build_convergence_next_actions(
     workflow_state: str,
     path: str,
@@ -442,6 +496,7 @@ def _build_convergence_next_actions(
             "BLOCKED_DISCOVERY",
             "BLOCKED_TOPOLOGY",
             "BLOCKED_NO_ELIGIBLE_TARGETS",
+            "NEEDS_ORACLE",
             "FAILED",
             "EXISTING_TESTS_SUFFICIENT",
             "PLATEAU_NO_GENERATION",
@@ -461,8 +516,17 @@ def _build_convergence_next_actions(
             True,
         )
     elif workflow_state == "NEEDS_DECOMPOSITION" and decompose_targets:
-        primary = "extraction_plan"
-        args = {"path": path, "function": decompose_targets[0].function_key}
+        auto = _attempt_auto_decomposition(path, decompose_targets)
+        if auto and auto.get("verified"):
+            primary = auto["tool"]
+            args = auto["args"]
+        else:
+            primary = "extraction_plan"
+            args = {"path": path, "function": decompose_targets[0].function_key}
+    elif workflow_state == "NEEDS_ORACLE":
+        primary = ""
+        args = {}
+        human_review = True
     elif workflow_state not in terminal_states:
         primary, args, autopilot = (
             "platonic_continue",
@@ -525,6 +589,7 @@ def impl_platonic_converge(
     orch_state_snapshot: dict[str, Any] | None = None,
     staged_artifacts_resume: list[dict[str, Any]] | None = None,
     iterations_completed: int = 0,
+    decompose_mode: str = "propose",
 ) -> str:
     """Run the platonic convergence loop on a single file."""
     import time
@@ -614,14 +679,64 @@ def impl_platonic_converge(
         project_root, rel_file, target_kill_rate
     )
 
+    # ── decompose_mode handling ──────────────────────────────────
+    if decompose_mode == "skip":
+        # Bypass decomposition — treat decompose targets as manual fallback
+        decompose_targets = []
+
     if not auto_targets:
         state = "NEEDS_DECOMPOSITION" if decompose_targets else "BLOCKED_NO_ELIGIBLE_TARGETS"
-        primary_next_action = "extraction_plan" if decompose_targets else ""
+        primary_next_action = "mutation_decompose" if decompose_targets else ""
         primary_next_args = (
-            {"path": path, "function": decompose_targets[0].function_key}
+            {"path": path, "file": file, "function": decompose_targets[0].function_key}
             if decompose_targets
             else {}
         )
+
+        # Build per-function classification details for diagnostic visibility
+        classification_details = []
+        staleness_detected = False
+        for cr in assessment["classifications"]:
+            detail: dict[str, Any] = {
+                "function": cr.function_key,
+                "strategy": cr.strategy.value,
+                "reasons": cr.reason_codes,
+                "confidence": round(cr.confidence, 3),
+            }
+            if "stale_environmental_state" in cr.reason_codes:
+                staleness_detected = True
+                detail["stale"] = True
+            classification_details.append(detail)
+
+        # Build unblocking instructions
+        unblocking: list[str] = []
+        if staleness_detected:
+            unblocking.append(
+                "Stale environmental state detected. "
+                "Run reset_state(path) to clear, then re-run converge."
+            )
+        if decompose_targets:
+            unblocking.append(
+                f"Run decompose(path, file) to see decomposition plan for "
+                f"{decompose_targets[0].function_key}."
+            )
+            unblocking.append("After decomposition, re-run converge(path, file).")
+            if decompose_mode == "propose":
+                unblocking.append(
+                    "Or re-run with decompose_mode='skip' to bypass entanglement check."
+                )
+        if not decompose_targets and not staleness_detected:
+            unblocking.append(
+                "Run check_project(path) to resolve upstream issues."
+            )
+
+        # Build auto-extraction plan for decompose_mode="auto"
+        auto_extraction_plan = None
+        if decompose_mode == "auto" and decompose_targets:
+            auto = _attempt_auto_decomposition(path, decompose_targets)
+            if auto and auto.get("verified"):
+                auto_extraction_plan = auto
+
         workflow = PlatonicWorkflowRecord(
             workflow_id=workflow_id,
             scope=scope,
@@ -665,27 +780,37 @@ def impl_platonic_converge(
         next_actions = (
             [
                 NextAction(
-                    tool="extraction_plan",
-                    args={"path": path, "function": decompose_targets[0].function_key},
+                    tool="mutation_decompose",
+                    args={"path": path, "file": file},
                     reason="Cross-lens routing recommends decomposition over more tests.",
                 )
             ]
             if decompose_targets
             else []
         )
+        extra: dict[str, Any] = {
+            "status": "no_eligible_targets",
+            "total_functions": assessment["summary"]["total_functions"],
+            "classifications": assessment["summary"]["strategy_distribution"],
+            "classification_details": classification_details,
+            "staleness_detected": staleness_detected,
+            "unblocking_instructions": unblocking,
+        }
+        if auto_extraction_plan:
+            extra["auto_extraction_plan"] = auto_extraction_plan
         output = workflow_envelope(
             workflow,
             next_actions=next_actions,
-            extra={
-                "status": "no_eligible_targets",
-                "total_functions": assessment["summary"]["total_functions"],
-                "classifications": assessment["summary"]["strategy_distribution"],
-            },
+            extra=extra,
         )
         summary = (
             f"Converge {state} for {rel_file} ({assessment['summary']['total_functions']} funcs). "
             f"{workflow.blocking_reason}"
         )
+        if staleness_detected:
+            summary += " Stale state detected — run reset_state to clear."
+        if unblocking:
+            summary += f" To unblock: {unblocking[0]}"
         return tool_response(
             output,
             "platonic_converge",
@@ -793,6 +918,7 @@ def impl_platonic_converge(
         _update_staged_artifacts(staged_artifacts, gen_result, iteration)
         if gen_result.get("manual_contract_candidates"):
             iter_data["manual_contract_candidates"] = gen_result["manual_contract_candidates"]
+        iter_data["oracle_requests"] = gen_result.get("oracle_requests", [])
 
         # Decide: iterate, halt, or converged?
         decisions = decide(orch_state, config)
@@ -833,12 +959,19 @@ def impl_platonic_converge(
             validation_path=validation_artifact_path,
         )
     )
+
+    # Aggregate oracle requests across all iterations
+    all_oracle_requests: list[dict] = []
+    for ilog in iteration_log:
+        all_oracle_requests.extend(ilog.get("oracle_requests", []))
+
     workflow_state, reason_code, blocking_reason = _workflow_state_from_outputs(
         conv_summary,
         health_data,
         validation,
         decompose_targets,
         iteration_log=iteration_log,
+        oracle_requests=all_oracle_requests,
     )
 
     (
@@ -879,6 +1012,7 @@ def impl_platonic_converge(
             "health": health_data,
             "convergence": conv_summary,
             "validation": validation,
+            "oracle_requests": all_oracle_requests,
         },
         proposed_artifacts=_proposed_artifacts(validation, assessment),
         manifest_path=assessment.get("manifest_path", ""),
@@ -957,6 +1091,7 @@ def _workflow_state_from_outputs(
     decompose_targets: list[Any],
     *,
     iteration_log: list[dict[str, Any]] | None = None,
+    oracle_requests: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str, str]:
     """Compatibility wrapper for golden-path workflow state resolution."""
     return _workflow_state_from_outputs_impl(
@@ -965,6 +1100,7 @@ def _workflow_state_from_outputs(
         validation,
         decompose_targets,
         iteration_log=iteration_log,
+        oracle_requests=oracle_requests,
     )
 
 

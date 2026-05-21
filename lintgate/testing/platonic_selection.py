@@ -146,6 +146,7 @@ def select_project_target(
     *,
     max_files: int = 5,
     preserve_globs: list[str] | None = None,
+    exclusion_set: set[str] | None = None,
 ) -> dict[str, Any]:
     """Pick the deterministic first platonic target for a project."""
     from lintgate.specification.project_rollup import rollup_project
@@ -161,6 +162,8 @@ def select_project_target(
     for hotspot in rollup.hotspot_files[:max_files]:
         rel_file = hotspot.get("file", "")
         if not rel_file:
+            continue
+        if exclusion_set and rel_file in exclusion_set:
             continue
         inspected += 1
         assessment = assess_file(

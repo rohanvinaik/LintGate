@@ -104,19 +104,12 @@ def _format_channel_summary(active_channels: list[ChannelResult]) -> str:
 
 
 def _format_pattern_alerts(alerts: list[dict]) -> str:
-    """Format pattern alerts from lint channel."""
-    parts = []
-    for alert in alerts[:3]:
-        linter = alert.get("linter", "?")
-        kind = alert.get("kind", "?")
-        reason = alert.get("alert_reason", "")
-        if reason == "recurring_across_runs":
-            recent = alert.get("recent_run_count", 0)
-            parts.append(f"PATTERN ALERT: [{linter}/{kind}] recurring across {recent} recent runs")
-        elif reason == "single_run_volume":
-            count = alert.get("count_this_run", 0)
-            parts.append(f"PATTERN NOTE: [{linter}/{kind}] appeared {count} times this run")
-    return "\n".join(parts)
+    """Condense pattern alerts to a single summary line."""
+    recurring = [a for a in alerts if a.get("alert_reason") == "recurring_across_runs"]
+    if not recurring:
+        return ""
+    tags = [f"{a.get('kind', '?')} ({a.get('recent_run_count', 0)} runs)" for a in recurring[:3]]
+    return f"Recurring: {', '.join(tags)}"
 
 
 def _format_repairs(repairs: list) -> str:
@@ -209,7 +202,7 @@ def _assemble_report_sections(
     *,
     mesh_result: MeshResult,
     display_findings: list,
-    all_findings: list,
+    all_findings: list,  # kept for API compat
     active_channels: list[ChannelResult],
     delta: dict[str, Any] | None,
     resurfaced_count: int,
@@ -252,10 +245,13 @@ def _assemble_report_sections(
     if coherence.state != "stable" or coherence.summary:
         bt.try_append(_format_coherence(coherence))
 
-    # Section 4: Warnings
+    # Section 4: Warnings — condense to count when blocking issues need focus
     warnings = [f for f in display_findings if f.severity == "warning"]
     if warnings:
-        bt.try_append(_format_warnings(warnings))
+        if blocking:
+            bt.try_append(f"WARNINGS: {len(warnings)} (fix blocking issues first)")
+        else:
+            bt.try_append(_format_warnings(warnings))
 
     # Section 5: Incomplete channels
     if mesh_result.partial:
@@ -264,24 +260,19 @@ def _assemble_report_sections(
     # Section 6: Channel status
     bt.try_append(_format_channel_summary(active_channels))
 
-    # Section 7: Pattern alerts
+    # Section 7: Pattern alerts (condensed to single line)
     lint_results = [cr for cr in mesh_result.channel_results if cr.channel == "lint"]
     if lint_results:
         pattern_alerts = lint_results[0].metrics.get("pattern_alerts", [])
         if pattern_alerts:
-            bt.try_append(_format_pattern_alerts(pattern_alerts))
+            alert_line = _format_pattern_alerts(pattern_alerts)
+            if alert_line:
+                bt.try_append(alert_line)
 
     # Section 8: Repairs
     all_repairs = [r for cr in mesh_result.channel_results for r in cr.repairs]
     if all_repairs:
         bt.try_append(_format_repairs(all_repairs))
-
-    # Informational count
-    display_informational = [f for f in display_findings if f.severity == "informational"]
-    total_informational = [f for f in all_findings if f.severity == "informational"]
-    if display_informational or (total_informational and delta is None):
-        shown = display_informational if delta is not None else total_informational
-        bt.try_append(f"INFO: {len(shown)} informational finding{'s' if len(shown) != 1 else ''}")
 
     # Section 9: Proposed constraints
     if proposed_constraints:

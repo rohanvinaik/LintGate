@@ -59,6 +59,7 @@ from lintgate._habit_signals import (  # noqa: F401
 )
 from lintgate._habit_signals import compute_habit_score as compute_habit_score  # noqa: F401
 from lintgate._habit_signals import declare_mode as declare_mode  # noqa: F401
+from lintgate._habit_signals import declare_workflow as declare_workflow  # noqa: F401
 from lintgate._habit_signals import detect_test_result as detect_test_result  # noqa: F401
 from lintgate._habit_signals import quick_intent as quick_intent  # noqa: F401
 from lintgate._habit_signals import signal_user_message as signal_user_message  # noqa: F401

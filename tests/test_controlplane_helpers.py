@@ -410,6 +410,72 @@ class TestLoadGlobalPriors:
         ):
             assert load_global_priors(config) is None
 
+    def test_returns_priors_at_exact_min_sample_size(self):
+        """Kill BOUNDARY: session_count >= MIN_SAMPLE_SIZE must include the exact boundary."""
+        config = StubCpConfig(
+            global_memory_enabled=True,
+            global_memory_alpha=0.6,
+            global_memory_decay_horizon=50,
+            global_memory_ttl_days=90,
+        )
+        mock_gp = mock.MagicMock()
+        mock_gp.session_count = 5  # exactly MIN_SAMPLE_SIZE
+        mock_gp.computed_bias_adjustments = {"cycling": 0.2}
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=mock_gp,
+            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5),
+        ):
+            result = load_global_priors(config)
+            assert result is not None
+            assert result["enabled"] is True
+            assert result["alpha"] == 0.6
+
+    def test_returns_none_one_below_min_sample_size(self):
+        """Kill BOUNDARY: session_count == MIN_SAMPLE_SIZE - 1 must return None."""
+        config = StubCpConfig(
+            global_memory_enabled=True,
+            global_memory_alpha=0.6,
+            global_memory_decay_horizon=50,
+            global_memory_ttl_days=90,
+        )
+        mock_gp = mock.MagicMock()
+        mock_gp.session_count = 4  # one below MIN_SAMPLE_SIZE
+        mock_gp.computed_bias_adjustments = {}
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=mock_gp,
+            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 5),
+        ):
+            assert load_global_priors(config) is None
+
+    def test_channel_check_targets_behavior_string(self):
+        """Kill VALUE_0: must check 'behavior' channel specifically, not ''."""
+        config = StubCpConfig(
+            global_memory_enabled=True,
+            _enabled_channels={"behavior": False},
+            global_memory_alpha=0.6,
+            global_memory_decay_horizon=50,
+            global_memory_ttl_days=90,
+        )
+        mock_gp = mock.MagicMock()
+        mock_gp.session_count = 100
+        mock_gp.computed_bias_adjustments = {"test": 1.0}
+        with (
+            mock.patch(
+                "lintgate.controlplane.global_behavior_profile.load_global_profile",
+                return_value=mock_gp,
+            ),
+            mock.patch("lintgate.controlplane.global_behavior_profile.MIN_SAMPLE_SIZE", 1),
+        ):
+            # Real: channel_enabled('behavior') → False → returns None
+            # Mutant: channel_enabled('') → True (default) → returns priors dict
+            assert load_global_priors(config) is None
+
 
 # ── accumulate_session_telemetry ─────────────────────────────────────
 

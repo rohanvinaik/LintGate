@@ -18,6 +18,7 @@ def run_platonic_project(
     budget_ms: int,
     *,
     converge_fn: Callable[..., str],
+    exclusion_set: set[str] | None = None,
 ) -> str:
     """Select the first deterministic platonic target and start a workflow."""
     from lintgate.config import load_controlplane_config
@@ -50,6 +51,7 @@ def run_platonic_project(
         project_root,
         max_files=max_files,
         preserve_globs=preserve_globs,
+        exclusion_set=exclusion_set,
     )
     workflow_id = create_workflow_id()
     if not selection.get("selected_file"):
@@ -237,6 +239,32 @@ def run_platonic_apply(
         )
 
     if workflow.state not in ("READY_TO_APPLY", "READY_TO_APPLY_WITH_REVIEW"):
+        # Allow dry-run preview when staged artifacts exist — the agent
+        # needs visibility into what was generated even in blocked states.
+        if dry_run and workflow.staged_artifacts:
+            from mcp_tools._disk_helpers import tool_response
+
+            apply_log = _build_staged_apply_actions(
+                project_root, workflow.staged_artifacts, dry_run=True
+            )
+            preview = {
+                **workflow_envelope(workflow, next_actions=[]),
+                "dry_run": True,
+                "state": workflow.state,
+                "step": "apply_preview",
+                "actions": apply_log,
+                "preview_note": (
+                    f"Preview only — workflow is in {workflow.state} state. "
+                    "Address blocking reason before applying."
+                ),
+                "blocking_reason": workflow.blocking_reason or "",
+            }
+            summary = (
+                f"Preview: {len(apply_log)} staged actions. "
+                f"State: {workflow.state} (apply blocked)."
+            )
+            return tool_response(preview, "platonic_apply", project_root, summary)
+
         blocking_reason = workflow.blocking_reason or (
             "Workflow is not in READY_TO_APPLY or READY_TO_APPLY_WITH_REVIEW."
         )

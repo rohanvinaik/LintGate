@@ -524,11 +524,11 @@ class TestCollectPendingRepairs:
         session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1"])])
         pending, skipped = _collect_pending_repairs(session, None, False)
         assert pending == []
-        assert skipped[0]["reason"] == "no_repairs_in_run"
+        assert skipped[0]["reason"] == "no_executable_repairs"
 
     @patch(
         "mcp_tools._controlplane_impl_feedback._load_all_repairs",
-        return_value=[{"action_id": "a1"}],
+        return_value=[{"action_id": "a1", "kind": "command", "payload": {"command": "x"}}],
     )
     def test_no_proposed_repairs(self, mock_load):
         session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=[])])
@@ -538,7 +538,7 @@ class TestCollectPendingRepairs:
 
     @patch(
         "mcp_tools._controlplane_impl_feedback._load_all_repairs",
-        return_value=[{"action_id": "a1"}],
+        return_value=[{"action_id": "a1", "kind": "command", "payload": {"command": "x"}}],
     )
     def test_already_executed_skipped(self, mock_load):
         session = _FakeSession(
@@ -552,7 +552,10 @@ class TestCollectPendingRepairs:
 
     @patch(
         "mcp_tools._controlplane_impl_feedback._load_all_repairs",
-        return_value=[{"action_id": "a1"}, {"action_id": "a2"}],
+        return_value=[
+            {"action_id": "a1", "kind": "command", "payload": {"command": "x"}},
+            {"action_id": "a2", "kind": "command", "payload": {"command": "y"}},
+        ],
     )
     def test_action_ids_filter(self, mock_load):
         session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1", "a2"])])
@@ -563,18 +566,20 @@ class TestCollectPendingRepairs:
 
     @patch(
         "mcp_tools._controlplane_impl_feedback._load_all_repairs",
-        return_value=[{"action_id": "a1", "safe": False, "kind": "dangerous"}],
+        return_value=[{"action_id": "a1", "safe": False, "kind": "safe_delete"}],
     )
     def test_safe_only_filter(self, mock_load):
         session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1"])])
         pending, skipped = _collect_pending_repairs(session, None, True)
         assert pending == []
         assert skipped[0]["reason"] == "safe_only_filter"
-        assert "dangerous" in skipped[0]["detail"]
+        assert "safe_delete" in skipped[0]["detail"]
 
     @patch(
         "mcp_tools._controlplane_impl_feedback._load_all_repairs",
-        return_value=[{"action_id": "a1", "safe": True}],
+        return_value=[
+            {"action_id": "a1", "safe": True, "kind": "command", "payload": {"command": "x"}}
+        ],
     )
     def test_collects_pending_repair(self, mock_load):
         session = _FakeSession(snapshots=[_FakeSnapshot(repairs_proposed=["a1"])])
@@ -588,7 +593,7 @@ class TestCollectPendingRepairs:
         mock_load.return_value = {
             "channels": {
                 "lint": {
-                    "repairs": [{"action_id": "a1", "safe": True, "kind": "command"}],
+                    "repairs": [{"action_id": "a1", "safe": True, "kind": "command", "payload": {"command": "x"}}],
                 }
             }
         }

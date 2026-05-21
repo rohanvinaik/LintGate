@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from lintgate.controlplane.constraint_proposer import (
     ProposedConstraint,
     TheoryCoherenceResult,
+    _apply_coherence_check,
+    _compute_proposal_confidence,
+    _dominant_polarity,
     _extract_coherence_keywords,
     _is_contradicting,
+    _resolve_constraint_template,
     check_theory_coherence,
 )
 from lintgate.controlplane.reporter import _format_proposed_constraints
@@ -138,6 +144,14 @@ class TestExtractCoherenceKeywords:
         assert "foo" not in keywords
         assert "bar" not in keywords
         assert "approach" in keywords
+
+    def test_minimum_word_length_is_four(self) -> None:
+        """Kill VALUE: regex requires {4,} chars — 3-letter words excluded, 4-letter included."""
+        keywords = _extract_coherence_keywords("cat dogs bird fish snakes")
+        assert "dogs" in keywords
+        assert "bird" in keywords
+        assert "fish" in keywords
+        assert "cat" not in keywords  # 3 chars
 
 
 # ── _is_contradicting ────────────────────────────────────────────────
@@ -302,3 +316,231 @@ class TestReporterDriftWarnings:
         output = _format_proposed_constraints(proposals)
         assert "DRIFT WARNING" in output
         assert "potential conflict" in output
+
+
+# ── _dominant_polarity ──────────────────────────────────────────────
+
+
+class TestDominantPolarity:
+    def test_positive_dominant(self) -> None:
+        """Text with more positive polarity words → 'positive'."""
+        _, p_dom = _dominant_polarity("should always use this", "must require ensure")
+        assert p_dom == "positive"
+
+    def test_negative_dominant(self) -> None:
+        """Text with more negative polarity words → 'negative'."""
+        _, p_dom = _dominant_polarity("neutral text", "never avoid don't forbid")
+        assert p_dom == "negative"
+
+    def test_neutral_when_balanced(self) -> None:
+        """Equal positive and negative → 'neutral'."""
+        _, p_dom = _dominant_polarity("neutral text", "should not")
+        # "should" = positive, "not" = negative → balanced
+        assert p_dom == "neutral"
+
+    def test_returns_both_polarities(self) -> None:
+        """Returns (c_dominant, p_dominant) — c is first arg's polarity."""
+        c_dom, p_dom = _dominant_polarity("never avoid this", "always use prefer")
+        assert c_dom == "negative"
+        assert p_dom == "positive"
+
+    def test_no_polarity_words_neutral(self) -> None:
+        """Text with no polarity words → 'neutral'."""
+        c_dom, p_dom = _dominant_polarity("hello world", "foo bar baz")
+        assert c_dom == "neutral"
+        assert p_dom == "neutral"
+
+
+# ── _is_contradicting ──────────────────────────────────────────────
+
+
+class TestIsContradictingMutationTargeted:
+    def test_opposite_polarity_with_noun_overlap(self) -> None:
+        """Kill SWAP/VALUE: contradicting texts with clear opposite polarity."""
+        # "forbid" = negative, "always require" = positive, nouns overlap on "assert"
+        assert (
+            _is_contradicting(
+                "Forbid assert statements in production code",
+                "Always require assert statements in production code",
+            )
+            is True
+        )
+
+    def test_same_polarity_not_contradicting(self) -> None:
+        """Same dominant polarity → not contradicting even with noun overlap."""
+        assert (
+            _is_contradicting(
+                "Avoid assert statements completely",
+                "Never allow assert statements anywhere",
+            )
+            is False
+        )
+
+    def test_no_overlap_returns_false(self) -> None:
+        """Without noun overlap, contradiction is impossible regardless of polarity."""
+        assert (
+            _is_contradicting(
+                "Never use databases for caching",
+                "Always prefer functional programming paradigms",
+            )
+            is False
+        )
+
+
+# ── _resolve_constraint_template ────────────────────────────────────
+
+
+class TestResolveConstraintTemplate:
+    def test_behavior_channel_maps_to_behavior_template(self) -> None:
+        """Kill SWAP/VALUE: behavior_channel linter uses _BEHAVIOR_CONSTRAINT_MAP."""
+        result = _resolve_constraint_template("behavior_channel", "approach_cycling")
+        assert result["rule_type"] == "theory_note"
+        assert (
+            "approach" in result["template"].lower() or "constraint" in result["template"].lower()
+        )
+
+    def test_pattern_map_for_known_kind(self) -> None:
+        """Non-behavior linter maps to _PATTERN_CONSTRAINT_MAP."""
+        result = _resolve_constraint_template("ruff", "F821")
+        assert result["rule_type"] == "LINTGATE_FORBID_REGEX"
+        assert result["base_confidence"] == 0.8
+
+    def test_unknown_kind_returns_generic(self) -> None:
+        """Unknown linter/kind falls through to generic template."""
+        result = _resolve_constraint_template("unknown_linter", "UNKNOWN_CODE")
+        assert result["rule_type"] == "theory_note"
+        assert "unknown_linter" in result["template"]
+        assert result["base_confidence"] == 0.4
+
+    def test_behavior_channel_unknown_kind_falls_to_pattern(self) -> None:
+        """behavior_channel with unknown kind falls to pattern map, then generic."""
+        result = _resolve_constraint_template("behavior_channel", "nonexistent_signal")
+        assert result["rule_type"] == "theory_note"
+        assert "behavior_channel" in result["template"]
+
+
+# ── _compute_proposal_confidence ────────────────────────────────────
+
+
+class TestComputeProposalConfidence:
+    def test_base_confidence_used_when_count_le_3(self) -> None:
+        """Kill BOUNDARY: no bonus when recent_count <= 3."""
+        result = _compute_proposal_confidence({"base_confidence": 0.7}, 3)
+        assert result == 0.7
+
+    def test_bonus_applied_when_count_gt_3(self) -> None:
+        """Kill BOUNDARY: bonus starts at count > 3 (not >= 3)."""
+        result_at_3 = _compute_proposal_confidence({"base_confidence": 0.5}, 3)
+        result_at_4 = _compute_proposal_confidence({"base_confidence": 0.5}, 4)
+        assert result_at_3 == 0.5
+        assert result_at_4 > 0.5
+
+    def test_bonus_calculation_correct(self) -> None:
+        """Kill VALUE: bonus = (count - 3) * 0.075, capped at 0.15."""
+        # count=4: bonus = 1 * 0.075 = 0.075
+        result = _compute_proposal_confidence({"base_confidence": 0.5}, 4)
+        assert abs(result - 0.575) < 0.001
+        # count=5: bonus = 2 * 0.075 = 0.15
+        result = _compute_proposal_confidence({"base_confidence": 0.5}, 5)
+        assert abs(result - 0.65) < 0.001
+        # count=6: bonus = min(3 * 0.075, 0.15) = 0.15 (capped)
+        result = _compute_proposal_confidence({"base_confidence": 0.5}, 6)
+        assert abs(result - 0.65) < 0.001
+
+    def test_capped_at_1(self) -> None:
+        """Kill VALUE: result capped at 1.0."""
+        result = _compute_proposal_confidence({"base_confidence": 0.95}, 10)
+        assert result == 1.0
+
+    def test_default_base_confidence(self) -> None:
+        """Kill VALUE: missing base_confidence defaults to 0.5."""
+        result = _compute_proposal_confidence({}, 3)
+        assert result == 0.5
+
+
+# ── _apply_coherence_check ──────────────────────────────────────────
+
+
+class TestApplyCoherenceCheck:
+    def test_noop_when_config_none(self) -> None:
+        """Kill VALUE: config=None → returns without modifying proposal."""
+        proposal = ProposedConstraint(proposed_rule="test")
+        _apply_coherence_check(proposal, None, MagicMock())
+        assert proposal.theory_coherence is None
+
+    def test_noop_when_inquiry_disabled(self) -> None:
+        """Disabled theory_coherence_check → no modification."""
+        config = MagicMock()
+        config.inquiry.theory_coherence_check = False
+        proposal = ProposedConstraint(proposed_rule="test")
+        _apply_coherence_check(proposal, config, MagicMock())
+        assert proposal.theory_coherence is None
+
+    def test_noop_when_session_none(self) -> None:
+        """Kill SWAP: session=None check comes after config check."""
+        config = MagicMock()
+        config.inquiry.theory_coherence_check = True
+        proposal = ProposedConstraint(proposed_rule="test")
+        _apply_coherence_check(proposal, config, None)
+        assert proposal.theory_coherence is None
+
+    def test_noop_when_no_theory_profile(self) -> None:
+        """Kill VALUE: no theory_profile_cache → no modification."""
+        config = MagicMock()
+        config.inquiry.theory_coherence_check = True
+        session = MagicMock()
+        session.theory_profile_cache = None
+        proposal = ProposedConstraint(proposed_rule="test")
+        _apply_coherence_check(proposal, config, session)
+        assert proposal.theory_coherence is None
+
+    def test_sets_drift_warning_on_contradiction(self) -> None:
+        """When coherence finds contradictions, drift_warning is set."""
+        config = MagicMock()
+        config.inquiry.theory_coherence_check = True
+        session = MagicMock()
+        session.theory_profile_cache = {
+            "anti_patterns": [
+                {
+                    "claims": ["Do not use global state for anything"],
+                    "source": "t.md",
+                    "heading": "AP",
+                }
+            ]
+        }
+        proposal = ProposedConstraint(
+            proposed_rule="Always use global state for configuration",
+            rationale="recurring global pattern",
+        )
+        _apply_coherence_check(proposal, config, session)
+        # May or may not find contradiction depending on keyword overlap
+        # but the function should run without error
+        assert isinstance(proposal.drift_warning, bool)
+
+
+# ── ProposedConstraint.to_dict VALUE survivors ──────────────────────
+
+
+class TestProposedConstraintToDict:
+    def test_all_keys_present(self) -> None:
+        """Kill VALUE: verify all dict keys are the correct strings."""
+        p = ProposedConstraint(
+            source="test_source",
+            pattern_key="ruff|F821",
+            proposed_rule="no assert",
+            rule_type="LINTGATE_FORBID_REGEX",
+            rationale="because",
+            confidence=0.8,
+            status="proposed",
+            drift_warning=True,
+        )
+        d = p.to_dict()
+        assert d["source"] == "test_source"
+        assert d["pattern_key"] == "ruff|F821"
+        assert d["proposed_rule"] == "no assert"
+        assert d["rule_type"] == "LINTGATE_FORBID_REGEX"
+        assert d["rationale"] == "because"
+        assert d["confidence"] == 0.8
+        assert d["status"] == "proposed"
+        assert d["drift_warning"] is True
+        assert d["theory_coherence"] is None

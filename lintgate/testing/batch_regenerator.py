@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from lintgate.testing.characterization import GoldenCapture
     from lintgate.testing.oracle_light import ExecutableProperty
+    from lintgate.testing.oracle_types import OracleRequest
 
 from .batch_regen_utils import (  # noqa: F401
     _build_function_section,
@@ -57,6 +58,7 @@ class GeneratedFile:
     functions_covered: int
     enrichment_sources: list[str] = field(default_factory=list)
     manual_contract_candidates: list[str] = field(default_factory=list)
+    oracle_requests: list[OracleRequest] = field(default_factory=list)
 
 
 class BatchRegenerator:
@@ -93,69 +95,7 @@ class BatchRegenerator:
         manual_contract_candidates: list[str] = []
 
         for func in functions:
-            func_key = func.get("function_key", "")
-            func_name = func_key.rsplit("::", 1)[-1] if "::" in func_key else func_key
-            enrichment = FunctionEnrichment(
-                function_key=func_key,
-                function_name=func_name,
-                func_node=self._resolve_func_node(rel_file, func_name),
-            )
-
-            # Lens 2: Input inference from call sites
-            inputs = self._infer_inputs(rel_file, func_name)
-            if inputs:
-                enrichment.inputs = inputs
-                if "inputs" not in sources:
-                    sources.append("inputs")
-
-            # Lens 3: Mutation prescriptions for surviving categories
-            prescriptions = self._get_prescriptions(func_key)
-            if prescriptions:
-                enrichment.prescriptions = prescriptions
-                if "mutation" not in sources:
-                    sources.append("mutation")
-
-            # Lens 4: Oracle-light executable properties from survivors
-            exec_props = self._get_executable_properties(
-                rel_file,
-                func_key,
-                func_name,
-                enrichment.inputs,
-            )
-            if exec_props:
-                enrichment.executable_properties = exec_props
-                if "oracle_light" not in sources:
-                    sources.append("oracle_light")
-
-            # Lens 5: Parametric golden capture with provenance
-            is_pure = self._check_purity(rel_file, func_name)
-            capture_inputs = enrichment.inputs if enrichment.inputs else []
-            if capture_inputs or is_pure:
-                golden_code, golden_caps = self._golden_capture(
-                    rel_file,
-                    func_key,
-                    func_name,
-                    capture_inputs,
-                )
-                if golden_code:
-                    enrichment.characterization = golden_code
-                    if "golden_capture" not in sources:
-                        sources.append("golden_capture")
-                if golden_caps:
-                    enrichment.golden_captures = golden_caps
-
-            # Lens 6: Raw characterization fallback
-            # Runs when: (a) nothing else exists, or (b) pure function with
-            # no golden capture yet (supplements prescriptions/exec_props)
-            if not enrichment.characterization and (
-                (not inputs and not prescriptions and not exec_props) or is_pure
-            ):
-                char_code = self._characterize(rel_file, func_name)
-                if char_code:
-                    enrichment.characterization = char_code
-                    if "characterize" not in sources:
-                        sources.append("characterize")
-
+            enrichment = self._enrich_single_function(rel_file, func, sources)
             enrichments.append(enrichment)
 
         # Lens 7: Round-trip pair detection for serialize/deserialize pairs
@@ -190,12 +130,45 @@ class BatchRegenerator:
         # Lens 8: Materialize VALUE oracles from corroborated golden captures
         _materialize_value_oracles(enrichments)
 
+        # Collect oracle requests from unsatisfied needs_oracle properties
+        from lintgate.testing.oracle_types import OracleRequest
+
+        oracle_requests: list[OracleRequest] = []
+        for enr in enrichments:
+            for prop in enr.executable_properties:
+                if getattr(prop, "needs_oracle", False):
+                    oracle_requests.append(
+                        OracleRequest(
+                            function_key=enr.function_key,
+                            category=getattr(prop, "category", "VALUE"),
+                            mutation_diff=getattr(prop, "mutant_id", ""),
+                            required_oracle_type=(
+                                "value"
+                                if getattr(prop, "category", "") == "VALUE"
+                                else "boundary"
+                            ),
+                        )
+                    )
+
         content, manual_contract_candidates = _merge_enrichments(
             skeleton,
             enrichments,
             self.project_root,
             target,
         )
+
+        # Unify manual_contract_candidates as oracle requests
+        for mc_key in manual_contract_candidates:
+            if not any(r.function_key == mc_key for r in oracle_requests):
+                oracle_requests.append(
+                    OracleRequest(
+                        function_key=mc_key,
+                        category="VALUE",
+                        required_oracle_type="value",
+                        context={"source": "manual_contract_reroute"},
+                    )
+                )
+
         return GeneratedFile(
             source_file=rel_file,
             target_test_file=target,
@@ -203,7 +176,78 @@ class BatchRegenerator:
             functions_covered=len(enrichments),
             enrichment_sources=sources,
             manual_contract_candidates=manual_contract_candidates,
+            oracle_requests=oracle_requests,
         )
+
+    def _enrich_single_function(
+        self,
+        rel_file: str,
+        func: dict,
+        sources: list[str],
+    ) -> FunctionEnrichment:
+        """Lens 2-6: Single function enrichment."""
+        func_key = func.get("function_key", "")
+        func_name = func_key.rsplit("::", 1)[-1] if "::" in func_key else func_key
+        enrichment = FunctionEnrichment(
+            function_key=func_key,
+            function_name=func_name,
+            func_node=self._resolve_func_node(rel_file, func_name),
+        )
+
+        # Lens 2: Input inference from call sites
+        inputs = self._infer_inputs(rel_file, func_name)
+        if inputs:
+            enrichment.inputs = inputs
+            if "inputs" not in sources:
+                sources.append("inputs")
+
+        # Lens 3: Mutation prescriptions for surviving categories
+        prescriptions = self._get_prescriptions(func_key)
+        if prescriptions:
+            enrichment.prescriptions = prescriptions
+            if "mutation" not in sources:
+                sources.append("mutation")
+
+        # Lens 4: Oracle-light executable properties from survivors
+        exec_props = self._get_executable_properties(
+            rel_file,
+            func_key,
+            func_name,
+            enrichment.inputs,
+        )
+        if exec_props:
+            enrichment.executable_properties = exec_props
+            if "oracle_light" not in sources:
+                sources.append("oracle_light")
+
+        # Lens 5: Parametric golden capture with provenance
+        is_pure = self._check_purity(rel_file, func_name)
+        capture_inputs = enrichment.inputs if enrichment.inputs else []
+        if capture_inputs or is_pure:
+            golden_code, golden_caps = self._golden_capture(
+                rel_file,
+                func_key,
+                func_name,
+                capture_inputs,
+            )
+            if golden_code:
+                enrichment.characterization = golden_code
+                if "golden_capture" not in sources:
+                    sources.append("golden_capture")
+            if golden_caps:
+                enrichment.golden_captures = golden_caps
+
+        # Lens 6: Raw characterization fallback
+        if not enrichment.characterization and (
+            (not inputs and not prescriptions and not exec_props) or is_pure
+        ):
+            char_code = self._characterize(rel_file, func_name)
+            if char_code:
+                enrichment.characterization = char_code
+                if "characterize" not in sources:
+                    sources.append("characterize")
+
+        return enrichment
 
     def _generate_skeleton(self, source_file: str) -> str:
         """Lens 1: File-level test skeleton."""
@@ -309,7 +353,9 @@ class BatchRegenerator:
         """Capture golden values from call sites."""
         from lintgate.testing.characterization import capture_golden
 
-        return capture_golden(module_path, func_name, call_site_inputs)
+        return capture_golden(
+            module_path, func_name, call_site_inputs, project_root=self.project_root,
+        )
 
     def _corroborate(
         self, captures: list, rel_file: str, func_key: str, func_name: str,

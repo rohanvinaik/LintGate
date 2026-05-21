@@ -173,10 +173,37 @@ def _build_next_actions(
     config_status: dict[str, Any],
     venv_python_after: str | None,
     tool_gaps_after: dict[str, Any],
+    workflow_mode: str | None = None,
 ) -> list[dict[str, str]]:
     """Build the next_actions list for getting_started output."""
+    # Surgical mode: minimal next_actions — just the edit loop
+    if workflow_mode == "surgical":
+        return [
+            {
+                "tool": "declare_workflow",
+                "reason": "Activate surgical mode for silent-on-clean editing",
+                "example": f'declare_workflow(path="{project_root}", workflow="surgical")',
+            },
+            {
+                "tool": "lint_files",
+                "reason": "Your whole loop: Read → Edit → lint_files. That's it.",
+                "example": f'lint_files(files=["<your-file>"], scope="surgical")',
+            },
+        ]
+
     ot = _ot()
     actions: list[dict[str, str]] = []
+
+    # Workflow activation if intent mapped to a mode
+    if workflow_mode:
+        actions.append(
+            {
+                "tool": "declare_workflow",
+                "reason": f"Activate {workflow_mode} mode",
+                "example": f'declare_workflow(path="{project_root}", workflow="{workflow_mode}")',
+            }
+        )
+
     config_enabled = config_status.get("config_state") == "config_enabled"
     reason_suffix = "" if config_enabled else " (works without config)"
     actions.append(
@@ -271,9 +298,22 @@ def _impl_getting_started(
     tool_gaps_after = ot._collect_external_tool_gaps(project_root)
     venv_python_after = ot._project_venv_python(project_root)
 
-    from lintgate.orchestration.workflows import get_workflow_for_intent
+    from lintgate.orchestration.workflows import get_workflow_for_intent, intent_to_workflow_mode
 
     custom_workflow = get_workflow_for_intent(intent)
+
+    # Route intent to workflow mode + render guide
+    workflow_mode = intent_to_workflow_mode(intent)
+    workflow_guide = None
+    if workflow_mode:
+        try:
+            from lintgate.workflow_guides import MODE_SPECS, render_guide
+
+            spec = MODE_SPECS.get(workflow_mode)
+            if spec:
+                workflow_guide = render_guide(spec, project_root)
+        except Exception:
+            pass
 
     output: dict[str, Any] = {
         "project": project_root,
@@ -281,6 +321,8 @@ def _impl_getting_started(
         "essential_tools": _ESSENTIAL_TOOLS,
         "first_session_workflow": custom_workflow if custom_workflow else _DEFAULT_WORKFLOW,
         "intent": intent,
+        "workflow_mode": workflow_mode,
+        "workflow_guide": workflow_guide,
         "all_tools_count": 49,
         "startup_setup": {
             "auto_setup_requested": auto_setup,
@@ -295,7 +337,8 @@ def _impl_getting_started(
             "actions_applied": startup_actions,
         },
         "next_actions": _build_next_actions(
-            project_root, config_status, venv_python_after, tool_gaps_after
+            project_root, config_status, venv_python_after, tool_gaps_after,
+            workflow_mode=workflow_mode,
         ),
     }
 
@@ -310,68 +353,16 @@ def _impl_getting_started(
     return output
 
 
-_TOOL_APPLICABILITY_GUIDE = {
-    "controlplane_run": {
-        "purpose": "Comprehensive cross-dimensional project health check.",
-        "cadence": "Every 3-5 tool uses, or when starting a new session/feature.",
-        "triggers": [
-            "Session start",
-            "Major refactor complete",
-            "Before pushing code",
-            "Ship gate parity mismatch",
-        ],
-        "anti_patterns": [
-            "Running in the middle of a tight file edit cycle",
-            "Running multiple times without changing code",
-        ],
-    },
-    "lint_files": {
-        "purpose": "Targeted static analysis on specific files.",
-        "cadence": "After every edit or small batch of edits.",
-        "triggers": ["File modifications", "Pre-commit check on changed files"],
-        "anti_patterns": ["Using lint_project when only a few files changed"],
-    },
-    "lint_project": {
-        "purpose": "Full repository static analysis.",
-        "cadence": "Rarely, mostly via controlplane_run.",
-        "triggers": ["CI/CD pipelines", "Global configuration changes"],
-        "anti_patterns": ["Iterative debugging (use lint_files instead)"],
-    },
-    "lint_fix": {
-        "purpose": "Auto-apply safe linting and formatting fixes.",
-        "cadence": "When tools report auto-fixable errors.",
-        "triggers": [
-            "Ruff or Black complain about formatting",
-            "Imports need sorting",
-        ],
-        "anti_patterns": [
-            "Running blindly without checking git status if working outside of a safe environment"
-        ],
-    },
-    "scaffold_config": {
-        "purpose": "Generate or repair lintgate.yaml for the project.",
-        "cadence": "Once per project setup.",
-        "triggers": ["No config exists", "Need to override specific behaviors"],
-        "anti_patterns": [
-            "Running continuously",
-            "Overwriting manually tuned configs without caution",
-        ],
-    },
-    "getting_started": {
-        "purpose": "Onboarding entry point for LintGate.",
-        "cadence": "Onboarding only.",
-        "triggers": ["First time using LintGate in a repository"],
-        "anti_patterns": ["Running during regular development workflows"],
-    },
-}
-
-
 def _impl_tool_applicability_guide(helpers: dict) -> str:
-    """Core logic for the tool_applicability_guide MCP tool."""
-    json_dumps = helpers.get("_json_dumps")
-    if json_dumps:
-        return json_dumps(_TOOL_APPLICABILITY_GUIDE)  # type: ignore[no-any-return]
-    return _safe_json(_TOOL_APPLICABILITY_GUIDE)
+    """Core logic: render task-shape index from workflow guide specs."""
+    try:
+        from lintgate.workflow_guides import render_all_guides_summary
+
+        guide_text = render_all_guides_summary()
+    except Exception:
+        guide_text = "Workflow guides unavailable."
+
+    return _safe_json({"guide": guide_text, "format": "task_shape_index"})
 
 
 def _impl_scaffold_config(helpers: dict, path: str, write: bool = False) -> str:

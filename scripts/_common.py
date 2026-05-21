@@ -11,7 +11,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 
 def validate_project_root(path: str, *, require_python: bool = False) -> str:
@@ -67,15 +67,33 @@ def resolve_files(files: list[str], project_root: str) -> tuple[list[str], list[
 
 
 def save_analysis(data: Any, tool_name: str, project_root: str, *, run_id: str = "") -> str:
-    """Write full analysis to .lintgate/analysis/<tool>/<id>.json. Returns filepath."""
+    """Write full analysis to .lintgate/analysis/<tool>/<id>.json. Returns filepath.
+
+    Falls back through (project_root, cwd, tempdir) to handle read-only project roots.
+    """
     if not project_root:
         project_root = os.getcwd()
-    analysis_dir = os.path.join(project_root, ".lintgate", "analysis", tool_name)
-    os.makedirs(analysis_dir, exist_ok=True)
     serialized = json.dumps(data, separators=(",", ":"), default=str)
     content_hash = hashlib.sha256(serialized.encode()).hexdigest()[:10]
     filename = f"{run_id}.json" if run_id else f"{content_hash}.json"
-    filepath = os.path.join(analysis_dir, filename)
+
+    for candidate_dir in [
+        os.path.join(project_root, ".lintgate", "analysis", tool_name),
+        os.path.join(os.getcwd(), ".lintgate", "analysis", tool_name),
+    ]:
+        try:
+            os.makedirs(candidate_dir, exist_ok=True)
+            filepath = os.path.join(candidate_dir, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(serialized)
+            return filepath
+        except OSError:
+            continue
+
+    import tempfile
+    fallback = os.path.join(tempfile.gettempdir(), "lintgate_analysis", tool_name)
+    os.makedirs(fallback, exist_ok=True)
+    filepath = os.path.join(fallback, filename)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(serialized)
     return filepath
@@ -109,7 +127,7 @@ def emit(
     print(json.dumps(response, separators=(",", ":"), default=str))
 
 
-def emit_error(message: str, *, exit_code: int = 1) -> None:
+def emit_error(message: str, *, exit_code: int = 1) -> "NoReturn":
     """Print an error JSON to stdout and exit."""
     print(json.dumps({"error": message}))
     sys.exit(exit_code)

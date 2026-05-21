@@ -247,7 +247,7 @@ class TestRegisterControlplaneToolClosures:
     """Lines 897, 916 (closure calls) and branch 809→812 (absolute path)."""
 
     def test_agent_feedback_closure_delegates(self):
-        """Line 897: controlplane_agent_feedback closure calls _impl."""
+        """Post Phase-2c: subprocess argv carries agent-feedback subcommand + flags."""
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
 
@@ -256,20 +256,20 @@ class TestRegisterControlplaneToolClosures:
         tools = register(mcp, _stub_helpers())
         feedback_fn = tools["controlplane_agent_feedback"]
 
-        with mock.patch(
-            "mcp_tools.controlplane_tools._impl_controlplane_agent_feedback",
-            return_value='{"ok": true}',
-        ) as mock_impl:
-            result = feedback_fn(
-                path="/tmp/proj",
-                run_id="r1",
-                disagreement="no",
-            )
-            mock_impl.assert_called_once()
-            assert result == '{"ok": true}'
+        proc = mock.MagicMock()
+        proc.stdout = '{"ok": true}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
+            result = feedback_fn(path="/tmp/proj", run_id="r1", disagreement="no")
+        argv = run.call_args[0][0]
+        assert "agent-feedback" in argv
+        assert "r1" in argv
+        assert "no" in argv
+        assert result == '{"ok": true}'
 
     def test_apply_repairs_closure_delegates(self):
-        """Line 916: controlplane_apply_repairs closure calls _impl."""
+        """Post Phase-2c: subprocess argv carries apply-repairs subcommand."""
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
 
@@ -278,16 +278,19 @@ class TestRegisterControlplaneToolClosures:
         tools = register(mcp, _stub_helpers())
         apply_fn = tools["controlplane_apply_repairs"]
 
-        with mock.patch(
-            "mcp_tools.controlplane_tools._impl_controlplane_apply_repairs",
-            return_value='{"applied": []}',
-        ) as mock_impl:
+        proc = mock.MagicMock()
+        proc.stdout = '{"applied": []}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
             result = apply_fn(path="/tmp/proj")
-            mock_impl.assert_called_once()
-            assert result == '{"applied": []}'
+        argv = run.call_args[0][0]
+        assert "apply-repairs" in argv
+        assert "/tmp/proj" in argv
+        assert result == '{"applied": []}'
 
     def test_test_skeleton_absolute_path(self):
-        """Branch 809→812: target_file is already absolute, skip join."""
+        """Post Phase-2c: absolute target_file passes through argv verbatim."""
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
 
@@ -296,19 +299,16 @@ class TestRegisterControlplaneToolClosures:
         tools = register(mcp, _stub_helpers())
         skel_fn = tools["controlplane_test_skeleton"]
 
-        with (
-            mock.patch(
-                "lintgate.controlplane.skeleton_generator.generate_test_skeleton",
-                return_value="def test_foo(): pass",
-            ),
-            mock.patch(
-                "lintgate.controlplane.skeleton_generator.generate_test_path",
-                return_value="/tmp/proj/tests/test_foo.py",
-            ),
-            mock.patch("os.path.exists", return_value=True),
-        ):
-            result = _load_tool_result(skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py"))
-            assert result["source_file"] == "/tmp/proj/foo.py"
+        proc = mock.MagicMock()
+        proc.stdout = '{"analysis_id":"x","summary":"s","file":"/tmp/x.json"}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
+            skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py")
+        argv = run.call_args[0][0]
+        assert "test-skeleton" in argv
+        assert "--target-file" in argv
+        assert "/tmp/proj/foo.py" in argv
 
 
 # ── onboarding_tools helpers ─────────────────────────────────────────

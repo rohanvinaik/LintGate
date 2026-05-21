@@ -12,11 +12,13 @@ from typing import Any, Literal
 CYCLE_SAME_FILE = "CYCLE_SAME_FILE"
 CYCLE_SAME_FINDING = "CYCLE_SAME_FINDING"
 CYCLE_REPLACE_FAIL = "CYCLE_REPLACE_FAIL"
+CYCLE_SAME_TOOL = "CYCLE_SAME_TOOL"
 
 # Heuristic Thresholds
 THRESHOLD_SAME_FILE_EDITS = 4
 THRESHOLD_SAME_FINDING = 3
 THRESHOLD_REPLACE_FAIL = 3
+THRESHOLD_SAME_TOOL_FAIL = 2  # After 2 consecutive failures of the same tool
 
 
 @dataclass
@@ -42,6 +44,13 @@ class EditCycleState:
     # Number of consecutive replace_file_content or multi_replace calls
     # that did not clear a specific error or failed due to syntax/indent
     consecutive_replace_failures: int = 0
+
+    # Per-tool consecutive failure tracking: tool_name -> consecutive error count
+    # Reset when the tool succeeds or a different tool is called
+    tool_failure_counts: dict[str, int] = field(default_factory=dict)
+
+    # Last tool that was called (for consecutive failure tracking)
+    last_tool_name: str = ""
 
     # Total number of cycles detected in this session so far
     total_detections: int = 0
@@ -110,6 +119,8 @@ def track_event(state: EditCycleState, event: dict[str, Any]) -> EditCycleState:
         file_edit_counts=state.file_edit_counts.copy(),
         finding_persistence=state.finding_persistence.copy(),
         consecutive_replace_failures=state.consecutive_replace_failures,
+        tool_failure_counts=state.tool_failure_counts.copy(),
+        last_tool_name=state.last_tool_name,
         total_detections=state.total_detections,
     )
 
@@ -118,7 +129,25 @@ def track_event(state: EditCycleState, event: dict[str, Any]) -> EditCycleState:
     elif tool_name == "controlplane_run":
         _track_controlplane_event(new_state, event)
 
+    # Per-tool consecutive failure tracking
+    _track_tool_failure(new_state, tool_name, event)
+
     return new_state
+
+
+def _track_tool_failure(state: EditCycleState, tool_name: str, event: dict[str, Any]) -> None:
+    """Track consecutive failures of the same tool for loop-breaker signal."""
+    status = event.get("status", "")
+    if tool_name == state.last_tool_name and status == "error":
+        state.tool_failure_counts[tool_name] = state.tool_failure_counts.get(tool_name, 0) + 1
+    elif tool_name == state.last_tool_name and status == "success":
+        state.tool_failure_counts.pop(tool_name, None)
+    elif tool_name != state.last_tool_name:
+        # Different tool called — reset the previous tool's streak
+        state.tool_failure_counts.pop(state.last_tool_name, None)
+        if status == "error":
+            state.tool_failure_counts[tool_name] = 1
+    state.last_tool_name = tool_name
 
 
 def detect_cycles(state: EditCycleState) -> list[CycleDetectionResult]:
@@ -156,6 +185,26 @@ def detect_cycles(state: EditCycleState) -> list[CycleDetectionResult]:
                 diagnostics={"consecutive_failures": state.consecutive_replace_failures},
             )
         )
+
+    # 4. Same-tool consecutive failures (loop breaker)
+    for tool_name, count in state.tool_failure_counts.items():
+        if count >= THRESHOLD_SAME_TOOL_FAIL:
+            _TOOL_ALTERNATIVES = {
+                "query_analysis": "Use Read on the analysis file directly, or try a different path/section",
+                "refactor_extract_method": "Use manual Edit to perform the extraction, or adjust the line range",
+            }
+            alt = _TOOL_ALTERNATIVES.get(tool_name, f"Try a different tool or approach instead of {tool_name}")
+            results.append(
+                CycleDetectionResult(
+                    cycle_detected=True,
+                    reason=CYCLE_SAME_TOOL,
+                    diagnostics={
+                        "tool": tool_name,
+                        "consecutive_failures": count,
+                        "suggestion": alt,
+                    },
+                )
+            )
 
     # Calculate deterministic escalation level
     # If the user has hit detections multiple times in the same session, we escalate.

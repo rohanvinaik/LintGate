@@ -1,15 +1,53 @@
-"""Dependency health tools — dep_health_check, dep_sync, toolchain_health_check."""
+"""Dependency health tools — thin subprocess wrappers around scripts/dep_check.py.
+
+All computation lives in scripts/dep_check.py. This module registers MCP
+tools that invoke the script via subprocess and relay its stdout.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+import json
+import os
+import subprocess
+import sys
 
-from mcp_tools._disk_helpers import _safe_json, tool_response
+_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts",
+    "dep_check.py",
+)
+
+
+def _run_script(path: str, *args: str) -> str:
+    """Invoke scripts/dep_check.py as a subprocess and return its stdout.
+
+    The script already emits a slim JSON envelope — we relay verbatim.
+    On non-zero exit or non-JSON stdout, returns an error envelope.
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, _SCRIPT, path, *args],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "dep_check subprocess timed out"})
+    except OSError as exc:
+        return json.dumps({"error": f"dep_check subprocess failed: {exc}"})
+
+    stdout = (proc.stdout or "").strip()
+    if proc.returncode != 0 and not stdout:
+        return json.dumps({
+            "error": f"dep_check exit {proc.returncode}",
+            "stderr": (proc.stderr or "").strip()[-500:],
+        })
+    return stdout or json.dumps({"error": "dep_check produced no output"})
 
 
 def register(mcp, helpers):
     """Register dependency tools on the shared MCP instance."""
+    del helpers  # unused — validation happens in the script
 
     @mcp.tool()
     def dep_health_check(path: str) -> str:
@@ -21,14 +59,7 @@ def register(mcp, helpers):
 
         Returns a structured report with issues and suggestions.
         """
-        from lintgate.dependency_health import full_dependency_health
-
-        project_root = helpers["_validate_project_root"](path)
-        result = full_dependency_health(project_root)
-        issues = len(result.get("issues", []))
-        vulns = result.get("summary", {}).get("vulnerabilities", 0)
-        summary = f"Dependencies: {issues} issues. {vulns} CVEs."
-        return tool_response(result, "dep_health_check", project_root, summary)
+        return _run_script(path, "health")
 
     @mcp.tool()
     def dep_sync(
@@ -44,84 +75,12 @@ def register(mcp, helpers):
 
         Returns sync status and any actions taken.
         """
-        import shutil
-        import subprocess
-
-        project_root = helpers["_validate_project_root"](path)
-        root = Path(project_root)
-        result: dict[str, Any] = {"project": project_root, "actions": []}
-
-        # Check current state
-        from lintgate.dependency_health import full_dependency_health
-
-        health = full_dependency_health(project_root)
-        result["health_before"] = health["summary"]
-
-        uv_path = shutil.which("uv")
-        if not uv_path:
-            result["error"] = (
-                "uv not found in PATH — install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
-            )
-            return _safe_json(result)
-
+        args = ["sync"]
         if create_venv:
-            venv_path = root / ".venv"
-            if venv_path.exists():
-                result["actions"].append(
-                    {
-                        "action": "create_venv",
-                        "status": "skipped",
-                        "reason": ".venv already exists",
-                    }
-                )
-            else:
-                try:
-                    proc = subprocess.run(
-                        [uv_path, "venv", ".venv"],
-                        capture_output=True,
-                        text=True,
-                        timeout=60,
-                        cwd=project_root,
-                    )
-                    result["actions"].append(
-                        {
-                            "action": "create_venv",
-                            "status": "ok" if proc.returncode == 0 else "error",
-                            "returncode": proc.returncode,
-                            "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
-                        }
-                    )
-                except subprocess.TimeoutExpired:
-                    result["actions"].append({"action": "create_venv", "status": "timeout"})
-
+            args.append("--create-venv")
         if lock:
-            try:
-                proc = subprocess.run(
-                    [uv_path, "lock"],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    cwd=project_root,
-                )
-                result["actions"].append(
-                    {
-                        "action": "lock",
-                        "status": "ok" if proc.returncode == 0 else "error",
-                        "returncode": proc.returncode,
-                        "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
-                    }
-                )
-            except subprocess.TimeoutExpired:
-                result["actions"].append({"action": "lock", "status": "timeout"})
-
-        # Re-check health after actions
-        if create_venv or lock:
-            health_after = full_dependency_health(project_root)
-            result["health_after"] = health_after["summary"]
-
-        changes = len(result.get("actions", []))
-        summary = f"Dependency sync: {changes} actions taken."
-        return tool_response(result, "dep_sync", project_root, summary)
+            args.append("--lock")
+        return _run_script(path, *args)
 
     @mcp.tool()
     def toolchain_health_check(
@@ -142,44 +101,10 @@ def register(mcp, helpers):
             path: Project root path.
             install_missing: Auto-install missing tools marked auto_install=true.
         """
-        from lintgate.tool_manifest import (
-            full_toolchain_report,
-            install_missing_tools,
-        )
-
-        project_root = helpers["_validate_project_root"](path)
-        report = full_toolchain_report(project_root)
-
-        output: dict[str, Any] = {
-            "summary": report.summary,
-            "all_required_met": report.all_required_met,
-            "tools": [],
-            "drift_warnings": report.drift_warnings,
-        }
-
-        for s in report.tools:
-            tool_info: dict[str, Any] = {
-                "id": s.id,
-                "installed": s.installed,
-                "required": s.requirement.required,
-                "kind": s.requirement.kind,
-            }
-            if s.installed:
-                tool_info["version"] = s.version
-                tool_info["location"] = s.location
-            else:
-                tool_info["install_hint"] = s.install_hint
-            output["tools"].append(tool_info)
-
+        args = ["toolchain"]
         if install_missing:
-            results = install_missing_tools(project_root, report.tools, auto_only=True)
-            output["install_results"] = results
-
-        n_tools = len(output.get("tools", []))
-        met = "all met" if output.get("all_required_met") else "gaps found"
-        drift = len(output.get("drift_warnings", []))
-        summary = f"Toolchain: {n_tools} tools checked, {met}. {drift} drift warnings."
-        return tool_response(output, "toolchain_health_check", project_root, summary)
+            args.append("--install-missing")
+        return _run_script(path, *args)
 
     return {
         "dep_health_check": dep_health_check,

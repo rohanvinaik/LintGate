@@ -108,6 +108,24 @@ def register(mcp, helpers):
         # Decision-relevant details inline
         if result.errors:
             summary_msg = f"Extract failed: {'; '.join(result.errors[:3])}"
+            # Parse nearest-function suggestion from error message to build corrected call
+            for err in result.errors:
+                if "Nearest function:" in err and "lines" in err:
+                    import re
+                    m = re.search(r"lines (\d+)-(\d+)", err)
+                    if m:
+                        fn_start, fn_end = int(m.group(1)), int(m.group(2))
+                        output["suggested_call"] = {
+                            "tool": "refactor_extract_method",
+                            "args": {
+                                "path": path, "file": file,
+                                "start_line": fn_start + 1,
+                                "end_line": fn_end,
+                                "helper_name": helper_name,
+                            },
+                            "reason": f"Adjusted range to fit inside the nearest function (lines {fn_start}-{fn_end})",
+                        }
+                        break
         elif dry_run:
             inputs_str = ", ".join(result.inputs) if result.inputs else "none"
             outputs_str = ", ".join(result.outputs) if result.outputs else "none"

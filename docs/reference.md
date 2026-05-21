@@ -4,7 +4,7 @@ Technical reference for LintGate's 125 MCP tools, configuration, and project str
 
 ---
 
-## MCP Tools (125)
+## MCP Tools (134)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -18,7 +18,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
 | `setup_github_quality` | Generate Code Climate/SonarCloud configs, SonarCloud + qlty + security-lite workflows, README badges, .gitignore augmentation |
 | `sync_ci_config` | Reconcile pyproject.toml, sonar-project.properties, and lintgate.yaml — propagate test/generated/pure-function classifications into CI config |
-| `tool_applicability_guide` | Definitive guide on when and how to use each LintGate MCP tool |
+| `tool_applicability_guide` | Task-shape workflow guide — 5 modes organized by situation |
+| `implementation_guide` | Mid-session re-orientation — mode-specific edit loop and signal policy |
 | `propose_exemption` | Propose an exemption for a structural finding — approved or rejected based on rationale and evidence anchors |
 | `query_analysis` | Query a specific section of a saved analysis by JSON dot-path — surgical access to large results without loading the full file |
 | `after_edit` | Hook equivalent: run after editing files. Fast lint check on changed files + session state update (replaces PostToolUse:Edit hook) |
@@ -90,6 +91,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | Tool               | Purpose                                                             |
 | ------------------ | ------------------------------------------------------------------- |
 | `declare_mode`     | Self-declare "habit" or "standard" mode (immediate, no sustain wait)|
+| `declare_workflow` | Set session workflow mode (surgical/refactor/greenfield/explore/debug_spiral)|
 | `habit_status`     | Read-only status: habit score, signals, active files, token state   |
 | `habit_compact`    | Trigger compaction NOW, returns structured Habit State Snapshot     |
 | `habit_configure`  | Runtime threshold adjustment (session-scoped, clamped to safe ranges)|
@@ -206,6 +208,13 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `prescriptive_spec_verify`  | Verify code refinement against its PrescriptiveSpec. Accepts `target` as primary identity (derives file/function). Returns structural (AST) + behavioral (mutation) evidence. Tightened next_actions: pass→`spec_gate_check`, structural_fail→edit code, behavioral_fail→`platonic_converge`, unknown→`mutation_run_sampling`. Updates workflow record with evidence. |
 | `prescriptive_spec_status`  | Show prescriptive coverage, sigma convergence, problem class distribution |
 | `prescriptive_code_scaffold` | Generate an implementation skeleton from the compiled PrescriptiveSpec — signature, guards, branches, return shape. You fill in only the computation |
+
+### Autonomous Code Resolution
+
+| Tool             | Purpose                                                                 |
+| ---------------- | ----------------------------------------------------------------------- |
+| `auto_resolve`   | Two-phase code resolution. **Phase 1** (no `proposed_body`): tries cache + synthesis gate, returns `generation_prompt` if deterministic paths exhausted. **Phase 2** (with `proposed_body`): verifies via AST + structural checks + witness execution, caches on pass, returns `retry_constraints` on fail. The calling LLM is the stochastic engine — the tool is pure CPU. |
+| `auto_sweep`     | Resolve all composed specs in one pass via cache + synthesis gate. Returns manifest with deterministic resolutions done and `needs_generation` items for the calling LLM to fill via `auto_resolve(proposed_body=...)`. |
 
 ### Offline Analysis
 

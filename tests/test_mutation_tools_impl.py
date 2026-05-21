@@ -14,10 +14,10 @@ from mcp_tools._mutation_tools_impl import (
     impl_decompose,
     impl_get_state,
     impl_prescribe,
-    impl_prescribe_tests,
     impl_run_full,
     impl_run_sampling,
 )
+from mcp_tools._mutation_testgen_impl import impl_prescribe_tests
 
 
 def _load_tool_result(json_str):
@@ -361,8 +361,11 @@ def test_decompose_no_candidates(mock_cache, mock_iter):
     helpers = _make_helpers()
     result_raw = impl_decompose(helpers, "/test", "foo.py", None, "suggest")
     result = _load_tool_result(result_raw)
-    assert result["mode"] == "suggest"
-    assert result["candidates"] == []
+    assert result["status"] == "NEEDS_PROFILE"
+    # next_actions live in the slim envelope, not on-disk data
+    import json as _j
+    envelope = _j.loads(result_raw)
+    assert any(a["tool"] == "improve_tests" for a in envelope.get("next_actions", []))
 
 
 @patch("mcp_tools._mutation_tools_impl.iter_cached_states")
@@ -409,19 +412,24 @@ def test_decompose_single_survivor_not_candidate(mock_cache, mock_iter):
 # ── impl_prescribe_tests ──────────────────────────────────────────
 
 
-@patch("mcp_tools._mutation_tools_impl.iter_cached_states", return_value=[])
-@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
+@patch("mcp_tools._mutation_testgen_impl.iter_cached_states", return_value=[])
+@patch("mcp_tools._mutation_testgen_impl.get_cache_dir", return_value=Path("/tmp/c"))
 def test_prescribe_tests_no_data(mock_cache, mock_iter):
     helpers = _make_helpers()
     result_raw = impl_prescribe_tests(helpers, "/test", "foo.py", None)
     result = _load_tool_result(result_raw)
-    assert result["skeletons"] == []
+    assert result["status"] == "NEEDS_PROFILE"
+    # next_actions live in the slim envelope, not on-disk data
+    import json as _j
+    envelope = _j.loads(result_raw)
+    assert any(a["tool"] == "improve_tests" for a in envelope.get("next_actions", []))
 
 
-@patch("mcp_tools._mutation_tools_impl.generate_test_skeleton")
-@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
-@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
-def test_prescribe_tests_with_survivors(mock_cache, mock_iter, mock_skel):
+@patch("mcp_tools._mutation_testgen_impl._write_skeleton_file", return_value="")
+@patch("mcp_tools._mutation_testgen_impl.generate_test_skeleton")
+@patch("mcp_tools._mutation_testgen_impl.iter_cached_states")
+@patch("mcp_tools._mutation_testgen_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_with_survivors(mock_cache, mock_iter, mock_skel, _mock_write):
     mock_iter.return_value = [
         {
             "function_key": "m.py::fn",
@@ -445,11 +453,12 @@ def test_prescribe_tests_with_survivors(mock_cache, mock_iter, mock_skel):
     assert "next_actions" in result
 
 
-@patch("mcp_tools._mutation_tools_impl._load_golden_captures")
-@patch("mcp_tools._mutation_tools_impl._resolve_func_node", return_value=None)
-@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
-@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
-def test_prescribe_tests_fills_value_from_golden(mock_cache, mock_iter, mock_resolve, mock_golden):
+@patch("mcp_tools._mutation_testgen_impl._write_skeleton_file", return_value="")
+@patch("mcp_tools._mutation_testgen_impl._load_golden_captures")
+@patch("mcp_tools._mutation_testgen_impl._resolve_func_node", return_value=None)
+@patch("mcp_tools._mutation_testgen_impl.iter_cached_states")
+@patch("mcp_tools._mutation_testgen_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_fills_value_from_golden(mock_cache, mock_iter, mock_resolve, mock_golden, _mock_write):
     del mock_cache, mock_resolve
     mock_iter.return_value = [
         {
@@ -486,11 +495,12 @@ def test_prescribe_tests_fills_value_from_golden(mock_cache, mock_iter, mock_res
     assert "== '42'" in skeleton["test_code"]
 
 
-@patch("mcp_tools._mutation_tools_impl._load_golden_captures")
-@patch("mcp_tools._mutation_tools_impl._resolve_func_node", return_value=None)
-@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
-@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
-def test_prescribe_tests_golden_capture_flag(mock_cache, mock_iter, mock_resolve, mock_golden):
+@patch("mcp_tools._mutation_testgen_impl._write_skeleton_file", return_value="")
+@patch("mcp_tools._mutation_testgen_impl._load_golden_captures")
+@patch("mcp_tools._mutation_testgen_impl._resolve_func_node", return_value=None)
+@patch("mcp_tools._mutation_testgen_impl.iter_cached_states")
+@patch("mcp_tools._mutation_testgen_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_golden_capture_flag(mock_cache, mock_iter, mock_resolve, mock_golden, _mock_write):
     """Verify golden_capture_used is True when golden capture is used, False otherwise."""
     del mock_cache, mock_resolve
     mock_iter.return_value = [
@@ -524,10 +534,11 @@ def test_prescribe_tests_golden_capture_flag(mock_cache, mock_iter, mock_resolve
     assert by_cat["SWAP"]["golden_capture_used"] is False
 
 
-@patch("mcp_tools._mutation_tools_impl.generate_test_skeleton")
-@patch("mcp_tools._mutation_tools_impl.iter_cached_states")
-@patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=Path("/tmp/c"))
-def test_prescribe_tests_generic_skeleton_golden_flag(mock_cache, mock_iter, mock_skel):
+@patch("mcp_tools._mutation_testgen_impl._write_skeleton_file", return_value="")
+@patch("mcp_tools._mutation_testgen_impl.generate_test_skeleton")
+@patch("mcp_tools._mutation_testgen_impl.iter_cached_states")
+@patch("mcp_tools._mutation_testgen_impl.get_cache_dir", return_value=Path("/tmp/c"))
+def test_prescribe_tests_generic_skeleton_golden_flag(mock_cache, mock_iter, mock_skel, _mock_write):
     """Verify golden_capture_used=False on generic (non-survivor) skeletons."""
     mock_iter.return_value = [
         {
@@ -571,7 +582,8 @@ def test_clear_state_clears_files(tmp_path):
         helpers = _make_helpers()
         result_raw = impl_clear_state(helpers, "/test", None)
         result = _load_tool_result(result_raw)
-    assert result["cleared"] == 2
+    assert result["cleared"]["mutation_cache"] == 2
+    assert result["cleared"]["total"] >= 2
     assert (cache_dir / "scheduler_state.json").exists() is True
 
 
@@ -585,7 +597,7 @@ def test_clear_state_filters_by_file(tmp_path):
         helpers = _make_helpers()
         result_raw = impl_clear_state(helpers, "/test", "mod.py")
         result = _load_tool_result(result_raw)
-    assert result["cleared"] == 1
+    assert result["cleared"]["mutation_cache"] == 1
     assert (cache_dir / "func_b.json").exists() is True
 
 
@@ -598,4 +610,4 @@ def test_clear_state_handles_corrupt_json(tmp_path):
         helpers = _make_helpers()
         result_raw = impl_clear_state(helpers, "/test", "something.py")
         result = _load_tool_result(result_raw)
-    assert result["cleared"] == 1
+    assert result["cleared"]["mutation_cache"] == 1

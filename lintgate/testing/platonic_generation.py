@@ -105,6 +105,9 @@ def generate_tests(
             "sources": result.enrichment_sources,
             "manual_contract_candidates": result.manual_contract_candidates,
             "generated_path": result.target_test_file,
+            "oracle_requests": [
+                r.to_dict() for r in getattr(result, "oracle_requests", [])
+            ],
         }
 
         if staging_dir is not None:

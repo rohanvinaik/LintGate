@@ -104,6 +104,18 @@ class TestTypeValidation:
             assert result[7] == {"approach_cycle": 3}
 
 
+class TestKeySpecificity:
+    def test_token_tracker_key_is_specific(self):
+        """Kill VALUE_0: extras.get('token_tracker', {}) must read 'token_tracker' key specifically."""
+        extras = {"token_tracker": {"estimated_tokens_used": 9999, "char_count_total": 42}}
+        with _mock_loaders(extras)[0], _mock_loaders(extras)[1]:
+            result = _load_standalone_state("/tmp")
+            tracker = result[3]
+            assert isinstance(tracker, TokenTrackerState)
+            assert tracker.estimated_tokens_used == 9999
+            assert tracker.char_count_total == 42
+
+
 class TestExtrasPassthrough:
     def test_extras_returned_unchanged(self):
         """The extras dict itself is returned as result[2]."""

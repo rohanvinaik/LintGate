@@ -355,8 +355,8 @@ class TestCollectPendingRepairs:
     def test_filters_by_action_ids(self):
         session = self._make_session(["a1", "a2"])
         repairs = [
-            {"action_id": "a1", "safe": True},
-            {"action_id": "a2", "safe": True},
+            {"action_id": "a1", "safe": True, "kind": "command", "payload": {"command": "fix a"}},
+            {"action_id": "a2", "safe": True, "kind": "command", "payload": {"command": "fix b"}},
         ]
         with mock.patch(
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
@@ -370,8 +370,8 @@ class TestCollectPendingRepairs:
     def test_filters_safe_only(self):
         session = self._make_session(["a1", "a2"])
         repairs = [
-            {"action_id": "a1", "safe": True},
-            {"action_id": "a2", "safe": False},
+            {"action_id": "a1", "safe": True, "kind": "command", "payload": {"command": "fix a"}},
+            {"action_id": "a2", "safe": False, "kind": "command", "payload": {"command": "fix b"}},
         ]
         with mock.patch(
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
@@ -384,7 +384,7 @@ class TestCollectPendingRepairs:
 
     def test_skips_non_pending(self):
         session = self._make_session(["a1"], repair_outcomes={"a1": "applied"})
-        repairs = [{"action_id": "a1", "safe": True}]
+        repairs = [{"action_id": "a1", "safe": True, "kind": "command", "payload": {"command": "fix"}}]
         with mock.patch(
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
             return_value=repairs,
@@ -397,8 +397,8 @@ class TestCollectPendingRepairs:
         """Branch line 612: repair_id not in proposed_ids → continue."""
         session = self._make_session(["a1"])  # only a1 is proposed
         repairs = [
-            {"action_id": "a1", "safe": True},
-            {"action_id": "a_unknown", "safe": True},  # NOT in proposed_ids
+            {"action_id": "a1", "safe": True, "kind": "command", "payload": {"command": "fix a"}},
+            {"action_id": "a_unknown", "safe": True, "kind": "command", "payload": {"command": "fix b"}},
         ]
         with mock.patch(
             "mcp_tools._controlplane_impl_feedback._load_all_repairs",
@@ -559,9 +559,10 @@ class TestRegister:
             "controlplane_agent_feedback",
             "controlplane_apply_repairs",
             "controlplane_get_work_queue",
+            "controlplane_execute",
         }
         assert set(result.keys()) == expected_names
-        assert mcp.tool.call_count == 8
+        assert mcp.tool.call_count == 9
 
     def test_test_skeleton_validates_file(self):
         mcp = mock.MagicMock()
@@ -573,32 +574,25 @@ class TestRegister:
             skeleton_fn(path="/tmp/test", target_file="nonexistent.py")
 
     def test_report_repair_valid_outcome(self):
-        """Lines 845-860: controlplane_report_repair with valid outcome."""
+        """Post Phase-2c: verify subprocess argv contains outcome flag."""
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
         helpers = _stub_helpers()
         tools = register(mcp, helpers)
         report_fn = tools["controlplane_report_repair"]
 
-        fake_session = mock.MagicMock()
-        fake_session.session_id = "s1"
-        fake_session.repair_outcomes = {"a1": "applied"}
-
-        with (
-            mock.patch(
-                "lintgate.controlplane.session_memory.get_or_create_session",
-                return_value=fake_session,
-            ),
-            mock.patch("lintgate.controlplane.session_memory.save_session"),
-            mock.patch(
-                "lintgate.controlplane.session_memory.report_repair_outcome",
-            ) as report_mock,
-        ):
-            raw = report_fn(path="/tmp/test", action_id="a1", outcome="applied")
-        parsed = _load_tool_result(raw)
-        assert parsed["action_id"] == "a1"
-        assert parsed["outcome"] == "applied"
-        report_mock.assert_called_once_with(fake_session, "a1", "applied")
+        proc = mock.MagicMock()
+        proc.stdout = '{"analysis_id":"x","summary":"s","file":"/tmp/x.json"}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
+            report_fn(path="/tmp/test", action_id="a1", outcome="applied")
+        argv = run.call_args[0][0]
+        assert "report-repair" in argv
+        assert "--action-id" in argv
+        assert "a1" in argv
+        assert "--outcome" in argv
+        assert "applied" in argv
 
     def test_report_repair_invalid_outcome(self):
         """Lines 853-856: controlplane_report_repair with invalid outcome raises ValueError."""
@@ -612,47 +606,48 @@ class TestRegister:
             report_fn(path="/tmp/test", action_id="a1", outcome="bogus")
 
     def test_test_skeleton_makes_absolute(self):
+        """Post Phase-2c: verify subprocess argv passes through target_file."""
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
         helpers = _stub_helpers()
         tools = register(mcp, helpers)
         skeleton_fn = tools["controlplane_test_skeleton"]
-        with (
-            mock.patch("os.path.exists", return_value=True),
-            mock.patch(
-                "lintgate.controlplane.skeleton_generator.generate_test_skeleton",
-                return_value="# test",
-            ),
-            mock.patch(
-                "lintgate.controlplane.skeleton_generator.generate_test_path",
-                return_value="tests/test_foo.py",
-            ),
-        ):
-            raw = skeleton_fn(path="/tmp/test", target_file="foo.py")
-        parsed = _load_tool_result(raw)
-        assert parsed["source_file"] == "/tmp/test/foo.py"
+        proc = mock.MagicMock()
+        proc.stdout = '{"analysis_id":"x","summary":"s","file":"/tmp/x.json"}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
+            skeleton_fn(path="/tmp/test", target_file="foo.py")
+        argv = run.call_args[0][0]
+        assert "test-skeleton" in argv
+        assert "/tmp/test" in argv
+        assert "--target-file" in argv
+        assert "foo.py" in argv
 
 
 class TestRegisterAgentFeedbackClosure:
     """Cover register() lines 897: controlplane_agent_feedback closure."""
 
     def test_agent_feedback_closure_delegates(self, tmp_path) -> None:
+        """Post Phase-2c: verify subprocess argv carries path+run_id."""
         from mcp_tools.controlplane_tools import register
 
         mcp_mock = mock.MagicMock()
         mcp_mock.tool.return_value = lambda fn: fn
-        helpers = {"_validate_project_root": lambda p: str(tmp_path)}
-        tools = register(mcp_mock, helpers)
+        tools = register(mcp_mock, helpers={})
         fn = tools["controlplane_agent_feedback"]
 
-        with (
-            mock.patch(
-                "mcp_tools.controlplane_tools._impl_controlplane_agent_feedback",
-                return_value='{"status":"ok"}',
-            ) as patched,
-        ):
+        proc = mock.MagicMock()
+        proc.stdout = '{"status":"ok"}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
             result = fn(path=str(tmp_path), run_id="abc")
-        patched.assert_called_once()
+        argv = run.call_args[0][0]
+        assert "agent-feedback" in argv
+        assert str(tmp_path) in argv
+        assert "--run-id" in argv
+        assert "abc" in argv
         assert result == '{"status":"ok"}'
 
 
@@ -660,20 +655,21 @@ class TestRegisterApplyRepairsClosure:
     """Cover register() line 916: controlplane_apply_repairs closure."""
 
     def test_apply_repairs_closure_delegates(self, tmp_path) -> None:
+        """Post Phase-2c: verify subprocess argv carries the apply-repairs subcommand."""
         from mcp_tools.controlplane_tools import register
 
         mcp_mock = mock.MagicMock()
         mcp_mock.tool.return_value = lambda fn: fn
-        helpers = {"_validate_project_root": lambda p: str(tmp_path)}
-        tools = register(mcp_mock, helpers)
+        tools = register(mcp_mock, helpers={})
         fn = tools["controlplane_apply_repairs"]
 
-        with (
-            mock.patch(
-                "mcp_tools.controlplane_tools._impl_controlplane_apply_repairs",
-                return_value='{"applied":0}',
-            ) as patched,
-        ):
+        proc = mock.MagicMock()
+        proc.stdout = '{"applied":0}'
+        proc.stderr = ""
+        proc.returncode = 0
+        with mock.patch("subprocess.run", return_value=proc) as run:
             result = fn(path=str(tmp_path))
-        patched.assert_called_once()
+        argv = run.call_args[0][0]
+        assert "apply-repairs" in argv
+        assert str(tmp_path) in argv
         assert result == '{"applied":0}'

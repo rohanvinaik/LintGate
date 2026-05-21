@@ -20,17 +20,14 @@ class TestMCPInstructions:
     """The global _MCP_INSTRUCTIONS string guides cold agents."""
 
     def test_mentions_essential_tools(self) -> None:
-        """All essential tools named in instructions."""
+        """Essential routing signals present in instructions."""
         from mcp_server import _MCP_INSTRUCTIONS
 
         for tool in [
-            "lint_files",
-            "lint_project",
-            "lint_fix",
-            "controlplane_run",
-            "bootstrap_context_files",
-            "controlplane_get_details",
             "getting_started",
+            "controlplane_run",
+            "after_edit",
+            "before_commit",
         ]:
             assert tool in _MCP_INSTRUCTIONS, f"Missing tool: {tool}"
 
@@ -47,27 +44,17 @@ class TestMCPInstructions:
         ]:
             assert jargon.lower() not in _MCP_INSTRUCTIONS.lower(), f"Jargon found: {jargon}"
 
-    def test_includes_workflow_guidance(self) -> None:
-        from mcp_server import _MCP_INSTRUCTIONS
-
-        assert "first session" in _MCP_INSTRUCTIONS.lower()
-
     def test_mentions_next_actions(self) -> None:
         from mcp_server import _MCP_INSTRUCTIONS
 
         assert "next_actions" in _MCP_INSTRUCTIONS
 
-    def test_mentions_tool_count(self) -> None:
-        from pathlib import Path
-
+    def test_no_dynamic_content(self) -> None:
+        """Instructions must not contain dynamic counts or timestamps (cache stability)."""
         from mcp_server import _MCP_INSTRUCTIONS
 
-        root = Path(__file__).resolve().parent.parent
-        tool_count = (root / "mcp_server.py").read_text().count("@mcp.tool()")
-        tool_count += sum(
-            path.read_text().count("@mcp.tool()") for path in (root / "mcp_tools").glob("*.py")
-        )
-        assert str(tool_count) in _MCP_INSTRUCTIONS
+        assert "tools total" not in _MCP_INSTRUCTIONS
+        assert "as of" not in _MCP_INSTRUCTIONS.lower()
 
 
 # ── Essential Tool Docstrings ──────────────────────────────────────────

@@ -1,28 +1,54 @@
-"""Behavior tools — orthogonal behavioral supervision lenses.
+"""Behavior tools — thin subprocess wrappers around scripts/behavior_check.py.
+
+All computation lives in scripts/behavior_check.py. This module registers MCP
+tools that invoke the script via subprocess and relay its stdout.
 
 Tools:
-- hygiene_check: Command-class precondition checks (is venv active? lockfile fresh?)
-- constraint_check: Constraint ledger, coverage gaps, uncertainty zones, similar failures
-- prediction_register: Register falsifiable predictions for upcoming actions
-- behavior_precheck: DEPRECATED compat wrapper — delegates to the three tools above
-- global_memory_status: Cross-session behavioral analysis status
-- global_memory_reset: Reset global behavior profile
+- hygiene_check, constraint_check, prediction_register (orthogonal)
+- behavior_precheck (deprecated aggregator)
+- global_memory_status, global_memory_reset
 """
 
 from __future__ import annotations
 
-from mcp_tools._behavior_impl import (
-    impl_behavior_precheck,
-    impl_constraint_check,
-    impl_global_memory_reset,
-    impl_global_memory_status,
-    impl_hygiene_check,
-    impl_prediction_register,
+import json
+import os
+import subprocess
+import sys
+
+_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts",
+    "behavior_check.py",
 )
+
+
+def _run_script(*args: str) -> str:
+    """Invoke scripts/behavior_check.py as a subprocess and relay stdout."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, _SCRIPT, *args],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "behavior_check subprocess timed out"})
+    except OSError as exc:
+        return json.dumps({"error": f"behavior_check subprocess failed: {exc}"})
+
+    stdout = (proc.stdout or "").strip()
+    if proc.returncode != 0 and not stdout:
+        return json.dumps({
+            "error": f"behavior_check exit {proc.returncode}",
+            "stderr": (proc.stderr or "").strip()[-500:],
+        })
+    return stdout or json.dumps({"error": "behavior_check produced no output"})
 
 
 def register(mcp, helpers):
     """Register behavior tools on the shared MCP instance."""
+    del helpers  # unused — validation happens in the script
 
     @mcp.tool()
     def hygiene_check(path: str, planned_action: str) -> str:
@@ -31,14 +57,8 @@ def register(mcp, helpers):
         WHEN TO USE: Before running Bash commands that install packages,
         commit code, modify env files, or publish builds. Catches missing
         venv, stale lockfiles, unpinned versions, and staged secrets.
-
-        Example: hygiene_check(path="/my/project", planned_action="pip install requests")
-
-        Args:
-            path: Project root path.
-            planned_action: Free text describing the planned command.
         """
-        return impl_hygiene_check(helpers, path, planned_action)
+        return _run_script("hygiene", path, "--action", planned_action)
 
     @mcp.tool()
     def constraint_check(
@@ -51,17 +71,11 @@ def register(mcp, helpers):
         WHEN TO USE: Before attempting a new approach or after failures.
         Declares your known constraints, then identifies coverage gaps,
         uncertainty zones, and similar past failures.
-
-        Example: constraint_check(path="/my/project",
-            planned_action="run pytest",
-            known_constraints=["some tests may fail due to missing fixtures"])
-
-        Args:
-            path: Project root path.
-            planned_action: Free text describing the planned action.
-            known_constraints: Agent's self-reported constraints for this action.
         """
-        return impl_constraint_check(helpers, path, planned_action, known_constraints)
+        args = ["constraint", path, "--action", planned_action]
+        for kc in known_constraints or []:
+            args.extend(["--known-constraint", kc])
+        return _run_script(*args)
 
     @mcp.tool()
     def prediction_register(
@@ -74,29 +88,15 @@ def register(mcp, helpers):
         """Register a falsifiable prediction for an upcoming action.
 
         WHEN TO USE: Before running a command whose outcome matters.
-        Register what you expect to happen — the system will check the
-        prediction against the actual outcome and track accuracy.
-
-        Example: prediction_register(path="/my/project",
-            planned_action="pytest tests/",
-            prediction="Tests will pass",
-            prediction_type="exit_code",
-            prediction_value=0)
-
-        Args:
-            path: Project root path.
-            planned_action: Free text describing the planned action.
-            prediction: Free-text description of expected outcome.
-            prediction_type: "exit_code", "error_signature", or "stdout_contains".
-            prediction_value: The expected value for the prediction.
+        Registers what you expect — the system checks against actual outcome.
         """
-        return impl_prediction_register(
-            helpers,
+        return _run_script(
+            "predict",
             path,
-            planned_action,
-            prediction,
-            prediction_type,
-            prediction_value,
+            "--action", planned_action,
+            "--prediction", prediction,
+            "--type", prediction_type,
+            "--value", str(prediction_value),
         )
 
     @mcp.tool()
@@ -108,57 +108,27 @@ def register(mcp, helpers):
         prediction_type: str | None = None,
         prediction_value: str | int | None = None,
     ) -> str:
-        """Check a planned action against known constraints before executing it.
-
-        DEPRECATED: Prefer hygiene_check, constraint_check, prediction_register.
-
-        Example: behavior_precheck(path="/my/project", planned_action="run pytest",
-            known_constraints=["some tests may fail due to missing fixtures"])
-
-        Args:
-            path: Project root path.
-            planned_action: Free text describing the planned action.
-            known_constraints: Agent's self-reported constraints for this action.
-            prediction: Optional free-text description of expected outcome.
-            prediction_type: "exit_code", "error_signature", or "stdout_contains".
-            prediction_value: The expected value for the prediction.
-        """
-        _tools = {
-            "constraint_check": constraint_check,
-            "prediction_register": prediction_register,
-            "hygiene_check": hygiene_check,
-        }
-        return impl_behavior_precheck(
-            helpers,
-            _tools,
-            path,
-            planned_action,
-            known_constraints,
-            prediction,
-            prediction_type,
-            prediction_value,
-        )
+        """DEPRECATED: Prefer hygiene_check, constraint_check, prediction_register."""
+        args = ["precheck", path, "--action", planned_action]
+        for kc in known_constraints or []:
+            args.extend(["--known-constraint", kc])
+        if prediction is not None:
+            args.extend(["--prediction", prediction])
+        if prediction_type is not None:
+            args.extend(["--type", prediction_type])
+        if prediction_value is not None:
+            args.extend(["--value", str(prediction_value)])
+        return _run_script(*args)
 
     @mcp.tool()
     def global_memory_status(path: str) -> str:
-        """Show cross-session behavioral analysis status.
-
-        Returns session count, learned patterns, calibration settings,
-        and computed bias adjustments from accumulated behavioral data.
-
-        Args:
-            path: Project root path.
-        """
-        return impl_global_memory_status(helpers, path)
+        """Show cross-session behavioral analysis status."""
+        return _run_script("memory-status", path)
 
     @mcp.tool()
     def global_memory_reset(path: str) -> str:
-        """Reset the global behavior profile. Useful after major workflow changes.
-
-        Args:
-            path: Project root path.
-        """
-        return impl_global_memory_reset(helpers, path)
+        """Reset the global behavior profile."""
+        return _run_script("memory-reset", path)
 
     return {
         "hygiene_check": hygiene_check,

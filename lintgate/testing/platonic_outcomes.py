@@ -31,6 +31,7 @@ def workflow_state_from_outputs(
     decompose_targets: list[Any],
     *,
     iteration_log: list[dict[str, Any]] | None = None,
+    oracle_requests: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str, str]:
     """Resolve the canonical golden-path workflow state."""
     iteration_log = iteration_log or []
@@ -42,6 +43,13 @@ def workflow_state_from_outputs(
             "NEEDS_DECOMPOSITION",
             "NEEDS_DECOMPOSITION",
             "Cross-lens evidence indicates structural decomposition is the next move.",
+        )
+
+    if oracle_requests:
+        return (
+            "NEEDS_ORACLE",
+            "NEEDS_ORACLE",
+            f"{len(oracle_requests)} function(s) need human-provided expected values.",
         )
 
     vetoes = health_data.get("vetoes", {})

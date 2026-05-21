@@ -389,10 +389,12 @@ def test_format_pattern_alerts_recurring() -> None:
         },
     ]
     result = _format_pattern_alerts(alerts)
-    assert "PATTERN ALERT: [ruff/F821] recurring across 5 recent runs" in result
+    assert "Recurring:" in result
+    assert "F821 (5 runs)" in result
 
 
-def test_format_pattern_alerts_single_run_volume() -> None:
+def test_format_pattern_alerts_single_run_volume_ignored() -> None:
+    """single_run_volume alerts are no longer shown (noise reduction)."""
     alerts = [
         {
             "linter": "mypy",
@@ -402,7 +404,7 @@ def test_format_pattern_alerts_single_run_volume() -> None:
         },
     ]
     result = _format_pattern_alerts(alerts)
-    assert "PATTERN NOTE: [mypy/error] appeared 42 times this run" in result
+    assert result == ""
 
 
 def test_format_pattern_alerts_unknown_reason_ignored() -> None:
@@ -411,11 +413,12 @@ def test_format_pattern_alerts_unknown_reason_ignored() -> None:
     assert result == ""
 
 
-def test_format_pattern_alerts_truncates_at_three() -> None:
+def test_format_pattern_alerts_condensed_to_one_line() -> None:
+    """Multiple recurring alerts condensed to a single comma-separated line."""
     alerts = [
         {
             "linter": f"l{i}",
-            "kind": "k",
+            "kind": f"k{i}",
             "alert_reason": "recurring_across_runs",
             "recent_run_count": i,
         }
@@ -423,7 +426,12 @@ def test_format_pattern_alerts_truncates_at_three() -> None:
     ]
     result = _format_pattern_alerts(alerts)
     lines = [ln for ln in result.split("\n") if ln.strip()]
-    assert len(lines) == 3
+    # All condensed into 1 line (capped at 3 alerts)
+    assert len(lines) == 1
+    assert "k0" in result
+    assert "k1" in result
+    assert "k2" in result
+    assert "k3" not in result  # capped at 3
 
 
 # ── _format_repairs ──────────────────────────────────────────────────────

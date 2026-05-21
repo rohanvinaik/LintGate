@@ -1,8 +1,20 @@
-"""Telemetry tools — telemetry_summary ROI dashboard."""
+"""Telemetry tools — telemetry_summary ROI dashboard + session ROI tracker."""
 
 from __future__ import annotations
 
 from mcp_tools._disk_helpers import tool_response
+
+# Module-level session tracker — shared across the MCP process lifetime.
+# Lazily initialized on first use.
+_session_tracker = None
+
+
+def _get_session_tracker():
+    global _session_tracker
+    if _session_tracker is None:
+        from lintgate.orchestration.session_tracker import SessionTracker
+        _session_tracker = SessionTracker()
+    return _session_tracker
 
 
 def register(mcp, helpers):
@@ -12,6 +24,7 @@ def register(mcp, helpers):
     def telemetry_summary(
         path: str,
         period: str = "7d",
+        include_session: bool = True,
     ) -> str:
         """ROI dashboard: code quality improvement vs token cost.
 
@@ -19,9 +32,14 @@ def register(mcp, helpers):
         total runs, issues found, fix rate, avg duration, token estimates,
         tier distribution, and quality trend.
 
+        When include_session=True (default), also includes the current
+        session's ROI summary: tool calls, failures, retry loops detected,
+        and findings delta from first to last controlplane_run.
+
         Args:
             path: Project root path.
             period: Time window — "1d", "7d", "30d", or "all".
+            include_session: Include within-session ROI data (default True).
         """
         import contextlib
 
@@ -56,10 +74,21 @@ def register(mcp, helpers):
             if performance_economics.get("has_data", False):
                 summary["performance_economics"] = performance_economics
 
+        # Extend with within-session ROI tracker
+        if include_session:
+            with contextlib.suppress(Exception):
+                tracker = _get_session_tracker()
+                session_data = tracker.summary()
+                if session_data.get("total_tool_calls", 0) > 0:
+                    summary["session_roi"] = session_data
+
         project_root = helpers["_validate_project_root"](path)
         runs = summary.get("total_runs", 0)
         avg_dur = summary.get("avg_duration_ms", 0)
         text = f"Telemetry ({period}): {runs} runs. Avg {avg_dur}ms."
         return tool_response(summary, "telemetry_summary", project_root, text)
 
-    return {"telemetry_summary": telemetry_summary}
+    return {
+        "telemetry_summary": telemetry_summary,
+        "_get_session_tracker": _get_session_tracker,
+    }

@@ -20,6 +20,7 @@ from ._mutation_tools_impl import (
     impl_refactor_loop,
     impl_run_full,
     impl_run_sampling,
+    impl_validate_tests,
 )
 
 # Backward-compatible aliases for test imports.
@@ -29,6 +30,7 @@ _impl_get_state = impl_get_state
 _impl_prescribe = impl_prescribe
 _impl_decompose = impl_decompose
 _impl_refactor_loop = impl_refactor_loop
+_impl_validate_tests = impl_validate_tests
 _impl_prescribe_tests = impl_prescribe_tests
 _impl_clear_state = impl_clear_state
 
@@ -157,7 +159,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             file: Source file.
             function: Optional function name.
         """
-        return impl_refactor_loop(helpers, path, file, function)
+        return impl_validate_tests(helpers, path, file, function)
 
     @mcp.tool()
     def mutation_clear_state(path: str, file: str | None = None) -> str:

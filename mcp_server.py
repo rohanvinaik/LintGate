@@ -62,44 +62,11 @@ except ModuleNotFoundError:
     from lintgate.types import LintIssue, LintTier
 
 _MCP_INSTRUCTIONS = (
-    "LintGate: code quality analysis for Python projects. "
-    "Start with getting_started(path) for project-specific guidance and startup auto-setup.\n"
-    "Essential workflow (6 core tools):\n"
-    "  1. lint_files — lint files you just edited\n"
-    "  2. lint_project — full project lint scan\n"
-    "  3. lint_fix — auto-fix safe issues\n"
-    "  4. controlplane_run — comprehensive project health check "
-    "(lint + tests + deps + git; works without config)\n"
-    "  5. controlplane_get_details — drill into health check findings\n"
-    "  6. bootstrap_context_files — generate project-specific CLAUDE.md\n"
-    "Project compass (4-axis project understanding):\n"
-    "  7. compass_status — show axis depths, gaps, staleness, and mode\n"
-    "  8. compass_update — extract compass from project docs, optionally render context files\n"
-    "  9. compass_interview — fill sparse axes with answers or code inference\n"
-    "  10. compass_check — check an action against toward/away/forbidden directives\n"
-    "  11. theory_mode_enter — enter theory exploration mode\n"
-    "  12. theory_mode_freeze — freeze compass and exit to normal mode\n"
-    "First session: controlplane_run(path) → controlplane_get_details(run_id) → "
-    "lint_fix → bootstrap_context_files(path, write=true).\n"
-    "Compass workflow: compass_update(path, write=true) → compass_interview(path) → "
-    "compass_update(path, targets=['all'], write=true).\n"
-    "Auto-improve workflow (platonic golden path — use this to improve any codebase):\n"
-    "  Step 1: platonic_project(path) — selects the highest-value target file automatically\n"
-    "  Step 2: Follow primary_next_action from the response (profiles, generates tests, validates)\n"
-    "  Step 3: platonic_continue(path, workflow_id) — resume if interrupted\n"
-    "  Step 4: platonic_apply(path, workflow_id) — apply when state is READY_TO_APPLY\n"
-    "  Step 5: Repeat from Step 1 for the next file — each run picks the next best target\n"
-    "  Alternative: platonic_converge(path, file) — if you already know which file to improve\n"
-    "For a full codebase sweep: loop platonic_project → follow actions → platonic_apply → repeat.\n"
-    "Decomposition workflow: mutation_decompose → extraction_plan → refactor_move (safe module move with import rewriting, dry-run default).\n"
-    "Prescriptive spec workflow (specification-first code generation):\n"
-    "  prescriptive_spec_compose(path, target) — compose behavioral contract from theory + compass\n"
-    "  prescriptive_spec_compile(path, target) — compile contract into test skeletons + generation constraints\n"
-    "  [write code guided by generation_prompt in compile output]\n"
-    "  prescriptive_spec_verify(path, file) — verify refinement (structural AST checks + behavioral mutation checks)\n"
-    "  prescriptive_spec_status(path) — project-wide prescriptive coverage\n"
-    "All responses include next_actions with suggested follow-up tools. "
-    "126 tools total — use getting_started or lint_status to explore."
+    "Code quality + specification analysis for Python. "
+    "Start: getting_started(path). Health check: controlplane_run(path). "
+    "After edits: after_edit(path). Before commit: before_commit(path). "
+    "Improve tests: mutation_run_sampling → mutation_prescribe. "
+    "All responses include next_actions."
 )
 
 
@@ -165,7 +132,11 @@ def _resolve_section(data: dict[str, Any], section: str) -> dict[str, Any] | str
     if section in sections:
         return {k: data[k] for k in sections[section] if k in data}
     available = list(sections.keys()) if sections else ["no sections indexed"]
-    return f"Section '{section}' not found. Available: {available}"
+    # Suggest the closest available section
+    suggestion = ""
+    if available and available != ["no sections indexed"]:
+        suggestion = f" Try: section='{available[0]}'"
+    return f"Section '{section}' not found. Available: {available}.{suggestion}"
 
 
 def _build_manifest(data: dict[str, Any]) -> dict[str, Any]:
@@ -190,38 +161,91 @@ def _build_manifest(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _traverse_path(data: Any, path: str) -> tuple[Any, str]:
-    """Traverse a dot-separated JSON path. Returns (result, error)."""
-    for key in path.split("."):
+    """Traverse a dot-separated JSON path. Returns (result, error).
+
+    On failure, reports available keys at the deepest valid level so the
+    caller can self-correct without a retry.
+    """
+    keys = path.split(".")
+    for i, key in enumerate(keys):
         if isinstance(data, dict) and key in data:
             data = data[key]
         elif isinstance(data, list):
             try:
                 data = data[int(key)]
             except (ValueError, IndexError):
-                return None, f"Path '{path}' not found"
+                failed_at = ".".join(keys[:i]) or "$"
+                if isinstance(data, list):
+                    hint = f"list[{len(data)}] — use integer index 0..{len(data) - 1}"
+                else:
+                    hint = "unexpected type"
+                return None, f"Path '{path}' not found at segment '{key}'. Resolved to '{failed_at}' ({hint})"
         else:
-            return None, f"Path '{path}' not found"
+            failed_at = ".".join(keys[:i]) or "$"
+            if isinstance(data, dict):
+                available = list(data.keys())[:15]
+                hint = f"available keys: {available}"
+            elif isinstance(data, list):
+                hint = f"list[{len(data)}] — use integer index"
+            else:
+                hint = f"type={type(data).__name__}, not subscriptable"
+            return None, f"Path '{path}' not found at segment '{key}'. Resolved to '{failed_at}' ({hint})"
     return data, ""
 
 
-def _format_query_result(data: Any, max_items: int, filepath: str) -> str:
-    """Format query result with list truncation and size guard."""
-    if isinstance(data, list) and len(data) > max_items:
+def _format_query_result(data: Any, max_items: int, filepath: str, offset: int = 0) -> str:
+    """Format query result with list truncation, offset pagination, and size guard.
+
+    Instead of returning an opaque "too large" error, always returns a truncated
+    preview with metadata so the agent can paginate or drill deeper.
+    """
+    # List pagination: apply offset then limit to max_items
+    if isinstance(data, list):
         total = len(data)
-        data = data[:max_items]
-        return json.dumps({"result": data, "truncated": total - max_items}, separators=(",", ":"), default=str)
+        if offset > 0:
+            data = data[offset:]
+        if len(data) > max_items:
+            data = data[:max_items]
+        remaining = total - offset - len(data)
+        result = {"result": data, "total": total, "offset": offset, "returned": len(data)}
+        if remaining > 0:
+            result["remaining"] = remaining
+            result["hint"] = f"Use offset={offset + len(data)} to get the next page"
+        return json.dumps(result, separators=(",", ":"), default=str)
 
     result_str = json.dumps({"result": data}, separators=(",", ":"), default=str)
     if len(result_str) > 2048:
-        keys_hint = ""
+        # Truncated preview instead of opaque error
+        preview: Any = None
+        nav_hint = ""
         if isinstance(data, dict):
-            keys_hint = f", keys: {list(data.keys())[:10]}"
-        elif isinstance(data, list):
-            keys_hint = f", {len(data)} items"
+            keys = list(data.keys())[:15]
+            # Include small scalar values inline, summarize large ones
+            preview = {}
+            for k in keys:
+                v = data[k]
+                if isinstance(v, (int, float, bool)) or (isinstance(v, str) and len(v) < 60):
+                    preview[k] = v
+                elif isinstance(v, list):
+                    preview[k] = f"list[{len(v)}]"
+                elif isinstance(v, dict):
+                    preview[k] = f"dict[{len(v)} keys]"
+                else:
+                    preview[k] = type(v).__name__
+            if len(data) > 15:
+                nav_hint = f"{len(data)} total keys, showing first 15"
+            else:
+                nav_hint = "Use a dot-path to drill into large sub-keys"
+        elif isinstance(data, str):
+            preview = data[:200] + f"... [{len(data)} chars total]"
+            nav_hint = "String value truncated. Use Read on the file for full content."
+        else:
+            preview = str(data)[:200]
+            nav_hint = "Value truncated."
         return json.dumps({
-            "result": f"Response too large ({len(result_str)} chars){keys_hint}. Use a more specific path or Read the file directly.",
+            "preview": preview,
             "file": filepath,
-            "hint": "Use section='findings' or a dot-path to drill into specific keys",
+            "hint": nav_hint,
         }, separators=(",", ":"), default=str)
     return result_str
 
@@ -232,6 +256,7 @@ def query_analysis(
     tool_name: str = "",
     path: str = "$",
     max_items: int = 20,
+    offset: int = 0,
     section: str = "",
 ) -> str:
     """Query a specific section of a saved analysis by JSON path.
@@ -245,9 +270,12 @@ def query_analysis(
 
     When path="$" (root), returns the section manifest showing what's queryable.
 
+    For lists, use offset + max_items to paginate through results.
+
     Examples:
         query_analysis(analysis_id="abc", section="findings")
         query_analysis(analysis_id="abc", path="counts.blocking")
+        query_analysis(analysis_id="abc", path="findings.issues", offset=20, max_items=10)
         query_analysis(analysis_id="abc")  # returns section manifest
 
     Args:
@@ -255,11 +283,12 @@ def query_analysis(
         tool_name: The tool that produced the analysis.
         path: Dot-separated JSON path (e.g. "counts.blocking"). Use "$" for root.
         max_items: Max list items to return (default 20).
+        offset: Skip first N items in list results for pagination (default 0).
         section: Query by section name: "findings", "metrics", "status", "meta", "actions", "config", "data".
     """
     filepath = _find_analysis_file(analysis_id, tool_name)
     if not filepath:
-        return json.dumps({"error": f"Analysis {analysis_id} not found"})
+        return json.dumps({"error": f"Analysis {analysis_id} not found. Check the analysis_id from the original tool response."})
 
     with open(filepath, encoding="utf-8") as f:
         data = json.loads(f.read())
@@ -267,16 +296,126 @@ def query_analysis(
     if section and isinstance(data, dict):
         resolved = _resolve_section(data, section)
         if isinstance(resolved, str):
-            return json.dumps({"error": resolved})
+            # Include a suggested corrected call
+            available = list(data.get("_sections", {}).keys())
+            suggested = {"tool": "query_analysis", "args": {"analysis_id": analysis_id}}
+            if available:
+                suggested["args"]["section"] = available[0]
+            return json.dumps({"error": resolved, "suggested_call": suggested})
         data = resolved
     elif path == "$" and isinstance(data, dict) and "_sections" in data:
         return json.dumps({"manifest": _build_manifest(data)}, separators=(",", ":"), default=str)
     elif path and path != "$":
         data, err = _traverse_path(data, path)
         if err:
-            return json.dumps({"error": err})
+            # Include a suggested corrected call with a valid path
+            suggested = {"tool": "query_analysis", "args": {"analysis_id": analysis_id}}
+            if isinstance(data, dict):
+                first_key = next(iter(data), None)
+                if first_key:
+                    suggested["args"]["path"] = first_key
+            elif tool_name:
+                suggested["args"]["tool_name"] = tool_name
+            return json.dumps({"error": err, "suggested_call": suggested})
 
-    return _format_query_result(data, max_items, filepath)
+    return _format_query_result(data, max_items, filepath, offset)
+
+
+@mcp.tool()
+def what_next(path: str) -> str:
+    """Get the single best next action for this project. The "I'm lost" tool.
+
+    WHEN TO USE: When you're unsure which tool to call next, or at the start
+    of a session. Reads project state and returns exactly ONE recommended
+    tool call with pre-filled parameters.
+
+    This is the cheapest way to stay on the golden path — call it whenever
+    you're uncertain.
+
+    Args:
+        path: Project root path.
+    """
+    import glob as _glob
+
+    project_root = os.path.abspath(path)
+    analysis_dir = os.path.join(project_root, ".lintgate", "analysis")
+
+    # Check what state exists
+    has_context = os.path.isfile(os.path.join(project_root, ".claude", "CLAUDE.md"))
+
+    # Find the most recent controlplane_run
+    cp_dir = os.path.join(analysis_dir, "controlplane_run")
+    latest_cp = None
+    if os.path.isdir(cp_dir):
+        cp_files = sorted(_glob.glob(os.path.join(cp_dir, "*.json")), key=os.path.getmtime)
+        if cp_files:
+            try:
+                with open(cp_files[-1], encoding="utf-8") as f:
+                    latest_cp = json.loads(f.read())
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    # Decision tree — ordered by priority
+    # 1. No controlplane_run yet → run one
+    if latest_cp is None:
+        return json.dumps({
+            "recommended_action": {
+                "tool": "controlplane_run",
+                "args": {"path": path},
+                "reason": "No project analysis found. Start here to understand project health.",
+            },
+            "confidence": "high",
+        }, separators=(",", ":"))
+
+    counts = latest_cp.get("counts", {})
+    blocking = counts.get("blocking", 0)
+    repair_counts = counts.get("repair_counts", {})
+    safe_fixes = repair_counts.get("safe_executable", 0)
+
+    # 2. Has safe auto-fixes → apply them
+    if safe_fixes > 0:
+        run_id = latest_cp.get("run_id", "")
+        return json.dumps({
+            "recommended_action": {
+                "tool": "controlplane_apply_repairs",
+                "args": {"path": path, "run_id": run_id},
+                "reason": f"{safe_fixes} safe auto-fixes available. Apply them first.",
+            },
+            "confidence": "high",
+        }, separators=(",", ":"))
+
+    # 3. Has blockers → drill into them
+    if blocking > 0:
+        run_id = latest_cp.get("run_id", "")
+        return json.dumps({
+            "recommended_action": {
+                "tool": "controlplane_get_details",
+                "args": {"run_id": run_id, "severity": "blocking"},
+                "reason": f"{blocking} blocking issues. Review details to plan fixes.",
+            },
+            "confidence": "high",
+        }, separators=(",", ":"))
+
+    # 4. No context files → bootstrap them
+    if not has_context:
+        return json.dumps({
+            "recommended_action": {
+                "tool": "bootstrap_context_files",
+                "args": {"path": path, "write": True},
+                "reason": "No CLAUDE.md found. Generate context files for better guidance.",
+            },
+            "confidence": "medium",
+        }, separators=(",", ":"))
+
+    # 5. Clean project → run platonic improvement
+    return json.dumps({
+        "recommended_action": {
+            "tool": "platonic_project",
+            "args": {"path": path},
+            "reason": "Project is clean. Run platonic improvement to raise quality further.",
+        },
+        "confidence": "medium",
+    }, separators=(",", ":"))
 
 
 # ─── Tier definitions (match tier_selector.py) ──────────────────────────
@@ -1034,6 +1173,8 @@ model_profile_status = _tool_funcs["model_profile_status"]
 offline_analysis_generate = _tool_funcs["offline_analysis_generate"]
 offline_analysis_run = _tool_funcs["offline_analysis_run"]
 prediction_register = _tool_funcs["prediction_register"]
+auto_resolve = _tool_funcs["auto_resolve"]
+auto_sweep = _tool_funcs["auto_sweep"]
 prescriptive_spec_compile = _tool_funcs["prescriptive_spec_compile"]
 prescriptive_spec_compose = _tool_funcs["prescriptive_spec_compose"]
 prescriptive_spec_status = _tool_funcs["prescriptive_spec_status"]
@@ -1054,6 +1195,8 @@ test_infer_inputs = _tool_funcs["test_infer_inputs"]
 test_characterize = _tool_funcs["test_characterize"]
 test_characterize_mark = _tool_funcs["test_characterize_mark"]
 test_redundancy_project = _tool_funcs["test_redundancy_project"]
+test_suite_triage = _tool_funcs["test_suite_triage"]
+test_suite_compact = _tool_funcs["test_suite_compact"]
 
 __all__ = [
     "mcp",
@@ -1107,6 +1250,8 @@ __all__ = [
     "offline_analysis_generate",
     "offline_analysis_run",
     "prediction_register",
+    "auto_resolve",
+    "auto_sweep",
     "prescriptive_spec_compile",
     "prescriptive_spec_compose",
     "prescriptive_spec_status",

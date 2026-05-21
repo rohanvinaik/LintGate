@@ -269,11 +269,18 @@ def _collect_pending_repairs(session, action_ids, safe_only, run_id=None):
     )
     source_run_id = run_id or (snapshot.run_id if snapshot is not None else "")
 
-    if not all_repairs:
+    # Pre-filter: only collect executable repairs (command with payload, or safe_delete)
+    executable_repairs = [
+        r for r in all_repairs
+        if (r.get("kind") == "command" and r.get("payload", {}).get("command"))
+        or r.get("kind") == "safe_delete"
+    ]
+
+    if not executable_repairs:
         return [], [
             {
-                "reason": "no_repairs_in_run",
-                "detail": f"Run {source_run_id or 'latest'} contains no repair actions.",
+                "reason": "no_executable_repairs",
+                "detail": f"Run {source_run_id or 'latest'} contains no executable repair actions.",
             }
         ]
 
@@ -287,7 +294,7 @@ def _collect_pending_repairs(session, action_ids, safe_only, run_id=None):
 
     pending: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    for repair in all_repairs:
+    for repair in executable_repairs:
         repair_id = repair.get("action_id", "")
         if repair_id not in proposed_ids:
             continue
@@ -501,5 +508,15 @@ def _impl_controlplane_apply_repairs(path, action_ids, safe_only, helpers, *, ru
         reasons = ", ".join(f"{r}:{n}" for r, n in skipped_by_reason.items())
         summary += f" Skip reasons: {reasons}"
 
+    from lintgate.next_action import NextAction, serialize_next_actions
     from mcp_tools._disk_helpers import tool_response
-    return tool_response(response, "controlplane_apply_repairs", project_root, summary)
+
+    na = [NextAction(
+        tool="controlplane_run",
+        args={"path": project_root},
+        reason="Re-run to verify repairs and check remaining issues",
+    )]
+    return tool_response(
+        response, "controlplane_apply_repairs", project_root, summary,
+        next_actions=serialize_next_actions(na),
+    )

@@ -202,20 +202,56 @@ def _build_coherence_dict(coherence: CoherenceResult) -> dict[str, Any]:
     return result
 
 
+def _classify_repair(repair: Any) -> str:
+    """Classify a single repair as safe_executable, unsafe_executable, or advisory_only."""
+    kind = getattr(repair, "kind", None) or ""
+    safe = getattr(repair, "safe", True)
+
+    if kind == "command":
+        payload = getattr(repair, "payload", None) or {}
+        command = payload.get("command", "") if isinstance(payload, dict) else ""
+        if command:
+            return "safe_executable" if safe else "unsafe_executable"
+        return "advisory_only"
+
+    if kind == "safe_delete":
+        return "safe_executable" if safe else "unsafe_executable"
+
+    return "advisory_only"
+
+
 def _build_counts(
     mesh_result: MeshResult,
     severity_counts: dict[str, int],
     symbol_blockers: list[dict[str, Any]],
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Assemble the top-level counts dict."""
-    repairs_available = sum(len(cr.repairs) for cr in mesh_result.channel_results)
+    safe_executable = 0
+    unsafe_executable = 0
+    advisory_only = 0
+
+    for cr in mesh_result.channel_results:
+        for repair in cr.repairs:
+            bucket = _classify_repair(repair)
+            if bucket == "safe_executable":
+                safe_executable += 1
+            elif bucket == "unsafe_executable":
+                unsafe_executable += 1
+            else:
+                advisory_only += 1
+
     channels_run = sum(1 for cr in mesh_result.channel_results if cr.status != "skip")
     return {
         "blocking": severity_counts["blocking"],
         "warning": severity_counts["warning"],
         "informational": severity_counts["informational"],
         "channels_run": channels_run,
-        "repairs_available": repairs_available,
+        "repairs_available": safe_executable + unsafe_executable,  # backward compat
+        "repair_counts": {
+            "safe_executable": safe_executable,
+            "unsafe_executable": unsafe_executable,
+            "advisory_only": advisory_only,
+        },
         "symbol_blocking": len(symbol_blockers),
     }
 
@@ -390,12 +426,14 @@ def _build_cp_next_actions(
                 priority=3 if symbol_count > 0 else 1,
             )
         )
-    if counts.get("repairs_available", 0) > 0:
+    repair_counts = counts.get("repair_counts", {})
+    safe_exec_count = repair_counts.get("safe_executable", 0) if isinstance(repair_counts, dict) else 0
+    if safe_exec_count > 0:
         actions.append(
             NextAction(
                 tool="controlplane_apply_repairs",
                 args={"path": ".", "run_id": run_id, "safe_only": True},
-                reason=f"{counts['repairs_available']} safe repair{'s' if counts['repairs_available'] != 1 else ''} available",
+                reason=f"{safe_exec_count} safe executable repair{'s' if safe_exec_count != 1 else ''} available",
                 priority=4 if symbol_count > 0 else 2,
             )
         )

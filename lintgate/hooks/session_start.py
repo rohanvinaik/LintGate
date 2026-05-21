@@ -88,6 +88,42 @@ def _initialize_runtime_state(project_root: str) -> None:
         pass  # Fail-open
 
 
+def _append_drift_signal(project_root: str, msg_parts: list[str]) -> None:
+    """Check last controlplane run for suite health drift."""
+    import glob
+    import os
+    import time as _time
+
+    cp_dir = os.path.join(project_root, ".lintgate", "analysis", "controlplane_run")
+    if not os.path.isdir(cp_dir):
+        return
+
+    # Find most recent analysis file
+    files = glob.glob(os.path.join(cp_dir, "*.json"))
+    if not files:
+        return
+
+    latest = max(files, key=os.path.getmtime)
+    age_secs = _time.time() - os.path.getmtime(latest)
+    age_hours = age_secs / 3600
+
+    # Read blocking count from cached analysis
+    with open(latest, encoding="utf-8") as f:
+        data = json.load(f)
+
+    blocking = 0
+    for ch in data.get("channel_results", {}).values():
+        if isinstance(ch, dict) and ch.get("severity") == "blocking":
+            blocking += len(ch.get("findings", []))
+    # Also check top-level blocking count
+    blocking = max(blocking, data.get("blocking_count", 0))
+
+    if age_hours > 24:
+        msg_parts.append(f"Suite health stale ({age_hours:.0f}h). Run check_project.")
+    elif blocking > 0:
+        msg_parts.append(f"Suite: {blocking} blocking issue(s) at last check")
+
+
 def handle(data: dict[str, Any]) -> dict[str, Any]:
     """Process SessionStart event."""
     project_root = data.get("cwd", ".")
@@ -159,6 +195,10 @@ def handle(data: dict[str, Any]) -> dict[str, Any]:
                 )
     except Exception:
         pass
+
+    # Suite health drift signal — compare to last controlplane run
+    with contextlib.suppress(Exception):
+        _append_drift_signal(project_root, msg_parts)
 
     return {
         "continue": True,

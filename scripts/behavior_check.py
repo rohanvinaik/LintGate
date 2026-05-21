@@ -1,18 +1,78 @@
-"""Implementation functions for behavior_tools.py.
+#!/usr/bin/env python3
+"""Behavioral supervision checks — standalone.
 
-Extracted to keep the register() module under the 400-line structural limit.
-Each ``_impl_*`` function receives ``helpers`` as its first argument; the thin
-The ``mcp.tool`` wrappers in ``behavior_tools.register()`` simply forward.
+Commands:
+    hygiene PATH --action "..."
+    constraint PATH --action "..." [--known-constraint "..." ...]
+    predict PATH --action "..." --prediction "..." --type exit_code --value 0
+    precheck PATH --action "..." [--known-constraint "..." ...]
+                   [--prediction "..." --type ... --value ...]
+    memory-status PATH
+    memory-reset PATH
 """
-
 from __future__ import annotations
 
+import argparse
 import contextlib
+import json
 import os
+import sys
 import time
+import uuid
 from typing import Any
 
-# ── helpers ────────────────────────────────────────────────────────────────
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(0, PROJECT_ROOT)
+
+from scripts._common import emit, emit_error, validate_project_root
+
+_VALID_PREDICTION_TYPES = {"exit_code", "error_signature", "stdout_contains"}
+
+
+def _build_onboarding_status(project_root: str) -> dict[str, Any]:
+    """Minimal onboarding status — mirrors mcp_server._build_onboarding_status.
+
+    Four config states: no_config, config_no_controlplane_section,
+    config_disabled, config_enabled. Kept local to avoid cross-module import
+    during subprocess start-up.
+    """
+    from lintgate.config import load_controlplane_config
+
+    config_path = os.path.join(project_root, ".claude", "lintgate.yaml")
+    config_file_exists = os.path.exists(config_path)
+    cp_config = load_controlplane_config(project_root)
+    has_controlplane_section = False
+    if config_file_exists:
+        with contextlib.suppress(Exception):
+            import yaml as _yaml
+
+            with open(config_path) as _f:
+                _raw = _yaml.safe_load(_f) or {}
+            has_controlplane_section = bool(
+                isinstance(_raw, dict) and isinstance(_raw.get("controlplane"), dict)
+            )
+
+    status: dict[str, Any] = {
+        "config_found": config_file_exists,
+        "config_path_checked": config_path,
+        "controlplane_enabled": cp_config.enabled if cp_config else False,
+        "automatic_hook_active": cp_config.enabled if cp_config else False,
+        "using_default_config": cp_config is None,
+    }
+
+    if not config_file_exists:
+        status["config_state"] = "no_config"
+    elif cp_config is None and not has_controlplane_section:
+        status["config_state"] = "config_no_controlplane_section"
+    elif cp_config is not None and not cp_config.enabled:
+        status["config_state"] = "config_disabled"
+    else:
+        status["config_state"] = "config_enabled"
+    return status
+
+
+# ── shared helpers (behavior-specific) ──────────────────────────────────────
 
 
 def _build_constraint_recommendation(
@@ -21,7 +81,6 @@ def _build_constraint_recommendation(
     uncertainty: list[Any],
     similar_failures: list[dict[str, Any]],
 ) -> str:
-    """Build the human-readable recommendation string."""
     parts: list[str] = []
     if coverage_gap > 0:
         parts.append(f"{coverage_gap} unverified constraint area{'s' if coverage_gap != 1 else ''}")
@@ -38,12 +97,7 @@ def _build_constraint_recommendation(
     return "Good constraint coverage. Proceed with awareness of known constraints."
 
 
-def _find_similar_failures(
-    approaches: list[Any],
-    command_sig: str,
-) -> list[dict[str, Any]]:
-    """Find past failed approaches matching the current command binary."""
-    # Hoist constant out of loop to avoid repeated string scan (PERF001).
+def _find_similar_failures(approaches: list[Any], command_sig: str) -> list[dict[str, Any]]:
     binary = command_sig.split(":")[0] if ":" in command_sig else ""
     similar: list[dict[str, Any]] = []
     if not binary:
@@ -55,20 +109,14 @@ def _find_similar_failures(
         if binary == approach_binary:
             last_err = a.error_sigs[-1] if a.error_sigs else ""
             similar.append(
-                {
-                    "sig": a.approach_sig,
-                    "count": a.event_count,
-                    "error": last_err[:80],
-                }
+                {"sig": a.approach_sig, "count": a.event_count, "error": last_err[:80]}
             )
     return similar
 
 
 def _compute_coverage_gap(
-    declared: list[str],
-    relevant: list[Any],
+    declared: list[str], relevant: list[Any]
 ) -> tuple[int, float, set[str]]:
-    """Compute coverage gap and recall between declared and relevant hypotheses."""
     matched_relevant_ids: set[str] = set()
     for claim in declared:
         claim_words = set(claim.lower().split())
@@ -83,11 +131,7 @@ def _compute_coverage_gap(
     return coverage_gap, recall, matched_relevant_ids
 
 
-def _seed_theory_constraints(
-    project_root: str,
-    output: dict[str, Any],
-) -> None:
-    """Cold-start: seed from theory profile when no relevant hypotheses exist."""
+def _seed_theory_constraints(project_root: str, output: dict[str, Any]) -> None:
     try:
         from lintgate.theory_extractor import extract_theory
 
@@ -107,19 +151,17 @@ def _seed_theory_constraints(
         pass
 
 
-# ── tool implementations ──────────────────────────────────────────────────
+# ── compute functions (return dicts, not JSON) ──────────────────────────────
 
 
-def impl_hygiene_check(helpers: dict[str, Any], path: str, planned_action: str) -> str:
-    project_root = helpers["_validate_project_root"](path)
-
+def compute_hygiene(project_root: str, planned_action: str) -> tuple[dict[str, Any], str, list]:
+    """Run hygiene checks for a planned action. Returns (output, summary, next_actions)."""
     with contextlib.suppress(Exception):
         from lintgate.state import log_feature_usage
 
         log_feature_usage("hygiene_check", project_root)
 
     output: dict[str, Any] = {}
-
     hygiene_result = None
     with contextlib.suppress(Exception):
         from lintgate.hygiene import classify_and_check
@@ -154,38 +196,33 @@ def impl_hygiene_check(helpers: dict[str, Any], path: str, planned_action: str) 
         for w in hygiene_result.warnings[:2]:
             if w.actionability == "immediate":
                 _na_list.append(
-                    NextAction(
-                        tool="terminal",
-                        reason=f"Fix: {w.message[:80]}",
-                        priority=1,
-                    )
+                    NextAction(tool="terminal", reason=f"Fix: {w.message[:80]}", priority=1)
                 )
     na_serialized = serialize_next_actions(_na_list)
     output["next_actions"] = na_serialized
 
-    # Build NL summary
     status = output.get("status", "unknown")
     if status == "warnings":
         n_warn = len(output.get("warnings", []))
-        summary = f"Hygiene: {n_warn} warning(s) for {output.get('command_class', 'unknown')} action. {output.get('recommendation', '')}"
+        summary = (
+            f"Hygiene: {n_warn} warning(s) for {output.get('command_class', 'unknown')} "
+            f"action. {output.get('recommendation', '')}"
+        )
     elif status == "pass":
         summary = (
-            f"Hygiene: pass ({output.get('command_class', 'unknown')}). {output.get('message', '')}"
+            f"Hygiene: pass ({output.get('command_class', 'unknown')}). "
+            f"{output.get('message', '')}"
         )
     else:
         summary = f"Hygiene: {output.get('message', 'no checks applicable')}"
-
-    from mcp_tools._disk_helpers import tool_response
-
-    return tool_response(output, "hygiene_check", project_root, summary, next_actions=na_serialized)
+    return output, summary, na_serialized
 
 
-def impl_constraint_check(
-    helpers: dict[str, Any],
-    path: str,
+def compute_constraint(
+    project_root: str,
     planned_action: str,
     known_constraints: list[str] | None = None,
-) -> str:
+) -> tuple[dict[str, Any], str, list]:
     from lintgate.config import load_controlplane_config
     from lintgate.controlplane.behavior_compass import (
         add_declared_hypothesis,
@@ -200,8 +237,6 @@ def impl_constraint_check(
         save_behavior_compass,
         save_session,
     )
-
-    project_root = helpers["_validate_project_root"](path)
 
     with contextlib.suppress(Exception):
         from lintgate.state import log_feature_usage
@@ -231,10 +266,7 @@ def impl_constraint_check(
     uncertainty = compute_uncertainty_zones(compass)
     similar_failures = _find_similar_failures(compass.approaches, command_sig)
     recommendation = _build_constraint_recommendation(
-        coverage_gap,
-        recall,
-        uncertainty,
-        similar_failures,
+        coverage_gap, recall, uncertainty, similar_failures
     )
 
     save_behavior_compass(session, compass)
@@ -270,7 +302,7 @@ def impl_constraint_check(
             "tracking improve as you use constraint_check before taking actions. "
             "State your known constraints and register predictions for best results."
         )
-        _bp_onboarding = helpers["_build_onboarding_status"](project_root)
+        _bp_onboarding = _build_onboarding_status(project_root)
         if _bp_onboarding.get("config_state") != "config_enabled":
             output["onboarding"] = _bp_onboarding
 
@@ -290,7 +322,6 @@ def impl_constraint_check(
     if na_serialized:
         output["next_actions"] = na_serialized
 
-    # Build NL summary
     cov = output.get("coverage", {})
     n_relevant = cov.get("relevant_hypotheses", 0)
     gap = cov.get("coverage_gap", 0)
@@ -302,28 +333,21 @@ def impl_constraint_check(
         f"{n_uncertain} uncertainty zones, {n_similar} similar failures. "
         f"{recommendation}"
     )
-
-    from mcp_tools._disk_helpers import tool_response
-
-    return tool_response(
-        output,
-        "constraint_check",
-        project_root,
-        summary,
-        next_actions=na_serialized or None,
-    )
+    return output, summary, na_serialized
 
 
-def impl_prediction_register(
-    helpers: dict[str, Any],
-    path: str,
+def compute_predict(
+    project_root: str,
     planned_action: str,
     prediction: str,
     prediction_type: str,
     prediction_value: str | int,
-) -> str:
-    import uuid
+) -> tuple[dict[str, Any] | None, str, list, dict[str, Any] | None]:
+    """Register a prediction. Returns (output, summary, next_actions, error_dict).
 
+    If invalid, returns (None, "", [], error_dict). The error_dict is suitable
+    for emission as a plain JSON (no disk persistence).
+    """
     from lintgate.config import load_controlplane_config
     from lintgate.controlplane.behavior_compass import (
         Prediction,
@@ -339,20 +363,20 @@ def impl_prediction_register(
         save_session,
     )
 
-    project_root = helpers["_validate_project_root"](path)
-
     with contextlib.suppress(Exception):
         from lintgate.state import log_feature_usage
 
         log_feature_usage("prediction_register", project_root)
 
-    valid_types = {"exit_code", "error_signature", "stdout_contains"}
-    if prediction_type not in valid_types:
-        return helpers["_json_dumps"](  # type: ignore[no-any-return]
+    if prediction_type not in _VALID_PREDICTION_TYPES:
+        return (
+            None,
+            "",
+            [],
             {
                 "error": f"Invalid prediction_type: {prediction_type!r}",
-                "valid_types": sorted(valid_types),
-            }
+                "valid_types": sorted(_VALID_PREDICTION_TYPES),
+            },
         )
 
     cp_config = load_controlplane_config(project_root)
@@ -365,23 +389,16 @@ def impl_prediction_register(
     _is_bash_action = any(
         kw in planned_action.lower()
         for kw in (
-            "bash",
-            "execute",
-            "run",
-            "command",
-            "shell",
-            "npm",
-            "pip",
-            "git",
-            "make",
-            "pytest",
-            "python",
-            "uv",
+            "bash", "execute", "run", "command", "shell", "npm", "pip",
+            "git", "make", "pytest", "python", "uv",
         )
     )
 
     if not _is_bash_action or not command_sig or command_sig == "unknown:unknown":
-        return helpers["_json_dumps"](  # type: ignore[no-any-return]
+        return (
+            None,
+            "",
+            [],
             {
                 "status": "not_applicable",
                 "message": (
@@ -389,7 +406,7 @@ def impl_prediction_register(
                     "recognizable command signatures."
                 ),
                 "command_sig": command_sig,
-            }
+            },
         )
 
     relevant = find_relevant_hypotheses(compass, command_sig, tool="Bash")
@@ -455,7 +472,6 @@ def impl_prediction_register(
     )
     output["next_actions"] = na_serialized
 
-    # Build NL summary
     acc_str = ""
     if accuracy_section.get("accuracy") is not None:
         acc_str = f", accuracy={accuracy_section['accuracy']}"
@@ -465,48 +481,25 @@ def impl_prediction_register(
         f"{accuracy_section.get('pending_count', 0)} pending, "
         f"{accuracy_section.get('checked_count', 0)} checked{acc_str}."
     )
-
-    from mcp_tools._disk_helpers import tool_response
-
-    return tool_response(
-        output,
-        "prediction_register",
-        project_root,
-        summary,
-        next_actions=na_serialized,
-    )
+    return output, summary, na_serialized, None
 
 
-def impl_behavior_precheck(
-    helpers: dict[str, Any],
-    tools: dict[str, Any],
-    path: str,
+def compute_precheck(
+    project_root: str,
     planned_action: str,
     known_constraints: list[str] | None = None,
     prediction: str | None = None,
     prediction_type: str | None = None,
     prediction_value: str | int | None = None,
-) -> str:
-    from mcp_tools._disk_helpers import load_tool_response
-
-    project_root = helpers["_validate_project_root"](path)
-
+) -> tuple[dict[str, Any], str, list]:
+    """Deprecated aggregator — calls constraint, predict, hygiene compute fns."""
     with contextlib.suppress(Exception):
         from lintgate.state import log_feature_usage
 
         log_feature_usage("behavior_precheck_deprecated", project_root)
 
-    # Call constraint_check, then undo the session counter increment
-    # so behavior_precheck counts as ONE constraint check, not two.
-    # Inner MCP tools now return slim disk-first envelopes; unwrap to the
-    # full data dict so downstream field accesses (`status`, `prediction_tracking`,
-    # `command_class`, ...) work correctly.
-    constraint_result_raw = tools["constraint_check"](
-        path=path,
-        planned_action=planned_action,
-        known_constraints=known_constraints,
-    )
-    output = load_tool_response(constraint_result_raw)
+    # constraint_check path
+    c_output = compute_constraint(project_root, planned_action, known_constraints)[0]
 
     # Undo the double-count: constraint_check incremented the counter,
     # but this wrapper call should not count as a separate invocation.
@@ -521,16 +514,19 @@ def impl_behavior_precheck(
         if _compass.constraint_check_count_session > 0:
             _compass.constraint_check_count_session -= 1
 
+    output = dict(c_output)
+    # Strip next_actions carried by constraint_check output (will be rebuilt below)
+    prev_na = output.pop("next_actions", None)
+
     prediction_registered = False
-    _valid_prediction_types = {"exit_code", "error_signature", "stdout_contains"}
     if prediction:
         _pred_errors: list[str] = []
         if not prediction_type:
             _pred_errors.append("prediction_type is required when prediction is provided")
-        elif prediction_type not in _valid_prediction_types:
+        elif prediction_type not in _VALID_PREDICTION_TYPES:
             _pred_errors.append(
                 f"prediction_type {prediction_type!r} invalid, "
-                f"must be one of: {sorted(_valid_prediction_types)}"
+                f"must be one of: {sorted(_VALID_PREDICTION_TYPES)}"
             )
         if prediction_value is None:
             _pred_errors.append("prediction_value is required when prediction is provided")
@@ -544,31 +540,30 @@ def impl_behavior_precheck(
                 ),
             }
         else:
-            pred_result_raw = tools["prediction_register"](
-                path=path,
-                planned_action=planned_action,
-                prediction=prediction,
-                prediction_type=prediction_type,
-                prediction_value=prediction_value,
+            _p_res = compute_predict(
+                project_root,
+                planned_action,
+                prediction,
+                prediction_type,  # type: ignore[arg-type]
+                prediction_value,  # type: ignore[arg-type]
             )
-            pred_result = load_tool_response(pred_result_raw)
-            prediction_registered = pred_result.get("status") == "registered"
-            if "prediction_tracking" in pred_result:
-                output["prediction_tracking"] = pred_result["prediction_tracking"]
+            p_output, p_err = _p_res[0], _p_res[3]
+            if p_err is not None:
+                output["prediction_error"] = {"errors": [p_err.get("error", "unknown")]}
+            else:
+                prediction_registered = bool(p_output and p_output.get("status") == "registered")
+                if p_output and "prediction_tracking" in p_output:
+                    output["prediction_tracking"] = p_output["prediction_tracking"]
 
     if prediction_registered:
         output.setdefault("prediction_tracking", {})["prediction_registered"] = True
 
-    hygiene_result_raw = tools["hygiene_check"](
-        path=path,
-        planned_action=planned_action,
-    )
-    hygiene_result = load_tool_response(hygiene_result_raw)
-    if hygiene_result.get("status") == "warnings":
+    h_output = compute_hygiene(project_root, planned_action)[0]
+    if h_output.get("status") == "warnings":
         output["hygiene"] = {
-            "command_class": hygiene_result.get("command_class"),
-            "warnings": hygiene_result.get("warnings", []),
-            "recommendation": hygiene_result.get("recommendation", ""),
+            "command_class": h_output.get("command_class"),
+            "warnings": h_output.get("warnings", []),
+            "recommendation": h_output.get("recommendation", ""),
         }
 
     output["deprecation"] = {
@@ -586,7 +581,6 @@ def impl_behavior_precheck(
         },
     }
 
-    # Build NL summary
     cov = output.get("coverage", {})
     gap = cov.get("coverage_gap", 0)
     has_hygiene = "hygiene" in output
@@ -598,26 +592,19 @@ def impl_behavior_precheck(
         parts.append("prediction registered")
     summary = f"Behavior precheck (DEPRECATED): {', '.join(parts)}. Use orthogonal tools instead."
 
-    na_serialized = output.get("next_actions")
-
-    from mcp_tools._disk_helpers import tool_response
-
-    return tool_response(
-        output,
-        "behavior_precheck",
-        project_root,
-        summary,
-        next_actions=na_serialized,
-    )
+    na_serialized = prev_na or []
+    if na_serialized:
+        output["next_actions"] = na_serialized
+    return output, summary, na_serialized
 
 
-def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
+def compute_memory_status(project_root: str) -> dict[str, Any] | None:
+    """Returns output dict, or None if controlplane not configured (emit error)."""
     from lintgate.config import load_controlplane_config
 
-    project_root = os.path.abspath(path)
     cp_config = load_controlplane_config(project_root)
     if cp_config is None:
-        return helpers["_json_dumps"]({"error": "ControlPlane not configured"})  # type: ignore[no-any-return]
+        return None
 
     from lintgate.controlplane.global_behavior_profile import (
         GLOBAL_PROFILE_PATH,
@@ -658,7 +645,7 @@ def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
             else 0,
         }
 
-    output: dict[str, Any] = {
+    return {
         "scope": "project",
         "scope_note": "Cross-session memory for this project (not cross-project)",
         "project_root": project_root,
@@ -680,37 +667,146 @@ def impl_global_memory_status(helpers: dict[str, Any], path: str) -> str:
         },
     }
 
-    # Build NL summary
-    n_signals = len(profile.signal_priors)
-    n_nudges = len(nudge_rates)
-    n_intents = len(normalized_intents)
-    enabled_str = "enabled" if cp_config.global_memory_enabled else "disabled"
-    summary = (
-        f"Global memory ({enabled_str}): {profile.session_count} sessions, "
-        f"{n_signals} signal priors, {n_nudges} nudge outcomes, {n_intents} intent types."
-    )
 
-    from mcp_tools._disk_helpers import tool_response
-
-    return tool_response(output, "global_memory_status", project_root, summary)
-
-
-def impl_global_memory_reset(helpers: dict[str, Any], path: str) -> str:
+def compute_memory_reset(project_root: str) -> dict[str, Any]:
     from lintgate.controlplane.global_behavior_profile import (
         GLOBAL_PROFILE_PATH,
         GlobalBehaviorProfile,
         save_global_profile,
     )
 
-    project_root = os.path.abspath(path)
     save_global_profile(GlobalBehaviorProfile())
-    return helpers["_json_dumps"](  # type: ignore[no-any-return]
-        {
-            "scope": "project",
-            "scope_note": "Cross-session memory for this project (not cross-project)",
-            "project_root": project_root,
-            "status": "reset",
-            "profile_path": str(GLOBAL_PROFILE_PATH),
-            "message": "Global behavior profile has been reset to empty state.",
-        }
+    return {
+        "scope": "project",
+        "scope_note": "Cross-session memory for this project (not cross-project)",
+        "project_root": project_root,
+        "status": "reset",
+        "profile_path": str(GLOBAL_PROFILE_PATH),
+        "message": "Global behavior profile has been reset to empty state.",
+    }
+
+
+# ── command handlers ────────────────────────────────────────────────────────
+
+
+def cmd_hygiene(args: argparse.Namespace) -> None:
+    project_root = validate_project_root(args.path)
+    output, summary, na = compute_hygiene(project_root, args.action)
+    emit(output, "hygiene_check", project_root, summary, next_actions=na or None)
+
+
+def cmd_constraint(args: argparse.Namespace) -> None:
+    project_root = validate_project_root(args.path)
+    output, summary, na = compute_constraint(project_root, args.action, args.known_constraint)
+    emit(output, "constraint_check", project_root, summary, next_actions=na or None)
+
+
+def cmd_predict(args: argparse.Namespace) -> None:
+    project_root = validate_project_root(args.path)
+    pv: str | int = args.value
+    if args.type == "exit_code":
+        try:
+            pv = int(args.value)
+        except (TypeError, ValueError):
+            pass
+    output, summary, na, err = compute_predict(
+        project_root, args.action, args.prediction, args.type, pv
     )
+    if err is not None:
+        print(json.dumps(err, separators=(",", ":"), default=str))
+        return
+    assert output is not None
+    emit(output, "prediction_register", project_root, summary, next_actions=na or None)
+
+
+def cmd_precheck(args: argparse.Namespace) -> None:
+    project_root = validate_project_root(args.path)
+    pv: str | int | None = args.value
+    if pv is not None and args.type == "exit_code":
+        try:
+            pv = int(pv)
+        except (TypeError, ValueError):
+            pass
+    output, summary, na = compute_precheck(
+        project_root,
+        args.action,
+        args.known_constraint,
+        args.prediction,
+        args.type,
+        pv,
+    )
+    emit(output, "behavior_precheck", project_root, summary, next_actions=na or None)
+
+
+def cmd_memory_status(args: argparse.Namespace) -> None:
+    project_root = os.path.abspath(args.path)
+    output = compute_memory_status(project_root)
+    if output is None:
+        emit_error("ControlPlane not configured")
+    profile = output  # type: ignore[assignment]
+    n_signals = len(profile.get("signal_priors", {}))
+    n_nudges = len(profile.get("nudge_outcomes", {}))
+    n_intents = len(profile.get("intent_ratios_normalized", {}))
+    enabled_str = "enabled" if profile.get("enabled") else "disabled"
+    summary = (
+        f"Global memory ({enabled_str}): {profile.get('session_count', 0)} sessions, "
+        f"{n_signals} signal priors, {n_nudges} nudge outcomes, {n_intents} intent types."
+    )
+    emit(profile, "global_memory_status", project_root, summary)
+
+
+def cmd_memory_reset(args: argparse.Namespace) -> None:
+    project_root = os.path.abspath(args.path)
+    output = compute_memory_reset(project_root)
+    # Historical contract: returned plain json.dumps(dict) — preserve by emitting
+    # the dict as-is (not wrapped in a disk envelope).
+    print(json.dumps(output, separators=(",", ":"), default=str))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="behavior_check", description="Behavioral supervision checks")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_hyg = sub.add_parser("hygiene", help="Hygiene precheck for a planned action")
+    p_hyg.add_argument("path")
+    p_hyg.add_argument("--action", required=True)
+
+    p_con = sub.add_parser("constraint", help="Constraint ledger check")
+    p_con.add_argument("path")
+    p_con.add_argument("--action", required=True)
+    p_con.add_argument("--known-constraint", action="append", default=[])
+
+    p_pred = sub.add_parser("predict", help="Register a falsifiable prediction")
+    p_pred.add_argument("path")
+    p_pred.add_argument("--action", required=True)
+    p_pred.add_argument("--prediction", required=True)
+    p_pred.add_argument("--type", required=True)
+    p_pred.add_argument("--value", required=True)
+
+    p_pre = sub.add_parser("precheck", help="DEPRECATED aggregator")
+    p_pre.add_argument("path")
+    p_pre.add_argument("--action", required=True)
+    p_pre.add_argument("--known-constraint", action="append", default=[])
+    p_pre.add_argument("--prediction")
+    p_pre.add_argument("--type")
+    p_pre.add_argument("--value")
+
+    p_ms = sub.add_parser("memory-status", help="Cross-session behavioral memory status")
+    p_ms.add_argument("path")
+
+    p_mr = sub.add_parser("memory-reset", help="Reset global behavior profile")
+    p_mr.add_argument("path")
+
+    args = parser.parse_args()
+    {
+        "hygiene": cmd_hygiene,
+        "constraint": cmd_constraint,
+        "predict": cmd_predict,
+        "precheck": cmd_precheck,
+        "memory-status": cmd_memory_status,
+        "memory-reset": cmd_memory_reset,
+    }[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

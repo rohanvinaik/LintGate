@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 def format_report(
     result: AggregatedResult,
     last_run: dict[str, Any] | None = None,
-    recurrence_summary: dict[str, Any] | None = None,
+    recurrence_summary: dict[str, Any] | None = None,  # kept for API compat
     pattern_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Format aggregated results as JSON for Claude Code systemMessage.
@@ -46,13 +46,18 @@ def format_report(
     parts: list[str] = []
 
     _add_header(parts, result)
-    _add_pattern_alert_section(parts, pattern_report)
     _add_blocking_section(parts, result.blocking)
-    _add_warnings_section(parts, result.warnings)
-    _add_info_section(parts, result.informational)
+    # When blocking issues exist, show only a count for warnings to keep
+    # the model focused on what must be fixed NOW.  When nothing is blocking,
+    # expand warnings so the model has something actionable.
+    if result.blocking:
+        _add_warnings_count(parts, result.warnings)
+    else:
+        _add_warnings_section(parts, result.warnings)
     _add_delta_section(parts, result, last_run)
-    _add_recurrence_section(parts, recurrence_summary)
     _add_fixable_section(parts, result.metrics)
+    # Condense pattern alerts to a single line instead of verbose multi-line blocks
+    _add_pattern_summary(parts, pattern_report)
     _add_linter_status_section(parts, result)
     parts.append("</lint-report>")
 
@@ -133,12 +138,28 @@ def _add_warnings_section(parts: list[str], warnings: list[LintIssue]) -> None:
         parts.append(f"  ... and {count - 3} more warnings")
 
 
-def _add_info_section(parts: list[str], informational: list[LintIssue]) -> None:
-    """Add informational count (no details — just signal)."""
-    if not informational:
+def _add_warnings_count(parts: list[str], warnings: list[LintIssue]) -> None:
+    """Add warnings as a single count line when blocking issues need focus."""
+    if not warnings:
         return
-    count = len(informational)
-    parts.append(f"INFO: {count} informational finding{'s' if count != 1 else ''}")
+    parts.append(f"WARNINGS: {len(warnings)} (fix blocking issues first)")
+
+
+def _add_pattern_summary(parts: list[str], pattern_report: dict[str, Any] | None) -> None:
+    """Condense pattern alerts to a single line instead of verbose multi-line blocks."""
+    if not pattern_report:
+        return
+    alerts = pattern_report.get("alerted_patterns", [])
+    recurring = [
+        a for a in alerts if a.get("alert_reason") == "recurring_across_runs"
+    ]
+    if not recurring:
+        return
+    tags = [
+        f"{a.get('kind', '?')} ({a.get('recent_run_count', 0)}/{_RECENT_WINDOW} runs)"
+        for a in recurring[:3]
+    ]
+    parts.append(f"Recurring: {', '.join(tags)}")
 
 
 def _add_delta_section(
@@ -170,64 +191,6 @@ def _add_fixable_section(parts: list[str], metrics: dict[str, Any]) -> None:
         parts.append(
             f"Auto-fixable: {fixable} issue{'s' if fixable != 1 else ''} (run: ruff check --fix)"
         )
-
-
-def _add_recurrence_section(parts: list[str], recurrence_summary: dict[str, Any] | None) -> None:
-    """Highlight repeated issues so agents avoid reintroducing the same bug shape."""
-    if not recurrence_summary:
-        return
-    repeated_count = int(recurrence_summary.get("repeated_issue_count", 0))
-    if repeated_count <= 0:
-        return
-
-    parts.append(
-        f"RECURRING: {repeated_count} issue signature{'s' if repeated_count != 1 else ''} "
-        "seen in prior runs"
-    )
-    for item in recurrence_summary.get("top_repeated", [])[:10]:
-        location = _short_path(str(item.get("file", "")))
-        line = item.get("line")
-        where = f"{location}:{line}" if line else location
-        message = str(item.get("message", "")).strip()
-        count = int(item.get("count", 0))
-        parts.append(
-            f"  [{item.get('linter', 'linter')}/{item.get('kind', 'issue')}] "
-            f"{where} x{count}: {message}"
-        )
-
-
-def _add_pattern_alert_section(parts: list[str], pattern_report: dict[str, Any] | None) -> None:
-    """Highlight categorical anti-patterns (tail-chasing detection).
-
-    These appear BEFORE blocking/warning sections because they represent
-    systemic issues that deserve attention before individual fixes.
-    Alert-only: no automatic severity promotion.
-    """
-    if not pattern_report:
-        return
-    alerts = pattern_report.get("alerted_patterns", [])
-    if not alerts:
-        return
-
-    for alert in alerts[:3]:  # Cap at 3 to avoid flooding
-        linter = alert.get("linter", "?")
-        kind = alert.get("kind", "?")
-        count = alert.get("count_this_run", 0)
-        files = alert.get("files_this_run", 0)
-        reason = alert.get("alert_reason", "")
-        recent = alert.get("recent_run_count", 0)
-
-        if reason == "recurring_across_runs":
-            parts.append(
-                f"PATTERN ALERT: You keep producing [{linter}/{kind}] errors "
-                f"(seen in {recent} of last {_RECENT_WINDOW} runs, {count} instances across {files} files this run). "
-                f"This is a categorical mistake \u2014 review your approach, not just individual instances."
-            )
-        elif reason == "single_run_volume":
-            parts.append(
-                f"PATTERN NOTE: [{linter}/{kind}] appeared {count} times across {files} files in this run. "
-                f"Consider a systematic fix rather than addressing each individually."
-            )
 
 
 _RECENT_WINDOW = 5  # Mirror the constant from pattern_bank.py

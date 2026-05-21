@@ -330,6 +330,11 @@ def _load_mutation_cache(project_root: str, file_path: str) -> dict[str, dict] |
     Returns a dict mapping function_key → mutation result dict,
     or None if no mutation data exists. Lightweight: reads only
     JSON files from the per-project mutation cache directory.
+
+    Environmental states (DISCOVERY_IMPORT_FAILED, NO_TEST_FILES)
+    are filtered out — they describe a broken run, not a function
+    property. Filtering forces re-profiling instead of persisting
+    stale exclusions.
     """
     from pathlib import Path
 
@@ -351,10 +356,19 @@ def _load_mutation_cache(project_root: str, file_path: str) -> dict[str, dict] |
             continue
         func_key = data.get("function_key", "")
         # Only load entries for the file being analyzed
-        if rel_path in func_key:
-            cache[func_key] = data
+        if rel_path not in func_key:
+            continue
+        # Skip entries with environmental states — these describe a
+        # broken run (import failure, missing tests), not a function
+        # property. Dropping them forces re-profiling on next run.
+        if data.get("discovery_state") in _ENVIRONMENTAL_STATES:
+            continue
+        cache[func_key] = data
 
     return cache if cache else None
+
+
+_ENVIRONMENTAL_STATES = frozenset({"DISCOVERY_IMPORT_FAILED", "NO_TEST_FILES"})
 
 
 def _discover_relevant_test_files(file_path: str, project_root: str) -> list[str]:

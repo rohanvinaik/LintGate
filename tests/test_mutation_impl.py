@@ -15,8 +15,8 @@ from mcp_tools._mutation_tools_impl import (
     impl_decompose,
     impl_get_state,
     impl_prescribe,
-    impl_prescribe_tests,
 )
+from mcp_tools._mutation_testgen_impl import impl_prescribe_tests
 
 
 def _load_tool_result(json_str):
@@ -253,10 +253,11 @@ class TestImplPrescribe:
 
 
 class TestImplPrescribeTests:
-    @patch("mcp_tools._mutation_tools_impl.generate_test_skeleton")
-    @patch("mcp_tools._mutation_tools_impl.iter_cached_states")
-    @patch("mcp_tools._mutation_tools_impl.get_cache_dir")
-    def test_generates_skeletons(self, mock_cache_dir, mock_states, mock_skel):
+    @patch("mcp_tools._mutation_testgen_impl._write_skeleton_file", return_value="")
+    @patch("mcp_tools._mutation_testgen_impl.generate_test_skeleton")
+    @patch("mcp_tools._mutation_testgen_impl.iter_cached_states")
+    @patch("mcp_tools._mutation_testgen_impl.get_cache_dir")
+    def test_generates_skeletons(self, mock_cache_dir, mock_states, mock_skel, _mock_write):
         mock_cache_dir.return_value = Path("/cache")
         mock_states.return_value = [
             {
@@ -277,8 +278,8 @@ class TestImplPrescribeTests:
         assert result["skeletons"][0]["category"] == "VALUE"
         assert len(result["next_actions"]) >= 1
 
-    @patch("mcp_tools._mutation_tools_impl.iter_cached_states")
-    @patch("mcp_tools._mutation_tools_impl.get_cache_dir")
+    @patch("mcp_tools._mutation_testgen_impl.iter_cached_states")
+    @patch("mcp_tools._mutation_testgen_impl.get_cache_dir")
     def test_no_survivors_no_skeletons(self, mock_cache_dir, mock_states):
         mock_cache_dir.return_value = Path("/cache")
         mock_states.return_value = [
@@ -314,7 +315,8 @@ class TestImplClearState:
         with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
             result = _load_tool_result(impl_clear_state(_make_helpers(), ".", None))
 
-        assert result["cleared"] == 2
+        assert result["cleared"]["mutation_cache"] == 2
+        assert result["cleared"]["total"] >= 2
         assert (cache_dir / "scheduler_state.json").exists()  # preserved
 
     def test_clears_only_matching_file(self, tmp_path):
@@ -326,7 +328,7 @@ class TestImplClearState:
         with patch("mcp_tools._mutation_tools_impl.get_cache_dir", return_value=cache_dir):
             result = _load_tool_result(impl_clear_state(_make_helpers(), ".", "target.py"))
 
-        assert result["cleared"] == 1
+        assert result["cleared"]["mutation_cache"] == 1
         assert not (cache_dir / "a.json").exists()
         assert (cache_dir / "b.json").exists()
 

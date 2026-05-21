@@ -156,6 +156,37 @@ def _impl_declare_mode(project_root: str, mode: str) -> str:
     return tool_response(data, "declare_mode", project_root, summary)
 
 
+def _impl_declare_workflow(project_root: str, workflow: str | None) -> str:
+    """Implementation for declare_workflow tool."""
+    state, tracker, _event_counter, save_fn = _load_state(project_root)
+
+    from lintgate._habit_signals import declare_workflow as _declare_workflow_fn
+
+    result_mode = _declare_workflow_fn(state, workflow)
+    save_fn(state, tracker)
+
+    with contextlib.suppress(Exception):
+        from lintgate.state import log_feature_usage, log_metric
+
+        log_feature_usage("workflow_mode", project_root, {"tool": "declare_workflow"})
+        log_metric(
+            {
+                "event": "workflow_mode_change",
+                "project": project_root,
+                "workflow_mode": result_mode or "(cleared)",
+            }
+        )
+
+    action = f"set to {result_mode}" if result_mode else "cleared"
+    data = {
+        "status": "ok",
+        "workflow_mode": result_mode,
+        "habit_active": state.active,
+    }
+    summary = f"Workflow mode {action}."
+    return tool_response(data, "declare_workflow", project_root, summary)
+
+
 def _impl_habit_status(project_root: str) -> str:
     """Implementation for habit_status tool."""
     state, tracker, event_counter, _save_fn = _load_state(project_root)
@@ -427,6 +458,26 @@ def register(mcp, helpers):
         """
         project_root = helpers["_validate_project_root"](path)
         return _impl_declare_mode(project_root, mode)
+
+    @mcp.tool()
+    def declare_workflow(path: str, workflow: str | None = None) -> str:
+        """Set the session workflow mode (orthogonal to habit/standard economy mode).
+
+        Controls signal surface shape and hook behavior:
+        - "surgical": Narrow edits, silent-on-clean, delta-scoped findings only
+        - "refactor": Full channel output, structural change tracking
+        - "greenfield": New code pipeline, prescriptive spec integration
+        - "explore": Read-heavy, relaxed linting
+        - "debug_spiral": Recovery mode, constraint-first orientation
+
+        Pass None or empty string to clear workflow mode.
+
+        Args:
+            path: Project root path.
+            workflow: Workflow mode name, or None to clear.
+        """
+        project_root = helpers["_validate_project_root"](path)
+        return _impl_declare_workflow(project_root, workflow)
 
     @mcp.tool()
     def habit_status(path: str) -> str:

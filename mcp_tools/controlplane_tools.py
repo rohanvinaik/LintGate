@@ -1,20 +1,18 @@
-"""ControlPlane tools — controlplane_run, controlplane_get_details, controlplane_status,
-controlplane_test_skeleton, controlplane_report_repair, controlplane_agent_feedback,
-controlplane_apply_repairs.
+"""ControlPlane tools — thin subprocess wrappers around scripts/controlplane_run.py.
 
-Implementation functions live in:
-- _controlplane_impl_run.py      (run, channel selection, file resolution, persistence)
-- _controlplane_impl_details.py  (details drill-down, status)
-- _controlplane_impl_feedback.py (agent feedback, repairs)
+All computation lives in scripts/controlplane_run.py, which delegates to the
+_impl_* functions in mcp_tools/_controlplane_impl_*.py. Those impl modules stay
+in place — they house the orchestration logic shared with scripts and with
+existing tests. This module re-exports the same symbols the old module did so
+downstream tests keep importing them here.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Literal
-
-from mcp_tools._disk_helpers import _safe_json, tool_response
+import subprocess
+import sys
 
 from ._controlplane_impl_details import (  # noqa: F401
     _DEFAULT_SECTIONS,
@@ -86,44 +84,79 @@ from ._controlplane_impl_run import (  # noqa: F401
     _validate_channel_wiring,
 )
 
-# ── Registration ────────────────────────────────────────────────────────
+_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts",
+    "controlplane_run.py",
+)
+
+# Error prefixes that should become ValueError in the MCP layer
+_VALUE_ERROR_PREFIXES = (
+    "Invalid outcome",
+    "Source file not found",
+    "Invalid severity",
+)
+
+
+def _run_script(*args: str, timeout: float = 600.0) -> str:
+    """Invoke scripts/controlplane_run.py as a subprocess and relay stdout.
+
+    Raises ValueError for known validation error prefixes to preserve the
+    pre-subprocess MCP contract (backward compat for pytest.raises callers).
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, _SCRIPT, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "controlplane_run subprocess timed out"})
+    except OSError as exc:
+        return json.dumps({"error": f"controlplane_run subprocess failed: {exc}"})
+
+    stdout = (proc.stdout or "").strip()
+    if not stdout:
+        return json.dumps({
+            "error": f"controlplane_run exit {proc.returncode}",
+            "stderr": (proc.stderr or "").strip()[-500:],
+        })
+
+    last = stdout.splitlines()[-1]
+    try:
+        parsed = json.loads(last)
+    except json.JSONDecodeError:
+        return stdout
+    if isinstance(parsed, dict) and "error" in parsed and "analysis_id" not in parsed:
+        msg = str(parsed["error"])
+        for prefix in _VALUE_ERROR_PREFIXES:
+            if msg.startswith(prefix):
+                raise ValueError(msg)
+    return stdout
 
 
 def register(mcp, helpers):
     """Register ControlPlane tools on the shared MCP instance."""
+    del helpers  # unused — the script provides its own helpers dict
 
     @mcp.tool()
     def controlplane_run(
         path: str,
         channels: str | None = None,
-        strictness: Literal["relaxed", "normal", "strict"] = "normal",
-        scope: Literal["project", "changed", "staged", "files", "full_sweep"] | None = None,
+        strictness: str = "normal",
+        scope: str | None = None,
         files: list[str] | None = None,
     ) -> str:
-        """Run a comprehensive project health check across multiple dimensions.
-
-        WHEN TO USE: At the start of a session to understand project state, or after
-        significant changes. This is the most thorough single analysis available.
-        Works without any configuration file.
-
-        Example: controlplane_run(path="/my/project")
-
-        Runs 6 independent analysis channels in parallel: lint (code quality),
-        tests (coverage and health), deps (dependency issues), git (hygiene),
-        behavior (patterns across sessions), structure (codebase architecture).
-        Returns compact findings with a run_id.
-        Use controlplane_get_details(run_id) to drill into specific findings.
-
-        Args:
-            path: Project root path.
-            channels: Comma-separated channel list (default: all). Options: lint,tests,deps,git,behavior,structure
-            strictness: Strictness level for analysis.
-            scope: The scope of files to analyze. Defaults to "changed".
-                Use "full_sweep" for project-wide refactoring (no 50-file cap).
-            files: Explicit list of files to analyze when scope="files".
-        """
-        # impl now returns a slim tool_response() string directly (data saved to disk)
-        return str(_impl_controlplane_run(path, channels, strictness, scope, files, helpers))
+        """Run a comprehensive project health check across multiple dimensions."""
+        args = ["run", path, "--strictness", strictness]
+        if channels:
+            args.extend(["--channels", channels])
+        if scope:
+            args.extend(["--scope", scope])
+        for f in files or []:
+            args.extend(["--file", f])
+        return _run_script(*args)
 
     @mcp.tool()
     def controlplane_get_details(
@@ -134,135 +167,36 @@ def register(mcp, helpers):
         sections: list[str] | None = None,
         top_n: int | None = None,
         time_budget_minutes: float | None = None,
-        finding_domain: Literal["all", "code", "environment"] | None = None,
+        finding_domain: str | None = None,
     ) -> str:
-        """Drill into a previous ControlPlane run by run_id.
-
-        WHEN TO USE: After controlplane_run returns findings. The compact output
-        shows counts and summaries — use this to see full issue details, evidence,
-        and suggested repairs. Includes a code-vs-environment summary so dependency
-        CVEs do not drown out code findings.
-
-        Example: controlplane_get_details(run_id="cp_abc123")
-        ROI example: controlplane_get_details(run_id="cp_abc123", time_budget_minutes=30)
-
-        Args:
-            run_id: The run_id from a controlplane_run response.
-            channel: Filter findings by channel (lint, tests, deps, git, behavior, structure).
-            severity: Filter by severity (blocking, warning, informational).
-            max_issues: Maximum findings to return (default 10).
-            sections: Which sections to include. Default: all.
-                Options: "findings", "channel_details", "evidence", "repairs", "coherence", "next_actions", "proven_resolutions"
-            top_n: Return the N highest-ROI findings (sorted by value-per-effort).
-            time_budget_minutes: Return findings that fit within this time budget,
-                sorted by ROI. E.g., 30 = "best fixes in 30 minutes."
-            finding_domain: Optional bucket filter. Use "code" to exclude environment
-                findings such as dependency CVEs; use "environment" for the inverse.
-        """
-        try:
-            # impl now returns a slim tool_response() string directly (data saved to disk)
-            return str(
-                _impl_controlplane_get_details(
-                    run_id,
-                    channel,
-                    severity,
-                    max_issues,
-                    sections,
-                    helpers,
-                    finding_domain=finding_domain,
-                    top_n=top_n,
-                    time_budget_minutes=time_budget_minutes,
-                )
-            )
-        except (ValueError, FileNotFoundError) as exc:
-            # Run not found — return error with pointer to disk file if it exists
-            disk_file = os.path.join(
-                os.getcwd(), ".lintgate", "analysis", "controlplane_run", f"{run_id}.json"
-            )
-            if os.path.isfile(disk_file):
-                return tool_response(
-                    {"error": str(exc), "note": "Run not in session memory but available on disk."},
-                    "controlplane_get_details",
-                    os.getcwd(),
-                    f"Run {run_id} not in session memory. Full data at: {disk_file}",
-                    run_id=run_id,
-                )
-            raise
+        """Drill into a previous ControlPlane run by run_id."""
+        args = ["get-details", run_id, "--max-issues", str(max_issues)]
+        if channel:
+            args.extend(["--channel", channel])
+        if severity:
+            args.extend(["--severity", severity])
+        for s in sections or []:
+            args.extend(["--section", s])
+        if top_n is not None:
+            args.extend(["--top-n", str(top_n)])
+        if time_budget_minutes is not None:
+            args.extend(["--time-budget-minutes", str(time_budget_minutes)])
+        if finding_domain:
+            args.extend(["--finding-domain", finding_domain])
+        return _run_script(*args)
 
     @mcp.tool()
     def controlplane_status(path: str | None = None) -> str:
-        """Show ControlPlane status for a project.
-
-        Shows whether ControlPlane is enabled, which channels are configured,
-        and the current config settings.
-        """
-        # impl now returns a slim tool_response() string directly (data saved to disk)
-        return str(_impl_controlplane_status(path, helpers))
+        """Show ControlPlane status for a project."""
+        args = ["status"]
+        if path:
+            args.extend(["--path", path])
+        return _run_script(*args)
 
     @mcp.tool()
-    def controlplane_test_skeleton(
-        path: str,
-        target_file: str,
-    ) -> str:
-        """Generate a test skeleton for a source file.
-
-        Uses AST analysis and test archetype matching to produce a pytest
-        skeleton with appropriate test stubs, fixtures, and imports.
-
-        Args:
-            path: Project root path.
-            target_file: Source file to generate tests for.
-        """
-        from lintgate.controlplane.skeleton_generator import (
-            generate_test_path,
-            generate_test_skeleton,
-        )
-
-        project_root = helpers["_validate_project_root"](path)
-
-        if not os.path.isabs(target_file):
-            target_file = os.path.normpath(os.path.join(project_root, target_file))
-
-        if not os.path.exists(target_file):
-            raise ValueError(f"Source file not found: {target_file}")
-
-        from lintgate.next_action import NextAction, serialize_next_actions
-
-        skeleton = generate_test_skeleton(target_file, project_root=project_root)
-        test_path = generate_test_path(target_file, project_root)
-        rel_file = os.path.relpath(target_file, project_root)
-
-        next_actions = serialize_next_actions(
-            [
-                NextAction(
-                    tool="mutation_run_sampling",
-                    args={"path": path, "file": rel_file},
-                    reason="Run mutation sampling to validate generated skeleton",
-                ),
-                NextAction(
-                    tool="spec_file_analyze",
-                    args={"path": path, "file": rel_file},
-                    reason="View specification analysis for test prioritization",
-                ),
-            ]
-        )
-
-        result = {
-            "source_file": target_file,
-            "test_path": test_path,
-            "skeleton": skeleton,
-            "status": "skeleton_needs_edit",
-            "action_required": (
-                "This is a SKELETON — it will NOT pass if run directly. "
-                "Replace all placeholder values (pass stubs, ..., EXPECTED) "
-                "with real values, then write with the Write tool."
-            ),
-            "next_actions": next_actions,
-        }
-        summary = f"Test skeleton for {rel_file}."
-        return tool_response(
-            result, "controlplane_test_skeleton", project_root, summary, next_actions=next_actions
-        )
+    def controlplane_test_skeleton(path: str, target_file: str) -> str:
+        """Generate a test skeleton for a source file."""
+        return _run_script("test-skeleton", path, "--target-file", target_file)
 
     @mcp.tool()
     def controlplane_report_repair(
@@ -270,43 +204,10 @@ def register(mcp, helpers):
         action_id: str,
         outcome: str = "applied",
     ) -> str:
-        """Report the outcome of a proposed repair action.
-
-        Call this after applying (or deciding to skip) a repair suggested
-        by ControlPlane. Tracks outcomes in session memory for future
-        improvement of repair proposals.
-
-        Args:
-            path: Project root path.
-            action_id: The repair action ID from the controlplane report.
-            outcome: One of 'applied', 'ignored', 'rejected'.
-        """
-        from lintgate.controlplane.session_memory import (
-            get_or_create_session,
-            report_repair_outcome,
-            save_session,
+        """Report the outcome of a proposed repair action."""
+        return _run_script(
+            "report-repair", path, "--action-id", action_id, "--outcome", outcome
         )
-
-        project_root = helpers["_validate_project_root"](path)
-        valid_outcomes = {"applied", "ignored", "rejected"}
-        if outcome not in valid_outcomes:
-            raise ValueError(
-                f"Invalid outcome '{outcome}'; expected one of: {sorted(valid_outcomes)}"
-            )
-
-        session = get_or_create_session(project_root)
-        report_repair_outcome(session, action_id, outcome)
-        save_session(session)
-
-        result = {
-            "action_id": action_id,
-            "outcome": outcome,
-            "session_id": session.session_id,
-            "pending_repairs": sum(1 for v in session.repair_outcomes.values() if v == "pending"),
-            "total_repairs_tracked": len(session.repair_outcomes),
-        }
-        summary = f"Repair reported for {action_id}."
-        return tool_response(result, "controlplane_report_repair", project_root, summary)
 
     @mcp.tool()
     def controlplane_agent_feedback(
@@ -318,42 +219,21 @@ def register(mcp, helpers):
         tuned_findings: list[dict] | None = None,
         test_failure_classifications: list[dict] | None = None,
     ) -> str:
-        """Provide agent feedback on ControlPlane findings or constraint proposals.
-
-        Use this to:
-        - Record disagreements with specific findings
-        - Accept proposed constraints (they'll be tracked as accepted)
-        - Reject proposed constraints (they won't be re-proposed)
-        - Tune persistent advisory findings (suppress or downgrade)
-        - Classify persistent test failures (stale_test/known_regression/flaky/out_of_scope)
-
-        Args:
-            path: Project root path.
-            run_id: Optional run ID this feedback relates to.
-            disagreement: Optional description of what the agent disagrees with.
-            accepted_constraints: Pattern keys to accept (e.g. ["ruff|F821"]).
-            rejected_constraints: Pattern keys to reject.
-            tuned_findings: Findings to tune. Each dict has:
-                ``signature`` (e.g. "structure_channel|STRUCT003|log_event.py"),
-                ``action`` ("suppress", "downgrade", or "reset"),
-                ``rationale`` (why this finding is non-actionable).
-            test_failure_classifications: Classify persistent test failures. Each dict has:
-                ``fingerprint`` (finding fingerprint from persistent_test_failures),
-                ``classification`` ("stale_test", "known_regression", "flaky", "out_of_scope"),
-                ``rationale`` (why this classification applies).
-        """
-        return str(
-            _impl_controlplane_agent_feedback(
-                path,
-                run_id,
-                disagreement,
-                accepted_constraints,
-                rejected_constraints,
-                helpers,
-                tuned_findings=tuned_findings,
-                test_failure_classifications=test_failure_classifications,
-            )
-        )
+        """Provide agent feedback on ControlPlane findings or constraint proposals."""
+        args = ["agent-feedback", path]
+        if run_id:
+            args.extend(["--run-id", run_id])
+        if disagreement:
+            args.extend(["--disagreement", disagreement])
+        for c in accepted_constraints or []:
+            args.extend(["--accept", c])
+        for c in rejected_constraints or []:
+            args.extend(["--reject", c])
+        if tuned_findings is not None:
+            args.extend(["--tuned-json", json.dumps(tuned_findings)])
+        if test_failure_classifications is not None:
+            args.extend(["--classifications-json", json.dumps(test_failure_classifications)])
+        return _run_script(*args)
 
     @mcp.tool()
     def controlplane_apply_repairs(
@@ -362,81 +242,40 @@ def register(mcp, helpers):
         safe_only: bool = True,
         run_id: str | None = None,
     ) -> str:
-        """Execute proposed repair actions from a ControlPlane run.
-
-        Only executes command-type repairs. Requires explicit invocation.
-        Pass ``run_id`` from ``controlplane_run`` or ``controlplane_get_details``
-        to replay persisted repairs even if the session snapshot has rolled forward.
-
-        Args:
-            path: Project root path.
-            action_ids: Specific action IDs to execute. If None, executes all safe pending repairs.
-            safe_only: Only execute repairs marked as safe (default True).
-            run_id: Optional originating ControlPlane run ID.
-        """
-        return str(
-            _impl_controlplane_apply_repairs(
-                path,
-                action_ids,
-                safe_only,
-                helpers,
-                run_id=run_id,
-            )
-        )
+        """Execute proposed repair actions from a ControlPlane run."""
+        args = ["apply-repairs", path]
+        for aid in action_ids or []:
+            args.extend(["--action-id", aid])
+        if not safe_only:
+            args.append("--unsafe")
+        if run_id:
+            args.extend(["--run-id", run_id])
+        return _run_script(*args)
 
     @mcp.tool()
-    def controlplane_get_work_queue(
-        run_id: str,
-        max_items: int = 25,
+    def controlplane_get_work_queue(run_id: str, max_items: int = 25) -> str:
+        """Get the dependency-ordered work queue from a cached ControlPlane run."""
+        return _run_script("get-work-queue", run_id, "--max-items", str(max_items))
+
+    @mcp.tool()
+    def controlplane_execute(
+        path: str,
+        budget_s: float = 300.0,
+        max_files: int = 10,
+        safe_only: bool = True,
+        exclusion_set: list[str] | None = None,
     ) -> str:
-        """Get the dependency-ordered work queue from a cached ControlPlane run.
-
-        WHEN TO USE: When you need the prioritized fix order without re-running
-        the full health check. Returns the same work queue format as
-        controlplane_run but from a cached result.
-
-        Args:
-            run_id: The run_id from a previous controlplane_run response.
-            max_items: Maximum work queue items to return (default 25).
-        """
-        from lintgate.state import load_controlplane_run
-
-        run_data = load_controlplane_run(run_id)
-        if run_data is None:
-            return json.dumps({"error": f"Run {run_id} not found"})
-
-        # Reconstruct finding index from persisted data
-        finding_index = run_data.get("finding_index", {})
-        if not finding_index:
-            return _safe_json({"run_id": run_id, "note": "No findings in this run."})
-
-        # Extract import graph from structure channel if available
-        import_graph: dict = {}
-        file_map: dict = {}
-        for ch_data in run_data.get("channels", {}).values():
-            metrics = ch_data.get("metrics", {})
-            if "_import_graph" in metrics:
-                import_graph = metrics["_import_graph"]
-                file_map = metrics.get("_file_map", {})
-                break
-
-        try:
-            from lintgate.controlplane.work_queue import build_work_queue
-
-            finding_list = list(finding_index.values())
-            wq = build_work_queue(finding_list, import_graph, file_map)
-            wq_dict = wq.to_dict()
-            total_items = len(wq_dict.get("items", []))
-            if total_items > max_items:
-                wq_dict["items"] = wq_dict["items"][:max_items]
-                wq_dict["truncated"] = True
-                wq_dict["total_items"] = total_items
-            wq_result = {"run_id": run_id, "work_queue": wq_dict}
-            n_files = wq_dict.get("total_files", total_items)
-            wq_summary = f"Work queue: {n_files} files."
-            return tool_response(wq_result, "controlplane_get_work_queue", os.getcwd(), wq_summary)
-        except Exception as e:
-            return _safe_json({"run_id": run_id, "error": f"Failed to build work queue: {e}"})
+        """Single-command project improvement: analyze, repair, generate tests, validate."""
+        args = [
+            "execute", path,
+            "--budget-s", str(budget_s),
+            "--max-files", str(max_files),
+        ]
+        if not safe_only:
+            args.append("--unsafe")
+        for e in exclusion_set or []:
+            args.extend(["--exclude", e])
+        return _run_script(*args)
 
     return {
         "controlplane_run": controlplane_run,
@@ -447,4 +286,5 @@ def register(mcp, helpers):
         "controlplane_agent_feedback": controlplane_agent_feedback,
         "controlplane_apply_repairs": controlplane_apply_repairs,
         "controlplane_get_work_queue": controlplane_get_work_queue,
+        "controlplane_execute": controlplane_execute,
     }

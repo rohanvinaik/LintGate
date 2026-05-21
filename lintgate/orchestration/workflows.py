@@ -2,6 +2,32 @@
 
 from typing import Any
 
+# ── Intent to WorkflowMode mapping ──────────────────────────────────
+
+_INTENT_TO_WORKFLOW: dict[str, str] = {
+    "fix_bug": "surgical",
+    "surgical": "surgical",
+    "narrow_edit": "surgical",
+    "refactor": "refactor",
+    "restructure": "refactor",
+    "new_code": "greenfield",
+    "greenfield": "greenfield",
+    "implement_issue": "refactor",
+    "explore": "explore",
+    "audit": "explore",
+    "review": "explore",
+    "debug": "debug_spiral",
+    "debug_spiral": "debug_spiral",
+    "stuck": "debug_spiral",
+}
+
+
+def intent_to_workflow_mode(intent: str | None) -> str | None:
+    """Map an intent string to a WorkflowMode value, or None if no match."""
+    if not intent:
+        return None
+    return _INTENT_TO_WORKFLOW.get(intent.lower().strip())
+
 
 def get_workflow_for_intent(intent: str | None) -> list[dict[str, Any]]:
     """Return a guided workflow for the specified intent."""

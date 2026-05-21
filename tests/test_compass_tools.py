@@ -179,7 +179,7 @@ class TestLoadModeObjExact:
         from lintgate.modes.mode_state import CognitiveMode
 
         with patch(
-            "mcp_tools.compass_tools._load_mode_dict",
+            "lintgate.compass_helpers._load_mode_dict",
             return_value={"current": "habit", "entered_at": 100.0},
         ):
             result = _load_mode_obj("/root")
@@ -190,7 +190,7 @@ class TestLoadModeObjExact:
         from lintgate.modes.mode_state import CognitiveMode
 
         with patch(
-            "mcp_tools.compass_tools._load_mode_dict",
+            "lintgate.compass_helpers._load_mode_dict",
             return_value={"current": "invalid_mode"},
         ):
             result = _load_mode_obj("/root")
@@ -199,7 +199,7 @@ class TestLoadModeObjExact:
     def test_empty_dict_gives_normal(self) -> None:
         from lintgate.modes.mode_state import CognitiveMode
 
-        with patch("mcp_tools.compass_tools._load_mode_dict", return_value={}):
+        with patch("lintgate.compass_helpers._load_mode_dict", return_value={}):
             result = _load_mode_obj("/root")
         assert result.current == CognitiveMode.NORMAL
         assert result.theory_frozen is False
@@ -464,7 +464,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.0),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         # problem axis present
@@ -483,7 +483,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.8),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         # staleness == 0.8 is NOT > 0.8, so no update suggestion
@@ -494,7 +494,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.81),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         tools = [a["tool"] for a in result["next_actions"]]
@@ -505,7 +505,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.5),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         tools = [a["tool"] for a in result["next_actions"]]
@@ -516,7 +516,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.1),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         assert result["frozen"] is True
@@ -532,7 +532,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.0),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         assert result["directives_count"] == 2
@@ -542,7 +542,7 @@ class TestImplStatusExact:
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_staleness", return_value=0.33333),
-            patch("mcp_tools.compass_tools._load_mode_dict", return_value={"current": "normal"}),
+            patch("lintgate.compass_helpers._load_mode_dict", return_value={"current": "normal"}),
         ):
             result = _impl_status("/root", "/root")
         assert result["staleness"] == 0.33
@@ -635,8 +635,8 @@ class TestImplUpdateExact:
             patch("lintgate.compass.compute_compass_hash", return_value=compass_hash),
             patch("lintgate.compass_io.save_compass"),
             patch("lintgate.gap_detector.detect_gaps"),
-            patch("mcp_tools.compass_tools._refresh_axis_scores"),
-            patch("mcp_tools.compass_tools._render_targets", return_value=render_result),
+            patch("lintgate.compass_helpers._refresh_axis_scores"),
+            patch("lintgate.compass_helpers._render_targets", return_value=render_result),
             patch("lintgate.compass_io.load_compass", return_value=None),
         )
 
@@ -831,7 +831,7 @@ class TestImplInterviewExact:
         applied = [{"axis": "problem", "question_idx": 0, "claim": "answer text"}]
         with (
             patch("lintgate.compass_io.load_compass", return_value=compass),
-            patch("mcp_tools.compass_tools._apply_answers", return_value=applied) as mock_apply,
+            patch("lintgate.compass_helpers._apply_answers", return_value=applied) as mock_apply,
         ):
             result = _impl_interview("/root", "/root", {"problem:0": "answer text"}, skip=False)
         assert result["applied"] == applied
@@ -987,8 +987,8 @@ class TestImplTheoryEnterExact:
     def test_normal_to_theory_exact_result(self) -> None:
         ms = _mode("normal")
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
-            patch("mcp_tools.compass_tools._save_mode") as mock_save,
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._save_mode") as mock_save,
         ):
             result = _impl_theory_enter("/root")
         assert result == {"status": "entered", "mode": "theory", "transition": "normal->theory"}
@@ -997,8 +997,8 @@ class TestImplTheoryEnterExact:
     def test_habit_blocked_exact_error(self) -> None:
         ms = _mode("habit")
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
-            patch("mcp_tools.compass_tools._save_mode") as mock_save,
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._save_mode") as mock_save,
         ):
             result = _impl_theory_enter("/root")
         assert "error" in result
@@ -1008,8 +1008,8 @@ class TestImplTheoryEnterExact:
     def test_theory_to_theory_blocked(self) -> None:
         ms = _mode("theory")
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
-            patch("mcp_tools.compass_tools._save_mode") as mock_save,
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._save_mode") as mock_save,
         ):
             result = _impl_theory_enter("/root")
         assert "error" in result
@@ -1034,11 +1034,11 @@ class TestImplTheoryFreezeExact:
             }
         )
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_compass_hash", return_value="abc123"),
             patch("lintgate.compass_io.save_compass") as save_c,
-            patch("mcp_tools.compass_tools._save_mode") as save_m,
+            patch("lintgate.compass_helpers._save_mode") as save_m,
         ):
             result = _impl_theory_freeze("/root")
         assert result["status"] == "frozen"
@@ -1052,7 +1052,7 @@ class TestImplTheoryFreezeExact:
     def test_no_compass_error(self) -> None:
         ms = _mode("theory")
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=None),
         ):
             result = _impl_theory_freeze("/root")
@@ -1064,7 +1064,7 @@ class TestImplTheoryFreezeExact:
         ms = _mode("normal")
         compass = CompassState()
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_compass_hash", return_value="h"),
         ):
@@ -1079,11 +1079,11 @@ class TestImplTheoryFreezeExact:
         # problem has depth=0, solution missing entirely
         compass = CompassState(axes={"problem": CompassAxis(name="problem", depth=0)})
         with (
-            patch("mcp_tools.compass_tools._load_mode_obj", return_value=ms),
+            patch("lintgate.compass_helpers._load_mode_obj", return_value=ms),
             patch("lintgate.compass_io.load_compass", return_value=compass),
             patch("lintgate.compass.compute_compass_hash", return_value="h"),
             patch("lintgate.compass_io.save_compass"),
-            patch("mcp_tools.compass_tools._save_mode"),
+            patch("lintgate.compass_helpers._save_mode"),
         ):
             result = _impl_theory_freeze("/root")
         assert result["status"] == "frozen"
@@ -1164,51 +1164,9 @@ class TestRegisterExact:
         assert len(tools) == 8
         assert mcp.tool.call_count == 8
 
-    def test_compass_update_write_true_no_update_in_next_actions(self) -> None:
-        tools, _ = self._register()
-        update_result = {
-            "compass_hash": "x",
-            "axes": {},
-            "gap_report": {"interview_recommended": False},
-            "inferred_claims": 0,
-            "written": True,
-        }
-        with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
-            raw = tools["compass_update"](path="/p", write=True)
-        result = _load_tool_result(raw)
-        tools_suggested = [a["tool"] for a in result["next_actions"]]
-        # write=True means no compass_update suggestion
-        assert "compass_update" not in tools_suggested
-        # interview not recommended means no compass_interview
-        assert "compass_interview" not in tools_suggested
-
-    def test_compass_update_write_false_suggests_rerun(self) -> None:
-        tools, _ = self._register()
-        update_result = {
-            "compass_hash": "x",
-            "axes": {},
-            "gap_report": {"interview_recommended": False},
-            "inferred_claims": 0,
-        }
-        with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
-            raw = tools["compass_update"](path="/p", write=False)
-        result = _load_tool_result(raw)
-        tools_suggested = [a["tool"] for a in result["next_actions"]]
-        assert "compass_update" in tools_suggested
-
-    def test_compass_update_interview_recommended(self) -> None:
-        tools, _ = self._register()
-        update_result = {
-            "compass_hash": "x",
-            "axes": {},
-            "gap_report": {"interview_recommended": True},
-            "inferred_claims": 0,
-        }
-        with patch("mcp_tools.compass_tools._impl_update", return_value=update_result):
-            raw = tools["compass_update"](path="/p", write=True)
-        result = _load_tool_result(raw)
-        tools_suggested = [a["tool"] for a in result["next_actions"]]
-        assert "compass_interview" in tools_suggested
+    # Register-layer next_actions tests moved to test_scripts_compass_manage.py
+    # since the wrapper is now a subprocess shell; those next_actions are built
+    # in scripts.compass_manage.cmd_update, not in the MCP register() block.
 
     def test_all_tool_names_exact(self) -> None:
         tools, _ = self._register()
@@ -1222,3 +1180,109 @@ class TestRegisterExact:
             "theory_mode_freeze",
             "setup_hooks",
         }
+
+
+# ---------------------------------------------------------------------------
+# Subprocess argv tests (moved from test_mcp_compass_tools.py during test
+# cleanup — the MCP wrapper is now a thin subprocess shell; these verify its
+# argv assembly without duplicating the exhaustive helper coverage above).
+# ---------------------------------------------------------------------------
+
+
+class TestSubprocessArgv:
+    """Verify the MCP wrapper assembles the correct script argv."""
+
+    def _register(self) -> dict[str, Any]:
+        mcp = MagicMock()
+        mcp.tool.return_value = lambda fn: fn
+        return register(mcp, helpers={})
+
+    def _mock_proc(
+        self,
+        stdout: str = '{"analysis_id":"x","summary":"s","file":"/tmp/x.json"}',
+        returncode: int = 0,
+    ) -> MagicMock:
+        proc = MagicMock()
+        proc.stdout = stdout
+        proc.stderr = ""
+        proc.returncode = returncode
+        return proc
+
+    def test_compass_status_argv(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["compass_status"](path="/p")
+        argv = run.call_args[0][0]
+        assert argv[1].endswith("compass_manage.py")
+        assert argv[2] == "status"
+        assert argv[3] == "/p"
+
+    def test_compass_check_argv(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["compass_check"](path="/p", action="do something")
+        argv = run.call_args[0][0]
+        assert argv[2] == "check"
+        assert "--action" in argv
+        assert "do something" in argv
+
+    def test_compass_update_flags(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["compass_update"](path="/p", targets=["cursor", "claude"], write=True)
+        argv = run.call_args[0][0]
+        assert argv[2] == "update"
+        target_positions = [i for i, a in enumerate(argv) if a == "--target"]
+        assert len(target_positions) == 2
+        assert argv[target_positions[0] + 1] == "cursor"
+        assert argv[target_positions[1] + 1] == "claude"
+        assert "--write" in argv
+
+    def test_compass_interview_answers_encoded(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["compass_interview"](path="/p", answers={"solution:0": "text"})
+        argv = run.call_args[0][0]
+        assert argv[2] == "interview"
+        assert "--answer" in argv
+        assert "solution:0=text" in argv
+
+    def test_compass_interview_skip_flag(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["compass_interview"](path="/p", skip=True)
+        argv = run.call_args[0][0]
+        assert "--skip" in argv
+
+    def test_compass_reset_scope_and_confirm(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["compass_reset"](path="/p", scope="session", confirm=True)
+        argv = run.call_args[0][0]
+        assert argv[2] == "reset"
+        assert "--scope" in argv
+        assert "session" in argv
+        assert "--confirm" in argv
+
+    def test_theory_mode_enter_argv(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["theory_mode_enter"](path="/p")
+        argv = run.call_args[0][0]
+        assert argv[2] == "theory-enter"
+        assert argv[3] == "/p"
+
+    def test_theory_mode_freeze_argv(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["theory_mode_freeze"](path="/p")
+        argv = run.call_args[0][0]
+        assert argv[2] == "theory-freeze"
+
+    def test_setup_hooks_write(self) -> None:
+        tools = self._register()
+        with patch("subprocess.run", return_value=self._mock_proc()) as run:
+            tools["setup_hooks"](path="/p", write=True)
+        argv = run.call_args[0][0]
+        assert argv[2] == "setup-hooks"
+        assert "--write" in argv

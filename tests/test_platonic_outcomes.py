@@ -328,3 +328,78 @@ def test_reroute_manual_contract_updates_matching_functions():
         assert func_match.reason_codes == ["no_executable_witness"]
         # Verify manifest was written
         mock_write.assert_called_once_with(manifest, "/proj")
+
+
+# --- NEEDS_ORACLE workflow state ---
+
+
+def test_workflow_state_needs_oracle():
+    """NEEDS_ORACLE is returned when oracle_requests is non-empty."""
+    state, code, msg = workflow_state_from_outputs(
+        conv_summary={},
+        health_data={},
+        validation={},
+        decompose_targets=[],
+        iteration_log=[{"tests_generated": 1}],
+        oracle_requests=[{"function_key": "f::g", "category": "VALUE"}],
+    )
+    assert state == "NEEDS_ORACLE"
+    assert code == "NEEDS_ORACLE"
+    assert "1 function(s)" in msg
+
+
+def test_workflow_state_no_oracle_when_empty():
+    """Empty oracle_requests does not trigger NEEDS_ORACLE."""
+    state, code, _msg = workflow_state_from_outputs(
+        conv_summary={},
+        health_data={},
+        validation={},
+        decompose_targets=[],
+        iteration_log=[{"tests_generated": 1}],
+        oracle_requests=[],
+    )
+    assert state != "NEEDS_ORACLE"
+
+
+def test_workflow_state_no_oracle_when_none():
+    """None oracle_requests does not trigger NEEDS_ORACLE."""
+    state, code, _msg = workflow_state_from_outputs(
+        conv_summary={},
+        health_data={},
+        validation={},
+        decompose_targets=[],
+        iteration_log=[{"tests_generated": 1}],
+        oracle_requests=None,
+    )
+    assert state != "NEEDS_ORACLE"
+
+
+def test_workflow_state_needs_oracle_multiple():
+    """NEEDS_ORACLE message reflects count of oracle requests."""
+    state, _code, msg = workflow_state_from_outputs(
+        conv_summary={},
+        health_data={},
+        validation={},
+        decompose_targets=[],
+        iteration_log=[{"tests_generated": 3}],
+        oracle_requests=[
+            {"function_key": "f::a", "category": "VALUE"},
+            {"function_key": "f::b", "category": "BOUNDARY"},
+            {"function_key": "f::c", "category": "VALUE"},
+        ],
+    )
+    assert state == "NEEDS_ORACLE"
+    assert "3 function(s)" in msg
+
+
+def test_workflow_state_decompose_takes_priority_over_oracle():
+    """NEEDS_DECOMPOSITION fires before NEEDS_ORACLE when both are present."""
+    state, _code, _msg = workflow_state_from_outputs(
+        conv_summary={},
+        health_data={},
+        validation={},
+        decompose_targets=["func_a"],
+        iteration_log=[{"tests_generated": 1}],
+        oracle_requests=[{"function_key": "f::g", "category": "VALUE"}],
+    )
+    assert state == "NEEDS_DECOMPOSITION"

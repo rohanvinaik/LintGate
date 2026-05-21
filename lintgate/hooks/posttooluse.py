@@ -185,7 +185,9 @@ def _run_legacy_pipeline(
         sep = "\n\n--- Dependency Health ---\n" if existing else "--- Dependency Health ---\n"
         report["systemMessage"] = (existing + sep + dep_msg) if existing else sep + dep_msg
 
-    print(json.dumps(report if report else {}))
+    from .posttooluse_controlplane import _emit_hook_output
+
+    _emit_hook_output(report if report else {}, cwd)
     sys.exit(0)
 
 

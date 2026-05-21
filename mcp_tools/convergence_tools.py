@@ -689,6 +689,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
         target_kill_rate: float = 0.70,
         budget_ms: float = 30_000,
         reconciliation_threshold: float = 0.7,
+        decompose_mode: str = "propose",
     ) -> str:
         """Run iterative specification convergence toward platonic ideal.
 
@@ -725,6 +726,7 @@ def register(mcp: Any, helpers: Any) -> dict[str, Any]:
             target_kill_rate=target_kill_rate,
             budget_ms=budget_ms,
             reconciliation_threshold=reconciliation_threshold,
+            decompose_mode=decompose_mode,
         )
 
     @mcp.tool()

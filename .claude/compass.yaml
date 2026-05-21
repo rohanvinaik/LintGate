@@ -10,7 +10,9 @@ axes:
       confidence: 0.5
       provenance: inferred
       origin_facet: core_theory
-    - text: 'README: **Deterministic code quality supervision for AI-assisted development.**'
+    - text: 'README: **A specification compiler for AI-generated code.** Not a linter.
+        A formal system that measures how hard your code is to specify, tells you
+        where to split it, and proves the measurement is mathematica'
       source: README.md
       heading: ''
       confidence: 0.5
@@ -336,7 +338,9 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    summary: 'README: **Deterministic code quality supervision for AI-assisted development.**'
+    summary: 'README: **A specification compiler for AI-generated code.** Not a linter.
+      A formal system that measures how hard your code is to specify, tells you where
+      to split it, and proves the measurement is mathematica'
     depth: 3
   solution:
     name: solution
@@ -546,13 +550,13 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: ''
-    - text: 'Test suite: 384 test file(s)'
+    - text: 'Test suite: 406 test file(s)'
       source: test_patterns
       heading: ''
       confidence: 0.5
       provenance: inferred
       origin_facet: ''
-    summary: 'Test suite: 384 test file(s)'
+    summary: 'Test suite: 406 test file(s)'
     depth: 2
 directives:
 - kind: forbidden
@@ -577,6 +581,6 @@ gap_report:
   sparse_axes:
   - solution
   interview_recommended: true
-forged_at: 1774824143.324203
+forged_at: 1778896109.178473
 frozen: false
 frozen_hash: ''

@@ -203,7 +203,20 @@ def register(mcp, helpers):
         result = _audit(project_root)
         score = result.get("health_score", result.get("score", "?"))
         issues = len(result.get("issues", result.get("findings", [])))
-        return tool_response(result, "audit_context_health", project_root, f"Context audit: {score}% health. {issues} issues.")
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        na = None
+        if isinstance(score, (int, float)) and score < 70:
+            na = serialize_next_actions([NextAction(
+                tool="bootstrap_context_files",
+                args={"path": path, "write": True, "overwrite": True},
+                reason=f"Health score {score}% is low — regenerate context files",
+            )])
+        return tool_response(
+            result, "audit_context_health", project_root,
+            f"Context audit: {score}% health. {issues} issues.",
+            next_actions=na,
+        )
 
     @mcp.tool()
     def bootstrap_context_files(
@@ -237,7 +250,18 @@ def register(mcp, helpers):
             model_id=model_id,
             use_model_profile=use_model_profile,
         )
-        return tool_response(result, "bootstrap_context_files", project_root, "Context files generated.")
+        from lintgate.next_action import NextAction, serialize_next_actions
+
+        na = [NextAction(
+            tool="controlplane_run",
+            args={"path": path},
+            reason="Run project health check now that context files are in place",
+        )]
+        return tool_response(
+            result, "bootstrap_context_files", project_root,
+            "Context files generated.",
+            next_actions=serialize_next_actions(na),
+        )
 
     @mcp.tool()
     def context_patch_review(path: str) -> str:
@@ -313,7 +337,26 @@ def register(mcp, helpers):
         project_root = helpers["_validate_project_root"](path)
         result = _do_build_theory_pack(project_root, include_full_profile)
         n = len(result.get("claims", result.get("theory_pack", {}).get("claims", [])))
-        return tool_response(result, "build_theory_pack", project_root, f"Theory pack: {n} claims.")
+
+        # When 0 claims found, guide the agent to compass_update which uses
+        # hybrid doc+code inference and typically finds claims that pure
+        # theory extraction misses.
+        na = None
+        summary = f"Theory pack: {n} claims."
+        if n == 0:
+            summary = (
+                "Theory pack: 0 claims. Structured extraction found nothing. "
+                "Run compass_update to infer claims from docs + code."
+            )
+            na = [
+                {
+                    "tool": "compass_update",
+                    "reason": "Hybrid doc+code inference finds claims that pure theory extraction misses",
+                    "args": {"path": path, "write": True},
+                },
+            ]
+
+        return tool_response(result, "build_theory_pack", project_root, summary, next_actions=na)
 
     @mcp.tool()
     def get_theory_context(

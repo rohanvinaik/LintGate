@@ -20,7 +20,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-from scripts._common import emit, emit_error, validate_project_root
+from scripts._common import emit, validate_project_root
 
 
 def cmd_health(args):
@@ -31,7 +31,16 @@ def cmd_health(args):
     issues = len(result.get("issues", []))
     vulns = result.get("summary", {}).get("vulnerabilities", 0)
     summary = f"Dependencies: {issues} issues. {vulns} CVEs."
-    emit(result, "dep_health", project_root, summary)
+
+    next_actions = None
+    if issues > 0:
+        from lintgate.next_action import NextAction, serialize_next_actions
+        next_actions = serialize_next_actions([NextAction(
+            tool="dep_sync",
+            args={"path": args.path},
+            reason=f"{issues} dependency issues found — check sync status",
+        )])
+    emit(result, "dep_health", project_root, summary, next_actions=next_actions)
 
 
 def cmd_sync(args):
@@ -46,23 +55,53 @@ def cmd_sync(args):
 
     uv_path = shutil.which("uv")
     if not uv_path:
-        emit_error("uv not found — install with: curl -LsSf https://astral.sh/uv/install.sh | sh")
+        result["error"] = (
+            "uv not found in PATH — install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        )
+        emit(result, "dep_sync", project_root, "Dep sync: uv unavailable.")
+        return
 
     if args.create_venv:
         venv_path = root / ".venv"
         if venv_path.exists():
-            result["actions"].append({"action": "create_venv", "status": "skipped", "reason": ".venv exists"})
+            result["actions"].append({
+                "action": "create_venv",
+                "status": "skipped",
+                "reason": ".venv already exists",
+            })
         else:
             try:
-                proc = subprocess.run([uv_path, "venv", ".venv"], capture_output=True, text=True, timeout=60, cwd=project_root)
-                result["actions"].append({"action": "create_venv", "status": "ok" if proc.returncode == 0 else "error"})
+                proc = subprocess.run(
+                    [uv_path, "venv", ".venv"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=project_root,
+                )
+                result["actions"].append({
+                    "action": "create_venv",
+                    "status": "ok" if proc.returncode == 0 else "error",
+                    "returncode": proc.returncode,
+                    "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
+                })
             except subprocess.TimeoutExpired:
                 result["actions"].append({"action": "create_venv", "status": "timeout"})
 
     if args.lock:
         try:
-            proc = subprocess.run([uv_path, "lock"], capture_output=True, text=True, timeout=120, cwd=project_root)
-            result["actions"].append({"action": "lock", "status": "ok" if proc.returncode == 0 else "error"})
+            proc = subprocess.run(
+                [uv_path, "lock"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=project_root,
+            )
+            result["actions"].append({
+                "action": "lock",
+                "status": "ok" if proc.returncode == 0 else "error",
+                "returncode": proc.returncode,
+                "stderr": proc.stderr.strip()[-500:] if proc.stderr else None,
+            })
         except subprocess.TimeoutExpired:
             result["actions"].append({"action": "lock", "status": "timeout"})
 
@@ -87,9 +126,15 @@ def cmd_toolchain(args):
         "drift_warnings": report.drift_warnings,
     }
     for s in report.tools:
-        info: dict[str, Any] = {"id": s.id, "installed": s.installed, "required": s.requirement.required}
+        info: dict[str, Any] = {
+            "id": s.id,
+            "installed": s.installed,
+            "required": s.requirement.required,
+            "kind": s.requirement.kind,
+        }
         if s.installed:
             info["version"] = s.version
+            info["location"] = s.location
         else:
             info["install_hint"] = s.install_hint
         output["tools"].append(info)

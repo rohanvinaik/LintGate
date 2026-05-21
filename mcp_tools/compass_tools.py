@@ -1,557 +1,103 @@
-"""Compass tools — 4-axis project understanding, cognitive modes, and hook setup.
+"""Compass tools — thin subprocess wrappers around scripts/compass_manage.py.
 
-8 MCP tools:
-- compass_status: Show axes, depths, gap report, staleness, mode
-- compass_check: Check action against toward/away/forbidden directives
-- compass_update: Re-extract + optionally render for targets
-- compass_interview: Gap-filling interview (code inference first)
-- compass_reset: Scoped state reset with dry-run default
-- theory_mode_enter: Enter theory exploration mode
-- theory_mode_freeze: Freeze compass, validate, exit to normal
-- setup_hooks: Generate .claude/settings.json hook config
+All computation lives in scripts/compass_manage.py; helper functions and
+_impl_* compute live in lintgate/compass_helpers.py. This module registers
+MCP tools that invoke the script via subprocess and relays stdout.
+
+Helper re-exports preserve the import contract used by tests.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Any
+import subprocess
+import sys
 
-from mcp_tools._disk_helpers import tool_response
+from lintgate.compass_helpers import (  # re-exported for tests
+    _apply_answers,
+    _build_hooks_config,
+    _deep_merge,
+    _impl_check,
+    _impl_interview,
+    _impl_reset,
+    _impl_setup_hooks,
+    _impl_status,
+    _impl_theory_enter,
+    _impl_theory_freeze,
+    _impl_update,
+    _load_mode_dict,
+    _load_mode_obj,
+    _merge_interviewed_claims,
+    _refresh_axis_scores,
+    _render_targets,
+    _save_mode,
+)
 
-# ── Mode state helpers ───────────────────────────────────────────────
+__all__ = [
+    "_apply_answers",
+    "_build_hooks_config",
+    "_deep_merge",
+    "_impl_check",
+    "_impl_interview",
+    "_impl_reset",
+    "_impl_setup_hooks",
+    "_impl_status",
+    "_impl_theory_enter",
+    "_impl_theory_freeze",
+    "_impl_update",
+    "_load_mode_dict",
+    "_load_mode_obj",
+    "_merge_interviewed_claims",
+    "_refresh_axis_scores",
+    "_render_targets",
+    "_save_mode",
+    "register",
+]
+
+_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts",
+    "compass_manage.py",
+)
 
 
-def _load_mode_dict(project_root: str) -> dict[str, Any]:
-    """Load mode state dict from session memory."""
+def _run_script(*args: str) -> str:
+    """Invoke scripts/compass_manage.py as a subprocess and relay stdout."""
     try:
-        from lintgate.controlplane.session_memory import get_or_create_session
-
-        session = get_or_create_session(project_root)
-        return session.behavior_compass.get("mode_state", {"current": "normal"})  # type: ignore[no-any-return]
-    except Exception:
-        return {"current": "normal"}
-
-
-def _load_mode_obj(project_root: str) -> Any:
-    """Load ModeState object from session memory."""
-    from lintgate.modes.mode_state import ModeState
-
-    return ModeState.from_dict(_load_mode_dict(project_root))
-
-
-def _save_mode(project_root: str, mode_state: Any) -> None:
-    """Persist ModeState to session memory."""
-    try:
-        from lintgate.controlplane.session_memory import (
-            get_or_create_session,
-            save_session,
+        proc = subprocess.run(
+            [sys.executable, _SCRIPT, *args],
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
-
-        session = get_or_create_session(project_root)
-        session.behavior_compass["mode_state"] = mode_state.to_dict()
-        save_session(session)
-    except Exception:
-        pass
-
-
-# ── Hook config helpers ──────────────────────────────────────────────
-
-
-def _build_hooks_config() -> dict[str, list[dict[str, Any]]]:
-    """Build the hooks configuration dict."""
-    base = "python -m lintgate.hooks"
-
-    def _entry(
-        module: str,
-        *,
-        timeout_s: int,
-        matcher: str | None = None,
-        async_hook: bool = False,
-    ) -> dict[str, Any]:
-        hook: dict[str, Any] = {
-            "type": "command",
-            "command": f"{base}.{module}",
-            "timeout": timeout_s,
-        }
-        if async_hook:
-            hook["async"] = True
-        entry: dict[str, Any] = {"hooks": [hook]}
-        if matcher:
-            entry["matcher"] = matcher
-        return entry
-
-    return {
-        "SessionStart": [_entry("session_start", timeout_s=5, matcher="startup")],
-        "UserPromptSubmit": [_entry("user_prompt", timeout_s=2)],
-        "PreToolUse": [_entry("pre_tool", timeout_s=3, matcher="Write|Edit|MultiEdit|Bash")],
-        "PreCompact": [_entry("pre_compact", timeout_s=5, matcher="auto|manual")],
-        "Stop": [_entry("stop_gate", timeout_s=3)],
-        "SessionEnd": [_entry("session_end", timeout_s=10, async_hook=True)],
-    }
-
-
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Deep-merge override into base (non-destructive)."""
-    result = dict(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        elif key in result and isinstance(result[key], list) and isinstance(value, list):
-            # Preserve existing user hooks and append new unique entries.
-            merged = list(result[key])
-            for item in value:
-                if item not in merged:
-                    merged.append(item)
-            result[key] = merged
-        else:
-            result[key] = value
-    return result
-
-
-def _refresh_axis_scores(state: Any) -> None:
-    """Recompute axis depth/summary after claim mutations."""
-    from lintgate.compass import compute_axis_depth
-
-    for axis in state.axes.values():
-        axis.depth = compute_axis_depth(axis.claims)
-        if axis.claims:
-            best = max(axis.claims, key=lambda c: (c.confidence, len(c.text)))
-            axis.summary = best.text
-        else:
-            axis.summary = ""
-
-
-def _merge_interviewed_claims(state: Any, existing: Any) -> int:
-    """Preserve interviewed claims across re-extraction."""
-    from lintgate.compass import CompassAxis, CompassClaim
-
-    if existing is None:
-        return 0
-
-    merged = 0
-    for axis_name, existing_axis in existing.axes.items():
-        interviewed = [claim for claim in existing_axis.claims if claim.provenance == "interviewed"]
-        if not interviewed:
-            continue
-        if axis_name not in state.axes:
-            state.axes[axis_name] = CompassAxis(name=axis_name)
-        target_axis = state.axes[axis_name]
-        signatures = {
-            (
-                claim.text.strip(),
-                claim.heading.strip(),
-                claim.provenance,
-                claim.origin_facet,
-            )
-            for claim in target_axis.claims
-        }
-        for claim in interviewed:
-            signature = (
-                claim.text.strip(),
-                claim.heading.strip(),
-                claim.provenance,
-                claim.origin_facet,
-            )
-            if signature in signatures:
-                continue
-            target_axis.claims.append(CompassClaim.from_dict(claim.to_dict()))
-            signatures.add(signature)
-            merged += 1
-    return merged
-
-
-# ── Tool implementations ─────────────────────────────────────────────
-
-
-def _impl_status(project_root: str, path: str) -> dict[str, Any]:
-    """Implementation for compass_status."""
-    from lintgate.compass import AXIS_NAMES, compute_staleness
-    from lintgate.compass_io import load_compass
-
-    compass = load_compass(project_root)
-    if compass is None:
-        return {
-            "status": "no_compass",
-            "message": "No compass found. Run compass_update to extract.",
-            "next_actions": [{"tool": "compass_update", "args": {"path": path, "write": True}}],
-        }
-
-    axes_info = {}
-    for name in AXIS_NAMES:
-        axis = compass.axes.get(name)
-        axes_info[name] = {
-            "depth": axis.depth if axis else 0,
-            "claim_count": len(axis.claims) if axis else 0,
-            "summary": (axis.summary[:120] if axis and axis.summary else ""),
-        }
-
-    staleness = compute_staleness(compass)
-    next_actions: list[dict] = []
-    if staleness > 0.8:
-        next_actions.append({"tool": "compass_update", "reason": "Compass is stale"})
-    if compass.gap_report.interview_recommended:
-        next_actions.append({"tool": "compass_interview", "reason": "Gaps detected"})
-
-    return {
-        "axes": axes_info,
-        "directives_count": len(compass.directives),
-        "gap_report": compass.gap_report.to_dict(),
-        "staleness": round(staleness, 2),
-        "frozen": compass.frozen,
-        "mode": _load_mode_dict(project_root).get("current", "normal"),
-        "next_actions": next_actions,
-    }
-
-
-def _impl_check(project_root: str, action: str) -> dict[str, Any]:
-    """Implementation for compass_check."""
-    from lintgate.compass_io import load_compass
-    from lintgate.modes.execution_compass import ExecutionCompass
-
-    compass = load_compass(project_root)
-    if compass is None:
-        return {
-            "aligned": None,
-            "message": "Cannot evaluate — no compass loaded. Run compass_update first.",
-        }
-
-    ec = ExecutionCompass.from_compass_state(compass)
-    result = ec.check_alignment(action)
-    return {
-        "aligned": result.get("aligned", True),
-        "violations": result.get("violations", []),
-        "warnings": result.get("warnings", []),
-        "true_north": ec.true_north[:120] if ec.true_north else "",
-    }
-
-
-def _impl_update(project_root: str, targets: list[str] | None, write: bool) -> dict[str, Any]:
-    """Implementation for compass_update."""
-    from lintgate.axis_extractor import extract_compass
-    from lintgate.code_inference import infer_from_code
-    from lintgate.compass import (
-        AXIS_NAMES,
-        FACET_TO_AXIS,
-        CompassAxis,
-        compute_compass_hash,
-    )
-    from lintgate.compass_io import load_compass, save_compass
-    from lintgate.gap_detector import detect_gaps
-
-    existing = load_compass(project_root)
-    state = extract_compass(project_root)
-    retained_interview_claims = _merge_interviewed_claims(state, existing)
-    inferred = infer_from_code(project_root)
-    for claim in inferred:
-        axis_name = FACET_TO_AXIS.get(claim.origin_facet, "world")
-        if axis_name not in state.axes:
-            state.axes[axis_name] = CompassAxis(name=axis_name)
-        state.axes[axis_name].claims.append(claim)
-
-    _refresh_axis_scores(state)
-    detect_gaps(state)
-    result: dict[str, Any] = {
-        "compass_hash": compute_compass_hash(state),
-        "axes": {
-            name: {
-                "depth": state.axes[name].depth,
-                "claim_count": len(state.axes[name].claims),
-            }
-            for name in AXIS_NAMES
-            if name in state.axes
-        },
-        "gap_report": state.gap_report.to_dict(),
-        "inferred_claims": len(inferred),
-        "retained_interview_claims": retained_interview_claims,
-    }
-    if write:
-        save_compass(project_root, state)
-        result["written"] = True
-
-    rendered = _render_targets(project_root, state, targets, write)
-    if rendered:
-        result["rendered"] = rendered
-    return result
-
-
-def _render_targets(
-    project_root: str,
-    state: Any,
-    targets: list[str] | None,
-    write: bool,
-) -> dict[str, Any] | None:
-    """Render context files for specified targets."""
-    if not targets:
-        return None
-    try:
-        import time
-
-        from lintgate.renderers import build_default_registry
-
-        registry = build_default_registry()
-        if targets == ["all"]:
-            targets = registry.detect_tools(project_root) or ["claude", "generic"]
-
-        metadata = {"project_root": project_root, "generated_at": str(int(time.time()))}
-        files = registry.render_for_targets(targets, state, metadata)
-        if write:
-            for rel_path, content in files.items():
-                full = os.path.join(project_root, rel_path)
-                os.makedirs(os.path.dirname(full), exist_ok=True)
-                with open(full, "w") as f:
-                    f.write(content)
-        return {"targets": targets, "files": list(files.keys()), "written": write}
-    except Exception as exc:
-        return {"error": str(exc)}
-
-
-def _impl_interview(
-    project_root: str,
-    path: str,
-    answers: dict[str, str] | None,
-    skip: bool,
-) -> dict[str, Any]:
-    """Implementation for compass_interview."""
-    from lintgate.compass_io import load_compass, save_compass
-    from lintgate.gap_detector import build_interview, detect_gaps, skip_interview
-
-    compass = load_compass(project_root)
-    if compass is None:
-        return {
-            "error": "No compass found. Run compass_update first.",
-            "next_actions": [{"tool": "compass_update", "args": {"path": path, "write": True}}],
-        }
-    if skip:
-        skip_interview(compass)
-        save_compass(project_root, compass)
-        return {"status": "skipped"}
-    if answers:
-        applied = _apply_answers(project_root, compass, answers)
-        return {"applied": applied, "gap_report": compass.gap_report.to_dict()}
-
-    return {
-        "gap_report": detect_gaps(compass).to_dict(),
-        "questions": build_interview(compass.gap_report),
-        "usage": 'Pass answers={"axis:idx": "your answer"} to apply.',
-    }
-
-
-def _apply_answers(
-    project_root: str,
-    compass: Any,
-    answers: dict[str, str],
-) -> list[dict[str, Any]]:
-    """Apply interview answers to compass and persist."""
-    from lintgate.compass_io import save_compass
-    from lintgate.gap_detector import apply_answer
-
-    applied: list[dict[str, Any]] = []
-    for key, text in answers.items():
-        parts = key.split(":", 1)
-        if len(parts) != 2:
-            continue
-        try:
-            idx = int(parts[1])
-        except ValueError:
-            continue
-        claim = apply_answer(compass, parts[0], idx, text)
-        applied.append({"axis": parts[0], "question_idx": idx, "claim": claim.text})
-    save_compass(project_root, compass)
-    return applied
-
-
-def _impl_reset(project_root: str, path: str, scope: str, confirm: bool) -> dict[str, Any]:
-    """Implementation for compass_reset."""
-    from lintgate.reset import (
-        reset_compass_only,
-        reset_global,
-        reset_project,
-        reset_session_only,
-    )
-
-    dry_run = not confirm
-    fns = {
-        "compass": lambda: reset_compass_only(project_root, dry_run=dry_run),
-        "session": lambda: reset_session_only(project_root, dry_run=dry_run),
-        "project": lambda: reset_project(project_root, dry_run=dry_run),
-        "global": lambda: reset_global(dry_run=dry_run),
-    }
-    fn = fns.get(scope)
-    if fn is None:
-        return {"error": f"Invalid scope: {scope}"}
-    report = fn()
-    result: dict[str, Any] = {"scope": scope, "dry_run": dry_run, **report.to_dict()}
-    if dry_run and report.deleted:
-        result["next_actions"] = [
-            {
-                "tool": "compass_reset",
-                "args": {"path": path, "scope": scope, "confirm": True},
-            },
-        ]
-    return result
-
-
-def _impl_theory_enter(project_root: str) -> dict[str, Any]:
-    """Implementation for theory_mode_enter."""
-    ms = _load_mode_obj(project_root)
-    label = ms.enter_theory()
-    if label is None:
-        return {"error": f"Cannot enter theory from {ms.current.value}"}
-    _save_mode(project_root, ms)
-    return {"status": "entered", "mode": "theory", "transition": label}
-
-
-def _impl_theory_freeze(project_root: str) -> dict[str, Any]:
-    """Implementation for theory_mode_freeze."""
-    from lintgate.compass import REQUIRED_AXES, compute_compass_hash
-    from lintgate.compass_io import load_compass, save_compass
-
-    ms = _load_mode_obj(project_root)
-    compass = load_compass(project_root)
-    if compass is None:
-        return {"error": "No compass to freeze."}
-
-    warnings = [
-        f"Required axis '{a}' is empty"
-        for a in REQUIRED_AXES
-        if not compass.axes.get(a) or compass.axes[a].depth == 0
-    ]
-    ch = compute_compass_hash(compass)
-    label = ms.freeze_theory(ch)
-    if label is None:
-        return {"error": f"Not in theory mode ({ms.current.value})"}
-
-    compass.frozen, compass.frozen_hash = True, ch
-    save_compass(project_root, compass)
-    _save_mode(project_root, ms)
-
-    # PrescriptiveSpec skeleton emission on theory freeze
-    prescriptive_result: dict[str, Any] = {}
-    try:
-        from lintgate.config import load_controlplane_config
-
-        cp_config = load_controlplane_config(project_root)
-        auto_compose = (
-            cp_config is not None
-            and cp_config.prescriptive_spec_enabled
-            and cp_config.prescriptive_spec_auto_compose_on_freeze
-        )
-        if auto_compose:
-            from lintgate.specification.prescriptive.spec import (
-                PrescriptiveSpecComposer,
-                resolve_targets,
-                save_spec,
-            )
-            from lintgate.theory_extractor import extract_theory
-
-            theory_profile = extract_theory(project_root).get("theory_profile", {})
-            resolved = resolve_targets(compass, theory_profile, project_root)
-            composer = PrescriptiveSpecComposer()
-
-            auto_composed: list[str] = []
-            candidate_targets: list[dict[str, Any]] = []
-            for rt in resolved:
-                if rt.confidence >= 0.8:
-                    spec = composer.compose_prospective(
-                        target_key=rt.target_key,
-                        compass=compass,
-                        theory_profile=theory_profile,
-                    )
-                    save_spec(project_root, spec)
-                    auto_composed.append(rt.target_key)
-                else:
-                    candidate_targets.append(rt.to_dict())
-
-            prescriptive_result = {
-                "auto_composed": auto_composed,
-                "candidate_targets": candidate_targets,
-            }
-    except Exception:
-        pass
-
-    result: dict[str, Any] = {"status": "frozen", "compass_hash": ch, "warnings": warnings}
-    if prescriptive_result:
-        result["prescriptive_specs"] = prescriptive_result
-    return result
-
-
-def _impl_setup_hooks(project_root: str, write: bool) -> dict[str, Any]:
-    """Implementation for setup_hooks."""
-    hooks_config = _build_hooks_config()
-    settings_path = os.path.join(project_root, ".claude", "settings.json")
-    existing: dict = {}
-    try:
-        with open(settings_path) as f:
-            existing = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    merged = _deep_merge(existing, {"hooks": hooks_config})
-    if write:
-        os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-        with open(settings_path, "w") as f:
-            json.dump(merged, f, indent=2)
-    return {
-        "status": "written" if write else "preview",
-        "path": settings_path,
-        "hooks": hooks_config,
-        "merged_settings": merged if not write else None,
-    }
-
-
-# ── Registration ─────────────────────────────────────────────────────
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "compass_manage subprocess timed out"})
+    except OSError as exc:
+        return json.dumps({"error": f"compass_manage subprocess failed: {exc}"})
+
+    stdout = (proc.stdout or "").strip()
+    if proc.returncode != 0 and not stdout:
+        return json.dumps({
+            "error": f"compass_manage exit {proc.returncode}",
+            "stderr": (proc.stderr or "").strip()[-500:],
+        })
+    return stdout or json.dumps({"error": "compass_manage produced no output"})
 
 
 def register(mcp, helpers):
     """Register compass tools on the shared MCP instance."""
-    jd = helpers["_json_dumps"]
-    vr = helpers["_validate_project_root"]
+    del helpers  # unused — validation happens in the script
 
     @mcp.tool()
     def compass_status(path: str) -> str:
-        """Show compass axes, depths, gap report, staleness, and cognitive mode.
-
-        Example: compass_status(path="/my/project")
-        """
-        project_root = vr(path)
-        result = _impl_status(project_root, path)
-        if result.get("status") == "no_compass":
-            return jd(result)  # type: ignore[no-any-return]
-        axes = result.get("axes", {})
-        depths = {k: v.get("depth", 0) for k, v in axes.items()}
-        staleness = result.get("staleness", 0)
-        mode = result.get("mode", "normal")
-        summary = f"Compass: {sum(1 for d in depths.values() if d > 0)}/{len(depths)} axes populated. Staleness: {staleness}. Mode: {mode}."
-        return tool_response(
-            result,
-            "compass_status",
-            project_root,
-            summary,
-            next_actions=result.get("next_actions"),
-        )
+        """Show compass axes, depths, gap report, staleness, and cognitive mode."""
+        return _run_script("status", path)
 
     @mcp.tool()
     def compass_check(path: str, action: str) -> str:
-        """Check an action against toward/away/forbidden directives.
-
-        Args:
-            path: Project root path.
-            action: Description of the action to check.
-        """
-        project_root = vr(path)
-        result = _impl_check(project_root, action)
-        if result.get("aligned") is None:
-            return jd(result)  # type: ignore[no-any-return]
-        aligned = result.get("aligned", True)
-        n_violations = len(result.get("violations", []))
-        n_warnings = len(result.get("warnings", []))
-        summary = f"Alignment: {'OK' if aligned else 'BLOCKED'}. Violations: {n_violations}. Warnings: {n_warnings}."
-        return tool_response(
-            result,
-            "compass_check",
-            project_root,
-            summary,
-        )
+        """Check an action against toward/away/forbidden directives."""
+        return _run_script("check", path, "--action", action)
 
     @mcp.tool()
     def compass_update(
@@ -559,36 +105,13 @@ def register(mcp, helpers):
         targets: list[str] | None = None,
         write: bool = False,
     ) -> str:
-        """Re-extract compass from project docs and optionally render context files.
-
-        Args:
-            path: Project root path.
-            targets: Render targets (e.g. ["claude", "cursor"], or ["all"]).
-            write: Write compass.yaml and rendered files to disk (default False).
-
-        Example: compass_update(path="/my/project", write=True)
-        """
-        project_root = vr(path)
-        result = _impl_update(project_root, targets, write)
-        next_actions: list[dict] = []
-        if result.get("gap_report", {}).get("interview_recommended"):
-            next_actions.append({"tool": "compass_interview", "args": {"path": path}})
-        if not write:
-            next_actions.append({"tool": "compass_update", "args": {"path": path, "write": True}})
-        result["next_actions"] = next_actions
-        axes = result.get("axes", {})
-        inferred = result.get("inferred_claims", 0)
-        written = result.get("written", False)
-        summary = (
-            f"Compass updated: {len(axes)} axes, {inferred} inferred claims. Written: {written}."
-        )
-        return tool_response(
-            result,
-            "compass_update",
-            project_root,
-            summary,
-            next_actions=next_actions,
-        )
+        """Re-extract compass from project docs and optionally render context files."""
+        args = ["update", path]
+        for t in targets or []:
+            args.extend(["--target", t])
+        if write:
+            args.append("--write")
+        return _run_script(*args)
 
     @mcp.tool()
     def compass_interview(
@@ -596,103 +119,39 @@ def register(mcp, helpers):
         answers: dict[str, str] | None = None,
         skip: bool = False,
     ) -> str:
-        """Gap-filling interview — returns questions or applies answers.
-
-        Args:
-            path: Project root path.
-            answers: Dict mapping "axis:question_idx" to answer text.
-            skip: Set True to dismiss the interview recommendation.
-        """
-        project_root = vr(path)
-        result = _impl_interview(project_root, path, answers, skip)
-        # Small error/status returns stay as jd
-        if "error" in result or result.get("status") == "skipped":
-            return jd(result)  # type: ignore[no-any-return]
-        if "applied" in result:
-            summary = f"Interview: {len(result['applied'])} answers applied."
-            return tool_response(
-                result,
-                "compass_interview",
-                project_root,
-                summary,
-            )
-        # Questions path
-        questions = result.get("questions", [])
-        summary = f"Interview: {len(questions)} questions. Pass answers to apply."
-        return tool_response(
-            result,
-            "compass_interview",
-            project_root,
-            summary,
-            next_actions=[{"tool": "compass_interview", "args": {"path": path, "answers": "..."}}],
-        )
+        """Gap-filling interview — returns questions or applies answers."""
+        args = ["interview", path]
+        for k, v in (answers or {}).items():
+            args.extend(["--answer", f"{k}={v}"])
+        if skip:
+            args.append("--skip")
+        return _run_script(*args)
 
     @mcp.tool()
     def compass_reset(path: str, scope: str = "compass", confirm: bool = False) -> str:
-        """Scoped state reset with dry-run default.
-
-        Args:
-            path: Project root path.
-            scope: "compass" | "session" | "project" | "global".
-            confirm: Set True to actually delete (default False = dry run).
-        """
-        project_root = vr(path)
-        result = _impl_reset(project_root, path, scope, confirm)
-        if "error" in result:
-            return jd(result)  # type: ignore[no-any-return]
-        dry_run = result.get("dry_run", True)
-        deleted = result.get("deleted", [])
-        summary = f"Reset {scope}: {'dry-run' if dry_run else 'applied'}. {len(deleted)} items {'would be ' if dry_run else ''}deleted."
-        return tool_response(
-            result,
-            "compass_reset",
-            project_root,
-            summary,
-            next_actions=result.get("next_actions"),
-        )
+        """Scoped state reset with dry-run default."""
+        args = ["reset", path, "--scope", scope]
+        if confirm:
+            args.append("--confirm")
+        return _run_script(*args)
 
     @mcp.tool()
     def theory_mode_enter(path: str) -> str:
         """Enter theory exploration mode. Normal->Theory allowed; Habit->Theory blocked."""
-        return jd(_impl_theory_enter(vr(path)))  # type: ignore[no-any-return]
+        return _run_script("theory-enter", path)
 
     @mcp.tool()
     def theory_mode_freeze(path: str) -> str:
         """Freeze compass and exit theory mode to normal."""
-        project_root = vr(path)
-        result = _impl_theory_freeze(project_root)
-        if "error" in result:
-            return jd(result)  # type: ignore[no-any-return]
-        warnings_count = len(result.get("warnings", []))
-        prescriptive = result.get("prescriptive_specs", {})
-        auto_composed = len(prescriptive.get("auto_composed", [])) if prescriptive else 0
-        summary = f"Compass frozen. Hash: {result.get('compass_hash', '?')[:10]}. Warnings: {warnings_count}. Auto-composed specs: {auto_composed}."
-        return tool_response(
-            result,
-            "theory_mode_freeze",
-            project_root,
-            summary,
-        )
+        return _run_script("theory-freeze", path)
 
     @mcp.tool()
     def setup_hooks(path: str, write: bool = False) -> str:
-        """Generate .claude/settings.json hook configuration for compass hooks.
-
-        Args:
-            path: Project root path.
-            write: Write settings to disk (default False = preview).
-        """
-        project_root = vr(path)
-        result = _impl_setup_hooks(project_root, write)
-        status = result.get("status", "preview")
-        hooks_count = len(result.get("hooks", {}))
-        summary = f"Hooks config: {status}. {hooks_count} hook events configured. Path: {result.get('path', '')}."
-        return tool_response(
-            result,
-            "setup_hooks",
-            project_root,
-            summary,
-        )
+        """Generate .claude/settings.json hook configuration for compass hooks."""
+        args = ["setup-hooks", path]
+        if write:
+            args.append("--write")
+        return _run_script(*args)
 
     return {
         "compass_status": compass_status,

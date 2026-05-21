@@ -119,6 +119,32 @@ def _swap_property(
             needs_oracle=True,
         )
 
+    # Type-aware SWAP: skip when parameters have provably different types
+    if func_node is not None and len(func_node.args.args) >= 2:
+        args_list = [a for a in func_node.args.args if a.arg not in ("self", "cls")]
+        if len(args_list) >= 2:
+            ann_a = args_list[0].annotation
+            ann_b = args_list[1].annotation
+            if ann_a is not None and ann_b is not None:
+                type_a = ast.dump(ann_a)
+                type_b = ast.dump(ann_b)
+                if type_a != type_b:
+                    name_a = ann_a.id if isinstance(ann_a, ast.Name) else type_a
+                    name_b = ann_b.id if isinstance(ann_b, ast.Name) else type_b
+                    return ExecutableProperty(
+                        category="SWAP",
+                        inputs={},
+                        setup_code=setup,
+                        assertion_code=(
+                            f"# SWAP skipped: params have different types "
+                            f"({name_a} vs {name_b})"
+                        ),
+                        preconditions=[],
+                        confidence=0.1,
+                        source_lenses=["mutation"],
+                        needs_oracle=True,
+                    )
+
     a_val, b_val = _distinct_values(call_site_inputs)
     assertion = (
         f"result_ab = {fname}({a_val}, {b_val})\n"

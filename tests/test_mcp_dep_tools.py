@@ -1,14 +1,16 @@
-"""Coverage tests for mcp_tools/dep_tools.py.
+"""MCP wrapper tests for mcp_tools/dep_tools.py.
 
-Exercises the register() function and each MCP tool it registers:
-dep_health_check, dep_sync.
+The tools are now thin subprocess wrappers — these tests verify that
+the correct script subcommand and flags are assembled and that stdout
+is relayed verbatim. Behavioral tests for the underlying compute live
+in tests/test_scripts_dep_check.py.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
-from typing import TYPE_CHECKING, Any
+import sys
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 if TYPE_CHECKING:
@@ -17,40 +19,23 @@ if TYPE_CHECKING:
 from mcp_tools.dep_tools import register
 
 
-def _load_tool_result(json_str):
-    import os
-    r = json.loads(json_str)
-    if isinstance(r, dict) and "file" in r and "analysis_id" in r and os.path.isfile(r.get("file","")):
-        with open(r["file"]) as f:
-
-            return json.loads(f.read())
-    return r
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────
-
-
-def _make_helpers(tmp_path: Path) -> dict:
-    """Build a minimal helpers dict that validates against tmp_path."""
-    return {
-        "_validate_project_root": lambda path, **kw: str(tmp_path),
-    }
-
-
-def _register_tools(tmp_path: Path) -> dict:
-    """Register tools on a mock MCP and return the tool function dict."""
+def _register_tools() -> dict:
     mcp = MagicMock()
     mcp.tool.return_value = lambda fn: fn
-    helpers = _make_helpers(tmp_path)
-    return register(mcp, helpers)  # type: ignore[no-any-return]
+    return register(mcp, helpers={})
 
 
-# ── register() ───────────────────────────────────────────────────────────
+def _mock_proc(stdout: str = '{"analysis_id":"x","summary":"s","file":"/tmp/x.json"}', returncode: int = 0, stderr: str = "") -> MagicMock:
+    proc = MagicMock()
+    proc.stdout = stdout
+    proc.stderr = stderr
+    proc.returncode = returncode
+    return proc
 
 
 class TestRegister:
-    def test_register_returns_all_tool_names(self, tmp_path: Path) -> None:
-        tools = _register_tools(tmp_path)
+    def test_register_returns_all_tool_names(self) -> None:
+        tools = _register_tools()
         assert set(tools.keys()) == {
             "dep_health_check",
             "dep_sync",
@@ -58,257 +43,94 @@ class TestRegister:
         }
 
 
-# ── dep_health_check ─────────────────────────────────────────────────────
-
-
 class TestDepHealthCheck:
-    def test_returns_valid_json(self, tmp_path: Path) -> None:
-        tools = _register_tools(tmp_path)
-        mock_health = {
-            "summary": {"score": 90, "issues": 0},
-            "checks": [],
-        }
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ):
-            result = _load_tool_result(tools["dep_health_check"](path=str(tmp_path)))
-        assert result["summary"]["score"] == 90
-
-    def test_passes_project_root(self, tmp_path: Path) -> None:
-        tools = _register_tools(tmp_path)
-        mock_health: dict[str, Any] = {"summary": {}, "checks": []}
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ) as mock_fn:
+    def test_invokes_health_subcommand(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
             tools["dep_health_check"](path=str(tmp_path))
-        mock_fn.assert_called_once_with(str(tmp_path))
+        argv = run.call_args[0][0]
+        assert argv[0] == sys.executable
+        assert argv[1].endswith("dep_check.py")
+        assert argv[2] == str(tmp_path)
+        assert argv[3] == "health"
 
-
-# ── dep_sync ─────────────────────────────────────────────────────────────
+    def test_relays_stdout_verbatim(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        envelope = '{"analysis_id":"abc","summary":"ok","file":"/tmp/x.json"}'
+        with patch("subprocess.run", return_value=_mock_proc(stdout=envelope)):
+            result = tools["dep_health_check"](path=str(tmp_path))
+        assert result == envelope
 
 
 class TestDepSync:
-    def test_status_only_no_actions(self, tmp_path: Path) -> None:
-        """Default call (no flags) returns status without actions."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        with patch(
-            "lintgate.dependency_health.full_dependency_health",
-            return_value=mock_health,
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path)))
-        assert result["project"] == str(tmp_path)
-        assert result["actions"] == []
-        assert "health_before" in result
-        assert "health_after" not in result
+    def test_defaults_to_status_only(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
+            tools["dep_sync"](path=str(tmp_path))
+        argv = run.call_args[0][0]
+        assert "sync" in argv
+        assert "--create-venv" not in argv
+        assert "--lock" not in argv
 
-    def test_uv_not_found(self, tmp_path: Path) -> None:
-        """When uv is not in PATH, returns error message."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 50}}
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value=None),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
-        assert "error" in result
-        assert "uv not found" in result["error"]
+    def test_create_venv_flag(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
+            tools["dep_sync"](path=str(tmp_path), create_venv=True)
+        assert "--create-venv" in run.call_args[0][0]
 
-    def test_create_venv_skips_existing(self, tmp_path: Path) -> None:
-        """When .venv already exists, create_venv is skipped."""
-        tools = _register_tools(tmp_path)
-        (tmp_path / ".venv").mkdir()
-        mock_health = {"summary": {"score": 80}}
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
-        venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
-        assert len(venv_action) == 1
-        assert venv_action[0]["status"] == "skipped"
-        assert "already exists" in venv_action[0]["reason"]
+    def test_lock_flag(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
+            tools["dep_sync"](path=str(tmp_path), lock=True)
+        assert "--lock" in run.call_args[0][0]
 
-    def test_create_venv_success(self, tmp_path: Path) -> None:
-        """Successful venv creation returns ok status."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stderr = ""
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                return_value=mock_proc,
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
-        venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
-        assert venv_action[0]["status"] == "ok"
-        assert "health_after" in result
+    def test_both_flags(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
+            tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True)
+        argv = run.call_args[0][0]
+        assert "--create-venv" in argv
+        assert "--lock" in argv
 
-    def test_create_venv_error(self, tmp_path: Path) -> None:
-        """Failed venv creation returns error status with stderr."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        mock_proc = MagicMock()
-        mock_proc.returncode = 1
-        mock_proc.stderr = "some error occurred"
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                return_value=mock_proc,
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
-        venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
-        assert venv_action[0]["status"] == "error"
-        assert venv_action[0]["returncode"] == 1
 
-    def test_create_venv_timeout(self, tmp_path: Path) -> None:
-        """Timeout during venv creation returns timeout status."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd="uv venv", timeout=60),
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True))
-        venv_action = [a for a in result["actions"] if a["action"] == "create_venv"]
-        assert venv_action[0]["status"] == "timeout"
+class TestToolchainHealthCheck:
+    def test_defaults(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
+            tools["toolchain_health_check"](path=str(tmp_path))
+        argv = run.call_args[0][0]
+        assert "toolchain" in argv
+        assert "--install-missing" not in argv
 
-    def test_lock_success(self, tmp_path: Path) -> None:
-        """Successful lock returns ok status."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stderr = ""
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                return_value=mock_proc,
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
-        lock_action = [a for a in result["actions"] if a["action"] == "lock"]
-        assert len(lock_action) == 1
-        assert lock_action[0]["status"] == "ok"
-        assert "health_after" in result
+    def test_install_missing_flag(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc()) as run:
+            tools["toolchain_health_check"](path=str(tmp_path), install_missing=True)
+        assert "--install-missing" in run.call_args[0][0]
 
-    def test_lock_error(self, tmp_path: Path) -> None:
-        """Failed lock returns error status."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        mock_proc = MagicMock()
-        mock_proc.returncode = 1
-        mock_proc.stderr = "lock failed"
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                return_value=mock_proc,
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
-        lock_action = [a for a in result["actions"] if a["action"] == "lock"]
-        assert lock_action[0]["status"] == "error"
 
-    def test_lock_timeout(self, tmp_path: Path) -> None:
-        """Timeout during lock returns timeout status."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd="uv lock", timeout=120),
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
-        lock_action = [a for a in result["actions"] if a["action"] == "lock"]
-        assert lock_action[0]["status"] == "timeout"
+class TestErrorHandling:
+    def test_timeout_returns_error_envelope(self, tmp_path: Path) -> None:
+        import subprocess as sp
+        tools = _register_tools()
+        with patch("subprocess.run", side_effect=sp.TimeoutExpired(cmd="x", timeout=1)):
+            result = tools["dep_health_check"](path=str(tmp_path))
+        parsed = json.loads(result)
+        assert "error" in parsed
+        assert "timed out" in parsed["error"]
 
-    def test_both_create_venv_and_lock(self, tmp_path: Path) -> None:
-        """Both flags produce two actions and a health_after check."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stderr = ""
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                return_value=mock_proc,
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), create_venv=True, lock=True))
-        action_types = [a["action"] for a in result["actions"]]
-        assert "create_venv" in action_types
-        assert "lock" in action_types
-        assert "health_after" in result
+    def test_nonzero_exit_with_no_stdout_returns_error(self, tmp_path: Path) -> None:
+        tools = _register_tools()
+        with patch("subprocess.run", return_value=_mock_proc(stdout="", returncode=2, stderr="boom")):
+            result = tools["dep_health_check"](path=str(tmp_path))
+        parsed = json.loads(result)
+        assert "error" in parsed
+        assert "boom" in parsed["stderr"]
 
-    def test_stderr_truncated_to_500(self, tmp_path: Path) -> None:
-        """Long stderr is truncated to last 500 chars."""
-        tools = _register_tools(tmp_path)
-        mock_health = {"summary": {"score": 80}}
-        mock_proc = MagicMock()
-        mock_proc.returncode = 1
-        mock_proc.stderr = "x" * 1000
-        with (
-            patch(
-                "lintgate.dependency_health.full_dependency_health",
-                return_value=mock_health,
-            ),
-            patch("shutil.which", return_value="/usr/bin/uv"),
-            patch(
-                "subprocess.run",
-                return_value=mock_proc,
-            ),
-        ):
-            result = _load_tool_result(tools["dep_sync"](path=str(tmp_path), lock=True))
-        lock_action = [a for a in result["actions"] if a["action"] == "lock"]
-        assert len(lock_action[0]["stderr"]) <= 500
+    def test_nonzero_exit_with_stdout_relays(self, tmp_path: Path) -> None:
+        """Even on nonzero exit, if the script emitted an envelope, relay it."""
+        tools = _register_tools()
+        envelope = '{"analysis_id":"x","summary":"partial","file":"/tmp/x.json"}'
+        with patch("subprocess.run", return_value=_mock_proc(stdout=envelope, returncode=1)):
+            result = tools["dep_health_check"](path=str(tmp_path))
+        assert result == envelope

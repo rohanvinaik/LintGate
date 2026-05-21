@@ -254,3 +254,168 @@ def test_execution_compass_from_empty_dict() -> None:
     ec = ExecutionCompass.from_dict({})
     assert ec.toward == []
     assert ec.true_north == ""
+
+
+def test_from_dict_partial_data_uses_defaults() -> None:
+    """Kill VALUE_4/6: from_dict must default true_north and compass_hash to '' for missing keys."""
+    ec = ExecutionCompass.from_dict({"toward": ["goal1"]})
+    assert ec.toward == ["goal1"]
+    assert ec.away == []
+    assert ec.forbidden == []
+    assert ec.true_north == ""
+    assert ec.compass_hash == ""
+
+
+# ── Prescriptive: from_compass_state default paths ───────────────────
+
+
+def test_from_compass_state_no_problem_axis_defaults_true_north_empty() -> None:
+    """Kill VALUE_3: true_north = '' must not become 'mutated' when no problem axis."""
+    state = CompassState(
+        directives=[CompassDirective(kind="toward", text="some goal")],
+        frozen_hash="abc",
+    )
+    ec = ExecutionCompass.from_compass_state(state)
+    assert ec.true_north == ""
+
+
+def test_from_compass_state_falsy_frozen_hash_defaults_compass_hash_empty() -> None:
+    """Kill VALUE_5: compass_hash must be '' when frozen_hash is falsy."""
+    state = CompassState(
+        axes={
+            "problem": CompassAxis(name="problem", summary="test", claims=[], depth=1),
+        },
+        directives=[CompassDirective(kind="toward", text="goal")],
+        frozen_hash="",
+    )
+    ec = ExecutionCompass.from_compass_state(state)
+    assert ec.compass_hash == ""
+
+
+# ── Prescriptive: check_alignment boundary & value ───────────────────
+
+
+def test_check_alignment_three_letter_forbidden_word_does_not_match() -> None:
+    """Kill BOUNDARY_0: len(w) > 3 vs >= 3. A 3-char word must NOT trigger."""
+    ec = ExecutionCompass(forbidden=["bad"])  # "bad" is 3 chars
+    result = ec.check_alignment("this is bad code")
+    assert result["aligned"] is True
+    assert result["violations"] == []
+
+
+def test_check_alignment_four_letter_forbidden_word_matches() -> None:
+    """Kill VALUE_0/1: A 4-char word must trigger (confirms > 3 boundary)."""
+    ec = ExecutionCompass(forbidden=["halt"])  # "halt" is 4 chars
+    result = ec.check_alignment("we should halt execution")
+    assert result["aligned"] is False
+    assert len(result["violations"]) == 1
+
+
+def test_check_alignment_three_letter_away_word_does_not_match() -> None:
+    """Same boundary test on away directives."""
+    ec = ExecutionCompass(away=["use old api"])  # "old", "use", "api" all <=3
+    result = ec.check_alignment("use old api directly")
+    assert result["warnings"] == []
+
+
+def test_check_alignment_four_letter_away_word_matches() -> None:
+    """Away directive with 4-char word must produce warning."""
+    ec = ExecutionCompass(away=["skip tests"])  # "skip"=4, "tests"=5
+    result = ec.check_alignment("we skip tests here")
+    assert len(result["warnings"]) == 1
+
+
+# ── Prescriptive: check_alignment_with_specs (0% → targeted) ────────
+
+
+class _FakeForbiddenBehavior:
+    def __init__(self, description: str):
+        self.description = description
+
+
+class _FakeSpec:
+    def __init__(self, forbidden_behaviors: list[_FakeForbiddenBehavior]):
+        self.forbidden_behaviors = forbidden_behaviors
+
+
+def test_check_alignment_with_specs_none_specs_returns_base() -> None:
+    """Invariant: returns base check_alignment result when specs is None."""
+    ec = ExecutionCompass(forbidden=["Never mock databases"])
+    result = ec.check_alignment_with_specs("mock databases in test", specs=None)
+    assert result["aligned"] is False
+    assert "prescriptive_violations" not in result
+
+
+def test_check_alignment_with_specs_empty_specs_returns_base() -> None:
+    """Invariant: returns base check_alignment result when specs is empty list."""
+    ec = ExecutionCompass()
+    result = ec.check_alignment_with_specs("some action", specs=[])
+    assert result["aligned"] is True
+    assert "prescriptive_violations" not in result
+
+
+def test_check_alignment_with_specs_matching_sets_aligned_false() -> None:
+    """Kill VALUE_3: result['aligned'] must be False when prescriptive violations found."""
+    ec = ExecutionCompass()
+    spec = _FakeSpec([_FakeForbiddenBehavior("Never delete production data")])
+    result = ec.check_alignment_with_specs("delete production data now", specs=[spec])
+    assert result["aligned"] is False
+
+
+def test_check_alignment_with_specs_adds_prescriptive_violations_key() -> None:
+    """Kill VALUE_5: 'prescriptive_violations' key must appear in result."""
+    ec = ExecutionCompass()
+    spec = _FakeSpec([_FakeForbiddenBehavior("Never delete production data")])
+    result = ec.check_alignment_with_specs("delete production data now", specs=[spec])
+    assert "prescriptive_violations" in result
+    assert "Never delete production data" in result["prescriptive_violations"]
+
+
+def test_check_alignment_with_specs_extends_violations_list() -> None:
+    """Kill VALUE_2/4: prescriptive violations extend existing violations list."""
+    ec = ExecutionCompass(forbidden=["Never disable linting globally"])
+    spec = _FakeSpec([_FakeForbiddenBehavior("Never disable formatting globally")])
+    result = ec.check_alignment_with_specs(
+        "disable linting globally and disable formatting globally",
+        specs=[spec],
+    )
+    assert result["aligned"] is False
+    assert len(result["violations"]) >= 2
+    assert "Never disable linting globally" in result["violations"]
+    assert "Never disable formatting globally" in result["violations"]
+
+
+def test_check_alignment_with_specs_getattr_reads_forbidden_behaviors() -> None:
+    """Kill VALUE_0/SWAP_0: getattr(spec, 'forbidden_behaviors', []) must read correct attr."""
+    ec = ExecutionCompass()
+    spec = _FakeSpec([_FakeForbiddenBehavior("Never truncate logs silently")])
+    result = ec.check_alignment_with_specs("truncate logs silently", specs=[spec])
+    assert result["aligned"] is False
+    assert len(result["prescriptive_violations"]) == 1
+
+
+def test_check_alignment_with_specs_swap_setdefault_arg_order() -> None:
+    """Kill SWAP_1: result.setdefault('violations', []) — args must be in correct order."""
+    ec = ExecutionCompass()
+    spec = _FakeSpec([_FakeForbiddenBehavior("Avoid caching stale results")])
+    result = ec.check_alignment_with_specs("caching stale results here", specs=[spec])
+    assert isinstance(result["violations"], list)
+    assert "Avoid caching stale results" in result["violations"]
+
+
+def test_check_alignment_with_specs_boundary_three_char_word_no_match() -> None:
+    """Kill BOUNDARY_0: 3-char words in spec forbidden_behaviors must NOT match."""
+    ec = ExecutionCompass()
+    spec = _FakeSpec([_FakeForbiddenBehavior("use bad api")])  # all <=3 chars
+    result = ec.check_alignment_with_specs("use bad api directly", specs=[spec])
+    assert result["aligned"] is True
+    assert result.get("prescriptive_violations") is None
+
+
+def test_check_alignment_with_specs_nonmatching_stays_aligned() -> None:
+    """No match: prescriptive_violations should not appear, aligned stays True."""
+    ec = ExecutionCompass()
+    spec = _FakeSpec([_FakeForbiddenBehavior("Never delete production data")])
+    result = ec.check_alignment_with_specs("git commit -m fix", specs=[spec])
+    assert result["aligned"] is True
+    assert "prescriptive_violations" not in result

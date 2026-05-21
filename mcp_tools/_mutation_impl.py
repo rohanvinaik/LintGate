@@ -18,6 +18,65 @@ from typing import Any
 _MUTATION_CACHE_DIR = ".lintgate/mutation"
 
 
+def detect_delegation(file_path: str) -> str | None:
+    """Detect if a file is a thin subprocess wrapper delegating to a script.
+
+    Returns the delegated script path if detected, None otherwise.
+    A file is a delegation wrapper if it:
+    - Imports subprocess
+    - Calls subprocess.run with a script path argument
+    - Has no own branching logic beyond the wrapper pattern
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            source = f.read()
+        tree = ast.parse(source)
+    except (OSError, SyntaxError):
+        return None
+
+    has_subprocess_import = False
+    script_target: str | None = None
+    own_function_count = 0
+
+    for node in ast.walk(tree):
+        # Check for subprocess import
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "subprocess":
+                    has_subprocess_import = True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "subprocess":
+                has_subprocess_import = True
+
+        # Count own function definitions (excluding __main__ guard)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            own_function_count += 1
+
+        # Find subprocess.run calls with script path args
+        elif isinstance(node, ast.Call):
+            func = node.func
+            is_subprocess_run = False
+            if isinstance(func, ast.Attribute) and func.attr == "run":
+                if isinstance(func.value, ast.Name) and func.value.id == "subprocess":
+                    is_subprocess_run = True
+            if is_subprocess_run and node.args:
+                first_arg = node.args[0]
+                # Look for ["python", ..., "scripts/X.py", ...] pattern
+                if isinstance(first_arg, ast.List):
+                    for elt in first_arg.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            val = elt.value
+                            if "scripts/" in val and val.endswith(".py"):
+                                script_target = val
+
+    if not has_subprocess_import or script_target is None:
+        return None
+
+    # Heuristic: thin wrappers have few functions (mostly just the @mcp.tool wrappers)
+    # and delegate all compute to the script
+    return script_target
+
+
 @dataclass
 class DiscoveryDiagnostics:
     """Tracks why test discovery produced the results it did."""
@@ -36,6 +95,10 @@ class DiscoveryDiagnostics:
     semantic_matches: int = 0
     semantic_available: bool = False
     semantic_scores: list[float] = field(default_factory=list)
+    proven_linkage_count: int = 0
+    static_refs_count: int = 0
+    dynamic_refs_count: int = 0
+    linkage_divergence: str = ""  # "aligned", "static_missing", "dynamic_missing", "disjoint"
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -62,12 +125,22 @@ class DiscoveryDiagnostics:
             d["semantic_scores"] = self.semantic_scores
         if self.fallback_used:
             d["fallback_used"] = True
+        if self.proven_linkage_count:
+            d["proven_linkage_count"] = self.proven_linkage_count
+        if self.linkage_divergence:
+            d["linkage_divergence"] = self.linkage_divergence
+            d["static_refs_count"] = self.static_refs_count
+            d["dynamic_refs_count"] = self.dynamic_refs_count
         if self.weak_linkage_suspected:
             d["weak_linkage_suspected"] = True
             d["sanity_warning"] = (
                 "Callable loading appears incomplete for the discovered test files. "
                 "Treat mutation survival as a discovery artifact."
             )
+        if self.import_error_details:
+            import sys as _sys
+
+            d["interpreter_path"] = _sys.executable
         if self.callables_loaded == 0:
             reasons: list[str] = []
             if self.test_files_found == 0:
@@ -227,10 +300,32 @@ def load_cached_state(cache_dir: Path, func_key: str) -> dict | None:
         return None
 
 
-def save_cached_state(cache_dir: Path, func_key: str, data: dict) -> None:
+def compute_test_hash(test_files: list[str]) -> str:
+    """Compute a content hash of test files for cache invalidation."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for tf in sorted(test_files):
+        try:
+            with open(tf, "rb") as f:
+                h.update(f.read())
+        except OSError:
+            continue
+    return h.hexdigest()[:16]
+
+
+def save_cached_state(
+    cache_dir: Path,
+    func_key: str,
+    data: dict,
+    *,
+    test_files: list[str] | None = None,
+) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     safe_key = func_key.replace("::", "__").replace("/", "_")
     cache_file = cache_dir / f"{safe_key}.json"
+    if test_files:
+        data["_test_content_hash"] = compute_test_hash(test_files)
     try:
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(data, f, default=str)
@@ -358,6 +453,7 @@ def load_test_callables(
     """Discover and import test callables for a function.
 
     Resolution order (highest to lowest confidence):
+    0. Proven kill-set linkage (tests that killed mutants — ground truth)
     1. Dynamic coverage linkage (execution-traced, from .coverage contexts)
     2. Static AST-based impact map (call-name matching)
     3. Fallback: all test functions from discovered test files
@@ -375,28 +471,47 @@ def load_test_callables(
     diag = DiscoveryDiagnostics(test_files_found=len(test_files))
     diag.ast_test_callables = _count_ast_test_callables(test_files)
 
+    # ── Layer 0: proven kill-set linkage (ground truth) ────────────
+    proven_imported: list[Any] = []
+    if project_root and func_key:
+        proven_refs = _resolve_proven_linkage(project_root, func_key)
+        if proven_refs:
+            proven_imported = _import_test_functions(proven_refs, diag)
+            if proven_imported:
+                diag.proven_linkage_count = len(proven_imported)
+
     # ── Layer 1: dynamic coverage linkage (highest confidence) ─────
+    dynamic_refs: list[Any] = []
     if project_root and func_key:
         dynamic_refs = _resolve_dynamic_linkage(project_root, func_key)
-        if dynamic_refs:
-            diag.impact_map_refs = len(dynamic_refs)
-            diag.linkage_source = "dynamic"
-            imported = _import_test_functions(dynamic_refs, diag)
-            if imported:
-                diag.callables_loaded = len(imported)
-                diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
-                return imported, diag
+    diag.dynamic_refs_count = len(dynamic_refs)
 
     # ── Layer 2: static AST-based impact map ───────────────────────
     impact = build_test_impact_map(test_files)
-    refs = impact.tests_for(func_name)
-    diag.impact_map_refs = len(refs) if refs else 0
-    if refs:
-        imported = _import_test_functions(refs, diag)
-        if imported:
-            diag.callables_loaded = len(imported)
+    static_refs = impact.tests_for(func_name)
+    diag.static_refs_count = len(static_refs) if static_refs else 0
+
+    # Divergence diagnostic: when both layers ran, compare.
+    _classify_linkage_divergence(diag, dynamic_refs, static_refs, project_root)
+
+    if dynamic_refs:
+        diag.impact_map_refs = len(dynamic_refs)
+        diag.linkage_source = "dynamic"
+        imported = _import_test_functions(dynamic_refs, diag)
+        merged = _merge_callables(proven_imported, imported)
+        if merged:
+            diag.callables_loaded = len(merged)
             diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
-            return imported, diag
+            return merged, diag
+
+    if static_refs:
+        diag.impact_map_refs = len(static_refs)
+        imported = _import_test_functions(static_refs, diag)
+        merged = _merge_callables(proven_imported, imported)
+        if merged:
+            diag.callables_loaded = len(merged)
+            diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
+            return merged, diag
 
     # ── Layer 1.5: semantic discovery fallback ────────────────────
     # Consulted only when both dynamic (Layer 1) and static (Layer 2)
@@ -408,19 +523,181 @@ def load_test_callables(
         if semantic_files:
             diag.linkage_source = "semantic"
             sem_callables = _load_all_tests_from_files(semantic_files, diag)
-            if sem_callables:
-                diag.callables_loaded = len(sem_callables)
+            merged = _merge_callables(proven_imported, sem_callables)
+            if merged:
+                diag.callables_loaded = len(merged)
                 diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
-                return sem_callables, diag
+                return merged, diag
 
     # ── Layer 3: fallback — all test functions from discovered files ─
     # The test files were already scoped by filename convention in
-    # discover_test_files, so this is bounded and relevant.
+    # discover_test_files, so this is bounded and relevant. Proven
+    # linkage is still merged so kill-proven tests always run.
     diag.fallback_used = True
     callables = _load_all_tests_from_files(test_files, diag)
-    diag.callables_loaded = len(callables)
+
+    # ── Layer 3.5: in-process runtime probe (authoritative filter) ─
+    # When we've fallen all the way through, the fallback set is noisy
+    # (every test in every filename-matched file). A sys.setprofile probe
+    # narrows this to tests that actually enter the target's code object.
+    # Ground truth by construction; bounded by max_probe.
+    probed_count = _probe_fallback_with_runtime(source_file, func_name, callables, diag)
+    if probed_count:
+        diag.linkage_source = "probe"
+
+    merged = _merge_callables(proven_imported, callables)
+    diag.callables_loaded = len(merged)
     diag.weak_linkage_suspected = _suspect_weak_linkage(diag)
-    return callables, diag
+    return merged, diag
+
+
+def _probe_fallback_with_runtime(
+    source_file: str,
+    func_name: str,
+    callables: list[Any],
+    diag: DiscoveryDiagnostics,
+) -> int:
+    """Filter *callables* in-place to runtime-probe-verified entries.
+
+    Returns the number of callables probed. Mutates *callables* in-place
+    when the probe produced a narrower set than the input — otherwise
+    leaves it untouched. Safe fallback when the target can't be resolved.
+    """
+    if not source_file or not func_name or not callables:
+        return 0
+    try:
+        from lintgate.specification.linkage_probe import probe_fallback_callables
+    except Exception:
+        return 0
+    try:
+        verified, probed = probe_fallback_callables(source_file, func_name, callables)
+    except Exception:
+        return 0
+    if probed and len(verified) < len(callables):
+        callables[:] = verified
+    return probed
+
+
+def _persist_proven_linkage(
+    project_root: str,
+    func_key: str,
+    tests: list[Any],
+    result_dict: dict[str, Any],
+) -> None:
+    """Record tests that killed mutants as proven linkage for *func_key*.
+
+    No-op when project_root or func_key are missing, or when no mutants
+    were killed. Otherwise appends to .lintgate/mutation/linkage_proven.json
+    so future discovery layers can consult this as ground truth.
+    """
+    if not project_root or not func_key:
+        return
+    killed_records = result_dict.get("killed_records") or []
+    if not killed_records:
+        return
+
+    from lintgate.specification.proven_linkage import killed_pairs_from_result, record_kills
+
+    name_to_file: dict[str, str] = {}
+    for fn in tests:
+        underlying = getattr(fn, "__func__", fn)
+        try:
+            path = inspect.getsourcefile(underlying) or inspect.getfile(underlying)
+        except TypeError:
+            path = ""
+        if not path:
+            continue
+        name = getattr(underlying, "__name__", "")
+        qualname = getattr(underlying, "__qualname__", name)
+        if name:
+            name_to_file[name] = path
+        if qualname and qualname != name:
+            name_to_file[qualname] = path
+
+    pairs = killed_pairs_from_result(killed_records, name_to_file)
+    if pairs:
+        record_kills(project_root, func_key, pairs)
+
+
+def _resolve_proven_linkage(project_root: str, func_key: str) -> list[Any]:
+    """Load kill-proven TestReference entries for *func_key*.
+
+    Returns [] when the proven-linkage cache is missing or has no
+    entries for this function. Proven entries are the strongest
+    linkage signal — execution that changed outcome is definitional.
+    """
+    from lintgate.specification.proven_linkage import load_proven_entries
+    from lintgate.specification.test_impact import TestReference
+
+    entries = load_proven_entries(project_root, func_key)
+    return [
+        TestReference(test_file=e.test_file, test_function=e.test_function) for e in entries
+    ]
+
+
+def _merge_callables(first: list[Any], second: list[Any]) -> list[Any]:
+    """Concatenate callable lists, deduping by (module, qualname)."""
+    if not first:
+        return list(second)
+    if not second:
+        return list(first)
+    seen: set[tuple[str, str]] = set()
+    merged: list[Any] = []
+    for fn in list(first) + list(second):
+        underlying = getattr(fn, "__func__", fn)
+        key = (
+            getattr(underlying, "__module__", ""),
+            getattr(underlying, "__qualname__", getattr(underlying, "__name__", "")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(fn)
+    return merged
+
+
+def _classify_linkage_divergence(
+    diag: DiscoveryDiagnostics,
+    dynamic_refs: list[Any],
+    static_refs: list[Any] | None,
+    project_root: str,
+) -> None:
+    """Compare static and dynamic linkage; record divergence for diagnostics.
+
+    Only meaningful when both layers could run — otherwise this stays
+    silent. Divergence signals: "aligned" (sets overlap substantially),
+    "static_missing" (dynamic found refs static didn't), "dynamic_missing"
+    (the reverse), "disjoint" (both found refs but no overlap).
+    """
+    static_refs = static_refs or []
+    if not dynamic_refs and not static_refs:
+        return
+    if not dynamic_refs or not static_refs:
+        # Only one layer produced refs — no divergence to classify.
+        return
+
+    def _key(ref: Any) -> tuple[str, str]:
+        tf = getattr(ref, "test_file", "") or ""
+        if tf and project_root and os.path.isabs(tf):
+            try:
+                tf = os.path.relpath(tf, project_root)
+            except ValueError:
+                pass
+        return (tf, getattr(ref, "test_function", "") or "")
+
+    dyn_keys = {_key(r) for r in dynamic_refs}
+    stat_keys = {_key(r) for r in static_refs}
+    overlap = dyn_keys & stat_keys
+    if not overlap:
+        diag.linkage_divergence = "disjoint"
+    elif dyn_keys - stat_keys and not (stat_keys - dyn_keys):
+        diag.linkage_divergence = "static_missing"
+    elif stat_keys - dyn_keys and not (dyn_keys - stat_keys):
+        diag.linkage_divergence = "dynamic_missing"
+    elif overlap == dyn_keys == stat_keys:
+        diag.linkage_divergence = "aligned"
+    else:
+        diag.linkage_divergence = "partial_overlap"
 
 
 def _resolve_dynamic_linkage(
@@ -508,9 +785,20 @@ def _count_ast_test_callables(test_files: list[str]) -> int:
 
 
 def _suspect_weak_linkage(diag: DiscoveryDiagnostics) -> bool:
-    """Detect implausibly small callable sets relative to discovered test bodies."""
+    """Detect implausibly small callable sets relative to discovered test bodies.
+
+    Three cases — any one triggers:
+      1. Zero-linkage: fallback reached, no impact-map refs, yet tests exist.
+         Means static + dynamic both failed to link any test to this function.
+      2. Near-empty: 3+ tests in the file but 1 or fewer loaded via fallback.
+      3. Ratio: 8+ tests but fewer than a quarter loaded.
+    """
     if not diag.fallback_used or diag.callables_loaded <= 0 or diag.ast_test_callables <= 0:
         return False
+    # Zero-linkage: tests were scanned but nothing linked to this function.
+    # Survival under this condition is a discovery artifact, not a test gap.
+    if diag.impact_map_refs == 0:
+        return True
     if diag.ast_test_callables >= 3 and diag.callables_loaded <= 1:
         return True
     return diag.ast_test_callables >= 8 and diag.callables_loaded * 4 < diag.ast_test_callables
@@ -744,7 +1032,7 @@ def _try_import_module(filepath: str) -> tuple[Any, str]:
         return mod, ""
     except Exception as exc:
         sys.modules.pop(mod_name, None)
-        detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+        detail = f"{type(exc).__name__}: {str(exc)[:200]} (interpreter: {sys.executable})"
         return None, detail
     finally:
         # Leave project_root in sys.path — other test modules may need it
@@ -878,7 +1166,9 @@ def _run_single(
 
     _enrich_mutation_result(result_dict, node, tests, discovery_diag)
 
-    save_cached_state(ctx.cache_dir, func_key, result_dict)
+    _persist_proven_linkage(ctx.project_root, func_key, tests, result_dict)
+
+    save_cached_state(ctx.cache_dir, func_key, result_dict, test_files=ctx.test_files)
     ret: dict = result_dict
     return ret
 
@@ -980,6 +1270,101 @@ def _enrich_mutation_result(
         )
     if topology is not None:
         result_dict["topology_details"] = topology.to_dict()
+
+    # Classify side-effect-only survivors as equivalent
+    _mark_side_effect_equivalent(result_dict, node)
+
+    # Flag property violation candidates on pure functions
+    if result_dict.get("is_pure") and result_dict.get("discovery_diagnostics"):
+        _flag_property_violation_candidates(result_dict)
+
+
+# Known side-effect-only function names — mutations in their arguments
+# don't affect return values or state.
+_SIDE_EFFECT_SINKS = frozenset({
+    "print", "pprint", "logging", "logger",
+    "debug", "info", "warning", "error", "critical", "exception",
+    "warn",
+})
+
+
+def _mark_side_effect_equivalent(
+    result_dict: dict[str, Any],
+    node: Any,
+) -> None:
+    """Mark surviving mutants in side-effect-only positions as equivalent."""
+    survivors = result_dict.get("survivor_records", [])
+    if not survivors or node is None:
+        return
+
+    # Build a set of line numbers that are inside side-effect-only calls
+    side_effect_lines: set[int] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Expr):
+            continue
+        call = child.value
+        if not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        func_name = ""
+        if isinstance(func, ast.Name):
+            func_name = func.id
+        elif isinstance(func, ast.Attribute):
+            func_name = func.attr
+            # Also check the object: logging.info, logger.debug, etc.
+            if isinstance(func.value, ast.Name) and func.value.id in _SIDE_EFFECT_SINKS:
+                func_name = func.value.id
+        if func_name in _SIDE_EFFECT_SINKS:
+            for line in range(child.lineno, (child.end_lineno or child.lineno) + 1):
+                side_effect_lines.add(line)
+
+    if not side_effect_lines:
+        return
+
+    equivalent_count = 0
+    for survivor in survivors:
+        diff = survivor.get("diff_summary", "")
+        # Extract line number from diff: "- line N:" or lineno field
+        lineno = survivor.get("lineno", 0)
+        if not lineno and diff:
+            # Try to extract from "line N" pattern in diff
+            import re
+
+            m = re.search(r"line\s+(\d+)", diff)
+            if m:
+                lineno = int(m.group(1))
+        if lineno and lineno in side_effect_lines:
+            survivor["equivalent_reason"] = "side_effect_only"
+            equivalent_count += 1
+
+    if equivalent_count:
+        result_dict["side_effect_equivalent_count"] = equivalent_count
+
+
+_PROPERTY_TEST_PATTERNS = {"property", "hypothesis", "invariant", "monoton", "idempoten"}
+
+
+def _flag_property_violation_candidates(result_dict: dict[str, Any]) -> None:
+    """Flag when a property-style test fails on a pure function.
+
+    This might indicate a real code bug rather than a wrong test oracle.
+    """
+    diag = result_dict.get("discovery_diagnostics", {})
+    # Check if any test function names suggest property-based testing
+    failures = diag.get("import_error_details", [])
+    # Also check survivor records for test-name patterns
+    survivors = result_dict.get("survivor_records", [])
+    for survivor in survivors:
+        test_name = survivor.get("killing_test", "") or survivor.get("test_name", "")
+        if any(pat in test_name.lower() for pat in _PROPERTY_TEST_PATTERNS):
+            survivor["property_violation_candidate"] = True
+            result_dict.setdefault("property_violation_candidates", []).append(
+                survivor.get("category", "unknown")
+            )
+    # Also check for @given decorator usage in test files
+    test_files = diag.get("test_files", [])
+    if not test_files and not failures:
+        return
 
 
 def _truth_label(result_dict: dict[str, Any], survival_interpretation: str) -> str:

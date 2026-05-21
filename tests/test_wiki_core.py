@@ -573,6 +573,18 @@ class TestRailDisplayNameFallback:
         assert _rail_display_name_fallback("custom_rail_name") == "Custom Rail Name"
         assert _rail_display_name_fallback("custom-rail-name") == "Custom Rail Name"
 
+    def test_known_rails_differ_from_fallback(self):
+        """Kill VALUE survivors: verify dict entries that differ from the title-case fallback."""
+        # "getting_value" → dict: "Getting Value Fast" vs fallback: "Getting Value"
+        assert _rail_display_name_fallback("getting_value") == "Getting Value Fast"
+        assert _rail_display_name_fallback("getting_value") != "Getting Value"
+        # "why_designed" → dict: "Why It Is Designed This Way" vs fallback: "Why Designed"
+        assert _rail_display_name_fallback("why_designed") == "Why It Is Designed This Way"
+        assert _rail_display_name_fallback("why_designed") != "Why Designed"
+        # "why-designed-this-way" → dict value differs from fallback
+        assert _rail_display_name_fallback("why-designed-this-way") == "Why It Is Designed This Way"
+        assert _rail_display_name_fallback("why-designed-this-way") != "Why Designed This Way"
+
 
 class TestLoadMetrics:
     def test_loads_from_docs_wiki(self, tmp_path):

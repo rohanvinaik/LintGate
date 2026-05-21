@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, mock_open, patch
 from mcp_tools._onboarding_getting_started_impl import (
     _DEFAULT_WORKFLOW,
     _ESSENTIAL_TOOLS,
-    _TOOL_APPLICABILITY_GUIDE,
     _build_next_actions,
     _detect_mutation_guard,
     _handle_config_and_venv,
@@ -299,16 +298,14 @@ class TestImplToolApplicabilityGuide:
     def test_returns_json_string(self):
         result = _impl_tool_applicability_guide(helpers={})
         parsed = _load_tool_result(result)
-        assert "controlplane_run" in parsed
-        assert "lint_files" in parsed
-        assert parsed["getting_started"]["cadence"] == "Onboarding only."
+        assert "guide" in parsed
+        assert "surgical" in parsed["guide"]
 
-    def test_uses_custom_json_dumps(self):
-        custom_output = '{"custom": true}'
-        helpers = {"_json_dumps": MagicMock(return_value=custom_output)}
-        result = _impl_tool_applicability_guide(helpers)
-        assert result == custom_output
-        helpers["_json_dumps"].assert_called_once_with(_TOOL_APPLICABILITY_GUIDE)
+    def test_returns_task_shape_format(self):
+        result = _impl_tool_applicability_guide(helpers={})
+        parsed = _load_tool_result(result)
+        assert parsed.get("format") == "task_shape_index"
+        assert "guide" in parsed
 
 
 # ---------------------------------------------------------------------------
@@ -370,13 +367,13 @@ class TestConstants:
         }
         assert set(_ESSENTIAL_TOOLS.keys()) == expected
 
-    def test_tool_applicability_guide_has_all_tools(self):
-        expected_tools = {
-            "controlplane_run",
-            "lint_files",
-            "lint_project",
-            "lint_fix",
-            "scaffold_config",
-            "getting_started",
-        }
-        assert set(_TOOL_APPLICABILITY_GUIDE.keys()) == expected_tools
+    def test_tool_applicability_guide_returns_task_shape_guide(self):
+        result = _impl_tool_applicability_guide(helpers={})
+        parsed = _load_tool_result(result)
+        guide_text = parsed.get("guide", "")
+        # The task-shape index should mention all 5 workflow modes
+        assert "surgical" in guide_text
+        assert "refactor" in guide_text
+        assert "greenfield" in guide_text
+        assert "explore" in guide_text
+        assert "debug_spiral" in guide_text

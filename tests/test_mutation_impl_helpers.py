@@ -113,3 +113,76 @@ def test_load_test_callables_flags_weak_linkage_when_fallback_loads_too_few(tmp_
     assert diag.ast_test_callables == 3
     assert diag.weak_linkage_suspected is True
     assert diag.to_dict()["sanity_warning"]
+
+
+def test_load_test_callables_flags_weak_linkage_on_zero_impact_refs(tmp_path):
+    """New signal: when fallback is used and impact_map_refs=0 yet tests exist,
+    flag weak linkage even if the callable count would otherwise look fine."""
+    test_file = tmp_path / "tests" / "test_unrelated_module.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        "\n".join([
+            "def test_alpha():",
+            "    assert True",
+            "def test_beta():",
+            "    assert True",
+            "def test_gamma():",
+            "    assert True",
+            "def test_delta():",
+            "    assert True",
+        ])
+    )
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n")
+
+    fallback = [lambda: None for _ in range(4)]
+    with patch("mcp_tools._mutation_impl._load_all_tests_from_files", return_value=fallback):
+        _, diag = load_test_callables([str(test_file)], "nonexistent_target_fn")
+
+    assert diag.fallback_used is True
+    assert diag.impact_map_refs == 0
+    assert diag.ast_test_callables == 4
+    assert diag.callables_loaded == 4
+    # Weak linkage is flagged because nothing linked, even though callable count is fine
+    assert diag.weak_linkage_suspected is True
+
+
+def test_load_test_callables_records_linkage_divergence(tmp_path):
+    """When static returns refs for a function but dynamic finds disjoint tests,
+    the divergence diagnostic fires."""
+    from lintgate.specification.test_impact import TestReference
+
+    test_file = tmp_path / "tests" / "test_demo.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        "\n".join([
+            "def test_alpha():",
+            "    target_func()",
+        ])
+    )
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n")
+
+    # Dynamic finds a totally different test than static would.
+    dynamic_refs = [
+        TestReference(test_file=str(test_file), test_function="test_beta"),
+    ]
+
+    with (
+        patch(
+            "mcp_tools._mutation_impl._resolve_dynamic_linkage",
+            return_value=dynamic_refs,
+        ),
+        patch(
+            "mcp_tools._mutation_impl._import_test_functions",
+            return_value=[lambda: None],
+        ),
+    ):
+        _, diag = load_test_callables(
+            [str(test_file)],
+            "target_func",
+            project_root=str(tmp_path),
+            func_key="demo.py::target_func",
+        )
+
+    assert diag.linkage_divergence == "disjoint"
+    assert diag.dynamic_refs_count == 1
+    assert diag.static_refs_count == 1

@@ -71,6 +71,7 @@ class RuntimeState:
 
     # Cognitive mode
     mode: str = "normal"  # "normal" | "theory" | "habit"
+    workflow_mode: str = ""  # "" | "surgical" | "refactor" | "greenfield" | "explore" | "debug_spiral"
     habit_score: float = 0.0
 
     # Compass capsule (frozen directional state)
@@ -349,6 +350,8 @@ def build_runtime_state(
         state.habit_score = round(habit_state.habit_score, 2)
         state.active_files = list(habit_state.active_files)[:_MAX_ACTIVE_FILES]
         state.compaction_count = habit_state.compaction_count
+        if habit_state.workflow_mode:
+            state.workflow_mode = habit_state.workflow_mode
 
     if exec_compass is not None:
         state.true_north = exec_compass.true_north[:_TRUE_NORTH_MAX_CHARS]

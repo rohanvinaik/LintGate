@@ -154,8 +154,13 @@ class TestBuildCpNextActions:
         assert actions[0].tool == "controlplane_get_details"
 
     def test_repairs_available_suggest_apply(self) -> None:
-        """repairs_available > 0 produces apply_repairs action."""
-        counts = {"blocking": 0, "warning": 0, "repairs_available": 3}
+        """safe_executable > 0 produces apply_repairs action."""
+        counts = {
+            "blocking": 0,
+            "warning": 0,
+            "repairs_available": 3,
+            "repair_counts": {"safe_executable": 3, "unsafe_executable": 0, "advisory_only": 0},
+        }
         actions = _build_cp_next_actions("run1", counts)
         repair_actions = [a for a in actions if a.tool == "controlplane_apply_repairs"]
         assert len(repair_actions) == 1
@@ -186,13 +191,23 @@ class TestBuildCpNextActions:
         assert actions[0].args["command"] == "python scripts/ship_main.py --preflight"
 
     def test_repairs_available_singular(self) -> None:
-        counts = {"blocking": 0, "warning": 0, "repairs_available": 1}
+        counts = {
+            "blocking": 0,
+            "warning": 0,
+            "repairs_available": 1,
+            "repair_counts": {"safe_executable": 1, "unsafe_executable": 0, "advisory_only": 0},
+        }
         actions = _build_cp_next_actions("run1", counts)
         assert len(actions) == 1
-        assert "1 safe repair available" in actions[0].reason
+        assert "1 safe executable repair available" in actions[0].reason
 
     def test_all_counts_produce_all_actions(self) -> None:
-        counts = {"blocking": 1, "warning": 2, "repairs_available": 1}
+        counts = {
+            "blocking": 1,
+            "warning": 2,
+            "repairs_available": 1,
+            "repair_counts": {"safe_executable": 1, "unsafe_executable": 0, "advisory_only": 0},
+        }
         actions = _build_cp_next_actions("run1", counts)
         assert len(actions) == 3
 
