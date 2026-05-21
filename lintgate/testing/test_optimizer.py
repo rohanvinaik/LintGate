@@ -16,9 +16,8 @@ import glob
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Union
 
-_FuncDef = Union[ast.FunctionDef, ast.AsyncFunctionDef]
+_FuncDef = ast.FunctionDef | ast.AsyncFunctionDef
 
 
 # ── Data Types ────────────────────────────────────────────────────
@@ -275,14 +274,7 @@ def parse_test_module(path: str) -> ParsedTestModule | None:
             imports.append(node)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             constants.append(node)
-        elif isinstance(node, ast.FunctionDef):
-            if node.name.startswith("test_"):
-                test_functions[node.name] = node
-            elif _is_fixture(node):
-                fixtures[node.name] = node
-            else:
-                helpers[node.name] = node
-        elif isinstance(node, ast.AsyncFunctionDef):
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             if node.name.startswith("test_"):
                 test_functions[node.name] = node
             elif _is_fixture(node):
@@ -515,7 +507,7 @@ def compose_compacted_file(
     if module.docstring:
         parts.append(f'"""Test suite for {module.path} — optimized by test_compact."""')
     else:
-        parts.append(f'"""Test suite — optimized by test_compact."""')
+        parts.append('"""Test suite — optimized by test_compact."""')
 
     parts.append("")
 

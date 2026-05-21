@@ -383,7 +383,9 @@ class TestRunControlplane:
         output = stdout_capture.getvalue().strip()
         parsed = _load_tool_result(output)
         assert advisory_msg in parsed["systemMessage"]
-        assert "lint report" in parsed["systemMessage"]
+        # Per token-budget refactor, the verbose lint report body is offloaded
+        # to disk and the systemMessage carries a "Full: <path>" pointer.
+        assert "Full:" in parsed["systemMessage"]
 
 
 @dataclass

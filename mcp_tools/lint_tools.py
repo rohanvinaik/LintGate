@@ -118,6 +118,10 @@ def register(mcp, helpers):
         """
         if tier not in (0, 1, 2, 3):
             raise ValueError(f"Invalid tier {tier}; expected one of: 0, 1, 2, 3")
+        if strictness not in ("relaxed", "normal", "strict"):
+            raise ValueError(
+                f"Invalid strictness '{strictness}'; expected one of: relaxed, normal, strict"
+            )
         if not files:
             raise ValueError("No files specified")
 

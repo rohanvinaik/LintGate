@@ -239,7 +239,7 @@ def _scan_test_file(filepath: str) -> dict[str, list[str]]:
 
     # 1-hop helper follow: when a test calls a local helper, merge the
     # helper's outbound calls into the test's call-set.
-    for test_func, calls in list(result.items()):
+    for calls in result.values():
         _expand_with_helper_calls(calls, helpers)
 
     # Naming-strategy synthetic targets: link tests by naming convention

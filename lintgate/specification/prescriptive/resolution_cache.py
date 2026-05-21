@@ -15,7 +15,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .spec import PrescriptiveSpec

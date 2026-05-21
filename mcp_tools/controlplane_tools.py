@@ -148,7 +148,17 @@ def register(mcp, helpers):
         scope: str | None = None,
         files: list[str] | None = None,
     ) -> str:
-        """Run a comprehensive project health check across multiple dimensions."""
+        """Run a comprehensive project health check across multiple dimensions.
+
+        WHEN TO USE: Call at session start or before risky changes. Runs the
+        full supervision mesh (lint + tests + deps + git + behavior + structure)
+        in parallel and returns convergent findings. Works without configuration —
+        sensible defaults are applied if no lintgate.yaml is present.
+
+        Drill into a specific finding via controlplane_get_details(run_id).
+
+        Example: controlplane_run(path="/my/project")
+        """
         args = ["run", path, "--strictness", strictness]
         if channels:
             args.extend(["--channels", channels])
@@ -169,7 +179,14 @@ def register(mcp, helpers):
         time_budget_minutes: float | None = None,
         finding_domain: str | None = None,
     ) -> str:
-        """Drill into a previous ControlPlane run by run_id."""
+        """Drill into a previous ControlPlane run by run_id.
+
+        WHEN TO USE: After controlplane_run returns a summary, use this to
+        view full findings for a specific channel or filter. Filters by
+        section, source (code/environment), severity, or file.
+
+        Example: controlplane_get_details(run_id="cp_abc123", section="behavior")
+        """
         args = ["get-details", run_id, "--max-issues", str(max_issues)]
         if channel:
             args.extend(["--channel", channel])
@@ -196,6 +213,13 @@ def register(mcp, helpers):
     @mcp.tool()
     def controlplane_test_skeleton(path: str, target_file: str) -> str:
         """Generate a test skeleton for a source file."""
+        source_path = (
+            target_file
+            if os.path.isabs(target_file)
+            else os.path.join(path, target_file)
+        )
+        if not os.path.isfile(source_path):
+            raise ValueError(f"Source file not found: {target_file}")
         return _run_script("test-skeleton", path, "--target-file", target_file)
 
     @mcp.tool()
@@ -205,6 +229,11 @@ def register(mcp, helpers):
         outcome: str = "applied",
     ) -> str:
         """Report the outcome of a proposed repair action."""
+        valid_outcomes = {"applied", "skipped", "rejected", "failed"}
+        if outcome not in valid_outcomes:
+            raise ValueError(
+                f"Invalid outcome {outcome!r}; must be one of {sorted(valid_outcomes)}"
+            )
         return _run_script(
             "report-repair", path, "--action-id", action_id, "--outcome", outcome
         )

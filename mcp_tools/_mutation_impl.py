@@ -7,6 +7,7 @@ The public API is mutation_tools.register(); this module is private.
 from __future__ import annotations
 
 import ast
+import contextlib
 import inspect
 import json
 import os
@@ -679,10 +680,8 @@ def _classify_linkage_divergence(
     def _key(ref: Any) -> tuple[str, str]:
         tf = getattr(ref, "test_file", "") or ""
         if tf and project_root and os.path.isabs(tf):
-            try:
+            with contextlib.suppress(ValueError):
                 tf = os.path.relpath(tf, project_root)
-            except ValueError:
-                pass
         return (tf, getattr(ref, "test_function", "") or "")
 
     dyn_keys = {_key(r) for r in dynamic_refs}

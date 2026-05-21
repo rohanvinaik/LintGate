@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Local pre-push gate — mirrors .github/workflows/ci.yml steps.
+# Fails closed: any failure blocks the push.
+#
+# Skip with: LINTGATE_SKIP_PRE_PUSH=1 git push
+# Gate selection: LINTGATE_GATE_ID=ruff|pytest git push
+
+set -euo pipefail
+
+if [ "${LINTGATE_SKIP_PRE_PUSH:-0}" = "1" ]; then
+  echo "[lintgate] skipping pre-push checks (LINTGATE_SKIP_PRE_PUSH=1)"
+  exit 0
+fi
+
+GATE_ID="${LINTGATE_GATE_ID:-}"
+
+_should_run() {
+  [ -z "$GATE_ID" ] || [ "$GATE_ID" = "$1" ]
+}
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+# Pick a python: prefer venv, fall back to system.
+if [ -x ".venv/bin/python" ]; then
+  PY=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="python3"
+else
+  PY="python"
+fi
+
+echo "[lintgate] pre-push gate (python: $PY)"
+
+if _should_run ruff; then
+  echo "[lintgate] [GATE:ruff] ruff check lintgate/ mcp_tools/"
+  if ! "$PY" -m ruff check lintgate/ mcp_tools/; then
+    echo "[lintgate] [GATE:ruff] FAILED — fix with: $PY -m ruff check --fix lintgate/ mcp_tools/"
+    exit 1
+  fi
+  echo "[lintgate] [GATE:ruff] passed"
+fi
+
+if _should_run pytest; then
+  echo "[lintgate] [GATE:pytest] pytest tests/ -x -q"
+  if ! "$PY" -m pytest tests/ -x -q; then
+    echo "[lintgate] [GATE:pytest] FAILED — see output above"
+    exit 1
+  fi
+  echo "[lintgate] [GATE:pytest] passed"
+fi
+
+echo "[lintgate] all gates passed"

@@ -29,7 +29,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .backends import CompilationTargets

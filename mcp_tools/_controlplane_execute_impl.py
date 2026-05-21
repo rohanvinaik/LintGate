@@ -17,7 +17,6 @@ from typing import Any
 from lintgate.next_action import NextAction, serialize_next_actions
 from mcp_tools._disk_helpers import load_tool_response, tool_response
 
-
 # Terminal states for the unified orchestration
 EXECUTE_TERMINAL_STATES = frozenset({
     "COMPLETE",

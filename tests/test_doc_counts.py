@@ -135,7 +135,7 @@ class TestMCPToolCount:
     def test_mcp_tool_count_sanity(self):
         """Sanity check: AST-based count (excludes docstring examples)."""
         actual = _count_mcp_tools()
-        assert actual == 134, f"Expected 134 MCP tools, got {actual}"
+        assert actual == 133, f"Expected 133 MCP tools, got {actual}"
 
     def test_reference_md_lists_all_tools(self):
         """docs/reference.md tool tables should list all MCP tools."""

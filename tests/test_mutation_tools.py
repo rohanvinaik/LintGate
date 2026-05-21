@@ -266,4 +266,5 @@ class TestImplClearState:
         helpers = _stub_helpers()
         helpers["_validate_project_root"] = lambda p, **kw: str(tmp_path)
         result = _load_tool_result(_impl_clear_state(helpers, str(tmp_path), None))
-        assert result["cleared"] == 2
+        assert result["cleared"]["mutation_cache"] == 2
+        assert result["cleared"]["total"] == 2

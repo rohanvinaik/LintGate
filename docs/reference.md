@@ -1,10 +1,10 @@
 # LintGate Reference
 
-Technical reference for LintGate's 125 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
+Technical reference for LintGate's 133 MCP tools, configuration, and project structure. For the narrative overview, see [README.md](../README.md). For architecture deep dive, see [design.md](design.md).
 
 ---
 
-## MCP Tools (134)
+## MCP Tools (133)
 
 > **Source of truth for tool count:** `grep -Rho "@mcp.tool()" mcp_server.py mcp_tools/*.py | wc -l` (target `*.py` to avoid pycache matches)
 
@@ -15,6 +15,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | Tool              | Purpose                                                                |
 | ----------------- | ---------------------------------------------------------------------- |
 | `getting_started` | First-call orientation with startup automation (auto config scaffold + auto venv provision + missing-tool diagnostics + next actions) |
+| `what_next` | Get the single best next action for this project — the "I'm lost" tool. Returns exactly one recommended tool call with pre-filled parameters |
 | `scaffold_config` | Generate project-specific lintgate.yaml from observed signals |
 | `setup_github_quality` | Generate Code Climate/SonarCloud configs, SonarCloud + qlty + security-lite workflows, README badges, .gitignore augmentation |
 | `sync_ci_config` | Reconcile pyproject.toml, sonar-project.properties, and lintgate.yaml — propagate test/generated/pure-function classifications into CI config |
@@ -47,6 +48,7 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `controlplane_agent_feedback` | Accept/reject findings and constraint proposals                          |
 | `controlplane_test_skeleton`  | Generate pytest skeleton from AST analysis                               |
 | `controlplane_get_work_queue` | Get dependency-ordered work queue from a cached run                      |
+| `controlplane_execute`        | Single-command project improvement: analyze, repair, generate tests, validate |
 
 ### Performance Analysis
 
@@ -63,6 +65,8 @@ LintGate operates as both a PostToolUse hook (automatic, fires on every code cha
 | `test_characterize`      | Generate characterization tests with golden-value capture                   |
 | `test_characterize_mark` | Mark characterization test maturity: unchecked → approved → specified       |
 | `test_redundancy_project`| Project-wide mutation redundancy: zero-unique-kill tests, minimal cover set |
+| `test_suite_triage`      | Diagnose test redundancy via mutation convergence; minimum killing set       |
+| `test_suite_compact`     | Compact a test file to its minimum killing set (dry-run by default)         |
 | `test_rebuild_plan`      | Classify functions into regeneration strategies, build manifest              |
 | `test_rebuild_generate`  | Generate test skeletons for auto_generate_unit targets                      |
 | `test_rebuild_validate`  | Validate generated tests against quality gates                              |

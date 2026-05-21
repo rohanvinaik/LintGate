@@ -187,7 +187,7 @@ def _build_next_actions(
             {
                 "tool": "lint_files",
                 "reason": "Your whole loop: Read → Edit → lint_files. That's it.",
-                "example": f'lint_files(files=["<your-file>"], scope="surgical")',
+                "example": 'lint_files(files=["<your-file>"], scope="surgical")',
             },
         ]
 

@@ -249,7 +249,7 @@ class TestPlatonicConverge:
             result = _load_tool_result(impl_platonic_converge(helpers, str(tmp_path), "mod.py"))
 
         assert result["state"] == "NEEDS_DECOMPOSITION"
-        assert result["primary_next_action"] == "extraction_plan"
+        assert result["primary_next_action"] == "mutation_decompose"
 
     def test_ready_to_apply_workflow(self, tmp_path):
         helpers = _make_helpers(str(tmp_path))

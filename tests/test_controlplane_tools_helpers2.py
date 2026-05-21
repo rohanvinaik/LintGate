@@ -605,8 +605,9 @@ class TestRegister:
         with pytest.raises(ValueError, match="Invalid outcome"):
             report_fn(path="/tmp/test", action_id="a1", outcome="bogus")
 
-    def test_test_skeleton_makes_absolute(self):
+    def test_test_skeleton_makes_absolute(self, tmp_path):
         """Post Phase-2c: verify subprocess argv passes through target_file."""
+        (tmp_path / "foo.py").write_text("def f(): pass\n")
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
         helpers = _stub_helpers()
@@ -617,10 +618,10 @@ class TestRegister:
         proc.stderr = ""
         proc.returncode = 0
         with mock.patch("subprocess.run", return_value=proc) as run:
-            skeleton_fn(path="/tmp/test", target_file="foo.py")
+            skeleton_fn(path=str(tmp_path), target_file="foo.py")
         argv = run.call_args[0][0]
         assert "test-skeleton" in argv
-        assert "/tmp/test" in argv
+        assert str(tmp_path) in argv
         assert "--target-file" in argv
         assert "foo.py" in argv
 

@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-
 # ── Workflow Mode (orthogonal to habit/standard economy mode) ────────
 
 class WorkflowMode(str, Enum):

@@ -696,7 +696,7 @@ def impl_platonic_converge(
         # Build per-function classification details for diagnostic visibility
         classification_details = []
         staleness_detected = False
-        for cr in assessment["classifications"]:
+        for cr in assessment.get("classifications", []):
             detail: dict[str, Any] = {
                 "function": cr.function_key,
                 "strategy": cr.strategy.value,

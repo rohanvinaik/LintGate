@@ -804,7 +804,7 @@ class TestRegister:
         for name, fn in result.items():
             assert callable(fn), f"{name} is not callable"
 
-    def test_mcp_has_five_tools_registered(self, tmp_path):
+    def test_mcp_has_six_tools_registered(self, tmp_path):
         class FakeMCP:
             def __init__(self):
                 self._tools = {}
@@ -820,8 +820,9 @@ class TestRegister:
         helpers = {"_validate_project_root": lambda p: str(tmp_path)}
         register(mcp, helpers)
 
-        assert len(mcp._tools) == 5
+        assert len(mcp._tools) == 6
         assert "declare_mode" in mcp._tools
+        assert "declare_workflow" in mcp._tools
         assert "habit_status" in mcp._tools
         assert "habit_compact" in mcp._tools
         assert "habit_configure" in mcp._tools

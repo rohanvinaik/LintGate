@@ -289,8 +289,10 @@ class TestRegisterControlplaneToolClosures:
         assert "/tmp/proj" in argv
         assert result == '{"applied": []}'
 
-    def test_test_skeleton_absolute_path(self):
+    def test_test_skeleton_absolute_path(self, tmp_path):
         """Post Phase-2c: absolute target_file passes through argv verbatim."""
+        foo = tmp_path / "foo.py"
+        foo.write_text("def f(): pass\n")
         mcp = mock.MagicMock()
         mcp.tool.return_value = lambda fn: fn
 
@@ -304,11 +306,11 @@ class TestRegisterControlplaneToolClosures:
         proc.stderr = ""
         proc.returncode = 0
         with mock.patch("subprocess.run", return_value=proc) as run:
-            skel_fn(path="/tmp/proj", target_file="/tmp/proj/foo.py")
+            skel_fn(path=str(tmp_path), target_file=str(foo))
         argv = run.call_args[0][0]
         assert "test-skeleton" in argv
         assert "--target-file" in argv
-        assert "/tmp/proj/foo.py" in argv
+        assert str(foo) in argv
 
 
 # ── onboarding_tools helpers ─────────────────────────────────────────

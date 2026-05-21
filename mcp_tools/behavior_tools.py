@@ -108,7 +108,10 @@ def register(mcp, helpers):
         prediction_type: str | None = None,
         prediction_value: str | int | None = None,
     ) -> str:
-        """DEPRECATED: Prefer hygiene_check, constraint_check, prediction_register."""
+        """DEPRECATED: Prefer hygiene_check, constraint_check, prediction_register.
+
+        Example: behavior_precheck(path="/my/project", planned_action="git push")
+        """
         args = ["precheck", path, "--action", planned_action]
         for kc in known_constraints or []:
             args.extend(["--known-constraint", kc])

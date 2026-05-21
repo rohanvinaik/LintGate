@@ -94,10 +94,27 @@ def _build_onboarding_status(project_root: str) -> dict[str, Any]:
     }
     if not config_file_exists:
         status["config_state"] = "no_config"
+        status["setup_hint"] = (
+            "No config file found. LintGate tools work without config, but to enable "
+            "automatic quality checks on every file edit, create .claude/lintgate.yaml with:\n"
+            "  controlplane:\n"
+            "    enabled: true"
+        )
     elif cp_config is None and not has_controlplane_section:
         status["config_state"] = "config_no_controlplane_section"
+        status["setup_hint"] = (
+            "Config file found, but it has no controlplane section. "
+            "Lint tools still work, but automatic quality checks on every file edit "
+            "require adding:\n"
+            "  controlplane:\n"
+            "    enabled: true"
+        )
     elif cp_config is not None and not cp_config.enabled:
         status["config_state"] = "config_disabled"
+        status["setup_hint"] = (
+            "Config file found with controlplane section, but enabled=false. "
+            "Set 'controlplane.enabled: true' in .claude/lintgate.yaml to activate."
+        )
     else:
         status["config_state"] = "config_enabled"
     return status

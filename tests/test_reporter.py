@@ -762,7 +762,8 @@ def test_format_mesh_report_pattern_alerts() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "PATTERN ALERT" in _verbose(report)
+    # Compact reporter renames "PATTERN ALERT" → "Recurring: <kind> (<n> runs)".
+    assert "Recurring: F821 (3 runs)" in _verbose(report)
 
 
 def test_format_mesh_report_repairs_section() -> None:
@@ -923,7 +924,10 @@ def test_format_mesh_report_informational_plural() -> None:
         ],
     )
     report = format_mesh_report(mesh)
-    assert "INFO: 2 informational findings" in _verbose(report)
+    # Compact reporter omits the verbose "INFO: N informational findings" line
+    # (see compact.py: #P0.3 cap finding_index); the channel summary still notes
+    # the failing channel + finding count instead.
+    assert "structure: fail (2 findings)" in _verbose(report)
 
 
 def test_format_mesh_report_hidden_findings_marker() -> None:

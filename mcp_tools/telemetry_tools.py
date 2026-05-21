@@ -90,5 +90,4 @@ def register(mcp, helpers):
 
     return {
         "telemetry_summary": telemetry_summary,
-        "_get_session_tracker": _get_session_tracker,
     }
