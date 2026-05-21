@@ -119,6 +119,12 @@ jobs:
           cp .github/badges/*.svg /tmp/
           rm -rf .github/badges
 
+          # Discard any working-tree mods generated during the run
+          # (lintgate/wesker may touch .claude/compass.yaml etc.) —
+          # SVGs are already preserved in /tmp. Without this, the
+          # subsequent `git switch badges` aborts.
+          git reset --hard HEAD
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
