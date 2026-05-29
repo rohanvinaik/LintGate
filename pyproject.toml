@@ -40,7 +40,7 @@ full = [
     "mypy>=1.8",
     "ty>=0.0.17",
     "radon>=6.0",
-    "bandit>=1.7",
+    "bandit>=1.9.4",
     "vulture>=2.0",
     "pip-audit>=2.6",
 ]
