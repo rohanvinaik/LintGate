@@ -51,7 +51,7 @@ mcp = [
 # Algebra (Property testing and contracts)
 algebra = [
     "hypothesis>=6.0",
-    "icontract>=2.6"
+    "icontract>=2.7.3"
 ]
 # Refactoring (safe module moves)
 refactor = [
