@@ -15,7 +15,7 @@
 
 `133 MCP tools · 18 linters · 6 parallel analysis channels · No LLM in the supervision path`
 
-Built entirely through vibe coding by a biochemist with no formal CS training. The metrics above are computed by the system on its own codebase.
+The metrics above are computed by the system on its own codebase.
 
 ---
 
@@ -45,7 +45,7 @@ All deterministic. All symbolic. Math on a CPU, not tokens through a model.
 
 ## The proof
 
-I gave LintGate to a frontier language model and asked it to improve [ModelAtlas](https://github.com/rohanvinaik/ModelAtlas) — a 7,800-line codebase I'd built through vibe coding. Three hours later:
+I gave LintGate to a frontier language model and asked it to improve [ModelAtlas](https://github.com/rohanvinaik/ModelAtlas) — a 7,800-line codebase of mine. Three hours later:
 
 | Metric | Before | After |
 |---|---|---|
@@ -63,7 +63,7 @@ The model wrote this in its [retrospective](docs/retrospectives/modelatlas-2026-
 
 > *"This is not an incremental improvement over manual refactoring. It is a categorically different operation."*
 
-The ModelAtlas SonarCloud dashboard — 0 bugs, 0 vulnerabilities, triple-A ratings, no god files, CC <40 across the entire codebase — is the LintGate demo. A biochemist's vibe-coded project at aerospace-grade specification.
+The ModelAtlas SonarCloud dashboard — 0 bugs, 0 vulnerabilities, triple-A ratings, no god files, CC <40 across the entire codebase — is the LintGate demo.
 
 Full session data: [ModelAtlas retrospective](docs/retrospectives/modelatlas-2026-03-23-tier2-hybrid.md) · [Self-audit](docs/retrospectives/Archive/lintgate-2026-02-20-tier2-audit.md) · [ShortcutForge (-95% blockers)](docs/retrospectives/Archive/shortcutforge-2026-02-20-tier2-audit.md) · [All retrospectives](docs/retrospectives/)
 
@@ -123,7 +123,7 @@ The auto-resolve pipeline inverts the economics further: pure functions matching
 
 ---
 
-Part of a research program on structured navigation through constrained semantic spaces — the same paradigm applied to [ML model discovery](https://github.com/rohanvinaik/ModelAtlas) and [theorem proving](https://github.com/rohanvinaik/Wayfinder).
+LintGate is the workbench where specification complexity (σ) was born; the measurement engine and the proof gate it matured now ship standalone as [Wesker](https://github.com/rohanvinaik/Wesker) and [Detective](https://github.com/rohanvinaik/Detective). Part of a research program on structured navigation through constrained semantic spaces — the same paradigm applied to [ML model discovery](https://github.com/rohanvinaik/ModelAtlas) and [theorem proving](https://github.com/rohanvinaik/Wayfinder).
 
 *Full tool reference, golden path workflows, prescriptive spec system, and configuration: [docs/reference.md](docs/reference.md)*
 
